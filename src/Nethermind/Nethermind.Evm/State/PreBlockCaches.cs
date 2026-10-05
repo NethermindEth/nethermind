@@ -606,7 +606,10 @@ public class PreBlockCaches
         public PooledSet<StorageCell> Cells => _cells;
 
         /// <summary>Records a missed storage cell while the shared cell budget lasts.</summary>
-        /// <remarks>The budget gate is approximate under concurrent captures (a small transient overshoot is possible); callers needing a hard bound must clamp when consuming <see cref="Cells"/>.</remarks>
+        /// <remarks>
+        /// Each distinct cell claims one credit from the budget atomically, so captures sharing one budget together never
+        /// record more cells than it held.
+        /// </remarks>
         /// <exception cref="InvalidOperationException">Called from a thread other than the one that created the capture.</exception>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void Record(in StorageCell storageCell)
@@ -616,9 +619,19 @@ public class PreBlockCaches
                 throw new InvalidOperationException("A capture must only record on the thread that created it.");
             }
 
-            if (Volatile.Read(ref _remainingCells.Value) > 0 && _cells.Add(storageCell))
+            if (_cells.Contains(storageCell)) return;
+
+            int remaining = Volatile.Read(ref _remainingCells.Value);
+            while (remaining > 0)
             {
-                Interlocked.Decrement(ref _remainingCells.Value);
+                int observed = Interlocked.CompareExchange(ref _remainingCells.Value, remaining - 1, remaining);
+                if (observed == remaining)
+                {
+                    _cells.Add(storageCell);
+                    return;
+                }
+
+                remaining = observed;
             }
         }
 

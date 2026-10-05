@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -1588,6 +1589,40 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
+    /// Two candidates of one contract capture the same cells in each round. The shared budget is charged once per
+    /// distinct cell: the duplicate a second capture records is refunded, and the refund creates no extra credit.
+    /// The contract reads slot[slot[0]], so the first round finds slot 0 and, through the placeholder 1, slot 1; the
+    /// second round, with slot 0 warm, finds slot 5. Three cells: twice that charge without the refunds, less with a
+    /// refund too many.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_ChargesASharedBudgetOncePerDistinctCell()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction first = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(first, second).WithGasLimit(30_000_000).TestObject;
+            const int budget = 100;
+            StrongBox<int> sharedCells = new(budget);
+
+            preWarmer.DiscoverAndWarmStorage([(0, first), (1, second)], block, Osaka.Instance, null, CancellationToken.None, sharedCells);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True);
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 1), out _), Is.True);
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.True);
+                Assert.That(sharedCells.Value, Is.EqualTo(budget - 3), "slots 0, 1 and 5, each charged once");
+            }
+        }
+    }
+
+    /// <summary>
     /// A loop over packed slots that divides by an upper field ends at its first slot when every skipped read is 1, so
     /// rounds alone discover one slot each and the rounds run out long before the loop does. The run is repeated with a
     /// placeholder whose every byte is non-zero, which keeps it going to the end.
@@ -1625,13 +1660,7 @@ public class BlockCachePreWarmerTests
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
         Assert.That(PackedLoopSlots, Is.GreaterThan(BlockCachePreWarmer.ColdReadsBeforeDiscovery));
 
-        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
-            .WithTransactions(
-                Build.A.Transaction.WithGasLimit(1_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                // Below three transactions a block gets no reactive warm at all.
-                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
-                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
-            .TestObject;
+        Block block = BuildPackedLoopBlock(gasLimit: 1_000_000);
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
@@ -1645,12 +1674,7 @@ public class BlockCachePreWarmerTests
         Assert.That(preWarmer.IsBalReadWarmingEnabled(Amsterdam.Instance), Is.True);
 
         // A block being produced has no access list yet, so its warms execute its transactions.
-        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
-            .WithTransactions(
-                Build.A.Transaction.WithGasLimit(1_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
-                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
-            .TestObject;
+        Block block = BuildPackedLoopBlock(gasLimit: 1_000_000);
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
 
@@ -1662,17 +1686,24 @@ public class BlockCachePreWarmerTests
     {
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
 
-        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
-            .WithTransactions(
-                Build.A.Transaction.WithGasLimit(12_000_000).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
-                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
-                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
-            .TestObject;
+        Block block = BuildPackedLoopBlock(gasLimit: 12_000_000);
 
         await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
 
         Assert.That(preWarmer.DiscoveryHandOffCount, Is.Zero, "a transaction above the gas threshold is discovered up front");
     }
+
+    /// <summary>
+    /// A block whose first transaction runs the packed-slot loop with <paramref name="gasLimit"/>, followed by two
+    /// plain transfers: below three transactions a block gets no reactive warm at all.
+    /// </summary>
+    private static Block BuildPackedLoopBlock(ulong gasLimit) =>
+        Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(gasLimit).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
 
     [Test]
     public async Task PreWarmCaches_CapsTheHandOffsOfOneBlock()

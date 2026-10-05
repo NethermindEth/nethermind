@@ -343,7 +343,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             int cellBudget = MaxDiscoveredCells - allDiscoveredCells.Count;
             if (sharedCells is not null) cellBudget = Math.Min(cellBudget, Volatile.Read(ref sharedCells.Value));
             if (cellBudget <= 0) return;
-            DiscoveryRound roundState = new(block, spec, cellBudget, new StrongBox<int>(cellBudget), roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
+            // A shared budget is charged as cells are captured, so concurrent discoveries can't overrun it together.
+            StrongBox<int> remainingCaptureCells = sharedCells ?? new StrongBox<int>(cellBudget);
+            DiscoveryRound roundState = new(block, spec, cellBudget, remainingCaptureCells, roundCells, roundCellsLock, nextRoundCandidates, cancellationToken);
             ParallelOptions parallelOptions = new()
             {
                 MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, admitted.Count),
@@ -360,17 +362,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 return;
             }
 
+            int capturedCount = roundCells.Count;
             roundCells.ExceptWith(allDiscoveredCells);
+            // Cells an earlier round already found were charged again by this round's captures.
+            int rediscovered = capturedCount - roundCells.Count;
+            if (rediscovered > 0) Interlocked.Add(ref remainingCaptureCells.Value, rediscovered);
             if (cancellationToken.IsCancellationRequested) return;
 
             int productive = nextRoundCandidates.Count - awaiting;
             if (roundCells.Count > 0)
             {
                 allDiscoveredCells.UnionWith(roundCells);
-                // Concurrent sharers read the budget at their round's start, so together they can overrun it by a round.
-                bool sharedBudgetLeft = sharedCells is null || Interlocked.Add(ref sharedCells.Value, -roundCells.Count) > 0;
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
-                if (allDiscoveredCells.Count >= MaxDiscoveredCells || !sharedBudgetLeft) return;
+                // An exhausted shared budget ends discovery at the next round's budget check.
+                if (allDiscoveredCells.Count >= MaxDiscoveredCells) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
             {
