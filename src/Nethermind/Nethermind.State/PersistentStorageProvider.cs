@@ -332,7 +332,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
             {
-                trace[cell] = new StorageChangeTrace(in originalValue, in changeTrace.After);
+                trace[cell] = new StorageChangeTrace(in originalValue, changeTrace.After);
             }
             else
             {
@@ -1034,12 +1034,9 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
             => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
 
-        public StorageChangeTrace this[UInt256 key]
-        {
-            set => _dictionary[key] = value;
-        }
-
         public Dictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
+
+        public Dictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
 
         public void UnmarkClear()
         {
@@ -1108,7 +1105,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private sealed class PerContractState : IReturnable
+    private sealed partial class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
@@ -1333,15 +1330,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
+            if (!exists || valueChanges.IsInitialValue)
             {
-                valueChanges = new StorageChangeTrace(value);
+                valueChanges.Set(UInt256.Zero, value, isInitialValue: true);
             }
             else
             {
-                valueChanges = valueChanges.IsInitialValue
-                    ? new StorageChangeTrace(value)
-                    : new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges.Set(valueChanges.Before, value, isInitialValue: false);
             }
 
             EnsureStorageTree();
@@ -1371,7 +1366,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 LoadFromTreeStorage(in storageCell, out value);
 
-                valueChange = new(value, value);
+                valueChange.Set(value, value, isInitialValue: false);
             }
             else
             {
@@ -1401,7 +1396,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend.Get(storageCell.Index, out value);
         }
 
-        [SkipLocalsInit]
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             // Rewrites BlockChange below, and the commit that normally bumps the round first returns
@@ -1409,9 +1403,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             EnsureStorageTree();
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
-
-            int writes = 0;
-            int skipped = 0;
 
             if (BlockChange.HasClear)
             {
@@ -1425,43 +1416,33 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
             // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
-            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+            return WriteChanges(storageWriteBatch);
+        }
 
-            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
+        private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch);
 
-            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
+        /// <summary>Marks a pending change as committed, writing its value now unless it clears the slot.</summary>
+        /// <returns><see langword="false"/> when the change clears the slot, so its delete must follow every write.</returns>
+        /// <remarks>Safe while enumerating <see cref="BlockChange"/>: it only overwrites an existing entry, never adds or removes one.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool CommitAndWriteUnlessDelete(in UInt256 key, ref StorageChangeTrace change, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            UInt256 after = change.After;
+            change.Set(after, after, isInitialValue: false);
+            if (after.IsZero) return false;
+
+            storageWriteBatch.Set(in key, in after);
+            return true;
+        }
+
+        private static int WriteDeletes(ReadOnlySpan<UInt256> keys, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            foreach (ref readonly UInt256 key in keys)
             {
-                UInt256 after = kvp.Value.After;
-                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
-                {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(kvp.Key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, in after);
-
-                        writes++;
-                    }
-                }
-                else
-                {
-                    skipped++;
-                }
-            }
-
-            foreach (ref readonly UInt256 key in deferredDeletes.AsSpan())
-            {
-                BlockChange[key] = default;
                 storageWriteBatch.Set(in key, UInt256.Zero);
-
-                writes++;
             }
 
-            return (writes, skipped);
+            return keys.Length;
         }
 
         /// <summary>Whether the contract held storage before the block, or <see langword="null"/> when the block never resolved its tree.</summary>
@@ -1560,10 +1541,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void SetCapturedRound(ulong round) => _metadata = round | (_metadata & 1);
 
-        public readonly UInt256 Before;
-        public readonly UInt256 After;
+        /// <summary>Overwrites the trace in place, clearing its captured round.</summary>
+        /// <remarks>
+        /// Assigning a new trace through a ref builds it in a zeroed temporary and block-copies it, and the
+        /// guest makes that copy through corelib's out-of-line <c>Memmove</c>; field stores move the words directly.
+        /// </remarks>
+        public void Set(in UInt256 before, in UInt256 after, bool isInitialValue)
+        {
+            Before = before;
+            After = after;
+            _metadata = isInitialValue ? 1UL : 0UL;
+        }
+
+        public UInt256 Before { readonly get; private set; }
+        public UInt256 After { readonly get; private set; }
         private ulong _metadata;
         public readonly bool IsInitialValue => (_metadata & 1) != 0;
+        public readonly bool IsPendingWrite => Before != After || IsInitialValue;
         public readonly ulong CapturedRound => _metadata & ~1UL;
     }
 }

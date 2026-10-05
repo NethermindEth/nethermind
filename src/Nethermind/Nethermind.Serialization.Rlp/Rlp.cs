@@ -406,7 +406,7 @@ namespace Nethermind.Serialization.Rlp
                 position += SerializeLength(input.Length, buffer[position..]);
             }
 
-            input.CopyTo(buffer.Slice(position, input.Length));
+            Core.Extensions.Bytes.Copy(input, buffer.Slice(position, input.Length));
             position += input.Length;
 
             return position;

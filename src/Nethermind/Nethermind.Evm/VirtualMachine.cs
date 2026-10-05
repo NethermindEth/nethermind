@@ -10,6 +10,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -137,7 +138,7 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            returnData.CopyTo(scratch);
+            Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
