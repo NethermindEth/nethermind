@@ -26,11 +26,11 @@ internal static class NodeEndpoints
     {
         app.MapGet("/eth/v1/node/health", c => Health(c, ctx.ForRequest()));
         app.MapGet("/eth/v1/node/version", c => Version(c));
-        app.MapGet("/eth/v1/node/identity", c => Identity(c, ctx));
-        app.MapGet("/eth/v1/node/syncing", c => Syncing(c, ctx.ForRequest()));
-        app.MapGet("/eth/v1/node/peer_count", c => PeerCount(c, ctx));
-        app.MapGet("/eth/v1/node/peers", c => Peers(c, ctx));
-        app.MapGet("/eth/v1/node/peers/{peer_id}", (HttpContext c, string peer_id) => PeerById(c, peer_id, ctx));
+        app.MapGet("/eth/v1/node/identity", c => ContentNegotiation.JsonOnly(c, ctx, Identity));
+        app.MapGet("/eth/v1/node/syncing", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), Syncing));
+        app.MapGet("/eth/v1/node/peer_count", c => ContentNegotiation.JsonOnly(c, ctx, PeerCount));
+        app.MapGet("/eth/v1/node/peers", c => ContentNegotiation.JsonOnly(c, ctx, Peers));
+        app.MapGet("/eth/v1/node/peers/{peer_id}", (HttpContext c, string peer_id) => ContentNegotiation.JsonOnly(c, ctx, peer_id, PeerById));
     }
 
     private static Task Health(HttpContext c, BeaconApiContext ctx)
@@ -69,11 +69,6 @@ internal static class NodeEndpoints
 
     private static Task Identity(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (ctx.P2P?.LocalPeerId is not { } peerId)
         {
             return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
@@ -107,11 +102,6 @@ internal static class NodeEndpoints
 
     private static Task Syncing(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         StatusMessageV2 status = ctx.StatusSource.CurrentStatus;
         ulong wallSlot = ctx.SlotClock.CurrentSlot;
         long distance = (long)wallSlot - (long)status.HeadSlot;
@@ -129,11 +119,6 @@ internal static class NodeEndpoints
 
     private static Task PeerCount(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         int disconnected = 0, connecting = 0, connected = 0, disconnecting = 0;
         foreach (PeerRecord peer in ctx.PeerManager?.Peers ?? [])
         {
@@ -158,11 +143,6 @@ internal static class NodeEndpoints
     /// </summary>
     private static Task Peers(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         List<PeerConnectionState> states = [];
         foreach (string? raw in c.Request.Query["state"])
         {
@@ -210,11 +190,6 @@ internal static class NodeEndpoints
     /// driver's peer manager (or the driver itself, when it has none) has no record of.</summary>
     private static Task PeerById(HttpContext c, string peer_id, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (peer_id.Length > 64 || !Multihash.TryParse(peer_id, MultibaseEncoding.Base58Btc, out Multihash hash)
             || (int)hash.Code is not (0 or 18)
             || ((int)hash.Code == 18 ? hash.Length != 32 : hash.Length is < 1 or > 42)

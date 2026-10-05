@@ -21,8 +21,8 @@ internal static class DebugEndpoints
     public static void Map(WebApplication app, BeaconApiContext ctx)
     {
         app.MapGet("/eth/v2/debug/beacon/states/{state_id}", (HttpContext c, string state_id) => State(c, state_id, ctx.ForRequest()));
-        app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ForkChoice(c, ctx.ForRequest()));
-        app.MapGet("/eth/v1/debug/fork_choice", c => ForkChoice(c, ctx.ForRequest()));
+        app.MapGet("/eth/v1/debug/beacon/fork_choice", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), ForkChoice));
+        app.MapGet("/eth/v1/debug/fork_choice", c => ContentNegotiation.JsonOnly(c, ctx.ForRequest(), ForkChoice));
     }
 
     /// <summary>
@@ -32,11 +32,6 @@ internal static class DebugEndpoints
     /// </summary>
     private static Task ForkChoice(HttpContext c, BeaconApiContext ctx)
     {
-        if (ContentNegotiation.Negotiate(c, sszSupported: false) is null)
-        {
-            return ContentNegotiation.WriteNotAcceptable(c);
-        }
-
         if (ctx.ForkChoiceSnapshot is not { } snapshot)
         {
             return ApiErrors.Write(c, StatusCodes.Status503ServiceUnavailable,
