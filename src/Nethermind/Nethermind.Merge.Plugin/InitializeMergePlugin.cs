@@ -5,6 +5,7 @@ using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
@@ -30,21 +31,22 @@ public class InitializeMergePlugin(
     IBlocksConfig blocksConfig,
     ISpecProvider specProvider,
     IJsonRpcConfig jsonRpcConfig,
+    IInitConfig initConfig,
     ILogManager logManager) : IStep
 {
     public Task Execute(CancellationToken cancellationToken)
     {
-        Configure(mergeConfig, blocksConfig, specProvider, jsonRpcConfig, logManager);
+        Configure(mergeConfig, blocksConfig, specProvider, jsonRpcConfig, initConfig, logManager);
         return Task.CompletedTask;
     }
 
     /// <summary>Applies the merge initialization; shared with the AuRa merge init step, which cannot depend on this step across assemblies.</summary>
-    public static void Configure(IMergeConfig mergeConfig, IBlocksConfig blocksConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+    public static void Configure(IMergeConfig mergeConfig, IBlocksConfig blocksConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, IInitConfig initConfig, ILogManager logManager)
     {
         MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
 
         EnsureNotConflictingSettings(mergeConfig);
-        EnsureJsonRpcUrl(mergeConfig, specProvider, jsonRpcConfig, logManager);
+        EnsureJsonRpcUrl(mergeConfig, specProvider, jsonRpcConfig, initConfig, logManager);
     }
 
     private static void EnsureNotConflictingSettings(IMergeConfig mergeConfig)
@@ -57,7 +59,7 @@ public class InitializeMergePlugin(
         }
     }
 
-    private static void EnsureJsonRpcUrl(IMergeConfig mergeConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+    private static void EnsureJsonRpcUrl(IMergeConfig mergeConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, IInitConfig initConfig, ILogManager logManager)
     {
         if (!HasTtd(mergeConfig, specProvider)) // by default we have Merge.Enabled = true, for chains that are not post-merge, we can skip this check, but we can still working with MergePlugin
             return;
@@ -71,7 +73,7 @@ public class InitializeMergePlugin(
 
             jsonRpcConfig.Enabled = true;
 
-            EnsureEngineModuleIsConfigured(jsonRpcConfig, logManager);
+            EnsureEngineModuleIsConfigured(jsonRpcConfig, initConfig, logManager);
 
             if (!jsonRpcConfig.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase))
             {
@@ -85,13 +87,13 @@ public class InitializeMergePlugin(
         }
         else
         {
-            EnsureEngineModuleIsConfigured(jsonRpcConfig, logManager);
+            EnsureEngineModuleIsConfigured(jsonRpcConfig, initConfig, logManager);
         }
     }
 
-    private static void EnsureEngineModuleIsConfigured(IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
+    private static void EnsureEngineModuleIsConfigured(IJsonRpcConfig jsonRpcConfig, IInitConfig initConfig, ILogManager logManager)
     {
-        JsonRpcUrlCollection urlCollection = new(logManager, jsonRpcConfig, false);
+        JsonRpcUrlCollection urlCollection = new(logManager, jsonRpcConfig, initConfig.WebSocketsEnabled);
         bool hasEngineApiConfigured = urlCollection
             .Values
             .Any(static rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));

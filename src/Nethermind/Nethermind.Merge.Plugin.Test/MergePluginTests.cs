@@ -228,6 +228,31 @@ public class MergePluginTests
     }
 
     [Test]
+    public void InitThrowsWhenWebSocketsPortTakesEnginePort([Values] bool webSocketsEnabled, [Values] bool configuredViaAdditionalUrls)
+    {
+        JsonRpcConfig jsonRpcConfig = new() { Enabled = true, WebSocketsPort = 8551 };
+        if (configuredViaAdditionalUrls)
+        {
+            jsonRpcConfig.AdditionalRpcUrls = ["http://localhost:8551|http;ws|net;eth;engine|no-auth"];
+        }
+        else
+        {
+            jsonRpcConfig.EnginePort = 8551;
+        }
+
+        using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig, new InitConfig { WebSocketsEnabled = webSocketsEnabled }));
+        InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
+        if (webSocketsEnabled)
+        {
+            Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
+        }
+        else
+        {
+            Assert.That(async () => await step.Execute(default), Throws.Nothing);
+        }
+    }
+
+    [Test]
     public async Task InitDisableJsonRpcUrlWithNoEngineUrl()
     {
         JsonRpcConfig jsonRpcConfig = new()
