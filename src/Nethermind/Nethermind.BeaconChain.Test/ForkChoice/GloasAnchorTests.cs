@@ -12,10 +12,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The Gloas <c>get_forkchoice_store</c> rooted at <see cref="ForkCrossingChain.First"/>, the state a node
-/// checkpoint-synced after the fork finalizes starts from.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasAnchorTests
 {
@@ -38,10 +34,6 @@ public class GloasAnchorTests
         Assert.That(runner.GetHead(), Is.EqualTo(chain.First.Root));
     }
 
-    /// <summary>
-    /// The anchor is the justified root, so the anchor's own checkpoint state weighs every vote; it resolves only
-    /// through the Gloas provider. The children build on the anchor's empty payload, so no payload is needed.
-    /// </summary>
     [Test]
     public void Children_import_onto_the_anchor_and_their_votes_are_weighed_from_its_state()
     {
@@ -76,7 +68,6 @@ public class GloasAnchorTests
         Assert.That(ex.Message, Does.Contain("state root"));
     }
 
-    /// <summary>Every block state lookup picks the provider by the block's slot, so an anchor of the wrong fork could never resolve its own checkpoint state.</summary>
     [Test]
     public void An_anchor_block_outside_the_fork_of_the_constructor_is_refused([Values] bool gloasConstructor)
     {
@@ -84,7 +75,6 @@ public class GloasAnchorTests
         PubkeyCache pubkeys = new();
         pubkeys.Build(chain.AnchorState.Validators!);
 
-        // Moving the fork epoch one epoch away puts each anchor on the wrong side of it.
         ForkChoiceException ex = Assert.Throws<ForkChoiceException>(() => _ = gloasConstructor
             ? CreateRunner(chain, SyntheticSpec(ForkCrossingChain.ForkEpoch + 1), chain.First.PostState, chain.First.Block.Message!)
             : new ForkChoiceRunner(SyntheticSpec(0), chain.AnchorState, chain.AnchorBlock, chain, pubkeys, chain))!;

@@ -11,11 +11,7 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// Pre-Gloas weights must not depend on the boost being applied in its own pass: every node's weight after each
-/// <see cref="ProtoArrayForkChoice.GetHead"/> is compared with a reference model that applies vote deltas and the
-/// proposer boost in one backward pass (the phase0 <c>get_weight</c> as the proto-array computed it before).
-/// </summary>
+/// <summary>The independent model combines vote deltas and proposer boost in one backward pass.</summary>
 public class ProtoArrayBoostPassDifferentialTests
 {
     private const ulong Gwei32Eth = 32_000_000_000;
@@ -45,7 +41,6 @@ public class ProtoArrayBoostPassDifferentialTests
 
     private static void ParentCollectsTwoCommittees(Driver d)
     {
-        // Port of ProtoArrayWeightAccumulationTests.BuildFixtureMirror with the parent's body votes.
         d.Rebase(new CheckpointRef(3, GetRoot(96)), new CheckpointRef(2, GetRoot(96)), 96);
         ulong[] balances = Balances(256);
         void Committee(int k, ulong root, ulong epoch)
@@ -151,7 +146,6 @@ public class ProtoArrayBoostPassDifferentialTests
         d.Head(balances, 4);
     }
 
-    /// <summary>Drives a <see cref="ProtoArrayForkChoice"/> and the reference model in lockstep; roots are <see cref="GetRoot"/> numbers.</summary>
     public sealed class Driver
     {
         private readonly List<ulong> _weights = [];
@@ -237,7 +231,6 @@ public class ProtoArrayBoostPassDifferentialTests
             Comparisons++;
         }
 
-        /// <summary>The phase0 delta computation and the single weight pass with the boost folded in.</summary>
         private void ApplySinglePass(ulong[] newBalances, JustifiedBalances justifiedBalances, Hash256 proposerBoostRoot)
         {
             IReadOnlyList<ProtoNode> nodes = _forkChoice.Nodes;

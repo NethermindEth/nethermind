@@ -9,17 +9,7 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Enumerates the consensus-specs <c>genesis</c> vectors (<c>initialize_beacon_state_from_eth1</c> and
-/// <c>is_valid_genesis_state</c>) and reports each as not-implemented, since no fork that ships them can be driven.
-/// </summary>
-/// <remarks>
-/// At <see cref="ConsensusSpecArchive.Version"/> only the phase0 fork ships genesis vectors, and only for the minimal preset. Their
-/// <c>state</c> and <c>genesis</c> files are phase0 <c>BeaconState</c> objects, which this repo has no container for, and the
-/// minimal preset's vector sizes differ from the mainnet-shaped containers it has. Nor does the production code implement
-/// <c>initialize_beacon_state_from_eth1</c> or <c>is_valid_genesis_state</c>, which a driver would call. A fork whose state the driver can decode must
-/// not gain vectors unnoticed, so <see cref="Genesis_vectors_exist_only_for_phase0_minimal"/> fails when one does.
-/// </remarks>
+/// <summary>Reports genesis vectors as not-implemented: only phase0/minimal fixtures exist, with no supported state container or genesis operations.</summary>
 [TestFixture]
 public class GenesisTests
 {
@@ -31,8 +21,6 @@ public class GenesisTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(GenesisCase testCase) => Execute(testCase);
-
-    // A wrong suite path or a dropped extraction entry enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Genesis_vectors_exist_only_for_phase0_minimal([Values] ConsensusPreset preset)
     {

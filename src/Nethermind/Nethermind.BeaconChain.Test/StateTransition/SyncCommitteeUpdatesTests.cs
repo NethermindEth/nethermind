@@ -16,11 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// Altair <c>process_sync_committee_updates</c> in the Fulu and Gloas epoch pipelines: at
-/// <c>next_epoch % EPOCHS_PER_SYNC_COMMITTEE_PERIOD == 0</c> the old next committee becomes current and a
-/// fresh <c>get_next_sync_committee</c> becomes next; at every other epoch both are left as they are.
-/// </summary>
 [HardTimeout(60_000)]
 public class SyncCommitteeUpdatesTests
 {
@@ -94,7 +89,7 @@ public class SyncCommitteeUpdatesTests
         Assert.That(state.NextSyncCommittee, Is.SameAs(oldNext));
     }
 
-    /// <summary>Electra <c>get_next_sync_committee_indices</c>, which Gloas keeps as <c>compute_balance_weighted_selection</c> with <c>shuffle_indices=True</c>.</summary>
+    // Electra get_next_sync_committee_indices oracle; Gloas uses weighted selection with shuffle_indices=True.
     private static int[] ReferenceNextSyncCommitteeIndices(IBeaconStateView state, ulong nextEpoch)
     {
         int[] active = state.GetActiveValidatorIndices(nextEpoch);
@@ -169,8 +164,6 @@ public class SyncCommitteeUpdatesTests
 
     private static ulong LastSlotOf(ulong epoch) => (epoch + 1) * Presets.SlotsPerEpoch - 1;
 
-    /// <summary>A Fulu state at <paramref name="slot"/> whose validators hold real keys, with a few leaving or joining at the epoch after <paramref name="epoch"/>.</summary>
-    /// <param name="unequalBalances">Gives validator <c>i</c> an effective balance of <c>(i % 4) * 600</c> ETH instead of 32 ETH.</param>
     private static BeaconStateFulu CreateState(ulong epoch, ulong slot, bool unequalBalances)
     {
         BeaconStateFulu state = CreateFuluState(ValidatorCount);

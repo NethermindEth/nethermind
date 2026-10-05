@@ -13,11 +13,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// beacon-APIs v5.0.0-alpha.2 <c>getStateRandao</c> and <c>getEpochSyncCommittees</c>. The fixture gives
-/// every served randao index and every committee position a distinct, independently known value, so a
-/// wrong vector index, period or subnet slice reads a different value rather than the same fill.
-/// </summary>
 public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -27,9 +22,7 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
     private const ulong StateSlot = StateEpoch * 32;
     private const ulong PeriodStart = 412_416;
     private const ulong NextPeriodStart = PeriodStart + 256;
-    // The oldest epoch still in the randao_mixes window of a state at StateEpoch.
     private const ulong OldestMixEpoch = StateEpoch - 65_535;
-    // A slot whose state names a sync committee member missing from its own registry.
     private const ulong CorruptSlot = StateSlot + 32;
 
     private static readonly Hash256 StateRoot = BeaconApiTestHost.TestRoot(0x70);
@@ -61,10 +54,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
         Assert.That(data.GetProperty("randao").GetString(), Is.EqualTo(BeaconApiTestHost.FilledHash((byte)fill).ToString()));
     }
 
-    /// <summary>
-    /// apis/beacon/states/randao.yaml: an epoch outside the state's randao_mixes window is 400.
-    /// apis/beacon/states/sync_committees.yaml: a state holds only its own and the next period's committee.
-    /// </summary>
     [TestCase("randao", "412501")] // StateEpoch + 1
     [TestCase("randao", "346964")] // OldestMixEpoch - 1
     [TestCase("randao", "not-an-epoch")]
@@ -124,7 +113,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
         }
     }
 
-    /// <summary>A committee member is always a registry entry; a state that breaks this is corrupt, not an unknown request.</summary>
     [Test]
     public async Task Sync_committee_member_missing_from_the_registry_is_500()
     {
@@ -157,7 +145,6 @@ public class BeaconStatesRandaoAndSyncCommitteesTests : BeaconApiFixture
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
-    /// <summary>Neither operation is fork-versioned: the body carries only the two flags and data, and no version header.</summary>
     private static async Task<JsonElement> ReadEnvelope(HttpResponseMessage response, bool expectedFinalized)
     {
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);

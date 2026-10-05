@@ -26,13 +26,7 @@ public class BeaconChainServiceTests
     private static IContainer BuildContainer(ILogManager? logManager = null, ulong chainId = BlockchainIds.Mainnet) =>
         BeaconChainTestContainer.Builder(chainId, logManager).Build();
 
-    // Regression for gap 113: Stop() (re-entered from the ExternalClDetected event, raised on
-    // whatever thread serviced the engine call) used to check `_disposed` and cancel the token
-    // source as two unsynchronised steps. A concurrent Dispose() (container teardown) could pass
-    // its own check, set the flag and dispose the source in between, so Stop()'s Cancel() call
-    // landed on an already-disposed CancellationTokenSource and threw ObjectDisposedException
-    // instead of shutting down quietly. Never calls Start(), matching the note that this stream
-    // must not let a real orchestrator run reach network/socket code.
+    // Never start the service: this race must not reach network or socket code.
     [Test]
     public void Stop_and_Dispose_do_not_throw_when_invoked_concurrently()
     {
@@ -65,7 +59,6 @@ public class BeaconChainServiceTests
         }
     }
 
-    // A store resolved without the spec would silently keep the Fulu-only shape and refuse every Gloas block.
     [Test]
     public void The_resolved_store_stores_blocks_in_the_shape_of_the_network_fork_schedule()
     {
@@ -85,7 +78,6 @@ public class BeaconChainServiceTests
     {
         using IContainer container = BuildContainer();
         BeaconChainStore store = container.Resolve<BeaconChainStore>();
-        // An anchor without its state fails the start right after the version check, before any network access.
         store.SetAnchor(TestItem.KeccakA, 1);
 
         Assert.That(() => container.Resolve<BeaconChainService>().Start(), Throws.InvalidOperationException.With.Message.Contains("anchor state"), "the driver went on to read the anchor");
@@ -124,11 +116,6 @@ public class BeaconChainServiceTests
         Assert.That(() => source.Token, Throws.TypeOf<ObjectDisposedException>().After(2000, 10));
     }
 
-    // Regression for gap 113: ServiceStopper.StopAllServices() resolves every registered
-    // IStoppableService and awaits its StopAsync(), including a driver that was resolved into the
-    // container but never started (e.g. an earlier startup step failed before StartBeaconChain
-    // ran). Before the fix BeaconChainService did not implement IStoppableService at all, so
-    // shutdown could only reach the synchronous Stop() and Dispose() never had anything to await.
     [Test]
     public async Task StopAsync_on_an_unstarted_service_does_not_throw_and_still_allows_dispose()
     {

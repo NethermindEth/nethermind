@@ -15,10 +15,6 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 
 public class ProtoArrayNoViableHeadTests
 {
-    /// <summary>
-    /// fork-choice.md filter_block_tree: an interior node leaves the viable tree when slashing makes its only child nonviable.
-    /// Its own justification cannot keep it ahead of a lighter viable sibling.
-    /// </summary>
     [Test]
     public void Head_excludes_an_interior_node_whose_only_child_lost_unrealized_justification()
     {
@@ -58,10 +54,6 @@ public class ProtoArrayNoViableHeadTests
         Assert.That(forkChoice.GetHead(beforeSlashing, genesis, balances, null, currentSlot), Is.EqualTo(c.Root));
     }
 
-    /// <summary>
-    /// fork-choice.md filter_block_tree: an interior node with no viable child cannot replace a stale best child.
-    /// get_head chooses the viable sibling, or the justified root when no sibling remains.
-    /// </summary>
     [Test]
     public void Head_never_stops_at_an_interior_node_outside_the_viable_tree([Values] bool withViableSibling)
     {
@@ -91,10 +83,6 @@ public class ProtoArrayNoViableHeadTests
         Assert.That(head, Is.EqualTo(withViableSibling ? v.Root : GetRoot(0)));
     }
 
-    /// <summary>
-    /// specs/bellatrix/optimistic-sync.md: invalidated children are absent from the block tree.
-    /// Once all children are invalidated, their parent is a leaf for filter_block_tree.
-    /// </summary>
     [Test]
     public void Head_is_the_parent_once_each_child_is_invalidated_in_turn()
     {
@@ -117,15 +105,6 @@ public class ProtoArrayNoViableHeadTests
         Assert.That((first, second, head), Is.EqualTo((c.Root, b.Root, a.Root)));
     }
 
-    /// <summary>
-    /// specs/phase0/fork-choice.md get_head starts at the justified root and walks only get_filtered_block_tree, so when
-    /// no node is viable the head is the justified root. Here the store's justified epoch 5 is more than two epochs
-    /// ahead of every node's voting source (epoch 0) at epoch 10, so no node is viable.
-    /// </summary>
-    /// <remarks>
-    /// With siblings, a vote on the lower-root child makes it the heavier one, and the best-child update keeps a
-    /// non-viable best child when both siblings are non-viable, so the justified node's best descendant is not viable.
-    /// </remarks>
     [Test]
     public void Head_is_the_justified_root_when_no_node_is_viable([Values] bool withSiblings)
     {

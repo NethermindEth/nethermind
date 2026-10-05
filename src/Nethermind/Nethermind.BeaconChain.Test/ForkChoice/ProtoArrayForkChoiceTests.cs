@@ -63,8 +63,6 @@ public class ProtoArrayForkChoiceTests
     [Test]
     public void Attester_slashing_removes_the_vote_once_and_keeps_the_validator_out()
     {
-        // The Lighthouse vectors never exercise equivocation, so cover it here: build
-        // 0 <- (2 | 1) with one vote on each fork, then slash the validator voting for 2.
         CheckpointRef anchor = new(1, GetRoot(0));
         JustifiedBalances balances = JustifiedBalances.FromEffectiveBalances([1, 1]);
         ProtoArrayForkChoice forkChoice = new(0, 0, Hash256.Zero, anchor, anchor, ExecutionStatus.Optimistic, Hash256.Zero);
@@ -76,7 +74,6 @@ public class ProtoArrayForkChoiceTests
 
         Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(2)), "tie broken towards the higher root");
 
-        // Slashing validator #1 deducts its vote from 2, flipping the head to 1.
         forkChoice.OnAttesterSlashing([1ul]);
         Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(1)), "slashed vote deducted");
         using (Assert.EnterMultipleScope())
@@ -85,7 +82,6 @@ public class ProtoArrayForkChoiceTests
             Assert.That(forkChoice.GetWeight(GetRoot(2)), Is.EqualTo(0ul), "slashed vote removed");
         }
 
-        // New attestations from the slashed validator are never counted again.
         forkChoice.ProcessAttestation(1, GetRoot(2), 3);
         Assert.That(forkChoice.GetHead(anchor, anchor, balances, null, 0), Is.EqualTo(GetRoot(1)), "slashed validator stays out");
         Assert.That(forkChoice.GetWeight(GetRoot(2)), Is.EqualTo(0ul), "no repeat counting");
@@ -93,12 +89,6 @@ public class ProtoArrayForkChoiceTests
         ProtoBlock NewBlock(Hash256 root) => CreateProtoBlock(1, root, GetRoot(0), anchor, anchor, ExecutionStatus.Optimistic, root);
     }
 
-    /// <summary>
-    /// The proposer reorg tie-break (<see cref="ForkChoiceRunner.GetProposerHead"/>) reads a
-    /// block's parent and unrealized-justified checkpoint straight from the proto-array rather than keeping
-    /// a second copy, so these accessors are the only thing standing between it and silently reading the
-    /// wrong node.
-    /// </summary>
     [Test]
     public void GetParentRoot_and_GetUnrealizedJustifiedCheckpoint_read_the_registered_node()
     {
@@ -119,12 +109,6 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.GetUnrealizedJustifiedCheckpoint(GetRoot(9)), Is.Null, "unknown block");
     }
 
-    /// <summary>
-    /// <see cref="ProtoArrayForkChoice.CalculateCommitteeFraction"/> is the only source the proposer reorg's
-    /// head-weak/parent-strong thresholds have for "a percentage of one committee's share of the total
-    /// active balance" - a wrong formula here silently shifts every reorg decision without failing any
-    /// existing proposer-boost test, since boost already exercises it at a single fixed percentage (40).
-    /// </summary>
     [Test]
     public void CalculateCommitteeFraction_is_percent_of_one_committees_share()
     {
@@ -140,10 +124,6 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.CalculateCommitteeFraction(balances, ForkChoiceRunner.ReorgParentWeightThresholdPercent), Is.EqualTo(320ul));
     }
 
-    /// <summary>
-    /// A pre-Gloas vote is kept at its target epoch's first slot, which a later Gloas-slot vote must exceed to replace it. A
-    /// start slot that overflows would wrap to a small slot, so the vote is refused and the latest message stays unset.
-    /// </summary>
     [Test]
     public void A_vote_whose_target_epoch_start_slot_overflows_is_refused()
     {
@@ -154,16 +134,11 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.LatestMessage(0), Is.Null);
     }
 
-    /// <summary>The last epoch whose start slot fits in 64 bits: <c>ulong.MaxValue / 32</c>, written out so the bound cannot drift with the production constant.</summary>
+    /// <summary>Write the uint64 epoch bound literally so it cannot drift with the production constant.</summary>
     private const ulong LastEpochWithAStartSlot = 576460752303423487;
 
     private static ulong[] CheckpointEpochsAroundTheBound() => [LastEpochWithAStartSlot, LastEpochWithAStartSlot + 1, ulong.MaxValue];
 
-    /// <summary>
-    /// A block naming a checkpoint epoch whose start slot overflows
-    /// would wrap the finality checks or throw <see cref="OverflowException"/> mid-import. It is refused whole with the tree unchanged, and the epoch at
-    /// the bound is still accepted.
-    /// </summary>
     [Test]
     public void A_block_naming_a_checkpoint_epoch_is_refused_beyond_the_bound_and_accepted_at_it(
         [Values(0, 1, 2, 3)] int field,
@@ -185,7 +160,6 @@ public class ProtoArrayForkChoiceTests
         Assert.That(forkChoice.ContainsBlock(GetRoot(1)), Is.Not.EqualTo(refused));
     }
 
-    /// <summary>A default <see cref="ScoreDeltas"/> has no arrays: it is refused as a proto-array error before any weight moves, never a <see cref="NullReferenceException"/>.</summary>
     [Test]
     public void Score_changes_without_delta_arrays_are_refused()
     {

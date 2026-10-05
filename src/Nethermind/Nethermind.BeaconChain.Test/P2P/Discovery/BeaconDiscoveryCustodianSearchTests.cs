@@ -27,18 +27,12 @@ using IIPResolver = Nethermind.Network.IIPResolver;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
-/// <summary>
-/// fulu/das-core.md: a node must retrieve every column it samples, so once a sampled column has no connected custodian,
-/// discovery offers the candidates custodying it first and re-offers its routing table without waiting for the periodic sweep.
-/// </summary>
 public class BeaconDiscoveryCustodianSearchTests
 {
     private static readonly TimeSpan MinSweepInterval = TimeSpan.FromMilliseconds(500);
 
-    // BeaconDiscovery.CandidateCapacity, the bound of the queue from the node sources to the custody ranking.
     private const int BeaconDiscoveryQueueCapacity = 256;
 
-    /// <summary>With no custodian request, the sweep loop waits its interval and then sweeps; the production interval is within forty seconds.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task The_periodic_table_sweep_reoffers_nodes_within_forty_seconds(CancellationToken token)
@@ -243,7 +237,6 @@ public class BeaconDiscoveryCustodianSearchTests
 
         discovery.RequestColumnCustodians([1]);
         bool firstSweep = await SweepCountReaches(1, token);
-        // Lands during the pause after the first early sweep.
         discovery.RequestColumnCustodians([1, 2]);
         bool secondSweep = await SweepCountReaches(2, token);
         await Task.Delay(MinSweepInterval * 1.5, token);
@@ -288,7 +281,6 @@ public class BeaconDiscoveryCustodianSearchTests
         TestLogger logger = new();
         await using BeaconDiscovery discovery = CreateDiscovery(time, new OneLoggerLogManager(new ILogger(logger)));
 
-        // Each request names a column the previous one did not, as a flapping custodian set would.
         for (int i = 0; i < 100; i++)
         {
             discovery.RequestColumnCustodians([(ulong)(i % 2) + 1]);

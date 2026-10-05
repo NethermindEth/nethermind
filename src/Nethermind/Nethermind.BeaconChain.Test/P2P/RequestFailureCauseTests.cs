@@ -29,15 +29,10 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A failed request names what ended it (the request budget and what it was waiting for, a bound of the read, the session closing, or our own
-/// cancellation), so a timeout, a lost peer and a shutdown can be told apart in the log and in the peer's failure accounting.
-/// </summary>
 public class RequestFailureCauseTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private const string PeerAddress = "/ip4/10.0.0.1/tcp/9000/p2p/16Uiu2HAmPeer";
-    // Stays under the request-failure limit, so the limit takes the peer under test out of selection.
     private const string UsablePeerAddress = "/ip4/10.0.0.2/tcp/9000/p2p/16Uiu2HAmUsable";
 
     public enum ChannelRequestEnd { Budget, Disconnect, Reset, AlreadyDropped, CallerCancellation }
@@ -358,7 +353,6 @@ public class RequestFailureCauseTests
         Assert.That(PeerManager.RequestsInFlightForTest(silent), Is.Zero);
     }
 
-    /// <summary>A by-range reply cut by a timeout after some chunks carries what it delivered; the timeout inside must still be excused while no request of ours was answered.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_timeout_after_some_chunks_while_no_request_was_answered_is_not_counted_against_the_peer([Values] bool columns, CancellationToken token)
@@ -456,7 +450,6 @@ public class RequestFailureCauseTests
         }
 
         await InvokeStatusAsync(manager, peers[2], "UpdateStatusAsync", token);
-        // Seed the independent health-timeout budget, which sync failures no longer consume.
         foreach (IBeaconSyncPeer peer in peers.Take(2))
         {
             for (int failures = 0; failures < 7; failures++)
@@ -845,7 +838,6 @@ public class RequestFailureCauseTests
         return true;
     }
 
-    /// <summary>A session whose column and block dials stay open until the test completes them, and end like the library's when their caller gives up.</summary>
     private sealed class HeldSession
     {
         public ISession Session { get; } = Substitute.For<ISession>();

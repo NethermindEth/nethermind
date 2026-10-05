@@ -19,8 +19,6 @@ using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test;
 
-/// <summary>The production <see cref="BeaconChainModule"/> plus stand-ins for the services the host registers.</summary>
-/// <remarks>A new module registration that needs a host service gets its stand-in here, not in each test file. Later registrations on the returned builder override these.</remarks>
 internal static class BeaconChainTestContainer
 {
     internal static IContainer BuildTrackingDependencies(ContainerBuilder builder,

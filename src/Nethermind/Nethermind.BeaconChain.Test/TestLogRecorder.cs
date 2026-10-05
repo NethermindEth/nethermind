@@ -20,8 +20,7 @@ internal enum TestLogLevels
     All = Error | Warn | Info | Debug | Trace,
 }
 
-/// <summary>Records selected log methods or sends them to a fixture's sink.</summary>
-/// <remarks>Enabled flags govern lazy callers; overriding a flag does not change which direct method calls are recorded.</remarks>
+/// <summary>Enabled flags affect lazy callers, not which directly called methods are recorded.</summary>
 internal sealed class TestLogRecorder(TestLogLevels levels = TestLogLevels.All, Action<LogLevel, string, Exception?>? sink = null) : InterfaceLogger, ILogManager
 {
     private readonly ConcurrentQueue<(string Level, string Text)> _lines = new();

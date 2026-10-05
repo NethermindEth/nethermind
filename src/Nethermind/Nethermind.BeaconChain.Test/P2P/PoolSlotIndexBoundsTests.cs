@@ -9,11 +9,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The slot index a pool evicts by must stay bounded: slot numbers only ever increase over a
-/// node's uptime, so an index that kept emptied slots would grow for as long as the process runs
-/// regardless of the pool's own capacity.
-/// </summary>
 public class PoolSlotIndexBoundsTests
 {
     [Test]

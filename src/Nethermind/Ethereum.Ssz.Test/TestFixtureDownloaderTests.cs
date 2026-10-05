@@ -6,10 +6,6 @@ using NUnit.Framework;
 
 namespace Ethereum.Ssz.Test;
 
-/// <summary>
-/// Covers <see cref="TestFixtureDownloader.PathUnderPrefix"/> in isolation: it is a pure string
-/// predicate, so these run with no download and no filesystem access.
-/// </summary>
 [TestFixture]
 public class TestFixtureDownloaderTests
 {

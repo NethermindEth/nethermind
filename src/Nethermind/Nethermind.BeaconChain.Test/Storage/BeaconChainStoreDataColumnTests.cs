@@ -132,7 +132,6 @@ public class BeaconChainStoreDataColumnTests
         NonCanonical,
     }
 
-    /// <summary>Each bounded prune pass resumes its unfinished backlog, including after reopening the store.</summary>
     [Test]
     public void Prune_pass_resumes_after_its_batch_budget([Values] PrunePass pass, [Values] bool restart)
     {
@@ -225,7 +224,6 @@ public class BeaconChainStoreDataColumnTests
         Assert.That(Holds(store, orphan), Is.False, "an empty slot below the top is settled, so the cursor moves past it");
     }
 
-    /// <summary>The window is <c>max(current_epoch - MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS, FULU_FORK_EPOCH)</c> (fulu/p2p-interface.md).</summary>
     [Test]
     public void Pruning_removes_the_slot_below_the_window_and_keeps_the_window_start()
     {

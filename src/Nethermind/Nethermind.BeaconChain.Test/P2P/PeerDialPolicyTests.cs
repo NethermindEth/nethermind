@@ -23,7 +23,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Which peers are dialed, when a failed address is dialed again, and which statuses end a connection.</summary>
 public class PeerDialPolicyTests
 {
     private const ulong SlotsPerEpoch = 32;
@@ -202,7 +201,6 @@ public class PeerDialPolicyTests
         }
     }
 
-    /// <summary>A connection that closes before any session forms is no sign of a crossing dial, so it is made once and the address backs off.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_dial_to_an_address_that_drops_every_connection_is_made_once_then_backs_off(CancellationToken token)
@@ -235,7 +233,6 @@ public class PeerDialPolicyTests
             string address = $"/ip4/127.0.0.1/tcp/{((IPEndPoint)dead.LocalEndpoint).Port}/p2p/{remote}";
             bool first = await manager.TryAddPeerAsync(address, token);
             bool second = await manager.TryAddPeerAsync(address, token);
-            // A redial would have connected within its backoff of at most a few hundred milliseconds.
             await Task.Delay(TimeSpan.FromSeconds(1), token);
 
             using (Assert.EnterMultipleScope())
@@ -275,7 +272,6 @@ public class PeerDialPolicyTests
 
             await manager.RunMaintenanceRoundAsync(token);
             Assert.That(manager.PeerCount, Is.Zero, "a static peer on another fork was admitted");
-            // The remote refuses a second session while it still holds its half of the dropped one.
             await WaitUntilAsync(() => remote.P2P.SessionCountForTest == 0 && local.P2P.SessionCountForTest == 0, token, "the session of the peer on another fork was left open");
 
             Volatile.Write(ref compatible, true);
@@ -356,7 +352,6 @@ public class PeerDialPolicyTests
         }
     }
 
-    /// <summary>Blocks every status read until <see cref="Release"/>, and signals the first one.</summary>
     private sealed class BlockingStatusSource(IBeaconChainStatusSource inner) : IBeaconChainStatusSource, IDisposable
     {
         private readonly ManualResetEventSlim _released = new(false);
@@ -383,7 +378,6 @@ public class PeerDialPolicyTests
         public void Dispose() => _released.Dispose();
     }
 
-    /// <summary>Answers every status read after <paramref name="delay"/>.</summary>
     private sealed class DelayedStatusSource(IBeaconChainStatusSource inner, TimeSpan delay) : IBeaconChainStatusSource
     {
         public StatusMessageV2 CurrentStatus

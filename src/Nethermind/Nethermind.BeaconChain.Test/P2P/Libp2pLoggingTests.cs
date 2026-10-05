@@ -8,10 +8,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Most mainnet dials fail, and the library logs each failed upgrade as an error whose text is the whole stack trace of the
-/// failure, so the bridge must keep everything the library logs out of the levels an operator reads.
-/// </summary>
 public class Libp2pLoggingTests
 {
     private const string UpgradeFailure = "Upgrade task failed with System.AggregateException: One or more errors occurred.\n ---> System.NullReferenceException\n   at Nethermind.Libp2p.Protocols.NoiseProtocol.DialAsync";

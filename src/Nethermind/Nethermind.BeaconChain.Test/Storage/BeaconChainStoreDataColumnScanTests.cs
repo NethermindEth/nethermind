@@ -77,7 +77,6 @@ public class BeaconChainStoreDataColumnScanTests
             "column 70 is missing; a withheld payload never needed it");
     }
 
-    /// <summary>Times the scan over one full mainnet retention window of canonical blocks, each with 8 stored columns; reported, not asserted.</summary>
     [Test]
     [Explicit("Measures start-up cost; run by name")]
     public void Scan_time_over_a_full_mainnet_window()
@@ -126,7 +125,6 @@ public class BeaconChainStoreDataColumnScanTests
         Assert.That(incomplete, Is.Null);
     }
 
-    /// <summary>Times the block read a canonical slot without stored columns costs, with a payload of about 100 KB; reported, not asserted.</summary>
     [Test]
     [Explicit("Measures start-up cost; run by name")]
     public void Block_read_time_for_canonical_slots_without_columns()

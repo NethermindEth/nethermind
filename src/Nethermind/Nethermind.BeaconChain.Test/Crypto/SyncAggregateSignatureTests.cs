@@ -16,10 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// The sync aggregate check over cached public keys must give the verdict <c>eth_fast_aggregate_verify</c>
-/// gives over the committee's compressed participant pubkeys, repeated members included.
-/// </summary>
 [TestFixture]
 [HardTimeout(60_000)]
 public class SyncAggregateSignatureTests
@@ -33,13 +29,10 @@ public class SyncAggregateSignatureTests
     // The compression flag is clear, so these 48 bytes never decode as a G1 point.
     private static readonly BlsPublicKey UndecodableKey = Pubkey(0x57);
 
-    /// <summary>No cache, a cache short of the committee, the whole registry, and a cache past the registry.</summary>
     private static readonly int[] CacheSizes = [0, 4, RegistrySize + 2, RegistrySize + 12];
 
-    /// <summary>Committee position i seats validator i % 7, so every member repeats.</summary>
     private static int[] RepeatingCommittee() => [.. Enumerable.Range(0, Presets.SyncCommitteeSize).Select(static i => i % 7)];
 
-    /// <summary>Position i participates when i is a multiple of <paramref name="stride"/>: all, a third, or position 0 alone.</summary>
     [Test]
     public void Cached_aggregate_equals_the_decompressed_participant_aggregate([Values(1, 3, 512)] int stride, [ValueSource(nameof(CacheSizes))] int cachedValidators)
     {
@@ -86,7 +79,6 @@ public class SyncAggregateSignatureTests
         Assert.That(Verdicts(state, CacheOf(state, RegistrySize), bits, signature), Is.EqualTo((false, false)));
     }
 
-    /// <summary><c>eth_fast_aggregate_verify</c>: with no participants only the G2 point at infinity is valid.</summary>
     [TestCase(true, ExpectedResult = true)]
     [TestCase(false, ExpectedResult = false)]
     public bool No_participants_accept_only_the_infinity_signature(bool infinitySignature)
@@ -99,10 +91,6 @@ public class SyncAggregateSignatureTests
         return serial;
     }
 
-    /// <summary>
-    /// <c>FastAggregateVerify</c> is <c>CoreVerify</c> over the aggregate key, whose <c>KeyValidate</c> refuses infinity, so
-    /// participants whose keys sum to infinity fail the block with any signature, the infinity signature included.
-    /// </summary>
     [Test]
     public void Participants_whose_keys_sum_to_infinity_fail_the_block([Values] bool gloas, [Values] bool batched, [Values] bool infinitySignature)
     {
@@ -127,10 +115,6 @@ public class SyncAggregateSignatureTests
         GloasPayload,
     }
 
-    /// <summary>
-    /// The attestation twin of the rule above: <c>is_valid_indexed_attestation</c> and
-    /// <c>is_valid_indexed_payload_attestation</c> call the same <c>FastAggregateVerify</c>.
-    /// </summary>
     [Test]
     public void An_attestation_whose_keys_sum_to_infinity_is_refused_serially_and_batched([Values] AttestationKind kind, [Values] bool infinitySignature)
     {
@@ -169,11 +153,6 @@ public class SyncAggregateSignatureTests
         Assert.That(SerialAndBatched(verify), Is.EqualTo((false, false)));
     }
 
-    /// <summary>
-    /// <c>FastAggregateVerify</c> runs <c>KeyValidate</c> on each participant, so a member at infinity refuses the
-    /// aggregate even though it adds nothing and the others signed honestly. The cache refuses to hold that key, so the
-    /// member is always decompressed.
-    /// </summary>
     [Test]
     public void An_infinity_member_refuses_the_aggregate_it_participates_in([Values(0, 4)] int cachedValidators, [Values] bool participates)
     {
@@ -187,7 +166,6 @@ public class SyncAggregateSignatureTests
         Assert.That(Verdicts(state, CacheOf(state, cachedValidators), bits, signature), Is.EqualTo((!participates, !participates)));
     }
 
-    /// <summary>A cached key that differs from the committee's stored key is not used: the verdict follows the state.</summary>
     [TestCase(false, ExpectedResult = true)]
     [TestCase(true, ExpectedResult = false)]
     public bool A_cache_entry_that_differs_from_the_committee_key_does_not_change_the_verdict(bool signedForTheCachedKey)
@@ -209,10 +187,6 @@ public class SyncAggregateSignatureTests
         return serial;
     }
 
-    /// <summary>
-    /// A participant whose key does not decode fails <c>eth_fast_aggregate_verify</c> even when the others signed
-    /// honestly; dropping that member instead would accept the others' aggregate.
-    /// </summary>
     [TestCase(true, ExpectedResult = false)]
     [TestCase(false, ExpectedResult = true)]
     public bool An_undecodable_uncached_member_refuses_the_aggregate_it_participates_in(bool undecodableParticipates)
@@ -229,10 +203,6 @@ public class SyncAggregateSignatureTests
         return serial;
     }
 
-    /// <summary>
-    /// A registry key off the G1 subgroup pairs like its subgroup part, so every member signing honestly still satisfies
-    /// the pairing; <c>KeyValidate</c> on each member key must refuse it, whether the key is cached or decoded.
-    /// </summary>
     [Test]
     public void A_member_key_outside_the_subgroup_refuses_the_aggregate_serially_and_batched([ValueSource(nameof(CacheSizes))] int cachedValidators)
     {
@@ -247,10 +217,7 @@ public class SyncAggregateSignatureTests
         Assert.That(Verdicts(state, CacheOf(state, cachedValidators), bits, signature), Is.EqualTo((false, false)));
     }
 
-    /// <summary>
-    /// <c>FastAggregateVerify</c> runs <c>KeyValidate</c> on each member, so two members outside G1 whose torsion cancels
-    /// refuse the aggregate even though their sum is in G1 and they signed honestly, whether their keys are cached or decoded.
-    /// </summary>
+    // Opposite torsion can cancel in the aggregate; validate each participating key.
     [Test]
     public void Members_whose_torsion_cancels_refuse_the_aggregate_serially_and_batched([ValueSource(nameof(CacheSizes))] int cachedValidators)
     {
@@ -283,7 +250,6 @@ public class SyncAggregateSignatureTests
             Assert.That(process, Throws.Nothing);
     }
 
-    /// <summary><c>process_sync_aggregate</c> with no participants: only the G2 point at infinity passes, before and after Gloas.</summary>
     [Test]
     public void Processing_no_participants_accepts_only_the_infinity_signature([Values] bool gloas, [Values] bool infinitySignature)
     {
@@ -307,10 +273,6 @@ public class SyncAggregateSignatureTests
         HonestPlusG2Torsion,
     }
 
-    /// <summary>
-    /// <c>process_sync_aggregate</c> with participants refuses every signature but the honest one, serially and batched;
-    /// a signature outside G2 is refused even when it is the honest signature plus a torsion point.
-    /// </summary>
     [Test]
     public void Processing_participants_accepts_only_the_honest_signature([Values] SignatureKind kind, [Values] bool batched)
     {
@@ -342,7 +304,6 @@ public class SyncAggregateSignatureTests
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo("Invalid sync aggregate signature"));
     }
 
-    /// <summary>A valid aggregate is deferred to the batch, not verified at once, before and after Gloas.</summary>
     [Test]
     public void A_valid_aggregate_is_deferred_to_the_batch([Values] bool gloas)
     {
@@ -357,10 +318,7 @@ public class SyncAggregateSignatureTests
         Assert.That(batch.Verify, Throws.Nothing);
     }
 
-    /// <summary>
-    /// <c>process_sync_aggregate</c> checks the signature first, then looks every committee member up in the registry:
-    /// a member missing from it fails the block, but a checked invalid signature is the reported failure.
-    /// </summary>
+    // Signature refusal precedes registry lookup; a missing member must not hide a bad signature.
     [Test]
     public void A_committee_member_missing_from_the_registry_fails_the_block_after_the_signature_check([Values] bool gloas, [Values] bool verifySignature, [Values] bool batched, [Values] bool participates, [Values] bool honest)
     {
@@ -380,7 +338,6 @@ public class SyncAggregateSignatureTests
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.Contains("is not a registered validator"));
     }
 
-    /// <summary>Sync committee bits are a <c>Bitvector[SYNC_COMMITTEE_SIZE]</c>; any other width fails the block, verified or not.</summary>
     [Test]
     public void Sync_committee_bits_of_the_wrong_width_fail_the_block([Values(0, 511, 513)] int width, [Values] bool gloas, [Values] bool verifySignature)
     {
@@ -391,7 +348,6 @@ public class SyncAggregateSignatureTests
         Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo($"Sync committee bits have {width} entries, expected {Presets.SyncCommitteeSize}"));
     }
 
-    /// <summary>A <c>SyncAggregate</c> is a fixed 160-byte container; any other length does not decode.</summary>
     [TestCase(0)]
     [TestCase(159)]
     [TestCase(161)]
@@ -429,10 +385,6 @@ public class SyncAggregateSignatureTests
     private static BlsSignature NoParticipantSignature(bool infinity, Hash256 signingRoot) =>
         infinity ? new BlsSignature(G2PointAtInfinity()) : Sign(ValidatorKey(0), signingRoot);
 
-    /// <summary>
-    /// The Gloas fixture state with real keys for validators below <paramref name="keyedValidators"/> and sync committee
-    /// position i seating validator <paramref name="members"/>[i].
-    /// </summary>
     private static BeaconStateGloas GloasStateWithCommittee(int[] members, int keyedValidators, out Hash256 signingRoot)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -451,11 +403,9 @@ public class SyncAggregateSignatureTests
         return state;
     }
 
-    /// <summary>Two thirds of the committee participate; the last position participates when <paramref name="lastParticipates"/>.</summary>
     private static BitArray LastMemberBits(bool lastParticipates) =>
         Bits(i => i == Presets.SyncCommitteeSize - 1 ? lastParticipates : i % 3 != 1);
 
-    /// <summary>The participants' aggregate signature, leaving out the last position, which holds the undecodable key.</summary>
     private static BlsSignature HonestSignatureWithoutLastMember(Hash256 signingRoot, int[] members, BitArray bits) =>
         AggregateSignature(signingRoot, [.. Enumerable.Range(0, members.Length - 1).Where(i => bits[i]).Select(i => members[i])]);
 
@@ -479,7 +429,6 @@ public class SyncAggregateSignatureTests
         return SerialAndBatched(deferral => SignatureSets.VerifySyncAggregate(state, syncAggregate, indices, pubkeys, deferral));
     }
 
-    /// <summary>The verdict of <paramref name="verify"/> run at once, and deferred to a batch that is then verified.</summary>
     private static (bool Serial, bool Batched) SerialAndBatched(Func<BlockSignatureBatch.Deferral?, bool> verify)
     {
         bool serial = verify(null);
@@ -498,7 +447,6 @@ public class SyncAggregateSignatureTests
         return (serial, batched);
     }
 
-    /// <summary>Runs <paramref name="process"/> serially, or through <see cref="BlockSignatureBatch.Run"/>, which reports a failed deferred signature ahead of a later failure.</summary>
     private static void Process(Action<BlockSignatureBatch?> process, bool batched)
     {
         if (batched)
@@ -517,7 +465,6 @@ public class SyncAggregateSignatureTests
     private static BlsSignature InfinityOrSignedBy(bool infinity, int validatorIndex, Hash256 signingRoot) =>
         infinity ? new BlsSignature(G2PointAtInfinity()) : Sign(ValidatorKey(validatorIndex), signingRoot);
 
-    /// <summary>The negation of validator <paramref name="validatorIndex"/>'s public key, which sums with it to infinity.</summary>
     private static BlsPublicKey NegatedKey(int validatorIndex)
     {
         Bls.P1 point = new(ValidatorKey(validatorIndex));
@@ -533,10 +480,6 @@ public class SyncAggregateSignatureTests
         return bits;
     }
 
-    /// <summary>
-    /// A cache of the first <paramref name="count"/> validators, members past it taking the decompressing path; a count
-    /// past the registry caches extra keys after it.
-    /// </summary>
     private static PubkeyCache CacheOf(BeaconStateFulu state, int count)
     {
         Validator[] validators = state.Validators!;
@@ -547,10 +490,6 @@ public class SyncAggregateSignatureTests
         return pubkeys;
     }
 
-    /// <summary>
-    /// A state at slot 1 whose registry holds <see cref="RegistrySize"/> real keys plus a key and its negation,
-    /// with sync committee position i seating validator <paramref name="members"/>[i].
-    /// </summary>
     private static BeaconStateFulu CreateState(int[] members, out Hash256 signingRoot)
     {
         BeaconStateFulu state = CreateFuluState(RegistrySize + 2);

@@ -260,7 +260,6 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 }
 
-/// <summary>Hands out each snapshot once per read, so a second read of the status sees the head that replaced the first.</summary>
 internal sealed class HeadAdvancingStatusSource(params (StatusMessageV2 Status, Hash256? FullHeadRoot)[] snapshots) : IBeaconChainStatusSource
 {
     private int _reads;
@@ -274,7 +273,6 @@ internal sealed class HeadAdvancingStatusSource(params (StatusMessageV2 Status, 
     public bool ExecutionInSync => true;
 }
 
-/// <summary>A Sepolia store of Gloas blocks with bid hashes chosen per block, the head status, and a pool reading both.</summary>
 internal sealed class EnvelopeChain
 {
     public static readonly BeaconChainSpec Spec = Sepolia;
@@ -309,8 +307,7 @@ internal sealed class EnvelopeChain
 
     public long BlockReads => ((MemDb)_db.GetColumnDb(BeaconChainDbColumns.Blocks)).ReadsCount;
 
-    /// <summary>Stores a Gloas block whose bid names <paramref name="parentBlockHash"/> and a block hash of its own.</summary>
-    /// <param name="salt">Tells apart two blocks at one slot with one parent.</param>
+    // Salt distinguishes blocks at the same slot with the same parent.
     public (Hash256 Root, Hash256 BlockHash) Put(ulong slot, Hash256 parentRoot, Hash256 parentBlockHash, int salt = 0)
     {
         SignedBeaconBlockGloas block = CreateMinimalGloasBlock(slot, parentRoot);
@@ -335,7 +332,6 @@ internal sealed class EnvelopeChain
         return root;
     }
 
-    /// <summary>Overwrites the stored block <paramref name="root"/> with bytes that are not snappy.</summary>
     public void Corrupt(Hash256 root) => _db.GetColumnDb(BeaconChainDbColumns.Blocks)[root.Bytes] = [0xFF];
 
     public void AddEnvelopes(params Hash256[] roots)
@@ -364,7 +360,6 @@ internal sealed class EnvelopeChain
 
     public Hash256[] ServedRoots(ulong startSlot, ulong count) => [.. Pool.GetCanonical(startSlot, count).Select(static e => e.Message!.BeaconBlockRoot!)];
 
-    /// <summary>An envelope matching the stored block <paramref name="root"/> and its bid, bar the signature.</summary>
     public SignedExecutionPayloadEnvelope Envelope(Hash256 root) => new()
     {
         Message = new ExecutionPayloadEnvelope

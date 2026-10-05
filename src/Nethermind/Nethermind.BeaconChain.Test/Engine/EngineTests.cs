@@ -183,7 +183,6 @@ public class EngineTests
         });
     }
 
-    // ---- Gloas execution payload envelopes go through engine_newPayloadV5 ----
 
     [Test]
     public void Payload_converter_maps_a_gloas_payload_onto_v4_and_encodes_builder_requests()
@@ -307,10 +306,7 @@ public class EngineTests
         Assert.That(driver.IsAvailable, Is.False);
     }
 
-    /// <summary>
-    /// A failed <c>forkchoiceUpdated</c> is no status: reporting it as SYNCING made the caller cache it as an
-    /// answer and read the execution layer as syncing, so the call was not retried.
-    /// </summary>
+    // Failed forkchoiceUpdated is not a SYNCING answer: caching it would prevent retry.
     [TestCase(0, TestName = "Failure result")]
     [TestCase(1, TestName = "Success with no data")]
     [TestCase(2, TestName = "Success with no payload status")]
@@ -337,11 +333,6 @@ public class EngineTests
         Assert.That(driver.IsAvailable, Is.False);
     }
 
-    /// <summary>
-    /// The production notifier is <see cref="EngineDriver"/>; a Gloas node whose notifier still uses
-    /// the interface's throwing default would only find out at its first envelope. This is the check
-    /// the startup step runs, pinned so removing the driver's override fails here and not on Sepolia.
-    /// </summary>
     [Test]
     public void RequireEnvelopeSupport_accepts_the_engine_driver_and_refuses_a_notifier_that_only_handles_block_bodies()
     {

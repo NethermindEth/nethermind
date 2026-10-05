@@ -38,10 +38,6 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// beacon-APIs v5.0.0-alpha.2 <c>getBlobs</c> (apis/beacon/blobs/blobs.yaml): blobs rebuilt from the stored data columns of a block,
-/// directly from columns 0 to 63 or through cell recovery from any other half (fulu/das-core.md recover_matrix).
-/// </summary>
 public class BeaconApiBlobsTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -218,7 +214,6 @@ public class BeaconApiBlobsTests : BeaconApiFixture
         Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False);
     }
 
-    /// <summary>blobs.yaml versioned_hashes: only the named blobs, in commitment order; an unknown hash selects nothing.</summary>
     [TestCase("{1}", new[] { SecondSeed })]
     [TestCase("{1}&versioned_hashes={0}", new[] { FirstSeed, SecondSeed })]
     [TestCase("{1},{0}", new[] { FirstSeed, SecondSeed })]
@@ -250,11 +245,6 @@ public class BeaconApiBlobsTests : BeaconApiFixture
         }
     }
 
-    /// <summary>
-    /// blobs.yaml: 400 for an id or query that cannot be parsed, a repeated hash included (uniqueItems), 404 for an unknown block or a node holding
-    /// fewer than half of the columns (only nodes holding every column must serve blobs), 406 for an unsupported Accept, and 500 for a stored
-    /// column that does not match its block.
-    /// </summary>
     [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000b2?versioned_hashes=0x12", Json, HttpStatusCode.BadRequest)]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000b2?versioned_hashes=0x01000000000000000000000000000000000000000000000000000000000000ee,0x01000000000000000000000000000000000000000000000000000000000000ee", Json, HttpStatusCode.BadRequest)]
@@ -270,7 +260,6 @@ public class BeaconApiBlobsTests : BeaconApiFixture
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
-    /// <summary>Rebuilds past <see cref="BlobsEndpoint.MaxConcurrentRebuilds"/> are refused at once with 503, and a released permit serves again.</summary>
     [Test]
     public async Task Rebuilds_past_the_bound_are_refused_until_one_completes()
     {

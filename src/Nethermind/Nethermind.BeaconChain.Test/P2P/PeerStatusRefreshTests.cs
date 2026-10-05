@@ -14,10 +14,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerHealthCheckRoundTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Range sync asks only peers whose last <c>status</c> head covers the slot it needs, so a status that is never asked again
-/// leaves every peer "behind" while the chain moves on; phase0/p2p-interface.md Status lets a client ask again to learn a higher head.
-/// </summary>
 public class PeerStatusRefreshTests
 {
     private const ulong ChainAheadBy = 10;
@@ -55,7 +51,6 @@ public class PeerStatusRefreshTests
         }
     }
 
-    // The peer that answered by range while its status timed out is what ended the Hoodi stall, so a failed refresh must not hide it.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_peer_whose_status_refresh_fails_after_the_chain_moved_past_it_is_offered_for_the_slots_up_to_that_point(CancellationToken token)
@@ -80,7 +75,6 @@ public class PeerStatusRefreshTests
         }
     }
 
-    // A refresh asked without evidence the chain reached the slot (it may be empty) must not offer a peer past its last head when its status cannot be refreshed.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_peer_whose_status_refresh_fails_is_not_offered_past_its_head_when_the_chain_was_not_claimed_past_it(CancellationToken token)
@@ -113,7 +107,6 @@ public class PeerStatusRefreshTests
         }
     }
 
-    // Silence never counts toward a ban (the health check's rule), and a refused refresh is the same request asked outside it.
     [Test]
     [CancelAfter(120_000)]
     public async Task Failed_status_refreshes_do_not_count_toward_dropping_or_banning_the_peer(CancellationToken token)
@@ -126,7 +119,6 @@ public class PeerStatusRefreshTests
         {
             PeerManager peerManager = await PeerHealthCheckRoundTests.StartAndAdmitAsync(client, [server], token, log);
             peerManager.MinStatusRefreshInterval = TimeSpan.Zero;
-            // A refresh starts only once the one before it ended, so the ninth start means eight refreshes failed.
             const int failedRefreshes = 8;
             await PeerSessionNodes.WaitUntilAsync(() =>
             {
@@ -136,7 +128,6 @@ public class PeerStatusRefreshTests
 
             IBeaconSyncPeer peer = peerManager.GetBestPeers(0).Single();
             int failuresAfterRefreshes = PeerManager.ConsecutiveFailuresForTest(peer);
-            // A refused health check is a bad reply and counts; it must be the first, not the ninth.
             await peerManager.RunMaintenanceRoundAsync(token);
 
             using (Assert.EnterMultipleScope())
@@ -158,7 +149,6 @@ public class PeerStatusRefreshTests
     {
         (Node client, StatusMessageV2 status) = CreateClient();
         ulong head = status.HeadSlot;
-        // The admission and the first round's health check see the old head; only a later request sees the new one.
         Node server = CreateNode(new ScriptedStatusSource(n => WithHead(status, n <= 2 ? head : head + ChainAheadBy)));
         // One peer is not under-peered here, so the next maintenance round is a full interval away.
         client.Config.MinPeerCount = 1;

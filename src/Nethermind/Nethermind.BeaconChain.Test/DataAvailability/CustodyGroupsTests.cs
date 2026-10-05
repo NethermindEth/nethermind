@@ -11,24 +11,12 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// Pins <c>get_custody_groups</c> to the consensus-spec-tests networking vectors
-/// (<c>tests/minimal/fulu/networking/get_custody_groups/pyspec_tests</c>, v1.7.0-alpha.13), then
-/// checks the invariants the spec's own assertions require. This project has no fixture loader for
-/// the networking suite (the fork-choice fixtures are hand-written C#), so every vector is
-/// transcribed from its <c>meta.yaml</c>. <c>NUMBER_OF_CUSTODY_GROUPS</c> is 128 under both the
-/// minimal and mainnet presets, so the results hold for the mainnet constants this code uses.
-/// </summary>
+// Oracle: consensus-spec networking/get_custody_groups meta.yaml; both presets have 128 custody groups.
 public class CustodyGroupsTests
 {
     private static Hash256 NodeId(byte fill) => new(Enumerable.Repeat(fill, 32).ToArray());
 
-    /// <summary>
-    /// <c>meta.yaml</c> gives <c>node_id</c> as a decimal integer. The raw discv5 node id is its
-    /// big-endian encoding, which is how the Lighthouse and Prysm spec-test adapters feed it, so
-    /// these vectors pin the raw-bytes contract of <see cref="CustodyGroups.GetCustodyGroups"/>,
-    /// not only the integer algorithm.
-    /// </summary>
+    // Decimal node_id is encoded as 32-byte big-endian discv5 bytes, not little-endian.
     private static Hash256 RawNodeId(string decimalNodeId)
     {
         byte[] bigEndian = BigInteger.Parse(decimalNodeId).ToByteArray(isUnsigned: true, isBigEndian: true);
@@ -42,9 +30,7 @@ public class CustodyGroupsTests
 
     private static ulong[] AllGroups => Enumerable.Range(0, (int)Eip7594DasConstants.NumberOfCustodyGroups).Select(i => (ulong)i).ToArray();
 
-    // 2**256-1 is the same byte string read in either byte order, so its vectors cannot tell a
-    // big-endian from a little-endian input; short_node_id, max_node_id_minus_1 and the three seeded
-    // cases can, and each of them fails if the raw id is hashed unreversed.
+    // Asymmetric/seeded node IDs expose byte order; 2**256-1 does not.
     public static IEnumerable<TestCaseData> PyspecVectors { get; } =
     [
         new TestCaseData("0", 0ul, Array.Empty<ulong>()).SetName("min_node_id_min_custody_group_count"),
@@ -116,8 +102,7 @@ public class CustodyGroupsTests
     [Test]
     public void GetCustodyGroups_smaller_count_is_a_subset_of_larger_count_for_the_same_node()
     {
-        // Guaranteed by construction: both walks start at node_id and take the first N distinct
-        // hits in the same order, so the count=4 result must be contained in the count=8 result.
+        // Both walks take first N distinct groups; increasing custody must retain the smaller set.
         Hash256 nodeId = NodeId(0x37);
 
         ulong[] small = CustodyGroups.GetCustodyGroups(nodeId, Eip7594DasConstants.CustodyRequirement);
@@ -146,8 +131,7 @@ public class CustodyGroupsTests
     [Test]
     public void Non_attesting_node_sampling_size_is_eight_and_custody_is_four()
     {
-        // max(SAMPLES_PER_SLOT=8, CUSTODY_REQUIREMENT=4) = 8: the node samples 8 groups per slot but
-        // only retains/serves 4 long-term. See 'deviations' for why this count, not just its value.
+        // Mainnet samples 8 groups but retains/serves 4; sampling must not shrink to custody.
         ulong samplingSize = Math.Max(Eip7594DasConstants.SamplesPerSlot, Eip7594DasConstants.CustodyRequirement);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -163,8 +147,7 @@ public class CustodyGroupsTests
     {
         ulong[] columns = CustodyGroups.ComputeColumnsForCustodyGroup(custodyGroup);
 
-        // Mainnet has NUMBER_OF_COLUMNS == NUMBER_OF_CUSTODY_GROUPS == 128, so columns_per_group is 1
-        // and custody_group == its one column - a preset coincidence the implementation must not assume.
+        // Mainnet columns_per_group = 1 is a preset coincidence, not a general invariant.
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(columns, Has.Length.EqualTo(1));
         Assert.That(columns[0], Is.EqualTo(custodyGroup));
@@ -188,8 +171,7 @@ public class CustodyGroupsTests
     [Test]
     public void ComputeSubnetForDataColumnSidecar_matches_the_mainnet_identity_coincidence()
     {
-        // NUMBER_OF_COLUMNS == DATA_COLUMN_SIDECAR_SUBNET_COUNT == 128 on mainnet, so column_index % 128
-        // is the identity function - true today, but the implementation computes the modulo, not this.
+        // Mainnet column % 128 equals its index; the implementation must still compute modulo.
         for (ulong column = 0; column < (ulong)Eip7594DasConstants.NumberOfColumns; column++)
         {
             Assert.That(CustodyGroups.ComputeSubnetForDataColumnSidecar(column), Is.EqualTo(column));

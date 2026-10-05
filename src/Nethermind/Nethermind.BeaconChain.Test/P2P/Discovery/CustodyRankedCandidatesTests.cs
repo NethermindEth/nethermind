@@ -17,11 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P.Discovery;
 
-/// <summary>
-/// fulu/das-core.md: a node must retrieve every column it samples, and a peer custodies the columns of
-/// <c>get_custody_groups(node_id, custody_group_count)</c> for the node id and <c>cgc</c> of its record, so a candidate
-/// custodying more of the wanted columns is dialed first.
-/// </summary>
 public class CustodyRankedCandidatesTests
 {
     private const int Capacity = 4;

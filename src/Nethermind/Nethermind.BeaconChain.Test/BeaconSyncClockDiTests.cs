@@ -11,10 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
 
-/// <summary>
-/// The orchestrator paces range sync against the wall clock: if range sync held a different clock, it would
-/// chase a target the orchestrator never sees, so both must resolve the one registered <see cref="SlotClock"/>.
-/// </summary>
 public class BeaconSyncClockDiTests
 {
     [Test]

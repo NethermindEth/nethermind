@@ -12,21 +12,14 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A peer that never completes identify must not keep a session: every session waits on identify before it can be admitted,
-/// so one left open would sit outside the peer band and the health checks for as long as the peer likes.
-/// </summary>
 public class IdentifyTimeoutTests
 {
-    // The identify bound plus a loopback teardown.
     private static readonly TimeSpan Within = IdentifyAgentVersionProbe.ReadTimeout + TimeSpan.FromSeconds(3);
 
     public enum Stall
     {
-        /// <summary>The peer does not list identify: it answers <c>na</c>, and the library's dial then waits out its bound rather than failing.</summary>
         Negotiation,
 
-        /// <summary>The peer accepts the identify stream and never writes its answer.</summary>
         Answer,
     }
 
@@ -52,7 +45,6 @@ public class IdentifyTimeoutTests
         Assert.That(await Task.WhenAny(dial, Task.Delay(Within, token)), Is.SameAs(dial), "the dial ended within the identify bound");
         await heldListing;
         Assert.That(dial.Status, Is.EqualTo(TaskStatus.Faulted), $"no unidentified session is handed back ({dial.Exception?.GetBaseException().Message})");
-        // The library reports the identify failure or the closed transport, whichever ends first; either names a cause, never an empty aggregate.
         Exception failure = dial.Exception!.InnerException!;
         Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo(new AggregateException().Message), $"the dial failed with {failure.GetType().Name}: {failure.Message}");
         Assert.That(failure.Message, Does.Not.Contain("closed before it was established"), "an identify timeout is not reported as a closed session");
@@ -78,8 +70,6 @@ public class IdentifyTimeoutTests
         Assert.That(Volatile.Read(ref established), Is.Zero, "an unidentified session is never reported as established");
     }
 
-    /// <summary>A session closed during identify fails the dial as a closed session, not as an identify timeout.</summary>
-    /// <param name="localClose">This node closes the session, as it does with one added after disposal; otherwise the peer closes it.</param>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_session_closed_during_identify_is_not_an_identify_timeout([Values] bool localClose, CancellationToken token)
@@ -109,7 +99,6 @@ public class IdentifyTimeoutTests
         Assert.That(PeerManager.DescribeFailure(failure), Is.Not.EqualTo("request timed out").And.Not.EqualTo(new AggregateException().Message), description);
         Assert.That(PeerFailureClassifier.Classify(failure), Is.EqualTo(PeerFailureReason.SessionClosed), description);
         await WaitUntilAsync(() => node.SessionCountForTest == 0, "fixture: the closed session stayed listed", token, Within);
-        // The session closes before its identify handling ends; past the identify bound that handling has ended either way.
         await Task.Delay(IdentifyAgentVersionProbe.ReadTimeout, token);
         Assert.That(node.IdentifyTimeoutsForTest, Is.Zero, "a closed session is not counted as an identify timeout");
     }
@@ -123,7 +112,6 @@ public class IdentifyTimeoutTests
     {
         public new string Id => stall == Stall.Negotiation ? "/test/not-identify/1.0.0" : base.Id;
 
-        // Returns only once the stream or its session closes.
         public new async Task ListenAsync(IChannel downChannel, ISessionContext context) => await downChannel.ReadAsync(1);
     }
 }

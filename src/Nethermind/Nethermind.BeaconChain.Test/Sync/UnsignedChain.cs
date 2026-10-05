@@ -19,10 +19,7 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// Builds blocks over the <see cref="ImportableBlobBlock"/> anchor, optionally signing proposer and RANDAO messages.
-/// Body attestations and slashings remain unsigned and require trusted replay.
-/// </summary>
+/// <summary>Body operations stay unsigned and require trusted replay, even when block/RANDAO signatures are enabled.</summary>
 internal sealed class UnsignedChain : IForkChoiceStateProvider
 {
     private static readonly BlsSignature Unsigned = new(SignatureSets.G2PointAtInfinity);
@@ -41,21 +38,16 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         _committees = new EpochCache().GetCommitteeCache(anchor.AnchorState, 0);
     }
 
-    /// <summary>A block of this chain with its real post-state, the root the state transition sealed it under.</summary>
     public sealed record ChainBlock(SignedBeaconBlock Block, Hash256 Root, BeaconStateFulu PostState);
 
-    /// <inheritdoc cref="BuildEquivocation"/>
     public sealed record Equivocation(ChainBlock A, ChainBlock B, ChainBlock Voted, ChainBlock Slashing);
 
-    /// <summary>The anchor, its state and the pubkey cache; the fixture's own signed block is not used.</summary>
     public ImportableBlobBlock Anchor { get; }
 
     public BeaconChainSpec Spec => Anchor.Spec;
 
     public Hash256 AnchorRoot => Anchor.AnchorRoot;
 
-    /// <param name="hasher">Seals the blocks' state roots and hashes slots; one incremental hasher by default, as every state descends from the anchor
-    /// and a full root of a mainnet-preset state costs ~15 ms per slot.</param>
     public static UnsignedChain Create(ImportableBlobBlock? anchor = null, IBeaconStateHasher? hasher = null) =>
         new(anchor ?? ImportableBlobBlock.CreateWithoutBlobs(), hasher ?? new CachedBeaconStateHasher());
 
@@ -63,17 +55,10 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
 
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
 
-    /// <summary>
-    /// Builds and seals a block at <paramref name="slot"/> on <paramref name="parentRoot"/>, whose
-    /// post-state this chain must hold. The body carries only what is passed in.
-    /// </summary>
-    /// <param name="payloadHashByte">Fills the execution block hash; distinct per block so no two blocks share a payload.</param>
-    /// <param name="signed">Whether the proposer signs the block and its RANDAO reveal, so it also imports with signature verification on; the body operations stay unsigned.</param>
     public ChainBlock Extend(Hash256 parentRoot, ulong slot, byte payloadHashByte, Attestation[]? attestations = null, AttesterSlashing[]? attesterSlashings = null, bool signed = false)
     {
         BeaconStateFulu parentState = _postStates[parentRoot];
         BeaconBlock block = TestChain.CreateBlock(slot, parentRoot).Message!;
-        // The proposer the transition expects: the parent state's lookahead once advanced to the slot.
         BeaconStateFulu atSlot = parentState.Clone();
         SlotProcessing.ProcessSlots(atSlot, slot, new EpochCache { Hasher = _hasher });
         block.ProposerIndex = atSlot.GetBeaconProposerIndex();
@@ -108,16 +93,10 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         return new ChainBlock(signedBlock, root, postState);
     }
 
-    /// <summary>
-    /// Two competing slot-1 blocks A and B, a slot-6 block on A whose body votes two committees onto
-    /// A and one onto B, and a slot-7 block on that one whose body slashes A's two voters for their
-    /// double vote. Built only; the caller imports them.
-    /// </summary>
     public Equivocation BuildEquivocation()
     {
         ChainBlock a = Extend(AnchorRoot, slot: 1, payloadHashByte: 0xa1);
         ChainBlock b = Extend(AnchorRoot, slot: 1, payloadHashByte: 0xb1);
-        // With this registry only odd slots have a (one-member) committee; the three are disjoint.
         ulong[] equivocators = [.. Committee(1), .. Committee(3)];
         Array.Sort(equivocators);
         ChainBlock voted = Extend(a.Root, slot: 6, payloadHashByte: 0xa6, attestations: [Vote(1, a.Root), Vote(3, a.Root), Vote(5, b.Root)]);
@@ -125,7 +104,6 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         return new Equivocation(a, b, voted, slashing);
     }
 
-    /// <summary>The validators in the single committee of <paramref name="slot"/> (epoch 0), ascending; empty at half the slots with this small registry.</summary>
     public ulong[] Committee(ulong slot)
     {
         ReadOnlySpan<int> members = _committees.GetBeaconCommittee(slot, 0);
@@ -139,7 +117,6 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         return indices;
     }
 
-    /// <summary>An unsigned aggregate of the whole committee of <paramref name="slot"/> voting for <paramref name="headRoot"/>, with the anchor as source and target.</summary>
     public Attestation Vote(ulong slot, Hash256 headRoot)
     {
         BitArray committeeBits = new(Presets.MaxCommitteesPerSlot);
@@ -154,7 +131,6 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
         };
     }
 
-    /// <summary>A double vote by <paramref name="validators"/> (ascending) at <paramref name="slot"/>: two attestations for one target epoch that differ only in the head root.</summary>
     public AttesterSlashing DoubleVote(ulong[] validators, ulong slot, Hash256 headRoot1, Hash256 headRoot2) =>
         new()
         {

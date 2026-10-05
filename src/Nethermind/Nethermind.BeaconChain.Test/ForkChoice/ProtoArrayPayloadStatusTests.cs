@@ -10,11 +10,6 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The Gloas payload-status weights of specs/gloas/fork-choice.md: each vote supports the PENDING, EMPTY or FULL node of
-/// its block (<c>get_supported_node</c>), and a block's weight reaches the EMPTY or FULL node of its parent it builds on
-/// (<c>get_ancestor</c>, <c>is_ancestor</c>).
-/// </summary>
 public class ProtoArrayPayloadStatusTests
 {
     private const ulong SlotsPerEpoch = 32;
@@ -104,7 +99,6 @@ public class ProtoArrayPayloadStatusTests
     [Test]
     public void Child_weight_lands_in_the_parent_node_it_builds_on()
     {
-        // P is Gloas with bid block_hash GetRoot(1); C1 builds on P full, C2 on P empty.
         ProtoArrayForkChoice fc = NewForkChoice();
         fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0), isGloas: true, parentBlockHash: GetRoot(0)), 3, Anchor, Anchor);
         fc.ProcessBlock(Block(2, GetRoot(2), GetRoot(1), isGloas: true, parentBlockHash: GetRoot(1)), 3, Anchor, Anchor);
@@ -124,7 +118,6 @@ public class ProtoArrayPayloadStatusTests
             Assert.That(parent.Weight, Is.EqualTo(14ul));
         }
 
-        // Moving the vote to the other child moves the weight between the parent's nodes.
         fc.ProcessAttestation(0, GetRoot(3), 3, 0, payloadPresent: false);
         Settle(fc, [3, 11], 4);
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -280,7 +273,6 @@ public class ProtoArrayPayloadStatusTests
     [Test]
     public void Valid_block_under_an_invalid_ancestor_is_refused_without_entering_the_tree([Values(0, 2)] int optimisticBlocksAbove)
     {
-        // specs/phase0/fork-choice.md on_block stores a block fully or not at all.
         // 0 <- 1 (valid) <- 2 <- (3 | 4 <- optimistic chain): invalidating 3 back to block 0 throws at the valid block 1 after it
         // invalidated 3 and 2, which leaves the optimistic 4 and its descendants under the invalid 2.
         ProtoArray protoArray = new(SlotsPerEpoch, 40);

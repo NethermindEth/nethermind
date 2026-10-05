@@ -89,8 +89,6 @@ public class ReqRespFramingTests
         Assert.That(thrown.Message, Does.Contain("overflows Uint64"));
     }
 
-    // Truncations of the golden ping request at every interesting boundary: inside the varint-less
-    // frame header, inside the magic, inside the data frame header, and inside the frame data.
     [TestCase("0x", 8, Description = "empty stream")]
     [TestCase("0x08", 8, Description = "varint only")]
     [TestCase("0x08ff0600", 8, Description = "cut stream identifier header")]
@@ -164,7 +162,6 @@ public class ReqRespFramingTests
         }
     }
 
-    // A listener serves an empty request once its zero length prefix is in; frames the requester still owes are legal, anything else that follows is a violation.
     [TestCase("0x", null, Description = "the requester ends its stream")]
     [TestCase("0xff060000734e61507059", null, Description = "a stream identifier still owed")]
     [TestCase("0xff060000734e6150705900050000d8ea82a200", null, Description = "the empty data frame still owed")]
@@ -205,11 +202,7 @@ public class ReqRespFramingTests
         Assert.That(await tail.WatchAsync(late, default), violation ? Is.Not.Null : Is.Null);
     }
 
-    // A peer that repeats the stream-identifier frame forever never advances uncompressedTotal (the
-    // loop's only exit condition before the fix), so it would buffer without bound. The 20,000
-    // repeats here supply far more than the compressed-size bound for an 8-byte payload; asserting
-    // the stream position stops well short of the end proves the read aborts on the bound rather
-    // than merely hitting end of stream once the (attacker-controlled) input runs out.
+    // Repeated stream identifiers produce no payload. Stopping before input EOF proves the compressed-size bound terminates the read.
     [Test]
     public void Rejects_endless_stream_identifier_frames_before_exhausting_input()
     {
@@ -229,7 +222,6 @@ public class ReqRespFramingTests
         Assert.That(stream.Position, Is.LessThan(stream.Length));
     }
 
-    // Frames that decode to nothing never end an empty request on their own, so only the byte bound stops a peer that keeps sending them.
     [TestCase("0xff060000734e61507059", Description = "repeated stream identifiers")]
     [TestCase("0xfe030000000000", Description = "repeated padding frames")]
     public void Rejects_endless_empty_frames_after_an_empty_request_before_exhausting_input(string repeatedFrameHex)

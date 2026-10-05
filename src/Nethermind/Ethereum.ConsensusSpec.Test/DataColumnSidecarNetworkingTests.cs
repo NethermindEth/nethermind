@@ -27,16 +27,7 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the mainnet-preset consensus-specs <c>networking/gossip_data_column_sidecar</c> vectors against
-/// <see cref="ColumnGossipRouter"/>, with the vector conventions of <see cref="GossipValidationTests"/>.
-/// </summary>
-/// <remarks>
-/// A Fulu router reads fork choice, the key cache and the proposer lookahead seeded from each vector's anchor state and
-/// blocks. A Fulu sidecar that passes is Accepted with its event raised; a Gloas one is Accepted. Both count as raised.
-/// Every other verdict must match a row of <see cref="SynchronousVerdicts"/>, and an expected reject the router does
-/// not reject makes the vector not-implemented, named by its reason.
-/// </remarks>
+/// <remarks>Fulu seeds fork choice, keys and lookahead from accepted blocks. Both forks count Accepted as raised; other verdicts must match pinned rows, and unsupported rejects are not-implemented.</remarks>
 [TestFixture]
 public class DataColumnSidecarNetworkingTests
 {
@@ -47,7 +38,6 @@ public class DataColumnSidecarNetworkingTests
     private static readonly string[] Forks = ["fulu", "gloas"];
     private static readonly ColumnGossipDropReason[] DropReasons = Enum.GetValues<ColumnGossipDropReason>();
 
-    /// <summary>The verdicts other than raised that <see cref="ColumnGossipRouter"/> reaches on the vectors' messages, per fork and vector <c>reason</c>.</summary>
     /// <remarks>Checked both ways: a message the router rejects or drops must match a row, and every row must be reached by a message.</remarks>
     private static readonly IReadOnlyDictionary<string, (string Reason, ColumnVerdict Verdict)[]> SynchronousVerdicts =
         new Dictionary<string, (string, ColumnVerdict)[]>(StringComparer.Ordinal)
@@ -90,13 +80,9 @@ public class DataColumnSidecarNetworkingTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(GossipValidationCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord(Suite, testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
-
-    // A wrong suite path, a dropped extraction entry or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_fork_has_vectors_in_the_archive() =>
         Assert.That(TestedCases().Select(static c => c.Fork).Distinct(), Is.EquivalentTo(Forks));
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every vector that way still runs green.
     [Test]
     public void Every_fork_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
     {
@@ -109,8 +95,6 @@ public class DataColumnSidecarNetworkingTests
             Run(testCase);
         });
     }
-
-    // A row no message reaches is stale, and a vector that hides an unchecked reject behind a pass runs green.
     [Test]
     public void Every_verdict_row_is_reached_and_every_unchecked_reject_is_reported_not_implemented()
     {
@@ -253,8 +237,6 @@ public class DataColumnSidecarNetworkingTests
             throw new NotImplementedInDriverException($"ColumnGossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
     }
 
-    /// <summary>The fork-choice store and head lookahead of <c>get_forkchoice_store(anchor_state, anchor_block)</c> over the vector's accepted blocks.</summary>
-    /// <remarks>The anchor is the earliest accepted block; meta.yaml's <c>finalized_checkpoint</c>, when present, replaces the store's.</remarks>
     private static (ForkChoiceSnapshot Snapshot, ProposerLookaheadSnapshot Lookahead) SeedForkChoice(string casePath, GossipValidationTests.VectorMeta meta, BeaconChainSpec spec, BeaconStateFulu anchor)
     {
         ForkedSignedBeaconBlock[] blocks = [.. meta.Blocks
@@ -330,10 +312,8 @@ public class DataColumnSidecarNetworkingTests
         }
     }
 
-    /// <summary>A message's expected result and reason from meta.yaml, with the verdict the router reached.</summary>
     private sealed record Observation(string Expected, string? Reason, ColumnVerdict Verdict);
 
-    /// <summary>A <see cref="RouterAction"/> with the drop reason <see cref="ColumnGossipRouter"/> counted, if any.</summary>
     private readonly record struct ColumnVerdict(RouterAction Action, ColumnGossipDropReason? Drop = null)
     {
         public static readonly ColumnVerdict Raised = new(RouterAction.Raised);

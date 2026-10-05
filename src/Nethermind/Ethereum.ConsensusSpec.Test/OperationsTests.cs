@@ -14,16 +14,6 @@ using static Ethereum.ConsensusSpec.Test.OperationVectorHandlers;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>operations</c> suite against this repo's per-operation
-/// <c>BlockProcessing.Process*</c> methods, which are documented as "independently callable, matching
-/// the per-operation spec test fixtures" - this suite is exactly what that sentence describes - and,
-/// for Gloas, the <c>GloasBlockProcessing.Process*</c> ones. Driven
-/// for every fork in <see cref="ConsensusSpecArchive.StateTransitionForks"/> through its
-/// <see cref="ForkDriver"/>; earlier forks have no state container in this repo and are not enumerated
-/// (see <see cref="ConsensusSpecArchive"/>). Minimal-preset vectors are reported not-implemented,
-/// named and counted, never silently skipped.
-/// </summary>
 [TestFixture]
 public class OperationsTests
 {
@@ -33,7 +23,6 @@ public class OperationsTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(OperationCase testCase) => Execute(testCase);
 
-    /// <summary>Runs required successful-operation vectors independently of the full Mainnet suite opt-in.</summary>
     [TestCase("fulu", "bls_to_execution_change", "success")]
     [TestCase("gloas", "bls_to_execution_change", "success")]
     [TestCase("fulu", "voluntary_exit", "basic")]
@@ -51,13 +40,10 @@ public class OperationsTests
             $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
     }
 
-    /// <summary>Handlers of a fork's table that the fork has no vectors for at <see cref="ConsensusSpecArchive.Version"/>.</summary>
     private static readonly Dictionary<string, string[]> OperationsAbsentByFork = new(StringComparer.Ordinal)
     {
         ["fulu"] = ["deposit"],
     };
-
-    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped handler leaves its vectors not-implemented; both run green.
     [Test]
     public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -75,8 +61,6 @@ public class OperationsTests
             }
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a handler that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(

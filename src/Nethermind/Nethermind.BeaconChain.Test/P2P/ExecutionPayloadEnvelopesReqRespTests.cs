@@ -27,10 +27,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Framing and DoS-limit tests for the Gloas execution payload envelope req/resp protocols,
-/// mirroring <c>ReqRespLimitsTests</c>' pattern for the block protocols.
-/// </summary>
 public class ExecutionPayloadEnvelopesReqRespTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -193,7 +189,6 @@ public class ExecutionPayloadEnvelopesReqRespTests
     private static long FailureCount(string protocolId, ReqRespFailureReason reason) =>
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(protocolId, reason), out long count) ? count : 0;
 
-    /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>
     private sealed class TestExecutionPayloadEnvelopesProtocol(BeaconChainSpec spec) : ExecutionPayloadEnvelopesProtocolBase(spec)
     {
         public const string ProtocolId = "/test/execution-payload-envelopes-limits/1";

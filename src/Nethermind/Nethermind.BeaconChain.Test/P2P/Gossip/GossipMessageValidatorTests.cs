@@ -26,8 +26,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-// The pubsub library raises topic events only for Accepted and never redelivers an ignored id, so a message that
-// passes must be consumed by the validator itself; Rejected needs every earlier check passed, or a rule needing no state.
 public class GossipMessageValidatorTests
 {
     private static readonly ulong WallSlot = FirstGloasSlot + 1;
@@ -398,7 +396,6 @@ public class GossipMessageValidatorTests
         },
     };
 
-    // The first vote spans source 1 to target 4, so a second vote from 2 to 3 is surrounded by it.
     internal static AttesterSlashingGloas GloasSlashing(ulong[] indices1, ulong[] indices2, ulong secondSource, ulong secondTarget) => new()
     {
         Attestation1 = new IndexedAttestationGloas { AttestingIndices = indices1, Data = Vote(1, 4) },

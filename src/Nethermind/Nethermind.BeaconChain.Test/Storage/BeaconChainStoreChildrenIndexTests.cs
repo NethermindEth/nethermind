@@ -18,12 +18,6 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>
-/// The root-to-children index behind <c>headers?parent_root</c>. Every expectation here is about
-/// completeness, not just membership: a list the store calls complete must hold every child ever
-/// stored, and every stored block's list must be complete, because the API turns "complete" into a
-/// 200 and anything else into a 500.
-/// </summary>
 public class BeaconChainStoreChildrenIndexTests
 {
     private MemColumnsDb<BeaconChainDbColumns> _db = null!;
@@ -278,7 +272,7 @@ public class BeaconChainStoreChildrenIndexTests
         Assert.That(complete, Is.True);
     }
 
-    /// <summary>Writes a block exactly as the pre-index store did: the compressed SSZ under the bare root, nothing else.</summary>
+    // Legacy record: compressed SSZ under bare block root, without index entries.
     private void WriteLegacyBlock(Hash256 root, SignedBeaconBlock block) =>
         _db.GetColumnDb(BeaconChainDbColumns.Blocks).Set(root.Bytes, Snappy.CompressToArray(SignedBeaconBlock.Encode(block)));
 

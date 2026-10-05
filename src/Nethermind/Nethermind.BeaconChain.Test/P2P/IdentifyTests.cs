@@ -25,8 +25,7 @@ using IdentifyMessage = Nethermind.Libp2p.Protocols.Identify.Dto.Identify;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>What a node tells its peers about itself over <c>/ipfs/id/1.0.0</c> and <c>/ipfs/id/push/1.0.0</c>, and what it accepts from theirs.</summary>
-/// <remarks>Non-parallelizable because one test changes the process-wide <see cref="ProductInfo.PublicClientId"/>.</remarks>
+// One test changes the process-wide ProductInfo.PublicClientId.
 [NonParallelizable]
 public class IdentifyTests
 {
@@ -78,7 +77,6 @@ public class IdentifyTests
         serverInfo.SupportedProtocols = null;
         serverInfo.Seq = null;
 
-        // A new listen address makes the server push its identify to every open session.
         Multiaddress extra = Multiaddress.Decode($"/ip4/127.0.0.1/tcp/1/p2p/{server.LocalPeerId}");
         server.LocalPeerForTest!.ListenAddresses.Add(extra);
         await PeerSessionNodes.WaitUntilAsync(() => serverInfo.SupportedProtocols is not null, "the client never applied the server's identify push", token);
@@ -172,7 +170,6 @@ public class IdentifyTests
 
         if (answer == Answer.MalformedRecord)
         {
-            // A length-delimited field cut short: the record does not parse.
             message.SignedPeerRecord = ByteString.CopyFrom([0x0a, 0xff]);
         }
 
@@ -196,8 +193,6 @@ public class IdentifyTests
             "pubsub peer exchange hands out the stored record, so only a verified one is stored");
     }
 
-    /// <summary>A replayed, older or unverified record must not roll back the stored record, but the protocols the peer lists now always replace the stored ones.</summary>
-    /// <remarks>Pubsub picks the gossipsub version from the stored protocols, so a peer must not be held to its first list.</remarks>
     [TestCase(4UL, false, false)]
     [TestCase(5UL, false, false)]
     [TestCase(6UL, false, true)]
@@ -221,7 +216,6 @@ public class IdentifyTests
         Assert.That(stored.SignedPeerRecord, Is.EqualTo(replaces ? later.SignedPeerRecord : first.SignedPeerRecord));
     }
 
-    /// <summary>Any peer answers identify, so the length it declares must not make the session wait for or buffer an oversized body.</summary>
     [TestCase(IdentifyAgentVersionProbe.MaxMessageSize, false)]
     [TestCase(IdentifyAgentVersionProbe.MaxMessageSize + 1, true)]
     [TestCase(256 * 1024 * 1024, true)]
@@ -266,7 +260,6 @@ public class IdentifyTests
         await sent.WaitAsync(bound);
     }
 
-    /// <summary>An answer that fails verification must cost the peer its session, in either direction, not just the agent string.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_session_whose_identify_answer_names_another_peers_key_is_closed_and_never_established([Values] bool nodeDials, CancellationToken token)
@@ -296,10 +289,6 @@ public class IdentifyTests
         Assert.That(Volatile.Read(ref established), Is.Zero, "a misidentified session is never reported as established");
     }
 
-    /// <summary>
-    /// A failed dial may hand back only a session the peer opened: one whose identify failed, or that the library already
-    /// dropped (its slot removed between the session snapshot and the check), is the dial's own lost session.
-    /// </summary>
     [TestCase(null, ExpectedResult = false, TestName = "Dropped session with no slot")]
     [TestCase(TaskStatus.Canceled, ExpectedResult = false, TestName = "Session whose identify failed")]
     [TestCase(TaskStatus.WaitingForActivation, ExpectedResult = true, TestName = "Session still identifying")]
@@ -325,8 +314,6 @@ public class IdentifyTests
 
     private static Libp2p.Core.State SessionWith(Identity remote) => new() { RemoteAddress = AddressOf(remote), RemotePublicKey = remote.PublicKey };
 
-    /// <param name="key">Whose public key the answer carries.</param>
-    /// <param name="recordSigner">Who signs the peer record naming the answering peer; <c>null</c> for no record.</param>
     private static IdentifyMessage AnswerOf(Identity key, Identity? recordSigner, ulong seq, string protocol)
     {
         IdentifyMessage message = new() { AgentVersion = ServerAgent, PublicKey = key.PublicKey.ToByteString() };
@@ -339,7 +326,6 @@ public class IdentifyTests
         return message;
     }
 
-    /// <summary>An operator's public client-id format changes what the node reports elsewhere, not its agent string.</summary>
     [Test]
     public void Agent_version_is_the_client_id_whatever_public_client_id_format_is_configured()
     {
@@ -355,7 +341,6 @@ public class IdentifyTests
         }
     }
 
-    /// <summary>Answers identify with the public key of a peer other than the one that holds the session.</summary>
     private sealed class ForeignKeyIdentifyProtocol(IProtocolStackSettings settings) : IdentifyProtocol(settings), ISessionListenerProtocol
     {
         public new async Task ListenAsync(IChannel downChannel, ISessionContext context) =>
@@ -372,7 +357,6 @@ public class IdentifyTests
         }
     }
 
-    /// <summary>The live stack settings, counting how often identify reads the protocols it advertises.</summary>
     private sealed class CountingStackSettings(IProtocolStackSettings inner) : IProtocolStackSettings
     {
         private int _reads;

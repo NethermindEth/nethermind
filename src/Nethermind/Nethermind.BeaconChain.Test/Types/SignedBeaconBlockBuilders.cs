@@ -10,19 +10,12 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Test.Types;
 
-/// <summary>Minimal signed beacon blocks of the Fulu and Gloas shapes, and the Sepolia fork boundary between them.</summary>
 internal static class SignedBeaconBlockBuilders
 {
-    /// <summary>The only network with a scheduled Gloas fork, so both shapes occur on it.</summary>
     public static readonly BeaconChainSpec Sepolia = BeaconChainSpec.Sepolia;
 
-    /// <summary>The first Sepolia slot whose block has the Gloas shape; the slot before it is the last Fulu slot.</summary>
     public static readonly ulong FirstGloasSlot = Sepolia.GloasForkEpoch * Sepolia.SlotsPerEpoch;
 
-    /// <summary>A Gloas-shaped block at <paramref name="slot"/> with empty lists and a self-built bid.</summary>
-    /// <param name="slot">The block's slot.</param>
-    /// <param name="parentRoot">The block's <c>parent_root</c>; zero when omitted.</param>
-    /// <param name="bidParentRoot">The bid's <c>parent_block_root</c>; <paramref name="parentRoot"/> when omitted, as <c>process_execution_payload_bid</c> requires.</param>
     public static SignedBeaconBlockGloas CreateMinimalGloasBlock(ulong slot, Hash256? parentRoot = null, Hash256? bidParentRoot = null) => new()
     {
         Message = new BeaconBlockGloas
@@ -64,7 +57,6 @@ internal static class SignedBeaconBlockBuilders
         },
     };
 
-    /// <summary>A Fulu-shaped block at <paramref name="slot"/> with empty lists.</summary>
     public static SignedBeaconBlock CreateMinimalBlock(ulong slot) => new()
     {
         Message = new BeaconBlock

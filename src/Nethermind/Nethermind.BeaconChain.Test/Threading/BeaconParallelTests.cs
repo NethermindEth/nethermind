@@ -12,10 +12,6 @@ namespace Nethermind.BeaconChain.Test.Threading;
 
 public class BeaconParallelTests
 {
-    /// <summary>
-    /// A loop on the import thread whose helpers sit in the thread-pool queue waits as long as that queue, which is minutes
-    /// while the pool is starved; the helpers of these loops never reach the pool.
-    /// </summary>
     [Test]
     public void Loop_bodies_started_from_a_dedicated_thread_never_run_on_pool_threads()
     {

@@ -21,16 +21,8 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Shared plumbing for the suites that actually drive this repo's state transition (operations,
-/// epoch_processing, sanity). The BlockProcessing/EpochProcessing pipeline is typed to
-/// <see cref="BeaconStateFulu"/> specifically (see ForkedStateTransition's remarks); the fork-specific
-/// work of getting another fork's state into and out of it honestly lives in <see cref="ForkDriver"/>,
-/// and the helpers here are fork-neutral.
-/// </summary>
 public static class FuluDriverSupport
 {
-    /// <summary>Named vectors whose suite-relative directory path is part of their test name.</summary>
     internal static IEnumerable<TestCaseData> RelativeCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
         Func<ConsensusPreset, string, string, string, T> createCase)
     {
@@ -45,7 +37,6 @@ public static class FuluDriverSupport
         }
     }
 
-    /// <summary>Named vectors grouped by an immediate handler directory and their leaf directory name.</summary>
     internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
         Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false)
     {
@@ -74,14 +65,11 @@ public static class FuluDriverSupport
         return state;
     }
 
-    /// <summary>A fork that was extracted and enumerated but has no driver is a wiring error, reported as not-implemented rather than a pass.</summary>
     public static ForkDriver RequireForkDriver(string fork) =>
         ForkDriver.ByName.TryGetValue(fork, out ForkDriver? driver)
             ? driver
             : throw new NotImplementedInDriverException($"fork '{fork}' has no ForkDriver; its vectors cannot be carried through this pipeline.");
 
-    /// <summary>Reports a minimal-preset vector as not-implemented, since no BeaconState container here can decode its state.</summary>
-    /// <exception cref="NotImplementedInDriverException"><paramref name="preset"/> is the minimal preset.</exception>
     public static void RequireMainnetPreset(string preset)
     {
         if (preset == nameof(ConsensusPreset.Minimal))
@@ -93,7 +81,6 @@ public static class FuluDriverSupport
         }
     }
 
-    /// <summary>The cases a suite's minimal or mainnet vector test consumes for <paramref name="preset"/>.</summary>
     /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>
     public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases)
     {
@@ -103,11 +90,7 @@ public static class FuluDriverSupport
         return [.. (preset == ConsensusPreset.Mainnet ? mainnetCases() : minimalCases()).Select(static data => (TCase)data.Arguments[0]!)];
     }
 
-    /// <summary>Runs the first case of every distinct key and fails on the first one that throws, not-implemented included.</summary>
-    /// <remarks>
-    /// A not-implemented vector reports Inconclusive, so a key whose every vector is not-implemented runs green;
-    /// this is the check that it runs for real.
-    /// </remarks>
+    /// <summary>Requires the first case of every key to run successfully, including rejecting not-implemented outcomes.</summary>
     public static void AssertEveryKeyRunsAVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
     {
         Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
@@ -118,11 +101,7 @@ public static class FuluDriverSupport
         }
     }
 
-    /// <summary>Fails unless every distinct key has a case that runs; a not-implemented case passes the check on to the key's next case.</summary>
-    /// <remarks>
-    /// For a suite whose keys mix runnable and not-implemented vectors by design, where no single case stands for its key.
-    /// Any other failure fails the check at once.
-    /// </remarks>
+    /// <summary>Requires a runnable case per key; only not-implemented cases defer to the next case.</summary>
     public static void AssertEveryKeyRunsSomeVector<TCase>(IReadOnlyCollection<TCase> cases, Func<TCase, string> keyOf, Action<TCase> run)
     {
         Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
@@ -145,11 +124,6 @@ public static class FuluDriverSupport
         }
     }
 
-    /// <summary>
-    /// Fails the vector unless the working state's root, taken in the fork's own shape, equals the
-    /// expected post-state's; on mismatch names the diverging fields so the failure is debuggable.
-    /// The root is also taken through <paramref name="cache"/>'s hasher, which must agree.
-    /// </summary>
     public static void AssertPostStateRoot<TState>(ForkDriver<TState> driver, string postPath, TState actual, EpochCache cache) where TState : class
     {
         (object expectedPost, Hash256 expectedRoot) = driver.DecodePost(postPath);
@@ -164,14 +138,9 @@ public static class FuluDriverSupport
         Assert.Fail($"post-state root mismatch: expected {expectedRoot}, actual {actualRoot}. Diverging fields: {(diff.Count > 0 ? string.Join("; ", diff) : "(none found - roots differ anyway)")}");
     }
 
-    /// <summary>
-    /// Whether <paramref name="thrown"/> is one of the pipeline's own rejection types, i.e. a failed
-    /// spec assertion, rather than a crash on the way to one. Only these count as correctly rejecting
-    /// an invalid vector; anything else (a NullReferenceException, an SSZ decode error) is a defect.
-    /// </summary>
+    /// <summary>Identifies spec rejections; crashes and SSZ decode failures cannot satisfy an invalid vector.</summary>
     public static bool IsSpecRejection(Exception thrown) => thrown is BeaconStateException or ForkChoiceException;
 
-    /// <summary>Fails the vector unless <paramref name="thrown"/> is a real spec rejection: completing, and throwing for the wrong reason, are both failures.</summary>
     public static void AssertRejected(Exception? thrown, string subject)
     {
         if (thrown is null)
@@ -180,7 +149,6 @@ public static class FuluDriverSupport
             Assert.Fail($"expected {subject} to be rejected by a spec assertion, but the pipeline threw {thrown.GetType().Name} on the way: {thrown}");
     }
 
-    /// <summary>Applies a vector action, requiring its post-state root or the pipeline's rejection when no post state exists.</summary>
     internal static void AssertTransition<TState>(ForkDriver<TState> driver, string postPath, TState state, EpochCache cache,
         Action apply, string subject, string successFailure) where TState : class
     {
@@ -209,15 +177,8 @@ public static class FuluDriverSupport
         return pubkeys;
     }
 
-    /// <summary>
-    /// The runtime config a vector runs under: its own <c>config.yaml</c> when present, which replaces the
-    /// default config (tests/formats/README.md, "config.yaml"), otherwise the mainnet config.
-    /// </summary>
-    /// <remarks>
-    /// Only the fields the state transition reads are taken from the file: the Electra, Fulu and Gloas fork
-    /// epochs, <c>GLOAS_FORK_VERSION</c>, <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> and <c>BLOB_SCHEDULE</c>. A key the
-    /// file omits keeps its mainnet value; the rest of the spec is mainnet's.
-    /// </remarks>
+    /// <summary>Reads config.yaml overrides (tests/formats/README.md), retaining mainnet defaults for omitted keys.</summary>
+    /// <remarks>Only transition-relevant fork epochs/versions, MAX_BLOBS_PER_BLOCK_ELECTRA and BLOB_SCHEDULE are read.</remarks>
     public static BeaconChainSpec CaseSpec(string casePath)
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
@@ -254,11 +215,7 @@ public static class FuluDriverSupport
             gloasForkVersion);
     }
 
-    /// <summary>
-    /// The runtime config a Fulu-to-Gloas <c>transition</c> vector runs under: the mainnet config with every
-    /// fork before Gloas live from genesis and Gloas from <paramref name="gloasForkEpoch"/>, meta.yaml's
-    /// <c>fork_epoch</c> (tests/formats/transition/README.md).
-    /// </summary>
+    /// <summary>Uses mainnet with earlier forks at genesis and Gloas at meta.yaml's fork_epoch (tests/formats/transition/README.md).</summary>
     public static BeaconChainSpec TransitionSpec(ulong gloasForkEpoch)
     {
         BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
@@ -286,11 +243,7 @@ public static class FuluDriverSupport
         };
     }
 
-    /// <summary>
-    /// meta.yaml's <c>bls_setting</c>: 0 (optional) and 1 (required) both mean "verify normally" for a
-    /// driver that always has real signatures to check; only 2 ("ignored") means the fixture's
-    /// signatures are deliberately garbage and must not be checked. Absent file defaults to 0.
-    /// </summary>
+    /// <summary>Verifies signatures unless bls_setting is 2 (ignored); absent, optional (0) and required (1) settings verify normally.</summary>
     public static bool ShouldVerifySignatures(string casePath)
     {
         string metaPath = Path.Combine(casePath, "meta.yaml");
@@ -343,14 +296,6 @@ public static class FuluDriverSupport
         return new Hash256(root.ToLittleEndian());
     }
 
-    /// <summary>
-    /// A best-effort field-level diff between two decoded containers under
-    /// <c>Nethermind.BeaconChain.Types</c>, for debugging a root mismatch: recurses into nested
-    /// container properties and collection elements, and reports leaf value differences by path.
-    /// Not exhaustive (bounded by <paramref name="limit"/>) and not a substitute for the root check
-    /// itself - two different states can theoretically hash-collide-equal-looking diffs, but in
-    /// practice this is what makes a wrong-root failure debuggable without a debugger attached.
-    /// </summary>
     public static List<string> Diff(object? expected, object? actual, string path, int limit = 20)
     {
         List<string> results = [];

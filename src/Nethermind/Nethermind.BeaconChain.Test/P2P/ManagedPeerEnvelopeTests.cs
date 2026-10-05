@@ -17,7 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>The execution payload envelope requests a sync peer handed out by <see cref="PeerManager"/> makes over a live session.</summary>
 public class ManagedPeerEnvelopeTests
 {
     private static readonly BeaconChainSpec Spec = EnvelopeChain.Spec;

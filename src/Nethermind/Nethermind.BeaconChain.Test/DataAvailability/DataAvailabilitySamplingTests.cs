@@ -34,10 +34,7 @@ public class DataAvailabilitySamplingTests
         Assert.That(columns, Is.Ordered);
     }
 
-    /// <summary>
-    /// Expectations are the pyspec <c>get_custody_groups</c> results for the raw id bytes <c>00..1f</c> read big-endian,
-    /// computed outside this code base: 4 groups for custody, <c>max(SAMPLES_PER_SLOT, 4)</c> = 8 for the sample.
-    /// </summary>
+    // Independent pyspec oracle: raw node-id bytes 00..1f read big-endian; 4 custody groups and 8 sampling groups.
     [Test]
     public void GetColumnsToSample_is_the_spec_sample_and_a_superset_of_the_nodes_own_custody_columns()
     {

@@ -23,10 +23,7 @@ public static class TestFixtureDownloader
     private static readonly string CacheRoot = Path.Combine(Path.GetTempPath(), "nethermind-eest");
     private const string MarkerFileName = ".completed";
 
-    /// <summary>
-    /// Path depth at which extracted subtrees are recorded in the marker: <c>tests/{preset}/{fork}/{suite}</c>
-    /// in the consensus-specs archives, so a missing fork or suite is caught without walking every file.
-    /// </summary>
+    // consensus-specs archives: tests/{preset}/{fork}/{suite}; record missing suites without walking every file.
     private const int SubtreeDepth = 4;
 
     /// <summary>
@@ -38,20 +35,8 @@ public static class TestFixtureDownloader
     /// <param name="urlTemplate">URL format string with {0} = version, {1} = archive name.</param>
     /// <param name="version">Archive version tag (e.g. "v1.6.1").</param>
     /// <param name="archiveName">Archive file name (e.g. "general.tar.gz"). The directory stem is derived by stripping extensions.</param>
-    /// <param name="shouldExtract">
-    /// Optional entry filter. When given, only tar entries whose normalized (forward-slash) path
-    /// satisfies the predicate are written to disk; everything else is skipped without touching the
-    /// filesystem. The gzip stream is still read and decompressed end to end regardless, since a
-    /// .tar.gz cannot be seeked - this saves disk footprint and extraction time, not download bandwidth.
-    /// Omit it (or pass null) to extract every entry, as before.
-    /// </param>
-    /// <param name="extractionTag">
-    /// Identifies what <paramref name="shouldExtract"/> keeps. It is written into the completion
-    /// marker's first line, and a cached marker carrying a different tag is treated as absent, so
-    /// widening the filter re-downloads instead of leaving the new subtrees silently missing from a
-    /// "complete" cache. Callers that extract everything can leave it null; their marker's first line
-    /// then holds the version, as it always has, and is not checked.
-    /// </param>
+    /// <param name="shouldExtract">Optional filter over normalized tar paths; null extracts every entry.</param>
+    /// <param name="extractionTag">Cache identity for the extraction filter; a changed tag forces re-extraction.</param>
     /// <returns>The path to the extracted fixtures directory.</returns>
     public static string EnsureDownloaded(string suiteName, string urlTemplate, string version, string archiveName, Func<string, bool>? shouldExtract = null, string? extractionTag = null)
     {
@@ -88,14 +73,6 @@ public static class TestFixtureDownloader
         return targetDir;
     }
 
-    /// <summary>
-    /// A marker over an emptied or never-populated directory was seen in the wild, and every suite over
-    /// it ran zero vectors and passed; only a marker over at least one real file counts as complete.
-    /// A marker written for a different extraction filter is equally hollow for the subtrees the
-    /// current filter keeps, so it is refused too when a tag is given. A partially emptied cache is
-    /// just as hollow for the subtrees it lost, so every subtree the marker recorded must still hold
-    /// a file; a marker that predates subtree recording falls back to the whole-directory check.
-    /// </summary>
     private static bool IsComplete(string targetDir, string markerPath, string? extractionTag)
     {
         if (!File.Exists(markerPath))
@@ -129,7 +106,6 @@ public static class TestFixtureDownloader
         return false;
     }
 
-    /// <summary>True when something other than the marker itself exists under <paramref name="targetDir"/>. Stops at the first hit, so it is cheap even on a 200k-file cache.</summary>
     private static bool HasExtractedContent(string targetDir) =>
         Directory.Exists(targetDir)
         && Directory.EnumerateFiles(targetDir, "*", SearchOption.AllDirectories)
@@ -138,10 +114,6 @@ public static class TestFixtureDownloader
     private static bool HasAnyFile(string directory) =>
         Directory.Exists(directory) && Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories).Any();
 
-    /// <summary>
-    /// The directories <see cref="SubtreeDepth"/> levels below <paramref name="targetDir"/> that hold at
-    /// least one file, as forward-slash relative paths; an archive too shallow to have any records none.
-    /// </summary>
     private static List<string> PopulatedSubtrees(string targetDir)
     {
         List<string> subtrees = [];
@@ -183,9 +155,6 @@ public static class TestFixtureDownloader
         using HttpClient httpClient = new();
         string url = string.Format(urlTemplate, version, archiveName);
         using HttpRequestMessage request = new(HttpMethod.Get, url);
-        // ResponseHeadersRead + a plain stream read below mean the response body is never buffered
-        // into a byte[]; both the "extract everything" and selective paths decompress in a bounded
-        // window as bytes arrive off the wire, regardless of the archive's total size.
         using HttpResponseMessage response = httpClient.Send(request, HttpCompletionOption.ResponseHeadersRead);
         response.EnsureSuccessStatusCode();
 
@@ -202,18 +171,13 @@ public static class TestFixtureDownloader
             ExtractSelective(gzStream, targetDir, shouldExtract);
         }
 
-        // A dropped connection can leave GZipStream reporting a clean end-of-stream on a truncated
-        // body instead of a CRC/length error, and TarReader then just sees "no more entries" - so a
-        // partial archive silently looks complete and gets marked done. Checking bytes actually read
-        // against Content-Length (when the server sent one) catches that before the marker is written.
+        // GZipStream and TarReader can report clean EOF after a truncated download without validating the declared length.
         if (expectedLength is { } expected && contentStream.TotalBytesRead != expected)
         {
             throw new IOException(
                 $"Download of '{url}' was truncated: expected {expected} bytes but the stream yielded {contentStream.TotalBytesRead} before EOF.");
         }
 
-        // An archive that unpacks to nothing (filter matched no entry, hollowed-out asset, bare directories)
-        // must not be marked complete, or every suite over it enumerates zero vectors and passes.
         if (!HasExtractedContent(targetDir))
         {
             throw new IOException(
@@ -222,7 +186,6 @@ public static class TestFixtureDownloader
         }
     }
 
-    /// <summary>Wraps a stream to track how many bytes were actually read off it, so a truncated download can be detected even when the decompressor itself does not notice.</summary>
     private sealed class CountingStream(Stream inner) : Stream
     {
         public long TotalBytesRead { get; private set; }
@@ -258,12 +221,7 @@ public static class TestFixtureDownloader
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
-    /// <summary>
-    /// Streams tar entries one at a time and writes to disk only those <paramref name="shouldExtract"/>
-    /// accepts. The whole gzip stream is still decompressed sequentially - a .tar.gz has no index to
-    /// seek by - so this trades disk footprint and unpack time for the entries that are skipped, not
-    /// network transfer.
-    /// </summary>
+    // .tar.gz has no seek index, so selective extraction saves disk space and time, not network transfer.
     private static void ExtractSelective(Stream gzStream, string targetDir, Func<string, bool> shouldExtract)
     {
         string targetRoot = Path.GetFullPath(targetDir) + Path.DirectorySeparatorChar;
@@ -287,10 +245,6 @@ public static class TestFixtureDownloader
         }
     }
 
-    /// <summary>
-    /// Normalizes a tar entry's recorded path to a rooted-relative, forward-slash form: strips a
-    /// leading "./" (common on GNU tar output) and converts backslashes, without touching disk.
-    /// </summary>
     private static string NormalizeEntryPath(string entryName)
     {
         string path = entryName.Replace('\\', '/');
@@ -299,13 +253,7 @@ public static class TestFixtureDownloader
         return path.TrimStart('/');
     }
 
-    /// <summary>
-    /// Pure predicate for use as <see cref="EnsureDownloaded"/>'s <c>shouldExtract</c> filter: true when
-    /// <paramref name="entryPath"/> is <paramref name="prefix"/> itself or lies under it as a directory
-    /// (matches on a '/' boundary, not merely a common string prefix, and tolerates either slash
-    /// direction and a leading "./" in <paramref name="entryPath"/>). Needs no archive or filesystem
-    /// access, so it is testable on its own.
-    /// </summary>
+    /// <summary>Matches the prefix itself or a descendant at a slash boundary, accepting either slash direction and a leading "./".</summary>
     public static bool PathUnderPrefix(string entryPath, string prefix)
     {
         string normalizedEntry = NormalizeEntryPath(entryPath);

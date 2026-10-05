@@ -21,31 +21,7 @@ using YamlDotNet.RepresentationModel;
 
 namespace Nethermind.BeaconChain.Test.Types;
 
-/// <summary>
-/// SSZ round trip and hash-tree-root coverage for the Gloas containers in <c>GloasContainers.cs</c>
-/// and <c>BeaconStateGloas</c>.
-/// </summary>
-/// <remarks>
-/// Expected roots for the seven plain (non-progressive) container types below, and for the all-default
-/// <see cref="ExecutionPayloadBid"/> and <see cref="BeaconStateGloas"/> values, were computed
-/// independently with ethereum/ssz-specs (`pip install git+https://github.com/ethereum/ssz-specs.git`,
-/// installed 2026-09-19; package version 0.1.0 declared in its own pyproject.toml) - the same reference
-/// SSZ implementation the consensus-specs test-vector generator itself now uses (see that repo's
-/// tooling-swap note in this task's Gloas survey). Field types and order there were copied from the
-/// spec class definitions cited on each type in GloasContainers.cs / BeaconState.cs, not from this
-/// codebase's own encoder, so a mismatch here would be a genuine divergence, not a tautology. The
-/// scripts used are not checked in; re-derive them from the field lists cited in the type docs if this
-/// ever needs re-verifying.
-/// <para/>
-/// <see cref="ExecutionPayloadEnvelope"/>, <see cref="SignedExecutionPayloadEnvelope"/>,
-/// <see cref="PayloadAttestation"/>, <see cref="IndexedPayloadAttestation"/> and
-/// <see cref="SignedExecutionPayloadBid"/> are each checked against one consensus-spec-tests
-/// v1.7.0-alpha.13 mainnet <c>ssz_static</c> vector (value.yaml and roots.yaml lifted verbatim, the
-/// smallest of the five random cases), including the independent named properties in value.yaml.
-/// <see cref="BeaconBlockBodyGloas"/> gets round-trip coverage only
-/// (decode(encode(x)) reproduces x's own root): its smallest vector is 27 KB of random operations, so
-/// the fixture-driven <c>SszStaticTests</c> carries its oracle instead.
-/// </remarks>
+// Independent roots: ethereum/ssz-specs using spec-declared fields, not production encoders. Named-field/root cases come from original consensus-spec ssz_static fixtures. Body round-trip alone is not an independent oracle.
 public class GloasContainerTests
 {
     [Test]
@@ -154,11 +130,6 @@ public class GloasContainerTests
         AssertRoundTripsAndMatchesRoot(message, "0xdddbeec88a8d1479ff53e12e675553f0bedbef6a503f8d43e1ce51f810e74c96");
     }
 
-    /// <summary>
-    /// The all-default (every field zero/empty) bid: the simplest instance whose root the progressive
-    /// merkleization (active_fields-bitvector mix-in) can be checked against, the same way
-    /// <c>Zeroed_checkpoint_hash_tree_root_matches_spec_value</c> checks a plain container.
-    /// </summary>
     [Test]
     public void ExecutionPayloadBid_all_default_hash_tree_root_matches_an_independently_computed_value() =>
         AssertRoundTripsAndMatchesRoot(new ExecutionPayloadBid(), "0x83b932ee5875c06aa35328e3c3e3c976c703f2f4b1bc98e32991ceabbb2e4b63");
@@ -234,11 +205,6 @@ public class GloasContainerTests
         AssertRoundTrips(body, BeaconBlockBodyGloas.Encode, BeaconBlockBodyGloas.Decode, BeaconBlockBodyGloas.Merkleize);
     }
 
-    /// <summary>
-    /// The all-default (every field zero/empty/512-of-zero) state: the same "simplest checkable
-    /// instance" approach as the bid test above, sized up to a 46-field progressive container with
-    /// several large fixed vectors (block_roots, randao_mixes, ptc_window, ...).
-    /// </summary>
     [Test]
     public void BeaconStateGloas_all_default_hash_tree_root_matches_an_independently_computed_value()
     {
@@ -262,8 +228,6 @@ public class GloasContainerTests
         AssertRoundTripsAndMatchesRoot(state, "0x1971a1bc7e155511766c64b6a2121317d01fa040ffa6da5f93c3629f60fe3166");
     }
 
-    /// <summary>Checks named fields and SSZ roots against the original Gloas consensus fixtures.</summary>
-    /// <param name="check">The typed fixture check.</param>
     [TestCaseSource(nameof(NamedFixtureCases))]
     public void Named_fields_and_root_match_the_consensus_spec_fixture(Action check) => check();
 

@@ -27,7 +27,6 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
 public class ColumnGossipRouterTests
 {
-    // A Fulu/BPO2-era mainnet slot, matching GossipRouterTests, so the current digest is well defined.
     private const ulong CurrentSlot = 13_410_304;
     private const ulong SubnetId = 5; // matches ColumnIndex below under the mainnet column==subnet coincidence.
     private const ulong ColumnIndex = SubnetId;
@@ -101,7 +100,6 @@ public class ColumnGossipRouterTests
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         ulong[] subscribedSubnets = [.. Enumerable.Range(0, required + 7).Select(i => (ulong)i)];
         DataColumnSidecarPool pool = new();
-        // An imported block's header, so its sidecars pass every check; with no source to verify a header against, they are only consumed.
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>(), Spec);
         if (headerVerified)
         {
@@ -122,8 +120,6 @@ public class ColumnGossipRouterTests
             router.Handle(column, gloasTopic: false, Message(sidecar));
         }
 
-        // Never called TryReconstruct/SelectNewlyReconstructed directly: everything below is only
-        // observable if ColumnGossipRouter itself drives reconstruction from real gossip arrivals.
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receivedEvents, Has.Count.EqualTo(Eip7594DasConstants.NumberOfColumns),
@@ -143,7 +139,6 @@ public class ColumnGossipRouterTests
                 "each reconstructed column is published once, as its snappy SSZ");
         }
 
-        // A gossip copy of a reconstructed column arriving later is rejected as a duplicate, not re-accepted or re-raised.
         int receivedBeforeReplay = receivedEvents.Count;
         DataColumnSidecar replay = DataColumnSidecarTestFixture.BuildValidSidecar((ulong)required, CurrentSlot);
         router.Handle((ulong)required, gloasTopic: false, Message(replay));
@@ -154,14 +149,12 @@ public class ColumnGossipRouterTests
             Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
         }
 
-        // Exposed exactly as if received over the network: also present in the serving pool.
         Hash256 blockRoot = SszRoots.HashTreeRoot(replay.SignedBlockHeader!.Message!);
         Assert.That(pool.TryGet(blockRoot, (ulong)required, out DataColumnSidecar? pooled), Is.True);
         Assert.That(pooled!.Index, Is.EqualTo((ulong)required));
     }
 
-    /// <summary>A column pooled by sync under a forged header signature lends that signature to the reconstructed columns, so none is published.</summary>
-    /// <remarks>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [REJECT] the proposer signature of the header is valid, so a peer would reject it.</remarks>
+    // fulu/p2p-interface.md data_column_sidecar_{subnet_id}: the header proposer signature must be valid.
     [Test]
     public void Reconstructed_columns_under_a_signature_other_than_the_verified_one_are_not_published()
     {
@@ -185,8 +178,7 @@ public class ColumnGossipRouterTests
         Assert.That(topics.Values.SelectMany(static t => t.Published), Is.Empty);
     }
 
-    /// <summary>A reconstructed column of an equivocating block is not published for a (slot, proposer_index, index) already forwarded for another block.</summary>
-    /// <remarks>fulu/p2p-interface.md data_column_sidecar_{subnet_id}: [IGNORE] the sidecar is the first for its tuple; das-core.md exposes a reconstructed column as if received.</remarks>
+    // fulu/p2p-interface.md: first sidecar per tuple; das-core.md exposes reconstructed columns as received.
     [Test]
     public void Reconstructed_column_of_an_equivocating_block_is_not_published_for_a_tuple_already_forwarded()
     {
@@ -219,8 +211,7 @@ public class ColumnGossipRouterTests
         }
     }
 
-    /// <summary>Publishing a reconstructed column never waits on a digest subscription in progress.</summary>
-    /// <remarks>The pubsub router may run the column checks under its monitor, and subscribing a topic takes that monitor, so such a wait could deadlock.</remarks>
+    // Validation and topic subscription can both hold the pubsub monitor, so waiting here could deadlock.
     [Test]
     [CancelAfter(60_000)]
     public async Task Publishing_a_reconstructed_column_does_not_wait_for_a_digest_subscription(CancellationToken token)
@@ -393,7 +384,6 @@ public class ColumnGossipRouterTests
         Assert.That(router.GetDropCount(ColumnGossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
-    /// <summary>A topic whose <see cref="Subscribe"/> waits for <paramref name="release"/>, as one would while another thread holds the pubsub router's monitor.</summary>
     private sealed class GatedTopic(TaskCompletionSource entered, ManualResetEventSlim release) : ITopic
     {
         public event Action<PeerId, byte[]>? OnMessage { add { } remove { } }

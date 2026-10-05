@@ -15,10 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// <c>EngineDriver.NotifyNewPayload</c> blocks its caller until the execution layer answers, which took up to two minutes on mainnet under load,
-/// so the real importer's engine call must never hold a thread-pool thread while it waits.
-/// </summary>
 public class ImportEngineCallThreadTests
 {
     [Test]
@@ -46,7 +42,6 @@ public class ImportEngineCallThreadTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>Answers newPayload only once <see cref="Answer"/> is set, blocking the calling thread as the in-process engine driver does.</summary>
     private sealed class SlowEngine : IEngineDriver
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);

@@ -11,10 +11,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// <c>/eth/v1/config/deposit_contract</c> answers the network config's <c>DEPOSIT_CHAIN_ID</c> and
-/// <c>DEPOSIT_CONTRACT_ADDRESS</c> (beacon-APIs v5.0.0-alpha.2 <c>apis/config/deposit_contract.yaml</c>).
-/// </summary>
 public class DepositContractEndpointTests
 {
     private const string Endpoint = "/eth/v1/config/deposit_contract";

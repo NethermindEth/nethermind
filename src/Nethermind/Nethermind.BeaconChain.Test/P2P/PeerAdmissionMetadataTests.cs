@@ -20,16 +20,11 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The admission <c>MetaData</c> request runs while the dial holds its outbound slot, so a peer that never answers it must
-/// not keep the slot for the full request timeout, and the peer is usable meanwhile on the custody its ENR or the floor gives.
-/// </summary>
 public class PeerAdmissionMetadataTests
 {
     // The metadata timeout plus margin for a loaded loopback dial, still under the 15 s request timeout a missing bound would cost.
     private static readonly TimeSpan Within = PeerManager.AdmissionMetadataTimeout + TimeSpan.FromSeconds(5);
 
-    /// <summary>A waiter for a custodian learns of the peer when it can be asked, so it is in the pool and its custody is known when the event is raised.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task An_admitted_peer_is_announced_once_it_is_in_the_pool(CancellationToken token)
@@ -90,7 +85,6 @@ public class PeerAdmissionMetadataTests
         Assert.That(peerManager.PeerCount, Is.EqualTo(2));
     }
 
-    /// <summary>A peer is usable while its admission metadata is awaited, so it can break the protocol and close its session before its dial ends.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_peer_that_breaks_the_protocol_and_closes_while_its_metadata_is_awaited_keeps_its_dial_backoff(CancellationToken token)
@@ -98,7 +92,6 @@ public class PeerAdmissionMetadataTests
         Node client = CreateNode();
         await using BeaconDiscovery discovery = new(client.Config, BeaconChainSpec.Mainnet, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()),
             new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), new ManualTimestamper(), LimboLogs.Instance);
-        // Does not list the metadata protocol, so the admission waits out its metadata timeout.
         await using PlainPeer silent = await PlainPeer.StartAsync(static settings => new Nethermind.Libp2p.Protocols.IdentifyProtocol(settings), token,
             new ScriptedStatusSource(_ => client.StatusHolder.CurrentStatus));
 

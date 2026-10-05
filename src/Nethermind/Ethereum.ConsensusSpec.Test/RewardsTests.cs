@@ -14,13 +14,7 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>rewards</c> suite (tests/formats/rewards/README.md) for every fork in
-/// <see cref="ConsensusSpecArchive.StateTransitionForks"/>. The vectors give the <c>Deltas</c> of each
-/// <c>get_flag_index_deltas</c> and of <c>get_inactivity_penalty_deltas</c>; this repo computes them only inside
-/// <c>process_rewards_and_penalties</c>, so each vector checks that the balances it leaves equal the pre-state's
-/// balances with every delta applied in the spec's order.
-/// </summary>
+/// <remarks>Production exposes the combined process_rewards_and_penalties, not individual delta functions.</remarks>
 [TestFixture]
 public class RewardsTests
 {
@@ -34,8 +28,6 @@ public class RewardsTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(RewardsCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors; a handler this driver does not enumerate never runs; both stay green.
     [Test]
     public void Every_fork_and_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -50,8 +42,6 @@ public class RewardsTests
             }
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsSomeVector(
@@ -59,7 +49,6 @@ public class RewardsTests
             static testCase => $"{testCase.Fork}/{testCase.Handler}",
             Run);
 
-    /// <summary><c>process_rewards_and_penalties</c> applying known deltas: the rewards before the penalties of each validator, component by component.</summary>
     [Test]
     public void Expected_balances_apply_each_component_in_order_and_saturate_at_zero()
     {
@@ -107,7 +96,6 @@ public class RewardsTests
         Assert.That(balancesOf(state), Is.EqualTo(expected));
     }
 
-    /// <summary>The spec's <c>increase_balance</c> and <c>decrease_balance</c> over every component of <paramref name="deltas"/>, in order.</summary>
     private static ulong[] ExpectedBalances(ulong[] balances, (ulong[] Rewards, ulong[] Penalties)[] deltas)
     {
         foreach ((ulong[] rewards, ulong[] penalties) in deltas)
@@ -125,7 +113,6 @@ public class RewardsTests
         return balances;
     }
 
-    /// <summary>Decodes an SSZ <c>Deltas</c> container: two offsets, then the <c>rewards</c> and <c>penalties</c> lists of uint64.</summary>
     private static (ulong[] Rewards, ulong[] Penalties) DecodeDeltas(string path)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(path);

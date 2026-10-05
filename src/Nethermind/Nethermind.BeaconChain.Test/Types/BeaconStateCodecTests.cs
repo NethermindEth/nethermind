@@ -13,11 +13,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Types;
 
-/// <summary>
-/// Electra, Fulu and Gloas are three different state layouts, and the driver decoded every
-/// persisted state as Fulu whatever wrote it. Refusing by name beats decoding a Gloas state
-/// against Fulu's layout, which yields wrong field values rather than an error.
-/// </summary>
 [HardTimeout(60_000)]
 public class BeaconStateCodecTests
 {
@@ -61,10 +56,6 @@ public class BeaconStateCodecTests
         Assert.That(ex.Message, Does.Contain(nameof(BeaconStateFulu)));
     }
 
-    /// <summary>
-    /// A real state on each side of the fork comes back in its own layout with its root intact, which also
-    /// pins that a Gloas progressive container puts the slot where the Fulu layout does.
-    /// </summary>
     [Test]
     public void A_state_decodes_forked_in_the_layout_of_its_own_fork([Values] bool gloas)
     {

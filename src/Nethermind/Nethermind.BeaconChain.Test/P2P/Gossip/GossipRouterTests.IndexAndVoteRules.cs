@@ -20,7 +20,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>The attester slashing index rules and the Gloas same-slot vote rule that return a verdict without beacon state.</summary>
 public partial class GossipRouterTests
 {
     private static readonly ulong VoteSlot = FirstGloasSlot + 1;

@@ -15,23 +15,17 @@ using Nethermind.BeaconChain.Types;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>How a <see cref="FlakyCheckpointProvider"/> answers one request for the finalized state.</summary>
 internal enum StateResponse
 {
     Serve,
-    /// <summary>Promises the whole body, sends half and resets the connection.</summary>
     DropMidBody,
-    /// <summary>Promises the whole body, sends half and then sends nothing more while the connection stays open.</summary>
     StallMidBody,
-    /// <summary>Sends the body in small chunks, each within <see cref="FlakyCheckpointProvider.TrickleInterval"/> of the last, over <see cref="FlakyCheckpointProvider.TrickleDuration"/> in all.</summary>
     Trickle,
-    /// <summary>Accepts the request and never sends the response headers while the connection stays open.</summary>
     NoHeaders,
     ServerError,
     NotFound,
 }
 
-/// <summary>A beacon API serving <see cref="ForkCrossingChain.First"/> whose state endpoint answers each request as <c>responseFor</c> says, counting the requests.</summary>
 internal sealed class FlakyCheckpointProvider : IAsyncDisposable
 {
     private readonly WebApplication _app;
@@ -52,13 +46,8 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
 
     public static TimeSpan TrickleDuration { get; } = TimeSpan.FromSeconds(5);
 
-    /// <summary>Completes with the half body a <see cref="StateResponse.StallMidBody"/> answer flushed, once it begins to send nothing more.</summary>
     public Task<byte[]> StallEntered => _stallEntered.Task;
 
-    /// <param name="responseFor">Maps the 1-based number of a state request to its answer.</param>
-    /// <param name="state">The state served, <see cref="ForkCrossingChain.First"/>'s post-state when omitted; the block is always the one of that chain.</param>
-    /// <param name="consensusVersion">The <c>Eth-Consensus-Version</c> header of a served state, none when omitted.</param>
-    /// <param name="blockResponseFor">Maps the 1-based number of a request for the anchor block to its answer, always served when omitted.</param>
     public static async Task<FlakyCheckpointProvider> StartAsync(Func<int, StateResponse> responseFor, BeaconStateGloas? state = null, string? consensusVersion = null, Func<int, StateResponse>? blockResponseFor = null)
     {
         ForkCrossingChain.ChainBlock first = ForkCrossingChain.Instance.First;

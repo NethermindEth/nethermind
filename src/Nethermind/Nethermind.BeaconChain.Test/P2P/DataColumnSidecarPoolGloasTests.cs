@@ -10,10 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// The pool's Gloas members: keyed by the sidecar's own (beacon_block_root, index), kept apart from the
-/// Fulu maps, and never serving a pending, unverified sidecar.
-/// </summary>
 public class DataColumnSidecarPoolGloasTests
 {
     private const ulong Column = 3;
@@ -32,7 +28,6 @@ public class DataColumnSidecarPoolGloasTests
         Assert.That(pool.TryGetGloas(DataColumnSidecarGloasTestFixture.BlockRoot, Column + 1, out _), Is.False, "the column is part of the key");
     }
 
-    /// <summary>Both at one slot, so a shared slot index would let the later add hide the other fork's sidecar.</summary>
     [Test]
     public void Gloas_and_fulu_sidecars_at_one_slot_do_not_see_each_other()
     {
@@ -50,7 +45,6 @@ public class DataColumnSidecarPoolGloasTests
         Assert.That(pool.TryGetGloas(fuluRoot, Column, out _), Is.False);
     }
 
-    /// <summary>Competing blocks can share a slot; a per-slot root would let the later block hide the earlier one's columns.</summary>
     [Test]
     public void Competing_blocks_at_one_slot_each_keep_their_columns()
     {
@@ -101,7 +95,6 @@ public class DataColumnSidecarPoolGloasTests
         }, Throws.ArgumentException);
     }
 
-    /// <summary>Availability runs a KZG batch per candidate, and no arrival can tell a forgery from the genuine sidecar.</summary>
     [Test]
     public void A_root_and_column_keeps_only_its_earliest_candidates()
     {
@@ -119,7 +112,6 @@ public class DataColumnSidecarPoolGloasTests
         Assert.That(PendingFor(pool, DataColumnSidecarGloasTestFixture.BlockRoot), Is.EqualTo(earliest));
     }
 
-    /// <summary>A flood of forgeries, for this (root, column) or for others, must not cost an earlier candidate its place.</summary>
     [Test]
     public void A_flood_cannot_evict_an_earlier_candidate([Values] bool sameRootAndColumn)
     {
@@ -137,7 +129,6 @@ public class DataColumnSidecarPoolGloasTests
         Assert.That(pool.PendingGloasCount, Is.LessThanOrEqualTo(DataColumnSidecarPool.MaxPendingGloasSidecars));
     }
 
-    /// <summary>A refusing full pool must free up once its candidates' blocks can no longer be imminent, or one flood would block parking for good.</summary>
     [TestCase(Slot + 1, false, TestName = "A full pool keeps candidates through the slot after their own")]
     [TestCase(Slot + 2, true, TestName = "A full pool drops candidates two slots past their own")]
     public void A_full_pool_frees_space_only_once_its_candidates_are_stale(ulong currentSlot, bool parked)

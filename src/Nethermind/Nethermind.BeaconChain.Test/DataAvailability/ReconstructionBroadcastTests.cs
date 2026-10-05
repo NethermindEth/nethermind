@@ -15,7 +15,6 @@ public class ReconstructionBroadcastTests
     private const ulong Slot = 42;
     private const ulong ProposerIndex = 7;
 
-    /// <summary>Creates a fresh signed header for a synthetic reconstruction matrix.</summary>
     internal static SignedBeaconBlockHeader Header() => new()
     {
         Message = new BeaconBlockHeader
@@ -97,8 +96,7 @@ public class ReconstructionBroadcastTests
     public void A_held_column_from_a_different_block_than_the_matrix_is_refused_rather_than_paired_by_index_alone()
     {
         DataColumnSidecar[] fullMatrix = FullMatrix();
-        // Same slot/proposer, different block (different body root): the exact shape that was
-        // already found and fixed once in DataColumnReconstruction, one layer down from here.
+        // Same slot/proposer but distinct body root: matrices must remain block-specific.
         DataColumnSidecar foreignColumn = new()
         {
             Index = 1,

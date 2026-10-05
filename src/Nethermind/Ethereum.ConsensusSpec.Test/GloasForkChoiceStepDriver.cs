@@ -18,16 +18,7 @@ using static Ethereum.ConsensusSpec.Test.ForkChoiceStepDriver;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Replays one Gloas <c>fork_choice</c> vector's <c>steps.yaml</c> against a <see cref="ForkChoiceRunner"/> rooted at the
-/// vector's Gloas anchor: on_tick, on_block through the Gloas state transition, on_execution_payload_envelope, on_attestation,
-/// on_attester_slashing, on_payload_attestation_message and the time, head node, checkpoint, proposer boost and PTC vote checks,
-/// honoring each step's <c>valid</c> flag.
-/// </summary>
-/// <remarks>
-/// A block's payload attestations are not replayed here: the Gloas <c>on_block</c> applies them itself (specs/gloas/fork-choice.md
-/// <c>notify_ptc_messages</c>), and the pyspec harness's own replay of them repeats the same writes.
-/// </remarks>
+/// <remarks>Gloas on_block already applies body payload votes (specs/gloas/fork-choice.md notify_ptc_messages); do not replay them twice.</remarks>
 internal static class GloasForkChoiceStepDriver
 {
     private sealed class InMemoryStateProvider : IForkChoiceStateProvider, IGloasBlockStateProvider
@@ -41,7 +32,6 @@ internal static class GloasForkChoiceStepDriver
         public BeaconStateGloas? GetGloasBlockState(Hash256 blockRoot) => States.GetValueOrDefault(blockRoot);
     }
 
-    /// <summary>The execution layer of the pyspec harness, which accepts every payload.</summary>
     internal sealed class ValidPayloadNotifier : INewPayloadNotifier
     {
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => ExecutionStatus.Valid;
@@ -64,7 +54,6 @@ internal static class GloasForkChoiceStepDriver
 
     private static readonly ForkDriver<BeaconStateGloas> Transition = (ForkDriver<BeaconStateGloas>)ForkDriver.ByName["gloas"];
 
-    /// <returns>The fork choice store after the last step, for callers that inspect more than the vector's own checks.</returns>
     public static ForkChoiceRunner Run(string casePath)
     {
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_state.ssz_snappy")), out BeaconStateGloas anchorState);
@@ -84,7 +73,6 @@ internal static class GloasForkChoiceStepDriver
         return runner;
     }
 
-    /// <summary>The vector's own <c>config.yaml</c> when present, otherwise the mainnet config with Gloas live from genesis, the fork the vector's spec module is.</summary>
     private static BeaconChainSpec CaseSpec(string casePath) =>
         File.Exists(Path.Combine(casePath, "config.yaml")) ? FuluDriverSupport.CaseSpec(casePath) : FuluDriverSupport.TransitionSpec(0);
 
@@ -109,11 +97,7 @@ internal static class GloasForkChoiceStepDriver
             throw new NotImplementedInDriverException($"step {stepIndex}: unrecognized step shape '{string.Join(",", Keys(step))}' has no entry point in this driver.");
     }
 
-    /// <summary>
-    /// The Gloas state transition on a copy of the parent's post-state, then <c>on_block</c> and the body replay of the
-    /// pyspec harness's <c>add_block</c>; a block whose parent state is unknown goes to fork choice with the anchor state,
-    /// as <c>on_block</c> refuses an unknown parent before any state transition.
-    /// </summary>
+    /// <summary>Transitions a parent-state copy and replays the pyspec body; unknown parents go directly to on_block for rejection.</summary>
     private static void RunBlockStep(Context context, string key, bool expectedValid, int stepIndex)
     {
         byte[] ssz = context.Read(key);
@@ -160,10 +144,7 @@ internal static class GloasForkChoiceStepDriver
         }
     }
 
-    /// <summary>
-    /// The spec's <c>on_execution_payload_envelope</c>: verification against the post-state of the block the envelope names,
-    /// then the <c>store.payloads</c> write. Only an envelope whose bid commits to no blobs is available without sidecars.
-    /// </summary>
+    /// <summary>Verifies an envelope against its block's post-state and records its payload; without sidecars only a no-blob bid is available.</summary>
     private static void RunEnvelopeStep(Context context, string key, bool expectedValid, int stepIndex)
     {
         SignedExecutionPayloadEnvelope.Decode(context.Read(key), out SignedExecutionPayloadEnvelope signedEnvelope);

@@ -29,14 +29,10 @@ public class MerkleProofTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(MerkleProofCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_fork_has_vectors_in_the_archive([Values] ConsensusPreset preset) =>
         Assert.That(FuluDriverSupport.TestedCases<MerkleProofCase>(preset, MinimalCases, MainnetCases).Select(static testCase => testCase.Fork).Distinct(),
             Is.EquivalentTo(Forks));
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Fulu_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(

@@ -21,7 +21,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Times the start-up stored-column check on a RocksDB store that holds a whole retention window, the cost the driver would wait for if the check ran on the start path.</summary>
 [Explicit("Measures the check on a real RocksDB table holding a full window; run it by name and read the output")]
 public class DataColumnSidecarPoolStoredRangeRocksDbTests
 {

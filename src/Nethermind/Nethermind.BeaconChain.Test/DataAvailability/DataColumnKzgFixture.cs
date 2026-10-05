@@ -9,13 +9,9 @@ using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>Builds real KZG cells/proofs/commitments for one blob, for DAS verification/reconstruction tests.</summary>
 internal static class DataColumnKzgFixture
 {
-    /// <summary>
-    /// A deterministic, always-valid blob: every 32-byte field element has only its low byte set,
-    /// which is trivially below the BLS modulus regardless of the element's byte order.
-    /// </summary>
+    // Only the low byte of each 32-byte field element is set, keeping it below the BLS modulus.
     public static byte[] MakeBlob(byte seed)
     {
         byte[] blob = new byte[Ckzg.BytesPerBlob];

@@ -19,18 +19,13 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// A finalized state is hundreds of megabytes over one TLS stream, and a dropped stream must not leave the execution layer
-/// without a consensus driver, while a provider that will never answer, or an answer that cannot be anchored, must still stop.
-/// </summary>
 public class CheckpointSyncRetryTests
 {
     private static readonly TimeSpan NoDelay = TimeSpan.FromMilliseconds(1);
 
-    /// <summary>Short enough that a stalled read ends quickly, long enough that a served local body on a loaded host never trips it and adds a retry.</summary>
+    /// <summary>Allow local response scheduling jitter while keeping stalled reads bounded.</summary>
     internal static readonly TimeSpan ReadStall = TimeSpan.FromSeconds(10);
 
-    /// <summary>Bounds a run that must end on its own, so a read that waits forever fails the test instead of hanging the run.</summary>
     private static readonly TimeSpan RunBound = TimeSpan.FromSeconds(60);
 
     public enum DownloadFailure
@@ -261,10 +256,6 @@ public class CheckpointSyncRetryTests
 
     private static BeaconChainStore NewStore() => new(new MemColumnsDb<BeaconChainDbColumns>(), GloasCheckpointFiles.Spec);
 
-    /// <summary>
-    /// A provider that keeps each pause under the stall timeout could otherwise hold startup without limit; the average rate is
-    /// enforced after the grace, and a body arriving well above it is read whole however long it takes.
-    /// </summary>
     [Test]
     public async Task A_body_below_the_minimum_rate_is_cut_and_one_above_it_is_not([Values] bool belowRate)
     {
@@ -328,7 +319,6 @@ public class CheckpointSyncRetryTests
         Assert.That(pool.Rented, Is.Zero);
     }
 
-    /// <summary>A declared size beyond the body limit is rejected before any pooled allocation.</summary>
     [Test]
     public void An_oversized_declared_body_is_refused_before_renting([Values(17L, 2147483648L)] long declared)
     {
@@ -345,7 +335,6 @@ public class CheckpointSyncRetryTests
         Assert.That(pool.Rented, Is.Zero);
     }
 
-    /// <summary>The byte limit constrains reads and growth even when a pooled array has extra capacity.</summary>
     [Test]
     public async Task Body_reads_respect_the_limit_even_when_the_pool_returns_a_larger_array([Values(17, 18)] int bytes)
     {
@@ -383,7 +372,7 @@ public class CheckpointSyncRetryTests
             ResponseHeadersTimeout = responseHeadersTimeout ?? ReadStall,
         };
 
-    /// <summary>The shared pool, counting the arrays rented from it and not yet returned, each rented cleared so its filled part is observable.</summary>
+    /// <summary>Clear rentals so written bytes remain observable; track every outstanding array.</summary>
     private sealed class OutstandingArrayPool : ArrayPool<byte>
     {
         private readonly HashSet<byte[]> _outstanding = [];

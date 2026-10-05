@@ -20,17 +20,12 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The importer's custody must be derived from the very node id discovery advertises, or the columns
-/// this node demands of a block and the columns it tells peers it custodies drift apart silently.
-/// </summary>
 public class DiscoveryNodeCustodySourceTests
 {
     [Test]
     public async Task Custody_is_derived_from_the_node_id_peers_read_off_the_local_enr()
     {
         await using BeaconDiscovery discovery = NewDiscovery(new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()));
-        // Resolves the identity and local custody exactly as Start does, without binding a socket.
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         Hash256 enrNodeId = discovery.LocalNodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1)!.Decompress().Hash;
 
@@ -51,7 +46,6 @@ public class DiscoveryNodeCustodySourceTests
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         NodeColumnCustody first = source.Current!;
 
-        // Discovery loads whatever identity the store holds, so a replaced key resolves to a new node id.
         store.PutMetadata(BeaconDiscovery.IdentityMetadataKey, TestItem.PrivateKeyB.KeyBytes);
         discovery.CreateDiscv5Services(IPAddress.Loopback);
         Assert.That(discovery.LocalCustody.NodeId, Is.Not.EqualTo(first.NodeId), "the identity swap the test relies on did not take");

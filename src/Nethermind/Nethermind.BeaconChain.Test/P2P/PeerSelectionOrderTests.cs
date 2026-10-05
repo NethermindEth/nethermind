@@ -12,7 +12,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>Peer selection runs while other loops report failures and receive statuses, so what it sorts by must not change under the sort.</summary>
 public class PeerSelectionOrderTests
 {
     // The sort throws on an inconsistent comparator, which needs more than 16 peers; a failure reported mid-sort must not reach it.
@@ -51,7 +50,6 @@ public class PeerSelectionOrderTests
         Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 4, 0, 2 }));
     }
 
-    // Held blocks start their column fetches together, so a fetch that took the best peers must leave the next one the idle custodians.
     [Test]
     public void Among_peers_not_in_cooldown_the_one_with_fewer_requests_in_flight_comes_first_whatever_its_head_slot()
     {
@@ -64,7 +62,6 @@ public class PeerSelectionOrderTests
         Assert.That(ordered, Is.EqualTo(new List<int> { 1, 3, 2, 0, 4 }), "idle by head slot, then busier, and a peer in cooldown last even when idle");
     }
 
-    // Sync passes 0 for a request that names its blocks by root, where no head is needed.
     [TestCase(0UL, "Sync peers for any head: 0 usable; left out 1 without status")]
     [TestCase(5UL, "Sync peers for head slot 5: 0 usable; left out 1 without status")]
     public async Task The_selection_log_names_the_head_asked_for_or_any_head(ulong minHeadSlot, string expected)

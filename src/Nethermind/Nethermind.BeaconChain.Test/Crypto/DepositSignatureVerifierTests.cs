@@ -12,10 +12,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// <c>is_valid_deposit_signature</c> calls <c>bls.Verify</c>, whose <c>CoreVerify</c> runs <c>KeyValidate</c>. A deposit
-/// that registers the infinity key with the infinity signature must be skipped, or the registry diverges from the spec.
-/// </summary>
 public class DepositSignatureVerifierTests
 {
     private const ulong Amount = 32_000_000_000;
@@ -29,7 +25,6 @@ public class DepositSignatureVerifierTests
         AllOxff,
     }
 
-    /// <summary>Only a valid key verifies; every other key is refused without throwing, so its deposit is skipped.</summary>
     [TestCase(DepositKey.Valid, ExpectedResult = true)]
     [TestCase(DepositKey.InfinityWithInfinitySignature, ExpectedResult = false)]
     [TestCase(DepositKey.InfinityWithRealSignature, ExpectedResult = false)]
@@ -70,7 +65,7 @@ public class DepositSignatureVerifierTests
         Assert.That(DepositSignatureVerifier.IsValid(BeaconChainSpec.Mainnet.GenesisValidatorsRoot, pubkey, credentials, Amount, signature), Is.False);
     }
 
-    /// <summary>Deposit signatures must belong to G2, as required by IETF BLS draft v4, CoreVerify section 2.7.</summary>
+    // IETF BLS CoreVerify 2.7 requires deposit signatures in G2.
     [Test]
     public void Deposit_signature_outside_G2_is_rejected([Values] bool addTorsion)
     {

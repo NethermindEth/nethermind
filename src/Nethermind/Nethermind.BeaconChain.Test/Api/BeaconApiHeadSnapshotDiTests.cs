@@ -14,7 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>Every API response describes one published get_head view (fork-choice.md).</summary>
 public class BeaconApiHeadSnapshotDiTests
 {
     [Test]

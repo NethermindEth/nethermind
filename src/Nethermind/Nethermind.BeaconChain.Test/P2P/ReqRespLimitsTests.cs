@@ -259,12 +259,10 @@ public class ReqRespLimitsTests
         Assert.That(slot3, Is.Null, "third concurrent request from the same peer refused");
         Assert.That(FailureCount(TestReqRespProtocol.ProtocolId, ReqRespFailureReason.LimitExceeded), Is.EqualTo(before + 1), "limit violation recorded");
 
-        // A different peer has its own budget: the cap is per-peer, not global to the protocol.
         ISessionContext peerB = NewPeerContext();
         IAsyncDisposable? otherPeerSlot = protocol.TryEnter(peerB, TestReqRespProtocol.ProtocolId);
         Assert.That(otherPeerSlot, Is.Not.Null, "a different peer is not affected by peer A's cap");
 
-        // Releasing a slot frees budget for the same peer to be admitted again.
         await slot1!.DisposeAsync();
         IAsyncDisposable? slot4 = protocol.TryEnter(peerA, TestReqRespProtocol.ProtocolId);
         Assert.That(slot4, Is.Not.Null, "releasing a slot allows another request to be admitted");
@@ -426,7 +424,6 @@ public class ReqRespLimitsTests
         Assert.That(cut!.Message, Does.Match(@"^timed out after 0\.1 s, the bound for the whole response, with \d chunks read$"));
     }
 
-    /// <summary>A timeout names the bound that fired: nothing within the first-chunk bound, or a later chunk not within the bound between chunks.</summary>
     [TestCase(1, 1_000, "timed out after 0.7 s waiting for the first chunk")]
     [TestCase(2, 400, "timed out after 0.2 s reading chunk 2")]
     [CancelAfter(60_000)]
@@ -442,7 +439,6 @@ public class ReqRespLimitsTests
         Assert.That(cut!.Message, Is.EqualTo(expected));
     }
 
-    /// <summary>A request the peer never reads is cut at the write bound, and the failure says so rather than blaming the response.</summary>
     [Test]
     [CancelAfter(60_000)]
     public void A_request_the_peer_never_reads_times_out_naming_the_write()
@@ -454,7 +450,6 @@ public class ReqRespLimitsTests
         Assert.That(cut!.Message, Is.EqualTo("timed out after 0.2 s writing the request"));
     }
 
-    /// <summary>A single-chunk exchange has one bound for the request and its answer.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_single_chunk_request_never_answered_times_out_naming_the_response([Values] bool metadata)
@@ -462,7 +457,6 @@ public class ReqRespLimitsTests
         Eth2PingProtocol protocol = new(new LocalMetadataSource()) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
         MetaDataProtocolV3 metadataProtocol = new(new LocalMetadataSource()) { TtfbTimeout = ShortTtfbTimeout, RespTimeout = ShortRespTimeout };
         Channel channel = new();
-        // Reads the request and never answers.
         Task drain = Task.Run(async () =>
         {
             while ((await channel.Reverse.ReadAsync(1, ReadBlockingMode.WaitAny)).Result == IOResult.Ok)
@@ -660,7 +654,6 @@ public class ReqRespLimitsTests
         }
     }
 
-    /// <summary>Exposes the protected inbound-concurrency gate for direct testing.</summary>
     private sealed class TestReqRespProtocol : ReqRespProtocolBase
     {
         public const string ProtocolId = "/test/reqresp-limits/1";
@@ -696,7 +689,6 @@ public class ReqRespLimitsTests
         }
     }
 
-    /// <summary>Exposes the protected chunked-response reader for direct testing.</summary>
     private sealed class TestBlocksProtocol(BeaconChainSpec spec) : BlocksProtocolBase(spec)
     {
         public const string ProtocolId = "/test/blocks-limits/1";
@@ -728,7 +720,6 @@ public class ReqRespLimitsTests
         return chunks;
     }
 
-    /// <summary>A stream whose reads never complete on their own, honoring only the caller's cancellation token.</summary>
     private sealed class NeverEndingStream : Stream
     {
         public override bool CanRead => true;
@@ -753,7 +744,6 @@ public class ReqRespLimitsTests
         public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 
-    /// <summary>Serves pre-built chunk byte segments back to back, waiting <paramref name="delayBeforeEachChunk"/> before starting each new one.</summary>
     private sealed class DrippingStream(IReadOnlyList<byte[]> chunks, TimeSpan delayBeforeEachChunk) : Stream
     {
         private int _chunkIndex = -1;

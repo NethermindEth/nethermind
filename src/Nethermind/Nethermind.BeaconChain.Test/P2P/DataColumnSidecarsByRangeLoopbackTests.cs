@@ -48,7 +48,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(served.Select(static s => (s.SignedBlockHeader!.Message!.Slot, s.Index)), Is.EqualTo(new[] { (slot, column) }));
     }
 
-    /// <summary>The host's clock must reach its by-range protocol, or it serves an incomplete range as if it were whole.</summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task A_host_with_a_clock_answers_resource_unavailable_below_the_columns_it_holds_completely(CancellationToken token)
@@ -111,7 +110,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(served, Has.Count.EqualTo(16 * columns.Length));
     }
 
-    /// <summary>A truncated or timed-out reply used to throw away every chunk already read, so the batch asked for all of them again.</summary>
     [Test]
     public async Task A_reply_that_fails_after_some_chunks_hands_those_chunks_to_the_caller()
     {
@@ -131,7 +129,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(partial.Message, Does.StartWith("Truncated response chunk"), "the failure text is the cause's, so it is classified as before");
     }
 
-    /// <summary>A stream that never opens must be cut at the fixed request timeout, not at the budget scaled for the chunks it would have carried.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_reply_that_delivers_nothing_is_cut_at_the_fixed_request_timeout_whatever_the_scaled_budget(CancellationToken token)
@@ -151,7 +148,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(Stopwatch.GetElapsedTime(startedAt), Is.LessThan(TimeSpan.FromSeconds(16)), "cut well before the 16 s minimum of any scaled budget");
     }
 
-    /// <summary>Once a peer delivers, it may take the scaled budget: 2 slots of 16 columns are cut neither at the fixed request timeout nor at one second per slot on top of it.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_reply_that_keeps_delivering_past_the_fixed_request_timeout_succeeds_within_the_scaled_budget(CancellationToken token)
@@ -174,7 +170,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
         Assert.That(served, Is.EqualTo(new[] { first }));
     }
 
-    /// <summary>A shutdown after some chunks arrived is not a peer failure: it must surface as cancellation, not as a partial reply that penalizes the peer.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_caller_cancelled_after_some_chunks_gets_cancellation_not_a_partial_reply(CancellationToken token)
@@ -269,7 +264,6 @@ public class DataColumnSidecarsByRangeLoopbackTests
     private static BeaconP2P CreateHost(BeaconChainStore store, DataColumnSidecarPool pool, SlotClock? clock = null) =>
         new(new BeaconChainConfig { P2PPort = 0 }, Spec, store, new BeaconChainStatusHolder(Spec, Timestamper.Default), new LocalMetadataSource(), pool, new ExecutionPayloadEnvelopePool(), LimboLogs.Instance, clock: clock);
 
-    /// <summary>A client whose fixed request budget is <see cref="ShortRequestTimeout"/>, far below any scaled by-range budget.</summary>
     private static BeaconP2P CreateShortTimeoutClient() =>
         new(new BeaconChainConfig { P2PPort = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new BeaconChainStatusHolder(Spec, Timestamper.Default),
             new LocalMetadataSource(), new DataColumnSidecarPool(), new ExecutionPayloadEnvelopePool(), LimboLogs.Instance)

@@ -10,12 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// The <c>node/peers</c> wire shape against beacon-APIs v5.0.0-alpha.2: <c>apis/node/peers.yaml</c>
-/// (<c>data</c> array plus <c>meta.count</c> of <c>type: number</c>) and <c>types/p2p.yaml#/Peer</c>
-/// (required <c>peer_id</c>, <c>enr</c> as an ENR string or <c>null</c>, <c>last_seen_p2p_address</c>,
-/// <c>state</c>, <c>direction</c>; no <c>agent_version</c>).
-/// </summary>
 public class NodePeersSchemaTests
 {
     private static readonly string[] PeerFields = ["peer_id", "enr", "last_seen_p2p_address", "state", "direction"];

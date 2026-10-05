@@ -24,11 +24,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// The production <c>is_data_available</c> on its own: which columns it asks for, and what it takes
-/// for a held column to count. Uses the real KZG sidecars of <see cref="ImportableBlobBlock"/>, so
-/// "verified" here means the real inclusion proof and cell proofs, not a stub.
-/// </summary>
 public class CustodySamplingAvailabilityTests
 {
     private static readonly Hash256 NodeId = new([.. Enumerable.Repeat((byte)0x37, 32)]);
@@ -131,11 +126,6 @@ public class CustodySamplingAvailabilityTests
         Assert.That(columns.Requested, Is.Empty, "the window is decided before any column is looked up");
     }
 
-    /// <summary>
-    /// The window is a wall-clock window, re-read at every check: one rule instance must change its
-    /// verdict on the same block as the clock advances, and epoch 0 stays inside the window until
-    /// the clock is strictly more than <c>MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS</c> epochs past it.
-    /// </summary>
     [Test]
     public void The_window_follows_the_wall_clock_at_every_check()
     {
@@ -156,10 +146,7 @@ public class CustodySamplingAvailabilityTests
         Assert.That(oneEpochPast, Is.True, "one epoch later the same instance sees the block leave the window");
     }
 
-    /// <summary>
-    /// deneb/fork-choice.md <c>is_data_available</c> needs a pre-Fulu block's blob sidecars, which this node cannot retrieve,
-    /// so inside the blob sidecar retention window such a block is never available; columns cannot stand in for them.
-    /// </summary>
+    // Pre-Fulu blocks need blob sidecars, not columns, inside the retention window (deneb/fork-choice.md).
     [TestCase(0UL, false)]
     [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests, false)]
     [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests + 1, true)]
@@ -182,10 +169,6 @@ public class CustodySamplingAvailabilityTests
         Assert.That(columns.Requested, Is.Empty, "a pre-Fulu block has blob sidecars, not columns");
     }
 
-    /// <summary>
-    /// Every anchor decodes only as a Fulu or Gloas state, and a block not after the anchor's finalized slot is refused before
-    /// <c>is_data_available</c> is asked, so no block before <c>FULU_FORK_EPOCH</c> reaches the rule on import.
-    /// </summary>
     [Test]
     public void A_block_not_after_the_anchor_finalized_slot_is_refused_before_availability_is_asked()
     {
@@ -218,7 +201,6 @@ public class CustodySamplingAvailabilityTests
         }
     }
 
-    /// <summary>Holds the given columns of the fixture block and records every lookup made against it.</summary>
     private sealed class RecordingColumnSource(ImportableBlobBlock chain, IEnumerable<ulong> held) : IDataColumnSource
     {
         private readonly HashSet<ulong> _held = [.. held];

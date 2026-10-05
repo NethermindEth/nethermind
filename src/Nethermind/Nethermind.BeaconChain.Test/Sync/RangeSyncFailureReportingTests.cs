@@ -20,11 +20,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// <see cref="RangeSync"/> reports every peer failure under the <see cref="PeerFailureReason"/> that describes
-/// what the peer did. The peer manager's fatal-session fast path keys off <see cref="PeerFailureReason.SessionClosed"/>,
-/// so a misclassified dead session would stay on a failure budget it can never work off.
-/// </summary>
 public class RangeSyncFailureReportingTests
 {
     private const ulong AnchorSlot = 10;
@@ -66,7 +61,6 @@ public class RangeSyncFailureReportingTests
         Assert.That(goodPeer.Reports, Is.Empty);
     }
 
-    /// <summary>A reply that fails after some blocks used to drop them, so the batch was fetched again from its first slot; the blocks it delivered are kept and the peer is still penalized.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_reply_that_fails_after_some_blocks_keeps_them_and_only_the_rest_is_requested(CancellationToken token)

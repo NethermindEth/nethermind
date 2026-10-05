@@ -94,7 +94,6 @@ public class ColumnGossipRouterGloasTests
     {
         yield return new TestCaseData(Snappy.CompressToArray([1, 2, 3]), ColumnGossipDropReason.InvalidSsz).SetName("invalid SSZ");
 
-        // One cell past the largest scheduled max_blobs_per_block is over compute_max_data_column_sidecar_size.
         int overLimit = (int)(DataColumnSidecarGloasSize.ComputeMax(Sepolia) - DataColumnSidecarGloasSize.FixedPartLength) / DataColumnSidecarGloasSize.BytesPerBlob + 1;
         yield return new TestCaseData(Encode(Sidecar(root: UnknownRoot, mutate: s => Widen(s, overLimit))), ColumnGossipDropReason.Oversized).SetName("over the computed size bound");
     }
@@ -195,7 +194,6 @@ public class ColumnGossipRouterGloasTests
         byte[] message = Encode(Sidecar());
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, message);
-        // The pinned pubsub library raises the topic's OnMessage for every message its validator Accepts.
         topic.Deliver(message);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -204,7 +202,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(Enum.GetValues<ColumnGossipDropReason>().Sum(router.GetDropCount), Is.Zero, "a second pass would count the sidecar as a duplicate");
     }
 
-    /// <summary>The spec orders verify_data_column_sidecar's REJECT after the block-seen IGNORE, so a held block convicts whether or not it was read.</summary>
     [Test]
     public void Out_of_range_index_on_its_subnet_is_rejected_once_its_block_is_held([Values] bool blockRead)
     {
@@ -222,7 +219,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(BlockRoot, Column + Eip7594DasConstants.DataColumnSidecarSubnetCount), Is.Empty);
     }
 
-    /// <summary>Stored pre-Gloas roots are public, so repeating one must not repeat a block decode.</summary>
     [TestCase(true, 1, TestName = "Sidecars naming a stored pre-Gloas block read it from the store once")]
     [TestCase(false, 0, TestName = "Sidecar no bid can match is dropped without a store read")]
     public void Sidecars_naming_a_stored_pre_gloas_block_read_the_store_at_most_once(bool wellFormed, long expectedReads)
@@ -254,10 +250,6 @@ public class ColumnGossipRouterGloasTests
         GloasAtOtherSlots,
     }
 
-    /// <summary>
-    /// Stored roots are public and outnumber any cache, and the pinned pubsub library does not penalise a REJECT, so a
-    /// peer cycling them must cost at most the slot's decode budget; a sidecar before the fork costs no decode at all.
-    /// </summary>
     [TestCase(StoredRoots.FuluAtGloasSlot, ColumnGossipRouter.NonGloasBlockCacheSize + 1, ColumnGossipRouter.StoreDecodesPerSlot)]
     [TestCase(StoredRoots.FuluBeforeFork, ColumnGossipRouter.NonGloasBlockCacheSize + 1, 0)]
     [TestCase(StoredRoots.GloasAtOtherSlots, ColumnGossipRouter.GloasBlockCacheSize + 1, ColumnGossipRouter.StoreDecodesPerSlot)]
@@ -288,7 +280,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.PendingGloasCount, Is.Zero);
     }
 
-    /// <summary>A peer spending the decode budget must not stop sidecars of a block this node already decoded from being accepted.</summary>
     [Test]
     public void Sidecar_of_a_cached_block_is_accepted_after_the_decode_budget_is_spent()
     {
@@ -307,7 +298,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
     }
 
-    /// <summary>The budget bounds decode work per slot, so an honest block read after it is spent must be accepted in the next slot.</summary>
     [Test]
     public void Spent_decode_budget_is_restored_at_the_next_slot()
     {
@@ -335,10 +325,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(nextSlot, Is.EqualTo(MessageValidity.Accepted));
     }
 
-    /// <summary>
-    /// A peer can spend the decode budget for free, so the sidecars of the canonical block at a recent slot must still be
-    /// accepted, and an early sidecar of a block not yet stored must still be parked.
-    /// </summary>
     [TestCase(true, 0UL, MessageValidity.Accepted, TestName = "Canonical block at the current slot is decoded after the budget is spent")]
     [TestCase(true, 1UL, MessageValidity.Accepted, TestName = "Canonical block at the previous slot is decoded after the budget is spent")]
     [TestCase(true, 2UL, MessageValidity.Ignored, TestName = "Canonical block at an older slot waits for the next slot's budget")]
@@ -363,7 +349,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Has.Length.EqualTo(1), "a block not yet stored costs no decode");
     }
 
-    /// <summary>The canonical block is the honest case, so decoding it must leave the whole budget for the blocks it does not cover.</summary>
     [Test]
     public void Decoding_the_canonical_block_does_not_spend_the_decode_budget()
     {
@@ -386,7 +371,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(router.GetDropCount(ColumnGossipDropReason.StoreDecodeBudgetSpent), Is.Zero);
     }
 
-    /// <summary>A cached non-Gloas root costs no decode, so repeating one must not spend the budget a held block needs.</summary>
     [Test]
     public void Repeated_stored_pre_gloas_root_spends_one_decode_of_the_budget()
     {
@@ -404,7 +388,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
     }
 
-    /// <summary>Unknown roots cost the store a key lookup, not a decode, so a flood of them must not deny the decode of a held block.</summary>
     [Test]
     public void Sidecars_for_blocks_not_stored_do_not_spend_the_decode_budget()
     {
@@ -421,10 +404,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(genuine, Is.EqualTo(MessageValidity.Accepted));
     }
 
-    /// <summary>
-    /// The validator is not told which peer sent a sidecar, so one peer can mint any number of distinct forgeries:
-    /// they must neither push out a candidate that arrived earlier nor stack KZG work on one (root, column).
-    /// </summary>
     [Test]
     public void Forged_flood_neither_evicts_an_earlier_candidate_nor_overfills_its_key([Values] bool sameKey)
     {
@@ -499,7 +478,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.TryGetGloas(root, Column, out _), Is.False);
     }
 
-    /// <summary>A held block's bid is within its epoch's blob limit, so a longer column naming it fails verify_data_column_sidecar.</summary>
     [TestCase(0UL, MessageValidity.Rejected, TestName = "Column over the blob limit naming a held block is rejected")]
     [TestCase(1UL, MessageValidity.Ignored, TestName = "Column over the blob limit naming a held block from the next slot is only ignored")]
     public void Column_over_the_blob_limit_is_convicted_only_by_a_held_block_and_a_slot_not_from_the_future(ulong slotsAhead, MessageValidity expected)
@@ -516,7 +494,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(BlockRoot, Column), Is.Empty, "a column no bid can match is never parked");
     }
 
-    /// <summary>Fulu and Gloas column topics are both live around the fork, so a flood on one must not spend the store reads of the other.</summary>
     [Test]
     public void Fulu_parent_slot_reads_and_gloas_block_decodes_have_separate_budgets([Values] bool spendFuluParentReads)
     {
@@ -568,7 +545,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty, "a candidate is kept only for a block this node may still receive");
     }
 
-    /// <summary>Checks that gloas/p2p-interface.md validation of indexed blocks survives a stored-root flood.</summary>
     [Test]
     public void Sidecars_of_a_stored_block_are_accepted_however_many_other_stored_blocks_are_named_first([Values] bool canonical)
     {
@@ -593,7 +569,6 @@ public class ColumnGossipRouterGloasTests
         Assert.That(pool.TryGetGloas(BlockRoot, Column, out _), Is.True);
     }
 
-    /// <summary>Stored summaries serve a restarted router without another block decode, including one written from a legacy record.</summary>
     [TestCase(false, TestName = "The_summary_of_a_stored_block_serves_a_router_started_after_a_restart")]
     [TestCase(true, TestName = "A_block_stored_before_the_summary_existed_is_decoded_once_and_then_served_from_its_summary")]
     public void Stored_summaries_serve_a_restarted_router_without_further_decodes(bool legacyBlockIndex)

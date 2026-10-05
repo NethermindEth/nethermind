@@ -14,17 +14,6 @@ using NUnit.Framework;
 
 namespace Ethereum.Ssz.Test;
 
-/// <summary>
-/// A dropped connection leaves gzip reporting a clean end of stream and the tar reader seeing no
-/// further entries, so a partial archive looks complete. Marking it complete caches the truncation
-/// until a human deletes the directory, and every suite reading it reports green on a fraction of
-/// its vectors: the ssz_generic suite ran 10 of 2519 that way without failing.
-/// <para/>
-/// The marker is also the only thing the fast path used to consult, so a cache directory emptied
-/// (or never populated) after its marker was written stayed "complete" forever: every fixture-backed
-/// suite then enumerated zero vectors and reported green. Seen on a real machine with three SszTests
-/// version directories holding nothing but <c>.completed</c>.
-/// </summary>
 [TestFixture]
 public class TestFixtureDownloadCompletenessTests
 {
@@ -98,8 +87,6 @@ public class TestFixtureDownloadCompletenessTests
         });
     }
 
-    // A marker written before subtrees were recorded holds only the version; it stays valid as long
-    // as the directory has content, so no cache is re-downloaded just because the marker got richer.
     [TestCase(false)]
     [TestCase(true)]
     public void A_marker_over_a_populated_directory_is_still_honored_without_a_download(bool recordsSubtree)
@@ -121,8 +108,6 @@ public class TestFixtureDownloadCompletenessTests
             "the content check must only defeat the fast path when there is nothing to run, not on every call");
     }
 
-    // A cache that lost one fork or suite subtree still holds files elsewhere, so the whole-directory
-    // content check cannot see the loss; only the subtrees recorded at extraction time can.
     [Test]
     public void A_marker_over_a_cache_missing_a_recorded_subtree_is_treated_as_absent_and_the_archive_is_downloaded_again()
     {
@@ -149,8 +134,6 @@ public class TestFixtureDownloadCompletenessTests
         });
     }
 
-    // A cache extracted under a narrower filter is populated, so the content check alone cannot tell
-    // it apart from a current one; only the tag written into the marker can.
     [Test]
     public void A_marker_written_for_a_different_extraction_tag_is_treated_as_absent_and_the_archive_is_downloaded_again()
     {
@@ -177,9 +160,6 @@ public class TestFixtureDownloadCompletenessTests
         });
     }
 
-    // Untagged callers (extract everything) keep the marker's historical content, the version, and a
-    // cache they wrote before tags existed must stay valid for them; a tagged caller over the same
-    // marker must not, since the version says nothing about which subtrees were kept.
     [TestCase(null, 0)]
     [TestCase("ssz_static=*", 1)]
     public void A_marker_holding_the_version_is_honored_only_by_untagged_callers(string? extractionTag, int expectedDownloads)
@@ -204,8 +184,6 @@ public class TestFixtureDownloadCompletenessTests
         });
     }
 
-    // Selective: the filter rejects every entry. Full: the tar carries only a directory entry. Both
-    // leave the target with nothing a suite could enumerate, so both must refuse to mark it complete.
     [TestCase(true)]
     [TestCase(false)]
     public void An_archive_that_yields_no_files_is_refused_and_leaves_no_completion_marker(bool selective)
@@ -228,7 +206,7 @@ public class TestFixtureDownloadCompletenessTests
         });
     }
 
-    /// <summary>The cache root is shared with every other test process on the machine; a fixed suite name lets two runs delete each other's directories.</summary>
+    // Cache roots are shared across processes; fixed suite names let concurrent runs delete each other's directories.
     private static string UniqueSuite(string name) => $"{name}-{Guid.NewGuid():N}";
 
     private static string CachePathFor(string suite) =>
@@ -287,10 +265,7 @@ public class TestFixtureDownloadCompletenessTests
         return gz.ToArray();
     }
 
-    /// <summary>
-    /// A raw socket rather than HttpListener, which needs a URL reservation on Windows. Serves one
-    /// request with a caller-chosen Content-Length so a short body can be produced deliberately.
-    /// </summary>
+    // HttpListener requires a URL reservation on Windows.
     private sealed class StubArchiveServer : IDisposable
     {
         private readonly TcpListener _listener;
@@ -329,7 +304,6 @@ public class TestFixtureDownloadCompletenessTests
 
         public string UrlTemplate { get; }
 
-        /// <summary>Connections accepted so far; 0 proves the fast path was taken, 1 that a download happened.</summary>
         public int RequestCount => Volatile.Read(ref _requestCount);
 
         private static void ReadRequestHeaders(NetworkStream stream)

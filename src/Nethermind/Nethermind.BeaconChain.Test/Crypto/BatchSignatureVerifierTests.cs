@@ -34,12 +34,7 @@ public class BatchSignatureVerifierTests
         return set!;
     }
 
-    /// <summary>
-    /// Signs with <paramref name="signerKeyIndex"/>'s real key over a real message, but claims a
-    /// different, unrelated public key. Both points decode and subgroup-check cleanly (they are
-    /// genuine keys), so this is invalid purely because the pairing equation does not hold -
-    /// distinct from a malformed-encoding rejection.
-    /// </summary>
+    // Both keys are valid subgroup points; only the mismatched pairing makes this signature invalid.
     private static BlsSignatureSet MakeMismatchedSet(int signerKeyIndex, byte[] message, int claimedKeyIndex)
     {
         byte[] sig = Sign(DeriveKey(signerKeyIndex), message);
@@ -75,12 +70,7 @@ public class BatchSignatureVerifierTests
     [Test]
     public void Cancellation_attack_defeated_by_randomization()
     {
-        // Two independent keys sign the SAME message, then the (pubkey, signature) pairing is
-        // swapped: set1 claims sk1's real signature belongs to pk2, set2 claims sk2's real
-        // signature belongs to pk1. Each set alone is an invalid signature, but their unrandomized
-        // pairing terms cancel exactly:
-        //   e(H(m),pk2)*e(sig1,-G) * e(H(m),pk1)*e(sig2,-G) = e(H(m),G)^((sk2-sk1)+(sk1-sk2)) = 1
-        // for ANY sk1 != sk2 - this is the classic attack an unrandomized batch cannot detect.
+        // Swapped same-message signatures cancel in an unrandomized batch: exponents (sk2-sk1)+(sk1-sk2)=0.
         byte[] message = Msg(0xAB);
         Bls.SecretKey sk1 = DeriveKey(1);
         Bls.SecretKey sk2 = DeriveKey(2);
@@ -93,8 +83,7 @@ public class BatchSignatureVerifierTests
         Assert.That(BlsSignatureSet.TryCreate(pk1, message, sig2, out BlsSignatureSet? set2), Is.True);
         List<BlsSignatureSet> sets = [set1!, set2!];
 
-        // Prove this is a genuine cancellation and not just "a wrong signature fails": the naive,
-        // unrandomized accumulation (an implicit scalar of 1 for every set) must actually accept.
+
         Bls.Pairing naive = new(hashOrEncode: true, BatchSignatureVerifier.Cryptosuite);
         naive.Aggregate(set1!.PublicKey, set1.Signature, set1.Message);
         naive.Aggregate(set2!.PublicKey, set2.Signature, set2.Message);
@@ -164,8 +153,7 @@ public class BatchSignatureVerifierTests
         Assert.That(set, Is.Null);
     }
 
-    // Choice: an empty batch has no constraint to violate, so it verifies true - the same
-    // vacuous-truth convention a serial loop over zero sets (all() of an empty sequence) gives.
+
     [Test]
     public void Empty_batch_verifies_true() =>
         Assert.Multiple(() =>

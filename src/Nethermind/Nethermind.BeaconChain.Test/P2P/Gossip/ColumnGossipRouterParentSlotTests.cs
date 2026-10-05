@@ -63,7 +63,6 @@ public class ColumnGossipRouterParentSlotTests
             verdicts[i] = router.Handle(Subnet, gloasTopic: false, Message(sidecar, parents[i], proposer: (ulong)i));
         }
 
-        // A decoded parent's slot is cached, so it still convicts once the budget is spent.
         MessageValidity cachedAfterSpent = router.Handle(Subnet, gloasTopic: false, Message(sidecar, parents[0], proposer: 1000));
 
         clock.UtcNow = clock.UtcNow.AddSeconds(Spec.SecondsPerSlot);
@@ -77,7 +76,6 @@ public class ColumnGossipRouterParentSlotTests
         Assert.That(nextSlot, Is.EqualTo(MessageValidity.Rejected));
     }
 
-    // Every column of a block names the same parent, so its cached slot must answer the rule without a store lookup.
     [Test]
     public void Parent_slot_once_read_applies_the_rule_without_a_store_lookup()
     {

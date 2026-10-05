@@ -29,7 +29,6 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    // epoch 412,500: past FuluForkEpoch (411,392) so BeaconStateCodec accepts it, and Presets.SlotsPerEpoch-aligned.
     private const ulong StateEpoch = 412_500;
     private const ulong StateSlot = StateEpoch * 32;
 
@@ -40,11 +39,6 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         _host.Client.Timeout = TimeSpan.FromSeconds(5);
     }
 
-    /// <summary>
-    /// One validator per beacon-api status string, each constructed so only one branch of
-    /// get_validator_status's rules can fire; the expected label is the test author's own reading
-    /// of that spec, written down before the request is made, not a value read off the response.
-    /// </summary>
     private static readonly (string ExpectedStatus, Validator Validator)[] StatusFixture =
     [
         ("pending_initialized", MakeValidator(activationEligibility: Presets.FarFutureEpoch, activation: Presets.FarFutureEpoch, exit: Presets.FarFutureEpoch, withdrawable: Presets.FarFutureEpoch, slashed: false, effectiveBalance: 32_000_000_000)),
@@ -214,7 +208,6 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         Assert.That(data[0].GetProperty("index").GetString(), Is.EqualTo("0"));
     }
 
-    /// <summary>apis/beacon/states/validators.yaml rejects unknown status filters with 400.</summary>
     [Test]
     public async Task Unknown_validator_status_is_rejected([Values("bogus", "active_unknown", "ACTIVE")] string status)
     {
@@ -224,7 +217,6 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>apis/beacon/states/validators.yaml and validator_balances.yaml limit GET requests to 64 IDs.</summary>
     [Test]
     public async Task Validator_id_limit_precedes_state_resolution(
         [Values("validators", "validator_balances")] string endpoint,

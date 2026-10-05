@@ -17,11 +17,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// beacon-APIs v5.0.0-alpha.2 <c>postStateValidators</c>, <c>postStateValidatorBalances</c> and
-/// <c>postStateValidatorIdentities</c>. The fixture registry has one validator per distinct activation
-/// epoch and balance, so a wrong index, field or filter reads a different value.
-/// </summary>
 public class BeaconStatesValidatorPostTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -140,7 +135,6 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         Assert.That(data.EnumerateArray().Select(e => e.GetProperty("index").GetString()), Is.EqualTo(new[] { "1" }));
     }
 
-    /// <summary>apis/beacon/states/validator_balances.yaml and validator_identities.yaml: an absent or empty body selects every validator.</summary>
     [Test]
     public async Task Optional_body_absent_or_empty_selects_every_validator(
         [Values("validator_balances", "validator_identities")] string endpoint,
@@ -161,7 +155,6 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         await ReadEnvelope(response, expectedFinalized: true);
     }
 
-    /// <summary>A bad state id or request body is 400, an unretained state 404, a non-JSON body 415 and an unsupported Accept 406.</summary>
     [Test]
     public async Task Errors_follow_the_published_responses(
         [Values("validators", "validator_balances", "validator_identities")] string endpoint,
@@ -184,7 +177,6 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
     }
 
-    /// <summary>apis/beacon/states/validators.yaml makes statuses uniqueItems; a repeat would multiply the per-validator matching.</summary>
     [Test]
     public async Task Validators_post_with_a_repeated_status_is_400()
     {
@@ -192,7 +184,6 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest));
     }
 
-    /// <summary>apis/beacon/states/validators.yaml marks the POST body required.</summary>
     [Test]
     public async Task Validators_post_without_a_body_is_400()
     {

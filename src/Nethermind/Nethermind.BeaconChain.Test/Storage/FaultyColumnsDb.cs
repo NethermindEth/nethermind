@@ -9,7 +9,6 @@ using Nethermind.Db;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>An in-memory column database whose data column table can be made to fail reads or writes, as a faulting or disposed disk does.</summary>
 internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
 {
     private readonly MemColumnsDb<BeaconChainDbColumns> _inner = new();
@@ -22,10 +21,10 @@ internal sealed class FaultyColumnsDb : IColumnsDb<BeaconChainDbColumns>
 
     public bool FailDeletes { set => _sidecars.FailDeletes = value; }
 
-    /// <summary>Runs once after the next read of a 40-byte record key, between the read and whatever the reader does with it.</summary>
+    // Callback runs after the next 40-byte record read, before its consumer continues.
     public Action? AfterNextRecordRead { set => _sidecars.AfterNextRecordRead = value; }
 
-    /// <summary>Runs before every read of a canonical index slot entry, so a test can hold a reader there.</summary>
+    // Callback blocks canonical-slot readers before their underlying read.
     public Action? BeforeCanonicalSlotRead { set => _canonicalIndex.BeforeSlotRead = value; }
 
     public IDb GetColumnDb(BeaconChainDbColumns key) => key switch

@@ -17,21 +17,9 @@ using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Replays one <c>fork_choice</c> or <c>sync</c> vector's <c>steps.yaml</c> script against
-/// <see cref="ForkChoiceRunner"/>: on_tick, on_block (via the real <see cref="StateTransition"/>
-/// pipeline), on_attestation, on_attester_slashing, on_payload_info and checks (head, justified/finalized
-/// checkpoints, proposer boost root, get_proposer_head) and PeerDAS column-sidecar availability.
-/// Honors each step's <c>valid</c> flag - an invalid step must be rejected, and acceptance is
-/// reported as a failure, never silently treated as a pass. Step shapes with no entry point in
-/// this driver throw <see cref="NotImplementedInDriverException"/>, named, rather than being
-/// skipped.
-/// </summary>
 /// <remarks>
-/// A block the execution layer declared INVALID through on_payload_info is refused, and its ancestors back to
-/// <c>latest_valid_hash</c> are invalidated. Its body is still replayed: the pyspec harness's <c>add_block</c> with
-/// <c>is_optimistic</c> stores it and replays its attestations and attester slashings before marking the step
-/// invalid, whereas a refused block in the fork_choice format replays nothing.
+/// Pyspec's optimistic add_block replays body votes/slashings before invalidating an EL-INVALID block;
+/// a refused fork_choice block replays nothing. Ancestors are invalidated back to latest_valid_hash.
 /// </remarks>
 internal static class ForkChoiceStepDriver
 {
@@ -52,7 +40,6 @@ internal static class ForkChoiceStepDriver
         public ExecutionStatus NotifyNewPayload(BeaconBlockBody body) => status;
     }
 
-    /// <summary>An on_payload_info step: the execution layer's answer for one payload, by <c>payloadStatus</c> field.</summary>
     internal sealed record PayloadInfo(string Status, Hash256? LatestValidHash)
     {
         public bool IsInvalid => Status is "INVALID" or "INVALID_BLOCK_HASH";
@@ -66,10 +53,7 @@ internal static class ForkChoiceStepDriver
         };
     }
 
-    /// <returns>The fork choice store after the last step, for callers that inspect more than the vector's own checks.</returns>
     public static ForkChoiceRunner Run(string casePath) => Run(casePath, out _);
-
-    /// <inheritdoc cref="Run(string)"/>
     /// <param name="blockRejections">Why each block step, in order, was refused; <c>null</c> for an accepted block.</param>
     internal static ForkChoiceRunner Run(string casePath, out List<Exception?> blockRejections)
     {
@@ -153,14 +137,7 @@ internal static class ForkChoiceStepDriver
         throw new NotImplementedInDriverException($"step {stepIndex}: unrecognized step shape '{string.Join(",", Keys(step))}' has no entry point in this driver.");
     }
 
-    /// <summary>
-    /// Applies the block's state transition on a clone of its parent's post-state (never the
-    /// parent itself - forks must not share mutable state) with a fresh <see cref="EpochCache"/>
-    /// per call, since its balance memo is documented as not fork-aware (see BlockImporter's own
-    /// "fork branch: stateless hasher, fresh balance memo" comment for the same rule in production
-    /// code) and this driver deliberately explores conflicting branches within one vector.
-    /// </summary>
-    /// <returns>Why the block was refused, or <c>null</c>.</returns>
+    /// <summary>Transitions a clone of the parent state with a fresh EpochCache because its balance memo is not fork-aware.</summary>
     private static Exception? RunBlockStep(string casePath, string blockKey, bool expectedValid, ForkChoiceRunner runner, InMemoryStateProvider stateProvider, PubkeyCache pubkeys, int stepIndex, DataColumnSidecar[]? dataColumns, bool executionValid, Dictionary<Hash256, PayloadInfo> payloadInfos)
     {
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, blockKey + ".ssz_snappy"));
@@ -215,17 +192,13 @@ internal static class ForkChoiceStepDriver
         return rejection;
     }
 
-    /// <summary>
-    /// Marks the ancestors of an INVALID payload invalid up to the one whose payload hash is <paramref name="latestValidHash"/>, as
-    /// the pyspec harness's <c>add_optimistic_block</c> does; a parent that is itself the latest valid payload keeps its status.
-    /// </summary>
+    /// <summary>Invalidates payload ancestors up to, but excluding, <paramref name="latestValidHash"/>, matching pyspec add_optimistic_block.</summary>
     private static void InvalidateBackToLatestValidHash(ForkChoiceRunner runner, Hash256 parentRoot, Hash256? latestValidHash)
     {
         if (latestValidHash is not null && runner.ContainsBlock(parentRoot) && runner.GetExecutionBlockHash(parentRoot) != latestValidHash)
             runner.OnInvalidExecutionPayload(parentRoot, latestValidHash);
     }
 
-    /// <summary>Decodes the PeerDAS 'columns' sequence of a block step into the sidecars <see cref="ForkChoiceRunner.OnBlock"/> checks the block's data availability against.</summary>
     private static DataColumnSidecar[] LoadDataColumnSidecars(string casePath, YamlSequenceNode columns)
     {
         DataColumnSidecar[] sidecars = new DataColumnSidecar[columns.Children.Count];
@@ -329,9 +302,7 @@ internal static class ForkChoiceStepDriver
             Assert.Fail($"step {stepIndex}: checks.{check} expected {expected}, actual {actual}");
     }
 
-    // --- Minimal, dependency-free YAML mapping helpers (mirrors FuluDriverSupport.ParseFlowMap's
-    // approach of comparing scalar key text directly, rather than trusting YamlNode's dictionary
-    // equality semantics for a synthesized lookup key). ---
+    // Compare scalar keys directly; synthesized YamlNode keys need not compare equal.
 
     internal static bool TryGetChild(YamlMappingNode map, string key, out YamlNode? value)
     {

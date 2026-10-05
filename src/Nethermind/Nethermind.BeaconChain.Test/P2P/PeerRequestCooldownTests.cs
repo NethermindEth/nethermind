@@ -14,10 +14,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// A peer that failed a request is picked again by the next batch when selection is by head slot alone, so it is offered after the others
-/// for a short while; it is never withheld, because it can be the only peer that has what is missing.
-/// </summary>
 public class PeerRequestCooldownTests
 {
     private const ulong HeadLead = 100;
@@ -42,7 +38,6 @@ public class PeerRequestCooldownTests
         Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }), "the cooldown is not a ban");
     }
 
-    // The window is short enough that a peer that recovered is used again within a few batches, and long enough to outlast the batch that failed.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_peer_is_offered_after_the_others_for_thirty_seconds_after_a_failed_request(CancellationToken token)
@@ -70,7 +65,6 @@ public class PeerRequestCooldownTests
         Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id }), "a lone custodian is used, not skipped");
     }
 
-    // A peer can serve blocks while failing columns, so the requests it does serve must not clear what the failed one earned.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_served_request_does_not_end_the_cooldown(CancellationToken token)
@@ -83,7 +77,6 @@ public class PeerRequestCooldownTests
         Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }));
     }
 
-    // The requester broke the protocol on a stream it opened; none of our requests to it failed.
     [Test]
     [CancelAfter(60_000)]
     public async Task An_inbound_violation_does_not_put_the_peer_behind_others(CancellationToken token)

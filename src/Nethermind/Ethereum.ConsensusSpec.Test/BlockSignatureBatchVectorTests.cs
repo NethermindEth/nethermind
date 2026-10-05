@@ -18,13 +18,7 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Differential of the batched block signature path against the serial one it replaced, over the
-/// consensus-spec <c>sanity/blocks</c> vectors and the signature-bearing <c>operations</c> vectors: both
-/// must accept the same inputs with the same post-state root and refuse the same inputs with the same
-/// exception type and message, and both must agree with the vector.
-/// </summary>
-/// <remarks>Mainnet-preset vectors only, enumerated when <c>NETHERMIND_CONSENSUS_SPEC_MAINNET=1</c>.</remarks>
+/// <remarks>Mainnet only; requires NETHERMIND_CONSENSUS_SPEC_MAINNET=1.</remarks>
 [TestFixture]
 public class BlockSignatureBatchVectorTests
 {
@@ -50,8 +44,6 @@ public class BlockSignatureBatchVectorTests
         Outcome batched = RunOperation(testCase, batched: true);
         AssertAlike(testCase.CasePath, serial, batched);
     }
-
-    // An emptied source or a renamed suite would leave the differential running over nothing and still green.
     [Test]
     public void Every_fork_and_signature_operation_has_vectors()
     {

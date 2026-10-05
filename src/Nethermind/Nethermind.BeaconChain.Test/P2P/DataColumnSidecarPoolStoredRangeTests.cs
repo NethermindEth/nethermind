@@ -35,7 +35,6 @@ public class DataColumnSidecarPoolStoredRangeTests
 
     private static Hash256 RootAt(ulong slot) => Keccak.Compute($"canonical {slot}");
 
-    /// <summary>A store whose canonical blocks from <see cref="First"/> to <see cref="Last"/> have every sampled column, less <paramref name="skip"/>, written through a pool.</summary>
     private static (FaultyColumnsDb Db, BeaconChainStore Store, DataColumnSidecarPool Pool) StoreRange(bool withIdentity = true, params (ulong Slot, ulong Column)[] skip)
     {
         FaultyColumnsDb db = new();
@@ -291,7 +290,6 @@ public class DataColumnSidecarPoolStoredRangeTests
         Assert.That(restarted.EarliestCompletelyServableSlot, Is.EqualTo(Last + 6));
     }
 
-    /// <summary>A service over a database with a recorded floor, whose stored range check is held at its first read; <paramref name="entered"/> is set when it gets there.</summary>
     private static (IContainer Container, DataColumnSidecarPool Pool, ulong Top, ManualResetEventSlim Release) HoldStoredRangeCheck(out ManualResetEventSlim entered, out BeaconChainService service, bool singleSlot = false)
     {
         FaultyColumnsDb db = new();

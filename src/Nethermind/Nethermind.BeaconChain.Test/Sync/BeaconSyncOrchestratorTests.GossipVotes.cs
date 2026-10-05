@@ -23,16 +23,8 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The gossip work the router hands to fork choice: seen sets it cannot fill itself for slashings, since only the importer verifies
-/// signatures, the bounds on the verifies that votes cost, and the order votes and slot ticks reach fork choice in.
-/// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
-    /// <summary>
-    /// phase0/p2p-interface.md <c>attester_slashing</c>: IGNORE a slashing once every index in the intersection of its two
-    /// attestations is in the seen set. Only the intersection is marked, so a slashing over another common index is still new.
-    /// </summary>
     [Test]
     public async Task Attester_slashing_indices_are_marked_seen_only_after_fork_choice_accepts_the_slashing([Values] bool accepted, [Values] bool gloas)
     {
@@ -61,12 +53,6 @@ public partial class BeaconSyncOrchestratorTests
                 : GossipMessageValidatorTests.Encode(GossipMessageValidatorTests.FuluSlashing(indices1, indices2, secondSource, secondTarget: 4)));
     }
 
-    /// <summary>
-    /// gloas/p2p-interface.md <c>payload_attestation_message</c> IGNOREs a repeat only after a valid vote, but the router cannot check the
-    /// signature and each vote under a PTC member's index costs fork choice a BLS verify. A (slot, validator) pair is therefore
-    /// verified at most the attempt limit of times while none verifies, so a flood of forged repeats has a bounded cost, and other
-    /// validators' votes are unaffected.
-    /// </summary>
     [Test]
     public async Task Payload_attestation_pair_is_verified_at_most_the_attempt_limit_of_times_whatever_the_signature()
     {
@@ -94,10 +80,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations, Is.All.TypeOf<PayloadAttestationMessage>());
     }
 
-    /// <summary>
-    /// A forged vote that fork choice refuses leaves the pair open, so the member's genuine vote behind it still reaches fork choice; once
-    /// a vote is accepted the pair is closed and later votes for it are dropped before the queue.
-    /// </summary>
     [Test]
     public async Task Payload_attestation_genuine_vote_after_a_refused_forgery_is_verified_and_closes_the_pair()
     {
@@ -122,7 +104,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(router.GetDropCount(GossipDropReason.Duplicate), Is.EqualTo(1));
     }
 
-    /// <summary>gloas/p2p-interface.md IGNOREs every vote after the first valid one: votes queued before that one is processed must not reach fork choice again.</summary>
     [Test]
     public async Task Payload_attestation_votes_queued_before_the_first_verifies_are_applied_once()
     {
@@ -138,10 +119,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(1));
     }
 
-    /// <summary>
-    /// A vote the full vote channel refuses must not use up its pair's attempts or its message id: while the channel is full every
-    /// copy is refused, and once it drains a later copy, identical or not, is still verified.
-    /// </summary>
     [Test]
     public async Task Payload_attestation_refused_by_a_full_vote_channel_can_still_be_verified_later([Values] bool identicalCopy)
     {
@@ -186,10 +163,6 @@ public partial class BeaconSyncOrchestratorTests
         Aggregate,
     }
 
-    /// <summary>
-    /// A forged vote under a PTC member's index, a forged aggregate or a forged slashing costs a BLS verify and is never penalized,
-    /// so a flood of them is cheap to send: it must neither drop a gossip block nor hold one behind more than one batch of votes.
-    /// </summary>
     [Test]
     public async Task Gossip_vote_flood_does_not_drop_or_starve_a_gossip_block([Values] FloodKind kind)
     {
@@ -279,11 +252,6 @@ public partial class BeaconSyncOrchestratorTests
         }
     }
 
-    /// <summary>
-    /// gloas/fork-choice.md <c>on_payload_attestation_message</c> checks a gossip vote against the store's current slot, so every vote
-    /// queued before a slot tick must reach fork choice before that tick moves the store to the next slot, however many are queued,
-    /// and every vote queued after the tick must reach it after the tick.
-    /// </summary>
     [Test]
     public async Task Payload_attestations_reach_fork_choice_in_order_with_a_slot_tick(
         [Values(1, BeaconSyncOrchestrator.VotesPerPass, BeaconSyncOrchestrator.VotesPerPass + 3)] int votesBeforeTick)
@@ -313,10 +281,6 @@ public partial class BeaconSyncOrchestratorTests
             Is.EqualTo(Enumerable.Repeat(ticksBefore, votesBeforeTick).Concat(Enumerable.Repeat(ticksBefore + 1, votesAfterTick))));
     }
 
-    /// <summary>
-    /// A tick skipped behind a newer one never ticks fork choice by itself, yet a vote queued after it is checked against that slot
-    /// (gloas/fork-choice.md <c>on_payload_attestation_message</c>): fork choice must reach the skipped tick before the vote, not the newer tick.
-    /// </summary>
     [Test]
     public async Task Payload_attestation_queued_after_a_skipped_tick_reaches_fork_choice_at_that_tick()
     {
@@ -337,7 +301,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after the skipped tick and before the newest");
     }
 
-    /// <summary>Votes stamped with a tick stuck behind a full work channel cannot be read yet, so only a bounded number may wait; earlier votes stay queued.</summary>
     [Test]
     public async Task Votes_stamped_with_a_tick_waiting_on_a_full_work_channel_are_bounded()
     {
@@ -377,7 +340,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations, Has.Count.EqualTo(earlyVotes + BeaconSyncOrchestrator.MaxVotesAheadOfTick), "the votes queued before the tick and the bounded ones are verified");
     }
 
-    /// <summary>A tick skipped behind a newer stamped one that never reached the work channel still ticks fork choice before the vote read by the next pass.</summary>
     [Test]
     public async Task Payload_attestation_read_in_a_later_pass_still_reaches_fork_choice_at_the_skipped_tick()
     {
@@ -400,10 +362,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.TicksAtGossipOperations, Is.EqualTo((int[])[ticksBefore + 1]), "the vote is verified after that tick");
     }
 
-    /// <summary>
-    /// The allowance for votes waiting on a tick is given back when they are read or refused, so it does not run out over the node's lifetime:
-    /// after both paths ran, a full allowance of votes is queued without a drop.
-    /// </summary>
     [Test]
     public async Task Votes_stamped_with_a_tick_do_not_use_up_the_bound_once_read_or_refused()
     {
@@ -422,7 +380,6 @@ public partial class BeaconSyncOrchestratorTests
             }
         }
 
-        // Read path: votes stamped with a queued tick are read after it.
         await harness.Orchestrator.EnqueueSlotTickAsync(nextTick++, CancellationToken.None);
         for (int i = 0; i < 5; i++)
         {
@@ -431,7 +388,6 @@ public partial class BeaconSyncOrchestratorTests
 
         await DrainAsync();
 
-        // Refused path: the vote channel is full when votes stamped with a queued tick arrive.
         for (int i = 0; i < BeaconSyncOrchestrator.VoteQueueCapacity; i++)
         {
             PtcVote(router, slot, validator++);
@@ -455,7 +411,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(Metrics.BeaconChainGossipDropped - droppedBefore, Is.Zero, "a full allowance of votes still fits behind a queued tick");
     }
 
-    /// <summary>A vote queued while the worker drains other work must still wake it, though its wake is read in the same drain.</summary>
     [Test]
     public async Task Payload_attestation_arriving_during_a_pass_wakes_the_worker()
     {
@@ -479,7 +434,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(votesVerified, Is.EqualTo(1), "the vote queued during the pass is verified without other traffic");
     }
 
-    /// <summary>A vote the full vote channel refuses is counted as a dropped gossip message, and the channel stays bounded.</summary>
     [Test]
     public async Task Gossip_votes_past_the_vote_channel_capacity_are_counted_as_dropped()
     {
@@ -530,10 +484,6 @@ public partial class BeaconSyncOrchestratorTests
         })));
     }
 
-    /// <summary>
-    /// gloas/p2p-interface.md REJECTs a payload attestation from outside get_ptc(head state, slot): each head step tells the router the
-    /// committee of the slots a vote can name, so the router tracks only members and a non-member costs fork choice nothing.
-    /// </summary>
     [Test]
     public async Task Head_step_tells_the_router_the_ptc_so_only_members_reach_fork_choice()
     {
@@ -554,10 +504,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new ulong[] { 7 }), "only the member, after the head step");
     }
 
-    /// <summary>
-    /// A vote is accepted for the wall slot and, within the clock disparity, the slots either side of it (altair <c>is_current_slot</c>),
-    /// so the head step must tell the router the committee of all three or a member's early or late vote is refused.
-    /// </summary>
     [TestCase(-1, 100L, TestName = "head step tells the router the previous slot's committee")]
     [TestCase(0, 6000L, TestName = "head step tells the router the wall slot's committee")]
     [TestCase(1, 11700L, TestName = "head step tells the router the next slot's committee")]
@@ -580,7 +526,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.GossipOperations.Cast<PayloadAttestationMessage>().Select(static vote => vote.ValidatorIndex), Is.EqualTo(new[] { slot }));
     }
 
-    /// <summary>A head state that cannot tell the committee (a head not yet Gloas, an unknown head) must leave votes IGNOREd, not REJECTed: the sender is honest.</summary>
     [Test]
     public async Task Head_step_that_cannot_read_the_committee_leaves_the_votes_ignored()
     {

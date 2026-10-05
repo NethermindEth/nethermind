@@ -18,11 +18,9 @@ public class ForkChoiceStoreTests
         store.ProposerBoostRoot = GetRoot(5);
         store.UpdateUnrealizedCheckpoints(GetCheckpoint(2), GetCheckpoint(1));
 
-        // Ticking to the current (or an earlier) slot is a no-op.
         store.OnTick(9);
         Assert.That(store.ProposerBoostRoot, Is.EqualTo(GetRoot(5)), "boost survives a no-op tick");
 
-        // A new slot inside the epoch resets the boost but does not pull up checkpoints.
         store.OnTick(10);
         using (Assert.EnterMultipleScope())
         {
@@ -31,7 +29,6 @@ public class ForkChoiceStoreTests
             Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(0)), "no pull-up mid-epoch");
         }
 
-        // Crossing the epoch boundary (slot 16) pulls the unrealized checkpoints up.
         store.OnTick(17);
         using (Assert.EnterMultipleScope())
         {
@@ -41,7 +38,6 @@ public class ForkChoiceStoreTests
             Assert.That(store.FinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "finalized pulled up");
         }
 
-        // Checkpoint updates are monotonic by epoch: stale candidates are ignored.
         store.UpdateCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
         store.UpdateUnrealizedCheckpoints(GetCheckpoint(1), GetCheckpoint(0));
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -51,11 +47,6 @@ public class ForkChoiceStoreTests
         Assert.That(store.UnrealizedFinalizedCheckpoint, Is.EqualTo(GetCheckpoint(1)), "stale unrealized finalized ignored");
     }
 
-    /// <summary>
-    /// The spec_tests cover head selection and proposer boost but never advance a checkpoint: only
-    /// one mainnet fork_choice vector reaches a non-genesis justified epoch and it is classified
-    /// not-implemented, so freezing update_checkpoints leaves all 17 passing vectors passing.
-    /// </summary>
     [Test]
     public void Update_checkpoints_advances_only_on_a_later_epoch()
     {

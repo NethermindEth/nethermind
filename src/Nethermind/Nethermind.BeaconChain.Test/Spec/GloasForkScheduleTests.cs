@@ -10,12 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Spec;
 
-/// <summary>
-/// Neither <see cref="BeaconChainSpec.Mainnet"/> nor <see cref="BeaconChainSpec.Hoodi"/> has a
-/// confirmed Gloas epoch as of 2026-09-19 (see the remarks on <see cref="BeaconChainSpec.GloasForkEpoch"/>),
-/// so these tests build a synthetic network - Mainnet's own values with a Gloas entry spliced into the
-/// schedule - rather than assert against a guessed production epoch.
-/// </summary>
 public class GloasForkScheduleTests
 {
     private const ulong GloasEpoch = 500_000ul;
@@ -120,12 +114,7 @@ public class GloasForkScheduleTests
         Assert.That(gloasDigest, Is.EqualTo(Bytes.FromHexString("0x669e6c11")));
     }
 
-    /// <summary>
-    /// The scalar fork epochs and the Forks schedule are two independent sources of truth:
-    /// ForkAtEpoch reads the former, VersionForEpoch (and so the fork digest, and so the node
-    /// record) reads the latter. A shipped network whose two disagree would compute a digest for
-    /// one fork while processing state as another and silently lose every peer at the boundary.
-    /// </summary>
+    // ForkAtEpoch reads scalar epochs; VersionForEpoch reads Forks. They must agree or signatures and advertised digests diverge.
     [TestCaseSource(nameof(ShippedSpecs))]
     public void Scalar_fork_epochs_match_the_fork_schedule(string name, BeaconChainSpec spec) =>
         Assert.Multiple(() =>
@@ -143,10 +132,7 @@ public class GloasForkScheduleTests
 
             if (spec.GloasForkEpoch != Presets.FarFutureEpoch)
             {
-                // The scalar and the schedule entry are separate literals reached by different code:
-                // the digest the node advertises comes from the schedule, the state's fork version
-                // (and so every signature domain) from the scalar. A drift peers fine, then rejects
-                // every signature it verifies.
+
                 Assert.That(spec.GloasForkVersion,
                     Is.EqualTo(spec.Forks.Single(f => f.Epoch == spec.GloasForkEpoch).Version),
                     $"{name}: GloasForkVersion disagrees with the Forks entry at GloasForkEpoch");

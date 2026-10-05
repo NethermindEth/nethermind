@@ -18,13 +18,7 @@ public class ForkedStateTransitionTests
 {
     private static readonly byte[] GloasVersion = Bytes.FromHexString("0x07000000");
 
-    /// <summary>
-    /// Rather than build a fully-valid block (a real proposer signature, a real post-state root, ...),
-    /// this deliberately breaks one check (the parent root) and asserts on that check's own exception
-    /// text. Only the real, unmodified <see cref="BlockProcessing.ProcessBlockHeader"/> raises that
-    /// exact message, so seeing it is proof this dispatcher actually delegated into the real Fulu
-    /// pipeline rather than silently no-op'ing or running some Gloas-shaped stand-in.
-    /// </summary>
+    // The deliberately wrong parent root identifies the real Fulu pipeline by its specific refusal.
     [Test]
     public void Apply_delegates_into_the_real_fulu_pipeline_when_the_target_fork_is_still_fulu()
     {
@@ -40,26 +34,15 @@ public class ForkedStateTransitionTests
         Assert.That(ex.Message, Does.Contain("parent root"));
     }
 
-    /// <summary>
-    /// Gloas block processing is real now (see <see cref="Nethermind.BeaconChain.Test.StateTransition.GloasBlockProcessingTests"/>
-    /// for the full, valid-transition coverage), so this test keeps the same "deliberately break one
-    /// check, assert on that check's own exact message" style as the Fulu test above: only the real
-    /// <see cref="GloasBlockProcessing.ProcessBlockHeader"/> raises this exact text, which is proof
-    /// the dispatcher crossed the boundary and delegated into the real Gloas pipeline rather than
-    /// silently no-op'ing.
-    /// </summary>
+    // The deliberately wrong parent root identifies the real Gloas pipeline by its specific refusal.
     [Test]
     public void Apply_crosses_the_gloas_boundary_then_delegates_into_the_real_gloas_pipeline()
     {
-        // GloasForkEpoch = 1 means the boundary slot is SLOTS_PER_EPOCH (32); a block at that slot
-        // targets Gloas, and sits exactly at the boundary slot the crossing already advanced to.
+
         BeaconStateFulu fuluState = CreateState(validatorCount: 2048);
         BeaconChainSpec spec = SyntheticSpec(gloasForkEpoch: 1);
         ulong boundarySlot = Presets.SlotsPerEpoch;
-        // A default (zero) bid parent block hash cannot match the fork-upgrade placeholder bid's
-        // block hash (0x71-filled in the fixture), so process_parent_execution_payload takes its "parent was
-        // empty" path - a true no-op given empty parent execution requests - before process_block_header
-        // runs and rejects the deliberately wrong (zero) parent root.
+        // Zero bid parent hash chooses the empty-payload path, reaching the deliberately wrong parent root.
         SignedBeaconBlockGloas block = new()
         {
             Message = new BeaconBlockGloas
@@ -78,12 +61,7 @@ public class ForkedStateTransitionTests
         Assert.That(ex.Message, Does.Contain("does not match latest header root"));
     }
 
-    /// <summary>
-    /// consensus-specs <c>process_slots</c> asserts <c>state.slot &lt; slot</c>, so a Gloas block at the slot
-    /// the given state already sits at is invalid (sanity vector <c>invalid_same_slot_block_transition</c>),
-    /// even at the fork boundary slot, where only a crossing made by <see cref="ForkedStateTransition.Apply"/>
-    /// itself may leave the state at the block's slot.
-    /// </summary>
+    // process_slots requires state.slot < slot; only this dispatcher's fork crossing may reach the block slot first.
     [Test]
     public void Apply_rejects_a_gloas_block_at_the_slot_the_state_already_sits_at([Values] bool stateIsStillFulu)
     {
@@ -145,7 +123,6 @@ public class ForkedStateTransitionTests
         return state;
     }
 
-    /// <summary>A block one slot ahead of <paramref name="state"/>, with the real (state-computed) proposer index.</summary>
     private static SignedBeaconBlock MinimalBlock(BeaconStateFulu state, ulong proposerIndex, Hash256 parentRoot)
     {
         SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(state.Slot + 1);

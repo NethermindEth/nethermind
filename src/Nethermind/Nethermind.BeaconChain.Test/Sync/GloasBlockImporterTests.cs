@@ -33,25 +33,16 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// <see cref="BlockImporter"/> on Gloas blocks and their execution payload envelopes (specs/gloas/fork-choice.md
-/// <c>on_block</c> and <c>on_execution_payload_envelope</c>), with genuinely signed blocks from a Fulu anchor.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasBlockImporterTests
 {
     private const ulong ForkSlot = 32;
     private SignedGloasChain _chain = null!;
 
-    /// <summary>Creates a fresh chain for each test case.</summary>
     [SetUp]
     public void SetUp() => _chain = new();
 
-    /// <summary>
-    /// The first Gloas block is applied to the Fulu parent's post-state carried across the fork. That crossing
-    /// mutates in place and <c>upgrade_to_gloas</c> aliases the Fulu arrays, so it must run on a copy, or the Fulu
-    /// state fork choice still resolves for the anchor would silently change under it.
-    /// </summary>
+    /// <summary>Fork upgrades alias Fulu arrays; import must copy the parent so fork choice retains its original state.</summary>
     [Test]
     public void First_gloas_block_crosses_the_fork_on_a_copy_and_is_stored_in_its_own_shape()
     {
@@ -84,11 +75,6 @@ public class GloasBlockImporterTests
         Assert.That(engine.HasAnsweredNewPayload, Is.False);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c>: a block that builds on its parent's full payload needs that
-    /// payload verified. Before the envelope it must be a retriable deferral that records nothing, never Invalid,
-    /// or a child racing its parent's envelope is dropped for good. An empty child never waits.
-    /// </summary>
     [TestCase(false, ExecutionStatus.Valid, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(False,Valid)")]
     [TestCase(false, ExecutionStatus.Optimistic, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(False,Optimistic)")]
     [TestCase(true, ExecutionStatus.Valid, ForkSlot + 1, TestName = "Child_waits_for_its_parents_envelope_only_when_it_builds_on_the_full_payload(True,Valid)")]
@@ -117,7 +103,6 @@ public class GloasBlockImporterTests
         Assert.That(afterEnvelope, Is.EqualTo(full ? BlockImportResult.Imported : BlockImportResult.AlreadyKnown), "an optimistic payload is recorded as an optimistic block is imported");
     }
 
-    /// <summary>An envelope that is refused, or whose blob data is not held, records nothing, so the full child keeps waiting.</summary>
     [TestCase(ExecutionStatus.Invalid, true, ExecutionPayloadEnvelopeImportResult.Invalid)]
     [TestCase(ExecutionStatus.Valid, false, ExecutionPayloadEnvelopeImportResult.DataUnavailable)]
     public void Envelope_that_does_not_verify_leaves_the_full_child_waiting(ExecutionStatus envelopeVerdict, bool dataAvailable, ExecutionPayloadEnvelopeImportResult expected)
@@ -135,7 +120,6 @@ public class GloasBlockImporterTests
         Assert.That(importer.Import(child.Forked, child.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.ParentPayloadUnverified));
     }
 
-    /// <summary>A repeated envelope, and one for a block fork choice does not hold, are answered before any hashing or engine call.</summary>
     [Test]
     public void Envelope_already_verified_or_for_an_unknown_block_never_reaches_the_engine()
     {
@@ -156,11 +140,6 @@ public class GloasBlockImporterTests
         Assert.That(engine.EnvelopeCalls, Is.EqualTo(1));
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas head maps to its bid's <c>parent_block_hash</c>
-    /// until its payload is verified, since the execution layer has no other payload of it. A VALID envelope verifies that
-    /// payload and the one it builds on (specs/bellatrix/optimistic-sync.md), so the block and its payload become VALID.
-    /// </summary>
     [TestCase(false, TestName = "Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies")]
     [TestCase(true, TestName = "Head_hash_of_the_same_head_flips_from_empty_to_full_when_its_payload_is_verified")]
     public void Head_execution_hash_moves_to_the_bid_block_hash_once_the_envelope_verifies(bool clockAtBlock)
@@ -187,12 +166,6 @@ public class GloasBlockImporterTests
         Assert.That(snapshots.Current!.Nodes.Single(n => n.Root == first.Root).PayloadValid, Is.True);
     }
 
-    /// <summary>
-    /// The forkchoiceUpdated head hash follows the payload status <c>get_head</c> resolves (specs/gloas/fork-choice.md), not
-    /// whether the payload arrived: FULL names the bid's <c>block_hash</c>, EMPTY its <c>parent_block_hash</c>. In the next slot
-    /// the verified payload of the previous block is extended only when the PTC voted it timely and available, since the boosted
-    /// block builds on its EMPTY node; that block is then invalidated, so the previous block is the head either way.
-    /// </summary>
     [Test]
     public void Head_hash_follows_the_payload_status_the_ptc_votes_resolve([Values] bool ptcVotedTimely)
     {
@@ -223,10 +196,6 @@ public class GloasBlockImporterTests
         Assert.That(head.HeadPayloadFull, Is.EqualTo(ptcVotedTimely), "the payload status the envelope server reads is the one get_head resolved");
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c> calls <c>notify_ptc_messages</c>: a block's payload attestations reach fork choice
-    /// through <see cref="BlockImporter"/>'s import, so a timely, available payload the PTC voted in the next block's body is extended.
-    /// </summary>
     [Test]
     public void Block_body_payload_attestations_reach_fork_choice_on_import([Values] bool inBody)
     {
@@ -331,10 +300,6 @@ public class GloasBlockImporterTests
         PreviousSlot,
     }
 
-    /// <summary>
-    /// A gossip payload attestation counts as accepted only when fork choice verified and applied it. <c>on_payload_attestation_message</c>
-    /// returns without any check for a vote whose slot is not its block's, so a forged vote of that shape is refused and counted.
-    /// </summary>
     [TestCase(GossipPtcVote.Signed, true)]
     [TestCase(GossipPtcVote.BadSignature, false)]
     [TestCase(GossipPtcVote.NotInPtc, false)]
@@ -409,10 +374,6 @@ public class GloasBlockImporterTests
         Assert.That(RefusedByForkChoice("gossip_payload_attestation") - refusedBefore, Is.EqualTo(1), "neither refusal may apply a vote");
     }
 
-    /// <summary>
-    /// Forged votes under a PTC member's index each cost fork choice a BLS verify and are never penalized, so the router hands
-    /// fork choice a bounded number of votes per (slot, validator): a flood of them is refused that many times, whatever their signatures.
-    /// </summary>
     [Test]
     public void Forged_gossip_payload_attestations_under_one_member_cost_fork_choice_a_bounded_number_of_verifies()
     {
@@ -443,7 +404,6 @@ public class GloasBlockImporterTests
         Assert.That(importer.OnGossipPayloadAttestation(genuine), Is.True, "fixture: the genuine vote verifies when it reaches fork choice");
     }
 
-    /// <summary>gloas/p2p-interface.md IGNOREs a PTC member's vote only after the first valid one, so a forgery that arrives first must not hide the genuine vote from fork choice.</summary>
     [Test]
     public void Genuine_gossip_payload_attestation_after_a_forgery_reaches_fork_choice()
     {
@@ -474,7 +434,6 @@ public class GloasBlockImporterTests
         Assert.That(accepted, Is.EqualTo(1), "the genuine vote verified after the forgery was refused");
     }
 
-    /// <summary>The router gets its slot's committee from the head state (gloas/p2p-interface.md <c>get_ptc(state, data.slot)</c>); a root or slot the head state cannot answer is null, not a throw on the worker.</summary>
     [Test]
     public void Head_ptc_is_the_head_states_committee_and_null_where_it_cannot_be_read()
     {
@@ -599,7 +558,6 @@ public class GloasBlockImporterTests
             Sign(ValidatorKey(validator), Domains.ComputeSigningRoot(root, block.PostState.GetDomain(domain, epoch)));
     }
 
-    /// <summary>A PTC member's signed vote on <paramref name="block"/>'s payload for its slot, the data available with the payload.</summary>
     private static PayloadAttestationMessage PtcVote(SignedGloasChain.Block block, ulong validatorIndex, bool payloadPresent)
     {
         ulong slot = block.Signed.Message!.Slot;
@@ -615,7 +573,6 @@ public class GloasBlockImporterTests
 
     private static DateTime SlotStart(SignedGloasChain chain, ulong slot) => DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot);
 
-    /// <summary>The safe hash for a justified Gloas block is its bid's <c>parent_block_hash</c> (gloas/fast-confirmation.md <c>get_safe_execution_block_hash</c>).</summary>
     [Test]
     public void Justified_gloas_checkpoint_maps_to_its_bid_parent_block_hash()
     {
@@ -636,10 +593,6 @@ public class GloasBlockImporterTests
         Assert.That(head.JustifiedExecutionHash, Is.Not.EqualTo(firstBid.BlockHash));
     }
 
-    /// <summary>
-    /// Envelopes are not persisted, so a restart replays stored blocks with no payload recorded. A stored child that
-    /// builds full on its parent passed the gate before it was stored, which proves that payload was verified.
-    /// </summary>
     [Test]
     public void Replayed_full_child_stands_in_for_its_parents_envelope()
     {
@@ -657,13 +610,6 @@ public class GloasBlockImporterTests
         Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
-    /// <summary>
-    /// Fork choice resolves checkpoint states by root, possibly epochs after the block, and the per-block Gloas tier
-    /// holds only the last two epochs of blocks. The first block of an epoch, and the parent of a block that skipped an
-    /// epoch's first slot, are checkpoint blocks and must outlive that tier; a block that is neither must not linger.
-    /// A child at an epoch's first slot after a whole empty epoch still skipped the empty epoch's first slot; one whose
-    /// parent is the previous epoch's last block skipped nothing, so that parent is no checkpoint block.
-    /// </summary>
     [Test]
     public void Checkpoint_block_states_outlive_the_per_block_tier([Values] bool skipWholeEpoch)
     {
@@ -673,7 +619,6 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block lastBeforeSkip = _chain.Next(middle, ForkSlot + 2, full: false, 0xB2);
         Import(importer, epochStart, middle, lastBeforeSkip);
 
-        // Skips slot 64 (or all of epoch 2); the 64 blocks after each early block push its state out of the per-block tier.
         SignedGloasChain.Block tip = lastBeforeSkip;
         SignedGloasChain.Block? lastOfEpoch = null;
         ulong resumeSlot = skipWholeEpoch ? 3 * ForkSlot : 2 * ForkSlot + 1;
@@ -709,15 +654,6 @@ public class GloasBlockImporterTests
         GloasAnchor,
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c> copies <c>store.block_states[block.parent_root]</c> for any known parent, the
-    /// same state whether the child builds on its full or its empty payload: the child applies the parent's payload itself
-    /// (specs/gloas/beacon-chain.md <c>process_parent_execution_payload</c>). So a sibling on a parent whose state left every
-    /// tier imports on a state regenerated from stored blocks alone, and a full sibling whose parent's payload is unverified is
-    /// deferred on that state. With no Gloas block at the fork slot, the nearest held state is the Fulu anchor's and the replay
-    /// crosses the fork on a copy of it; from a Gloas anchor it is the pinned anchor state. The held-only getter that gossip
-    /// reads never regenerates.
-    /// </summary>
     [Test]
     public void Sibling_on_an_evicted_gloas_parent_imports_on_a_regenerated_state([Values] EvictedParent parentKind, [Values] HeldBase heldBase)
     {
@@ -734,7 +670,6 @@ public class GloasBlockImporterTests
         }
 
         ulong parentSlot = first.Signed.Message!.Slot + 1;
-        // Built on the first block's full payload where it was imported, so regenerating it replays a parent payload's effects.
         SignedGloasChain.Block parent = _chain.Next(first, parentSlot, full: heldBase != HeldBase.GloasAnchor, 0xE2);
         Import(importer, parent);
         if (parentKind == EvictedParent.FullVerified)
@@ -742,7 +677,6 @@ public class GloasBlockImporterTests
             Assert.That(importer.ImportEnvelope(parent.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture");
         }
 
-        // The per-block tier holds two epochs of blocks; a longer branch on the parent pushes its state out.
         SignedGloasChain.Block tip = parent;
         for (ulong slot = parentSlot + 1; slot <= parentSlot + 2 * ForkSlot + 1; slot++)
         {
@@ -786,11 +720,6 @@ public class GloasBlockImporterTests
         Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
     }
 
-    /// <summary>
-    /// A first Gloas block that skips the fork slot makes its Fulu parent the checkpoint block of the fork epoch
-    /// (specs/gloas/fork-choice.md <c>get_checkpoint_block</c>). That Fulu state must outlive fork branch churn, or a Gloas
-    /// parent a few slots past the fork regenerates only from a state more than one epoch below it, and is refused.
-    /// </summary>
     [Test]
     public void Fulu_parent_of_a_first_gloas_block_that_skips_the_fork_slot_stays_a_regeneration_base()
     {
@@ -799,7 +728,6 @@ public class GloasBlockImporterTests
         List<BlockImportResult> fixture = [];
         void ImportFulu(SignedGloasChain.FuluBlock block) => fixture.Add(importer.Import(block.Forked, block.Root, verifySignatures: true));
 
-        // The lineage leaves the anchor, so the dense Fulu run is a fork branch whose states only the LRU holds.
         ImportFulu(_chain.NextFulu(2, blockHashFill: 0xD0));
         SignedGloasChain.FuluBlock? lastFulu = null;
         for (ulong slot = 1; slot < ForkSlot; slot++)
@@ -812,7 +740,6 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block parent = _chain.Next(first, ForkSlot + 2, full: false, 0xE2);
         Import(importer, first, parent);
 
-        // Fulu fork branch imports push the dense run's states out of the LRU, and a long Gloas branch the Gloas states.
         for (ulong slot = 3; slot < 12; slot++)
         {
             ImportFulu(_chain.NextFulu(slot, blockHashFill: (byte)(0x80 + slot)));
@@ -834,10 +761,6 @@ public class GloasBlockImporterTests
         Assert.That(logger.LogList, Has.None.Contains("Cannot regenerate"));
     }
 
-    /// <summary>
-    /// The Fulu checkpoint parent of a first Gloas block is retained from the live lineage as a copy: a trusted Fulu block
-    /// imported on the lineage afterwards advances the lineage state in place and must not change the retained one.
-    /// </summary>
     [Test]
     public void Fulu_checkpoint_parent_retained_from_the_lineage_is_a_copy()
     {
@@ -860,11 +783,6 @@ public class GloasBlockImporterTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>
-    /// Gossip validation verifies no block signature, so a forged child of every evicted block could each buy a replay and push
-    /// live states out. A child whose proposer signature does not verify is refused before any regeneration, however many
-    /// evicted parents it is aimed at, and the states of the recent blocks stay held.
-    /// </summary>
     [Test]
     public void Forged_children_of_evicted_blocks_cost_no_regeneration()
     {
@@ -881,7 +799,6 @@ public class GloasBlockImporterTests
             blocks.Add(tip);
         }
 
-        // Each forged child copies a real child's message under a new root and keeps the real child's signature.
         List<(SignedGloasChain.Block Parent, ForkedSignedBeaconBlock Forged, Hash256 Root)> forged = [];
         for (int i = 1; i < blocks.Count - 2 * (int)ForkSlot - 1; i++)
         {
@@ -915,11 +832,6 @@ public class GloasBlockImporterTests
         Assert.That(blocks.TakeLast(2 * (int)ForkSlot).Select(b => states.GetGloasBlockState(b.Root)), Is.All.Not.Null);
     }
 
-    /// <summary>
-    /// A correctly signed block from gossip on an evicted parent may regenerate it, but only a few times per wall-clock slot,
-    /// and only once per slot and proposer (phase0/p2p-interface.md <c>beacon_block</c>): any cached key can sign, so signed
-    /// gossip cannot stall the import worker on replays. The next slot allows more.
-    /// </summary>
     [Test]
     public void Signed_blocks_on_evicted_parents_regenerate_within_a_per_slot_budget()
     {
@@ -931,7 +843,6 @@ public class GloasBlockImporterTests
         Import(importer, [.. blocks]);
         SignedGloasChain.Block[] siblings = [.. Enumerable.Range(1, 3).Select(i => _chain.Next(blocks[i], 3 * ForkSlot + (ulong)i, full: false, (byte)(0xF0 + i)))];
 
-        // The first sibling's slot and proposer, signed by that proposer on another evicted parent.
         BeaconBlockGloas repeat = _chain.Next(blocks[5], siblings[0].Signed.Message!.Slot, full: false, 0xF5).Signed.Message!;
         repeat.ProposerIndex = siblings[0].Signed.Message!.ProposerIndex;
         Hash256 repeatRoot = SszRoots.HashTreeRoot(repeat);
@@ -962,11 +873,6 @@ public class GloasBlockImporterTests
         Assert.That(spentRefusal, Is.EqualTo(ImportRefusal.RegenerationBudget));
     }
 
-    /// <summary>
-    /// A gossip block whose regeneration ran but which then waits for its slot (fork-choice.md <c>on_block</c>) is retried as
-    /// the same block, not as another proposal for its slot and proposer: once other regenerations pushed its parent's
-    /// state out, the retry regenerates it again and imports.
-    /// </summary>
     [Test]
     public void Gossip_block_deferred_after_its_regeneration_regenerates_again_on_retry()
     {
@@ -981,7 +887,6 @@ public class GloasBlockImporterTests
         SignedGloasChain.Block early = _chain.Next(blocks[1], blockSlot, full: false, 0xF1);
 
         BlockImportResult first = importer.Import(early.Forked, early.Root, verifySignatures: true);
-        // Range-sync regenerations of two other evicted parents push the first regenerated state out.
         BlockImportResult[] churn = [.. new[] { 2, 3 }.Select(i =>
         {
             SignedGloasChain.Block other = _chain.Next(blocks[i], blockSlot - 4 + (ulong)i, full: false, (byte)(0xF0 + i));
@@ -998,10 +903,6 @@ public class GloasBlockImporterTests
         Assert.That(retry, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>
-    /// Any gossip block can make this node fetch its parent by root, so a fetched block on an evicted parent regenerates within
-    /// a small per-slot budget of its own, apart from the one gossip blocks share. The next slot allows more.
-    /// </summary>
     [Test]
     public void Blocks_fetched_by_root_regenerate_within_their_own_per_slot_budget()
     {
@@ -1040,11 +941,6 @@ public class GloasBlockImporterTests
         Assert.That(nextSlot, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>
-    /// A Gloas replay is bounded like a Fulu one: one epoch of stored blocks above the nearest held state, here the Fulu
-    /// anchor's, so the replay crosses the fork, builds on full and empty parents, and leaves the Fulu state unchanged.
-    /// One block more is refused with a warning before any replay.
-    /// </summary>
     [Test]
     public void Gloas_regeneration_crosses_the_fork_and_replays_at_most_one_epoch([Values] bool beyondBound)
     {
@@ -1067,7 +963,6 @@ public class GloasBlockImporterTests
         PostStateCache states = new(store, _chain.Spec, _chain.AnchorRoot, _chain.AnchorState, isGloasBlock: gloasRoots.Contains, logManager: new OneLoggerLogManager(new ILogger(logger)),
             pubkeys: pubkeys, ancestors: root => ancestry.SkipWhile(r => r != root));
         Hash256 anchorStateRoot = SszRoots.HashTreeRoot(_chain.AnchorState);
-        // A full per-block tier of live states, which a regeneration must not push out.
         Hash256[] live = [.. Enumerable.Range(0, 2 * (int)ForkSlot).Select(static i => Keccak.Compute(BitConverter.GetBytes(i)))];
         foreach (Hash256 root in live)
         {
@@ -1087,13 +982,6 @@ public class GloasBlockImporterTests
         Assert.That(logger.LogList, beyondBound ? Has.One.Contains($"no ancestor state is held within {_chain.Spec.SlotsPerEpoch} blocks") : Is.Empty);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md <c>on_block</c> reads timeliness from <c>store.time</c>, which follows the node's clock when the
-    /// block arrived: only a block of the current slot that arrives before <c>get_attestation_due_ms</c>
-    /// (<c>ATTESTATION_DUE_BPS_GLOAS</c>, 3000 ms into a 12 s slot) is timely and takes the proposer boost. With no boost set
-    /// before the import, a boost still unset after it means the block was recorded not timely. The clock moving on during
-    /// the import itself, as it does while the state transition runs, is not lateness of the block.
-    /// </summary>
     [TestCase(ForkSlot, 1000L, 0L, true)]
     [TestCase(ForkSlot, 2999L, 0L, true)]
     [TestCase(ForkSlot, 3000L, 0L, false)]
@@ -1114,10 +1002,6 @@ public class GloasBlockImporterTests
         Assert.That(snapshots.Current!.ProposerBoostRoot, Is.EqualTo(boosted ? first.Root : Hash256.Zero));
     }
 
-    /// <summary>
-    /// The production importer checks envelopes with the Gloas custody-sampling rule, which fails closed while the
-    /// node's identity is unknown; a permissive stub here would admit a payload whose blobs nobody holds.
-    /// </summary>
     [Test]
     public void Factory_importer_refuses_an_envelope_whose_blobs_it_cannot_sample()
     {
@@ -1146,12 +1030,6 @@ public class GloasBlockImporterTests
         FromTheFuture,
     }
 
-    /// <summary>
-    /// A child of a deferred block is deferred too, once its proposer and signature check out against the nearest ancestor
-    /// fork choice holds: the queue it then waits in is bounded, so an unsigned block must not take a place there. Past that
-    /// ancestor's lookahead window the deferred blocks in between feed the proposer seed, so the child is not deferred at all.
-    /// The <c>on_block</c> slot checks still apply, against the deferred parent's slot and the node's clock.
-    /// </summary>
     [TestCase(HeldProposal.Signed, BlockImportResult.ParentPayloadUnverified)]
     [TestCase(HeldProposal.BodyAltered, BlockImportResult.Invalid)]
     [TestCase(HeldProposal.OtherProposerSigned, BlockImportResult.Invalid)]
@@ -1200,10 +1078,6 @@ public class GloasBlockImporterTests
                 Snappy.CompressToArray(SignedBeaconBlockGloas.Encode(held.Signed)), MessageValidity.Ignored);
     }
 
-    /// <summary>
-    /// A deferred block found invalid once its parent's envelope imports is no longer deferred, so its signed child has no
-    /// parent at all; answered deferred, the child would wait in the bounded queue for a block that never imports.
-    /// </summary>
     [Test]
     public void Child_of_a_deferred_block_found_invalid_is_no_longer_deferred()
     {
@@ -1232,10 +1106,6 @@ public class GloasBlockImporterTests
         Assert.That(importer.Import(child.Forked, childRoot, verifySignatures: true), Is.EqualTo(BlockImportResult.UnknownParent));
     }
 
-    /// <summary>
-    /// The deferred blocks a node remembers are bounded, since equivocating proposers can sign any number of them, and
-    /// forgotten once finalized past, since such a block can never import; otherwise stale ones would take the places of real ones.
-    /// </summary>
     [Test]
     public void Deferred_blocks_are_bounded_and_forgotten_once_finalized()
     {
@@ -1279,7 +1149,6 @@ public class GloasBlockImporterTests
         Assert.That(DeferredCount(importer), Is.Zero, "on_block refuses a block at or below the finalized epoch's start slot, so it must not keep a deferral place");
     }
 
-    /// <summary>The orchestrator drops a block it gave up on; the importer forgets its deferral at once instead of holding the place until finality.</summary>
     [Test]
     public void Release_forgets_a_deferred_block_at_once()
     {
@@ -1300,7 +1169,6 @@ public class GloasBlockImporterTests
     internal static int DeferredCount(BlockImporter importer) =>
         ((ICollection)typeof(BlockImporter).GetField("_deferred", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!).Count;
 
-    /// <summary>Signs <paramref name="block"/> with the key of the proposer it names, under the proposer domain of <paramref name="state"/>.</summary>
     private static void SignAsProposer(SignedBeaconBlockGloas block, BeaconStateGloas state)
     {
         Hash256 proposerDomain = state.GetDomain(DomainType.BeaconProposer, state.GetCurrentEpoch());
@@ -1448,11 +1316,6 @@ public class GloasBlockImporterTests
             validSignature && !payloadVerified && fault != GossipBlockFault.BidExecutionHead ? MessageValidity.Ignored : MessageValidity.Rejected, router);
     }
 
-    /// <summary>
-    /// A deferred block waits unchecked in a bounded retry set and marks its (slot, proposer) seen, so one its expected
-    /// proposer did not sign must be refused before it is deferred, or forged children of the head could crowd out the real one.
-    /// Past the parent's lookahead window the expected proposer comes from the parent's post-state advanced to the child's slot.
-    /// </summary>
     [TestCase(Forgery.None, BlockImportResult.ParentPayloadUnverified, false)]
     [TestCase(Forgery.BodyAltered, BlockImportResult.Invalid, false)]
     [TestCase(Forgery.OtherProposer, BlockImportResult.Invalid, false)]
@@ -1507,10 +1370,6 @@ public class GloasBlockImporterTests
         AfterParentSlot,
     }
 
-    /// <summary>
-    /// fork-choice.md and specs/gloas/fork-choice.md on_block: refuse invalid blocks before linear process_slots work.
-    /// The node clock bounds future slots by MAXIMUM_GOSSIP_CLOCK_DISPARITY, so distant slots cannot hold the worker.
-    /// </summary>
     [Test]
     public async Task Block_failing_an_on_block_assertion_is_refused_before_its_state_transition([Values] OnBlockAssertion assertion)
     {
@@ -1543,7 +1402,6 @@ public class GloasBlockImporterTests
                 block = _chain.Next(finalized, 2 * ForkSlot, full: true, 0xA5);
                 break;
             default:
-                // Finalizes the epoch-2 checkpoint block of one branch; the other branch forked off before it.
                 SignedGloasChain.Block finalizedBranch = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
                 SignedGloasChain.Block otherBranch = _chain.Next(first, ForkSlot + 2, full: false, 0xA3);
                 SignedGloasChain.Block checkpoint = _chain.Next(finalizedBranch, 2 * ForkSlot, full: false, 0xA4);
@@ -1573,10 +1431,6 @@ public class GloasBlockImporterTests
         }
     }
 
-    /// <summary>
-    /// fork-choice.md <c>on_block</c>: a Gloas block up to <c>MAXIMUM_GOSSIP_CLOCK_DISPARITY</c> before its slot waits for
-    /// that slot, so fork-choice time stays in the previous slot for its PTC votes (specs/gloas/fork-choice.md <c>on_payload_attestation_message</c>).
-    /// </summary>
     [Test]
     public void Block_before_its_slot_starts_waits_for_the_slot()
     {
@@ -1602,10 +1456,7 @@ public class GloasBlockImporterTests
         Assert.That(onTime, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>
-    /// Runs one import, failing the test instead of hanging it when the importer is stuck in <c>process_slots</c>; the
-    /// bound only stops a regression, the caller asserts which check refused the block.
-    /// </summary>
+    /// <summary>The timeout guards against unbounded process_slots; the caller still asserts the specific refusal.</summary>
     internal static BlockImportResult ImportOrFailIfStuck(IBlockImporter importer, ForkedSignedBeaconBlock block, Hash256 root)
     {
         Task<BlockImportResult> import = Task.Run(() => importer.Import(block, root, verifySignatures: true));
@@ -1613,11 +1464,10 @@ public class GloasBlockImporterTests
         return import.Result;
     }
 
-    /// <summary>A clock stopped <paramref name="millisecondsEarly"/> before <paramref name="slot"/> starts.</summary>
     private static SlotClock ClockAt(SignedGloasChain chain, ulong slot, long millisecondsEarly) =>
         new(chain.Spec, new ManualTimestamper(DateTimeOffset.FromUnixTimeMilliseconds((long)(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot) * 1000 - millisecondsEarly).UtcDateTime));
 
-    /// <summary>Stands in for a finalization no short fixture chain reaches: the justification it needs takes epochs of votes.</summary>
+    /// <summary>Inject finalization because a short fixture cannot supply epochs of justification votes.</summary>
     private static void Finalize(BlockImporter importer, CheckpointRef finalized)
     {
         object runner = typeof(BlockImporter).GetField("_runner", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(importer)!;
@@ -1625,11 +1475,6 @@ public class GloasBlockImporterTests
         store.UpdateCheckpoints(finalized, finalized);
     }
 
-    /// <summary>
-    /// The Gloas tier stands in for the spec's <c>store.block_states</c>, which only <c>on_block</c> writes after every
-    /// assertion passed. A block fork choice refused must not take a slot in that bounded tier or be resolvable from it,
-    /// nor be stored, where by-root requests and restart replay would serve it as imported.
-    /// </summary>
     [Test]
     public void Block_refused_by_fork_choice_leaves_no_state_behind()
     {
@@ -1648,11 +1493,6 @@ public class GloasBlockImporterTests
         Assert.That(importer.IsKnown(child.Root), Is.False);
     }
 
-    /// <summary>
-    /// The Gloas tier can outlive a root finalization pruned from fork choice, and recording that root's payload would
-    /// throw. The spec asserts the root is in <c>store.block_states</c> before any verification, so the envelope is
-    /// answered unknown without an engine call.
-    /// </summary>
     [Test]
     public void Envelope_for_a_block_fork_choice_no_longer_holds_never_reaches_the_engine()
     {
@@ -1672,11 +1512,6 @@ public class GloasBlockImporterTests
         Assert.That(engine.EnvelopeCalls, Is.Zero);
     }
 
-    /// <summary>
-    /// The per-branch epoch memo refuses a state whose epoch boundary it was not built on. A block extending a branch
-    /// other than the last imported block's, in an epoch both branches entered from different boundary blocks, must
-    /// get its own memo or the valid block is refused.
-    /// </summary>
     [Test]
     public void Block_on_a_sibling_branch_across_an_epoch_boundary_imports()
     {
@@ -1692,7 +1527,6 @@ public class GloasBlockImporterTests
         Assert.That(importer.Import(leftTip.Forked, leftTip.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported));
     }
 
-    /// <summary>A Gloas head has no Fulu lineage to adopt; treating it as a reorg to an unretained state would warn on every head step.</summary>
     [Test]
     public void Gloas_head_step_is_not_taken_for_a_reorg()
     {
@@ -1708,11 +1542,6 @@ public class GloasBlockImporterTests
         Assert.That(logger.LogList, Is.Empty);
     }
 
-    /// <summary>
-    /// A Gloas body attester slashing the transition accepts but fork choice refuses is counted, not dropped silently.
-    /// The first epoch transition onboards a validator the justified anchor state lacks, so the slashing is in range for
-    /// the transition and out of range for <c>on_attester_slashing</c>, which checks it against the justified state.
-    /// </summary>
     [Test]
     public void Body_attester_slashing_refused_by_fork_choice_is_tolerated_and_counted()
     {
@@ -1767,7 +1596,6 @@ public class GloasBlockImporterTests
         }
     }
 
-    /// <summary>A clock that moves on by <paramref name="step"/> after every read, as the wall clock does while an import runs.</summary>
     private sealed class AdvancingTimestamper(DateTime start, TimeSpan step) : ITimestamper
     {
         private DateTime _now = start;

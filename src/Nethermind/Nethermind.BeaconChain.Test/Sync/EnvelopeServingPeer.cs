@@ -14,7 +14,6 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A sync peer that serves blocks by range, execution payload envelopes, and Gloas columns by root from handlers, recording every request and failure report.</summary>
 internal sealed class EnvelopeServingPeer(
     string id,
     ulong headSlot,
@@ -34,7 +33,6 @@ internal sealed class EnvelopeServingPeer(
     public ulong HeadSlot => headSlot;
     public ulong EarliestAvailableSlot => earliestAvailableSlot;
 
-    /// <summary>Every column, as a supernode would custody.</summary>
     public PeerColumnCustody Custody { get; } = new(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c), isAdvertised: true);
 
     public Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) =>

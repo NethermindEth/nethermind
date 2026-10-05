@@ -31,14 +31,9 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test;
 
-/// <summary>Starting the driver on a Gloas checkpoint, fresh or resumed, and refusing a resumed anchor whose state and block disagree on the fork.</summary>
 [HardTimeout(60_000)]
 public class BeaconChainServiceGloasAnchorTests
 {
-    /// <summary>
-    /// A Gloas checkpoint is handed to the orchestrator like a Fulu one.
-    /// The orchestrator here has no P2P, so reaching it shows as its own refusal to run.
-    /// </summary>
     [Test]
     public async Task Start_hands_a_gloas_anchor_to_the_orchestrator_both_fresh_and_resumed()
     {
@@ -61,11 +56,6 @@ public class BeaconChainServiceGloasAnchorTests
         }
     }
 
-    /// <summary>
-    /// The production graph up to its first network use: the service checkpoint-syncs a Gloas anchor, the orchestrator builds
-    /// its importer through the factory, kicks the execution layer at the anchor's bid <c>parent_block_hash</c>, replays a
-    /// stored child through that importer, and starts the P2P host. The run is stopped when discovery resolves its address.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task Start_runs_a_gloas_anchor_through_the_importer_factory_to_the_p2p_start()
@@ -85,7 +75,6 @@ public class BeaconChainServiceGloasAnchorTests
             service!.Stop();
             return ValueTask.FromCanceled<IIPResolver.NethermindIp>(new CancellationToken(canceled: true));
         });
-        // The wall clock past the stored child by more than the 64 slots within which a head step starts gossip, so the replay reaches it and gossip waits.
         ManualTimestamper timestamper = new(DateTime.UnixEpoch.AddSeconds(spec.GenesisTime + (child.Block.Message!.Slot + 65) * spec.SecondsPerSlot));
         await using IContainer container = BeaconChainTestContainer.Builder(logManager: logManager, config: new BeaconChainConfig { CheckpointStateFile = files.StateFile, CheckpointSyncUrl = "http://invalid.localhost:1", P2PPort = 0 })
             .AddSingleton(spec)
@@ -111,11 +100,6 @@ public class BeaconChainServiceGloasAnchorTests
         await ipResolver.Received(1).Resolve(Arg.Any<CancellationToken>());
     }
 
-    /// <summary>
-    /// A resumed database whose anchor state and block are of different forks cannot seed the importer, so it fails startup
-    /// as a newer schema does. The refusal names the block by its own slot, which differs from the state's, so an operator
-    /// is not sent after the wrong block.
-    /// </summary>
     [Test]
     public async Task Start_refuses_a_resumed_anchor_whose_state_and_block_are_of_different_forks([Values] bool gloasBlock)
     {

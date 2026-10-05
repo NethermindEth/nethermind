@@ -13,15 +13,9 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>The Fulu proposer signature check on an untrusted proposer index.</summary>
 [HardTimeout(60_000)]
 public class ProposerSignatureBoundsTests
 {
-    /// <summary>
-    /// <c>verify_block_signature</c> reads <c>state.validators[proposer_index]</c>, and the p2p <c>beacon_block</c> rule
-    /// rejects an index outside the registry before the signature. An index the registry or the pubkey cache lacks
-    /// must be refused as an invalid block, not escape as an out-of-range fault that stops the import worker.
-    /// </summary>
     [TestCase(-1, false, null, TestName = "last_validator_with_a_cached_key_verifies")]
     [TestCase(0, false, "is not a validator index", TestName = "index_past_the_registry_is_refused")]
     [TestCase(-1, true, "has no cached public key", TestName = "index_past_the_pubkey_cache_is_refused")]

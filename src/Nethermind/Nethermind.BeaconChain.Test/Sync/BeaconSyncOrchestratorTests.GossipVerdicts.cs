@@ -27,10 +27,6 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// The worker gives each gossip message's pending verdict once the gossip checks the router left to it finish: accepted only when every
-/// gossip check passed; rejected for invalid input and ignored when local data is unavailable.
-/// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
     public enum GossipBlockOutcome
@@ -44,11 +40,6 @@ public partial class BeaconSyncOrchestratorTests
         UnknownParent,
     }
 
-    /// <summary>
-    /// phase0 p2p-interface.md beacon_block: a block is accepted once its proposer and proposer signature verified, which the importer does
-    /// before these results; a block waiting for its columns is ignored at once, and only one waiting for its parent's payload after its
-    /// signature verified keeps its verdict for the retry.
-    /// </summary>
     [TestCase(GossipBlockOutcome.Imported, new[] { MessageValidity.Accepted })]
     [TestCase(GossipBlockOutcome.ImportedOnceColumnsArrive, new[] { MessageValidity.Ignored })]
     [TestCase(GossipBlockOutcome.UnknownParent, new[] { MessageValidity.Ignored })]
@@ -101,7 +92,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(given, Is.EqualTo(expected));
     }
 
-    /// <summary>A block whose verdict waits for its parent's payload is ignored once it is no longer held, so its message waits no longer for a retry that will not come.</summary>
     [Test]
     public async Task Pending_block_verdict_is_ignored_once_the_block_is_dropped()
     {
@@ -115,7 +105,6 @@ public partial class BeaconSyncOrchestratorTests
 
         await harness.Orchestrator.ProcessGossipBlockAsync(new ForkedSignedBeaconBlock.OfFulu(chain[0]), CancellationToken.None, verdict);
         MessageValidity[] givenWhileHeld = [.. given];
-        // Finality passes the block, so the retry set drops it.
         harness.Importer.Head = CreateHead(TestItem.KeccakA, 100, finalizedEpoch: Spec.GetEpoch(chain[0].Message!.Slot) + 1);
         await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
         await harness.Orchestrator.ProcessSlotAsync(151, CancellationToken.None);
@@ -126,7 +115,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(given, Is.EqualTo(new[] { MessageValidity.Ignored }));
     }
 
-    /// <summary>Only a proven invalid slashing penalizes its sender; an unavailable state must not.</summary>
     [Test]
     public async Task Gossip_slashing_verdict_follows_fork_choice([Values(true, false, null)] bool? accepted)
     {
@@ -163,10 +151,6 @@ public partial class BeaconSyncOrchestratorTests
         }, MessageValidity.Ignored);
     }
 
-    /// <summary>
-    /// gloas/p2p-interface.md execution_payload: an envelope is accepted once its signature verifies against the block it names, whatever its
-    /// data or the engine later say, rejected for a bad signature, and ignored at once when that block is not held; only a signed one imports.
-    /// </summary>
     [TestCase(true, ExecutionPayloadEnvelopeImportResult.DataUnavailable, MessageValidity.Accepted)]
     [TestCase(true, ExecutionPayloadEnvelopeImportResult.EngineUnavailable, MessageValidity.Accepted)]
     [TestCase(false, ExecutionPayloadEnvelopeImportResult.Valid, MessageValidity.Rejected)]
@@ -186,7 +170,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes, signed == false ? Is.Empty : Has.Count.EqualTo(1), "a badly signed envelope is not imported");
     }
 
-    /// <summary>gloas/p2p-interface.md execution_payload: [IGNORE] a later envelope for a (block root, builder index) that already has a valid one, before its data or engine call.</summary>
     [Test]
     public async Task Second_signed_gossip_envelope_for_a_block_and_builder_is_ignored()
     {
@@ -204,10 +187,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That((firstGiven.Single(), secondGiven.Single()), Is.EqualTo((MessageValidity.Accepted, MessageValidity.Ignored)));
     }
 
-    /// <summary>
-    /// An envelope whose router verdict was given at routing, as one whose block was not held then, gets no gossip check here: claiming its
-    /// (block root, builder index) would make the first valid envelope for the pair look like a repeat.
-    /// </summary>
     [Test]
     public async Task Envelope_settled_at_routing_claims_no_seen_pair()
     {

@@ -19,7 +19,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>gloas/fork-choice.md <c>on_execution_payload_envelope</c> asserts <c>is_data_available</c>, so an envelope waiting on columns imports when they arrive, gossiped or still a parked candidate.</summary>
 public partial class BeaconSyncOrchestratorTests
 {
     [Test]
@@ -33,7 +32,6 @@ public partial class BeaconSyncOrchestratorTests
 
         foreach (ulong column in sampled)
         {
-            // Not the root the envelope waits for.
             sidecars.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(column, ColumnSlot, TestItem.KeccakB));
         }
 
@@ -65,7 +63,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(sidecars.WatchCount, Is.Zero);
     }
 
-    /// <summary>A parked candidate for a column the availability check never reached stays pending across the deferral, so it counts as held when the wait starts.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_gloas_envelope_whose_unreached_column_is_already_parked_imports_when_the_rest_arrive(CancellationToken token)
@@ -91,7 +88,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes, Has.Count.EqualTo(2), "retried with no tick");
     }
 
-    /// <summary>An envelope that ages out of parking must free the pool's watch, or one is kept per expired root for the process lifetime.</summary>
     [Test]
     [CancelAfter(30_000)]
     public async Task A_gloas_envelopes_pool_watch_ends_when_its_retry_expires(CancellationToken token)

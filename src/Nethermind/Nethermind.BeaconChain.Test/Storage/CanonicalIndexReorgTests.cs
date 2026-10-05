@@ -25,11 +25,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>
-/// The canonical slot index is what by-range serving, the store replay and the API trust above finality, so after every
-/// head change it must name exactly the head's ancestry: a slot the new chain skips, or one above a shorter new head,
-/// must read as empty, not as the orphaned block that held it before.
-/// </summary>
 public class CanonicalIndexReorgTests
 {
     [Test]
@@ -116,10 +111,6 @@ public class CanonicalIndexReorgTests
         Assert.That(store.GetCanonicalIndexTopSlot(), Is.EqualTo(9UL));
     }
 
-    /// <summary>
-    /// A head change the store fails to commit, as a crash before the commit would, must leave the previous index whole:
-    /// a half-written index mixes two chains, and a later walk that meets an entry of the new chain trusts everything below it.
-    /// </summary>
     [Test]
     public void Head_change_that_fails_to_commit_leaves_the_previous_index_and_the_next_one_writes_it_whole()
     {
@@ -193,12 +184,11 @@ public class CanonicalIndexReorgTests
     }
 }
 
-/// <summary>A column store whose write batches can be made to fail at commit without applying anything, as a crash before the commit would.</summary>
+// Fault injection discards staged writes before throwing at commit, modeling a pre-commit crash.
 internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColumns> inner) : IColumnsDb<BeaconChainDbColumns>
 {
     public TestMemColumnsDb<BeaconChainDbColumns> Inner => inner;
 
-    /// <summary>When set, the next write batch that stages a canonical index change is discarded and its commit throws.</summary>
     public bool FailNextCommit { get; set; }
 
     public IDb GetColumnDb(BeaconChainDbColumns key) => inner.GetColumnDb(key);
@@ -245,7 +235,6 @@ internal sealed class FailableCommitColumnsDb(TestMemColumnsDb<BeaconChainDbColu
     }
 }
 
-/// <summary>An importer over <see cref="UnsignedChain"/> whose canonical index lives in a store the test can read and count.</summary>
 internal sealed class CanonicalReorgFixture
 {
     private readonly ITimestamper _time;
@@ -259,7 +248,6 @@ internal sealed class CanonicalReorgFixture
         Importer = importer;
     }
 
-    /// <summary>Chain B: <c>B1</c> at slot 1 and <c>BHead</c> at slot 4, which skips slots 2 and 3.</summary>
     public sealed record Reorg(UnsignedChain.ChainBlock B1, UnsignedChain.ChainBlock BHead);
 
     public UnsignedChain Chain { get; }
@@ -282,7 +270,6 @@ internal sealed class CanonicalReorgFixture
         return new CanonicalReorgFixture(chain, db, store, CreateImporter(chain, store, time), time);
     }
 
-    /// <summary>A new importer over the same store and anchor, as a restart builds one; blocks must be imported again.</summary>
     public CanonicalReorgFixture Restart() => new(Chain, Db, Store, CreateImporter(Chain, Store, _time), _time);
 
     private static BlockImporter CreateImporter(UnsignedChain chain, BeaconChainStore store, ITimestamper time)
@@ -323,7 +310,6 @@ internal sealed class CanonicalReorgFixture
 
     public Hash256 ComputeHead() => Importer.ComputeHead().HeadRoot;
 
-    /// <summary>Chain A, slots 1 to 3 on the anchor with no votes, made canonical.</summary>
     public UnsignedChain.ChainBlock[] ImportLongerChainA()
     {
         UnsignedChain.ChainBlock a1 = Import(Chain.AnchorRoot, slot: 1, 0xa1);
@@ -334,7 +320,6 @@ internal sealed class CanonicalReorgFixture
         return [a1, a2, a3];
     }
 
-    /// <summary>Chain B over <see cref="ImportLongerChainA"/>: its slot-4 block carries two votes for it, so the head moves to it.</summary>
     public Reorg ReorgToSkippingChainB()
     {
         UnsignedChain.ChainBlock b1 = Import(Chain.AnchorRoot, slot: 1, 0xb1);
@@ -343,7 +328,6 @@ internal sealed class CanonicalReorgFixture
         return new Reorg(b1, b4);
     }
 
-    /// <summary>The canonical root of every slot from 0 through <paramref name="through"/>, <c>null</c> where the index holds none.</summary>
     public Hash256?[] CanonicalRoots(ulong through) =>
         [.. Enumerable.Range(0, (int)through + 1).Select(slot => Store.TryGetCanonicalRoot((ulong)slot, out Hash256? root) ? root : null)];
 

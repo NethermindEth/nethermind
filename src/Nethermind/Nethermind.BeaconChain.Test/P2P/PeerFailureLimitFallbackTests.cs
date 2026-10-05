@@ -24,10 +24,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// With every peer at the request-failure limit, the failures decay one per <see cref="PeerManager.RequestFailureDecayInterval"/>, so selection that offers
-/// no peer until then holds the head back for minutes; the least-failed peers are offered instead, but never one whose penalty holds invalid data.
-/// </summary>
 public class PeerFailureLimitFallbackTests
 {
     private const int Limit = 8;
@@ -55,7 +51,6 @@ public class PeerFailureLimitFallbackTests
         {
             slot++;
             clock.Add(TimeSpan.FromSeconds(1));
-            // Marks the chain ahead without starting refreshes, which are awaited one by one below instead.
             manager.MinStatusRefreshInterval = TimeSpan.MaxValue;
             ((IBeaconSyncPeerPool)manager).RefreshStatusesBehind(slot + 10, "the test moved the chain past the peers");
             foreach (IBeaconSyncPeer peer in new[] { violator, least, next, most })
@@ -114,7 +109,6 @@ public class PeerFailureLimitFallbackTests
         IBeaconSyncPeer offered = AddPeer(manager, "Offered", PeerFailureReason.RequestFailed, Limit + 3);
         if (reason == Unoffered.SessionClosed)
         {
-            // A session the host does not track is one it already dropped.
             AddPeer(manager, "Closed", PeerFailureReason.RequestFailed, Limit, session: new LocalPeer.Session(node.P2P.LocalPeerForTest!));
         }
         else
@@ -128,7 +122,6 @@ public class PeerFailureLimitFallbackTests
         Assert.That(manager.GetBestPeers(0), Is.EqualTo(new[] { offered }));
     }
 
-    // Failure counts tie at the limit, so the selection order must still pick among the tied rather than whichever the pool lists first.
     [Test]
     public async Task Among_peers_tied_at_the_limit_the_two_first_in_selection_order_are_offered()
     {
@@ -213,7 +206,6 @@ public class PeerFailureLimitFallbackTests
         return status;
     }
 
-    /// <summary>Serves the peers the real <see cref="PeerManager"/> selects through stubs, so selection is real and the blocks need no network.</summary>
     private sealed class SelectedByManager(PeerManager manager, IReadOnlyDictionary<string, RangeSyncTests.StubPeer> served) : IBeaconSyncPeerPool
     {
         public IReadOnlyList<IBeaconSyncPeer> GetBestPeers(ulong minHeadSlot) => [.. manager.GetBestPeers(minHeadSlot).Select(p => served[p.Id])];

@@ -8,8 +8,7 @@ namespace Nethermind.BeaconChain.Test.Spec;
 
 public class GloasTimingTests
 {
-    // Values verified against configs/mainnet.yaml on ethereum/consensus-specs `master`
-    // (fetched 2026-09-19); each is independently re-derivable as SLOT_DURATION_MS * bps / 10_000.
+    // Independent oracle: SLOT_DURATION_MS * bps / 10_000 (consensus-specs configs/mainnet.yaml).
     [TestCase(GloasTiming.ProposerReorgCutoffBps, 2_000ul)]
     [TestCase(GloasTiming.AttestationDueBps, 3_999ul)] // 12000 * 3333 / 10000 truncates to 3999
     [TestCase(GloasTiming.AggregateDueBps, 8_000ul)]

@@ -22,18 +22,9 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// <see cref="CachedBeaconStateHasher"/> over <see cref="BeaconStateGloas"/>, and the Gloas state-root
-/// call sites that must hash through the caller's <see cref="IBeaconStateHasher"/>.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasCachedHasherTests
 {
-    /// <summary>
-    /// A stale cache entry is a wrong state root, which fails every block on the lineage. Each stage
-    /// mutates one kind of field the way the state transition does, so a cache that misses the change
-    /// diverges from the generated root at that stage.
-    /// </summary>
     [Test]
     public void Cached_root_matches_full_root_through_mutation_sequence()
     {
@@ -134,7 +125,6 @@ public class GloasCachedHasherTests
         AssertRootsMatch(hasher, state, "same hasher back on the original lineage");
     }
 
-    /// <summary>Slot processing takes every per-slot state root through the lineage's hasher, never a full re-merkleization.</summary>
     [Test]
     public void Slot_processing_hashes_through_the_caches_hasher()
     {
@@ -146,7 +136,6 @@ public class GloasCachedHasherTests
         Assert.That(hasher.GloasCalls, Is.EqualTo(3));
     }
 
-    /// <summary>The post-state root check of a Gloas block goes through the caller's cache hasher, after the one per advanced slot.</summary>
     [Test]
     public void Block_state_root_check_hashes_through_the_caches_hasher()
     {
@@ -166,13 +155,7 @@ public class GloasCachedHasherTests
         Assert.That(hasher.GloasCalls, Is.EqualTo(2));
     }
 
-    /// <summary>
-    /// EIP-7916 subtrees hold 1, 4, 16, 64, 256, ... chunks. The lengths step one element across the
-    /// first chunk of each subtree for every packing (a validator or builder per chunk, 4 uint64 or
-    /// 32 participation bytes per chunk), so both the patch path and the new-subtree path run, then
-    /// shrink back to an empty list and grow again. The last lengths shrink by one element inside a
-    /// subtree, where a patch instead of a rebuild keeps stale nodes past the new last chunk.
-    /// </summary>
+    // EIP-7916 subtree sizes are 1, 4, 16, ... chunks. Cross packing/subtree boundaries, then shrink within a subtree to expose stale nodes.
     [Test]
     public void Cached_root_matches_full_root_as_progressive_lists_cross_subtree_boundaries_and_shrink_to_empty()
     {
@@ -222,11 +205,7 @@ public class GloasCachedHasherTests
         }
     }
 
-    /// <summary>
-    /// Each of the 46 fields must reach its own position in the progressive container. The fixture
-    /// leaves several fields equal (the withdrawal indices, the churn epochs, the empty pending
-    /// lists), so only a change to one field alone shows a root taken from the wrong position.
-    /// </summary>
+    // Mutate one field at a time: equal-valued fixture fields otherwise hide a wrong progressive-container position.
     [TestCaseSource(nameof(GloasStateFields))]
     public void Cached_root_matches_full_root_after_one_field_changes(string field)
     {
@@ -250,7 +229,6 @@ public class GloasCachedHasherTests
     private static object Perturb(PropertyInfo property, object? value, byte salt) =>
         Perturb(property.PropertyType, value, salt, property.GetCustomAttribute<SszVectorAttribute>()?.Length ?? 0);
 
-    /// <summary>Returns a new value of <paramref name="type"/> that differs from <paramref name="value"/>, copying containers and arrays rather than writing them in place; a null or empty fixed vector is filled to <paramref name="vectorLength"/>.</summary>
     private static object Perturb(Type type, object? value, byte salt, int vectorLength = 0)
     {
         if (type == typeof(ulong))
@@ -306,7 +284,6 @@ public class GloasCachedHasherTests
 
     public enum MalformedField { ShortPendingPayments, LongPendingPayments, NullPendingPayments, NullBid, ShortAvailability, LongAvailability, ShortPtcWindow, LongPtcWindow, NullPtcWindow }
 
-    /// <summary>A state the generated Merkleize rejects must not get a root from the cached hasher, cold or with warm caches.</summary>
     [Test]
     public void Cached_hasher_rejects_what_the_generated_merkleize_rejects([Values] MalformedField field, [Values] bool warm)
     {
@@ -334,12 +311,6 @@ public class GloasCachedHasherTests
         Assert.That(() => hasher.HashTreeRoot(state), Throws.TypeOf<InvalidDataException>(), "cached hasher");
     }
 
-    /// <summary>
-    /// After a reorg the lineage's hasher keeps hashing a sibling of the states it has seen. Each
-    /// sibling crosses an epoch boundary (registry, balance, participation, ptc_window and
-    /// availability updates) with its per-slot roots taken through the shared hasher, and must
-    /// cache exactly the roots a full re-merkleization gives its twin.
-    /// </summary>
     [Test]
     public void One_hasher_follows_sibling_states_after_a_reorg()
     {
@@ -363,7 +334,6 @@ public class GloasCachedHasherTests
         AssertRootsMatch(hasher, builderBranch, "first sibling after reorging back");
     }
 
-    /// <summary>Local in-process measurement of <see cref="GloasSlotProcessing.ProcessSlot"/> on a mainnet-sized registry, cached against full re-merkleization.</summary>
     [Explicit("Mainnet-scale performance measurement; allocates several GB and runs for minutes")]
     [Test]
     public void Mainnet_scale_slot_processing_speedup()

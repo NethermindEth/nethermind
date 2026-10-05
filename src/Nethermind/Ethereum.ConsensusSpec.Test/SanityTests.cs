@@ -14,12 +14,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>sanity</c> suite: <c>blocks</c> (apply a sequence of signed blocks via
-/// the fork's <c>state_transition</c>) and <c>slots</c> (advance slots via the fork's
-/// <c>process_slots</c>), both through the vector's <see cref="ForkDriver"/>. Driven for the same forks
-/// as <see cref="OperationsTests"/>, each block under the vector's own runtime config.
-/// </summary>
 [TestFixture]
 public class SanityTests
 {
@@ -39,8 +33,6 @@ public class SanityTests
 
     [TestCaseSource(nameof(MainnetSlotCases))]
     public void Slots_mainnet(SanityCase testCase) => ExecuteSlots(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and a sub-suite this driver does not enumerate never runs; both stay green.
     [Test]
     public void Every_fork_and_sub_suite_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -57,8 +49,6 @@ public class SanityTests
             }
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a driver that reports every mainnet vector that way still runs green.
     [Test]
     public void Every_fork_and_sub_suite_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
     {

@@ -10,11 +10,7 @@ using static Nethermind.BeaconChain.Test.ForkChoice.TestHashes;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// Hand-computed weight accumulation scenarios against <see cref="ProtoArrayForkChoice"/>: every
-/// expected number below is derived on paper from the spec's <c>get_weight</c> (sum of the effective
-/// balances of validators whose latest message is the block or one of its descendants).
-/// </summary>
+/// <summary>Expected weights are hand-derived from effective balances, not production get_weight.</summary>
 public class ProtoArrayWeightAccumulationTests
 {
     private const ulong Gwei32Eth = 32_000_000_000;
@@ -48,7 +44,6 @@ public class ProtoArrayWeightAccumulationTests
     [Test]
     public void Vote_moving_between_branches_is_deducted_from_the_old_branch()
     {
-        // 0 <- (1 | 2)
         ProtoArrayForkChoice fc = NewForkChoice();
         fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0)), 1, Anchor, Anchor);
         fc.ProcessBlock(Block(1, GetRoot(2), GetRoot(0)), 1, Anchor, Anchor);
@@ -98,7 +93,6 @@ public class ProtoArrayWeightAccumulationTests
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([Gwei32Eth]), null, 1);
         Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth));
 
-        // Balance drops to 31 ETH with no new vote: the delta is new minus old.
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([31_000_000_000]), null, 1);
         using (Assert.EnterMultipleScope())
         {
@@ -106,11 +100,9 @@ public class ProtoArrayWeightAccumulationTests
             Assert.That(fc.GetWeight(GetRoot(0)), Is.EqualTo(31_000_000_000ul));
         }
 
-        // Validator exits (balance 0): the vote disappears.
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([0]), null, 1);
         Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(0ul));
 
-        // Active again at 32 ETH: the standing vote is counted again.
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([Gwei32Eth]), null, 1);
         Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(Gwei32Eth));
     }
@@ -135,7 +127,6 @@ public class ProtoArrayWeightAccumulationTests
     [Test]
     public void Validator_voting_for_the_first_time_after_others_have_settled()
     {
-        // 0 <- 1 <- 2; validators 0..7 vote 1 first, then validators 8..15 (never voted before) vote 2.
         ProtoArrayForkChoice fc = NewForkChoice();
         fc.ProcessBlock(Block(1, GetRoot(1), GetRoot(0)), 1, Anchor, Anchor);
         fc.ProcessBlock(Block(2, GetRoot(2), GetRoot(1)), 2, Anchor, Anchor);
@@ -162,7 +153,6 @@ public class ProtoArrayWeightAccumulationTests
         fc.ProcessAttestation(0, GetRoot(1), 1);
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([Gwei32Eth]), null, 1);
 
-        // Validator 1 onboards and votes; the old balance list does not contain it.
         fc.ProcessAttestation(1, GetRoot(1), 1);
         fc.GetHead(Anchor, Anchor, JustifiedBalances.FromEffectiveBalances([Gwei32Eth, Gwei32Eth]), null, 1);
         Assert.That(fc.GetWeight(GetRoot(1)), Is.EqualTo(2 * Gwei32Eth));
@@ -189,14 +179,7 @@ public class ProtoArrayWeightAccumulationTests
         }
     }
 
-    /// <summary>
-    /// Mirrors the vote pattern of the consensus spec vector <c>get_proposer_head/basic_is_parent_root</c>
-    /// (mainnet preset: 256 validators at 32 ETH, one committee of 8 per slot) at the proto-array level.
-    /// Chain: A(96, justified) - B(127) - C(128) - D(129, empty) - E(130, parent) - F(131, late head).
-    /// Epoch-3 votes all land on B or earlier; in epoch 4 committee 129 votes D (carried by block E),
-    /// committee 130 votes E (carried by block F's body), committee 131 votes E (gossip attestation).
-    /// Paper: weight(E) = 16 x 32e9 = 512e9, above the 160% parent threshold of 409.6e9; weight(F) = 0.
-    /// </summary>
+    /// <summary>Independent weight oracle: two eight-member committees give E 512e9, above the 409.6e9 parent threshold; F has zero.</summary>
     [Test]
     public void Fixture_mirror_parent_collects_two_committees_and_clears_the_160_percent_threshold()
     {
@@ -220,10 +203,7 @@ public class ProtoArrayWeightAccumulationTests
         Assert.That(fc.GetWeight(GetRoot(131)), Is.LessThan(headThreshold), "head_weak");
     }
 
-    /// <summary>
-    /// Same as above but with the votes carried inside block F's body left out. This reproduces the
-    /// 256e9 the spec-test driver observes: exactly one committee, i.e. the gossip attestation alone.
-    /// </summary>
+    /// <summary>Omitting F's body votes leaves one gossip committee: E has 256e9.</summary>
     [Test]
     public void Fixture_mirror_without_block_body_votes_yields_exactly_one_committee()
     {
@@ -256,33 +236,27 @@ public class ProtoArrayWeightAccumulationTests
             fc.GetHead(justified, finalized, balances, null, slot);
         }
 
-        // Epoch 3: every committee has voted for B (slot 127) or an ancestor; model them all on B.
         AddBlock(127, 96);
         for (int k = 0; k < 32; k++) Committee(k, GetRoot(127), 3);
         Settle(127);
         Assert.That(fc.GetWeight(GetRoot(127)), Is.EqualTo(256 * Gwei32Eth), "precondition: all epoch-3 votes on B");
 
-        // Epoch 4. Block C (128) carries committee 127's epoch-3 vote for B (a duplicate, ignored).
         AddBlock(128, 127);
         Committee(31, GetRoot(127), 3);
         Settle(128);
 
-        // Block D (129) is empty.
         AddBlock(129, 128);
         Settle(129);
 
-        // Block E (130) carries committee 129 voting D at epoch 4; E arrives timely and is boosted.
         AddBlock(130, 129);
         Committee(1, GetRoot(129), 4);
         Settle(130, boost: GetRoot(130));
 
-        // Slot 131: boost resets; late block F (131) carries committee 130 voting E at epoch 4.
         Settle(131);
         AddBlock(131, 130);
         if (includeBlockBodyVotesForParent) Committee(2, GetRoot(130), 4);
         Settle(131);
 
-        // Slot 132: committee 131's gossip attestation for E arrives.
         Committee(3, GetRoot(130), 4);
 
         return (fc, balances, justified, finalized);

@@ -15,19 +15,6 @@ using Nethermind.Int256;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Per-fork plumbing for the suites that drive this repo's state transition (operations,
-/// epoch_processing, sanity). A fork is driven only when its state can be carried through a pipeline
-/// under the fork's own semantics and compared by the fork's own state root; anything less would be
-/// a false pass. The Fulu pipeline is typed to <see cref="BeaconStateFulu"/> and is Fulu's native one.
-/// Fulu's state transition differs from Electra's in three places - EIP-7917's <c>get_beacon_proposer_index</c>
-/// reads <c>proposer_lookahead</c> instead of sampling on the fly, <c>process_epoch</c> ends with
-/// <c>process_proposer_lookahead</c>, and <c>process_execution_payload</c> takes its blob limit from
-/// <c>get_blob_parameters</c> - plus the state's SSZ shape, and <see cref="Electra"/> accounts for each.
-/// Gloas has its own pipeline over <see cref="BeaconStateGloas"/>
-/// (<see cref="Gloas"/>). Forks before Electra have no state container in this repo and are not driven
-/// (see <see cref="ConsensusSpecArchive.StateTransitionForks"/>).
-/// </summary>
 public abstract class ForkDriver
 {
     public static readonly IReadOnlyDictionary<string, ForkDriver> ByName = new Dictionary<string, ForkDriver>(StringComparer.Ordinal)
@@ -73,24 +60,11 @@ public abstract class ForkDriver
         }
     }
 
-    /// <summary>
-    /// Carries an Electra state through the Fulu pipeline as a <see cref="BeaconStateFulu"/> whose
-    /// <c>proposer_lookahead</c> holds what Electra's on-the-fly <c>get_beacon_proposer_index</c> would
-    /// answer, and takes every state root in the Electra shape.
-    /// </summary>
+    /// <summary>Runs Electra using a Fulu working state, with Electra proposer sampling, epoch processing, blob limits and SSZ roots.</summary>
     /// <remarks>
-    /// The lookahead is filled with <c>compute_proposer_indices</c> for the current epoch (Fulu's
-    /// per-slot sampling is Electra's, seed and balance weighting included) and refilled at every epoch
-    /// start. Within an epoch Electra's answer is fixed - the active set, the effective balances and the
-    /// seed's RANDAO mix only move at epoch processing - so the refill reproduces it exactly, whereas
-    /// Fulu's own lookahead for the next epoch is sampled an epoch early against older effective
-    /// balances and can name a different proposer. The next-epoch half is filled too but nothing in the
-    /// state transition reads it. Epoch processing is Electra's: Fulu's steps without
-    /// <c>process_proposer_lookahead</c>, which would sample two epochs ahead and throw on an empty active
-    /// set that Electra never reads. Blocks take <c>MAX_BLOBS_PER_BLOCK_ELECTRA</c> as their blob limit.
-    /// Roots are merkleized as the working state's Electra base (37 fields), both per slot via
-    /// <see cref="EpochCache.Hasher"/> and for the post-state comparison, so the lookahead never leaks
-    /// into a root an Electra vector compares.
+    /// Refill lookahead at each epoch boundary: Electra samples against current balances, unlike Fulu's advance sampling.
+    /// Skip Fulu's process_proposer_lookahead, which can read an empty future active set Electra never accesses.
+    /// Hash the Electra base through EpochCache.Hasher and post-state comparison, excluding lookahead from roots.
     /// </remarks>
     private sealed class Electra : ForkDriver<BeaconStateFulu>
     {
@@ -190,10 +164,6 @@ public abstract class ForkDriver
         }
     }
 
-    /// <summary>
-    /// Drives a <see cref="BeaconStateGloas"/> through the Gloas pipeline (<see cref="GloasSlotProcessing"/>,
-    /// <see cref="GloasBlockProcessing"/>), taking every root in the Gloas shape.
-    /// </summary>
     private sealed class Gloas : ForkDriver<BeaconStateGloas>
     {
         public override string Fork => "gloas";
@@ -251,31 +221,22 @@ public abstract class ForkDriver
 
     private static readonly PropertyInfo[] ElectraFields = typeof(BeaconStateElectra).GetProperties(BindingFlags.Public | BindingFlags.Instance);
 
-    /// <summary>Copies every Electra-declared field by reference; the Fulu-only <c>proposer_lookahead</c> is untouched.</summary>
     internal static void CopyElectraFields(BeaconStateElectra from, BeaconStateElectra to)
     {
         foreach (PropertyInfo field in ElectraFields)
             field.SetValue(to, field.GetValue(from));
     }
 
-    /// <summary>
-    /// The generated merkleization of the Electra container reads only Electra-declared fields, so a
-    /// <see cref="BeaconStateFulu"/> passed as its base hashes to the root an Electra node would compute.
-    /// </summary>
+    /// <summary>Hashes only Electra-declared fields, excluding the Fulu working state's lookahead.</summary>
     internal static Hash256 ElectraRoot(BeaconStateElectra state)
     {
         BeaconStateElectra.Merkleize(state, out UInt256 root);
         return new Hash256(root.ToLittleEndian());
     }
 
-    /// <summary>
-    /// Marks a lookahead slot whose epoch has no active validator. Electra asserts only when such a
-    /// proposer is read, so the pre-state is valid for operations that never read one; an out-of-range
-    /// index makes the pipeline throw at that same read instead of naming validator 0.
-    /// </summary>
+    /// <summary>Uses an out-of-range proposer sentinel for an empty active epoch, deferring rejection until Electra actually reads a proposer.</summary>
     internal const ulong NoProposer = ulong.MaxValue;
 
-    /// <summary>Fills the whole lookahead from the current state, current epoch first: what Electra samples on the fly for the current epoch.</summary>
     internal static void RefillProposerLookahead(BeaconStateFulu state)
     {
         ulong epoch = state.GetCurrentEpoch();
@@ -292,39 +253,25 @@ public abstract class ForkDriver
     }
 }
 
-/// <summary>A <see cref="ForkDriver"/> whose pipeline works on <typeparamref name="TState"/>.</summary>
 public abstract class ForkDriver<TState> : ForkDriver where TState : class
 {
-    /// <summary>Decodes a pre-state in the fork's SSZ shape into the pipeline's working type.</summary>
     public abstract TState DecodePre(string path);
 
-    /// <summary>Decodes an expected post-state in the fork's SSZ shape, with its root, for comparison against the working state.</summary>
     public abstract (object State, Hash256 Root) DecodePost(string path);
 
-    /// <summary><c>hash_tree_root</c> of the working state in the fork's SSZ shape.</summary>
     public abstract Hash256 StateRoot(TState state);
 
-    /// <summary>The working state as the fork's own container, so <see cref="FuluDriverSupport.Diff"/> can walk it beside <see cref="DecodePost"/>'s result.</summary>
     public abstract object ForDiff(TState state);
 
-    /// <summary>A cache whose hasher writes the fork's own state root into <c>state_roots</c> and the latest block header.</summary>
     public abstract EpochCache NewCache();
 
-    /// <summary>
-    /// <c>hash_tree_root</c> of the working state through <paramref name="cache"/>'s hasher, in the fork's SSZ shape.
-    /// A fork whose cache installs a <see cref="DifferentialBeaconStateHasher"/> fails here when the incremental root is wrong.
-    /// </summary>
     public virtual Hash256 CachedRoot(TState state, EpochCache cache) => StateRoot(state);
 
-    /// <summary>The state's <c>slot</c>.</summary>
     public abstract ulong SlotOf(TState state);
 
-    /// <summary>The state's validator registry.</summary>
     public abstract Validator[] ValidatorsOf(TState state);
 
-    /// <summary><c>process_slots</c> under the fork's semantics.</summary>
     public abstract void ProcessSlots(TState state, ulong targetSlot, EpochCache cache);
 
-    /// <summary><c>state_transition</c> of an SSZ <c>SignedBeaconBlock</c> in the fork's shape, validating the block's claimed state root in that shape.</summary>
     public abstract void ApplyBlock(TState state, byte[] signedBlockSsz, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, bool verifySignatures);
 }

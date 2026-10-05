@@ -23,8 +23,6 @@ public class ShutterStaticPeerTests
 {
     private static readonly TimeSpan Bound = TimeSpan.FromSeconds(15);
 
-    /// <summary>A bootnode whose connection closed is connected again, although the router does not redial it.</summary>
-    /// <remarks>The router never redials a peer whose reconnection it suppressed, and discovering a known peer again does nothing.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_bootnode_is_connected_again_after_its_connection_closes(CancellationToken token)
@@ -59,7 +57,6 @@ public class ShutterStaticPeerTests
         await Task.WhenAll(keyperRun, nodeRun);
     }
 
-    /// <summary>A dial still running when the Shutter host shuts down leaves no session open.</summary>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_host_shut_down_during_a_dial_leaves_no_session_open(CancellationToken token)
@@ -91,8 +88,7 @@ public class ShutterStaticPeerTests
         }
 
         await reached.Task.WaitAsync(TimeSpan.FromSeconds(15), token);
-        // The library ends a dial within 15 s, and a remote that loses a connection mid-handshake drops it up to 30 s later;
-        // a session left open was still open after 40 s.
+        // Dial timeout is 15 s; a remote losing the connection mid-handshake can take another 30 s to drop it.
         using (CancellationTokenSource bounded = CancellationTokenSource.CreateLinkedTokenSource(token))
         {
             bounded.CancelAfter(TimeSpan.FromSeconds(45));

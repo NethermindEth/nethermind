@@ -101,7 +101,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(IsSubscribed(topics, next, GossipTopics.ExecutionPayload), Is.EqualTo(gloas));
     }
 
-    /// <summary>A slot tick queued behind imports can carry an epoch older than the one gossip started at; it must not drop the next digest.</summary>
     [Test]
     public async Task A_stale_tick_does_not_undo_the_window_gossip_started_at()
     {

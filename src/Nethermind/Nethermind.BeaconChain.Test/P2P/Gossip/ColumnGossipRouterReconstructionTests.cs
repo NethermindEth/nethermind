@@ -22,7 +22,6 @@ using Snappier;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-/// <summary>Checks that fulu/das-core.md recovery neither blocks other roots nor recovers a root twice concurrently.</summary>
 public class ColumnGossipRouterReconstructionTests
 {
     private const ulong CurrentSlot = 13_410_304;
@@ -30,7 +29,6 @@ public class ColumnGossipRouterReconstructionTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    /// <summary>Checks that fulu/das-core.md recovery leaves unrelated roots able to progress.</summary>
     [Test]
     public void Sidecars_of_another_root_are_not_blocked_while_one_root_recovers()
     {
@@ -59,7 +57,6 @@ public class ColumnGossipRouterReconstructionTests
         Assert.That(received.Count, Is.EqualTo(2 * Eip7594DasConstants.NumberOfColumns - 2 * (Required - 1)), "every missing column of both roots was raised once");
     }
 
-    /// <summary>Checks that fulu/das-core.md recovery has one owner per root until publication completes.</summary>
     [Test]
     public void A_root_is_never_recovered_twice_concurrently()
     {
@@ -89,7 +86,6 @@ public class ColumnGossipRouterReconstructionTests
         Assert.That(received.Select(static s => s.Index), Is.Unique);
     }
 
-    /// <summary>Checks that callbacks exposing fulu/das-core.md recovered columns can wait for unrelated gossip.</summary>
     [Test]
     public void A_reconstructed_column_callback_can_wait_for_another_roots_sidecar()
     {
@@ -113,7 +109,6 @@ public class ColumnGossipRouterReconstructionTests
         Assert.That(finishedInCallback, Is.True);
     }
 
-    /// <summary>Checks that failed fulu/das-core.md recovery leaves a later column able to retry.</summary>
     [Test]
     public void A_recovery_that_fails_or_throws_releases_its_root_for_the_next_column([Values] bool throws)
     {

@@ -25,10 +25,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// Every public provider serves the finalized checkpoint over the beacon API, labelled with its fork in the
-/// Eth-Consensus-Version header; refusing the Gloas label refuses every checkpoint once Gloas finalizes.
-/// </summary>
 [HardTimeout(60_000)]
 public class CheckpointSyncHttpTests
 {
@@ -39,8 +35,7 @@ public class CheckpointSyncHttpTests
         PastAnEmptyGloasEpochStart,
     }
 
-    /// <summary>An epoch-start state advanced beyond its block holds a filled latest header root (consensus-specs beacon-chain.md process_slot).
-    /// The anchor must use that block's verified post-state, which a state file supplies in its sibling file and never from the provider.</summary>
+    /// <summary>An advanced checkpoint needs its block's post-state from the sibling file, not a provider lookup.</summary>
     [Test]
     public async Task An_advanced_checkpoint_uses_its_blocks_post_state(
         [Values] AdvancedCheckpoint advancedCheckpoint, [Values] bool fromFile, [Values] bool invalidPostState, [Values(null, false, true)] bool? conflictingCheckpoint)
@@ -79,7 +74,6 @@ public class CheckpointSyncHttpTests
         sync.ThrowIfResumedAnchorMissesWeakSubjectivityCheckpoint(anchor.State, anchor.BlockRoot);
     }
 
-    /// <summary>An advanced state file without its block's post-state file is refused by name, not completed from the provider.</summary>
     [Test]
     public async Task An_advanced_checkpoint_state_file_without_its_post_state_file_is_refused()
     {
@@ -102,10 +96,6 @@ public class CheckpointSyncHttpTests
         OtherRoot,
     }
 
-    /// <summary>
-    /// The anchor of an advanced checkpoint is its block's post-state from an epoch before the checkpoint's, so after a restart the
-    /// checkpoint the received state proved must still be accepted, and one it did not prove must be refused with the failed condition.
-    /// </summary>
     [Test]
     public async Task A_checkpoint_the_advanced_state_proved_is_accepted_after_restart(
         [Values(AdvancedCheckpoint.AcrossTheGloasUpgrade, AdvancedCheckpoint.PastAnEmptyGloasEpochStart)] AdvancedCheckpoint advancedCheckpoint,
@@ -196,7 +186,6 @@ public class CheckpointSyncHttpTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>A checkpoint state advanced past its block, that block, the block's post-state and state root, and the advanced state's slot.</summary>
     private static (byte[] AdvancedState, ForkedSignedBeaconBlock Block, byte[] PostState, Hash256 StateRoot, ulong AdvancedSlot) BuildAdvancedCheckpoint(AdvancedCheckpoint advancedCheckpoint)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
@@ -217,7 +206,6 @@ public class CheckpointSyncHttpTests
             BeaconStateFulu.Encode(chain.AnchorState), chain.AnchorBlock.StateRoot!, advancedFulu.Slot);
     }
 
-    /// <summary>A beacon API serving <see cref="ForkCrossingChain.First"/> as the finalized state and its block by root.</summary>
     private static async Task<WebApplication> StartProviderAsync(string? consensusVersion, byte[]? finalizedState = null,
         ForkedSignedBeaconBlock? block = null, Hash256? postStateRoot = null, byte[]? postState = null)
     {

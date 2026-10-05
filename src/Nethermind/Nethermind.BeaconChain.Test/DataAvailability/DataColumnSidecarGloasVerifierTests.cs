@@ -10,11 +10,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// Gloas <c>verify_data_column_sidecar</c> and <c>verify_data_column_sidecar_kzg_proofs</c>: the
-/// commitments are the bid's, not the sidecar's, so every check is made against what the caller
-/// passes in.
-/// </summary>
 public class DataColumnSidecarGloasVerifierTests
 {
     private const ulong Column = 5;

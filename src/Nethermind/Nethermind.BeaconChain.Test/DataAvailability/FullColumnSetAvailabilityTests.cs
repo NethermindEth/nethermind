@@ -15,13 +15,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// The supernode <c>is_data_available</c> the consensus-spec fork choice vectors are written
-/// against, and the per-sidecar predicates under it. The predicates are tested directly as well as
-/// through the rule because <see cref="DataColumnSidecarVerifier.Verify"/> always fails on a
-/// hand-built sidecar (no real KZG proof), which would otherwise mask a missing or broken
-/// count/duplicate/addressing check behind Verify's own unrelated failure.
-/// </summary>
+// Check predicates separately: synthetic sidecars lack real KZG proofs, which would otherwise mask count/address/duplicate defects.
 public class FullColumnSetAvailabilityTests
 {
     [Test]
@@ -140,13 +134,6 @@ public class FullColumnSetAvailabilityTests
         return block;
     }
 
-    /// <summary>
-    /// A sidecar whose header round-trips to <paramref name="blockRoot"/> and whose commitments match the
-    /// block's - everything <see cref="DataColumnAvailability.MatchesBlock"/> cross-checks before a rule would
-    /// ever reach KZG verification. <c>hash_tree_root(header)</c> equals <paramref name="blockRoot"/> only because
-    /// <c>BodyRoot</c> is the real <c>hash_tree_root(block.Body)</c>: header and block share the same first
-    /// four fields, so the body is the only place a wrong root could hide.
-    /// </summary>
     private static DataColumnSidecar MatchingSidecar(BeaconBlock block, Hash256 blockRoot, SszKzgCommitment commitment, ulong index) => new()
     {
         Index = index,

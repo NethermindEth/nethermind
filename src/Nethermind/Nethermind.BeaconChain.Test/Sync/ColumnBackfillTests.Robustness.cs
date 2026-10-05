@@ -324,7 +324,6 @@ public partial class ColumnBackfillTests
         p.Pool = new DataColumnSidecarPool(store: p.Store, clock: p.Clock);
         await p.Pool.SeedCompletelyServableFloor(p.HeadSlot, token);
         p.Status.CurrentStatus = new StatusMessageV2 { ForkDigest = new byte[4], FinalizedRoot = Hash256.Zero, HeadRoot = Hash256.Zero, HeadSlot = p.Clock.CurrentSlot - 1 };
-        // Nothing is held below the wall clock, so the walk down to the boundary crosses about 8,000 empty windows.
         p.WindowPause = TimeSpan.Zero;
         Task run = p.Start(token, p.Honest("honest"));
         await run.WaitAsync(token);
@@ -366,10 +365,6 @@ public partial class ColumnBackfillTests
         Assert.That(attempted, Is.EqualTo(3));
     }
 
-    /// <summary>
-    /// A cut reply ending at a forged block under empty slots gets an empty answer for those slots, which links nothing yet leaves nothing unlinked:
-    /// the whole range is asked for again rather than the window being fetched by root, and the forger is penalized once the real block arrives.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_forged_cut_reply_under_empty_slots_is_asked_for_again_and_its_peer_penalized(CancellationToken token)

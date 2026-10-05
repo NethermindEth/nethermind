@@ -9,8 +9,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-// The importer writes on the orchestrator loop and column gossip reads on the pubsub thread; a peer that feeds invalid blocks
-// must not grow the set without bound.
 public class FailedBlockRootsTests
 {
     private static Hash256 Root(int i)

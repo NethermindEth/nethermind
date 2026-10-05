@@ -21,10 +21,6 @@ using static Nethermind.BeaconChain.Test.P2P.PeerSessionNodes;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Admission paths that race over one peer: a dial and the session it produces arriving through the
-/// session-established event, a dial that loses to the session the peer opened, and dial slots held by teardown.
-/// </summary>
 public class PeerAdmissionRaceTests
 {
     private static readonly TimeSpan Hold = TimeSpan.FromSeconds(8);
@@ -37,7 +33,6 @@ public class PeerAdmissionRaceTests
         TimesOut,
     }
 
-    /// <summary>A dial that fails after the peer's own session appeared returns that session, unless the caller cancelled.</summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task A_dial_that_fails_hands_back_the_session_the_peer_opened_meanwhile_but_not_after_the_caller_cancels(
@@ -73,11 +68,6 @@ public class PeerAdmissionRaceTests
         }
     }
 
-    /// <summary>
-    /// The session-established event skips a peer whose dial is in flight, so when that dial ends without admitting,
-    /// the session the peer opened meanwhile must still be admitted rather than left open unmanaged; once the caller
-    /// has cancelled (shutdown), nothing is admitted after the dial.
-    /// </summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task A_session_the_peer_opened_during_our_dial_to_it_is_admitted_unless_the_caller_cancelled([Values] DialOutcome outcome, CancellationToken token)
@@ -123,7 +113,6 @@ public class PeerAdmissionRaceTests
 
         if (outcome == DialOutcome.CallerCancels)
         {
-            // An admission started after the dial exchanges status within milliseconds on loopback.
             await Task.Delay(TimeSpan.FromSeconds(2), token);
             using (Assert.EnterMultipleScope())
             {
@@ -138,10 +127,6 @@ public class PeerAdmissionRaceTests
         Assert.That(local.P2P.SessionCountForTest, Is.EqualTo(1));
     }
 
-    /// <summary>
-    /// Two peers that dial each other at one moment can each keep the connection it opened and reject the other's,
-    /// which closes both; the pair must still end with one session and one entry on each side.
-    /// </summary>
     [Test]
     [Repeat(8)]
     [CancelAfter(120_000)]
@@ -163,7 +148,6 @@ public class PeerAdmissionRaceTests
 
         Stopwatch dialing = Stopwatch.StartNew();
         bool[] dialed = await Task.WhenAll(DialAtBarrier(firstManager, second.P2P), DialAtBarrier(secondManager, first.P2P));
-        // On loopback both dials end within milliseconds unless a dropped stream held one to its timeout.
         if (dialing.Elapsed >= IdentifyAgentVersionProbe.ReadTimeout)
         {
             throw new TimeoutException($"the dials took {dialing.Elapsed}");
@@ -174,10 +158,6 @@ public class PeerAdmissionRaceTests
         Assert.That(dialed, Has.Some.True, "at least one dial admitted the peer");
     }
 
-    /// <summary>
-    /// After a simultaneous dial collapses, the peer can still hold its half of the old session when our redial arrives
-    /// and refuse the redial as a second session; the redials must outlast that window rather than all land inside it.
-    /// </summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_redial_the_peer_refuses_while_it_still_holds_our_old_session_is_admitted_once_that_session_closes(CancellationToken token)
@@ -199,14 +179,12 @@ public class PeerAdmissionRaceTests
             Assert.That(string.CompareOrdinal(local.P2P.LocalPeerId!.ToString(), remote.P2P.LocalPeerId!.ToString()), Is.Negative, "fixture: our node is the side that redials");
         }
 
-        // Our identity's lingering session on the peer, as the collapsed simultaneous dial leaves it.
         await DialFromPlainPeerAsync(oldSession, remote.P2P, token);
         await WaitUntilAsync(() => remote.P2P.TryGetEstablishedSession(lower, out _), "fixture: the old session never reached the peer", token);
 
         await using Relay relay = Relay.Start(PortOf(remote.P2P), closeFirst: 0);
         PeerManager manager = local.CreatePeerManager();
         Task<bool> dial = manager.TryAddPeerAsync(relay.AddressOf(remote.P2P), token);
-        // The first redial is refused while the old session lives; later ones must still come after it has closed.
         await relay.WhenEndedAsync(connection: 2).WaitAsync(Hold, token);
         await oldSession.DisposeAsync();
 
@@ -223,8 +201,6 @@ public class PeerAdmissionRaceTests
         }
     }
 
-    /// <summary>A peer whose session closed is dialed again only by the peer manager, never by the gossipsub router.</summary>
-    /// <remarks>The router queues every closed gossip peer and redials it each reconnection period, past bans, the peer band, dial backoff and the dial gate.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_closed_session_is_not_redialed_by_the_gossip_router(CancellationToken token)
@@ -247,7 +223,6 @@ public class PeerAdmissionRaceTests
 
     private static int PortOf(BeaconP2P node) => int.Parse(LoopbackAddressText(node, withPeerId: false).Split('/')[4]);
 
-    /// <summary>A loopback TCP front for a node: closes the first connections it accepts, relays the rest, and records when each arrived.</summary>
     private sealed class Relay : IAsyncDisposable
     {
         private readonly TcpListener _front = new(IPAddress.Loopback, 0);
@@ -279,7 +254,6 @@ public class PeerAdmissionRaceTests
 
         public string AddressOf(BeaconP2P node) => $"/ip4/127.0.0.1/tcp/{((IPEndPoint)_front.LocalEndpoint).Port}/p2p/{node.LocalPeerId}";
 
-        /// <summary>Completes once the given connection (1-based, in arrival order) has closed on either side.</summary>
         public Task WhenEndedAsync(int connection) => EndedOf(connection - 1).Task;
 
         private TaskCompletionSource EndedOf(int index)
@@ -364,8 +338,6 @@ public class PeerAdmissionRaceTests
 
     private static PeerId PeerIdOf(byte[] privateKey) => BeaconP2P.IdentityFromStoredKey(privateKey).PeerId;
 
-    /// <summary>A dial whose admission failed frees its dial slot before tearing the session down, so a slow teardown
-    /// cannot stall the next dial behind <see cref="IBeaconChainConfig.MaxConcurrentOutboundDials"/>.</summary>
     [Test]
     [CancelAfter(120_000)]
     public async Task A_slow_teardown_of_a_failed_dial_does_not_hold_the_dial_slot(CancellationToken token)

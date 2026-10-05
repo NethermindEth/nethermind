@@ -42,12 +42,7 @@ public class EngineDriverForkchoiceVersionTests
         return (TestEngineDriver.Create(detector, slot, custody), inner);
     }
 
-    /// <remarks>
-    /// execution-apis amsterdam.md ("Update the methods of previous forks", Osaka API) rejects
-    /// engine_forkchoiceUpdatedV3 only for a payload timestamp at or after Amsterdam, and paris.md
-    /// point 8 runs payload-attribute checks only when attributes are provided. So V3 stays valid
-    /// after Amsterdam only while the driver never sends attributes.
-    /// </remarks>
+    // forkchoiceUpdatedV3 remains valid after Amsterdam without payload attributes (execution-apis amsterdam.md; paris.md point 8).
     [Test]
     public async Task Forkchoice_update_before_Gloas_is_v3_without_payload_attributes_or_custody()
     {
@@ -65,10 +60,7 @@ public class EngineDriverForkchoiceVersionTests
         await inner.DidNotReceiveWithAnyArgs().engine_forkchoiceUpdatedV5(default!, default, default);
     }
 
-    /// <remarks>
-    /// specs/gloas/fork-choice.md notify_forkchoice_updated gains custody_columns (EIP-8070), and
-    /// execution-apis amsterdam.md engine_forkchoiceUpdatedV4 is the method that carries it.
-    /// </remarks>
+    // Gloas custody_columns requires forkchoiceUpdatedV4 (EIP-8070; execution-apis amsterdam.md).
     [Test]
     public async Task Forkchoice_update_from_Gloas_is_v4_with_the_exact_custody_columns(
         [Values(0UL, 1UL, 100_000UL)] ulong slotsIntoGloas,
@@ -88,7 +80,7 @@ public class EngineDriverForkchoiceVersionTests
         Assert.That(driver.LastForkchoiceStatus, Is.SameAs(status), "a V4 answer is the head status the caller and the status metrics read");
     }
 
-    /// <remarks>Below 8 groups the per-slot sample is larger than the custody, so a sample-derived bit set is detectably wrong.</remarks>
+    // Below 8 custody groups, sampling is larger than custody, exposing sample-derived custody bits.
     [Test]
     public void Custody_columns_of_the_default_group_count_are_a_strict_subset_of_the_sampled_columns()
     {
@@ -97,7 +89,7 @@ public class EngineDriverForkchoiceVersionTests
         Assert.That(custody.CustodyColumns, Has.Count.LessThan(custody.SampledColumns.Count));
     }
 
-    /// <remarks>execution-apis amsterdam.md: <c>null</c> means the CL provides no custody services.</remarks>
+    // Null means no CL custody services (execution-apis amsterdam.md).
     [Test]
     public async Task Forkchoice_update_from_Gloas_sends_no_custody_while_the_node_identity_is_unknown()
     {
@@ -108,7 +100,6 @@ public class EngineDriverForkchoiceVersionTests
         await inner.Received(1).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Is<PayloadAttributes?>(a => a == null), Arg.Is<BitArray?>(b => b == null));
     }
 
-    /// <summary>An execution layer that rejects the update is a failed call, never a status the caller would cache.</summary>
     [Test]
     public void Forkchoice_update_rejected_by_the_execution_layer_surfaces_as_unavailable()
     {
@@ -121,7 +112,6 @@ public class EngineDriverForkchoiceVersionTests
         Assert.That(driver.LastForkchoiceStatus, Is.Null);
     }
 
-    /// <summary>Resolving the driver from the plugin module must hand it the identity discovery advertises, or production would send no custody.</summary>
     [Test]
     public async Task Container_built_driver_sends_the_custody_of_the_identity_discovery_advertises()
     {

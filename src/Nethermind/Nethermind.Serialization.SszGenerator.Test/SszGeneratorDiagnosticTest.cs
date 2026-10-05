@@ -458,7 +458,6 @@ public class SszGeneratorDiagnosticTest
         return string.Empty;
     }
 
-    /// <summary>Checks field binding rejection, nested loops, JSON order and partial declaration metadata.</summary>
     [Test]
     public void Json_shapes_preserve_field_order_and_original_partial_declaration_position([Values] bool reversed)
     {

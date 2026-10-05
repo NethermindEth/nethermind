@@ -17,25 +17,12 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// The <c>is_first_block</c> and <c>is_same_dependent_root</c> terms of <c>update_proposer_boost_root</c>
-/// (specs/phase0/fork-choice.md, specs/gloas/fork-choice.md), with the head taken before the block is added.
-/// </summary>
-/// <remarks>
-/// Unless a test says otherwise, the timely block is imported at the start of slot 64 (epoch 2), whose shuffling dependent slot is 31. The Fulu
-/// registry is 16 validators of 32 ETH with no votes cast, so equal-weight branches are ordered by the higher root and
-/// the 6.4 ETH boost alone decides between them.
-/// </remarks>
 [HardTimeout(60_000)]
 public class ProposerBoostDependentRootTests
 {
     private const ulong BoostSlot = 2 * Presets.SlotsPerEpoch;
     private const ulong DependentSlot = Presets.SlotsPerEpoch - 1;
 
-    /// <summary>
-    /// A block on a branch that forked below the dependent slot has a different dependent root from the head, so it
-    /// is not boosted. It orders below the head, so a boost would be the only thing that could make it the head.
-    /// </summary>
     [Test]
     public void Block_with_another_dependent_root_is_not_boosted_and_does_not_take_the_head()
     {
@@ -52,10 +39,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.GetHead(), Is.EqualTo(head.Root));
     }
 
-    /// <summary>
-    /// A block on a branch that forked at the dependent slot shares the head's dependent root, so it is boosted and
-    /// the boost moves the head to it. The head is one slot past the fork, so the dependent slot is pinned exactly.
-    /// </summary>
     [Test]
     public void Block_with_the_heads_dependent_root_is_boosted_and_takes_the_head()
     {
@@ -74,10 +57,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.GetHead(), Is.EqualTo(block.Root));
     }
 
-    /// <summary>
-    /// The head is computed before the block is added. The block orders above the old head, so the head after adding
-    /// it is the block itself, whose dependent root trivially matches; the head before it has another dependent root.
-    /// </summary>
     [Test]
     public void Dependent_root_is_compared_with_the_head_before_the_block()
     {
@@ -94,10 +73,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.GetHead(), Is.EqualTo(block.Root), "fixture bug: the head after the block must be the block");
     }
 
-    /// <summary>
-    /// An unboosted block that became the head is imported again in its slot. The spec's on_block returns early for a
-    /// known block, so it stays unboosted even though the pre-block head is now the block itself.
-    /// </summary>
     [Test]
     public void Known_block_imported_again_is_not_boosted()
     {
@@ -114,10 +89,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
     }
 
-    /// <summary>
-    /// compute_shuffling_dependent_slot saturates to slot 0 in epochs 0 and 1, so a block on the anchor shares the
-    /// dependent root of a head built on the anchor at slot 1 and is boosted.
-    /// </summary>
     [Test]
     public void Block_in_the_first_two_epochs_compares_dependent_roots_at_the_anchor([Values(2ul, Presets.SlotsPerEpoch + 8)] ulong slot)
     {
@@ -133,10 +104,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(block.Root));
     }
 
-    /// <summary>
-    /// A known Fulu block is imported again after its parent's payload was found invalid. The spec's on_block returns
-    /// before its parent assertions for a known block, so the import does not throw.
-    /// </summary>
     [Test]
     public void Known_fulu_block_imported_again_skips_the_parent_checks()
     {
@@ -149,12 +116,6 @@ public class ProposerBoostDependentRootTests
         Assert.DoesNotThrow(() => chain.Import(runner, block, ExecutionStatus.Optimistic));
     }
 
-    /// <summary>
-    /// With an execution-invalid justified block there is no head (specs/bellatrix/optimistic-sync.md). A timely block needs
-    /// the pre-block get_head for its boost, so it is refused as a fork-choice failure before any store update, not with an
-    /// internal proto-array error. A late block cannot be boosted, so it is imported without a head: a block that moves the
-    /// justified checkpoint off the invalid block can still arrive.
-    /// </summary>
     [Test]
     public void Block_with_an_invalid_justified_block_is_refused_only_when_timely([Values] bool timely)
     {
@@ -182,10 +143,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(Hash256.Zero));
     }
 
-    /// <summary>
-    /// A known Gloas block is imported again after its parent's payload was found invalid. The spec's on_block returns
-    /// before its parent assertions for a known block, so the import does not throw.
-    /// </summary>
     [Test]
     public void Known_gloas_block_imported_again_skips_the_parent_checks()
     {
@@ -202,7 +159,6 @@ public class ProposerBoostDependentRootTests
         Assert.DoesNotThrow(() => runner.OnBlock(block, postState));
     }
 
-    /// <summary>A second timely block of the slot shares the head's dependent root too, but the first keeps the boost.</summary>
     [Test]
     public void Only_the_first_timely_block_of_the_slot_is_boosted()
     {
@@ -219,10 +175,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(first.Root));
     }
 
-    /// <summary>
-    /// The Gloas rule, on <see cref="ForkCrossingChain"/> at slot 96 (dependent slot 63) with the head on the first Gloas
-    /// block (slot 32): a block on that block is boosted, a block on the Fulu anchor is not.
-    /// </summary>
     [Test]
     public void Gloas_block_is_boosted_only_with_the_heads_dependent_root([Values] bool onHeadBranch)
     {
@@ -245,7 +197,6 @@ public class ProposerBoostDependentRootTests
         Assert.That(runner.ProposerBoostRoot, Is.EqualTo(onHeadBranch ? root : Hash256.Zero));
     }
 
-    /// <summary>A self-built Gloas block at <paramref name="slot"/> on the block whose post-state is <paramref name="state"/>, which this advances in place.</summary>
     private static (SignedBeaconBlockGloas Block, Hash256 Root, BeaconStateGloas PostState) GloasBlock(BeaconStateGloas state, ulong slot)
     {
         EpochCache cache = new();
@@ -259,10 +210,7 @@ public class ProposerBoostDependentRootTests
     private static void TickTo(ForkChoiceRunner runner, ulong slot) =>
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
-    /// <summary>
-    /// Unsigned Fulu blocks over the <see cref="ImportableBlobBlock"/> anchor. Unlike <see cref="UnsignedChain"/>, each
-    /// block's proposer is read from the lookahead at its slot, so blocks can be built past epoch 1.
-    /// </summary>
+    /// <summary>Read proposers from slot lookahead so this fixture can build past epoch 1.</summary>
     private sealed class FuluChain : IForkChoiceStateProvider
     {
         private static readonly BlsSignature Unsigned = new(SignatureSets.G2PointAtInfinity);
@@ -286,7 +234,6 @@ public class ProposerBoostDependentRootTests
         public void Import(ForkChoiceRunner runner, Block block, ExecutionStatus executionStatus = ExecutionStatus.Valid) =>
             runner.OnBlock(block.Signed, block.PostState, executionStatus, (IReadOnlyList<DataColumnSidecar>?)null);
 
-        /// <summary>Builds a block at <paramref name="slot"/> and imports it at the start of that slot.</summary>
         public Block ImportAt(ForkChoiceRunner runner, Hash256 parentRoot, ulong slot, byte payloadHashByte, ExecutionStatus executionStatus = ExecutionStatus.Valid)
         {
             Block block = Extend(parentRoot, slot, payloadHashByte);
@@ -295,7 +242,6 @@ public class ProposerBoostDependentRootTests
             return block;
         }
 
-        /// <summary>The first block, by payload hash byte, whose root is above or below <paramref name="other"/>, the proto-array's tie-break.</summary>
         public Block ExtendOrdered(Hash256 parentRoot, ulong slot, Hash256 other, bool above)
         {
             for (int payloadHashByte = 1; payloadHashByte <= byte.MaxValue; payloadHashByte++)
@@ -308,7 +254,7 @@ public class ProposerBoostDependentRootTests
             throw new InvalidOperationException("Fixture bug: no payload hash byte orders the root as required");
         }
 
-        /// <param name="payloadHashByte">Fills the execution block hash; distinct per block so no two blocks share a root.</param>
+        /// <summary>Distinct payload hash bytes keep otherwise identical block roots distinct.</summary>
         public Block Extend(Hash256 parentRoot, ulong slot, byte payloadHashByte)
         {
             BeaconStateFulu parentState = _states[parentRoot];

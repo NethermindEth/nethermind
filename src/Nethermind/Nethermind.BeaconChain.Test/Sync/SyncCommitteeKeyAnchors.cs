@@ -10,7 +10,6 @@ using Nethermind.Core.Extensions;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A sync committee key that an anchor must not carry.</summary>
 public enum InvalidSyncCommitteeKey
 {
     Infinity,
@@ -18,13 +17,11 @@ public enum InvalidSyncCommitteeKey
     AggregateNotSumOfPubkeys,
 }
 
-/// <summary>Anchor states of <see cref="ForkCrossingChain"/> whose current or next sync committee can carry one key that fails BLS <c>KeyValidate</c>.</summary>
 internal static class SyncCommitteeKeyAnchors
 {
-    /// <summary>Not the first member, so a check that stops after one key cannot pass.</summary>
+    /// <summary>Use a later member so checking only the first committee key cannot pass.</summary>
     public const int Position = 7;
 
-    /// <summary>The Fulu anchor state or the first Gloas post-state, SSZ-encoded, with the member at <see cref="Position"/> of one committee replaced when <paramref name="key"/> is set.</summary>
     public static byte[] EncodeState(bool gloas, bool nextCommittee, InvalidSyncCommitteeKey? key, out Hash256 blockRoot)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
@@ -54,7 +51,6 @@ internal static class SyncCommitteeKeyAnchors
 
     public static string Field(bool nextCommittee) => nextCommittee ? "next_sync_committee" : "current_sync_committee";
 
-    /// <summary>The part of the refusal message that names the offending committee field.</summary>
     public static string Refusal(bool nextCommittee, InvalidSyncCommitteeKey key) => key == InvalidSyncCommitteeKey.AggregateNotSumOfPubkeys
         ? $"{Field(nextCommittee)} aggregate_pubkey is not the aggregate"
         : $"{Field(nextCommittee)} pubkey {Position} ";

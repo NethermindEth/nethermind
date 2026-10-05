@@ -359,8 +359,6 @@ public class NetworkEntryFuzzTests
         .. SszFuzzer.ValidEncodings<DataColumnSidecarGloas>(seed, 1, static s => s.Column = [.. Enumerable.Repeat(s.Column!.FirstOrDefault(), 40)]),
     ];
 
-    /// <param name="Decode">Decodes a payload as the type the router decodes this topic as; <c>null</c> for a topic the validator does not handle.</param>
-    /// <param name="TopicVerdict">The verdict the topic alone decides, whatever the payload; <c>null</c> when the payload decides.</param>
     private sealed record GossipInput(string Topic, byte[][] Ssz, Action<byte[]>? Decode, MessageValidity? TopicVerdict = null);
 
     private static GossipInput[] GossipInputs(int seed)
@@ -473,7 +471,6 @@ public class NetworkEntryFuzzTests
         _ => Snappy.CompressToArray(RandomBytes(random, random.Next(1, 64))),
     };
 
-    /// <summary>An uncompressed snappy frame carrying 1 to 19 bytes under a random checksum.</summary>
     private static byte[] UncompressedFrameWithData(Random random)
     {
         byte[] data = RandomBytes(random, random.Next(1, 20));

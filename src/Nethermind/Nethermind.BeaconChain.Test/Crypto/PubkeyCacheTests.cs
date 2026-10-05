@@ -53,10 +53,6 @@ public class PubkeyCacheTests
         Assert.That(mismatchedResult, Is.False, "count mismatch must force a rebuild");
     }
 
-    /// <summary>
-    /// An infinity key would pass unnoticed through every aggregate summed from the cache, which <c>KeyValidate</c> in
-    /// <c>FastAggregateVerify</c> refuses, so the cache refuses it as it refuses a key that does not decode.
-    /// </summary>
     [Test]
     public void Build_and_extend_throw_with_index_of_a_refused_pubkey([Values("0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff", "0xc00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000")] string refused, [Values] bool extend)
     {
@@ -77,7 +73,6 @@ public class PubkeyCacheTests
         Assert.That(cacheAll, Throws.InvalidOperationException.With.Message.Contains("Validator 2"));
     }
 
-    /// <summary>A persisted buffer holding the point at infinity is not loaded, so the rebuild refuses the registry.</summary>
     [Test]
     public void A_persisted_infinity_point_is_not_loaded()
     {
@@ -98,7 +93,6 @@ public class PubkeyCacheTests
         Assert.That(loaded.Count, Is.Zero);
     }
 
-    /// <summary>The subgroup check is remembered per validator, and a remembered result survives extending the cache.</summary>
     [Test]
     public void Subgroup_checks_are_remembered_across_calls_and_extension()
     {
@@ -118,10 +112,7 @@ public class PubkeyCacheTests
         Assert.That(second, Is.EqualTo(new[] { true, false, true }));
     }
 
-    /// <summary>
-    /// A cache restored at start-up checks subgroups as a built one does, and re-caching an index forgets the result
-    /// remembered for the key it held before; otherwise a stale verdict decides aggregates over the new key.
-    /// </summary>
+    // Re-caching an index must invalidate its old subgroup verdict, including restored caches.
     [Test]
     public void Subgroup_checks_follow_a_loaded_cache_and_a_recached_key()
     {
@@ -146,10 +137,6 @@ public class PubkeyCacheTests
         Assert.That((before, cache.IsInSubgroup(1)), Is.EqualTo((false, true)));
     }
 
-    /// <summary>
-    /// A block import that finds a remembered verdict does no subgroup work, so warming must leave a verdict for every key,
-    /// including the ones outside G1, and must stop when cancelled.
-    /// </summary>
     [Test]
     public void Warming_remembers_the_verdict_of_every_key_and_can_be_cancelled()
     {
@@ -166,7 +153,6 @@ public class PubkeyCacheTests
         Assert.That(Enumerable.Range(0, validators.Length).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, validators.Length).Select(static i => !IsOffSubgroup(i))));
     }
 
-    /// <summary>A block import that overlaps the warm-up must get the right verdict for every key, whether it computes it or reads the warm-up's.</summary>
     [Test]
     public async Task Readers_racing_the_warm_up_get_the_right_verdict_for_every_key()
     {
@@ -199,7 +185,6 @@ public class PubkeyCacheTests
         Assert.That(Enumerable.Range(0, validators.Length).All(cache.HasSubgroupCheck), Is.True);
     }
 
-    /// <summary>Validators appended while the warm-up runs must not cost it the verdicts of the keys it already covered, or the imports that follow repeat those checks inline.</summary>
     [Test]
     public void A_registry_extension_during_the_warm_up_keeps_every_verdict_of_the_original_keys()
     {
@@ -223,7 +208,6 @@ public class PubkeyCacheTests
         AssertEveryVerdictRemembered(cache, original);
     }
 
-    /// <summary>A warm-up that ends while a long extension is still decoding must still find its verdicts in the extended cache.</summary>
     [Test]
     public async Task A_warm_up_that_ends_inside_a_registry_extension_keeps_every_verdict_of_the_original_keys()
     {
@@ -287,7 +271,6 @@ public class PubkeyCacheTests
 
     private const int DistinctKeys = 64;
 
-    /// <summary>A registry that repeats <see cref="MixedRegistry"/> keys, so a large one costs no key generation.</summary>
     private static Validator[] CycledRegistry(int count)
     {
         Validator[] keys = MixedRegistry(DistinctKeys);
@@ -300,7 +283,6 @@ public class PubkeyCacheTests
         Assert.That(Enumerable.Range(0, original).Select(cache.IsInSubgroup), Is.EqualTo(Enumerable.Range(0, original).Select(static i => !IsOffSubgroup(i % DistinctKeys))));
     }
 
-    /// <summary>The batched sum must be the same point the per-key aggregation produces, or every aggregate attestation check changes meaning.</summary>
     [TestCase(1, 1)]
     [TestCase(2, 1)]
     [TestCase(160, 3)]
@@ -354,7 +336,6 @@ public class PubkeyCacheTests
 
     private static bool IsOffSubgroup(int index) => index % 7 == 3;
 
-    /// <summary>A registry of distinct keys where every seventh one is outside G1.</summary>
     private static Validator[] MixedRegistry(int count) =>
         [.. Enumerable.Range(0, count).Select(static i => new Validator { Pubkey = IsOffSubgroup(i) ? OffSubgroupKeys.WithTorsion(SecretKey(i)) : new BlsPublicKey(CompressedPubkey(i)) })];
 

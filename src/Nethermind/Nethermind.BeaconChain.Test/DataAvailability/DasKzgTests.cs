@@ -9,18 +9,8 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// Proves the plugin loads no KZG trusted setup of its own: it forwards to the execution layer's
-/// single handle rather than owning a second one.
-/// </summary>
 public class DasKzgTests
 {
-    /// <summary>
-    /// Static proof: exactly one production call site in the whole repository calls
-    /// <c>Ckzg.LoadTrustedSetup</c>. This does not depend on process load order or on which tests ran
-    /// first (both a concern for any runtime check here), and it fails loud - by name and file - the
-    /// moment a second loader is (re)introduced anywhere, including outside this project.
-    /// </summary>
     [Test]
     public void Exactly_one_production_call_site_loads_the_kzg_trusted_setup()
     {
@@ -38,11 +28,6 @@ public class DasKzgTests
         Assert.That(callSites[0], Does.Match(@"Nethermind\.Crypto[\\/]KzgPolynomialCommitments\.cs$"));
     }
 
-    /// <summary>
-    /// Runtime proof: the plugin's handle is not merely non-zero, it is bit-for-bit the same native
-    /// pointer as the execution layer's own <see cref="KzgPolynomialCommitments"/> handle - i.e. this
-    /// really is the one shared setup, not a second copy that happens to also work.
-    /// </summary>
     [Test]
     public void DasKzg_handle_is_the_same_native_pointer_as_the_execution_layers_handle()
     {
@@ -54,12 +39,7 @@ public class DasKzgTests
         Assert.That(Nethermind.BeaconChain.DataAvailability.DasKzg.IsSharedWithExecutionLayerHandle(), Is.True);
     }
 
-    /// <summary>
-    /// Walks up from the test binary's own output folder to the 'src/Nethermind' source tree. Checks
-    /// for the source file itself, not just a same-named folder: 'artifacts/bin' also has
-    /// 'Nethermind.Crypto'/'Nethermind.BeaconChain' subfolders (build output), and matching on the
-    /// folder name alone would stop there and silently scan zero source files.
-    /// </summary>
+    // Locate the source file, not merely a named directory: artifacts/bin contains matching assembly directories.
     private static string FindSourceRoot()
     {
         DirectoryInfo? dir = new(AppContext.BaseDirectory);

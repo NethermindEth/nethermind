@@ -31,11 +31,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>
-/// Execution payload envelopes through the orchestrator (gloas/fork-choice.md <c>on_execution_payload_envelope</c>): held until
-/// their block imports, retried while their data or the engine is missing, recovered by root for a parked full child, and fetched
-/// by range alongside range-synced Gloas blocks (gloas/p2p-interface.md ExecutionPayloadEnvelopesByRange and ByRoot v1).
-/// </summary>
 public partial class BeaconSyncOrchestratorTests
 {
     private const ulong EnvelopeBlockSlot = 150;
@@ -172,7 +167,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes, Is.EqualTo(new[] { TestItem.KeccakA }));
     }
 
-    /// <summary>gloas/p2p-interface.md <c>execution_payload</c>: an envelope for a block not yet seen MAY be queued until the block is retrieved.</summary>
     [Test]
     public async Task Envelope_before_its_block_imports_once_the_block_imports_and_is_not_redelivered()
     {
@@ -198,11 +192,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Router.IsEnvelopeSeen(root, envelope.Message!.BuilderIndex), Is.True);
     }
 
-    /// <summary>
-    /// A full child parked on its parent's unverified payload asks one peer for that parent's envelope by root and imports within the
-    /// same call. gloas/fork-choice.md <c>get_forkchoice_store</c> starts with <c>payloads = {}</c>, so a Gloas anchor's first full child
-    /// recovers the anchor's envelope the same way.
-    /// </summary>
     [TestCase(false, TestName = "Parked_full_child_triggers_one_envelope_by_root_request_and_imports_in_the_same_pass")]
     [TestCase(true, TestName = "Gloas_anchor_first_full_child_recovers_the_anchor_envelope_by_root")]
     public async Task Parked_full_child_recovers_its_parents_envelope_by_root(bool parentIsAnchor)
@@ -249,7 +238,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(peer.RootRequests, Has.Count.EqualTo(2), "the next slot asks again");
     }
 
-    /// <summary>gloas/fork-choice.md on_block: a full child can recover its parent's verified payload beyond the first three peers.</summary>
     [Test]
     public async Task Parent_envelope_recovery_reaches_the_fourth_peer_after_empty_replies()
     {
@@ -402,7 +390,6 @@ public partial class BeaconSyncOrchestratorTests
     {
         Harness harness = CreateHarness();
         ulong finalizedEpoch = Spec.GetEpoch(EnvelopeBlockSlot) + 1;
-        // At the finalized epoch's start slot, the boundary that is dropped.
         SignedExecutionPayloadEnvelope envelope = EnvelopeFor(TestItem.KeccakA, finalizedEpoch * Spec.SlotsPerEpoch);
         harness.Importer.EnvelopeVerdict = _ => harness.Importer.Envelopes.Count == 1 ? waiting : ExecutionPayloadEnvelopeImportResult.Valid;
         if (finalizedPast)
@@ -437,7 +424,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(attemptsPastAge, Is.EqualTo(3), "an envelope older than the retry age is dropped although finality never passed it");
     }
 
-    /// <summary>A data-unavailable block that only finality would release otherwise holds its retry place, and its children's places, while finality stalls.</summary>
     [Test]
     public async Task Data_unavailable_block_expires_from_the_retry_set_under_stalled_finality()
     {
@@ -459,10 +445,6 @@ public partial class BeaconSyncOrchestratorTests
     public static IEnumerable<ExecutionPayloadEnvelopeImportResult> EveryEnvelopeResultAndAnUnknownOne() =>
         [.. Enum.GetValues<ExecutionPayloadEnvelopeImportResult>(), (ExecutionPayloadEnvelopeImportResult)99];
 
-    /// <summary>
-    /// Only an envelope whose payload is recorded is served by ExecutionPayloadEnvelopesByRoot, and only one whose payload is recorded
-    /// or already was marks its (block root, builder index) seen for gossip; a verdict added later is neither.
-    /// </summary>
     [Test]
     public async Task Envelope_is_marked_seen_and_pooled_only_after_its_payload_is_recorded([ValueSource(nameof(EveryEnvelopeResultAndAnUnknownOne))] ExecutionPayloadEnvelopeImportResult result)
     {
@@ -479,7 +461,6 @@ public partial class BeaconSyncOrchestratorTests
             Is.EqualTo(result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic ? envelope : null));
     }
 
-    /// <summary>An envelope found invalid only when retried after waiting on its data still penalizes the peer that served it.</summary>
     [Test]
     public async Task Invalid_envelope_penalizes_only_the_req_resp_peer_that_served_it([Values] bool fromPeer, [Values] bool afterDataRetry)
     {
@@ -499,7 +480,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(peer.Reports, Is.EqualTo(fromPeer ? new[] { PeerFailureReason.ProtocolViolation } : []));
     }
 
-    /// <summary>A local fault in envelope import is logged and the envelope dropped; left to escape, it would stop the single worker every block goes through.</summary>
     [Test]
     public async Task Envelope_import_fault_is_dropped_without_stopping_the_worker([Values] bool withoutMessage)
     {
@@ -526,7 +506,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.EnvelopePool.TryGet(TestItem.KeccakA, out _), Is.False);
     }
 
-    /// <summary>The module hands the orchestrator the envelope pool the req/resp protocols serve from.</summary>
     [Test]
     public async Task Orchestrator_from_the_module_pools_recorded_envelopes_where_by_root_serves_them()
     {
@@ -612,7 +591,6 @@ public partial class BeaconSyncOrchestratorTests
         if (test.FinallyAvailable is { } final) Assert.That(availability.IsDataAvailable(root, bid), Is.EqualTo(final));
         if (test.FloodCandidates) Assert.That(serving.ColumnRootRequests[0][0].BlockRoot, Is.EqualTo(root));
     }
-    /// <summary>A range whose Gloas blocks are followed by a pre-Gloas one still reaches the worker in slot order.</summary>
     [Test]
     public async Task Range_feed_writes_out_buffered_gloas_blocks_before_a_later_pre_gloas_block()
     {
@@ -627,7 +605,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Imports.Select(static i => i.Slot), Is.EqualTo(new[] { AnchorSlot + 1, AnchorSlot + 2 }));
     }
 
-    /// <summary>A held parent envelope is retried without requesting another copy; a payload still waiting on data keeps its child parked.</summary>
     [TestCase(true, TestName = "Parked_full_child_takes_its_parents_envelope_from_those_held_before_asking_a_peer")]
     [TestCase(false, TestName = "Parent_envelope_waiting_on_its_data_is_not_requested_by_root")]
     public async Task Held_parent_envelope_is_used_before_asking_a_peer(bool parentBecomesKnown)
@@ -640,7 +617,6 @@ public partial class BeaconSyncOrchestratorTests
         harness.Importer.UnverifiedPayloads.Add(anchorRoot);
         if (parentBecomesKnown)
         {
-            // The first answer stands in for an importer that did not hold the block's state yet.
             harness.Importer.EnvelopeVerdict = _ => harness.Importer.Envelopes.Count == 1 ? ExecutionPayloadEnvelopeImportResult.UnknownBlock : ExecutionPayloadEnvelopeImportResult.Valid;
         }
         else
@@ -657,7 +633,6 @@ public partial class BeaconSyncOrchestratorTests
             Assert.That(harness.Importer.Known, Does.Contain(child.ComputeMessageRoot()));
     }
 
-    /// <summary>A child of a block that is itself parked waits on that block's import; only the envelope fork choice can record is asked for.</summary>
     [Test]
     public async Task Child_of_a_parked_block_asks_for_no_envelope_of_its_own_parent()
     {
@@ -677,10 +652,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(peer.RootRequests, Is.EqualTo(new[] { new[] { anchorRoot } }));
     }
 
-    /// <summary>
-    /// A gossip block's fetched parent that parks and then imports once its own parent's envelope is recovered is reported imported,
-    /// so the gossip block after it in the fetched chain imports too instead of being given up.
-    /// </summary>
     [Test]
     public async Task Gossip_block_imports_after_its_fetched_parent_recovers_its_parents_envelope()
     {
@@ -709,7 +680,6 @@ public partial class BeaconSyncOrchestratorTests
         OtherBlocksFillAfterTheFirst,
     }
 
-    /// <summary>Envelopes held for a block not imported yet keep their places first come, at most four for one block and 128 in all.</summary>
     [TestCase(HeldEnvelopeFlood.OneBlockFloods, 4)]
     [TestCase(HeldEnvelopeFlood.OtherBlocksFillFirst, 0)]
     [TestCase(HeldEnvelopeFlood.OtherBlocksFillAfterTheFirst, 1)]
@@ -720,7 +690,6 @@ public partial class BeaconSyncOrchestratorTests
         Harness harness = CreateHarness();
         Hash256 anchorRoot = AnchorRoot();
         harness.Importer.Known.Add(anchorRoot);
-        // Every held envelope is tried, since none records the payload.
         harness.Importer.EnvelopeVerdict = e => harness.Importer.Known.Contains(e.Message!.BeaconBlockRoot!) ? ExecutionPayloadEnvelopeImportResult.Invalid : ExecutionPayloadEnvelopeImportResult.UnknownBlock;
         ForkedSignedBeaconBlock block = new ForkedSignedBeaconBlock.OfGloas(CreateMinimalGloasBlock(EnvelopeBlockSlot, anchorRoot));
         Hash256 root = block.ComputeMessageRoot();
@@ -750,10 +719,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Envelopes.Count - beforeBlock, Is.EqualTo(expectedImports));
     }
 
-    /// <summary>
-    /// An envelope's slot and block root are its own unverified claims, so forged envelopes that fill every held place must give them up
-    /// at finality or past the retry age; otherwise every real envelope that arrives before its block is refused for the process lifetime.
-    /// </summary>
     [Test]
     public async Task Envelopes_held_for_blocks_that_never_import_give_up_their_places([Values] bool finalized)
     {
@@ -784,7 +749,6 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.EnvelopePool.TryGet(root, out _), Is.True);
     }
 
-    /// <summary>The newest blocks are the ones whose envelopes are due next, so a full set of blocks recovering columns gives way oldest first.</summary>
     [Test]
     public async Task Column_recovery_keeps_the_newest_blocks_when_full()
     {
@@ -811,10 +775,8 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(peer.ColumnRootRequests.Skip(requestsOnImport).Select(static r => r[0].BlockRoot), Is.EquivalentTo(roots.Skip(1)));
     }
 
-    /// <summary>The first slot of the data availability window of a clock at genesis, which starts at the Fulu fork.</summary>
     private static ulong ColumnSlot => Spec.FuluForkEpoch * Spec.SlotsPerEpoch;
 
-    /// <summary>A Gloas block at <paramref name="slot"/> whose bid, for <paramref name="bidSlot"/>, commits the fixture blobs.</summary>
     private static ForkedSignedBeaconBlock GloasBlobBlock(ulong slot, Hash256 parentRoot, ulong bidSlot)
     {
         SignedBeaconBlockGloas block = CreateMinimalGloasBlock(slot, parentRoot);
@@ -824,7 +786,6 @@ public partial class BeaconSyncOrchestratorTests
         return new ForkedSignedBeaconBlock.OfGloas(block);
     }
 
-    /// <summary>Resolves the node identity and its column custody as discovery's start does, without binding a socket.</summary>
     private static BeaconDiscovery CreateDiscovery()
     {
         BeaconDiscovery discovery = new(new BeaconChainConfig { Discv5Port = 0 }, Spec, new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>()), new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
@@ -838,7 +799,6 @@ public partial class BeaconSyncOrchestratorTests
 
     private static DateTime SlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Spec.GenesisTime + slot * Spec.SecondsPerSlot).AddSeconds(6);
 
-    /// <summary>Ticks the slot <paramref name="age"/> slots after the wall slot and returns the import attempts counted so far.</summary>
     private static async Task<int> TickAtAgeAsync(Harness harness, ulong age, Func<int> attempts)
     {
         harness.Timestamper.Set(SlotStart(WallSlot + age));
@@ -867,7 +827,6 @@ public partial class BeaconSyncOrchestratorTests
 
     private static SignedExecutionPayloadEnvelope[] EnvelopesOf(List<ForkedSignedBeaconBlock.OfGloas> chain) => [.. chain.Select(EnvelopeFor)];
 
-    /// <summary>Linked Gloas blocks from <paramref name="firstSlot"/>, each building on its parent's payload unless its index is in <paramref name="emptyAt"/>.</summary>
     private static List<ForkedSignedBeaconBlock.OfGloas> BuildGloasRun(Hash256 anchorRoot, ulong firstSlot, int count, ulong slotStep = 1, int[]? emptyAt = null)
     {
         List<ForkedSignedBeaconBlock.OfGloas> chain = [];
@@ -891,7 +850,6 @@ public partial class BeaconSyncOrchestratorTests
         return chain;
     }
 
-    /// <summary>A peer serving the run's blocks and envelopes in the requested window, with explicit head and availability bounds.</summary>
     private static EnvelopeServingPeer RangeServingPeer(
         string id, ulong headSlot, List<ForkedSignedBeaconBlock.OfGloas> chain, SignedExecutionPayloadEnvelope[] envelopes,
         ulong earliestAvailableSlot = 0, bool serveEveryEnvelope = false) => new(

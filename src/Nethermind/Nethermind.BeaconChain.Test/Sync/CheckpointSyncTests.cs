@@ -42,7 +42,6 @@ public class CheckpointSyncTests
     {
         TestLogManager logManager = new(LogLevel.Info);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
-        // Not the config default (sigp.io): at the time of writing its TLS certificate was expired.
         BeaconChainConfig config = new() { CheckpointSyncUrl = "https://beaconstate.ethstaker.cc" };
 
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -84,7 +83,6 @@ public class CheckpointSyncTests
 
         Assert.That(pubkeyCache.Count, Is.EqualTo(state.Validators!.Length));
 
-        // Third start loads the persisted pubkey cache instead of rebuilding it.
         PubkeyCache reloadedCache = new();
         using (CheckpointSync offlineSync = new(offlineConfig, BeaconChainSpec.Mainnet, store, logManager))
         using (BeaconChainService service = new(offlineConfig, BeaconChainSpec.Mainnet, store, reloadedCache, offlineSync, CreateOrchestrator(offlineConfig, store, logManager), CreateDetector(logManager), logManager))
@@ -95,10 +93,6 @@ public class CheckpointSyncTests
         Assert.That(reloadedCache.Count, Is.EqualTo(state.Validators!.Length));
     }
 
-    /// <summary>
-    /// Once the Gloas fork finalizes, every provider serves a Gloas state and block; decoding them as Fulu
-    /// refused the only checkpoint on offer. The anchor must come back and be stored in the Gloas shape.
-    /// </summary>
     [Test]
     public async Task A_gloas_checkpoint_is_verified_and_persisted_in_the_gloas_shape([Values] bool withBlockFile, [Values] bool independentCheckpoint)
     {
@@ -139,10 +133,6 @@ public class CheckpointSyncTests
             "a proven checkpoint is recorded, so a restart accepts it after the anchor follows finality past it");
     }
 
-    /// <summary>
-    /// The slot alone picks the layout, so a state whose fork version names another fork, or a block of another
-    /// fork, is inconsistent data; get_forkchoice_store could not accept either pair, so nothing is persisted.
-    /// </summary>
     [TestCase(true, false, TestName = "A_fulu_anchor_block_under_a_gloas_state_is_refused")]
     [TestCase(false, false, TestName = "A_gloas_slot_state_carrying_the_fulu_fork_version_is_refused")]
     [TestCase(false, true, TestName = "A_gloas_slot_state_carrying_the_fulu_fork_version_is_refused_when_both_forks_activate_in_one_epoch")]
@@ -166,7 +156,6 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>On a first sync nothing is stored yet, so a checkpoint with a fork version outside its fork points at the configuration or the source, never at the database.</summary>
     [Test]
     public void A_checkpoint_with_a_version_outside_its_fork_is_refused_without_blaming_the_database([Values] bool unknownVersion)
     {
@@ -184,10 +173,6 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>
-    /// specs/gloas/fork-choice.md get_forkchoice_store asserts anchor_block.state_root == hash_tree_root(anchor_state): a state that copies its
-    /// block's header with the real state root but not the real contents, or precedes its header, must not be persisted even when it proves the checkpoint.
-    /// </summary>
     [Test]
     public void A_checkpoint_state_that_is_not_its_blocks_post_state_is_refused_before_anything_is_persisted([Values] bool headerAfterState)
     {
@@ -218,7 +203,6 @@ public class CheckpointSyncTests
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.CheckpointSyncAnchor), Is.Null);
     }
 
-    /// <summary>A checkpoint sync persists the anchor, its state and block, and no genesis-root metadata that nothing reads.</summary>
     [Test]
     public async Task A_gloas_checkpoint_writes_no_unread_genesis_validators_root_metadata()
     {
@@ -233,7 +217,6 @@ public class CheckpointSyncTests
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.GenesisValidatorsRoot), Is.Null);
     }
 
-    /// <summary>A fresh checkpoint sync refuses a state of another network, so a database that resume would refuse is never written.</summary>
     [Test]
     public void A_gloas_checkpoint_from_another_network_is_refused_before_anything_is_persisted()
     {
@@ -250,11 +233,7 @@ public class CheckpointSyncTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>
-    /// Altair <c>eth_aggregate_pubkeys</c> KeyValidates every sync committee member, and sync-aggregate verification
-    /// only decodes the keys, so an anchor committee with an infinity or off-subgroup key, or an aggregate_pubkey that is not
-    /// their aggregate, must be refused before it is persisted.
-    /// </summary>
+    /// <summary>Pairing alone does not validate committee keys; reject infinity, off-subgroup members and wrong aggregate keys.</summary>
     [Test]
     public void A_checkpoint_with_an_invalid_sync_committee_key_is_refused_before_anything_is_persisted(
         [Values] bool gloas, [Values] bool nextCommittee, [Values] InvalidSyncCommitteeKey key)
@@ -288,7 +267,6 @@ public class CheckpointSyncTests
         Assert.That(anchorRoot, Is.EqualTo(blockRoot));
     }
 
-    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: an unproven checkpoint prevents anchor persistence.</summary>
     [Test]
     public void An_independent_checkpoint_mismatch_refuses_fresh_sync_before_persisting([Values(0UL, 1UL, 2UL, ulong.MaxValue)] ulong epoch)
     {
@@ -305,10 +283,6 @@ public class CheckpointSyncTests
         Assert.That(store.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.Null);
     }
 
-    /// <summary>
-    /// weak-subjectivity.md, Weak Subjectivity Sync Procedure: only the anchor itself proves a checkpoint. A later anchor whose block_roots,
-    /// supplied by the checkpoint source, names the checkpoint proves nothing, and neither does the anchor's root under another epoch.
-    /// </summary>
     [TestCase(false, false, 1UL, true)]
     [TestCase(true, false, 1UL, false)]
     [TestCase(false, true, 1UL, false)]
@@ -331,14 +305,12 @@ public class CheckpointSyncTests
         Assert.That(sync.ProvesCheckpoint(new ForkedBeaconState.OfGloas(state), anchor.Root, checkpoint), Is.EqualTo(proven));
     }
 
-    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: checkpoint input uses a 32-byte root and unsigned epoch.</summary>
     [Test]
     public void An_invalid_independent_checkpoint_is_refused([Values("0x01:1", "root:1", "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:-1",
         "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9", "0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43dz:1")] string value) =>
         Assert.That(() => CheckpointSync.ParseWeakSubjectivityCheckpoint(value),
             Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint"));
 
-    /// <summary>weak-subjectivity.md, Weak Subjectivity Sync Procedure: the example input parses, and a blank value leaves the checkpoint unset.</summary>
     [TestCase("0x8584188b86a9296932785cc2827b925f9deebacce6d72ad8d53171fa046b43d9:9544", 9544UL)]
     [TestCase(" ", null)]
     [TestCase(null, null)]
@@ -353,7 +325,6 @@ public class CheckpointSyncTests
     private static ExternalClDetector CreateDetector(ILogManager logManager) =>
         new(new BeaconChainConfig(), new Lazy<IEngineRpcModule>(Substitute.For<IEngineRpcModule>()), logManager);
 
-    /// <summary>An orchestrator without the P2P components: its run fails fast, after the anchor and pubkey-cache init this test asserts on.</summary>
     private static BeaconSyncOrchestrator CreateOrchestrator(IBeaconChainConfig config, BeaconChainStore store, ILogManager logManager)
     {
         EngineDriver engine = Engine.TestEngineDriver.Create(CreateDetector(logManager), logManager: logManager);

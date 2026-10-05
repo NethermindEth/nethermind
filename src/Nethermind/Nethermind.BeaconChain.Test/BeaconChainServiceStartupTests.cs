@@ -86,10 +86,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(source.IsCancellationRequested, Is.True);
     }
 
-    /// <summary>
-    /// A database written by a newer schema cannot be read, and a node that keeps running without its driver leaves the
-    /// execution layer unfollowed; the refusal must fail the startup step, not only the background run.
-    /// </summary>
     [Test]
     public void The_start_step_fails_on_a_database_written_by_a_newer_schema_version()
     {
@@ -108,10 +104,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(version, Is.EqualTo(newer), "a refused database is not restamped");
     }
 
-    /// <summary>
-    /// A stored anchor comes from an earlier checkpoint sync, possibly by an older build, so its sync committee keys are checked
-    /// again on resume. A refused anchor leaves the execution layer without a driver, so it fails startup, as a newer schema does.
-    /// </summary>
     [Test]
     public async Task A_resumed_anchor_with_an_invalid_sync_committee_key_fails_startup(
         [Values] bool gloas, [Values] bool nextCommittee, [Values] InvalidSyncCommitteeKey key)
@@ -121,10 +113,6 @@ public class BeaconChainServiceStartupTests
         AssertRefusedBeforeRun(refusal, errors, pubkeys, Is.TypeOf<InvalidDataException>().And.Message.Contains(SyncCommitteeKeyAnchors.Refusal(nextCommittee, key)));
     }
 
-    /// <summary>
-    /// The anchor root keys the anchor state and is fork choice's anchor_root, which get_forkchoice_store computes as
-    /// hash_tree_root(anchor_block); a stored block that does not hash to it is a corrupt database, refused before the run.
-    /// </summary>
     [Test]
     public async Task A_resumed_anchor_block_that_does_not_hash_to_its_anchor_root_fails_startup([Values] bool gloas)
     {
@@ -143,7 +131,6 @@ public class BeaconChainServiceStartupTests
             Is.TypeOf<InvalidDataException>().And.Message.Contains($"not the anchor root {storedUnder}").And.Message.Contains("Delete the beaconChain database"));
     }
 
-    /// <summary>A database written for another network must not seed this one; the anchor state's genesis_validators_root is checked on resume.</summary>
     [Test]
     public async Task A_resumed_anchor_from_another_network_fails_startup([Values] bool gloas)
     {
@@ -153,10 +140,6 @@ public class BeaconChainServiceStartupTests
             Is.TypeOf<InvalidDataException>().And.Message.Contains("genesis_validators_root").And.Message.Contains("another network").And.Message.Contains("Delete the beaconChain database"));
     }
 
-    /// <summary>
-    /// weak-subjectivity.md, Weak Subjectivity Sync Procedure: a resumed database whose anchor does not prove the configured
-    /// checkpoint is refused, so startup fails instead of following a chain the operator did not choose.
-    /// </summary>
     [Test]
     public async Task A_resumed_anchor_that_does_not_prove_the_weak_subjectivity_checkpoint_fails_startup([Values(0, 1, 2, 3)] int proofRecord)
     {
@@ -176,10 +159,6 @@ public class BeaconChainServiceStartupTests
             Is.TypeOf<InvalidDataException>().And.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint").And.Message.Contains("delete the beaconChain database"));
     }
 
-    /// <summary>
-    /// The persisted anchor follows finality, so it stops being a checkpoint proven earlier at the next finalized block; the record
-    /// must keep startup going. A checkpoint the resumed anchor proves is recorded for the same reason.
-    /// </summary>
     [Test]
     public async Task A_resumed_anchor_goes_on_to_start_with_a_weak_subjectivity_checkpoint_it_proves_or_proved_before([Values] bool recordedBefore)
     {
@@ -204,10 +183,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(resumed!.GetMetadata(BeaconChainMetadataKeys.WeakSubjectivityCheckpoint), Is.EqualTo(record));
     }
 
-    /// <summary>
-    /// The record follows the anchor it was proven for, so a checkpoint sync interrupted before its anchor leaves none to vouch for a later one;
-    /// the checkpoint sync anchor record precedes the anchor, so no stored anchor lacks the evidence a restart checks the checkpoint against.
-    /// </summary>
     [Test]
     public void A_checkpoint_sync_interrupted_before_its_anchor_leaves_no_weak_subjectivity_record(
         [Values(BeaconChainMetadataKeys.Anchor, BeaconChainMetadataKeys.CheckpointSyncAnchor)] string interruptedWrite)
@@ -223,7 +198,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(store.TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>A malformed checkpoint is an operator error that fails startup before any download or database read.</summary>
     [Test]
     public void A_malformed_weak_subjectivity_checkpoint_fails_startup()
     {
@@ -233,7 +207,6 @@ public class BeaconChainServiceStartupTests
             Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("BeaconChain.WeakSubjectivityCheckpoint"));
     }
 
-    /// <summary>A valid resumed anchor passes validation: nothing refuses it, and the pubkey cache is built from its registry.</summary>
     [Test]
     public async Task A_resumed_anchor_with_valid_sync_committee_keys_goes_on_to_start([Values] bool gloas)
     {
@@ -244,10 +217,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(pubkeys, Is.EqualTo(ForkCrossingChain.Instance.AnchorState.Validators!.Length), "the run went on past the pubkey cache");
     }
 
-    /// <summary>
-    /// The start step can run after the RPC server has taken an external consensus client's first engine call. The driver is
-    /// then disabled, so its database is neither rebuilt to the current schema nor refused for a newer one.
-    /// </summary>
     [Test]
     public void The_start_step_leaves_the_database_untouched_once_an_external_consensus_client_is_detected([Values] bool newerSchema)
     {
@@ -270,10 +239,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors, Is.Empty, "the anchor was never read");
     }
 
-    /// <summary>
-    /// The pubkey cache takes seconds on a mainnet registry, and the execution layer waits for the first forkchoiceUpdated before
-    /// it syncs, so the call goes out before the cache is built; the cache is still built before any block is imported.
-    /// </summary>
     [Test]
     public async Task The_first_forkchoice_updated_is_sent_before_the_pubkey_cache_is_built_from_a_resumed_anchor([Values] bool gloas)
     {
@@ -293,10 +258,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(pubkeyCache.Count, Is.EqualTo((gloas ? ForkCrossingChain.Instance.First.PostState.Validators : ForkCrossingChain.Instance.AnchorState.Validators)!.Length), "the cache was built after the call");
     }
 
-    /// <summary>
-    /// A resumed anchor is tied to its block only by the state-root check of the fork-choice store, and that check is what ties the
-    /// execution block hash the first forkchoiceUpdated carries to the anchor state, so a mismatch reaches neither the execution layer nor the cache.
-    /// </summary>
     [Test]
     public async Task A_resumed_anchor_whose_block_state_root_does_not_match_its_state_never_reaches_the_execution_layer([Values] bool gloas)
     {
@@ -316,10 +277,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors.Select(static e => e.Exception), Has.One.TypeOf<ForkChoiceException>().With.Message.Contains("state root does not match"));
     }
 
-    /// <summary>
-    /// Checkpoint verification is what ties the anchor block, and so its execution block hash, to the anchor state, so an anchor
-    /// that fails it never reaches the execution layer; one that passes is sent before the pubkey cache is built.
-    /// </summary>
     [Test]
     public async Task The_first_forkchoice_updated_follows_the_verification_of_a_fresh_checkpoint([Values] bool blockMatchesState)
     {
@@ -348,10 +305,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors.Select(static e => e.Exception), blockMatchesState ? Is.Empty : Has.One.TypeOf<InvalidDataException>().With.Message.Contains("mismatch"));
     }
 
-    /// <summary>
-    /// The execution layer can leave the first forkchoiceUpdated unanswered while it starts; shutdown must not wait on it,
-    /// and the run it blocks must unwind on the stop instead of never ending.
-    /// </summary>
     [Test]
     public async Task StopAsync_completes_and_cancels_a_run_blocked_on_the_first_forkchoice_updated()
     {
@@ -372,10 +325,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(pubkeyCache.Count, Is.Zero, "the run never got past the call");
     }
 
-    /// <summary>
-    /// The pubkey cache build cannot be cancelled, and <see cref="BeaconChainService.Dispose"/> tears down the token source the run
-    /// uses, so <see cref="BeaconChainService.StopAsync"/> must not report completion until the run has left that step.
-    /// </summary>
     [Test]
     public async Task StopAsync_completes_only_after_a_run_blocked_in_the_pubkey_cache_build_is_released()
     {
@@ -404,10 +353,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
-    /// <summary>
-    /// A run stopped while the first forkchoiceUpdated is answered is a stopped run: it must not spend seconds on a cache build
-    /// nobody will use, and must not leave a persisted cache behind for a start that never happened.
-    /// </summary>
     [Test]
     public async Task A_run_stopped_during_the_first_forkchoice_updated_builds_and_persists_no_pubkey_cache([Values] bool gloas)
     {
@@ -429,10 +374,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
-    /// <summary>
-    /// The first epoch of imports after a start would otherwise pay one subgroup check per validator inline, seconds per block on a
-    /// mainnet registry; the run warms them once the cache is built, so a block import finds every verdict remembered.
-    /// </summary>
     [Test]
     public async Task The_subgroup_checks_of_every_cached_pubkey_are_remembered_shortly_after_the_cache_is_built()
     {
@@ -448,7 +389,6 @@ public class BeaconChainServiceStartupTests
         BeaconChainService service = container.Resolve<BeaconChainService>();
         Task run = service.Start();
         await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        // The first read of the block index is the replay of stored blocks, which holds the run before it starts the network.
         gate.Arm();
         answer.SetResult(PayloadStatusV1.Syncing);
         await gate.Reached.WaitAsync(TimeSpan.FromSeconds(30));
@@ -491,7 +431,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors, Is.Empty, "a stop is not a failure");
     }
 
-    /// <summary>The warm-up is the run's own work, so a stop must cancel it and only return once it has left the cache.</summary>
     [Test]
     public async Task A_stop_cancels_the_subgroup_warm_up_and_returns_only_after_it_has_ended()
     {
@@ -525,7 +464,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logManager.Errors, Is.Empty);
     }
 
-    /// <summary>A run that fails without a stop must not leave its warm-up running behind it.</summary>
     [Test]
     public async Task A_failed_run_cancels_the_subgroup_warm_up()
     {
@@ -541,7 +479,6 @@ public class BeaconChainServiceStartupTests
         BeaconChainService service = container.Resolve<BeaconChainService>();
         Task run = service.Start();
         await engine.Called.Task.WaitAsync(TimeSpan.FromSeconds(30));
-        // The replay of stored blocks is the first read of the block index; it fails once the warm-up is running.
         blockIndex.OnRead = () =>
         {
             pubkeyCache.Started.Wait(TimeSpan.FromSeconds(30));
@@ -574,10 +511,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(container.Resolve<BeaconChainStore>().TryGetAnchor(out _, out _), Is.False);
     }
 
-    /// <summary>
-    /// A provider that drops the state download for longer than one checkpoint sync retries leaves the execution layer without a
-    /// consensus driver until the process restarts, so the driver starts checkpoint sync again and goes on once it succeeds.
-    /// </summary>
     [Test]
     public async Task A_checkpoint_download_the_network_keeps_dropping_is_started_again_and_the_driver_goes_on()
     {
@@ -593,7 +526,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty);
     }
 
-    /// <summary>A refusal of the checkpoint itself repeats on every start, so it fails the run loudly instead of being retried.</summary>
     [Test]
     public async Task A_checkpoint_that_cannot_be_anchored_is_not_started_again()
     {
@@ -610,7 +542,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
     }
 
-    /// <summary>A state file the operator named and that is not there stays missing on every start, so it fails the run loudly instead of being retried.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_missing_checkpoint_state_file_is_not_started_again()
@@ -638,7 +569,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logs.Lines.Where(static l => l.Text.Contains("starting it again")), Is.Empty);
     }
 
-    /// <summary>The wait before a new start is part of the run, so a stop during it must end the run instead of leaving shutdown waiting.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task StopAsync_ends_the_wait_before_checkpoint_sync_starts_again(CancellationToken token)
@@ -667,7 +597,6 @@ public class BeaconChainServiceStartupTests
         Assert.That(logs.Lines.Where(static l => l.Level == "Error"), Is.Empty, "a stop is not a failure");
     }
 
-    /// <summary>Runs a fresh start against <paramref name="provider"/> with one download attempt per checkpoint sync, until the driver has built its pubkey cache or its run ends.</summary>
     private static async Task<(TestLogRecorder Logs, KickEngine Engine, PubkeyCache PubkeyCache)> RunFromProviderAsync(FlakyCheckpointProvider provider, TimeSpan startRetryDelay, bool waitForCache)
     {
         CacheWrittenMemDb metadata = new();
@@ -776,14 +705,12 @@ public class BeaconChainServiceStartupTests
                 Message = blockStateRoot is null ? fulu : new BeaconBlock { Slot = fulu.Slot, ProposerIndex = fulu.ProposerIndex, ParentRoot = fulu.ParentRoot, StateRoot = blockStateRoot, Body = fulu.Body },
                 Signature = new BlsSignature(new byte[BlsSignature.Length]),
             });
-        // A block with another state root has another root, and the anchor is stored under its block's root.
         blockRoot = block.ComputeMessageRoot();
         store.PutState(blockRoot, stateSsz);
         store.PutForkedBlock(blockRoot, block);
         store.SetAnchor(blockRoot, 0);
     }
 
-    /// <summary>Holds the first metadata read after <see cref="Arm"/> until <see cref="Release"/>, on the thread that made it.</summary>
     private sealed class ReadGate
     {
         private readonly ManualResetEventSlim _release = new();
@@ -819,7 +746,6 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>Fails the write of the anchor entry, as a crash between persisting a checkpoint's state and its anchor would.</summary>
     private sealed class KeyFailingMemDb(string failingKey) : MemDb
     {
         public override void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -833,7 +759,6 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>Runs <see cref="OnRead"/> before each read.</summary>
     private sealed class OnReadMemDb : MemDb
     {
         public Action? OnRead { get; set; }
@@ -845,7 +770,6 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>A cache whose warm-up holds until it is cancelled and released, so a test can observe what a stop does to it.</summary>
     private sealed class BlockingWarmCache : PubkeyCache
     {
         private readonly TaskCompletionSource _started = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -870,7 +794,6 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>Runs <see cref="OnCacheWritten"/> once the pubkey cache's count entry is stored, which <see cref="PubkeyCache.Persist"/> writes last.</summary>
     private sealed class CacheWrittenMemDb : MemDb
     {
         public Action? OnCacheWritten { get; set; }
@@ -885,7 +808,6 @@ public class BeaconChainServiceStartupTests
         }
     }
 
-    /// <summary>An in-memory column store whose <paramref name="column"/> is <paramref name="replacement"/>.</summary>
     private sealed class ColumnsDbWith(BeaconChainDbColumns column, IDb replacement) : IColumnsDb<BeaconChainDbColumns>
     {
         private readonly Dictionary<BeaconChainDbColumns, IDb> _columns =
@@ -899,7 +821,6 @@ public class BeaconChainServiceStartupTests
         public void Dispose() { }
     }
 
-    /// <summary>Records how many pubkeys were cached when each forkchoiceUpdated arrived, then runs <see cref="OnCall"/> and answers with <see cref="Answer"/>.</summary>
     private sealed class KickEngine(PubkeyCache pubkeyCache) : IEngineDriver
     {
         public List<int> PubkeysHeldAtCall { get; } = [];
@@ -933,7 +854,6 @@ public class BeaconChainServiceStartupTests
     {
         CacheWrittenMemDb metadata = new();
         BeaconChainStore store = new(new ColumnsDbWith(BeaconChainDbColumns.Metadata, metadata), GloasCheckpointFiles.Spec);
-        // The run stops at the orchestrator, which has no network in this container.
         SeedAnchor(store, gloas, nextCommittee, key);
         if (genesisValidatorsRoot is not null)
         {

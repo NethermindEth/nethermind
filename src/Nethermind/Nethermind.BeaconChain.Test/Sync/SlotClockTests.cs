@@ -73,7 +73,6 @@ public class SlotClockTests
             Assert.That(ticks[1], Is.GreaterThan(ticks[0]), "ticks advance");
         }
 
-        // Recapture the wall clock: collecting the ticks above consumed real time.
         ulong preGenesis = (ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() + 3;
         SlotClock preGenesisClock = new(CreateSpec(preGenesis, secondsPerSlot: 1), Timestamper.Default);
         Assert.That((await CollectTicksAsync(preGenesisClock, 1, token))[0], Is.EqualTo(0ul), "first tick before genesis is slot 0");

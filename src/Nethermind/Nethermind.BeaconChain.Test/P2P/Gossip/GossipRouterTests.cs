@@ -93,7 +93,6 @@ public partial class GossipRouterTests
             Assert.That(verified, Is.Zero);
         }
 
-        // The library announces only subscribed topics to a peer that connects later, so the retired topic is not advertised to it.
         string kept = GossipTopics.Topic(ForkDigest.Compute(Spec, 0), GossipTopics.BeaconBlock);
         pubsub.GetTopic(kept);
         (_, List<Rpc> toLaterPeer, _) = ConnectSubscribedPeer(pubsub, kept);
@@ -114,9 +113,7 @@ public partial class GossipRouterTests
         Assert.That(verified, Is.EqualTo(1), "retired messages do not enter the seen cache, and rejoining restores validation");
     }
 
-    /// <summary>A mesh peer whose gossip this node consumes without accepting, and whose advertised id this node never receives, keeps its mesh place and is not graylisted.</summary>
-    /// <remarks>The node returns Ignored for consumed gossip, which libp2p does not count as a mesh delivery, and an unanswered IWANT costs a behaviour
-    /// penalty; with the library's default scores either one prunes the peer, and a process pause leaves several promises unanswered at once.</remarks>
+    // Consumed gossip earns no mesh delivery credit; unanswered IWANTs cost behaviour penalties with the library defaults.
     [Test]
     [CancelAfter(30_000)]
     public async Task Mesh_peer_that_delivers_no_accepted_message_and_breaks_a_promise_stays_in_the_mesh(CancellationToken token)
@@ -147,11 +144,7 @@ public partial class GossipRouterTests
         Assert.That(verified, Is.EqualTo(1), "the peer's messages still reach the validator");
     }
 
-    /// <summary>
-    /// Under the host's settings the library drops a message carrying from, seqno, signature or key, even an empty one, before the validator,
-    /// and keeps no id for it, so the unsigned copy of the same data is still validated.
-    /// </summary>
-    /// <remarks>p2p-interface.md "Topics and messages": clients MUST enforce <c>StrictNoSign</c>; the validator relies on the library for it.</remarks>
+    // p2p-interface.md StrictNoSign is enforced by the library before the validator.
     [Test]
     public async Task StrictNoSign_drops_a_present_field_before_the_validator_and_still_validates_the_unsigned_copy(
         [Values("from", "seqno", "signature", "key")] string field, [Values] bool empty)
@@ -186,8 +179,6 @@ public partial class GossipRouterTests
         Assert.That(verified, Is.EqualTo(new[] { unsigned }), "only the unsigned copy reaches the validator");
     }
 
-    /// <summary>Registers a connected peer subscribed to <paramref name="topicId"/> with <paramref name="pubsub"/>.</summary>
-    /// <returns>The peer, the RPCs the router sends it, and a callback that hands the router an RPC from it.</returns>
     private static (PeerId Peer, List<Rpc> Sent, Action<Rpc> Receive) ConnectSubscribedPeer(PubsubRouter pubsub, string topicId, string protocol = PubsubRouter.GossipsubProtocolVersionV11)
     {
         PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
@@ -203,7 +194,6 @@ public partial class GossipRouterTests
         return (peer, sent, Receive);
     }
 
-    /// <summary>The router's RPC handler changes the peer sets under its monitor while unsubscribing enumerates them.</summary>
     [Test]
     public void Retiring_a_topic_waits_for_the_router_monitor()
     {
@@ -364,7 +354,6 @@ public partial class GossipRouterTests
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(blockTopicBpo1.IsSubscribed, Is.False, "old topics are unsubscribed on rotation");
         Assert.That(blockTopicBpo2.IsSubscribed, "new topics are subscribed on rotation");
-        // The pubsub validator consumes every message, and the router raises topic events for each one it forwards.
         Assert.That(topics.Values.Select(static t => t.HasHandlers), Is.All.False, "no topic handler would process a forwarded message again");
         Assert.That(blocks, Is.Zero);
     }
@@ -396,7 +385,6 @@ public partial class GossipRouterTests
             Assert.That(topics.Keys, Does.Contain(GossipTopics.Topic(bpo1Digest, GossipTopics.PayloadAttestationMessage)), "fork choice consumes PTC votes from gossip");
         }
 
-        // A second subscription must not double-subscribe.
         router.SubscribeDigest(bpo1Digest);
         Assert.That(topics.Keys.Count(k => k == envelopeTopicBpo1), Is.EqualTo(1));
 
@@ -610,7 +598,6 @@ public partial class GossipRouterTests
 
     private static DateTime SepoliaSlotStart(ulong slot) => DateTime.UnixEpoch.AddSeconds(Sepolia.GenesisTime + slot * Sepolia.SecondsPerSlot);
 
-    /// <summary>A Sepolia router with a store holding a Gloas block at the wall slot, one below the finalized slot, one at the finalized start slot, and a Fulu block.</summary>
     private sealed class EnvelopeFixture
     {
         public const ulong BuilderIndex = 5;

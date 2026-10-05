@@ -39,8 +39,6 @@ public class BeaconP2PLoopbackTests
 
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 
-    /// <summary>A dial its caller cancelled before it began does not keep the peer from being dialed afterwards.</summary>
-    /// <remarks>Nethermind.Libp2p 1.0.0 kept such a dial as the pending dial of the peer id for good.</remarks>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_cancelled_dial_does_not_lose_the_peer([Values] bool alreadyConnected, CancellationToken token)
@@ -63,8 +61,6 @@ public class BeaconP2PLoopbackTests
         }
     }
 
-    /// <summary>A dial still running when its host is disposed leaves no session open: disposal does not end a dial in flight.</summary>
-    /// <param name="callerStopsWaiting">The caller cancels first while another waiter keeps the library dial running.</param>
     [Test]
     [CancelAfter(90_000)]
     public async Task A_host_disposed_during_a_dial_leaves_no_session_open([Values] bool callerStopsWaiting, CancellationToken token)
@@ -74,7 +70,6 @@ public class BeaconP2PLoopbackTests
         await server.StartAsync(token);
         await client.StartAsync(token);
         LocalPeer serverPeer = server.LocalPeerForTest!;
-        // The dialer's own session: closed as soon as it is added after disposal, so the remote may never list it.
         TaskCompletionSource reached = new(TaskCreationOptions.RunContinuationsAsynchronously);
         client.LocalPeerForTest!.Sessions.CollectionChanged += (_, change) =>
         {
@@ -118,7 +113,6 @@ public class BeaconP2PLoopbackTests
         Assert.That(serverPeer.Sessions, Is.Empty, "the dial finished after disposal and its session stayed open");
     }
 
-    /// <summary>A dial its caller stopped waiting for, which then fails, leaves no unobserved failure behind.</summary>
     [Test]
     [NonParallelizable]
     [CancelAfter(60_000)]
@@ -144,7 +138,6 @@ public class BeaconP2PLoopbackTests
         try
         {
             await AbandonAsync(client, Multiaddress.Decode(refusing), token);
-            // The library dial fails within milliseconds on a refused connection; its task is then collectable.
             await Task.Delay(1000, token);
             GC.Collect();
             GC.WaitForPendingFinalizers();
@@ -285,7 +278,6 @@ public class BeaconP2PLoopbackTests
     [CancelAfter(120_000)]
     public async Task Two_hosts_exchange_status_blocks_ping_metadata_and_goodbye(CancellationToken token)
     {
-        // Slot AnchorSlot + 3 stays empty to exercise skipped slots in the range response.
         (SignedBeaconBlock anchor, Hash256 anchorRoot, SignedBeaconBlock[] chain) =
             TestChain.BuildLinkedChain(AnchorSlot, AnchorSlot + 1, AnchorSlot + 2, AnchorSlot + 4);
         Hash256[] chainRoots = [.. chain.Select(b => SszRoots.HashTreeRoot(b.Message!))];
@@ -345,7 +337,6 @@ public class BeaconP2PLoopbackTests
             Assert.That(metadata.Attnets, Is.EqualTo(new BitArray(64)), "metadata attnets");
         }
 
-        // Peer manager: one maintenance round over a static peer entry connects and records its status.
         client.Config.StaticPeers = PeerSessionNodes.LoopbackAddress(server.P2P).ToString();
         PeerManager peerManager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
         await peerManager.RunMaintenanceRoundAsync(token);
@@ -475,7 +466,6 @@ public class BeaconP2PLoopbackTests
         Assert.That(gloas, Is.EqualTo(dial is ColumnDial.GloasByRange or ColumnDial.GloasByRoot));
     }
 
-    /// <summary>A by-range block reply that failed used to throw away every block already read; they reach the caller with the failure, whose text stays the cause's.</summary>
     [Test]
     public async Task A_block_reply_that_fails_after_some_blocks_hands_those_blocks_to_the_caller([Values] bool delivered)
     {

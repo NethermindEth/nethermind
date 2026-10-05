@@ -11,7 +11,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>The three outcomes this task's reporting rules require - never collapsed into one another.</summary>
 public enum VectorOutcome
 {
     Pass,
@@ -19,16 +18,8 @@ public enum VectorOutcome
     NotImplemented,
 }
 
-/// <summary>One vector's result, keyed by suite/fork/preset for the aggregate report.</summary>
 public readonly record struct VectorRecord(string Suite, string Fork, string Preset, string VectorName, VectorOutcome Outcome, string? Detail);
 
-/// <summary>
-/// Collects every vector outcome across the whole assembly run and prints one aggregate report - the
-/// per suite/fork/preset pass/fail/not-implemented counts, plus the full failure and not-implemented
-/// listings - required by this task's reporting rules. A per-vector NUnit test result (pass, fail, or
-/// <see cref="Assert.Inconclusive(string)"/> for not-implemented) still carries the vector's own name for
-/// per-vector debugging; this is the cross-cutting summary on top of that.
-/// </summary>
 public static class ConsensusSpecTestSummary
 {
     private static readonly ConcurrentBag<VectorRecord> Records = [];
@@ -36,7 +27,6 @@ public static class ConsensusSpecTestSummary
     public static void Record(string suite, string fork, string preset, string vectorName, VectorOutcome outcome, string? detail = null) =>
         Records.Add(new VectorRecord(suite, fork, preset, vectorName, outcome, detail));
 
-    /// <summary>Runs <paramref name="body"/>, records its outcome, and reproduces the pass/fail/inconclusive result on the calling test.</summary>
     public static void RunAndRecord(string suite, string fork, string preset, string vectorName, Action body)
     {
         try
@@ -108,23 +98,13 @@ public static class ConsensusSpecTestSummary
         Console.WriteLine(report);
         try
         {
-            // Durability net: this OneTimeTearDown's Console/TestContext output is not always
-            // captured by the Microsoft.Testing.Platform NUnit adapter the same way a console
-            // runner would, so the report is also written to a fixed file next to the test
-            // assembly - never rely on this being the only place it lands, but never lose it either.
+            // The NUnit adapter may lose teardown console output; retain a best-effort report beside the assembly.
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "consensus-spec-report.txt"), report);
         }
         catch (IOException)
         {
-            // Best-effort only; the console line above is the primary channel.
         }
     }
 }
 
-/// <summary>
-/// Thrown by a suite driver when a vector names an operation, fork or preset this driver has no entry
-/// point for. Caught by <see cref="ConsensusSpecTestSummary.RunAndRecord"/> and turned into
-/// <see cref="Assert.Inconclusive(string)"/> plus a counted not-implemented record - never a silent skip
-/// and never a pass.
-/// </summary>
 public sealed class NotImplementedInDriverException(string message) : Exception(message);

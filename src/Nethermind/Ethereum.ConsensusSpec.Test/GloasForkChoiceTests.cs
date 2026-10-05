@@ -17,11 +17,6 @@ using Snappier;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the Gloas <c>fork_choice</c> suite through <see cref="GloasForkChoiceStepDriver"/>. The minimal-preset vectors are
-/// enumerated and reported not implemented, for the reason <see cref="ForkChoiceTests"/> gives: the Gloas state's SSZ shape
-/// hard-codes mainnet-preset bounds.
-/// </summary>
 [TestFixture]
 public class GloasForkChoiceTests
 {
@@ -31,7 +26,6 @@ public class GloasForkChoiceTests
         "on_payload_attestation_message", "payload_data_availability", "payload_timeliness",
     ];
 
-    /// <summary>The Gloas fork_choice handlers each preset carries at <see cref="ConsensusSpecArchive.Version"/>.</summary>
     private static readonly IReadOnlyDictionary<ConsensusPreset, string[]> HandlersByPreset = new Dictionary<ConsensusPreset, string[]>
     {
         [ConsensusPreset.Minimal] = [.. MainnetHandlers, "deposit_with_reorg", "reorg", "should_apply_proposer_boost", "withholding"],
@@ -43,8 +37,6 @@ public class GloasForkChoiceTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors, and zero vectors run green.
     [Test]
     public void Every_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -65,10 +57,8 @@ public class GloasForkChoiceTests
         }
     }
 
-    /// <summary>The mainnet vector whose anchor, slot-1 block and verified payload the tests below reuse.</summary>
     private const string FabricationSource = "on_attestation/pyspec_tests/validate_on_attestation_later_slot_full_vote_valid";
 
-    /// <summary>Slot 1, a child of the anchor whose payload envelope the vector delivers.</summary>
     private const string SlotOneBlock = "block_0x76bf14e70fc96a5a3442a46dff3bfb897d5568cdb4dc7e94419f625df2fcd9e5";
 
     /// <summary>
@@ -140,7 +130,6 @@ public class GloasForkChoiceTests
         return SszRoots.HashTreeRoot(anchorBlock);
     }
 
-    /// <summary>Runs <paramref name="steps"/> from the anchor of <paramref name="sourcePath"/> with signatures unchecked, with <paramref name="blocks"/> as the case's block files.</summary>
     private static ForkChoiceRunner RunFabricatedCase(string sourcePath, string[] steps, params (string Key, byte[] Ssz)[] blocks)
     {
         DirectoryInfo casePath = Directory.CreateTempSubdirectory("gloas-fork-choice-case");
@@ -160,7 +149,6 @@ public class GloasForkChoiceTests
         }
     }
 
-    /// <summary>The handler directory, the segment after <c>{preset}/gloas/fork_choice/</c> in the vector name.</summary>
     private static string HandlerOf(ForkChoiceCase testCase) => testCase.VectorName.Split('/')[3];
 
     private static void Execute(ForkChoiceCase testCase) =>

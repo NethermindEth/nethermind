@@ -321,10 +321,7 @@ public partial class ColumnBackfillTests
         Assert.That(gloasRequests > 0, Is.EqualTo(revealed), "no peer is asked for the columns of a block whose payload was not revealed");
     }
 
-    /// <summary>
-    /// Fetched columns reach the store through the pool's writer thread, so the check that a window is complete must wait for the
-    /// queued writes; otherwise nearly every window with blobs would count as incomplete and wait for the retry.
-    /// </summary>
+    /// <summary>Await store persistence after the pool writer has committed fetched columns.</summary>
     [Test]
     [CancelAfter(60_000)]
     public async Task A_window_whose_fetched_columns_are_still_queued_for_the_store_completes_without_a_retry(CancellationToken token)

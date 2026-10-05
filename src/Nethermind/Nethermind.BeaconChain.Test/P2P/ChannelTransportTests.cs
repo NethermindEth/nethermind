@@ -14,7 +14,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>An exact-length read from the channel gets every byte, however the yamux frames below it were split into segments.</summary>
 public class ChannelTransportTests
 {
     // Each chunk is one yamux frame as it is handed up, given by its segment lengths: Noise frames of up to 65,535 bytes, and small frames.
@@ -29,7 +28,6 @@ public class ChannelTransportTests
     public Task An_exact_length_read_receives_every_segment_of_every_chunk([ValueSource(nameof(Chunkings))] int[][] chunks, CancellationToken token) =>
         AssertChannelAsync(chunks, token);
 
-    /// <summary>A channel the protocol above closes is closed below too, although the peer never ended its side.</summary>
     [Test]
     [CancelAfter(10_000)]
     public async Task A_full_close_above_closes_the_channel_below(CancellationToken token)
@@ -43,8 +41,7 @@ public class ChannelTransportTests
         Assert.That(channel.GetAwaiter().IsCompleted, Is.True);
     }
 
-    /// <summary>A response the protocol above writes just before a full close reaches the peer before the channel below closes.</summary>
-    /// <remarks>The write acknowledgement and close can race with the reader continuation, so the check repeats.</remarks>
+    // The write acknowledgement and close can race with the reader continuation, so the check repeats.
     [Test]
     [CancelAfter(30_000)]
     public async Task A_response_written_just_before_a_full_close_reaches_the_peer(CancellationToken token)
@@ -62,7 +59,6 @@ public class ChannelTransportTests
         }
     }
 
-    /// <summary>A request the protocol above half-closes still receives its response from below.</summary>
     [Test]
     [CancelAfter(10_000)]
     public async Task A_half_close_above_keeps_the_response_flowing(CancellationToken token)

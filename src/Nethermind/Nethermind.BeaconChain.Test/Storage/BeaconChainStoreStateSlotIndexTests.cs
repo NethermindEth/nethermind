@@ -14,16 +14,11 @@ using static Nethermind.BeaconChain.Test.Storage.BeaconChainStoreStatePruningTes
 
 namespace Nethermind.BeaconChain.Test.Storage;
 
-/// <summary>
-/// Finalization prunes the states at or below the new anchor on the import path, so its cost must follow the slots it removes,
-/// not the states the store holds, and states stored before the slot index existed must be pruned as before.
-/// </summary>
 [TestFixture]
 public class BeaconChainStoreStateSlotIndexTests
 {
     private const int IndexKeyLength = sizeof(ulong) + Hash256.Size;
 
-    /// <summary>Creates a block root distinguished by its final four bytes.</summary>
     internal static Hash256 Root(int id)
     {
         byte[] bytes = new byte[Hash256.Size];

@@ -24,7 +24,6 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>A block in a Gloas epoch is stored in the Gloas shape, and every endpoint that reads a block must serve that shape under the gloas version.</summary>
 public class BeaconApiGloasBlockTests : BeaconApiFixture
 {
     private const string Json = "application/json";
@@ -69,7 +68,6 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
 
     private static readonly string RootHex = Root.ToString();
 
-    // Each of these once read the block through the Fulu-only store accessor, which throws for a Gloas block.
     [TestCase("/eth/v1/beacon/headers/{0}", Json, true)]
     [TestCase("/eth/v1/beacon/headers?slot={1}", Json, true)]
     [TestCase("/eth/v1/beacon/headers?parent_root={2}", Json, true)]
@@ -236,7 +234,6 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         Assert.That(attestation.GetProperty("data").GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
     }
 
-    /// <summary>beacon-APIs v5.0.0-alpha.2 getSignedExecutionPayloadEnvelope: the stored envelope under version gloas, with every beta.2 field.</summary>
     [Test]
     public async Task Execution_payload_envelope_json_carries_every_envelope_and_payload_field()
     {
@@ -373,10 +370,6 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         Assert.That(await response.Content.ReadAsByteArrayAsync(), Is.EqualTo(SignedExecutionPayloadEnvelope.Encode(_envelope)));
     }
 
-    /// <summary>
-    /// apis/beacon/execution_payload/envelope_get.yaml: malformed id 400, no envelope (unknown block, a block without one, a
-    /// pre-Gloas block) 404, unsupported Accept 406. An unreadable envelope, or one naming another parent than its block, is 500.
-    /// </summary>
     [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]
     [TestCase("0x00000000000000000000000000000000000000000000000000000000000000ee", Json, HttpStatusCode.NotFound)]
     [TestCase("0x0000000000000000000000000000000000000000000000000000000000000092", Json, HttpStatusCode.NotFound)]
@@ -431,7 +424,6 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         Signature = FilledSignature(0xbb),
     };
 
-    /// <summary>A Gloas block with one of every body operation populated, reusing the Fulu fixture's shared operations.</summary>
     private static SignedBeaconBlockGloas RichGloasBlock(ulong slot, Hash256 parent)
     {
         BeaconBlockBody fulu = RichBlock(slot, parent).Message!.Body!;

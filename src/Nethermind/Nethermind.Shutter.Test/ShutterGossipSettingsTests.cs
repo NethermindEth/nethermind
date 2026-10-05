@@ -20,8 +20,6 @@ namespace Nethermind.Shutter.Test;
 
 public class ShutterGossipSettingsTests
 {
-    /// <summary>A bootnode no dial can reach is skipped with an error that names it, and the other bootnodes are kept.</summary>
-    /// <remarks>Earlier versions ignored such an entry, so it must not stop startup either.</remarks>
     [TestCase("/ip4/10.0.0.1/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "An IPv4 address")]
     [TestCase("/dns4/sequencer.example/tcp/9222/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A DNS name")]
     [TestCase("/dnsaddr/sequencer.example/p2p/16Uiu2HAmRvz3gCpQuMeRxEz1F8B8EXHE9q9V1VE6pMVQuRWUt2iW", true, TestName = "A dnsaddr name")]
@@ -54,8 +52,7 @@ public class ShutterGossipSettingsTests
         }
     }
 
-    /// <summary>No delivery on the key or discovery topics, unanswered IWANT or shared address moves a keyper peer's score.</summary>
-    /// <remarks>A delivery score would count a mesh peer of a quiet topic as under-delivering and prune it.</remarks>
+    // A delivery score would prune peers on quiet topics as under-delivering.
     [Test]
     public void Key_and_discovery_gossip_is_unscored()
     {

@@ -29,7 +29,6 @@ public class ColumnGossipRouterCensorshipTests
 {
     private static readonly byte[] ProposerMasterKey = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
 
-    // Every column of a block carries the same header, so copies with altered cells use up a column's KZG batches at no cost to their sender.
     [Test]
     [CancelAfter(60_000)]
     public async Task A_column_censored_over_gossip_is_recovered_by_root_when_its_block_is_deferred([Values] bool checkedHeader, CancellationToken token)
@@ -80,7 +79,6 @@ public class ColumnGossipRouterCensorshipTests
         Assert.That(fixture.SidecarPool.TryGet(fixture.Chain.BlockRoot, censored, out DataColumnSidecar? recovered) && ReferenceEquals(recovered, fixture.Chain.Columns[(int)censored]), Is.True);
     }
 
-    /// <summary>A router that verifies the fixture block's header signature and proposer, as one with fork choice, a key cache and a lookahead does.</summary>
     private static ColumnGossipRouter RouterCheckingHeaders(DeferredBlockColumnFetchTests.Fixture fixture)
     {
         CheckpointRef anchor = new(0, fixture.Chain.AnchorRoot);

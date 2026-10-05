@@ -142,7 +142,7 @@ public class BeaconChainStoreTests
         Assert.That(store.HasBlock(BlockRoot), Is.False);
     }
 
-    // Without a spec no Gloas fork is known: any slot is the Fulu shape, as before the forked members existed.
+    // Without a spec, no Gloas schedule is known; slots decode as Fulu.
     [Test]
     public void Without_a_spec_every_block_is_the_fulu_shape_and_a_gloas_block_is_refused()
     {

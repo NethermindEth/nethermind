@@ -14,17 +14,13 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Engine;
 
-/// <summary>Asserts exact deltas of process-wide counters, so it must not overlap any other fixture.</summary>
+// Exact process-wide counter deltas require fixture isolation.
 [NonParallelizable]
 public class EngineDriverMetricsTests
 {
     private const int Threads = 8;
     private const int CallsPerThread = 10_000;
 
-    /// <summary>
-    /// Engine calls run on the slot worker and on other threads at once, so a plain read-modify-write of a shared counter loses
-    /// counts; every call must be counted.
-    /// </summary>
     [Test]
     [HardTimeout(60_000)]
     public void Engine_calls_made_from_many_threads_at_once_are_all_counted()

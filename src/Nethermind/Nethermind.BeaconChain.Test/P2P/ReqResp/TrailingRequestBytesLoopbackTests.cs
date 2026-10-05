@@ -101,7 +101,6 @@ public class TrailingRequestBytesLoopbackTests
         peer.DidNotReceiveWithAnyArgs().ReportFailure(default, default);
     }
 
-    // The empty list is one zero length prefix, alone or with the stream identifier a client may write after it.
     [Test]
     [CancelAfter(60_000)]
     public async Task An_empty_by_root_request_on_a_held_open_stream_is_answered_at_once(
@@ -200,7 +199,6 @@ public class TrailingRequestBytesLoopbackTests
         Assert.That(reported.Task.Result, Is.EqualTo(PeerFailureReason.ProtocolViolation));
     }
 
-    // Zero length prefix, then a stream identifier and one compressed data frame holding an empty snappy block.
     private static readonly byte[] EmptyListFraming = [0x00, 0xff, 0x06, 0x00, 0x00, 0x73, 0x4e, 0x61, 0x50, 0x70, 0x59, 0x00, 0x05, 0x00, 0x00, 0xd8, 0xea, 0x82, 0xa2, 0x00];
 
     private static async Task AssertTrailingBytesAsync(string protocolId, byte[] wire, int trailingBytes, bool holdOpen, CancellationToken token)
@@ -299,7 +297,6 @@ public class TrailingRequestBytesLoopbackTests
         }
     }
 
-    /// <summary>A status source that holds the listener mid-request until released, so bytes can be sent while it is serving.</summary>
     private sealed class ServingGate : IBeaconChainStatusSource, IDisposable
     {
         private readonly ManualResetEventSlim _release = new();
@@ -338,7 +335,6 @@ public class TrailingRequestBytesLoopbackTests
         public void Dispose() => _release.Dispose();
     }
 
-    /// <summary>Sends the given bytes as a whole request, optionally half-closes, then reads the response to its end.</summary>
     private sealed class RawRequestProtocol : ISessionProtocol<byte[], byte[]>
     {
         public string Id { get; set; } = "/test/raw-request/1";
@@ -347,7 +343,6 @@ public class TrailingRequestBytesLoopbackTests
 
         public Func<IChannel, CancellationToken, Task>? AfterRequest { get; set; }
 
-        /// <summary>Runs once the response has been read to its end.</summary>
         public Func<IChannel, CancellationToken, Task>? AfterResponse { get; set; }
 
         public async Task<byte[]> DialAsync(IChannel downChannel, ISessionContext context, byte[] request)

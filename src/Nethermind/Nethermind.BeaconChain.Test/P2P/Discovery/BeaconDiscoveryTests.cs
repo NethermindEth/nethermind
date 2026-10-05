@@ -276,12 +276,10 @@ public class BeaconDiscoveryTests
     [Test]
     public void Local_enr_carries_the_nfd_entry_and_rotates_it_across_a_real_mainnet_bpo_boundary()
     {
-        // Real, shipped mainnet epochs either side of BPO1 (412672), not a synthetic schedule.
         EnrForkId preBpo1 = EnrForkId.Compute(BeaconChainSpec.Mainnet, 412671ul);
         byte[]? nextBeforeBpo1 = EnrForkId.NextForkDigest(BeaconChainSpec.Mainnet, 412671ul);
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, preBpo1, custodyGroupCount: 4, nextBeforeBpo1);
 
-        // Parsed back from the ENR string, taking the same wire path a remote peer would.
         NodeRecord initial = NodeRecord.FromEnrString(provider.Current.ToString());
         Assert.That(BeaconDiscovery.TryGetNextForkDigest(initial, out byte[]? decodedNext), Is.True);
         Assert.That(decodedNext, Is.EqualTo(nextBeforeBpo1));
@@ -320,9 +318,6 @@ public class BeaconDiscoveryTests
     [TestCase(128ul)]
     public void Local_enr_carries_the_cgc_entry_at_the_configured_custody_group_count(ulong custodyGroupCount)
     {
-        // Read directly off the freshly-built record: CustodyGroupCountEntryTests already covers the
-        // RLP byte-encoding rule exhaustively, including the round trip through raw bytes that a
-        // record parsed off the wire (NodeRecord.FromEnrString) would decode this entry as instead.
         BeaconNodeRecordProvider provider = new(TestItem.PrivateKeyA, PublicIp, tcpPort: 9000, udpPort: 9001, TestForkId, custodyGroupCount);
 
         Assert.That(provider.Current.GetValue<ulong>("cgc"), Is.EqualTo(custodyGroupCount));
@@ -363,8 +358,6 @@ public class BeaconDiscoveryTests
         Assert.That(candidate.Multiaddress, Is.EqualTo($"/ip4/8.8.8.8/tcp/9000/p2p/{expectedPeerId}"));
         Assert.That(candidate.ForkDigest, Is.EqualTo(CurrentDigest));
         Assert.That(candidate.EnrSequence, Is.EqualTo(1ul));
-        // The Beacon API's node/peers endpoint reads this straight from the admitted peer; a
-        // candidate that silently drops it forces that endpoint back to reporting null.
         Assert.That(candidate.Enr, Is.EqualTo(record.ToString()));
     }
 
@@ -407,7 +400,6 @@ public class BeaconDiscoveryTests
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(PublicIp), Timestamper.Default, LimboLogs.Instance);
 
-        // Resolving the private container is what regressed; Start would mask it behind a bind and live traffic.
         NettyDiscoveryV5Handler handler = discovery.CreateDiscv5Services(PublicIp);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -421,7 +413,7 @@ public class BeaconDiscoveryTests
     public async Task Discovers_live_mainnet_peers_with_current_fork_digest(CancellationToken token)
     {
         const int targetCandidates = 15;
-        BeaconChainConfig config = new() { Discv5Port = 0 }; // ephemeral UDP port
+        BeaconChainConfig config = new() { Discv5Port = 0 };
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         await using BeaconDiscovery discovery = new(config, BeaconChainSpec.Mainnet, store, new RangeSyncTests.FixedIPResolver(IPAddress.Loopback), Timestamper.Default, LimboLogs.Instance);
 

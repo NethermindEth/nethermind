@@ -11,12 +11,7 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.DataAvailability;
 
-/// <summary>
-/// No independently-sourced expected hash-tree-root for <see cref="DataColumnSidecar"/> was obtained
-/// in this session (see 'unresolved' in the delivering task report), so these assert round-trip
-/// fidelity and structural invariants rather than a specific root value - a self-computed root
-/// compared to itself would look like coverage while proving nothing about field order correctness.
-/// </summary>
+// Round-trip/structural checks only; self-computed roots do not independently validate field order.
 public class DataColumnSidecarContainerTests
 {
     private static Hash256 Hash(byte fill) => new(Enumerable.Repeat(fill, 32).ToArray());

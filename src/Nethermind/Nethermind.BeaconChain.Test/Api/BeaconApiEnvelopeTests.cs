@@ -23,11 +23,6 @@ using static Nethermind.BeaconChain.Test.Api.BeaconApiTestHost;
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>
-/// The existing host tests only ever exercise <c>finalized: false</c>
-/// (BeaconApiHostTests.Headers_by_id_...): a hardcoded <c>false</c> in
-/// ResponseEnvelope.IsFinalized would pass every one of them. This proves the true branch.
-/// </summary>
 public class BeaconApiEnvelopeTests : BeaconApiFixture
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
@@ -44,9 +39,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
     [Test]
     public async Task Header_reports_finalized_true_when_the_blocks_epoch_is_at_or_before_the_finalized_checkpoint()
     {
-        // Slot 13,200,000 is epoch 412,500 (past FuluForkEpoch 411,392 on BeaconChainSpec.Mainnet,
-        // so ForkAtEpoch can resolve it); FinalizedEpoch 500,000 is strictly past that epoch, so
-        // IsFinalized's "<=" must resolve true here, not merely "not yet false".
         const ulong slot = 13_200_000;
         SignedBeaconBlock block = BeaconApiTestHost.MinimalBlock(slot);
         Hash256 root = TestRoot(7);
@@ -96,7 +88,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             "a block that lost to a rival at its slot is what finalization discarded, whatever its epoch");
     }
 
-    /// <summary>types/primitive.yaml ExecutionOptimistic follows the referenced payload, including lists.</summary>
     [Test]
     public async Task Referenced_object_controls_optimism(
         [Values("headers/{0}", "blocks/{0}/root", "states/{1}/root", "states/{1}/fork", "headers?parent_root={2}")] string path,
@@ -133,7 +124,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         Assert.That(body.RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.EqualTo(optimistic || !withSnapshot));
     }
 
-    /// <summary>types/primitive.yaml ExecutionOptimistic requires verification even for pruned finalized history.</summary>
     [Test]
     public async Task Pruned_history_requires_a_verified_checkpoint(
         [Values] bool withSnapshot, [Values] bool checkpointVerified, [Values] bool newerStatus)
@@ -170,7 +160,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
             Is.EqualTo(!withSnapshot || !checkpointVerified || newerStatus));
     }
 
-    /// <summary>types/primitive.yaml Finalized excludes descendants after the checkpoint's start slot.</summary>
     [Test]
     public async Task Canonical_descendant_in_the_finalized_epoch_is_not_finalized([Values(0, 5, 31)] int offset)
     {
@@ -211,7 +200,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         Assert.That(body.RootElement.GetProperty("message").GetString(), Does.Contain("chain_reorg"));
     }
 
-    /// <summary>params/index.yaml StateId accepts retained state commitments and rejects block roots.</summary>
     [Test]
     public async Task Hex_state_id_uses_the_state_commitment(
         [Values("root", "fork", "ssz")] string endpoint, [Values] bool legacy)
@@ -249,7 +237,6 @@ public class BeaconApiEnvelopeTests : BeaconApiFixture
         Assert.That((int)pruned.StatusCode, Is.EqualTo(404));
     }
 
-    /// <summary>The Beacon API head and finalized_checkpoint event examples include state and verification fields.</summary>
     [Test]
     public async Task Event_payloads_include_state_dependent_roots_and_optimism([Values(0, 5)] int offset, [Values] bool optimistic)
     {

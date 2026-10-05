@@ -67,10 +67,6 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(served.Select(static s => s.Index), Is.EqualTo(new ulong[] { 5, 6 }), "by range, from the earliest slot the store holds completely");
     }
 
-    /// <summary>
-    /// The first column this process is given can sit below the head it resumes from; it must not make the slots
-    /// between it and the head look completely held, and a first column above the head leaves the slots in between unclaimed too.
-    /// </summary>
     [Test]
     public void After_a_restart_a_column_below_the_stored_head_does_not_make_earlier_slots_servable([Values] bool withStore, [Values(-5, 3)] int firstSlotOffset)
     {
@@ -208,7 +204,6 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(gloas ? pool.TryGetGloas(root, 4, out _) : pool.TryGet(root, 4, out _), Is.True, "a transient fault must not mark the record unreadable");
     }
 
-    // A block imported after a restart waits for its columns; one the previous run stored must not keep it waiting for a wake that never comes.
     [Test]
     public void A_watch_counts_a_column_only_the_store_holds([Values] bool gloas)
     {
@@ -289,7 +284,6 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(restarted.TryGetHeldColumns(root, CurrentSlot, required + 1, out _), Is.False);
     }
 
-    // A slot index that names a column whose record is gone must not count that column as held.
     [Test]
     public void A_column_the_slot_index_names_without_a_record_is_not_counted_as_held()
     {
@@ -353,7 +347,6 @@ public class DataColumnSidecarPoolPersistenceTests
         Assert.That(pool.TryGetGloas(root, 3, out _), Is.True, "read from the store once memory evicted it, so the unreadable marker must be gone");
     }
 
-    // A damaged record replaced while a reader decodes it must not stay refused once memory evicts the replacement.
     [Test]
     public void A_record_repaired_while_it_is_read_is_served_after_memory_evicts_it()
     {
@@ -394,7 +387,6 @@ public class DataColumnSidecarPoolPersistenceTests
         store.SetAnchor(TestItem.KeccakA, top - 10);
         store.ApplyCanonicalIndexChanges([], top);
 
-        // The anchor state is missing, so the start step stops after it has seeded the pool.
         Assert.Throws<InvalidOperationException>(() => container.Resolve<BeaconChainService>().Start());
         pool.AddGloas(DataColumnSidecarGloasTestFixture.BuildSidecar(0, top - 5, Keccak.Compute("late")));
         DrainStoreWrites(container.Resolve<ColumnStoreWriter>());
@@ -456,7 +448,6 @@ public class DataColumnSidecarPoolPersistenceTests
             gloas ? store.TryGetDataColumnSidecarGloas(root, 7, out _) : store.TryGetDataColumnSidecar(root, 7, out _);
     }
 
-    /// <summary>A column memory evicts while its store write is still queued must stay readable, as the slot is already claimed held.</summary>
     [Test]
     public void A_column_evicted_from_memory_before_its_store_write_is_still_served([Values] bool gloas)
     {

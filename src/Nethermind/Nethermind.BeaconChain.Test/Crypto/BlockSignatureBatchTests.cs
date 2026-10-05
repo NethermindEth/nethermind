@@ -36,7 +36,6 @@ public class BlockSignatureBatchTests
 
     private static BlsSignature SignedBy(int keyIndex, Hash256 message) => Sign(DeriveKey(keyIndex), message);
 
-    /// <summary>Serial and deferred signatures must belong to G2, as required by IETF BLS draft v4, CoreVerify section 2.7.</summary>
     [Test]
     public void Signature_outside_G2_is_rejected([Values] bool deferred)
     {
@@ -59,15 +58,7 @@ public class BlockSignatureBatchTests
         Assert.That(batch.Count, Is.Zero);
     }
 
-    /// <summary>
-    /// IETF BLS draft v4, CoreVerify (section 2.7): every signature <c>S + T</c> with <c>T</c> of order 13 or 23 on the twist (all
-    /// 168 and 528 such points) is refused by the serial and the deferred call sites.
-    /// </summary>
-    /// <remarks>
-    /// The pairing alone refuses each point, so the subgroup checks in <c>BlsSigner.Verify</c> and in the serial fallback do not
-    /// change a verdict here; the check in <c>BlsSignatureSet.TryCreate</c> still does, because without it the set is deferred.
-    /// Off G2 the pairing is not bilinear, so <c>S + T</c> passes only on a chance collision in GT.
-    /// </remarks>
+    // IETF BLS CoreVerify 2.7: reject signatures shifted by every 13/23-order twist point. Pairing already rejects these; TryCreate still must refuse deferral.
     [TestCase(13, 168)]
     [TestCase(23, 528)]
     public void Signatures_with_small_order_torsion_are_refused(int prime, int points)
@@ -124,10 +115,7 @@ public class BlockSignatureBatchTests
         yield return new TestCaseData(new Bls.P1(DeriveKey(3)).Compress(), NotInG2Signature, false).SetName("signature_outside_g2");
     }
 
-    /// <summary>
-    /// The batch is sound only for subgroup points, so such a set must get the serial verdict at once, not be deferred;
-    /// an infinity key is refused with any signature, as <c>KeyValidate</c> refuses it.
-    /// </summary>
+    // Off-subgroup sets must get the serial verdict immediately; batching is only sound over subgroup points.
     [TestCaseSource(nameof(PointsOutsideTheBatchConditions))]
     public void A_set_outside_the_batch_conditions_gets_the_serial_verdict_at_once(byte[] compressedPublicKey, byte[] signature, bool serialVerdict)
     {

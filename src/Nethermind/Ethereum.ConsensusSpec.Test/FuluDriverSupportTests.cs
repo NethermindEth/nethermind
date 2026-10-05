@@ -9,10 +9,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Guards against the harness counting any exception at all as a correct rejection of an invalid vector,
-/// or a not-implemented vector as one that runs.
-/// </summary>
 [TestFixture]
 public class FuluDriverSupportTests
 {
@@ -23,7 +19,6 @@ public class FuluDriverSupportTests
         Assert.DoesNotThrow(() => FuluDriverSupport.AssertRejected(new ForkChoiceException("failed spec assertion"), "the block"));
     }
 
-    /// <summary>A vector that completes, or crashes on the way to rejecting, must not be recorded as a correct rejection.</summary>
     [Test]
     public void AssertRejected_fails_a_vector_that_completed_or_threw_for_the_wrong_reason()
     {
@@ -45,7 +40,6 @@ public class FuluDriverSupportTests
         Assert.That(ran, Is.EqualTo(new[] { "a1", "b1" }));
     }
 
-    /// <summary>A not-implemented vector reports Inconclusive in its own suite, so this check must fail its key.</summary>
     [Test]
     public void AssertEveryKeyRunsAVector_fails_when_a_key_reports_its_vector_not_implemented() =>
         Assert.That(
@@ -56,7 +50,6 @@ public class FuluDriverSupportTests
             }),
             Throws.TypeOf<AssertionException>().With.Message.Contains("'b' does not run its vector"));
 
-    /// <summary>A suite whose keys mix runnable and not-implemented vectors must not pass or fail by which vector comes first.</summary>
     [Test]
     public void AssertEveryKeyRunsSomeVector_passes_when_a_later_vector_of_a_key_runs()
     {
@@ -72,7 +65,6 @@ public class FuluDriverSupportTests
         Assert.That(ran, Is.EqualTo(new[] { "a1", "a2", "b1" }));
     }
 
-    /// <summary>Only a not-implemented vector defers to the next one; a vector that really fails must not be hidden by a later pass.</summary>
     [Test]
     public void AssertEveryKeyRunsSomeVector_fails_at_once_when_an_earlier_vector_really_fails() =>
         Assert.That(

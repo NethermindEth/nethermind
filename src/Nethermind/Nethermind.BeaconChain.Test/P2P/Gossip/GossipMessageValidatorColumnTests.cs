@@ -26,8 +26,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-// Only Accepted messages reach the topic events, so a Fulu sidecar that passes is consumed by the validator and never
-// forwarded before its proposer checks; a Gloas sidecar needs no state and is Accepted, so it is re-broadcast.
 public class GossipMessageValidatorColumnTests
 {
     private const ulong Subnet = 5;

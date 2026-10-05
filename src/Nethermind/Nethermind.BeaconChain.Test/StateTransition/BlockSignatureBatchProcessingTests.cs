@@ -22,16 +22,10 @@ using FuluStateTransition = Nethermind.BeaconChain.StateTransition.StateTransiti
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// <c>process_block</c> with its signatures batched against the same block run serially: the same
-/// blocks are accepted with the same post-state, and the same blocks are refused with the message the
-/// serial path gives, whichever signature is bad and whatever else in the block fails.
-/// </summary>
 [TestFixture]
 [HardTimeout(60_000)]
 public class BlockSignatureBatchProcessingTests
 {
-    /// <summary>Every block-validity signature a Gloas block carries, in <c>process_block</c> order.</summary>
     public enum SignedPart
     {
         Bid,
@@ -78,7 +72,6 @@ public class BlockSignatureBatchProcessingTests
         return new GloasFixture(beforeSlots, state, pubkeys);
     }
 
-    /// <summary>A block at <see cref="BlockSlot"/> carrying one of every signature kind, each validly signed.</summary>
     private static BeaconBlockGloas SignedGloasBlock()
     {
         GloasFixture fixture = SharedGloas.Value;
@@ -217,8 +210,7 @@ public class BlockSignatureBatchProcessingTests
         yield return new TestCaseData(true, SignedPart.Randao, SignatureFailureOrder.SignatureBeforeException).SetName("Gloas reports RANDAO before a later unexpected exception");
     }
 
-    /// <summary>Checks every signed operation and refusal ordering against real serial and batched processing.</summary>
-    /// <remarks>The batch must report an earlier signature failure even when it reaches a later operation failure or unexpected exception first.</remarks>
+    // Earlier signature failure must win over later operation failures or unexpected exceptions.
     [TestCaseSource(nameof(SignatureFailureCases))]
     public void Block_signature_failures_preserve_serial_refusal_order(bool gloas, SignedPart part, SignatureFailureOrder order)
     {
@@ -271,11 +263,9 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(() => GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false), Throws.Nothing);
     }
 
-    // ---- Fulu ----
 
     private const ulong FuluBlockSlot = 1;
 
-    /// <summary>The block-validity signatures a Fulu block carries, in <c>process_block</c> order.</summary>
     private static readonly SignedPart[] FuluParts =
     [
         SignedPart.Randao, SignedPart.ProposerSlashing1, SignedPart.ProposerSlashing2, SignedPart.AttesterSlashing1,
@@ -299,7 +289,6 @@ public class BlockSignatureBatchProcessingTests
         return new FuluFixture(chain, anchor, pubkeys);
     });
 
-    /// <summary>A block at <see cref="FuluBlockSlot"/> carrying one of every signature kind in <see cref="FuluParts"/>, each validly signed.</summary>
     private static BeaconBlock SignedFuluBlock()
     {
         BeaconBlock block = SharedFulu.Value.Chain.NextFulu(FuluBlockSlot).Signed.Message!;
@@ -411,7 +400,6 @@ public class BlockSignatureBatchProcessingTests
         return new Outcome(null, SszRoots.HashTreeRoot(state));
     }
 
-    /// <summary>An aggregate the Fulu attestation rules refuse before its signature is looked at.</summary>
     private static Attestation StructurallyInvalidAttestation() => new()
     {
         AggregationBits = new BitArray(1, true),
@@ -441,10 +429,7 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(RunFulu(block, batched: true), Is.EqualTo(serial));
     }
 
-    /// <summary>
-    /// A voluntary exit needs <c>SHARD_COMMITTEE_PERIOD</c> epochs of activity, which no block of these fixtures
-    /// reaches, so its deferral is checked on the operation against a state moved past that period.
-    /// </summary>
+    // Exit fixtures must pass SHARD_COMMITTEE_PERIOD before testing signature deferral.
     [Test]
     public void A_voluntary_exit_signature_is_deferred_and_refused_with_the_serial_message([Values] bool gloas, [Values] bool validSignature)
     {
@@ -493,7 +478,6 @@ public class BlockSignatureBatchProcessingTests
         }
     }
 
-    // ---- The proposer signature, verified ahead of the block's batch through the state transition ----
 
     private static SignedBeaconBlockGloas SignedByProposer(BeaconBlockGloas block)
     {
@@ -541,10 +525,6 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(SignedFuluBlock())), Is.Null, "fulu");
     }
 
-    /// <summary>
-    /// A block nobody signed must cost one pairing, not a whole <c>process_block</c>: gossip hands it to the
-    /// state transition unverified, so the state must be exactly as slot processing left it.
-    /// </summary>
     [Test]
     public void A_forged_gloas_proposer_signature_is_refused_before_process_block_touches_the_state()
     {
@@ -558,8 +538,6 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(SszRoots.HashTreeRoot(fixture.Pre)));
     }
 
-    /// <summary>Checks that proposer verification precedes bad operation signatures and structural failures in both forks.</summary>
-    /// <remarks>Fulu must reject before its payload reaches the execution layer; proposer signatures are never deferred.</remarks>
     [Test]
     public void A_bad_proposer_signature_precedes_operations_and_execution(
         [Values] bool gloas, [Values] bool badOperationSignature, [Values] bool failingOperation)
@@ -598,10 +576,7 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(ApplyFuluBlock(SignedFuluBlockByProposer(fuluBlock)), Is.EqualTo(SerialRefusal(SignedPart.Randao)), "fulu");
     }
 
-    /// <summary>
-    /// The state transition verifies a block's signatures together at the block's end, so a bad RANDAO reveal is refused
-    /// only after the rest of the block ran and the reveal was mixed in; a check at its own step would stop before the mix.
-    /// </summary>
+    // Batched RANDAO rejection occurs after mixing; an eager signature check would leave a different state.
     [Test]
     public void A_bad_randao_reveal_is_refused_after_the_rest_of_the_block_ran_through_the_state_transition()
     {

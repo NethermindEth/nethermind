@@ -16,12 +16,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 
-/// <summary>
-/// <see cref="GloasStateClone"/> exists so the importer can freeze a block's post-state for
-/// envelope verification while the lineage keeps advancing. The clone is only useful if neither
-/// copy can reach the other through a shared, in-place-written field - which is exactly what the
-/// state transition is run against here to prove.
-/// </summary>
 [HardTimeout(60_000)]
 public class GloasStateCloneTests
 {
@@ -48,11 +42,6 @@ public class GloasStateCloneTests
         Assert.That(SszRoots.HashTreeRoot(clone), Is.EqualTo(cloneRoot), "advancing the source must not reach the clone either");
     }
 
-    /// <summary>
-    /// A field added to <see cref="BeaconStateGloas"/> and forgotten in the clone would come back
-    /// null or zero: every property of the populated fixture must arrive in the clone, either as the
-    /// same reference (shared, immutable by convention) or as an equal copy.
-    /// </summary>
     [Test]
     public void Clone_carries_every_state_field()
     {
@@ -71,12 +60,7 @@ public class GloasStateCloneTests
         }
     }
 
-    /// <summary>
-    /// The split <see cref="GloasStateClone"/> is built on: a field the transition writes in place
-    /// is copied (shallowly - its elements stay shared), everything it only ever replaces wholesale
-    /// is shared by reference. Moving a field across the split, or starting to mutate a shared
-    /// element, must update this list together with the write that justifies it.
-    /// </summary>
+    // In-place-written fields require shallow array copies; replace-only fields/elements may stay shared. Update this split when mutation patterns change.
     [Test]
     public void Clone_copies_exactly_the_in_place_written_fields_and_shares_the_rest()
     {

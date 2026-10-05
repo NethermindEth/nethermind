@@ -14,12 +14,6 @@ using NUnit.Framework;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>ssz_static</c> suite: for every (preset, fork, container) triple upstream
-/// generates fixtures for, decode -> re-encode -> hash-tree-root against this repo's matching container
-/// type, or report the triple as not-implemented when this repo has no container for that exact
-/// (fork, name) shape. Front-loaded per the task: every container, every fork, both presets.
-/// </summary>
 [TestFixture]
 public class SszStaticTests
 {
@@ -57,12 +51,7 @@ public class SszStaticTests
         }
     }
 
-    // --- Fork name sets, by when each container shape was introduced/last changed. Derived from the
-    // doc comments on the container types themselves (Nethermind.BeaconChain/Types/*.cs), not
-    // re-guessed from the spec, and cross-checked against the archive's own directory listing for
-    // v1.7.0-alpha.13 (a container that changed shape at a fork gets its own registry row for that
-    // fork's forward span; a fork this repo never modeled a shape for is simply absent, which is what
-    // drives the not-implemented outcome below - see BuildRegistry).
+    // Fork spans follow container shape changes; missing shapes are reported not-implemented.
     private static readonly string[] AllForks = ["phase0", "altair", "bellatrix", "capella", "deneb", "electra", "fulu", "gloas"];
     private static readonly string[] AltairPlus = ["altair", "bellatrix", "capella", "deneb", "electra", "fulu", "gloas"];
     private static readonly string[] CapellaPlus = ["capella", "deneb", "electra", "fulu", "gloas"];
@@ -71,7 +60,6 @@ public class SszStaticTests
     private static readonly string[] ElectraFulu = ["electra", "fulu"];
     private static readonly string[] GloasOnly = ["gloas"];
 
-    /// <summary>A registered container: how to run it, and whether its shape is safe to attempt on the minimal preset.</summary>
     private readonly record struct Entry(IHandler Handler, bool PresetDependent);
 
     private static readonly IReadOnlyDictionary<string, IReadOnlyDictionary<string, Entry>> Registry = BuildRegistry();
@@ -80,18 +68,7 @@ public class SszStaticTests
     {
         Dictionary<string, Dictionary<string, Entry>> r = new(StringComparer.Ordinal);
 
-        // presetDependent=true: this container embeds at least one Vector/List whose consensus-specs
-        // *preset* value (as opposed to a network *config* value) differs between mainnet and minimal
-        // - e.g. SYNC_COMMITTEE_SIZE, SLOTS_PER_HISTORICAL_ROOT, MAX_COMMITTEES_PER_SLOT, PTC_SIZE -
-        // and the SszGenerator bakes that bound in at compile time from this repo's [SszVector]/[SszList]
-        // attributes, which are all written for mainnet (see Types/BeaconState.cs's own remark: "Preset
-        // constants that affect SSZ shapes... live in the container definitions"). Decoding a
-        // minimal-preset fixture with a mainnet-shaped container throws a length-mismatch
-        // InvalidDataException (or, worse, silently decodes and merkleizes to the wrong root when only
-        // a List bound differs) - confirmed empirically for every type marked true below, not guessed
-        // from the spec: an earlier pass of this suite ran all of them and every single instance failed
-        // the same way. Marking them this lets minimal-preset vectors report "not implemented" (a driver
-        // limitation) instead of "Fail" (which would misread as a consensus bug that is not this repo's).
+        // SSZ vector/list bounds are compiled for mainnet; minimal may fail decoding or silently hash at the wrong list depth.
         void Map<T>(string name, IEnumerable<string> forks, bool presetDependent = false) where T : ISszCodec<T>
         {
             if (!r.TryGetValue(name, out Dictionary<string, Entry>? byFork))
@@ -100,7 +77,6 @@ public class SszStaticTests
                 byFork[fork] = new Entry(new Handler<T>(), presetDependent);
         }
 
-        // Fork-invariant since Phase0.
         Map<Fork>("Fork", AllForks);
         Map<ForkData>("ForkData", AllForks);
         Map<Checkpoint>("Checkpoint", AllForks);
@@ -117,24 +93,19 @@ public class SszStaticTests
         Map<AttestationData>("AttestationData", AllForks);
         Map<ProposerSlashing>("ProposerSlashing", AllForks);
 
-        // Introduced Altair, unchanged since. SYNC_COMMITTEE_SIZE is preset-scaled.
         Map<SyncCommittee>("SyncCommittee", AltairPlus, presetDependent: true);
         Map<SyncAggregate>("SyncAggregate", AltairPlus, presetDependent: true);
 
-        // Introduced Capella, unchanged since.
         Map<HistoricalSummary>("HistoricalSummary", CapellaPlus);
         Map<BlsToExecutionChange>("BLSToExecutionChange", CapellaPlus);
         Map<SignedBlsToExecutionChange>("SignedBLSToExecutionChange", CapellaPlus);
         Map<Withdrawal>("Withdrawal", CapellaPlus);
 
-        // Introduced Deneb, unchanged in Electra and Fulu; Gloas restructures the payload (ePBS).
-        // ExecutionPayloadHeader carries no embedded list of elements (just roots), so it is
-        // preset-safe; the full ExecutionPayload (embedded transactions/withdrawals) is not.
+        // Header roots avoid preset-sized lists; full payloads embed them.
         Map<ExecutionPayloadHeader>("ExecutionPayloadHeader", DenebElectraFulu);
         Map<ExecutionPayload>("ExecutionPayload", DenebElectraFulu, presetDependent: true);
         Map<ExecutionPayloadGloas>("ExecutionPayload", GloasOnly);
 
-        // Introduced Electra (EIP-6110/7002/7251), unchanged since.
         Map<DepositRequest>("DepositRequest", ElectraPlus);
         Map<WithdrawalRequest>("WithdrawalRequest", ElectraPlus);
         Map<ConsolidationRequest>("ConsolidationRequest", ElectraPlus);
@@ -143,8 +114,7 @@ public class SszStaticTests
         Map<PendingConsolidation>("PendingConsolidation", ElectraPlus);
 
         // Electra EIP-7549 shape; Gloas retypes attestation/execution-requests again for ePBS.
-        // AttestingIndices/CommitteeBits/AggregationBits bounds derive from MAX_COMMITTEES_PER_SLOT
-        // and MAX_VALIDATORS_PER_COMMITTEE, both preset-scaled.
+        // Attestation indices/bits use preset-scaled committee bounds.
         Map<IndexedAttestation>("IndexedAttestation", ElectraFulu, presetDependent: true);
         Map<IndexedAttestationGloas>("IndexedAttestation", GloasOnly);
         Map<Attestation>("Attestation", ElectraFulu, presetDependent: true);
@@ -153,7 +123,6 @@ public class SszStaticTests
         Map<AttesterSlashingGloas>("AttesterSlashing", GloasOnly);
         Map<ExecutionRequests>("ExecutionRequests", ElectraFulu);
         Map<ExecutionRequestsGloas>("ExecutionRequests", GloasOnly);
-        // Both wrap the preset-dependent Attestation shape, so they are preset-dependent too.
         Map<AggregateAndProof>("AggregateAndProof", ElectraFulu, presetDependent: true);
         Map<AggregateAndProofGloas>("AggregateAndProof", GloasOnly, presetDependent: true);
         Map<SignedAggregateAndProof>("SignedAggregateAndProof", ElectraFulu, presetDependent: true);
@@ -165,16 +134,11 @@ public class SszStaticTests
         Map<SignedBeaconBlock>("SignedBeaconBlock", ElectraFulu, presetDependent: true);
         Map<SignedBeaconBlockGloas>("SignedBeaconBlock", GloasOnly, presetDependent: true);
 
-        // BeaconState itself: a distinct concrete type per fork (Fulu adds proposer_lookahead over
-        // Electra; Gloas is declared fresh - see Types/BeaconState.cs remarks). Phase0..Deneb have no
-        // container in this repo at all. Every variant embeds several preset-scaled vectors
-        // (BlockRoots/StateRoots/RandaoMixes/Slashings/ProposerLookahead sizes, the validator/balance
-        // lists' merkleization depth, etc.), so none of them are minimal-preset safe.
+        // All modeled states embed mainnet-sized vectors/list bounds; none is minimal-preset safe.
         Map<BeaconStateElectra>("BeaconState", ["electra"], presetDependent: true);
         Map<BeaconStateFulu>("BeaconState", ["fulu"], presetDependent: true);
         Map<BeaconStateGloas>("BeaconState", GloasOnly, presetDependent: true);
 
-        // Gloas-only (EIP-7732 ePBS / EIP-8282 builder registry): no earlier-fork shape exists.
         Map<Builder>("Builder", GloasOnly);
         Map<BuilderPendingWithdrawal>("BuilderPendingWithdrawal", GloasOnly);
         Map<BuilderPendingPayment>("BuilderPendingPayment", GloasOnly);
@@ -190,7 +154,6 @@ public class SszStaticTests
         Map<PayloadAttestation>("PayloadAttestation", GloasOnly, presetDependent: true);
         Map<IndexedPayloadAttestation>("IndexedPayloadAttestation", GloasOnly, presetDependent: true);
 
-        // The Fulu column sidecar and the req/resp column identifier, which the node decodes on gossip and req/resp.
         Map<DataColumnSidecar>("DataColumnSidecar", ["fulu"]);
         Map<DataColumnsByRootIdentifier>("DataColumnsByRootIdentifier", ["fulu", "gloas"]);
 
@@ -208,7 +171,6 @@ public class SszStaticTests
     /// <summary>The forks each preset generates ssz_static vectors for at <see cref="ConsensusSpecArchive.Version"/>; no heze container is modeled.</summary>
     private static readonly string[] ArchiveForks = [.. AllForks, "heze"];
 
-    /// <summary>How many containers <see cref="Registry"/> maps per fork, so a dropped or narrowed row fails rather than turning its vectors not-implemented.</summary>
     private static readonly IReadOnlyDictionary<string, int> RegisteredContainerCounts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         ["phase0"] = 15,
@@ -231,7 +193,6 @@ public class SszStaticTests
     private const string PartialColumns = "partial data column messages and matrix entries are not modeled; no router handles them";
     private const string ProposerPreferences = "the node does not subscribe to proposer_preferences, so it never decodes them";
 
-    /// <summary>How many (fork, container) triples of the archive are pinned as not modeled, per reason, so a triple that gains or loses a model fails the test that counts them.</summary>
     private static readonly IReadOnlyDictionary<string, int> PinnedNotModeledCounts = new Dictionary<string, int>(StringComparer.Ordinal)
     {
         [BeforeElectra] = 55,
@@ -245,7 +206,6 @@ public class SszStaticTests
         [ProposerPreferences] = 2,
     };
 
-    /// <summary>Why <paramref name="container"/> of <paramref name="fork"/> has no model, or <c>null</c> when this repo does not pin it as not modeled.</summary>
     private static string? NotModeledReason(string fork, string container) => container switch
     {
         _ when fork == "heze" => UnrunFork,
@@ -265,8 +225,6 @@ public class SszStaticTests
 
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(SszStaticCase testCase) => Execute(testCase);
-
-    // A wrong suite path or an emptied case source enumerates zero vectors; a renamed or dropped registry row leaves its vectors not-implemented; both run green.
     [Test]
     public void Every_fork_and_registered_container_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -280,8 +238,6 @@ public class SszStaticTests
             Assert.That(registered.GroupBy(static pair => pair.Fork).ToDictionary(static byFork => byFork.Key, static byFork => byFork.Count()), Is.EquivalentTo(RegisteredContainerCounts));
         }
     }
-
-    // A container the archive gains, or one that loses its model, would otherwise only move vectors between not-implemented and passing unnoticed.
     [Test]
     public void Every_container_without_a_model_is_pinned_with_a_reason([Values] ConsensusPreset preset)
     {
@@ -296,8 +252,6 @@ public class SszStaticTests
             Assert.That(unmodeled.GroupBy(static pair => NotModeledReason(pair.Fork, pair.Container)!).ToDictionary(static g => g.Key, static g => g.Count()), Is.EquivalentTo(PinnedNotModeledCounts));
         }
     }
-
-    // Not-implemented vectors are Inconclusive, so a registry row whose every mainnet vector reports that way still runs green.
     [Test]
     public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
@@ -305,8 +259,6 @@ public class SszStaticTests
                 .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(testCase.Fork))],
             static testCase => PairKey(testCase.Fork, testCase.ContainerName),
             Run);
-
-    // A false flag skips vectors that decode; the flag is right only while some minimal vector of the container fails to decode.
     [Test]
     public void Every_preset_dependent_container_fails_to_decode_a_minimal_vector()
     {
@@ -351,8 +303,7 @@ public class SszStaticTests
         }
 
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "serialized.ssz_snappy"));
-        // roots.yaml uses the same "root: '0x...'" shape meta.yaml uses for ssz_generic, so the
-        // existing parser applies unchanged.
+
         UInt256 expectedRoot = SszConsensusTestLoader.ParseRoot(Path.Combine(testCase.CasePath, "roots.yaml"));
         entry.Handler.Run(ssz, expectedRoot);
     }
@@ -396,7 +347,6 @@ public class SszStaticTests
     }
 }
 
-/// <summary>One ssz_static vector: which container, which fork/preset, and where its files live.</summary>
 public readonly record struct SszStaticCase(string Preset, string Fork, string ContainerName, string CasePath, string VectorName)
 {
     public override string ToString() => VectorName;

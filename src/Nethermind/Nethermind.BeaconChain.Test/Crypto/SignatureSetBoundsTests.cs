@@ -17,10 +17,6 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
-/// <summary>
-/// The signature verifiers read indices and list lengths out of untrusted messages: each must refuse one outside the
-/// spec's limits as an invalid signature, never fault, and never let an index wrap onto another validator's key.
-/// </summary>
 [TestFixture]
 [HardTimeout(60_000)]
 public class SignatureSetBoundsTests
@@ -39,10 +35,7 @@ public class SignatureSetBoundsTests
         GloasPayloadAttestation,
     }
 
-    /// <summary>
-    /// The last registered index, then the registry size, one past it, indices whose low 32 bits are -1, 0 and 1 (so a
-    /// truncating cast would read validator 3, 0 or 1's key), and the largest index.
-    /// </summary>
+    // Include uint64 indices whose low 32 bits alias valid validators; honest signatures make truncation observable.
     private static readonly ulong[] Indices = [KeyCount - 1, KeyCount, KeyCount + 1, uint.MaxValue, Wrap, Wrap + 1, ulong.MaxValue];
 
     private static readonly Lazy<PubkeyCache> LargeCache = new(BuildLargeCache);
@@ -71,7 +64,6 @@ public class SignatureSetBoundsTests
         return SignatureSets.VerifyRandaoReveal(state, proposerIndex, 3, reveal, Cache());
     }
 
-    /// <summary>A validator registered after the key cache was built has no cached key, so its honest exit is refused until the cache covers it.</summary>
     [TestCase(KeyCount, ExpectedResult = false)]
     [TestCase(KeyCount + 1, ExpectedResult = true)]
     public bool An_exit_by_a_validator_missing_from_the_key_cache_is_refused_without_a_fault(int cachedKeys)
@@ -84,10 +76,6 @@ public class SignatureSetBoundsTests
         return SignatureSets.VerifyVoluntaryExit(state, signed, Cache(cachedKeys));
     }
 
-    /// <summary>
-    /// An attestation names at most <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> validators. The aggregate over
-    /// the extra validator is honest, so only the bound refuses it.
-    /// </summary>
     [Test]
     public void An_attestation_naming_more_validators_than_a_slot_holds_is_refused([Values] bool gloas, [Values(SignatureSets.MaxAttestingIndices, SignatureSets.MaxAttestingIndices + 1)] int count)
     {
@@ -106,7 +94,7 @@ public class SignatureSetBoundsTests
         Assert.That(verified, Is.EqualTo(count <= SignatureSets.MaxAttestingIndices));
     }
 
-    /// <summary>A PTC has <c>PTC_SIZE</c> members, sampled with replacement, so a list of that length repeats validators and a longer one is refused.</summary>
+    // PTC_SIZE sampling with replacement legitimately repeats validators; exceeding it does not.
     [TestCase(512, ExpectedResult = true)]
     [TestCase(513, ExpectedResult = false)]
     [TestCase(2048, ExpectedResult = false)]
@@ -128,10 +116,6 @@ public class SignatureSetBoundsTests
         Indices,
     }
 
-    /// <summary>
-    /// Sync committee bits, member keys and member indices each hold <c>SYNC_COMMITTEE_SIZE</c> entries; a shorter one would be
-    /// indexed past its end and a longer one silently ignored past the spec's committee, so any other length is refused.
-    /// </summary>
     [Test]
     public void A_sync_aggregate_over_inputs_that_are_not_committee_sized_is_refused([Values] Resized resized, [Values(0, 511, 512, 513, 2048)] int length)
     {
@@ -169,10 +153,7 @@ public class SignatureSetBoundsTests
         return cache;
     }
 
-    /// <summary>
-    /// A cache of <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT + 1</c> validators, validator i holding [i + 1] times validator 0's key,
-    /// so that indices 0..n-1 sum to [n(n+1)/2] times it.
-    /// </summary>
+    // Key i = (i+1)*key 0, so indices 0..n-1 sum to n(n+1)/2*key 0.
     private static PubkeyCache BuildLargeCache()
     {
         Bls.P1Affine key = new Bls.P1(ValidatorKey(0)).ToAffine();
@@ -189,7 +170,6 @@ public class SignatureSetBoundsTests
         return cache;
     }
 
-    /// <summary>Validator 0's signature over <paramref name="signingRoot"/>, multiplied by <paramref name="multiple"/>: the aggregate signature of keys summing to that multiple of validator 0's key.</summary>
     private static BlsSignature SumOfMultiples(Hash256 signingRoot, ulong multiple)
     {
         byte[] scalar = new byte[32];
@@ -200,7 +180,6 @@ public class SignatureSetBoundsTests
         return new BlsSignature(point.Compress());
     }
 
-    /// <summary>Runs <paramref name="verifier"/> on a message naming <paramref name="index"/>, signed by validator <paramref name="signer"/>.</summary>
     private static bool Verify(Verifier verifier, ulong index, int signer)
     {
         PubkeyCache pubkeys = Cache();

@@ -15,7 +15,6 @@ using NUnit.Framework;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
-/// <summary>A failed parent fetch by root reports the peer under the reason its failure maps to, so a dead session is dropped at once.</summary>
 public partial class BeaconSyncOrchestratorTests
 {
     [TestCase("Channel closed", PeerFailureReason.SessionClosed)]

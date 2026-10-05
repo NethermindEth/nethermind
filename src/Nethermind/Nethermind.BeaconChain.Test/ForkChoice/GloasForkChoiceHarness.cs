@@ -13,22 +13,13 @@ using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.ForkChoice;
 
-/// <summary>
-/// A <see cref="ForkChoiceRunner"/> on the <see cref="ForkCrossingChain"/> Fulu anchor whose Gloas state provider also holds the
-/// post-states of the blocks a test builds, so PTC votes for them resolve their block's state.
-/// </summary>
-/// <remarks>
-/// A built block's post-state is its parent's post-state advanced to the block's slot, never run through <c>process_block</c>:
-/// fork choice reads only its slot, checkpoints, registry and PTC window.
-/// </remarks>
+/// <summary>Built post-states skip process_block; fork choice reads only slot, checkpoints, registry and PTC window.</summary>
 internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasBlockStateProvider
 {
-    /// <summary>With 2048 validators and 32 slots, each slot has one committee of 64.</summary>
     public const ulong CommitteeWeight = 64 * 32 * Gwei;
 
     private readonly Dictionary<Hash256, BeaconStateGloas> _states = [];
 
-    /// <param name="gloasAnchor">Roots the store at <see cref="First"/> (a Gloas anchor) instead of the Fulu anchor.</param>
     public GloasForkChoiceHarness(bool gloasAnchor = false)
     {
         PubkeyCache pubkeys = new();
@@ -39,7 +30,6 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
         First = new Block(Chain.First.Root, Chain.First.PostState, Chain.First.Block);
     }
 
-    /// <summary>A Gloas block with the state fork choice resolves for it.</summary>
     public sealed record Block(Hash256 Root, BeaconStateGloas PostState, SignedBeaconBlockGloas Signed)
     {
         public ulong Slot => Signed.Message!.Slot;
@@ -53,10 +43,8 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
 
     public ForkChoiceRunner Runner { get; }
 
-    /// <summary>The chain's first Gloas block, at the boundary slot on the Fulu anchor; not yet imported unless it is the anchor.</summary>
     public Block First { get; }
 
-    /// <summary>The proposer score of <c>get_proposer_score</c>: 40% of one committee's share of the anchor's active balance.</summary>
     public static ulong ProposerScore => (ulong)ValidatorCount * 32 * Gwei / Presets.SlotsPerEpoch * ProtoArrayForkChoice.DefaultProposerScoreBoostPercent / 100;
 
     public void TickTo(ulong slot, ulong secondsIntoSlot = 0) =>
@@ -64,12 +52,10 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
 
     public void Import(Block block) => Runner.OnBlock(block.Signed, block.PostState);
 
-    /// <summary>A block at <paramref name="slot"/> on <paramref name="parent"/>, building on its FULL node when <paramref name="full"/>, and on its EMPTY node otherwise.</summary>
     public Block Child(Block parent, ulong slot, bool full, byte blockHashFill, params PayloadAttestation[] payloadAttestations) =>
         Child(parent, slot, full ? parent.BidBlockHash : parent.PostState.LatestBlockHash!, blockHashFill, payloadAttestations);
 
-    /// <summary>A block at <paramref name="slot"/> on <paramref name="parent"/> whose bid builds on the execution payload <paramref name="parentBlockHash"/>.</summary>
-    /// <remarks>specs/gloas/fork-choice.md get_parent_payload_status: an EMPTY child names the payload its parent built on.</remarks>
+    /// <summary>An EMPTY child names the payload its parent built on (gloas/fork-choice.md get_parent_payload_status).</summary>
     public Block Child(Block parent, ulong slot, Hash256 parentBlockHash, byte blockHashFill, params PayloadAttestation[] payloadAttestations)
     {
         BeaconStateGloas state = parent.PostState.Clone();
@@ -83,10 +69,8 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
         return new Block(root, state, block);
     }
 
-    /// <summary>The PTC of <paramref name="block"/>'s slot, one validator index per seat.</summary>
     public ulong[] Ptc(Block block) => block.PostState.GetPtc(block.Slot, Chain.Spec).Indices!;
 
-    /// <summary>A PTC member's vote on <paramref name="block"/>'s payload, signed with its real key when <paramref name="sign"/>.</summary>
     public PayloadAttestationMessage PtcMessage(Block block, ulong validatorIndex, bool payloadPresent, bool blobDataAvailable, bool sign, ulong? slot = null)
     {
         PayloadAttestationData data = new() { BeaconBlockRoot = block.Root, Slot = slot ?? block.Slot, PayloadPresent = payloadPresent, BlobDataAvailable = blobDataAvailable };
@@ -99,7 +83,6 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
         };
     }
 
-    /// <summary>Every distinct member of <paramref name="block"/>'s PTC votes on its payload from the wire, in the block's slot.</summary>
     public void AllPtcVote(Block block, bool payloadPresent, bool blobDataAvailable)
     {
         Runner.GetHead();
@@ -107,7 +90,6 @@ internal sealed class GloasForkChoiceHarness : IForkChoiceStateProvider, IGloasB
             Runner.OnPayloadAttestationMessage(PtcMessage(block, member, payloadPresent, blobDataAvailable, sign: false), verifySignature: false);
     }
 
-    /// <summary>The committee of <paramref name="slot"/> votes from a block for <paramref name="block"/> with payload-status index <paramref name="index"/>.</summary>
     public void CommitteeVotes(Block block, ulong slot, ulong index)
     {
         ulong epoch = slot / Presets.SlotsPerEpoch;
