@@ -169,10 +169,7 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
     [Test]
     public async Task Committees_epoch_far_outside_the_state_is_400_not_a_stale_shuffling()
     {
-        Hash256 root = TestRoot(16);
-        Validator[] validators = [MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000)];
-        ulong[] balances = [32_000_000_000];
-        PutState(root, validators, balances);
+        PutActiveState(TestRoot(16), 1);
 
         HttpResponseMessage response = await _host.Client.GetAsync($"/eth/v1/beacon/states/{StateSlot}/committees?epoch={StateEpoch + 1000}");
         Assert.That(response.StatusCode, Is.EqualTo((HttpStatusCode)400));

@@ -177,15 +177,11 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         state.Fork = new Fork { PreviousVersion = [(byte)(marker - 1), 0, 0, 0], CurrentVersion = [(byte)marker, 0, 0, 0], Epoch = StateEpoch(fork) };
         state.LatestBlockHeader!.Slot = slot;
         Validator first = state.Validators![0];
-        state.Validators = [.. state.Validators, .. Enumerable.Range(3, ValidatorCount - 3).Select(i => new Validator
+        state.Validators = [.. state.Validators, .. Enumerable.Range(3, ValidatorCount - 3).Select(i =>
         {
-            Pubkey = new BlsPublicKey([0xe0, (byte)i, .. new byte[46]]),
-            WithdrawalCredentials = first.WithdrawalCredentials,
-            EffectiveBalance = first.EffectiveBalance,
-            ActivationEligibilityEpoch = first.ActivationEligibilityEpoch,
-            ActivationEpoch = first.ActivationEpoch,
-            ExitEpoch = first.ExitEpoch,
-            WithdrawableEpoch = first.WithdrawableEpoch,
+            Validator validator = first.Clone();
+            validator.Pubkey = new BlsPublicKey([0xe0, (byte)i, .. new byte[46]]);
+            return validator;
         })];
         state.Balances = [.. Enumerable.Range(0, ValidatorCount).Select(i => BalanceOf(fork, i))];
         state.PreviousEpochParticipation = new byte[ValidatorCount];
