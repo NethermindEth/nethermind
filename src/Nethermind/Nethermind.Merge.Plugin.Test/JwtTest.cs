@@ -121,8 +121,8 @@ public class JwtTest
     [Test]
     public async Task Cached_token_respects_iat_window(
         [Values] bool useLibraryFallback,
-        [Values(null, 60, 120)] int? expirationAfterIssue,
-        [Values(-61, -60, 60, 61)] int secondsAfterIssue)
+        [Values(null, 2, 60, 120)] int? expirationAfterIssue,
+        [Values(-61, -60, 2, 60, 61)] int secondsAfterIssue)
     {
         ManualTimestamper ts = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat).UtcDateTime };
         IRpcAuthentication auth = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
@@ -151,25 +151,6 @@ public class JwtTest
         Assert.That(await auth.Authenticate(token1), Is.True);
         // Different token — cache miss, must revalidate
         Assert.That(await auth.Authenticate(token2), Is.True);
-    }
-
-    [Test]
-    public async Task Cached_token_respects_expiration(
-        [Values] bool useLibraryFallback,
-        [Values(2, 3)] int secondsAfterIssue)
-    {
-        ManualTimestamper ts = new() { UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat).UtcDateTime };
-        IRpcAuthentication auth = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
-        string token = CreateJwt(CreateHeader(useLibraryFallback), $"{{\"iat\":{TestIat},\"exp\":{TestIat + 2}}}");
-
-        Assert.That(await auth.Authenticate(token), Is.True);
-        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + 1).UtcDateTime;
-        Assert.That(await auth.Authenticate(token), Is.True);
-
-        ts.UtcNow = DateTimeOffset.FromUnixTimeSeconds(TestIat + secondsAfterIssue).UtcDateTime;
-        IRpcAuthentication uncached = JwtAuthentication.FromSecret(HexSecret, ts, LimboTraceLogger.Instance);
-        Assert.That(await uncached.Authenticate(token), Is.False, "Uncached validation must reject an expired token");
-        Assert.That(await auth.Authenticate(token), Is.False, "Cached validation must reject the same expired token");
     }
 
     [Test]
