@@ -1,13 +1,10 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
-using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
@@ -38,18 +35,13 @@ public class ImportEngineCallThreadTests
         Assert.That(result, Is.EqualTo(BlockImportResult.Imported));
     }
 
-    private sealed class SlowEngine : IEngineDriver
+    private sealed class SlowEngine : BlockImporterTests.ValidPayloadEngine
     {
         public TaskCompletionSource Entered { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
         public ManualResetEventSlim Answer { get; } = new();
         public bool CalledOnPoolThread { get; private set; }
-        public SignedBeaconBlock? CurrentBlock { get; set; }
-        public bool HasAnsweredNewPayload { get; private set; }
 
-        public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-            Task.FromResult(new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = headExecHash });
-
-        public ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
+        public override ExecutionStatus NotifyNewPayload(BeaconBlockBody body)
         {
             CalledOnPoolThread = Thread.CurrentThread.IsThreadPoolThread;
             Entered.TrySetResult();
