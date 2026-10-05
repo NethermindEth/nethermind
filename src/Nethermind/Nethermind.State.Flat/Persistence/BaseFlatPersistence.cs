@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
@@ -153,6 +154,18 @@ public static class BaseFlatPersistence
             return state.Get(key, outBuffer);
         }
 
+        public void GetAccounts(ReadOnlySpan<ValueHash256> addresses, Span<byte[]?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            using ArrayPoolListRef<byte> keys = new(addresses.Length * AccountKeyLength, addresses.Length * AccountKeyLength);
+            for (int i = 0; i < addresses.Length; i++)
+                EncodeAccountKeyHashed(keys.AsSpan().Slice(i * AccountKeyLength, AccountKeyLength), addresses[i]);
+
+            state.MultiGet(keys.AsSpan(), AccountKeyLength, accounts, ReadFlags.HintCacheMiss);
+        }
+
         [SkipLocalsInit]
         public bool TryGetStorage(in ValueHash256 address, in ValueHash256 slot, ref UInt256 outValue)
         {
@@ -162,7 +175,43 @@ public static class BaseFlatPersistence
             int resultSize = GetStorageBuffer(storageKey, buffer);
             if (resultSize == 0) return false;
 
-            ReadOnlySpan<byte> value = buffer[..resultSize];
+            DecodeStorageValue(buffer[..resultSize], ref outValue);
+            return true;
+        }
+
+        public void GetStorages(
+            ReadOnlySpan<ValueHash256> addresses,
+            ReadOnlySpan<ValueHash256> slots,
+            Span<UInt256> values,
+            Span<bool> found)
+        {
+            if (addresses.Length != slots.Length || addresses.Length != values.Length || addresses.Length != found.Length)
+                throw new ArgumentException("Addresses, slots, values, and found flags must have the same length.", nameof(values));
+
+            using ArrayPoolListRef<byte> keys = new(addresses.Length * StorageKeyLength, addresses.Length * StorageKeyLength);
+            for (int i = 0; i < addresses.Length; i++)
+                EncodeStorageKey(keys.AsSpan().Slice(i * StorageKeyLength, StorageKeyLength), addresses[i], slots[i], fullAddressStorageKey);
+
+            using ArrayPoolListRef<byte[]?> encodedValues = new(addresses.Length, addresses.Length);
+            storage.MultiGet(keys.AsSpan(), StorageKeyLength, encodedValues.AsSpan(), ReadFlags.HintCacheMiss);
+            for (int i = 0; i < encodedValues.Count; i++)
+            {
+                byte[]? encodedValue = encodedValues[i];
+                if (encodedValue is null or { Length: 0 })
+                {
+                    values[i] = default;
+                    found[i] = false;
+                    continue;
+                }
+
+                DecodeStorageValue(encodedValue, ref values[i]);
+                found[i] = true;
+            }
+        }
+
+        private void DecodeStorageValue(ReadOnlySpan<byte> encodedValue, ref UInt256 outValue)
+        {
+            ReadOnlySpan<byte> value = encodedValue;
             if (rlpWrapSlots)
             {
                 RlpReader ctx = new(value);
@@ -171,8 +220,6 @@ public static class BaseFlatPersistence
 
             if (value.Length > StorageValueSize) ThrowSlotValueTooLong(value.Length, rlpWrapSlots);
             outValue = new UInt256(value, isBigEndian: true);
-
-            return true;
         }
 
         private int GetStorageBuffer(ReadOnlySpan<byte> key, Span<byte> outBuffer) => storage.Get(key, outBuffer);

@@ -23,6 +23,33 @@ namespace Nethermind.Core
 
         byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
+        /// <summary>Reads a batch of equal-length keys, ideally as a single backend round trip.</summary>
+        /// <remarks>
+        /// <paramref name="values"/> is filled in input order — <c>values[i]</c> is the value of the key at
+        /// <c>keys[i * keyLength]</c> — and every element is written, so the caller does not have to pre-clear it.
+        /// An absent key comes back as <c>null</c>. A stored empty value is backend-dependent — <c>null</c> or a
+        /// zero-length array — so treat both as "no value" rather than branching on <c>null</c> alone.
+        /// <see cref="ReadFlags.HintReadAhead"/> is not honoured here: a batch is a random-access pattern, and the
+        /// sequential-scan iterator that flag selects has no batched form. The default implementation loops over
+        /// <c>Get</c>; backends with a native batched read override it.
+        /// </remarks>
+        /// <param name="keys">The keys, concatenated, each exactly <paramref name="keyLength"/> bytes long.</param>
+        /// <param name="keyLength">Length in bytes of every key in <paramref name="keys"/>.</param>
+        /// <param name="values">Destination for the values; its length must be <c>keys.Length / keyLength</c>.</param>
+        /// <param name="flags">Read behavior flags that control how the values are retrieved.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="keyLength"/> is not positive.</exception>
+        /// <exception cref="ArgumentException"><paramref name="keys"/> is not exactly <paramref name="keyLength"/> bytes per value.</exception>
+        void MultiGet(ReadOnlySpan<byte> keys, int keyLength, Span<byte[]?> values, ReadFlags flags = ReadFlags.None)
+        {
+            if (keyLength <= 0)
+                throw new ArgumentOutOfRangeException(nameof(keyLength));
+            if ((long)keys.Length != (long)values.Length * keyLength)
+                throw new ArgumentException("The key buffer length must match the value count and fixed key length.", nameof(keys));
+
+            for (int i = 0; i < values.Length; i++)
+                values[i] = Get(keys.Slice(i * keyLength, keyLength), flags);
+        }
+
         /// <summary>
         /// Return span. Must call <see cref="DangerousReleaseMemory"/> after use to avoid memory leaks.
         /// Prefer using <see cref="GetOwnedMemory"/> which handles release automatically via disposal.

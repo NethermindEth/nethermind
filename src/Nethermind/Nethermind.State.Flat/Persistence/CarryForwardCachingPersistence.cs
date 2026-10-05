@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Trie;
@@ -268,6 +269,65 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             return account;
         }
 
+        public void GetAccounts(ReadOnlySpan<Address> addresses, Span<Account?> accounts)
+        {
+            if (addresses.Length != accounts.Length)
+                throw new ArgumentException("Addresses and accounts must have the same length.", nameof(accounts));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
+            using ArrayPoolListRef<Address> missingAddresses = new(addresses.Length);
+            using ArrayPoolListRef<int> missingIndices = new(addresses.Length);
+            int missingCount = 0;
+            for (int i = 0; i < addresses.Length; i++)
+            {
+                Address address = addresses[i];
+                if (parent._accounts.TryGetValue(address, out Account? cached))
+                {
+                    accounts[i] = cached;
+                    continue;
+                }
+
+                missingAddresses.Add(address);
+                missingIndices.Add(i);
+                missingCount++;
+            }
+
+            if (_recordDetailedMetrics)
+            {
+                Metrics.AddCarryForwardAccountHits(addresses.Length - missingCount);
+                Metrics.AddCarryForwardAccountMisses(missingCount);
+            }
+
+            if (missingCount == 0)
+            {
+                if (!parent.IsCurrent(generation))
+                    inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
+            using ArrayPoolListRef<Account?> missingAccounts = new(missingCount, missingCount);
+            inner.GetAccounts(missingAddresses.AsSpan(), missingAccounts.AsSpan());
+            if (!parent.IsCurrent(generation))
+            {
+                inner.GetAccounts(addresses, accounts);
+                return;
+            }
+
+            for (int i = 0; i < missingCount; i++)
+            {
+                Address address = missingAddresses[i];
+                Account? account = missingAccounts[i];
+                accounts[missingIndices[i]] = account;
+                parent.TryCacheAccount(address, account, generation);
+            }
+        }
+
         public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
         {
             ulong hash = CarryForwardSlotTable.Hash(address, slot);
@@ -289,6 +349,73 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             bool found = inner.TryGetSlot(address, slot, ref outValue);
             if (current) parent.TryCacheSlot(hash, address, slot, found, outValue, generation);
             return found;
+        }
+
+        public void GetSlots(ReadOnlySpan<StorageCell> storageCells, Span<UInt256> slots, Span<bool> found)
+        {
+            if (storageCells.Length != slots.Length || storageCells.Length != found.Length)
+                throw new ArgumentException("Storage cells, slots, and found flags must have the same length.", nameof(slots));
+
+            bool current = parent.IsCurrent(generation);
+            if (!current)
+            {
+                inner.GetSlots(storageCells, slots, found);
+                return;
+            }
+
+            using ArrayPoolListRef<StorageCell> missingCells = new(storageCells.Length);
+            using ArrayPoolListRef<ulong> missingHashes = new(storageCells.Length);
+            using ArrayPoolListRef<int> missingIndices = new(storageCells.Length);
+            int missingCount = 0;
+            for (int i = 0; i < storageCells.Length; i++)
+            {
+                StorageCell cell = storageCells[i];
+                ulong hash = CarryForwardSlotTable.Hash(cell.Address, cell.Index);
+                if (parent._slots.TryGet(hash, cell.Address, cell.Index, out bool cachedFound, out UInt256 cachedValue))
+                {
+                    found[i] = cachedFound;
+                    slots[i] = cachedFound ? cachedValue : default;
+                    continue;
+                }
+
+                missingCells.Add(cell);
+                missingHashes.Add(hash);
+                missingIndices.Add(i);
+                missingCount++;
+            }
+
+            if (_recordDetailedMetrics)
+            {
+                Metrics.AddCarryForwardSlotHits(storageCells.Length - missingCount);
+                Metrics.AddCarryForwardSlotMisses(missingCount);
+            }
+
+            if (missingCount == 0)
+            {
+                if (!parent.IsCurrent(generation))
+                    inner.GetSlots(storageCells, slots, found);
+                return;
+            }
+
+            using ArrayPoolListRef<UInt256> missingSlots = new(missingCount, missingCount);
+            using ArrayPoolListRef<bool> missingFound = new(missingCount, missingCount);
+            inner.GetSlots(missingCells.AsSpan(), missingSlots.AsSpan(), missingFound.AsSpan());
+            if (!parent.IsCurrent(generation))
+            {
+                inner.GetSlots(storageCells, slots, found);
+                return;
+            }
+
+            for (int i = 0; i < missingCount; i++)
+            {
+                StorageCell cell = missingCells[i];
+                bool slotFound = missingFound[i];
+                UInt256 slot = slotFound ? missingSlots[i] : default;
+                int destinationIndex = missingIndices[i];
+                slots[destinationIndex] = slot;
+                found[destinationIndex] = slotFound;
+                parent.TryCacheSlot(missingHashes[i], cell.Address, cell.Index, slotFound, slot, generation);
+            }
         }
 
         public StateId CurrentState => inner.CurrentState;
