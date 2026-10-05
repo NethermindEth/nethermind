@@ -446,9 +446,11 @@ public class PersistentReceiptStorageTests(bool useCompactReceipts)
     [TestCase(false)]
     public void Get_serves_zero_length_blooms_after_eip7668(bool eip7668)
     {
-        _specProvider.NextForkSpec = new OverridableReleaseSpec(Byzantium.Instance) { IsEip7668Enabled = eip7668 };
+        _specProvider.NextForkSpec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        // The storage reads whether the chain ever schedules EIP-7668 on construction.
+        CreateStorage();
         (Block block, _) = PrepareBlock();
-        // A receipt synced without a bloom computes one lazily, as the compact encoding does on decode.
+        // A receipt synced without a bloom would compute one lazily on read.
         TxReceipt receipt = Build.A.Receipt.WithLogs(new LogEntry(TestItem.AddressA, [], [TestItem.KeccakA])).TestObject;
         receipt.Bloom = null;
 

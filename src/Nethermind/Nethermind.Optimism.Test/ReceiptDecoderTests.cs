@@ -198,7 +198,7 @@ public class ReceiptDecoderTests
     }
 
     [Test]
-    public void Compact_storage_decoding_defers_bloom_until_read()
+    public void Compact_storage_decoding_computes_bloom()
     {
         OptimismTxReceipt receipt = new()
         {
@@ -209,7 +209,7 @@ public class ReceiptDecoderTests
         OptimismCompactReceiptStorageDecoder decoder = new();
         RlpReader reader = new(decoder.Encode(receipt, RlpBehaviors.Eip658Receipts).Bytes);
 
-        CompactReceiptDecoderTests.AssertBloomDeferredUntilRead(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), new Bloom(receipt.Logs));
+        CompactReceiptDecoderTests.AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref reader, RlpBehaviors.Eip658Receipts), new Bloom(receipt.Logs));
     }
 
     [Test]

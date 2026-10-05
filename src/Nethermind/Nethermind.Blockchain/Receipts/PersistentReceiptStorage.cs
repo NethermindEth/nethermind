@@ -27,6 +27,7 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
+        private readonly bool _eip7668EverEnabled;
         private readonly IReceiptsRecovery _receiptsRecovery;
         private readonly IDb _receiptsDb;
         private readonly IDb _defaultColumn;
@@ -131,6 +132,7 @@ namespace Nethermind.Blockchain.Receipts
             ulong Get(Hash256 key, ulong defaultValue) => _defaultColumn.Get(key)?.ToULongFromBigEndianByteArrayWithoutLeadingZeros() ?? defaultValue;
 
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _eip7668EverEnabled = specProvider.GetFinalSpec().IsEip7668Enabled;
             _receiptsRecovery = receiptsRecovery ?? throw new ArgumentNullException(nameof(receiptsRecovery));
             _receiptsDb = _database.GetColumnDb(ReceiptsColumns.Blocks);
             _transactionDb = _database.GetColumnDb(ReceiptsColumns.Transactions);
@@ -427,8 +429,7 @@ namespace Nethermind.Blockchain.Receipts
                 }
                 else
                 {
-                    receipts = _storageDecoder.Decode(in receiptsData);
-                    RemoveBloomsIfEip7668(block.Header, receipts);
+                    receipts = Decode(in receiptsData, block.Header);
 
                     if (recover)
                     {
@@ -524,9 +525,7 @@ namespace Nethermind.Blockchain.Receipts
             try
             {
                 if (receiptsData.IsNullOrEmpty() || ReceiptArrayStorageDecoder.IsCompactEncoding(receiptsData)) return [];
-                TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData);
-                RemoveBloomsIfEip7668(header, receipts);
-                return receipts;
+                return Decode(in receiptsData, header);
             }
             finally
             {
@@ -535,12 +534,17 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         /// <remarks>
-        /// The compact encoding recomputes each bloom on decode, and a receipt synced without one computes it lazily;
-        /// either would otherwise be served for a post-EIP-7668 block.
+        /// After EIP-7668 the compact encoding skips computing each bloom and a receipt synced without one would
+        /// compute it lazily, so every bloom is set to <see cref="Bloom.Removed"/>. A chain that never schedules
+        /// the EIP skips the spec lookup.
         /// </remarks>
-        private void RemoveBloomsIfEip7668(BlockHeader header, TxReceipt[] receipts)
+        private TxReceipt[] Decode(in Span<byte> receiptsData, BlockHeader header)
         {
-            if (_specProvider.GetSpec(header).IsEip7668Enabled) receipts.RemoveBlooms();
+            if (!_eip7668EverEnabled || !_specProvider.GetSpec(header).IsEip7668Enabled) return _storageDecoder.Decode(in receiptsData);
+
+            TxReceipt[] receipts = _storageDecoder.Decode(in receiptsData, RlpBehaviors.Eip7668Receipts);
+            receipts.RemoveBlooms();
+            return receipts;
         }
 
         public bool CanGetReceiptsByHash(ulong blockNumber) => blockNumber >= MigratedBlockNumber;

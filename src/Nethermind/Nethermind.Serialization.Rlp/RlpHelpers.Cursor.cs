@@ -688,8 +688,14 @@ internal static partial class RlpHelpers
     /// <exception cref="RlpException">The item is neither a 256-byte nor an empty string.</exception>
     public static int DecodeBloom(ReadOnlySpan<byte> data, int position, out Bloom bloom)
     {
-        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom);
-        bloom = bloomBytes.IsEmpty ? Bloom.Removed : CreateBloom(bloomBytes);
+        if (data[position] == Rlp.EmptyByteArrayByte)
+        {
+            bloom = Bloom.Removed;
+            return position + 1;
+        }
+
+        position = DecodeByteArraySpan(data, position, out ReadOnlySpan<byte> bloomBytes, RlpLimit.Bloom, Bloom.ByteLength);
+        bloom = CreateBloom(bloomBytes);
         return position;
     }
 

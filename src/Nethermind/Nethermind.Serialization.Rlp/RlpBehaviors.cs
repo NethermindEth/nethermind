@@ -44,7 +44,8 @@ public enum RlpBehaviors
     SkipPooledTransactions = 512,
 
     /// <summary>
-    /// EIP-7668: encodes the receipt bloom as a zero-length string, whatever bloom the receipt holds.
+    /// EIP-7668: encodes the receipt bloom as a zero-length string, whatever bloom the receipt holds;
+    /// the compact storage decoder sets <c>Bloom.Removed</c> instead of computing the bloom.
     /// </summary>
     Eip7668Receipts = 1024
 }

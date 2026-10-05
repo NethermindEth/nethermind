@@ -79,6 +79,8 @@ public class OptimismCompactReceiptStorageDecoder :
             decoderContext.Check(lastCheck);
         }
 
+        txReceipt.Bloom = new Bloom(txReceipt.Logs);
+
         return txReceipt;
     }
 

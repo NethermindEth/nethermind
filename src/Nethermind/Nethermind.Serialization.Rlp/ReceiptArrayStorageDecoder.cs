@@ -116,7 +116,9 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
         }
     }
 
-    public TxReceipt[] Decode(in Span<byte> receiptsData)
+    /// <param name="receiptsData">The stored receipts.</param>
+    /// <param name="compactBehaviors">Extra behaviors for the compact encoding, e.g. <see cref="RlpBehaviors.Eip7668Receipts"/>.</param>
+    public TxReceipt[] Decode(in Span<byte> receiptsData, RlpBehaviors compactBehaviors = RlpBehaviors.None)
     {
         if (receiptsData.Length == 0 || receiptsData[0] == Rlp.EmptyListByte)
         {
@@ -128,7 +130,7 @@ public sealed class ReceiptArrayStorageDecoder(bool compactEncoding = true) : Rl
             RlpReader decoderContext = new(receiptsData[1..]);
             return TakeCompletePrefix(CompactDecoder.DecodeArray(
                 ref decoderContext,
-                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes));
+                RlpBehaviors.Storage | RlpBehaviors.AllowExtraBytes | compactBehaviors));
         }
         else
         {

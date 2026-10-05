@@ -44,10 +44,14 @@ namespace Nethermind.Core.Test
         public void Removed_matches_any_item()
         {
             LogEntry[] entries = GetLogEntries(10, 3);
+            Bloom accumulated = new();
+            accumulated.Accumulate(Bloom.Removed);
+            Bloom.Removed.Set(Keccak.OfAnEmptyString.Bytes);
+
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(entries.Select(static e => Bloom.Removed.Matches(e)), Is.All.True);
-                Assert.That(Bloom.Removed.ToStructRef().Matches(entries[0]), Is.True);
+                Assert.That(entries.Select(e => accumulated.Matches(e)), Is.All.True);
             }
         }
 
@@ -59,7 +63,6 @@ namespace Nethermind.Core.Test
                 Assert.That(Bloom.Removed.ReadOnlyBytes.Length, Is.Zero);
                 Assert.That(Bloom.Removed, Is.Not.EqualTo(Bloom.Empty));
                 Assert.That(Bloom.Removed.Clone(), Is.SameAs(Bloom.Removed));
-                Assert.That(() => Bloom.Removed.Set(Keccak.OfAnEmptyString.Bytes), Throws.InvalidOperationException);
             }
         }
 

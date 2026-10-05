@@ -201,10 +201,12 @@ public partial class BlockProcessor(
         bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
         using ParallelUnbalancedWork.BackgroundWork? bloomWork = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts)
-            ? StartBloomComputation(receipts, bloomsRemoved)
+            ? bloomsRemoved ? StartBloomRemoval(receipts) : StartBloomComputation(receipts)
             : null;
-        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(() => receiptResults =
-            (bloomsRemoved ? Bloom.Removed : AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
+        // Separate lambdas keep bloomsRemoved out of the closure.
+        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(bloomsRemoved
+            ? () => receiptResults = (Bloom.Removed, CalculateReceiptsRoot(receipts, spec, block))
+            : () => receiptResults = (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
 
         CommitState(spec);
 
@@ -326,22 +328,23 @@ public partial class BlockProcessor(
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts, bool bloomsRemoved)
+    private static ParallelUnbalancedWork.BackgroundWork StartBloomComputation(TxReceipt[] receipts)
     {
         long started = ExecutionMetricsFlag.IsActive ? Stopwatch.GetTimestamp() : 0;
         ParallelOptions options = receipts.Length <= Environment.ProcessorCount
             ? SmallBloomOptions : ParallelUnbalancedWork.DefaultOptions;
         return ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, options,
-            i =>
-            {
-                if (bloomsRemoved) receipts[i].Bloom = Bloom.Removed;
-                else receipts[i].CalculateBloom();
-            }, () =>
+            i => receipts[i].CalculateBloom(), () =>
             {
                 if (ExecutionMetricsFlag.IsActive)
                     BloomsTimeSink.AddTicks(Stopwatch.GetElapsedTime(started).Ticks);
             });
     }
+
+    /// <summary>EIP-7668: sets every receipt bloom to <see cref="Bloom.Removed"/> as a stage the receipts root can follow.</summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static ParallelUnbalancedWork.BackgroundWork StartBloomRemoval(TxReceipt[] receipts) =>
+        ParallelUnbalancedWork.BackgroundFor(0, receipts.Length, SmallBloomOptions, i => receipts[i].Bloom = Bloom.Removed);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static void CalculateBlooms(TxReceipt[] receipts)

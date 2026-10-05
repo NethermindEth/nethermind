@@ -147,26 +147,23 @@ namespace Nethermind.Core.Test.Encoding
             }
         }
 
-        [Test]
-        public void Decode_defers_bloom_until_read()
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Decode_computes_bloom_unless_eip7668(bool eip7668)
         {
             TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
             CompactReceiptStorageDecoder decoder = new();
             RlpReader ctx = new(decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes);
+            RlpBehaviors behaviors = eip7668 ? RlpBehaviors.Storage | RlpBehaviors.Eip7668Receipts : RlpBehaviors.Storage;
 
-            AssertBloomDeferredUntilRead(decoder.DecodeGuardNotNull(ref ctx, RlpBehaviors.Storage), txReceipt.Bloom);
+            AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.Removed : txReceipt.Bloom);
         }
 
-        /// <remarks>A post-EIP-7668 read replaces the bloom, so computing it on decode would be wasted.</remarks>
-        public static void AssertBloomDeferredUntilRead(TxReceipt decoded, Bloom expected)
+        /// <remarks>The bloom is set by the decoder itself, not computed lazily by a later reader.</remarks>
+        public static void AssertBloomSetOnDecode(TxReceipt decoded, Bloom expected)
         {
             FieldInfo bloomField = typeof(TxReceipt).GetField("_bloom", BindingFlags.Instance | BindingFlags.NonPublic)!;
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(bloomField.GetValue(decoded), Is.Null);
-                Assert.That(decoded.Bloom, Is.EqualTo(expected));
-            }
+            Assert.That(bloomField.GetValue(decoded), Is.EqualTo(expected));
         }
 
         [Test]
