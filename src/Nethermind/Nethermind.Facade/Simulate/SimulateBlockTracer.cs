@@ -18,6 +18,7 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
     private ulong _blockNumber;
     private ulong _blockTimestamp;
     private bool _isTracingLogs = isTracingLogs;
+    private bool _logIndexPerReceipt;
 
     protected override SimulateTxTracer OnStart(Transaction? tx) =>
         tx?.Hash is not null
@@ -26,7 +27,8 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
 
     protected override SimulateCallResult OnEnd(SimulateTxTracer txTracer)
     {
-        _logIndex += (ulong)txTracer.LogCount;
+        // EIP-8116: logIndex counts within the receipt.
+        if (!_logIndexPerReceipt) _logIndex += (ulong)txTracer.LogCount;
         return txTracer.TraceResult!;
     }
 
@@ -47,7 +49,9 @@ public class SimulateBlockTracer(bool isTracingLogs, ISpecProvider spec) : Block
         _logIndex = 0;
         _blockNumber = block.Number;
         _blockTimestamp = block.Timestamp;
-        _isTracingLogs &= !spec.GetSpec(block.Header).IsEip7708Enabled;
+        IReleaseSpec releaseSpec = spec.GetSpec(block.Header);
+        _isTracingLogs &= !releaseSpec.IsEip7708Enabled;
+        _logIndexPerReceipt = releaseSpec.IsEip8116Enabled;
         base.StartNewBlockTrace(block);
     }
 }

@@ -314,7 +314,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
         }
 
         [Test]
-        public void TransactionReceiptsSubscription_logs_have_correct_indices()
+        public void TransactionReceiptsSubscription_logs_have_correct_indices([Values] bool logIndexPerReceipt)
         {
             ulong blockNumber = 55555;
             BlockHeader blockHeader = Build.A.BlockHeader.WithNumber(blockNumber).TestObject;
@@ -327,7 +327,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
             TxReceipt receipt2 = Build.A.Receipt.WithBlockNumber(blockNumber).WithTransactionHash(TestItem.KeccakB).WithIndex(1).WithLogs(log3).TestObject;
 
             TxReceipt[] receipts = [receipt1, receipt2];
-            ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false);
+            ReceiptsEventArgs eventArgs = new(blockHeader, receipts, false, logIndexPerReceipt);
 
             List<string> results = GetMultipleTransactionReceiptsResults(null, eventArgs, out string subscriptionId, 2);
 
@@ -340,9 +340,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Subscribe
                 Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x0\""));
                 Assert.That(serialized1, Does.Contain("\"logIndex\":\"0x1\""));
 
-                // Second receipt should have log with index 2 (cumulative)
+                // Block-wide index 2, or 0 when EIP-8116 counts within the receipt
                 string serialized2 = results[1];
-                Assert.That(serialized2, Does.Contain("\"logIndex\":\"0x2\""));
+                Assert.That(serialized2, Does.Contain(logIndexPerReceipt ? "\"logIndex\":\"0x0\"" : "\"logIndex\":\"0x2\""));
             }
         }
 

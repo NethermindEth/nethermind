@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
@@ -23,14 +24,16 @@ namespace Nethermind.Blockchain
         private readonly IReceiptStorage _receiptStorage;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
+        private readonly Eip8116Schedule _eip8116;
         private readonly Lock _lock = new();
         private Task _dispatch = Task.CompletedTask;
         private volatile bool _disposed;
 
         public event EventHandler<ReceiptsEventArgs>? ReceiptsInserted;
 
-        public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, IBlockTree blockTree, ILogManager? logManager)
+        public ReceiptCanonicalityMonitor(IReceiptStorage? receiptStorage, IBlockTree blockTree, ILogManager? logManager, ISpecProvider? specProvider = null)
         {
+            _eip8116 = new Eip8116Schedule(specProvider);
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _blockTree = blockTree;
             _logger = logManager?.GetClassLogger<ReceiptCanonicalityMonitor>() ?? throw new ArgumentNullException(nameof(logManager));
@@ -79,7 +82,7 @@ namespace Nethermind.Blockchain
             ReceiptsEventArgs e;
             try
             {
-                e = new(block.Header, _receiptStorage.Get(block), removed);
+                e = new(block.Header, _receiptStorage.Get(block), removed, _eip8116.IsEnabled(block.Number, block.Timestamp));
             }
             catch (Exception exception)
             {

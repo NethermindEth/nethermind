@@ -20,6 +20,15 @@ namespace Nethermind.Core.Specs
         bool IsEip7778Enabled { get; }
 
         /// <summary>
+        /// EIP-8116: Replace cumulative receipt fields
+        /// </summary>
+        /// <remarks>
+        /// The receipt's <c>cumulativeGasUsed</c> field holds the transaction's own gas used, and JSON-RPC
+        /// <c>logIndex</c> counts within the receipt rather than the block.
+        /// </remarks>
+        bool IsEip8116Enabled { get; }
+
+        /// <summary>
         /// Should validate ReceiptsRoot.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>

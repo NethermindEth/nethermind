@@ -29,6 +29,8 @@ using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
@@ -774,6 +776,27 @@ namespace Nethermind.JsonRpc.Test.Modules
             serialized = RpcTest.SerializeResponse(jsonRpcResults[4].Response);
             expectedResult = string.Concat("{\"jsonrpc\":\"2.0\",\"method\":\"eth_subscription\",\"params\":{\"subscription\":\"", subscriptionId, "\",\"result\":{\"address\":\"0x0000000000000000000000000000000000000000\",\"blockNumber\":\"0xd903\",\"blockTimestamp\":\"0xf4240\",\"data\":\"0x010208090a\",\"logIndex\":\"0x4\",\"removed\":false,\"topics\":[\"0x0000000000000000000000000000000000000000000000000000000000000000\"],\"transactionIndex\":\"0x21\"}}}");
             Assert.That(expectedResult, Is.EqualTo(serialized));
+        }
+
+        [Test]
+        public void LogsSubscription_logIndex_follows_the_published_block_spec([Values] bool eip8116Enabled)
+        {
+            LogEntry logEntry = Build.A.LogEntry.WithAddress(TestItem.AddressA).TestObject;
+            Block block = Build.A.Block.WithNumber(55555).TestObject;
+            _receiptStorage.Get(block).Returns(
+            [
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(0).WithLogs(logEntry).TestObject,
+                Build.A.Receipt.WithBlockNumber(block.Number).WithIndex(1).WithLogs(logEntry, logEntry).TestObject
+            ]);
+            TestSpecProvider specProvider = new(new OverridableReleaseSpec(Bogota.Instance) { IsEip8116Enabled = eip8116Enabled });
+            using ReceiptCanonicalityMonitor monitor = new(_receiptStorage, _blockTree, _logManager, specProvider);
+            using LogsSubscription logsSubscription = new(_jsonRpcDuplexClient, monitor, _filterStore, _blockTree, _logManager);
+
+            List<JsonRpcResult> results = CollectResults(logsSubscription, 3,
+                () => _receiptStorage.NewCanonicalReceipts += Raise.EventWith(new object(), new BlockReplacementEventArgs(block)));
+
+            string[] logIndexes = [.. results.Select(static r => JToken.Parse(RpcTest.SerializeResponse(r.Response))["params"]!["result"]!["logIndex"]!.Value<string>()!)];
+            Assert.That(logIndexes, Is.EqualTo(eip8116Enabled ? new[] { "0x0", "0x0", "0x1" } : new[] { "0x0", "0x1", "0x2" }));
         }
 
         [Test]

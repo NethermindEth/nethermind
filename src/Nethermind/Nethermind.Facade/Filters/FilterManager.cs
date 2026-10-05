@@ -13,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 
@@ -40,14 +41,17 @@ namespace Nethermind.Facade.Filters
         private Hash256? _lastBlockHash;
         private readonly FilterStore _filterStore;
         private readonly ITxPool _txPool;
+        private readonly Eip8116Schedule _eip8116;
 
         public FilterManager(
             FilterStore filterStore,
             IMainProcessingContext mainProcessingContext,
             ITxPool txPool,
             IReceiptMonitor receiptMonitor,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISpecProvider? specProvider = null)
         {
+            _eip8116 = new Eip8116Schedule(specProvider);
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             ArgumentNullException.ThrowIfNull(receiptMonitor);
@@ -107,7 +111,8 @@ namespace Nethermind.Facade.Filters
             _blockHashes.Append(blockHash);
             if (_blocks.IsTracking)
             {
-                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false));
+                _blocks.Append(new BlockEvent(block.Timestamp, block.Header.Bloom, e.TxReceipts, Removed: false,
+                    _eip8116.IsEnabled(block.Number, block.Timestamp)));
             }
         }
 
@@ -118,7 +123,8 @@ namespace Nethermind.Facade.Filters
                 return;
             }
 
-            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true));
+            _blocks.Append(new BlockEvent(e.BlockHeader.Timestamp, e.BlockHeader.Bloom, e.TxReceipts, Removed: true,
+                _eip8116.IsEnabled(e.BlockHeader.Number, e.BlockHeader.Timestamp)));
         }
 
         private void OnNewPendingTransaction(object sender, TxPool.TxEventArgs e)
@@ -211,6 +217,7 @@ namespace Nethermind.Facade.Filters
                 long logIndex = 0;
                 foreach (TxReceipt receipt in blockEvent.Receipts)
                 {
+                    if (blockEvent.LogIndexPerReceipt) logIndex = 0;
                     LogEntry[]? entries = receipt.Logs;
                     if (entries is null)
                     {
@@ -272,7 +279,8 @@ namespace Nethermind.Facade.Filters
             return new FilterLog(index, txReceipt, logEntry, blockTimestamp, removed);
         }
 
-        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed);
+        /// <param name="LogIndexPerReceipt">EIP-8116: logIndex counts within the receipt.</param>
+        private sealed record BlockEvent(ulong Timestamp, Bloom? Bloom, TxReceipt[] Receipts, bool Removed, bool LogIndexPerReceipt);
 
         private readonly record struct PendingTransaction(Hash256 Hash, TxType Type);
 

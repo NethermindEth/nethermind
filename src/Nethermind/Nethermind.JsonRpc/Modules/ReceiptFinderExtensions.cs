@@ -48,7 +48,8 @@ namespace Nethermind.JsonRpc.Modules
                 {
                     TxReceipt receipt = receipts[i];
                     Transaction transaction = transactions[i];
-                    int receiptLogIndexStart = positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
+                    // EIP-8116: logIndex counts within the receipt.
+                    int receiptLogIndexStart = spec.IsEip8116Enabled ? 0 : positionalIndexes ? logIndexStart : receipts.GetBlockLogFirstIndex(receipt.Index);
                     result.Add(new ReceiptForRpc(transaction.Hash, receipt, block.Timestamp, transaction.GetGasInfo(spec, block.Header), receiptLogIndexStart));
                     logIndexStart += receipt.Logs?.Length ?? 0;
                 }

@@ -174,6 +174,10 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        if (spec.IsEip8116Enabled)
+        {
+            receipts.SetEip8116GasUsed();
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below

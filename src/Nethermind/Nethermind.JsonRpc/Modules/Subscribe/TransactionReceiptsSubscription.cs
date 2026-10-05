@@ -74,6 +74,7 @@ public class TransactionReceiptsSubscription : Subscription
         for (int i = 0; i < e.TxReceipts.Length; i++)
         {
             TxReceipt receipt = e.TxReceipts[i];
+            if (e.LogIndexPerReceipt) cumulativeLogIndex = 0;
 
             // Apply filter if set
             if (_filterHashes?.Contains((ValueHash256)receipt.TxHash!) == false)

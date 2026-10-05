@@ -359,6 +359,47 @@ public class Eth70ProtocolHandlerTests
         Assert.That(seenOffsets.AsSpan(), Is.SequenceEqualTo(new[] { 0L, 2L }));
     }
 
+    /// <summary>The running gas total has to carry across pages when EIP-8116 receipts hold per-transaction gas.</summary>
+    [Test]
+    public async Task Should_sum_receipt_gas_across_partial_pages_against_header([Values] bool isEip8116Enabled)
+    {
+        SyncPeerProtocolHandlerBase.SoftOutgoingMessageSizeLimit = 75;
+        // Pages of two take two continuations, the second of which starts from a running total carried over.
+        const int receiptCount = 5;
+        const int pageSize = 2;
+        Hash256 blockHash = TestItem.KeccakA;
+        _syncManager.FindHeader(blockHash).Returns(Build.A.BlockHeader
+            .WithHash(blockHash)
+            .WithNumber(1)
+            .WithGasUsed(GasCostOf.Transaction * receiptCount)
+            .TestObject);
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip8116Enabled.Returns(isEip8116Enabled);
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
+
+        TxReceipt[] receipts = new TxReceipt[receiptCount];
+        for (int i = 0; i < receipts.Length; i++)
+        {
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
+        }
+
+        _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>
+        {
+            GetReceiptsMessage70 sent = (GetReceiptsMessage70)call[0];
+            int first = (int)sent.FirstBlockReceiptIndex;
+            bool lastBlockIncomplete = first + pageSize < receipts.Length;
+            ReceiptsMessage70 response = new(sent.RequestId, new[] { receipts.Skip(first).Take(pageSize).ToArray() }.ToPooledList(), lastBlockIncomplete);
+            HandleZeroMessage(response, Eth70MessageCode.Receipts);
+        });
+
+        HandleIncomingStatusMessage();
+        using IOwnedReadOnlyList<TxReceipt[]> result = await _handler.GetReceipts(new[] { blockHash }, CancellationToken.None);
+
+        Assert.That(result, Has.Count.EqualTo(1));
+        AssertReceiptsEqual(result[0], receipts);
+    }
+
     [Test]
     public async Task Partial_first_block_is_checked_against_its_remaining_expected_receipts([Values] bool exceedsCount)
     {
@@ -775,12 +816,16 @@ public class Eth70ProtocolHandlerTests
     [TestCase(true, true, 1, 2, null)]
     [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header")]
     [TestCase(true, false, 2, 1, null)]
+    [TestCase(false, false, 1, 2, "Block gas used exceeds header value", true)]
+    [TestCase(false, false, 2, 1, "Block gas used mismatch between receipts and header", true)]
+    [TestCase(false, false, 2, 2, null, true)]
     public async Task Should_validate_receipt_cumulative_against_header_gas_used_by_spec(
         bool isEip7778Enabled,
         bool isEip8037Enabled,
         int headerGasUsedMultiplier,
         int receiptGasUsedMultiplier,
-        string? expectedException)
+        string? expectedException,
+        bool isEip8116Enabled = false)
     {
         Hash256 blockHash = TestItem.KeccakA;
         BlockHeader header = Build.A.BlockHeader
@@ -793,12 +838,14 @@ public class Eth70ProtocolHandlerTests
         IReleaseSpec spec = ReleaseSpecSubstitute.Create();
         spec.IsEip7778Enabled.Returns(isEip7778Enabled);
         spec.IsEip8037Enabled.Returns(isEip8037Enabled);
+        spec.IsEip8116Enabled.Returns(isEip8116Enabled);
         _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(spec);
 
         TxReceipt[] receipts = new TxReceipt[receiptGasUsedMultiplier];
         for (int i = 0; i < receipts.Length; i++)
         {
-            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (ulong)(i + 1), Logs = [] };
+            // EIP-8116 receipts hold each transaction's own gas rather than the running total.
+            receipts[i] = new TxReceipt { GasUsedTotal = GasCostOf.Transaction * (isEip8116Enabled ? 1 : (ulong)(i + 1)), Logs = [] };
         }
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage70>())).Do(call =>

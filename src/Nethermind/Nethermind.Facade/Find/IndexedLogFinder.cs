@@ -9,6 +9,7 @@ using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Db.LogIndex;
 using Nethermind.History;
 using Nethermind.Logging;
@@ -31,8 +32,9 @@ public class IndexedLogFinder(
     int minBlocksToUseIndex = 32,
     IReceiptConfig? receiptConfig = null,
     IPrunedLogsRetention? prunedLogsRetention = null,
-    IHistoryPruner? historyPruner = null)
-    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention)
+    IHistoryPruner? historyPruner = null,
+    ISpecProvider? specProvider = null)
+    : LogFinder(blockFinder, receiptFinder, receiptStorage, logManager, receiptsRecovery, receiptConfig, prunedLogsRetention, specProvider)
 {
     private readonly ILogIndexStorage _logIndexStorage = logIndexStorage ?? throw new ArgumentNullException(nameof(logIndexStorage));
     // CS9107: a primary-ctor parameter that also flows to the base ctor cannot be used in a method body.

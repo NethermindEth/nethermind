@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Autofac.Features.AttributeFilters;
@@ -26,7 +27,8 @@ namespace Nethermind.Facade.Find
         ILogManager? logManager,
         IReceiptsRecovery? receiptsRecovery,
         IReceiptConfig? receiptConfig = null,
-        IPrunedLogsRetention? prunedLogsRetention = null)
+        IPrunedLogsRetention? prunedLogsRetention = null,
+        ISpecProvider? specProvider = null)
         : ILogFinder
     {
         private static int ParallelExecutions = 0;
@@ -43,6 +45,7 @@ namespace Nethermind.Facade.Find
         private readonly int _rpcConfigGetLogsThreads = Math.Max(1, Environment.ProcessorCount / 4);
         private readonly IBlockFinder _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         private readonly ILogger _logger = logManager?.GetClassLogger<LogFinder>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly Eip8116Schedule _eip8116 = new(specProvider);
 
         public IEnumerable<FilterLog> FindLogs(LogFilter filter, CancellationToken cancellationToken = default)
         {
@@ -206,15 +209,17 @@ namespace Nethermind.Facade.Find
         {
             if (blockHash is not null)
             {
+                // EIP-8116: logIndex counts within the receipt.
+                bool logIndexPerReceipt = _eip8116.IsEnabled(blockNumber, blockTimestamp);
                 return _receiptFinder.TryGetReceiptsIterator(blockNumber, blockHash, out ReceiptsIterator iterator)
-                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, cancellationToken)
-                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, cancellationToken);
+                    ? FilterLogsInBlockLowMemoryAllocation(filter, ref iterator, blockTimestamp, logIndexPerReceipt, cancellationToken)
+                    : FilterLogsInBlockHighMemoryAllocation(filter, blockHash, blockNumber, blockTimestamp, logIndexPerReceipt, cancellationToken);
             }
 
             return Array.Empty<FilterLog>();
         }
 
-        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, CancellationToken cancellationToken)
+        private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
             try
@@ -224,6 +229,7 @@ namespace Nethermind.Facade.Find
                 while (iterator.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
+                    if (logIndexPerReceipt) logIndexInBlock = 0;
 
                     Hash256? txHash = null;
 
@@ -277,7 +283,7 @@ namespace Nethermind.Facade.Find
             return logList ?? (IEnumerable<FilterLog>)[];
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, ulong blockNumber, ulong blockTimestamp, bool logIndexPerReceipt, CancellationToken cancellationToken)
         {
             TxReceipt[]? GetReceipts(Hash256 hash, ulong number)
             {
@@ -319,6 +325,7 @@ namespace Nethermind.Facade.Find
                     cancellationToken.ThrowIfCancellationRequested();
 
                     TxReceipt receipt = receipts[i];
+                    if (logIndexPerReceipt) logIndexInBlock = 0;
 
                     if (filter.Matches(receipt.Bloom))
                     {

@@ -113,8 +113,9 @@ namespace Nethermind.Facade
         {
             if (TryGetCanonicalTransaction(txHash, out Transaction? tx, out TxReceipt? txReceipt, out Block? block, out TxReceipt[]? txReceipts))
             {
-                int logIndexStart = txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 IReleaseSpec spec = specProvider.GetSpec(block.Header);
+                // EIP-8116: logIndex counts within the receipt.
+                int logIndexStart = spec.IsEip8116Enabled ? 0 : txReceipts.GetBlockLogFirstIndex(txReceipt.Index);
                 return (txReceipt, block.Timestamp, tx.GetGasInfo(spec, block.Header), logIndexStart);
             }
 

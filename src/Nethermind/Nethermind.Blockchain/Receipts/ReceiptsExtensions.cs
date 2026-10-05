@@ -29,5 +29,15 @@ namespace Nethermind.Blockchain.Receipts
             }
             return sum;
         }
+
+        /// <summary>Replaces each receipt's running gas total with the transaction's own gas used.</summary>
+        /// <remarks>EIP-8116: post-fork receipts commit per-transaction gas in the <c>cumulativeGasUsed</c> field.</remarks>
+        public static void SetEip8116GasUsed(this TxReceipt[] receipts)
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                receipt.GasUsedTotal = receipt.GasUsed;
+            }
+        }
     }
 }
