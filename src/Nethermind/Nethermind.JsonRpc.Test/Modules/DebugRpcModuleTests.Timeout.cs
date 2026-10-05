@@ -9,6 +9,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
@@ -30,6 +32,111 @@ public partial class DebugRpcModuleTests
     }
 
     private const string TimeoutJs = "{step:function(){},fault:function(){},result:function(){return {};}}";
+
+    [TestCase("")]
+    [TestCase("callTracer")]
+    [TestCase("prestateTracer")]
+    [TestCase("4byteTracer")]
+    [TestCase(TimeoutJs)]
+    public async Task Debug_traceTransaction_expired_deadline_returns_execution_timeout(string tracer)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        JToken response = await TraceTransactionTimeout(ctx, new { tracer, timeout = "-1s", streamMode = false });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Does.StartWith("execution timeout"));
+            Assert.That(response["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_timeout_streaming_and_buffered_routes(
+        [Values] bool buffer, [Values(null, false, true)] bool? streamMode, [Values] bool streamDefault)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        config.BufferResponses = buffer;
+        config.EnableTracingStreamMode = streamDefault;
+        JToken response = await TraceTransactionTimeout(ctx, new { timeout = "-1s", streamMode });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo("execution timeout"));
+            Assert.That(response["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_invalid_timeout_is_an_execution_error([Values("bad", "1")] string timeout,
+        [Values] bool streamMode, [Values] bool buffer)
+    {
+        string message = timeout == "bad" ? "time: invalid duration \"bad\"" : "time: missing unit in duration \"1\"";
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().BufferResponses = buffer;
+        JToken response = await TraceTransactionTimeout(ctx, new { timeout, streamMode });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(message));
+            Assert.That(response["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_lookup_precedes_timeout_validation()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        string baseline = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA);
+        string invalid = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceTransaction", TestItem.KeccakA, new { timeout = "bad" });
+        JToken expected = JToken.Parse(baseline);
+        Assert.That(expected["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000));
+        Assert.That(JToken.Parse(invalid), Is.EqualTo(expected).Using(JToken.EqualityComparer));
+    }
+
+    [TestCase("{fault:function(){}}", "trace object must expose a function result()")]
+    [TestCase("{result:function(){return {}}}", "trace object must expose a function fault()")]
+    [TestCase("{fault:function(){},result:function(){return {}},enter:function(){}}", "trace object must expose either both or none of enter() and exit()")]
+    public async Task Debug_traceTransaction_tracer_validation_precedes_timeout(string tracer, string message)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        JToken response = await TraceTransactionTimeout(ctx, new { tracer, timeout = "bad" });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Is.EqualTo(message));
+            Assert.That(response["result"], Is.Null);
+        }
+    }
+
+    [TestCase("{fault:function(){},result:function(){return {}},setup:function(){throw new Error('setup failed')}}", "Error: setup failed")]
+    [TestCase("{fault:function(){},result:function(){throw new Error('result failed')}}", "Error: result failed")]
+    [TestCase("missingTracer", "ReferenceError: missingTracer is not defined")]
+    [TestCase("{", "Tracer code could not be compiled: SyntaxError:")]
+    public async Task Debug_traceTransaction_tracer_errors_preserve_the_execution_error(string tracer, string cause)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        JToken response = await TraceTransactionTimeout(ctx, new { tracer });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response["error"]?["code"]?.Value<int>(), Is.EqualTo(-32000), response.ToString());
+            Assert.That(response["error"]?["message"]?.Value<string>(), Does.StartWith(cause));
+            Assert.That(response["error"]?["data"], Is.Null);
+            Assert.That(response["result"], Is.Null);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceTransaction_expired_noop_ignores_stop()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        JToken response = await TraceTransactionTimeout(ctx, new { tracer = "noopTracer", timeout = "-1s" });
+        Assert.That(response["error"], Is.Null, response.ToString());
+        Assert.That(response["result"], Is.EqualTo(new JObject()).Using(JToken.EqualityComparer));
+    }
 
     [Test]
     public async Task Debug_traceCall_timeout_streaming_and_buffered_routes(
@@ -168,6 +275,12 @@ public partial class DebugRpcModuleTests
         result.Dispose();
         Assert.That(executed, Is.False);
         Assert.That(() => server.Token, Throws.TypeOf<ObjectDisposedException>());
+    }
+
+    private static async Task<JToken> TraceTransactionTimeout(Context ctx, object options)
+    {
+        Transaction transaction = await AddBlockWithTransfer(ctx);
+        return JToken.Parse(await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options));
     }
 
     private static async Task<JToken> TraceTimeout(Context ctx, object options) => JToken.Parse(

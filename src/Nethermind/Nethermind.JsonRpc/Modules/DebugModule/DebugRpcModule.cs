@@ -76,7 +76,6 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
-        ValidateLegacyTimeout(options);
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
@@ -92,6 +91,11 @@ public class DebugRpcModule(
         if (CanStreamStructLogs(options))
         {
             GethTraceOptions effective = options ?? GethTraceOptions.Default;
+            try { _ = effective.Timeout; }
+            catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))
+            {
+                return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+            }
             return ResultWrapper<GethLikeTxTrace>.Success(BuildStreamingResult(
                 (writer, pipeWriter, token) =>
                     debugBridge.GetTransactionTrace(transactionHash, token, effective, writer, pipeWriter)));
@@ -99,7 +103,30 @@ public class DebugRpcModule(
 
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
         CancellationToken cancellationToken = timeout.Token;
-        GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
+        GethLikeTxTrace? transactionTrace;
+        try
+        {
+            transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
+        }
+        catch (TimeoutException ex) when (ex.Message == "execution timeout")
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (InvalidDataException ex) when (!string.IsNullOrEmpty(options?.Tracer))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
+        catch (ArgumentException ex) when ((options?.Tracer == "prestateTracer" && ex.Message == "cannot use diffMode with includeEmpty")
+            || ex.Message is "trace object must expose a function result()" or "trace object must expose a function fault()"
+                or "trace object must expose either both or none of enter() and exit()"
+            || (!string.IsNullOrEmpty(options?.Tracer) && ex.Message.StartsWith("Tracer code could not be compiled:", StringComparison.Ordinal)))
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail(ex.Message, ErrorCodes.InvalidInput);
+        }
         if (transactionTrace is null)
         {
             return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
@@ -303,7 +330,7 @@ public class DebugRpcModule(
 
     private static void ValidateLegacyTimeout(GethTraceOptions? options)
     {
-        // Only traceCall defers duration validation until tracer construction. Other methods retain
+        // traceCall and traceTransaction defer duration validation until tracer construction. Other methods retain
         // their parameter-error semantics, including paths that never inspect Timeout during execution.
         try { _ = options?.Timeout; }
         catch (FormatException ex) when (ex.Message.StartsWith("time:", StringComparison.Ordinal))

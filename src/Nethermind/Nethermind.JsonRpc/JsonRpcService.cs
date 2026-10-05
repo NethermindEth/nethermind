@@ -1146,7 +1146,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
         /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
         internal JsonRpcErrorResponse MapException(Exception exception) =>
-            methodName == "debug_traceCall" && exception is TimeoutException { Message: "execution timeout" }
+            (methodName is "debug_traceCall" or "debug_traceTransaction") && exception is TimeoutException { Message: "execution timeout" }
                 ? service.GetErrorResponse(methodName, ErrorCodes.InvalidInput, "execution timeout", null, in request.IdRef)
                 : service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
 

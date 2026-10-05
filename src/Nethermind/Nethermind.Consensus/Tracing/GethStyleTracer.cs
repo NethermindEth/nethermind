@@ -235,7 +235,7 @@ public class GethStyleTracer(
         Block? block = blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical);
         if (block is null) return null;
 
-        return TraceImpl(block, txHash, cancellationToken, traceOptions, writer: writer, pipeWriter: pipeWriter);
+        return TraceImpl(block, txHash, cancellationToken, traceOptions, writer: writer, pipeWriter: pipeWriter, isTraceTransaction: true);
     }
 
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
@@ -329,7 +329,7 @@ public class GethStyleTracer(
     }
 
     private GethLikeTxTrace? TraceImpl(Block block, Hash256? txHash, CancellationToken cancellationToken, GethTraceOptions options,
-        bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true)
+        bool useBlockAsBase = false, Utf8JsonWriter? writer = null, PipeWriter? pipeWriter = null, bool allowIndexed = true, bool isTraceTransaction = false)
     {
         ArgumentNullException.ThrowIfNull(txHash);
 
@@ -358,7 +358,7 @@ public class GethStyleTracer(
         IBlockTracer<GethLikeTxTrace> CreateTracer(GethTraceOptions traceOptions) => writer is null
             ? CreateOptionsTracer(block.Header, traceOptions, scope.Component.WorldState, specProvider, isTraceCall: useBlockAsBase)
             : new GethLikeBlockStreamingMemoryTracer(traceOptions, writer, pipeWriter, cancellationToken, destroyRefund);
-        using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase ? new(filtered, cancellationToken, CreateTracer) : null;
+        using GethLikeBlockCallDeadlineTracer? deadline = useBlockAsBase || isTraceTransaction ? new(filtered, cancellationToken, CreateTracer) : null;
         IBlockTracer<GethLikeTxTrace> tracer = deadline ?? CreateTracer(filtered);
         CancellationToken executionToken = deadline?.Token ?? cancellationToken;
 
