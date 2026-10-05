@@ -15,14 +15,18 @@ public class FailedBlockRootsTests
         return new Hash256(bytes);
     }
 
+    private static FailedBlockRoots PopulateRoots(int count)
+    {
+        FailedBlockRoots roots = new();
+        for (int i = 0; i < count; i++)
+            roots.Add(Root(i), (ulong)i);
+        return roots;
+    }
+
     [Test]
     public void A_full_set_drops_its_oldest_root_and_never_grows_past_its_capacity()
     {
-        FailedBlockRoots roots = new();
-        for (int i = 0; i < FailedBlockRoots.Capacity + 10; i++)
-        {
-            roots.Add(Root(i), (ulong)i);
-        }
+        FailedBlockRoots roots = PopulateRoots(FailedBlockRoots.Capacity + 10);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(roots.Count, Is.EqualTo(FailedBlockRoots.Capacity));
@@ -34,11 +38,7 @@ public class FailedBlockRootsTests
     [Test]
     public void Adding_a_recorded_root_again_evicts_nothing()
     {
-        FailedBlockRoots roots = new();
-        for (int i = 0; i < FailedBlockRoots.Capacity; i++)
-        {
-            roots.Add(Root(i), (ulong)i);
-        }
+        FailedBlockRoots roots = PopulateRoots(FailedBlockRoots.Capacity);
 
         roots.Add(Root(FailedBlockRoots.Capacity - 1), 0);
 
@@ -50,11 +50,7 @@ public class FailedBlockRootsTests
     [Test]
     public void Prune_drops_the_roots_at_or_below_the_slot_and_keeps_the_rest()
     {
-        FailedBlockRoots roots = new();
-        for (int i = 0; i < 6; i++)
-        {
-            roots.Add(Root(i), (ulong)i);
-        }
+        FailedBlockRoots roots = PopulateRoots(6);
 
         roots.Prune(3);
 
