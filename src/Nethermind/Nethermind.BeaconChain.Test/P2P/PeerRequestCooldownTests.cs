@@ -15,15 +15,18 @@ public class PeerRequestCooldownTests
     private const ulong HeadLead = 100;
 
     // A closed session puts the peer out of selection outright, so its place in the order cannot be observed.
-    [Test]
-    public async Task A_peer_that_failed_a_request_is_offered_after_the_others_until_the_cooldown_ends([Values(PeerFailureReason.RequestFailed, PeerFailureReason.ProtocolViolation)] PeerFailureReason reason, CancellationToken token)
+    [TestCase(PeerFailureReason.RequestFailed, false, TestName = "A_peer_that_failed_a_request_is_offered_after_the_others_until_the_cooldown_ends(RequestFailed)")]
+    [TestCase(PeerFailureReason.ProtocolViolation, false, TestName = "A_peer_that_failed_a_request_is_offered_after_the_others_until_the_cooldown_ends(ProtocolViolation)")]
+    [TestCase(PeerFailureReason.RequestFailed, true, TestName = "A_peer_is_offered_after_the_others_for_thirty_seconds_after_a_failed_request")]
+    public async Task A_peer_that_failed_a_request_is_offered_after_the_others_until_the_cooldown_ends(PeerFailureReason reason, bool literalDuration, CancellationToken token)
     {
         await using Fixture fixture = await Fixture.CreateAsync(token);
         Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }), "test setup: the peer with the best head is first");
 
         fixture.Ahead.ReportFailure(reason);
         string[] duringCooldown = fixture.Listed;
-        fixture.Time.Add(PeerManager.RequestFailureCooldown - TimeSpan.FromSeconds(1));
+        TimeSpan cooldown = literalDuration ? TimeSpan.FromSeconds(30) : PeerManager.RequestFailureCooldown;
+        fixture.Time.Add(cooldown - TimeSpan.FromSeconds(1));
         string[] justBeforeTheEnd = fixture.Listed;
         fixture.Time.Add(TimeSpan.FromSeconds(1));
 
@@ -31,21 +34,6 @@ public class PeerRequestCooldownTests
         Assert.That(duringCooldown, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }), "the next batch does not pick the peer that just failed while another peer can serve");
         Assert.That(justBeforeTheEnd, Is.EqualTo(duringCooldown));
         Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }), "the cooldown is not a ban");
-    }
-
-    [Test]
-    public async Task A_peer_is_offered_after_the_others_for_thirty_seconds_after_a_failed_request(CancellationToken token)
-    {
-        await using Fixture fixture = await Fixture.CreateAsync(token);
-        fixture.Ahead.ReportFailure(PeerFailureReason.RequestFailed);
-
-        fixture.Time.Add(TimeSpan.FromSeconds(29));
-        string[] at29 = fixture.Listed;
-        fixture.Time.Add(TimeSpan.FromSeconds(1));
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(at29, Is.EqualTo(new[] { fixture.Behind.Id, fixture.Ahead.Id }));
-        Assert.That(fixture.Listed, Is.EqualTo(new[] { fixture.Ahead.Id, fixture.Behind.Id }));
     }
 
     [Test]
