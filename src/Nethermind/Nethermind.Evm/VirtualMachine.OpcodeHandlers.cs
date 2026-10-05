@@ -1463,6 +1463,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct CallSubOpcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
     {
+        public static bool MayJump => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             OpcodeResult result = TTracingInst.IsActive
@@ -1484,6 +1486,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
     [SkipLocalsInit]
     private readonly struct ReturnSubOpcode : IOpcodeBody
     {
+        public static bool MayJump => true;
+
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
             EvmInstructions.InstructionReturnSub(ref gas, vm, ref programCounter);
     }

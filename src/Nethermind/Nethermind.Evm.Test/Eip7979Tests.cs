@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
@@ -8,6 +9,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
@@ -212,6 +214,19 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Cancellation_is_polled_during_callsub_recursion()
+    {
+        // CALLDEST PUSH1 0 CALLSUB recurses with no JUMP, passing the poll interval before the return stack overflows.
+        byte[] code = [(byte)Instruction.CALLDEST, (byte)Instruction.PUSH1, 0, (byte)Instruction.CALLSUB];
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, code);
+        CancellingTracer tracer = new(traceInstructions);
+
+        Assert.Throws<OperationCanceledException>(() =>
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
+        Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a CALLSUB");
+    }
+
+    [Test]
     public void Trace_names_the_opcodes()
     {
         GethLikeTxTrace trace = ExecuteAndTrace(FromEipVector("6004B000B1B2"));
@@ -223,5 +238,16 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     private sealed class UntracedInstructionsTracer : TestAllTracerWithOutput
     {
         public override bool IsTracingInstructions => false;
+    }
+
+    private sealed class CancellingTracer(bool traceInstructions) : TestAllTracerWithOutput, ITxTracer
+    {
+        public int PollCount { get; private set; }
+
+        public override bool IsTracingInstructions => traceInstructions;
+
+        bool ITxTracer.IsCancelable => true;
+
+        bool ITxTracer.IsCancelled => ++PollCount >= 2;
     }
 }
