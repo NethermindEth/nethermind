@@ -22,13 +22,8 @@ public class StateTransitionFoundationTests
 {
     private const ulong Gwei = 1_000_000_000;
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(33)]
-    [TestCase(100)]
-    [TestCase(1000)]
-    [TestCase(6271)]
-    public void Bulk_shuffle_matches_per_index_shuffle_and_round_trips(int count)
+    [Test]
+    public void Bulk_shuffle_matches_per_index_shuffle_and_round_trips([Values(1, 2, 33, 100, 1000, 6271)] int count)
     {
         byte[] seed = SHA256.HashData(BitConverter.GetBytes(count));
 
