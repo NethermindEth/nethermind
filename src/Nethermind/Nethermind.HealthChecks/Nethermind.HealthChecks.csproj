@@ -15,4 +15,7 @@
     <ProjectReference Include="..\Nethermind.Init\Nethermind.Init.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.HealthChecks.Test" />
+  </ItemGroup>
 </Project>
