@@ -53,10 +53,7 @@ namespace Nethermind.Blockchain.Tracing;
 [JsonSerializable(typeof(Dictionary<UInt256, UInt256>))]
 internal partial class TracingJsonContext : JsonSerializerContext
 {
-#if !ZK_EVM
-    // The zkEVM guest serializes no JSON; registering would build the serializer at its startup.
     [ModuleInitializer]
     [SuppressMessage("Usage", "CA2255", Justification = "Registers the metadata before any code in this assembly serializes.")]
     internal static void Register() => EthereumJsonSerializer.AddTypeInfoResolver(Default, JsonTypeInfoResolverPriority.EthRpc);
-#endif
 }

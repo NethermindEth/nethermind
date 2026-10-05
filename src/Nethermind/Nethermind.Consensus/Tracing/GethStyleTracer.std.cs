@@ -33,6 +33,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethStyleTracer(
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IBlockTree blockTree,
