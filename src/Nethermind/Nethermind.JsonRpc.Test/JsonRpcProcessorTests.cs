@@ -14,6 +14,7 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
@@ -243,6 +244,25 @@ public class JsonRpcProcessorTests
         {
             Assert.That(methodName, Is.EqualTo("engine_newPayloadV4"));
             Assert.That(methodName, Is.SameAs(TryGetKnownMethodName("engine_newPayloadV4")));
+        }
+    }
+
+    [TestCase("\"eth_call\"", "eth_call", true)]
+    [TestCase("\"engine_newPayloadV4\"", "engine_newPayloadV4", true)]
+    [TestCase("\"eth_\\u0063all\"", "eth_call", false)]
+    [TestCase("\"eth_unknown\"", "eth_unknown", false)]
+    [TestCase("\"eth_callx\"", "eth_callx", false)]
+    [TestCase("\"\"", "", false)]
+    public void KnownRpcMethodNames_interns_json_element(string json, string expected, bool expectedCached)
+    {
+        using JsonDocument document = JsonDocument.Parse(json);
+
+        string? methodName = KnownRpcMethodNames.Intern(document.RootElement);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(methodName, Is.EqualTo(expected));
+            Assert.That(ReferenceEquals(methodName, TryGetKnownMethodName(expected)), Is.EqualTo(expectedCached));
         }
     }
 
@@ -1219,6 +1239,29 @@ public class JsonRpcProcessorTests
         }
     }
 
+    [Test]
+    public async Task Whitespace_around_a_single_document_request_is_ignored(
+        [Values(RequestTransport.HttpMemory, RequestTransport.HttpPipe)] RequestTransport transport)
+    {
+        int dispatched = 0;
+        IJsonRpcService service = CreateService(request =>
+        {
+            dispatched++;
+            return new JsonRpcSuccessResponse { Id = request.Id };
+        });
+        JsonRpcProcessor processor = CreateProcessor(service);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(
+            processor, Encoding.UTF8.GetBytes(" \r\n\t" + CreateRequest("1", "eth_blockNumber") + " \r\n\t"), transport);
+
+        JsonRpcResponse response = AssertSingleResponse(result).Response!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response, Is.TypeOf<JsonRpcSuccessResponse>());
+            Assert.That(dispatched, Is.EqualTo(1));
+        }
+    }
+
     /// <remarks>
     /// The complete-body fast path reports its buffer consumed on the way out of a throwing dispatch as well: the read
     /// loop ends either way, and reporting examined-only would ask a reader with nothing left to give for another read.
@@ -1241,6 +1284,40 @@ public class JsonRpcProcessorTests
             Assert.That(thrown, Is.SameAs(expected));
             Assert.That(reader.ConsumedLength, Is.EqualTo(reader.ReadLength), "the dispatched body must be reported consumed");
         }
+    }
+
+    [Test]
+    public async Task Response_json_failure_is_not_reported_as_request_parse_error(
+        [Values] RequestTransport transport, [Values] bool batch)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcSuccessResponse { Id = request.Id });
+        JsonRpcProcessor processor = CreateProcessor(service);
+        IJsonRpcResponseSink sink = Substitute.For<IJsonRpcResponseSink>();
+        JsonException failure = new("response serialization failed");
+        if (batch)
+            sink.WriteBatchItemAsync(Arg.Any<JsonRpcResponse>(), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>())
+                .Returns(_ => ValueTask.FromException(failure));
+        else
+            sink.WriteSingleAsync(Arg.Any<JsonRpcResponse>(), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>())
+                .Returns(_ => ValueTask.FromException(failure));
+        string request = CreateRequest("1", "eth_blockNumber");
+        if (batch) request = "[" + request + "]";
+        byte[] body = Encoding.UTF8.GetBytes(request);
+        using JsonRpcContext context = CreateContext(transport);
+        JsonRpcProcessingOptions options = new(transport == RequestTransport.WsPipe
+            ? JsonRpcInputMode.MultipleDocuments : JsonRpcInputMode.SingleDocument);
+
+        Exception? thrown = Assert.CatchAsync(async () =>
+        {
+            if (transport == RequestTransport.HttpMemory)
+                await processor.ProcessAsync(body.AsMemory(), context, sink, options);
+            else
+                await processor.ProcessAsync(PipeReader.Create(new ReadOnlySequence<byte>(body)), context, sink, options);
+        });
+
+        Assert.That(thrown, Is.SameAs(failure));
+        await sink.DidNotReceive().EndBatchAsync(Arg.Any<CancellationToken>());
+        await sink.DidNotReceive().WriteSingleAsync(Arg.Is<JsonRpcResponse>(response => response is JsonRpcErrorResponse), Arg.Any<RpcReport>(), Arg.Any<CancellationToken>());
     }
 
     /// <summary>Records how much of the last read buffer the processor reported consumed.</summary>
@@ -1385,6 +1462,24 @@ public class JsonRpcProcessorTests
         Assert.That(report, Is.Not.Null);
         Assert.That(report!.Value.Method, Is.EqualTo(expectedReportMethod));
         Assert.That(report!.Value.Success, Is.EqualTo(expectedSuccess));
+    }
+
+    [Test]
+    public async Task Request_without_a_method_is_an_invalid_request_and_reports_safely(
+        [Values("""{"jsonrpc":"2.0","id":1}""", """{"jsonrpc":"2.0","id":1,"method":null}""", """{"jsonrpc":"2.0","id":1,"method":" \t"}""")] string request)
+    {
+        using GCKeeper gcKeeper = new(NoGCStrategy.Instance, NullLogManager.Instance);
+        JsonRpcProcessor processor = CreateProcessor(new JsonRpcService(NullModuleProvider.Instance, LimboLogs.Instance, new JsonRpcConfig(), gcKeeper));
+        JsonRpcLocalStats stats = new(Core.Timestamper.Default, new JsonRpcConfig { EnablePerMethodMetrics = true }, LimboLogs.Instance);
+
+        using CollectedJsonRpcResponses result = await ProcessAsync(processor, request, CreateHttpContext());
+
+        CollectedJsonRpcResult entry = AssertOnlyResult(result);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((entry.Response as JsonRpcErrorResponse)?.Error?.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(() => stats.ReportCall(entry.Report!.Value), Throws.Nothing);
+        }
     }
 
     [TestCase(50, false, TestName = "Input below the 64-depth limit is accepted")]

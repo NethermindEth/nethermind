@@ -130,9 +130,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             contextAwareModule.Context = context;
         }
-        void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : ReturnRental;
+        Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
         try
         {
@@ -163,7 +162,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
             {
                 returnImmediately = false;
-                returnAction = ReturnRental;
+                returnAction = CreateReturnAction(method, rpcModule);
             }
         }
         catch (Exception ex)
@@ -174,7 +173,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                ReturnRental();
+                _rpcModuleProvider.Return(method, rpcModule);
             }
         }
 
@@ -185,11 +184,20 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (resultWrapper is JsonRpcResponse response)
         {
-            return response.WithResponseContext(in request.IdRef, returnAction);
+            response = response.WithResponseContext(in request.IdRef, returnAction);
+            if (response.TryGetStreamableResult(out IStreamableResult? streamable) && streamable is IDeferredExecutionResult)
+            {
+                response.Streaming = new StreamingContext(this, request, methodName);
+            }
+            return response;
         }
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
+
+    // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
+    private Action CreateReturnAction(ResolvedMethodInfo method, IRpcModule rpcModule) =>
+        () => _rpcModuleProvider.Return(method, rpcModule);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
@@ -587,7 +595,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
     }
 
-    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
+    private JsonRpcErrorResponse HandleInvocationException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction, bool isStreaming = false)
     {
         return ex switch
         {
@@ -601,7 +609,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             TargetParameterCountException or ArgumentException =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
-            JsonException or TargetInvocationException and { InnerException: JsonException } =>
+            JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
@@ -610,6 +618,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             // suppressWarning doubles as the overload-shedding marker: GetErrorResponse counts
             // suppressed LimitExceeded/ModuleTimeout responses in Metrics.JsonRpcOverloadRejections.
+            ModuleRentalTimeoutException or { InnerException: ModuleRentalTimeoutException } =>
+                GetErrorResponse(methodName, ErrorCodes.ModuleTimeout, "Timeout", null, in request.IdRef, returnAction, suppressWarning: true),
+
             LimitExceededException or ConcurrencyLimitReachedException
                 or { InnerException: LimitExceededException }
                 or { InnerException: ConcurrencyLimitReachedException } =>
@@ -617,6 +628,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
                 KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
+
+            RejectedCallException or { InnerException: RejectedCallException } when (ex as RejectedCallException ?? ex.InnerException as RejectedCallException) is { Reason: var rejection } =>
+                GetErrorResponse(methodName, TransactionErrorCodes.Get(rejection.Error) ?? ErrorCodes.Default, rejection.ErrorDescription, null, in request.IdRef, returnAction),
 
             InvalidTransactionException or { InnerException: InvalidTransactionException } when (ex as InvalidTransactionException ?? ex.InnerException as InvalidTransactionException) is { Reason.ErrorDescription: var description } =>
                 GetErrorResponse(methodName, ErrorCodes.Default, description, null, in request.IdRef, returnAction),
@@ -878,13 +892,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             : JsonSerializer.Deserialize(providedParameterUtf8, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
-    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter)
-    {
-        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
-        return typeInfo is not null
-            ? JsonSerializer.Deserialize(ref reader, typeInfo)
+    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter) =>
+        expectedParameter.ValueReader is { } valueReader
+            ? valueReader(ref reader)
             : JsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
-    }
 
     private static object? DeserializeReparsedString(string? json, ExpectedParameter expectedParameter)
     {
@@ -1100,6 +1111,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         string trimmedMethodName = methodName.Trim();
+        // Stats are keyed by the request's method, so whitespace variants must not mint new keys.
+        rpcRequest.Method = trimmedMethodName;
 
         ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
@@ -1108,7 +1121,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         (int? errorType, string errorMessage, bool operatorActionable) = GetErrorResult(trimmedMethodName, context, result, module);
-        return (errorType, errorMessage, methodName, null, operatorActionable);
+        return (errorType, errorMessage, trimmedMethodName, null, operatorActionable);
 
         // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
         // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the
@@ -1125,5 +1138,29 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"The method '{methodName}' must be authenticated.", false),
             _ => (null, null, false)
         };
+    }
+
+    /// <summary>Maps deferred execution errors and reports the final response outcome.</summary>
+    internal sealed class StreamingContext(JsonRpcService service, JsonRpcRequest request, string methodName)
+    {
+        internal bool ReportCompletion { get; set; }
+
+        /// <summary>The outcome of the error that replaced a failed deferred result, if any.</summary>
+        internal JsonRpcResponseWriteOutcome? Replacement { get; set; }
+
+        /// <summary>Maps a deferred error through the normal invocation error mapping.</summary>
+        /// <remarks>The original response owns the module rental; the replacement must not return it twice.</remarks>
+        internal JsonRpcErrorResponse MapException(Exception exception) =>
+            service.HandleInvocationException(exception, methodName, request, returnAction: null, isStreaming: true);
+
+        /// <summary>Reports one completed execution, excluding an unwritten or request-cancelled response.</summary>
+        /// <remarks>A failure without request cancellation, including a transport exception, counts as an error.</remarks>
+        internal void Complete(bool? success)
+        {
+            if (!ReportCompletion) return;
+            ReportCompletion = false;
+            if (success is true) Metrics.JsonRpcSuccesses++;
+            else if (success is false) Metrics.JsonRpcErrors++;
+        }
     }
 }

@@ -71,6 +71,24 @@ public abstract class TransactionForRpc
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
         => new Transaction { Type = ResolveType(spec) };
 
+    /// <summary>
+    /// Converts the request with its input validated, rejecting a fee cap below the priority fee as well; a call that
+    /// leaves that pair to execution, where it fails before any gas is bought, validates with <see cref="ToTransaction"/>.
+    /// </summary>
+    /// <remarks>
+    /// The pair is checked after the type-specific and gas price checks and before the missing contract data check,
+    /// so the first failing check still names the request.
+    /// </remarks>
+    public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
+    {
+        Result<Transaction> result = ToTransaction(validateUserInput: true, gasCap, spec);
+        return this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+            && maxFeePerGas < maxPriorityFeePerGas
+            && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+                ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
+                : result;
+    }
+
     private TxType ResolveType(IReleaseSpec? spec)
     {
         // Pre-Berlin only knows Legacy; defaulted-type requests downgrade to avoid EVM rejection.
@@ -94,7 +112,7 @@ public abstract class TransactionForRpc
         if (this is not LegacyTransactionForRpc { Nonce: not null })
             return Result<Transaction>.Fail("nonce not specified");
 
-        return PromoteToEip1559IfTypeDefaulted().ToTransaction(validateUserInput: true);
+        return PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
     }
 
     private static bool HasFeeFields(TransactionForRpc rpcTx) =>
@@ -134,6 +152,7 @@ public abstract class TransactionForRpc
     internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
+        private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
@@ -164,6 +183,7 @@ public abstract class TransactionForRpc
                 DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
 
+            _txTypesByType[(byte)typeInfo.TxType] = typeInfo;
             int existingTypeInfo = _txTypes.FindIndex(t => t.TxType == typeInfo.TxType);
 
             if (existingTypeInfo != -1)
@@ -210,10 +230,9 @@ public abstract class TransactionForRpc
         {
             TxType? setType = null;
             bool hasGasPrice = false;
-            // Bit i set ⇒ discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            // Bit i set ⇒ non-null discriminator for _txTypes[i] seen; lowest bit wins (registration order).
+            // An explicit null is the same as omitting the member, as in geth, which keys on non-nil fields.
             ulong discriminated = 0;
-            // Explicit-null discriminators still select a type, but not over gasPrice (geth keys on non-nil).
-            ulong nullDiscriminated = 0;
 
             if (reader.TokenType == JsonTokenType.StartObject)
             {
@@ -229,9 +248,10 @@ public abstract class TransactionForRpc
                     }
 
                     ulong matched = 0;
+                    bool isGasPrice = false;
                     if (!hasGasPrice && NameEqualsIgnoreCase(ref reader, GasPriceFieldUtf8))
                     {
-                        hasGasPrice = true;
+                        isGasPrice = true;
                     }
                     else
                     {
@@ -250,22 +270,14 @@ public abstract class TransactionForRpc
                     }
 
                     reader.Read();
-                    if (reader.TokenType == JsonTokenType.Null)
-                    {
-                        nullDiscriminated |= matched;
-                    }
-                    else
+                    if (reader.TokenType != JsonTokenType.Null)
                     {
                         discriminated |= matched;
+                        hasGasPrice |= isGasPrice;
                     }
 
                     if (!reader.TrySkip()) break;
                 }
-            }
-
-            if (discriminated == 0 && !hasGasPrice)
-            {
-                discriminated = nullDiscriminated;
             }
 
             Type? viaDiscriminator = null;
@@ -334,7 +346,7 @@ public abstract class TransactionForRpc
 
         public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
 
-        public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypes.FirstOrDefault(t => t.TxType == tx.Type)?.FromTransactionFunc(tx, extraData)
+        public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypesByType[(byte)tx.Type]?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");
 
         class TxTypeInfo

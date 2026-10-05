@@ -154,7 +154,15 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
         writer.WriteEndArray();
     }
 
-    private static void WriteEntry(
+    /// <summary>Estimates opcode JSON size from lengths and counts without inspecting field contents.</summary>
+    /// <remarks>Fixed fields fit within 256 bytes. Opcode and error strings allow six bytes per escaped UTF-16 code unit;
+    /// return data is unescaped hex.</remarks>
+    internal static long EstimateEntrySize(GethTxTraceEntry entry, int? storageCount) =>
+        256L + 6L * ((long)(entry.Opcode?.Length ?? 0) + (entry.Error?.Length ?? 0)) + (entry.ReturnData?.Length ?? 0)
+        + 69L * ((entry.Stack?.Length ?? 0) / EvmStack.WordSize + (long)(entry.Memory?.Length ?? 0) / EvmPooledMemory.WordSize)
+        + 140L * (storageCount ?? entry.Storage?.Count ?? 0);
+
+    internal static void WriteEntry(
         Utf8JsonWriter writer,
         GethTxTraceEntry entry,
         IDictionary<UInt256, UInt256>? storage)
@@ -178,7 +186,7 @@ public class GethLikeTxTraceConverter : JsonConverter<GethLikeTxTrace>
             writer.WriteEndArray();
         }
 
-        if (entry.Memory is { } memory)
+        if (entry.Memory is { IsEmpty: false } memory)
         {
             writer.WriteStartArray("memory"u8);
             ReadOnlySpan<byte> memSpan = memory.Span;

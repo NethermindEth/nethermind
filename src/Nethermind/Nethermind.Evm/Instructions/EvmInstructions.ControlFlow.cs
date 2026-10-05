@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics.X86;
 using Nethermind.Core;
@@ -35,26 +34,6 @@ public static partial class EvmInstructions
         if (!TGasPolicy.UpdateGas<BaseGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
         // The program counter pushed is adjusted by -1 to reflect the correct opcode location.
         return stack.PushUInt32<TTracingInst, OnFlag>((uint)(programCounter - 1));
-    }
-
-    /// <summary>
-    /// Marks a valid jump destination.
-    /// This instruction only deducts the jump destination gas cost without modifying the stack.
-    /// </summary>
-    /// <param name="vm">The virtual machine instance.</param>
-    /// <param name="stack">The execution stack.</param>
-    /// <param name="gas">The gas which is updated by the operation's cost.</param>
-    /// <returns>
-    /// <see cref="EvmExceptionType.None"/> on success.
-    /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpDest<TGasPolicy>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-    {
-        // Deduct the gas cost specific for a jump destination marker.
-        if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-
-        return EvmExceptionType.None;
     }
 
     /// <summary>
@@ -180,7 +159,8 @@ public static partial class EvmInstructions
         if (TSkipJumpDest.IsActive)
         {
             // Count before charging so an out-of-gas JUMPDEST matches the dispatch loop's ordering.
-            vm.OpCodeCount++;
+            if (DispatchFlags.CountOpcodes)
+                vm.OpCodeCount++;
             programCounter++;
             return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas);
         }
@@ -213,13 +193,12 @@ public static partial class EvmInstructions
         }
 
         // Ensure sufficient gas for any required memory expansion.
-        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory) ||
-            !vm.VmState.Memory.TryLoad(in position, in length, out ReadOnlyMemory<byte> returnData))
+        if (!TGasPolicy.UpdateMemoryCost(ref gas, in position, in length, ref vm.VmState.Memory))
         {
             goto OutOfGas;
         }
 
-        vm.StageReturnData(returnData.Span);
+        vm.StageReturnData(vm.VmState.Memory.LoadSpanAfterGas(in position, in length));
 
         return EvmExceptionType.Revert;
         // Jump forward to be unpredicted by the branch predictor.

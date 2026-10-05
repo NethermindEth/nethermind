@@ -153,7 +153,7 @@ internal class TransactionProcessorEip7702Tests
         byte[] expectedCode = clearDelegation
             ? []
             : [.. Eip7702Constants.DelegationHeader, .. newDelegation.Bytes];
-        Assert.That(_stateProvider.GetCode(authority.Address), Is.EqualTo(expectedCode));
+        Assert.That(_stateProvider.GetCode(authority.Address), Is.SequenceEqualTo(expectedCode));
     }
 
     [Test]
@@ -228,11 +228,11 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        ReadOnlySpan<byte> signerCode = _stateProvider.GetCode(signer.Address);
+        ReadOnlySpan<byte> signerCode = _stateProvider.GetCodeSpan(signer.Address);
 
         byte[] expectedCode = shouldInsert ? [.. Eip7702Constants.DelegationHeader, .. codeSource.Bytes] : authorityCode;
 
-        Assert.That(signerCode.ToArray(), Is.EqualTo(expectedCode));
+        Assert.That(signerCode, Is.SequenceEqualTo(expectedCode));
     }
 
     public static IEnumerable<TestCaseData> SenderSignerCases()
@@ -270,7 +270,7 @@ internal class TransactionProcessorEip7702Tests
         _stateProvider.Get(new StorageCell(signer.Address, 0), out UInt256 storageValue2);
         ReadOnlySpan<byte> cellValue = storageValue2.ToMinimalBigEndian();
 
-        Assert.That(cellValue.ToArray(), Is.EqualTo(sender.Address.Bytes.ToArray()));
+        Assert.That(cellValue, Is.SequenceEqualTo(sender.Address.Bytes));
     }
 
     public static IEnumerable<TestCaseData> DifferentAuthorityTupleValues()
@@ -310,7 +310,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        byte[]? actual = _stateProvider.GetCode(signer.Address);
+        byte[]? actual = _stateProvider.GetCode(signer.Address).ToArray();
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
@@ -338,7 +338,7 @@ internal class TransactionProcessorEip7702Tests
 
         _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
-        byte[]? actual = _stateProvider.GetCode(signer.Address);
+        byte[]? actual = _stateProvider.GetCode(signer.Address).ToArray();
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.EqualTo(expectDelegation));
     }
 
@@ -703,7 +703,7 @@ internal class TransactionProcessorEip7702Tests
         CallOutputTracer callOutputTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), callOutputTracer);
 
-        Assert.That(callOutputTracer.ReturnValue?.ToArray(), Is.EqualTo(expectedValue));
+        Assert.That(callOutputTracer.ReturnValue, Is.SequenceEqualTo(expectedValue));
     }
 
     public static IEnumerable<TestCaseData> EXTCODEHASHAccountSetup()
@@ -777,7 +777,7 @@ internal class TransactionProcessorEip7702Tests
 
         _stateProvider.Get(new StorageCell(codeSource, 0), out UInt256 storageValue5);
         ReadOnlySpan<byte> actual = storageValue5.ToMinimalBigEndian();
-        Assert.That(actual.ToArray(), Is.EqualTo(expected));
+        Assert.That(actual, Is.SequenceEqualTo(expected));
     }
     public static IEnumerable<TestCaseData> AccountAccessGasCases()
     {
@@ -930,7 +930,7 @@ internal class TransactionProcessorEip7702Tests
             .WithTimestamp(MainnetSpecProvider.PragueBlockTimestamp)
             .WithTransactions(tx)
             .WithGasLimit(10000000).TestObject;
-        EstimateGasTracer estimateGasTracer = new();
+        CallOutputTracer estimateGasTracer = new();
         _ = _transactionProcessor.Execute(tx, new BlockExecutionContext(block.Header, _specProvider.GetSpec(block.Header)), estimateGasTracer);
 
         Assert.That(estimateGasTracer.GasSpent, Is.EqualTo(expectedGas));
@@ -1065,7 +1065,7 @@ internal class TransactionProcessorEip7702Tests
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
         _stateProvider.CommitTree(block.Number);
 
-        byte[]? actual = _stateProvider.GetCode(authority.Address);
+        byte[]? actual = _stateProvider.GetCode(authority.Address).ToArray();
         Assert.That(Eip7702Constants.IsDelegatedCode(actual), Is.True);
 
         tx = Build.A.Transaction
@@ -1082,7 +1082,7 @@ internal class TransactionProcessorEip7702Tests
             .WithGasLimit(10000000).TestObject;
 
         _transactionProcessor.Execute(tx, blkCtx, NullTxTracer.Instance);
-        actual = _stateProvider.GetCode(authority.Address);
+        actual = _stateProvider.GetCode(authority.Address).ToArray();
 
         Assert.That(actual, Is.EqualTo(Array.Empty<byte>()));
         Assert.That(_stateProvider.HasCode(authority.Address), Is.False);
