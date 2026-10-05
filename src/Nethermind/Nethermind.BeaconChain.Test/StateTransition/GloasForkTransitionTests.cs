@@ -382,54 +382,32 @@ public class GloasForkTransitionTests
         Assert.That(selected, Is.EqualTo(new[] { 0 }).AsCollection, "the first draw takes candidate 0; rejecting it would move on to candidate 1");
     }
 
-    // A validly signed builder-credential deposit would onboard a builder, so only the existing-validator
-    // check of onboard_builders_from_pending_deposits (specs/gloas/fork.md) keeps it in the queue.
-    [Test]
-    public void UpgradeToGloas_leaves_a_pending_deposit_for_an_existing_validator_in_the_queue()
+    // Valid signatures isolate the existing-validator and credential-prefix checks; invalid builder signatures are dropped outright.
+    [TestCase(Presets.BuilderWithdrawalPrefix, true, false, TestName = "UpgradeToGloas_leaves_a_pending_deposit_for_an_existing_validator_in_the_queue")]
+    [TestCase(Presets.BuilderWithdrawalPrefix, false, true, TestName = "UpgradeToGloas_drops_a_builder_prefixed_deposit_with_an_invalid_signature")]
+    [TestCase(Presets.BlsWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(0)")]
+    [TestCase(Presets.EthWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(1)")]
+    [TestCase(Presets.CompoundingWithdrawalPrefix, false, false, TestName = "UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(2)")]
+    public void UpgradeToGloas_does_not_onboard_a_deposit_with_an_existing_validator_invalid_signature_or_non_builder_prefix(
+        byte prefix, bool existingValidator, bool invalidSignature)
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        Hash256 withdrawalCredentials = BuilderWithdrawalCredentials(0xAC);
-        (BlsPublicKey existingValidatorPubkey, BlsSignature signature) = SignDeposit(DeriveKey(102), withdrawalCredentials, 32 * Gwei);
-        pre.Validators![0].Pubkey = existingValidatorPubkey;
-        pre.PendingDeposits = [new PendingDeposit { Pubkey = existingValidatorPubkey, WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = signature, Slot = pre.Slot }];
-
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(post.Builders, Is.Empty);
-        Assert.That(post.PendingDeposits, Has.Length.EqualTo(1));
-        Assert.That(post.PendingDeposits![0].Pubkey, Is.EqualTo(existingValidatorPubkey));
-    }
-
-    [Test]
-    public void UpgradeToGloas_drops_a_builder_prefixed_deposit_with_an_invalid_signature()
-    {
-        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        Hash256 withdrawalCredentials = BuilderWithdrawalCredentials(0xBB);
-        pre.PendingDeposits = [new PendingDeposit { Pubkey = Pubkey(0xCC), WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = Signature(0xDD), Slot = pre.Slot }];
-
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(post.Builders, Is.Empty, "an invalid-signature deposit must not create a builder");
-        Assert.That(post.PendingDeposits, Is.Empty, "the spec drops it outright rather than re-queuing it");
-    }
-
-    // Validly signed, so only is_builder_withdrawal_credential keeps the deposit away from the builder registry.
-    [Test]
-    public void UpgradeToGloas_keeps_a_non_builder_prefixed_deposit_for_a_new_pubkey_in_the_queue(
-        [Values(Presets.BlsWithdrawalPrefix, Presets.EthWithdrawalPrefix, Presets.CompoundingWithdrawalPrefix)] byte prefix)
-    {
-        BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
-        Hash256 withdrawalCredentials = PrefixedCredentials(prefix, 0xEE);
-        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(DeriveKey(106), withdrawalCredentials, 32 * Gwei);
+        Hash256 withdrawalCredentials = PrefixedCredentials(prefix, existingValidator ? (byte)0xAC : invalidSignature ? (byte)0xBB : (byte)0xEE);
+        (BlsPublicKey pubkey, BlsSignature signature) = invalidSignature
+            ? (Pubkey(0xCC), Signature(0xDD))
+            : SignDeposit(DeriveKey(existingValidator ? 102 : 106), withdrawalCredentials, 32 * Gwei);
+        if (existingValidator)
+            pre.Validators![0].Pubkey = pubkey;
         pre.PendingDeposits = [new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = 32 * Gwei, Signature = signature, Slot = pre.Slot }];
 
         BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(post.Builders, Is.Empty);
-        Assert.That(post.PendingDeposits, Has.Length.EqualTo(1), "a 0x00/0x01/0x02-prefixed deposit for an unknown pubkey is a future-validator deposit, not a builder one");
+        Assert.That(post.PendingDeposits, Has.Length.EqualTo(invalidSignature ? 0 : 1),
+            "invalid builder signatures are dropped; existing validators and non-builder credentials stay queued");
+        if (existingValidator)
+            Assert.That(post.PendingDeposits![0].Pubkey, Is.EqualTo(pubkey));
     }
 
     private static void BitArrayAllTrue(System.Collections.BitArray bits, int length)
