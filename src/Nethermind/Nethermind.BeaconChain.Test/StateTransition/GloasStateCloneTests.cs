@@ -39,7 +39,7 @@ public class GloasStateCloneTests
     }
 
     [Test]
-    public void Clone_carries_every_state_field()
+    public void Clone_carries_every_state_field_and_copies_only_in_place_written_fields()
     {
         BeaconStateGloas source = CreateGloasState(out _, out _);
         // The only field the fixture leaves null; a null on both sides would hide an omission.
@@ -53,24 +53,8 @@ public class GloasStateCloneTests
             Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
             Assert.That(actual, Is.Not.Null, $"{property.Name} was not cloned");
             Assert.That(SameContent(expected!, actual!), Is.True, $"{property.Name} differs between source and clone");
-        }
-    }
-
-    // In-place-written fields require shallow array copies; replace-only fields/elements may stay shared. Update this split when mutation patterns change.
-    [Test]
-    public void Clone_copies_exactly_the_in_place_written_fields_and_shares_the_rest()
-    {
-        BeaconStateGloas source = CreateGloasState(out _, out _);
-        source.HistoricalSummaries = [new HistoricalSummary { BlockSummaryRoot = Hash(0x51), StateSummaryRoot = Hash(0x52) }];
-        BeaconStateGloas clone = source.Clone();
-
-        foreach (PropertyInfo property in typeof(BeaconStateGloas).GetProperties(BindingFlags.Public | BindingFlags.Instance))
-        {
             if (property.PropertyType.IsValueType)
                 continue;
-            object? expected = property.GetValue(source);
-            Assert.That(expected, Is.Not.Null, $"fixture bug: {property.Name} must be populated for this test to see it");
-            object? actual = property.GetValue(clone);
             bool copied = CopiedFields.Contains(property.Name);
             Assert.That(ReferenceEquals(expected, actual), Is.EqualTo(!copied), $"{property.Name} must be {(copied ? "copied" : "shared by reference")}");
             if (copied && expected is Array { Length: > 0 } sourceArray && !sourceArray.GetType().GetElementType()!.IsValueType)
