@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.JsonRpc;
-using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using NSubstitute;
@@ -32,9 +31,7 @@ public class EngineDriverForkchoiceVersionTests
         IEngineRpcModule inner = Substitute.For<IEngineRpcModule>();
         inner.engine_forkchoiceUpdatedV3(default!, default).ReturnsForAnyArgs(Valid());
         inner.engine_forkchoiceUpdatedV4(default!, default, default).ReturnsForAnyArgs(Valid());
-        ExternalClDetector detector = new(new BeaconChainConfig { Enabled = true }, new Lazy<IEngineRpcModule>(inner), LimboLogs.Instance);
-        _ = new ExternalClInterceptingEngineRpcModule(inner, detector);
-        return (TestEngineDriver.Create(detector, slot, custody), inner);
+        return (TestEngineDriver.Create(EngineTests.CreateDetector(inner, out _), slot, custody), inner);
     }
 
     // forkchoiceUpdatedV3 remains valid after Amsterdam without payload attributes (execution-apis amsterdam.md; paris.md point 8).
@@ -59,10 +56,12 @@ public class EngineDriverForkchoiceVersionTests
     [Test]
     public async Task Forkchoice_update_from_Gloas_is_v4_with_the_exact_custody_columns(
         [Values(0UL, 1UL, 100_000UL)] ulong slotsIntoGloas,
-        [Values(Eip7594DasConstants.CustodyRequirement, Eip7594DasConstants.SamplesPerSlot, Eip7594DasConstants.NumberOfCustodyGroups)] ulong custodyGroupCount)
+        [Values(null, Eip7594DasConstants.CustodyRequirement, Eip7594DasConstants.SamplesPerSlot, Eip7594DasConstants.NumberOfCustodyGroups)] ulong? custodyGroupCount)
     {
         Hash256 head = TestItem.KeccakA;
-        NodeColumnCustody custody = new(TestItem.KeccakD, custodyGroupCount);
+        NodeColumnCustody? custody = custodyGroupCount is ulong count ? new(TestItem.KeccakD, count) : null;
+        if (custodyGroupCount == Eip7594DasConstants.CustodyRequirement)
+            Assert.That(custody!.CustodyColumns, Has.Count.LessThan(custody.SampledColumns.Count));
         (EngineDriver driver, IEngineRpcModule inner) = Create(FirstGloasSlot + slotsIntoGloas, custody);
 
         PayloadStatusV1 status = await driver.ForkchoiceUpdated(head, TestItem.KeccakB, TestItem.KeccakC);
@@ -70,29 +69,9 @@ public class EngineDriverForkchoiceVersionTests
         await inner.Received(1).engine_forkchoiceUpdatedV4(
             Arg.Is<ForkchoiceStateV1>(s => s.HeadBlockHash == head && s.SafeBlockHash == TestItem.KeccakB && s.FinalizedBlockHash == TestItem.KeccakC),
             Arg.Is<PayloadAttributes?>(a => a == null),
-            Arg.Is<BitArray?>(b => HasExactlyColumns(b, custody.CustodyColumns)));
+            Arg.Is<BitArray?>(b => custody == null ? b == null : HasExactlyColumns(b, custody.CustodyColumns)));
         await inner.DidNotReceiveWithAnyArgs().engine_forkchoiceUpdatedV3(default!, default);
         Assert.That(driver.LastForkchoiceStatus, Is.SameAs(status), "a V4 answer is the head status the caller and the status metrics read");
-    }
-
-    // Below 8 custody groups, sampling is larger than custody, exposing sample-derived custody bits.
-    [Test]
-    public void Custody_columns_of_the_default_group_count_are_a_strict_subset_of_the_sampled_columns()
-    {
-        NodeColumnCustody custody = new(TestItem.KeccakD, Eip7594DasConstants.CustodyRequirement);
-
-        Assert.That(custody.CustodyColumns, Has.Count.LessThan(custody.SampledColumns.Count));
-    }
-
-    // Null means no CL custody services (execution-apis amsterdam.md).
-    [Test]
-    public async Task Forkchoice_update_from_Gloas_sends_no_custody_while_the_node_identity_is_unknown()
-    {
-        (EngineDriver driver, IEngineRpcModule inner) = Create(FirstGloasSlot);
-
-        await driver.ForkchoiceUpdated(TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC);
-
-        await inner.Received(1).engine_forkchoiceUpdatedV4(Arg.Any<ForkchoiceStateV1>(), Arg.Is<PayloadAttributes?>(a => a == null), Arg.Is<BitArray?>(b => b == null));
     }
 
     [Test]
