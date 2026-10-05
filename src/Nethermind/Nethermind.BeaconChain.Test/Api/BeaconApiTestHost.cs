@@ -110,6 +110,10 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
     public static async Task<JsonDocument> ReadJsonAsync(HttpResponseMessage response) =>
         JsonDocument.Parse(await response.Content.ReadAsStringAsync());
 
+    public static void AssertJsonDigest(string raw, string expected) =>
+        Assert.That(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw))),
+            Is.EqualTo(expected).IgnoreCase, raw);
+
     public static async Task<string> ReadSuccessfulBodyAsync(HttpResponseMessage response)
     {
         string raw = await response.Content.ReadAsStringAsync();

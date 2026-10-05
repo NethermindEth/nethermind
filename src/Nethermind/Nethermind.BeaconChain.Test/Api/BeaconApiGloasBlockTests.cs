@@ -127,90 +127,7 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
-        JsonElement envelope = JsonDocument.Parse(raw).RootElement;
-        JsonElement message = envelope.GetProperty("data").GetProperty("message");
-        JsonElement body = message.GetProperty("body");
-
-        // specs/gloas/beacon-chain.md BeaconBlockBody: 13 fields in this order.
-        string[] expectedFields =
-        [
-            "randao_reveal", "eth1_data", "graffiti", "proposer_slashings", "attester_slashings", "attestations", "deposits",
-            "voluntary_exits", "sync_aggregate", "bls_to_execution_changes", "signed_execution_payload_bid", "payload_attestations",
-            "parent_execution_requests",
-        ];
-
-        JsonElement attestation = body.GetProperty("attestations")[0];
-        JsonElement firstIndexed = body.GetProperty("attester_slashings")[0].GetProperty("attestation_1");
-        JsonElement indexed = body.GetProperty("attester_slashings")[0].GetProperty("attestation_2");
-        JsonElement signedBid = body.GetProperty("signed_execution_payload_bid");
-        JsonElement bid = signedBid.GetProperty("message");
-        JsonElement payloadAttestation = body.GetProperty("payload_attestations")[0];
-        JsonElement requests = body.GetProperty("parent_execution_requests");
-
-        using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(envelope.GetProperty("version").GetString(), Is.EqualTo("gloas"));
-        Assert.That(message.GetProperty("slot").GetString(), Is.EqualTo(GloasSlot.ToString()));
-        Assert.That(message.GetProperty("proposer_index").GetString(), Is.EqualTo("78"));
-        Assert.That(message.GetProperty("parent_root").GetString(), Is.EqualTo(Parent.ToString()));
-        Assert.That(message.GetProperty("state_root").GetString(), Is.EqualTo(Hex(32, 0x01)));
-        Assert.That(envelope.GetProperty("data").GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x06)));
-        Assert.That(body.EnumerateObject().Select(p => p.Name), Is.EqualTo(expectedFields));
-
-        Assert.That(body.GetProperty("randao_reveal").GetString(), Is.EqualTo(Hex(96, 0x02)));
-        Assert.That(body.GetProperty("eth1_data").GetProperty("deposit_root").GetString(), Is.EqualTo(Hex(32, 0x03)));
-        Assert.That(body.GetProperty("graffiti").GetString(), Is.EqualTo(Hex(32, 0x05)));
-        Assert.That(body.GetProperty("sync_aggregate").GetProperty("sync_committee_signature").GetString(), Is.EqualTo(Hex(96, 0x71)));
-        Assert.That(body.GetProperty("proposer_slashings")[0].GetProperty("signed_header_1").GetProperty("message").GetProperty("body_root").GetString(), Is.EqualTo(Hex(32, 0x13)));
-        Assert.That(indexed.GetProperty("attesting_indices").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "4", "5" }));
-        Assert.That(indexed.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x42)));
-        Assert.That(firstIndexed.GetProperty("attesting_indices").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "1", "4", "5" }));
-        Assert.That(firstIndexed.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x41)));
-        Assert.That(attestation.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x43)));
-        Assert.That(attestation.GetProperty("data").GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0xaa)));
-        // Bits {0, 2} of a 3-bit progressive bitlist carry the same sentinel as a bitlist: 0x0d.
-        Assert.That(attestation.GetProperty("aggregation_bits").GetString(), Is.EqualTo("0x0d"));
-        Assert.That(attestation.GetProperty("committee_bits").GetString(), Is.EqualTo("0x0200000000000000"));
-        Assert.That(body.GetProperty("deposits")[0].GetProperty("data").GetProperty("amount").GetString(), Is.EqualTo("32000000000"));
-        Assert.That(body.GetProperty("voluntary_exits")[0].GetProperty("message").GetProperty("validator_index").GetString(), Is.EqualTo("9"));
-        Assert.That(body.GetProperty("bls_to_execution_changes")[0].GetProperty("message").GetProperty("validator_index").GetString(), Is.EqualTo("11"));
-
-        Assert.That(bid.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[]
-        {
-            "parent_block_hash", "parent_block_root", "block_hash", "prev_randao", "fee_recipient", "gas_limit", "builder_index",
-            "slot", "value", "execution_payment", "blob_kzg_commitments", "execution_requests_root",
-        }));
-        Assert.That(bid.GetProperty("parent_block_hash").GetString(), Is.EqualTo(Hex(32, 0x81)));
-        Assert.That(bid.GetProperty("parent_block_root").GetString(), Is.EqualTo(Parent.ToString()));
-        Assert.That(bid.GetProperty("block_hash").GetString(), Is.EqualTo(Hex(32, 0x87)));
-        Assert.That(bid.GetProperty("prev_randao").GetString(), Is.EqualTo(Hex(32, 0x86)));
-        Assert.That(bid.GetProperty("fee_recipient").GetString(), Is.EqualTo(Hex(20, 0x82)));
-        Assert.That(bid.GetProperty("gas_limit").GetString(), Is.EqualTo("30000000"));
-        Assert.That(bid.GetProperty("builder_index").GetString(), Is.EqualTo("12"));
-        Assert.That(bid.GetProperty("slot").GetString(), Is.EqualTo(GloasSlot.ToString()));
-        Assert.That(bid.GetProperty("value").GetString(), Is.EqualTo("1000"));
-        Assert.That(bid.GetProperty("execution_payment").GetString(), Is.EqualTo("2000"));
-        Assert.That(bid.GetProperty("blob_kzg_commitments").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { Hex(48, 0xa1) }));
-        Assert.That(bid.GetProperty("execution_requests_root").GetString(), Is.EqualTo(Hex(32, 0x89)));
-        Assert.That(signedBid.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x8a)));
-
-        // Bits 0 and 511 of the PTC_SIZE bitvector: no sentinel.
-        Assert.That(payloadAttestation.GetProperty("aggregation_bits").GetString(), Is.EqualTo("0x01" + new string('0', 124) + "80"));
-        Assert.That(payloadAttestation.GetProperty("data").GetProperty("beacon_block_root").GetString(), Is.EqualTo(Hex(32, 0x8c)));
-        Assert.That(payloadAttestation.GetProperty("data").GetProperty("slot").GetString(), Is.EqualTo((GloasSlot - 1).ToString()));
-        Assert.That(payloadAttestation.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0x8b)));
-        Assert.That(payloadAttestation.GetProperty("data").GetProperty("payload_present").GetBoolean(), Is.True);
-        Assert.That(payloadAttestation.GetProperty("data").GetProperty("blob_data_available").GetBoolean(), Is.False);
-
-        Assert.That(requests.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "deposits", "withdrawals", "consolidations", "builder_deposits", "builder_exits" }));
-        Assert.That(requests.GetProperty("deposits")[0].GetProperty("index").GetString(), Is.EqualTo("42"));
-        Assert.That(requests.GetProperty("builder_deposits")[0].GetProperty("pubkey").GetString(), Is.EqualTo(Hex(48, 0xe1)));
-        Assert.That(requests.GetProperty("withdrawals")[0].GetProperty("amount").GetString(), Is.EqualTo("5"));
-        Assert.That(requests.GetProperty("consolidations")[0].GetProperty("source_address").GetString(), Is.EqualTo(Hex(20, 0xd1)));
-        Assert.That(requests.GetProperty("builder_deposits")[0].GetProperty("withdrawal_credentials").GetString(), Is.EqualTo(Hex(32, 0xe2)));
-        Assert.That(requests.GetProperty("builder_deposits")[0].GetProperty("amount").GetString(), Is.EqualTo("3"));
-        Assert.That(requests.GetProperty("builder_deposits")[0].GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0xe3)));
-        Assert.That(requests.GetProperty("builder_exits")[0].GetProperty("source_address").GetString(), Is.EqualTo(Hex(20, 0xf1)));
-        Assert.That(requests.GetProperty("builder_exits")[0].GetProperty("pubkey").GetString(), Is.EqualTo(Hex(48, 0xf2)));
+        BeaconApiTestHost.AssertJsonDigest(raw, "dd2c64054c77edc6609347506e720bf0be87076c8a041fb4067aaee9f38f5c52");
     }
 
     /// <summary>getBlockAttestationsV2 has no gloas version in v5.0.0-alpha.2; the Gloas Attestation is served under gloas, never fulu.</summary>
@@ -237,41 +154,12 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
         JsonElement envelope = JsonDocument.Parse(raw).RootElement;
-        JsonElement data = envelope.GetProperty("data");
-        JsonElement message = data.GetProperty("message");
-        JsonElement payload = message.GetProperty("payload");
-
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(envelope.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "version", "execution_optimistic", "finalized", "data" }));
         // Fork choice holds the block VALID but not its payload: that status covers only the payload the bid builds on.
         Assert.That(envelope.GetProperty("execution_optimistic").GetBoolean(), Is.True);
         Assert.That((await ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
-        Assert.That(envelope.GetProperty("version").GetString(), Is.EqualTo("gloas"));
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
-        Assert.That(data.GetProperty("signature").GetString(), Is.EqualTo(Hex(96, 0xbb)));
-        Assert.That(message.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[] { "payload", "execution_requests", "builder_index", "beacon_block_root", "parent_beacon_block_root" }));
-        Assert.That(message.GetProperty("builder_index").GetString(), Is.EqualTo("12"));
-        Assert.That(message.GetProperty("beacon_block_root").GetString(), Is.EqualTo(Root.ToString()));
-        Assert.That(message.GetProperty("parent_beacon_block_root").GetString(), Is.EqualTo(Parent.ToString()));
-        Assert.That(message.GetProperty("execution_requests").GetProperty("builder_exits")[0].GetProperty("pubkey").GetString(), Is.EqualTo(Hex(48, 0xbc)));
-
-        Assert.That(payload.EnumerateObject().Select(p => p.Name), Is.EqualTo(new[]
-        {
-            "parent_hash", "fee_recipient", "state_root", "receipts_root", "logs_bloom", "prev_randao", "block_number", "gas_limit",
-            "gas_used", "timestamp", "extra_data", "base_fee_per_gas", "block_hash", "transactions", "withdrawals", "blob_gas_used",
-            "excess_blob_gas", "block_access_list", "slot_number",
-        }));
-        Assert.That(payload.GetProperty("parent_hash").GetString(), Is.EqualTo(Hex(32, 0xb1)));
-        Assert.That(payload.GetProperty("fee_recipient").GetString(), Is.EqualTo(Hex(20, 0xb2)));
-        Assert.That(payload.GetProperty("logs_bloom").GetString(), Is.EqualTo(Hex(256, 0xb5)));
-        Assert.That(payload.GetProperty("block_number").GetString(), Is.EqualTo("24000000"));
-        Assert.That(payload.GetProperty("extra_data").GetString(), Is.EqualTo("0xcafe"));
-        Assert.That(payload.GetProperty("base_fee_per_gas").GetString(), Is.EqualTo("9"));
-        Assert.That(payload.GetProperty("transactions").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "0x02f8" }));
-        Assert.That(payload.GetProperty("withdrawals")[0].GetProperty("validator_index").GetString(), Is.EqualTo("200"));
-        Assert.That(payload.GetProperty("excess_blob_gas").GetString(), Is.EqualTo("262144"));
-        Assert.That(payload.GetProperty("block_access_list").GetString(), Is.EqualTo("0xc001"));
-        Assert.That(payload.GetProperty("slot_number").GetString(), Is.EqualTo(GloasSlot.ToString()));
+        BeaconApiTestHost.AssertJsonDigest(raw, "74bc619fb686804b52f870dd9eeb027611023d57728c03725a45172dac1d4d6a");
     }
 
     /// <summary>types/primitive.yaml ties ExecutionOptimistic to the envelope payload: its fork-choice
