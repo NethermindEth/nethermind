@@ -28,7 +28,6 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static partial class GloasEpochProcessing
 {
     public static partial void ProcessEpoch(BeaconStateGloas state, EpochCache cache);
-
     public static partial void ProcessJustificationAndFinalization(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>
@@ -43,7 +42,6 @@ public static partial class GloasEpochProcessing
 
     /// <summary>Altair <c>process_inactivity_updates</c>, unmodified in Gloas.</summary>
     public static partial void ProcessInactivityUpdates(BeaconStateGloas state);
-
     public static partial void ProcessRewardsAndPenalties(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Electra <c>process_registry_updates</c>, unmodified in Gloas.</summary>
@@ -51,7 +49,6 @@ public static partial class GloasEpochProcessing
 
     /// <summary>Electra <c>process_slashings</c>, unmodified in Gloas.</summary>
     public static partial void ProcessSlashings(BeaconStateGloas state, EpochCache cache);
-
     public static partial void ProcessEth1DataReset(BeaconStateGloas state);
 
     /// <summary>
@@ -59,9 +56,7 @@ public static partial class GloasEpochProcessing
     /// activation-only churn, and the Electra gate on unapplied Eth1-bridge deposits is gone.
     /// </summary>
     public static partial void ProcessPendingDeposits(BeaconStateGloas state, EpochCache cache);
-
     private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
-
     private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
 
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
@@ -98,17 +93,11 @@ public static partial class GloasEpochProcessing
 
     /// <summary>Electra <c>process_effective_balance_updates</c>, unmodified in Gloas.</summary>
     public static partial void ProcessEffectiveBalanceUpdates(BeaconStateGloas state, EpochCache cache);
-
     public static partial void ProcessSlashingsReset(BeaconStateGloas state);
-
     public static partial void ProcessRandaoMixesReset(BeaconStateGloas state);
-
     public static partial void ProcessHistoricalSummariesUpdate(BeaconStateGloas state);
-
     public static partial void ProcessParticipationFlagUpdates(BeaconStateGloas state);
-
     public static partial void ProcessSyncCommitteeUpdates(BeaconStateGloas state);
-
     private static partial SyncCommittee GetNextSyncCommittee(BeaconStateGloas state);
 
     /// <summary>Fulu <c>process_proposer_lookahead</c> (EIP-7917) over the Gloas <see cref="GetBeaconProposerIndices"/>.</summary>
@@ -174,10 +163,7 @@ public static partial class GloasEpochProcessing
         GloasForkTransition.ComputePtcFromSeed(state.GetSeed(BeaconStateAccessors.ComputeEpochAtSlot(slot), DomainType.PtcAttester), state.Validators!, committees, slot);
 
     private static partial bool IsEligibleValidator(Validator validator, ulong previousEpoch);
-
     private static partial bool IsUnslashedParticipant(Validator validator, byte participation, int flagIndex, ulong epoch);
-
     private static partial bool IsInInactivityLeak(BeaconStateGloas state);
-
     private static partial Hash256 HashTreeRootOfRoots(Hash256[] roots);
 }

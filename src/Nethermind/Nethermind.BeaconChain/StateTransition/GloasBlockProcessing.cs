@@ -81,7 +81,6 @@ public static partial class GloasBlockProcessing
 
     /// <summary>Spec <c>process_block_header</c>: unchanged from Fulu except for the Gloas block/body types.</summary>
     public static partial void ProcessBlockHeader(BeaconStateGloas state, BeaconBlockGloas block);
-
     public static partial void ProcessRandao(BeaconStateGloas state, BeaconBlockBodyGloas body, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     private static bool VerifyRandaoReveal(BeaconStateGloas state, ulong proposerIndex, ulong epoch, BlsSignature reveal, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
@@ -198,7 +197,6 @@ public static partial class GloasBlockProcessing
     }
 
     public static partial void ProcessProposerSlashing(BeaconStateGloas state, ProposerSlashing slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
-
     private static partial bool HeaderEquals(BeaconBlockHeader a, BeaconBlockHeader b);
 
     /// <summary>Spec <c>BuilderPendingPayment.empty()</c>, in the shape <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> and <see cref="SettleBuilderPayment"/> write.</summary>
@@ -206,7 +204,6 @@ public static partial class GloasBlockProcessing
         new() { Withdrawal = new BuilderPendingWithdrawal() };
 
     public static partial void ProcessAttesterSlashing(BeaconStateGloas state, AttesterSlashingGloas slashing, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null);
-
     public static partial bool IsValidIndexedAttestation(BeaconStateGloas state, IndexedAttestationGloas attestation, PubkeyCache pubkeys, bool verifySignature, BlockSignatureBatch.Deferral? deferral = null);
 
     /// <summary>
@@ -229,11 +226,8 @@ public static partial class GloasBlockProcessing
     /// </summary>
     /// <exception cref="BeaconStateException">The source does not match the justified checkpoint, or a same-slot vote carries a non-zero index.</exception>
     private static partial byte GetAttestationParticipationFlagIndices(BeaconStateGloas state, AttestationData data, ulong inclusionDelay, ulong parentSlot);
-
     public static partial void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
-
     public static partial void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null);
-
     public static partial void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, int[] committeeIndices, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
@@ -573,13 +567,9 @@ public static partial class GloasBlockProcessing
     }
 
     internal static partial void ProcessDepositRequest(BeaconStateGloas state, DepositRequest request);
-
     internal static partial void ProcessWithdrawalRequest(BeaconStateGloas state, WithdrawalRequest request, EpochCache cache);
-
     internal static partial void ProcessConsolidationRequest(BeaconStateGloas state, ConsolidationRequest request, EpochCache cache);
-
     private static partial bool IsValidSwitchToCompoundingRequest(BeaconStateGloas state, ConsolidationRequest request);
-
     private static partial void SwitchToCompoundingValidator(BeaconStateGloas state, int index);
 
     /// <summary>Spec <c>process_builder_deposit_request</c> (EIP-8282, new in Gloas).</summary>

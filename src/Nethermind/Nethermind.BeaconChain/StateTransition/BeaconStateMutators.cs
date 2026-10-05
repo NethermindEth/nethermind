@@ -30,15 +30,10 @@ public static partial class BeaconStateMutators
     };
 
     public static partial void IncreaseBalance(this BeaconStateFulu state, int index, ulong delta);
-
     public static partial void DecreaseBalance(this BeaconStateFulu state, int index, ulong delta);
-
     public static partial ulong ComputeExitEpochAndUpdateChurn(this BeaconStateFulu state, ulong exitBalance, EpochCache cache);
-
     public static partial ulong ComputeConsolidationEpochAndUpdateChurn(this BeaconStateFulu state, ulong consolidationBalance, EpochCache cache);
-
     public static partial void InitiateValidatorExit(this BeaconStateFulu state, int index, EpochCache cache);
-
     private static partial ulong CheckedEpochSum(ulong epoch, ulong delta);
 
     /// <summary>
