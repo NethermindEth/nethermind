@@ -13,12 +13,14 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 
 public record GethTraceOptions
 {
+    // Setters rather than init: source-generated metadata assigns every init-only member, defaulting absent ones, which would
+    // let one of these aliases reset the other; setters apply only the members present, in JSON order.
     [Obsolete("Use EnableMemory instead.")]
-    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
+    public bool DisableMemory { get => !EnableMemory; set => EnableMemory = !value; }
 
     public bool DisableStorage { get; init; }
 
-    public bool EnableMemory { get; init; }
+    public bool EnableMemory { get; set; }
 
     public bool EnableReturnData { get; init; }
 
@@ -66,7 +68,7 @@ public record GethTraceOptions
     /// </summary>
     public bool? StreamMode { get; init; }
 
-    public static GethTraceOptions Default { get; } = new();
+    public static GethTraceOptions Default => new();
 
     /// <summary>
     /// Reads a signed JSON integer or null for the opcode logger byte limit.

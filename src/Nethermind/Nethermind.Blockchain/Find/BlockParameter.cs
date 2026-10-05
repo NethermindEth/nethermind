@@ -130,7 +130,7 @@ namespace Nethermind.JsonRpc.Data
         {
             if (value.Type == BlockParameterType.BlockNumber)
             {
-                JsonSerializer.Serialize(writer, value.BlockNumber, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.BlockNumber, options);
                 return;
             }
 
@@ -141,12 +141,12 @@ namespace Nethermind.JsonRpc.Data
                     writer.WriteStartObject();
                     writer.WriteBoolean("requireCanonical"u8, true);
                     writer.WritePropertyName("blockHash"u8);
-                    JsonSerializer.Serialize(writer, value.BlockHash, options);
+                    TypeInfoJsonSerializer.Serialize(writer, value.BlockHash, options);
                     writer.WriteEndObject();
                 }
                 else
                 {
-                    JsonSerializer.Serialize(writer, value.BlockHash, options);
+                    TypeInfoJsonSerializer.Serialize(writer, value.BlockHash, options);
                 }
 
                 return;
@@ -202,7 +202,7 @@ namespace Nethermind.JsonRpc.Data
                             break;
                         case var _ when reader.ValueTextEquals("blockHash"u8):
                             reader.Read();
-                            blockHash = JsonSerializer.Deserialize<Hash256>(ref reader, options);
+                            blockHash = TypeInfoJsonSerializer.Deserialize<Hash256>(ref reader, options);
                             break;
                         case var _ when reader.ValueTextEquals("blockNumber"u8):
                             reader.Read();
@@ -277,7 +277,7 @@ namespace Nethermind.JsonRpc.Data
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static BlockParameter ReadStringComplex(ref Utf8JsonReader reader, JsonSerializerOptions options)
-            => JsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
+            => TypeInfoJsonSerializer.Deserialize<BlockParameter>(reader.GetString()!, options)!;
 
         private BlockParameter ReadStringFormatOther(ReadOnlySpan<byte> span)
         {

@@ -44,18 +44,18 @@ public class JavaScriptObjectConverter : JsonConverter<IJavaScriptObject>
                 dictionary.Remove("error");
             }
 
-            JsonSerializer.Serialize(writer, dictionary, options);
+            TypeInfoJsonSerializer.Serialize(writer, dictionary, options);
         }
         else if (o is IList<object> list)
         {
-            JsonSerializer.Serialize(writer, list, options);
+            TypeInfoJsonSerializer.Serialize(writer, list, options);
         }
         else if (o is IArrayBufferView buffer)
         {
             int size = (int)buffer.Size;
             if (size == 0)
             {
-                JsonSerializer.Serialize(writer, Array.Empty<int>(), options);
+                TypeInfoJsonSerializer.Serialize(writer, Array.Empty<int>(), options);
                 return;
             }
 

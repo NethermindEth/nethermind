@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Taiko.Tdx;
@@ -30,3 +31,7 @@ public class TdxGuestInfo
     public JsonElement? Metadata { get; init; }
 }
 
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(TdxGuestInfo))]
+[JsonSerializable(typeof(JsonElement))]
+internal partial class TdxJsonContext : JsonSerializerContext;

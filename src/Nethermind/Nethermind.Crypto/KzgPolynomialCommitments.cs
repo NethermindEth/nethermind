@@ -81,8 +81,7 @@ public static partial class KzgPolynomialCommitments
             return;
 
         string trustedSetupTextFileLocation = setupFilePath ??
-            Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ?? string.Empty,
-                "kzg_trusted_setup.txt");
+            Path.Combine(AppContext.BaseDirectory, "kzg_trusted_setup.txt");
 
         if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");

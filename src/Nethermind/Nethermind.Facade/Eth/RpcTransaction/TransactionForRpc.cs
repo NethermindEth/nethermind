@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
@@ -13,6 +14,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -149,7 +151,7 @@ public abstract class TransactionForRpc
 
     public abstract bool ShouldSetBaseFee();
 
-    internal class TransactionJsonConverter : JsonConverter<TransactionForRpc>
+    public class TransactionJsonConverter : JsonConverter<TransactionForRpc>
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
@@ -168,7 +170,7 @@ public abstract class TransactionForRpc
             RegisterTransactionType<FrameTransactionForRpc>();
         }
 
-        internal static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
+        internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
             Type txType = typeof(T);
             string[] uniqueProperties = txType.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
@@ -215,7 +217,7 @@ public abstract class TransactionForRpc
 
             Type concreteTxType = DeriveTxType(ref txTypeReader, options, out bool isDefaulted);
 
-            TransactionForRpc? result = (TransactionForRpc?)JsonSerializer.Deserialize(ref reader, concreteTxType, options);
+            TransactionForRpc? result = (TransactionForRpc?)TypeInfoJsonSerializer.Deserialize(ref reader, concreteTxType, options);
             if (result is not null)
             {
                 result.IsTypeDefaulted = isDefaulted;
@@ -241,7 +243,7 @@ public abstract class TransactionForRpc
                     if (setType is null && NameEqualsIgnoreCase(ref reader, TypeFieldUtf8))
                     {
                         reader.Read();
-                        setType = JsonSerializer.Deserialize<TxType?>(ref reader, options);
+                        setType = TypeInfoJsonSerializer.Deserialize<TxType?>(ref reader, options);
                         // Explicit type fully determines the concrete class — stop scanning large payloads.
                         if (setType is not null) break;
                         continue;
@@ -344,7 +346,7 @@ public abstract class TransactionForRpc
             return true;
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => JsonSerializer.Serialize(writer, value, value.GetType(), options);
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => TypeInfoJsonSerializer.Serialize(writer, value, value.GetType(), options);
 
         public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypesByType[(byte)tx.Type]?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");
@@ -361,7 +363,7 @@ public abstract class TransactionForRpc
     public static TransactionForRpc FromTransaction(Transaction transaction, in TransactionForRpcContext? extraData = null) =>
         TransactionJsonConverter.FromTransaction(transaction, extraData ?? default);
 
-    public static void RegisterTransactionType<T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
+    public static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped => TransactionJsonConverter.RegisterTransactionType<T>();
 }
 
 /// <summary>

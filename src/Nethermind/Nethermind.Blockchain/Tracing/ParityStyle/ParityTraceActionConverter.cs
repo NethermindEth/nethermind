@@ -8,6 +8,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.ParityStyle;
 
@@ -63,62 +64,62 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
             else if (reader.ValueTextEquals("from"u8))
             {
                 reader.Read();
-                value.From = JsonSerializer.Deserialize<Address?>(ref reader, options);
+                value.From = TypeInfoJsonSerializer.Deserialize<Address?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("to"u8))
             {
                 reader.Read();
-                value.To = JsonSerializer.Deserialize<Address?>(ref reader, options);
+                value.To = TypeInfoJsonSerializer.Deserialize<Address?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("gas"u8))
             {
                 reader.Read();
-                value.Gas = JsonSerializer.Deserialize<ulong>(ref reader, options);
+                value.Gas = TypeInfoJsonSerializer.Deserialize<ulong>(ref reader, options);
             }
             else if (reader.ValueTextEquals("value"u8))
             {
                 reader.Read();
-                value.Value = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+                value.Value = TypeInfoJsonSerializer.Deserialize<UInt256>(ref reader, options);
             }
             else if (reader.ValueTextEquals("input"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
+                value.Input = TypeInfoJsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("init"u8))
             {
                 reader.Read();
-                value.Input = JsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
+                value.Input = TypeInfoJsonSerializer.Deserialize<CappedArray<byte>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("result"u8))
             {
                 reader.Read();
-                value.Result = JsonSerializer.Deserialize<ParityTraceResult?>(ref reader, options);
+                value.Result = TypeInfoJsonSerializer.Deserialize<ParityTraceResult?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("subtraces"u8))
             {
                 reader.Read();
-                value.Subtraces = JsonSerializer.Deserialize<List<ParityTraceAction>>(ref reader, options);
+                value.Subtraces = TypeInfoJsonSerializer.Deserialize<List<ParityTraceAction>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("author"u8))
             {
                 reader.Read();
-                value.Author = JsonSerializer.Deserialize<Address?>(ref reader, options);
+                value.Author = TypeInfoJsonSerializer.Deserialize<Address?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("rewardType"u8))
             {
                 reader.Read();
-                value.RewardType = JsonSerializer.Deserialize<string?>(ref reader, options);
+                value.RewardType = TypeInfoJsonSerializer.Deserialize<string?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("error"u8))
             {
                 reader.Read();
-                value.Error = JsonSerializer.Deserialize<string?>(ref reader, options);
+                value.Error = TypeInfoJsonSerializer.Deserialize<string?>(ref reader, options);
             }
             else if (reader.ValueTextEquals("traceAddress"u8))
             {
                 reader.Read();
-                value.TraceAddress = JsonSerializer.Deserialize<CappedArray<int>>(ref reader, options);
+                value.TraceAddress = TypeInfoJsonSerializer.Deserialize<CappedArray<int>>(ref reader, options);
             }
             else if (reader.ValueTextEquals("includeInTrace"u8))
             {
@@ -166,25 +167,25 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
         }
 
         writer.WritePropertyName("from"u8);
-        JsonSerializer.Serialize(writer, value.From, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.From, options);
         writer.WritePropertyName("gas"u8);
-        JsonSerializer.Serialize(writer, value.Gas, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Gas, options);
 
         if (value.CallType == "create")
         {
             writer.WritePropertyName("init"u8);
-            JsonSerializer.Serialize(writer, value.Input, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Input, options);
         }
         else
         {
             writer.WritePropertyName("input"u8);
-            JsonSerializer.Serialize(writer, value.Input, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Input, options);
             writer.WritePropertyName("to"u8);
-            JsonSerializer.Serialize(writer, value.To, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.To, options);
         }
 
         writer.WritePropertyName("value"u8);
-        JsonSerializer.Serialize(writer, value.Value, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Value, options);
 
         writer.WriteEndObject();
     }
@@ -195,13 +196,13 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
         writer.WriteStartObject();
 
         writer.WritePropertyName("address"u8);
-        JsonSerializer.Serialize(writer, value.From, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.From, options);
 
         writer.WritePropertyName("balance"u8);
-        JsonSerializer.Serialize(writer, value.Value, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Value, options);
 
         writer.WritePropertyName("refundAddress"u8);
-        JsonSerializer.Serialize(writer, value.To, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.To, options);
 
         writer.WriteEndObject();
     }
@@ -211,13 +212,13 @@ public class ParityTraceActionConverter : JsonConverter<ParityTraceAction>
         writer.WriteStartObject();
 
         writer.WritePropertyName("author"u8);
-        JsonSerializer.Serialize(writer, value.Author, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Author, options);
 
         writer.WritePropertyName("rewardType"u8);
-        JsonSerializer.Serialize(writer, value.RewardType, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.RewardType, options);
 
         writer.WritePropertyName("value"u8);
-        JsonSerializer.Serialize(writer, value.Value, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Value, options);
         writer.WriteEndObject();
     }
 }

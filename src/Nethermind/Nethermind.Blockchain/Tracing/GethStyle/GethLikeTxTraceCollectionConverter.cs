@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
@@ -53,14 +54,14 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
                 if (reader.ValueTextEquals("result"u8))
                 {
                     reader.Read();
-                    trace = JsonSerializer.Deserialize<GethLikeTxTrace>(ref reader, options);
+                    trace = TypeInfoJsonSerializer.Deserialize<GethLikeTxTrace>(ref reader, options);
                     continue;
                 }
 
                 if (reader.ValueTextEquals("txHash"u8))
                 {
                     reader.Read();
-                    txHash = reader.TokenType == JsonTokenType.Null ? null : JsonSerializer.Deserialize<Hash256>(ref reader, options);
+                    txHash = reader.TokenType == JsonTokenType.Null ? null : TypeInfoJsonSerializer.Deserialize<Hash256>(ref reader, options);
                     continue;
                 }
 
@@ -98,10 +99,10 @@ public class GethLikeTxTraceCollectionConverter : JsonConverter<GethLikeTxTraceC
             writer.WriteStartObject();
 
             writer.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(writer, trace, options);
+            TypeInfoJsonSerializer.Serialize(writer, trace, options);
 
             writer.WritePropertyName("txHash"u8);
-            JsonSerializer.Serialize(writer, trace.TxHash, options);
+            TypeInfoJsonSerializer.Serialize(writer, trace.TxHash, options);
 
             writer.WriteEndObject();
         }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Monitoring.Metrics;
 
@@ -17,9 +18,10 @@ namespace Nethermind.Monitoring.Metrics;
 [AttributeUsage(
     AttributeTargets.Field | AttributeTargets.Property,
     AllowMultiple = true)]
-public class MetricsStaticDescriptionTagAttribute(string metricsStaticLabel, Type informer) : Attribute
+public class MetricsStaticDescriptionTagAttribute(string metricsStaticLabel, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type informer) : Attribute
 {
     public string Label { get; } = metricsStaticLabel;
 
+    [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)]
     public Type Informer { get; } = informer;
 }

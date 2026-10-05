@@ -150,7 +150,7 @@ namespace Nethermind.ExternalSigner.Plugin
             throw new NotSupportedException($"Clef remote signer does not support '{member}'");
 
 
-        private class SignTransactionResponse
+        internal class SignTransactionResponse
         {
             public string? Raw { get; set; }
             public LegacyTransactionForRpc? Tx { get; set; }

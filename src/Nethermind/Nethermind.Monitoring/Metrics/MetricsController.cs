@@ -7,6 +7,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
@@ -217,7 +218,7 @@ namespace Nethermind.Monitoring.Metrics
                 : meter.CreateObservableGauge(name, observer, description: description);
         }
 
-        private static string GetStaticMemberInfo(Type givenInformer, string givenName)
+        private static string GetStaticMemberInfo([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] Type givenInformer, string givenName)
         {
             Type type = givenInformer;
             PropertyInfo[] tagsData = type.GetProperties(BindingFlags.Static | BindingFlags.Public);
@@ -226,7 +227,7 @@ namespace Nethermind.Monitoring.Metrics
             return value.ToString()!;
         }
 
-        public void RegisterMetrics(Type type)
+        public void RegisterMetrics([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.PublicFields)] Type type)
         {
             if (!_metricUpdaters.ContainsKey(type))
             {

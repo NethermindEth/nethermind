@@ -6,6 +6,7 @@ using System.IO;
 using System.Net.Sockets;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace Nethermind.Taiko.Tdx;
 
@@ -18,13 +19,13 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
 
     public byte[] Issue(byte[] userData, byte[] nonce)
     {
-        var request = new
+        JsonObject request = new()
         {
-            method = "issue",
-            data = new
+            ["method"] = "issue",
+            ["data"] = new JsonObject
             {
-                userData = Convert.ToHexString(userData).ToLowerInvariant(),
-                nonce = Convert.ToHexString(nonce).ToLowerInvariant()
+                ["userData"] = Convert.ToHexString(userData).ToLowerInvariant(),
+                ["nonce"] = Convert.ToHexString(nonce).ToLowerInvariant()
             }
         };
 
@@ -46,7 +47,7 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
 
     public TdxMetadata GetMetadata()
     {
-        var request = new { method = "metadata", data = new { } };
+        JsonObject request = new() { ["method"] = "metadata", ["data"] = new JsonObject() };
         JsonElement response = SendRequest(request);
 
         if (response.TryGetProperty("error", out JsonElement error) && error.ValueKind != JsonValueKind.Null)
@@ -66,7 +67,7 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
         };
     }
 
-    private JsonElement SendRequest(object request)
+    private JsonElement SendRequest(JsonObject request)
     {
         string socketPath = config.SocketPath;
 
@@ -78,11 +79,11 @@ public class TdxsClient(ISurgeTdxConfig config) : ITdxsClient
 
         using NetworkStream stream = new(socket, ownsSocket: false);
 
-        string requestJson = JsonSerializer.Serialize(request);
+        string requestJson = request.ToJsonString();
         socket.Send(Encoding.UTF8.GetBytes(requestJson));
         socket.Shutdown(SocketShutdown.Send);
 
-        return JsonSerializer.Deserialize<JsonElement>(stream);
+        return JsonSerializer.Deserialize(stream, TdxJsonContext.Default.JsonElement);
     }
 }
 

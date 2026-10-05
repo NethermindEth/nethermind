@@ -3,6 +3,7 @@
     <IsPackable>false</IsPackable>
     <OutputType>Library</OutputType>
     <Nullable>annotations</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

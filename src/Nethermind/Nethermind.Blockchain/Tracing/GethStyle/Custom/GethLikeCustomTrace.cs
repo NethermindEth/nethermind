@@ -8,8 +8,14 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom;
 [JsonConverter(typeof(GethLikeCustomTraceConverter))]
 public class GethLikeCustomTrace
 {
-    private static readonly object _empty = new { };
+    private static readonly object _empty = new EmptyValue();
     public object Value { get; set; } = _empty;
 
     public override string ToString() => Value.ToString() ?? string.Empty;
+
+    /// <summary>Serializes as an empty JSON object.</summary>
+    internal sealed class EmptyValue
+    {
+        public override string ToString() => "{ }";
+    }
 }

@@ -15,6 +15,7 @@
     <SymbolPackageFormat>snupkg</SymbolPackageFormat>
     <RepositoryType>git</RepositoryType>
     <RepositoryUrl>https://github.com/NethermindEth/nethermind</RepositoryUrl>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>

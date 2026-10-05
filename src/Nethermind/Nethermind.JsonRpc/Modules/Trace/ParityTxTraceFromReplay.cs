@@ -9,6 +9,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -80,13 +81,13 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (value.Error is null || value.Result?.Output is not null)
             {
                 writer.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(writer, value.Result, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Result, options);
             }
 
             if (value.Error is not null)
             {
                 writer.WritePropertyName("error"u8);
-                JsonSerializer.Serialize(writer, value.Error, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.Error, options);
             }
 
             writer.WriteNumber("subtraces"u8, value.Subtraces.Count);
@@ -120,7 +121,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
 
             writer.WritePropertyName("output"u8);
-            JsonSerializer.Serialize(writer, value.Output, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Output, options);
 
             writer.WritePropertyName("stateDiff"u8);
             ParityReplayEnvelopeWriter.WriteStateDiff(writer, value.StateChanges, options);
@@ -137,11 +138,11 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (value.TransactionHash is not null)
             {
                 writer.WritePropertyName("transactionHash"u8);
-                JsonSerializer.Serialize(writer, value.TransactionHash, options);
+                TypeInfoJsonSerializer.Serialize(writer, value.TransactionHash, options);
             }
 
             writer.WritePropertyName("vmTrace"u8);
-            JsonSerializer.Serialize(writer, value.VmTrace, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.VmTrace, options);
 
             writer.WriteEndObject();
         }

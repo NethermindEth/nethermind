@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Numerics;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc;
 
@@ -73,7 +74,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         ArgumentNullException.ThrowIfNull(value);
 
         _kind = JsonRpcIdKind.String;
-        _rawValue = JsonSerializer.SerializeToUtf8Bytes(value);
+        _rawValue = JsonSerializer.SerializeToUtf8Bytes(value, JsonRpcIdJsonContext.Default.String);
         _stringValue = value;
     }
 
@@ -303,7 +304,7 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
     {
         _kind = JsonRpcIdKind.String;
         _rawValue = rawValue;
-        _stringValue = JsonSerializer.Deserialize<string>(rawValue);
+        _stringValue = JsonSerializer.Deserialize(rawValue, JsonRpcIdJsonContext.Default.String);
     }
 
     private JsonRpcId(JsonRpcIdKind kind, byte[] rawValue, decimal decimalValue)
@@ -313,3 +314,6 @@ public readonly struct JsonRpcId : IEquatable<JsonRpcId>
         _decimalValue = decimalValue;
     }
 }
+
+[JsonSerializable(typeof(string))]
+internal partial class JsonRpcIdJsonContext : JsonSerializerContext;
