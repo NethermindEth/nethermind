@@ -48,10 +48,8 @@ public class BatchSignatureVerifierTests
         Assert.That(BatchSignatureVerifier.FindInvalid(sets), Is.EqualTo(-1));
     }
 
-    [TestCase(0)]
-    [TestCase(2)]
-    [TestCase(4)]
-    public void Single_bad_signature_fails_batch_regardless_of_position(int badPosition)
+    [Test]
+    public void Single_bad_signature_fails_batch_regardless_of_position([Values(0, 2, 4)] int badPosition)
     {
         List<BlsSignatureSet> sets = [.. Enumerable.Range(0, 5).Select(i => MakeSet(i, Msg((byte)(i + 10))))];
         sets[badPosition] = MakeMismatchedSet(badPosition, Msg((byte)(badPosition + 10)), badPosition + 100);

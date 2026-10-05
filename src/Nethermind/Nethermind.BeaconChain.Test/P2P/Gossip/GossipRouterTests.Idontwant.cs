@@ -16,10 +16,9 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 public partial class GossipRouterTests
 {
     // gossipsub v1.2 IDONTWANT follows validation, so unvalidated messages are not announced.
-    [TestCase(MessageValidity.Accepted)]
-    [TestCase(MessageValidity.Rejected)]
-    [TestCase(MessageValidity.Ignored)]
-    public async Task Large_message_is_announced_with_idontwant_only_once_accepted_and_before_it_is_sent(MessageValidity validity)
+    [Test]
+    public async Task Large_message_is_announced_with_idontwant_only_once_accepted_and_before_it_is_sent(
+        [Values(MessageValidity.Accepted, MessageValidity.Rejected, MessageValidity.Ignored)] MessageValidity validity)
     {
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), PubsubRouter.GossipsubProtocolVersionV12);
         byte[] block = LargeBlockMessage(CurrentSlot);

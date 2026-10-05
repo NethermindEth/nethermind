@@ -19,10 +19,9 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 public partial class GossipRouterTests
 {
     // phase0 p2p-interface.md: REJECT and IGNORE are not forwarded.
-    [TestCase(MessageValidity.Accepted)]
-    [TestCase(MessageValidity.Rejected)]
-    [TestCase(MessageValidity.Ignored)]
-    public async Task Deferred_block_is_sent_to_the_mesh_only_once_its_verdict_is_accepted(MessageValidity validity)
+    [Test]
+    public async Task Deferred_block_is_sent_to_the_mesh_only_once_its_verdict_is_accepted(
+        [Values(MessageValidity.Accepted, MessageValidity.Rejected, MessageValidity.Ignored)] MessageValidity validity)
     {
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 8, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30));
         byte[] block = BlockMessage(CurrentSlot);

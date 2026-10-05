@@ -60,11 +60,9 @@ public class CustodyGroupsTests
         Assert.That(groups, Is.EqualTo(expected));
     }
 
-    [TestCase((byte)0x00)]
-    [TestCase((byte)0x01)]
-    [TestCase((byte)0xFF)]
-    [TestCase((byte)0x7A)]
-    public void GetCustodyGroups_returns_the_requested_count_of_distinct_in_range_groups(byte fill)
+    [Test]
+    public void GetCustodyGroups_returns_the_requested_count_of_distinct_in_range_groups(
+        [Values((byte)0x00, (byte)0x01, (byte)0xFF, (byte)0x7A)] byte fill)
     {
         ulong[] groups = CustodyGroups.GetCustodyGroups(NodeId(fill), Eip7594DasConstants.CustodyRequirement);
 
@@ -135,11 +133,8 @@ public class CustodyGroupsTests
         Assert.That(Eip7594DasConstants.CustodyRequirement, Is.EqualTo(4ul));
     }
 
-    [TestCase(0ul)]
-    [TestCase(1ul)]
-    [TestCase(64ul)]
-    [TestCase(127ul)]
-    public void ComputeColumnsForCustodyGroup_returns_columns_matching_the_general_division(ulong custodyGroup)
+    [Test]
+    public void ComputeColumnsForCustodyGroup_returns_columns_matching_the_general_division([Values(0ul, 1ul, 64ul, 127ul)] ulong custodyGroup)
     {
         ulong[] columns = CustodyGroups.ComputeColumnsForCustodyGroup(custodyGroup);
 

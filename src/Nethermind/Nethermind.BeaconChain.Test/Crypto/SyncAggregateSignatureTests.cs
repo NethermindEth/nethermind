@@ -345,10 +345,8 @@ public class SyncAggregateSignatureTests
         Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo($"Sync committee bits have {width} entries, expected {Presets.SyncCommitteeSize}"));
     }
 
-    [TestCase(0)]
-    [TestCase(159)]
-    [TestCase(161)]
-    public void A_sync_aggregate_of_the_wrong_length_does_not_decode(int length)
+    [Test]
+    public void A_sync_aggregate_of_the_wrong_length_does_not_decode([Values(0, 159, 161)] int length)
     {
         byte[] encoded = new byte[length];
 
