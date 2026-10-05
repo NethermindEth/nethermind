@@ -236,9 +236,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
         AssertCodeHash(created, Keccak.OfAnEmptyString);
     }
 
-    [TestCase(CreationKind.Transaction)]
-    [TestCase(CreationKind.Create)]
-    public void Initcode_AdoptedCode_TracedAsSuccessfulCreation(CreationKind kind)
+    [Test]
+    public void Initcode_AdoptedCode_TracedAsSuccessfulCreation([Values] CreationKind kind)
     {
         DeploySource();
 
@@ -248,9 +247,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(creation.Result!.Code, Is.EqualTo(SourceCode));
     }
 
-    [TestCase(CreationKind.Transaction)]
-    [TestCase(CreationKind.Create)]
-    public void Creation_WithoutSetCodeFrom_TracedTheSameWithEip8298Off(CreationKind kind)
+    [Test]
+    public void Creation_WithoutSetCodeFrom_TracedTheSameWithEip8298Off([Values] CreationKind kind)
     {
         byte[] initCode = Prepare.EvmCode.ForInitOf(SourceCode).Done;
 
@@ -268,10 +266,7 @@ public class Eip8298Tests : VirtualMachineTestsBase
 
     private ParityTraceAction TraceCreation(CreationKind kind, byte[] initCode, int run)
     {
-        SenderRecipientAndMiner accounts = new() { SenderKey = run == 0 ? TestItem.PrivateKeyA : TestItem.PrivateKeyF };
-        (Block block, Transaction tx) = kind == CreationKind.Transaction
-            ? PrepareInitTx(Activation, 1_000_000, initCode, accounts)
-            : PrepareTx(Activation, 1_000_000, Prepare.EvmCode.Create(initCode, 0).STOP().Done);
+        (Block block, Transaction tx, _) = PrepareCreation(kind, initCode, run);
         ParityLikeTxTracer tracer = new(block, tx, ParityTraceTypes.Trace);
 
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
@@ -310,16 +305,22 @@ public class Eip8298Tests : VirtualMachineTestsBase
         .PushData(firstByte).PushData(0).Op(Instruction.MSTORE8)
         .Return(returnSize, 0).Done;
 
-    /// <summary>Runs <paramref name="initCode"/> through <paramref name="kind"/>; distinct runs create distinct accounts.</summary>
     private (TestAllTracerWithOutput Result, Address Created) RunCreation(CreationKind kind, byte[] initCode, int run)
+    {
+        (Block block, Transaction tx, Address created) = PrepareCreation(kind, initCode, run);
+        TestAllTracerWithOutput tracer = CreateTracer();
+        _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        return (tracer, created);
+    }
+
+    /// <summary>Prepares a run of <paramref name="initCode"/> through <paramref name="kind"/>; distinct runs create distinct accounts.</summary>
+    private (Block Block, Transaction Tx, Address Created) PrepareCreation(CreationKind kind, byte[] initCode, int run)
     {
         if (kind == CreationKind.Transaction)
         {
             SenderRecipientAndMiner accounts = new() { SenderKey = run == 0 ? TestItem.PrivateKeyA : TestItem.PrivateKeyF };
             (Block block, Transaction tx) = PrepareInitTx(Activation, 1_000_000, initCode, accounts);
-            TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
-            return (tracer, ContractAddress.From(accounts.Sender, 0));
+            return (block, tx, ContractAddress.From(accounts.Sender, 0));
         }
 
         byte[] salt = new byte[32];
@@ -331,7 +332,8 @@ public class Eip8298Tests : VirtualMachineTestsBase
         byte[] factory = kind == CreationKind.Create
             ? Prepare.EvmCode.Create(initCode, 0).STOP().Done
             : Prepare.EvmCode.Create2(initCode, salt, 0).STOP().Done;
-        return (Execute(Activation, 1_000_000, factory), created);
+        (Block factoryBlock, Transaction factoryTx) = PrepareTx(Activation, 1_000_000, factory);
+        return (factoryBlock, factoryTx, created);
     }
 
     [Test]
