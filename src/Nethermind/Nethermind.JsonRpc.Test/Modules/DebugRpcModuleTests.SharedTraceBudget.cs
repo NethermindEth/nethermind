@@ -160,12 +160,13 @@ public partial class DebugRpcModuleTests
         Block block = await chain.AddBlock(transactions);
         Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length));
         Transaction target = block.Transactions[txIndex];
+        bool traceTransaction = method == "debug_traceTransaction";
         GethTraceOptions options = new()
         {
             Tracer = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex,block:ctx.block}}}",
-            TxHash = target.Hash
+            TxHash = traceTransaction ? null : target.Hash
         };
-        object parameter = method == "debug_traceTransaction" ? target.Hash! : block.Hash!;
+        object parameter = traceTransaction ? target.Hash! : block.Hash!;
         string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
         IndexThroughTheCapture(chain, index, block, parent);
         string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
@@ -174,7 +175,7 @@ public partial class DebugRpcModuleTests
         {
             JToken json = JToken.Parse(response);
             Assert.That(json["error"], Is.Null, response);
-            JToken result = method == "debug_traceTransaction" ? json["result"]! : json["result"]![0]!["result"]!;
+            JToken result = traceTransaction ? json["result"]! : json["result"]![0]!["result"]!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(result["txIndex"]!.Value<int>(), Is.EqualTo(txIndex), response);
