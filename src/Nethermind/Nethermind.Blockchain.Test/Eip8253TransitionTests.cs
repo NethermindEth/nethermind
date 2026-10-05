@@ -111,6 +111,7 @@ public class Eip8253TransitionTests
 
     [TestCase(BlockchainIds.Mainnet, 0ul, TestName = "Transition_skipped_when_parent_already_has_the_fork")]
     [TestCase(BlockchainIds.Sepolia, ForkBlockNumber, TestName = "Transition_skipped_on_a_chain_without_a_list")]
+    [TestCase(BlockchainIds.Mainnet, ulong.MaxValue, TestName = "Transition_skipped_while_the_fork_is_inactive")]
     public async Task Transition_skipped(ulong chainId, ulong forkBlockNumber)
     {
         using BasicTestBlockchain chain = await CreateChain(chainId, forkBlockNumber, parallelExecution: true);
