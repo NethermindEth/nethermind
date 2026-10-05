@@ -12,8 +12,8 @@ namespace Nethermind.BeaconChain.P2P.ReqResp;
 
 /// <summary>Exposes a libp2p <see cref="IChannel"/> as an async-only <see cref="Stream"/>.</summary>
 /// <remarks>
-/// Used instead of the library's <c>ChannelStream</c>, whose <c>ReadAsync(byte[], int, int)</c>
-/// overload ignores the offset and count arguments and whose reads do not honor cancellation.
+/// Unlike the library's <c>ChannelStream</c>, disposing this adapter does not close the channel;
+/// the protocol handler owns its lifetime.
 /// End of stream reads as 0; that includes channel teardown (<see cref="IOResult.Cancelled"/>
 /// without the caller's token fired), which yamux reports for reads after both sides half-closed
 /// instead of <see cref="IOResult.Ended"/> — the framing layer distinguishes a clean end from a
