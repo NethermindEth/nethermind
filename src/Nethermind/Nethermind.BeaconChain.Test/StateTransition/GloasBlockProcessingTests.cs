@@ -127,37 +127,31 @@ public class GloasBlockProcessingTests
 
 
     [Test]
-    public void VerifyExecutionPayloadEnvelope_rejects_an_envelope_whose_payload_does_not_match_the_committed_bid()
+    public void VerifyExecutionPayloadEnvelope_checks_the_committed_bid_without_applying_the_payload([Values] bool matching)
     {
         BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
         SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
         GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true);
-
-        // Sign a self-consistent envelope built against a gas limit the actually-committed bid never
-        // used - the signature is genuinely valid (it covers exactly this envelope's own content),
-        // so this exercises the cross-check against state.latest_execution_payload_bid, not signing.
-        ExecutionPayloadBid differentGasLimit = WithGasLimit(bid.Message!, bid.Message!.GasLimit + 1);
-        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, differentGasLimit, builderSk, builderIndex: 0);
-
-        BeaconStateException ex = Assert.Throws<BeaconStateException>(() =>
-            GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), new PubkeyCache()))!;
-        Assert.That(ex.Message, Does.Contain("does not match the committed bid"));
-    }
-
-    [Test]
-    public void VerifyExecutionPayloadEnvelope_accepts_a_matching_envelope_and_mutates_nothing()
-    {
-        BeaconStateGloas state = CreateGloasState(out Bls.SecretKey builderSk, out _);
-        SignedExecutionPayloadBid bid = ValidBuilderBid(state, builderSk, builderIndex: 0, value: 3 * Gwei);
-        GloasBlockProcessing.ProcessExecutionPayloadBid(state, bid, SyntheticSpec(), new PubkeyCache(), verifySignature: true);
-        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, bid.Message!, builderSk, builderIndex: 0);
+        // The mismatched envelope has a valid signature over its own content, so rejection
+        // exercises the committed-bid cross-check rather than signature verification.
+        ExecutionPayloadBid envelopeBid = matching ? bid.Message! : WithGasLimit(bid.Message!, bid.Message!.GasLimit + 1);
+        SignedExecutionPayloadEnvelope envelope = ValidEnvelope(state, envelopeBid, builderSk, builderIndex: 0);
         Hash256 latestBlockHashBefore = state.LatestBlockHash!;
         Hash256 rootBefore = SszRoots.HashTreeRoot(state);
+        Action verify = () => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), new PubkeyCache());
 
-        Assert.DoesNotThrow(() => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(new BlockStates().Add(state), envelope, new AcceptingNotifier(), new PubkeyCache()));
-
-        Assert.That(state.LatestBlockHash, Is.EqualTo(latestBlockHashBefore), "verification must not apply the payload - that happens one block later");
-        Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
+        if (matching)
+        {
+            Assert.DoesNotThrow(() => verify());
+            using IDisposable assertionScope = Assert.EnterMultipleScope();
+            Assert.That(state.LatestBlockHash, Is.EqualTo(latestBlockHashBefore), "verification must not apply the payload - that happens one block later");
+            Assert.That(SszRoots.HashTreeRoot(state), Is.EqualTo(rootBefore));
+        }
+        else
+        {
+            BeaconStateException ex = Assert.Throws<BeaconStateException>(() => verify())!;
+            Assert.That(ex.Message, Does.Contain("does not match the committed bid"));
+        }
     }
 
 
