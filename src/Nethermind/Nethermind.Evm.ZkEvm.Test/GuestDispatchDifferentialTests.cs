@@ -42,7 +42,8 @@ public class GuestDispatchDifferentialTests
 
     public enum Table { Untraced, Cancelable, Traced }
 
-    private readonly record struct Outcome(EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize);
+    private readonly record struct Outcome(
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -86,25 +87,34 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Gas_observes_the_charges_of_preceding_opcodes([Values] Table table)
     {
-        // Checked and fixed-cost bodies charge gas that dispatch carries by value between handlers.
+        // Checked, fixed-cost and full-policy (MSTORE) bodies charge gas that dispatch carries by value between handlers,
+        // and the execution gas is all they may change in the frame's policy.
         byte[] code =
         [
             (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 2, (byte)Instruction.ADD,
             (byte)Instruction.PUSH1, 11, (byte)Instruction.JUMPI, (byte)Instruction.INVALID, (byte)Instruction.INVALID, (byte)Instruction.INVALID,
             (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH2, 0, 16, (byte)Instruction.JUMP,
-            (byte)Instruction.JUMPDEST, (byte)Instruction.GAS
+            (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.GAS
         ];
         const ulong gas = 100_000;
-        const ulong charged = 5 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + GasCostOf.Base;
+        const ulong charged = 6 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + 3 * GasCostOf.Base + GasCostOf.Memory;
+        EthereumGasPolicy initial = EthereumGasPolicy.FromULong(gas) with
+        {
+            StateReservoir = 13,
+            StateGasUsed = 23,
+            StateGasSpill = 31,
+            StateGasSpillRefunded = 7,
+            IndependentStatePool = true,
+        };
 
-        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), table);
+        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), table, initial: initial);
         byte[] pushLeft = [(byte)Instruction.PUSH8, .. ((UInt256)(gas - charged)).ToBigEndian()[^8..]];
         Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeft), table);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outcome.Exception, Is.EqualTo(EvmExceptionType.Stop));
-            Assert.That(outcome.GasLeft, Is.EqualTo(gas - charged));
+            Assert.That(outcome.Policy, Is.EqualTo(initial with { Value = gas - charged }));
             Assert.That(outcome.Head, Is.EqualTo((nint)1));
             Assert.That(outcome.Stack, Is.EqualTo(pushed.Stack));
         }
@@ -245,7 +255,9 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null)
+    /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
+        EthereumGasPolicy? initial = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
@@ -289,7 +301,7 @@ public class GuestDispatchDifferentialTests
         }
 
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
-        EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
+        EthereumGasPolicy[] gasPolicy = [initial ?? EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
         nint pc;
         nint finalHead;
@@ -313,7 +325,7 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size);
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
     }
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
