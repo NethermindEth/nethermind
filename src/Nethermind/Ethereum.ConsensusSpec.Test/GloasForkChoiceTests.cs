@@ -41,16 +41,10 @@ public class GloasForkChoiceTests
 
     // A vector the driver cannot run is reported not implemented, which runs green; each handler must pass one outright.
     [Test]
-    public void Every_handler_passes_a_vector_outright()
-    {
-        List<ForkChoiceCase> cases = FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases);
-        Assert.That(cases, Is.Not.Empty, "no vectors are enumerated");
-        foreach (IGrouping<string, ForkChoiceCase> byHandler in cases.GroupBy(HandlerOf, StringComparer.Ordinal))
-        {
-            ForkChoiceCase first = byHandler.First();
-            Assert.That(() => GloasForkChoiceStepDriver.Run(first.CasePath), Throws.Nothing, $"'{byHandler.Key}' does not pass {first}");
-        }
-    }
+    public void Every_handler_passes_a_vector_outright() =>
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            HandlerOf, static testCase => GloasForkChoiceStepDriver.Run(testCase.CasePath));
 
     private const string FabricationSource = "on_attestation/pyspec_tests/validate_on_attestation_later_slot_full_vote_valid";
 

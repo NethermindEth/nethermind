@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Ssz;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -115,13 +116,15 @@ internal static class ForkChoiceStepDriver
 
         if (TryGetScalar(step, "attestation", out string? attestationKey))
         {
-            RunAttestationStep(casePath, attestationKey!, GetBool(step, "valid", defaultValue: true), runner, stepIndex);
+            RunOperandStep<Attestation>($"step {stepIndex}: attestation {attestationKey}", GetBool(step, "valid", defaultValue: true),
+                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, attestationKey + ".ssz_snappy")), operand => runner.OnAttestation(operand, isFromBlock: false, verifySignature: true));
             return;
         }
 
         if (TryGetScalar(step, "attester_slashing", out string? slashingKey))
         {
-            RunAttesterSlashingStep(casePath, slashingKey!, GetBool(step, "valid", defaultValue: true), runner, stepIndex);
+            RunOperandStep<AttesterSlashing>($"step {stepIndex}: attester_slashing {slashingKey}", GetBool(step, "valid", defaultValue: true),
+                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, slashingKey + ".ssz_snappy")), operand => runner.OnAttesterSlashing(operand, verifySignatures: true));
             return;
         }
 
@@ -210,22 +213,10 @@ internal static class ForkChoiceStepDriver
         return sidecars;
     }
 
-    private static void RunAttestationStep(string casePath, string key, bool expectedValid, ForkChoiceRunner runner, int stepIndex)
+    internal static void RunOperandStep<T>(string subject, bool expectedValid, byte[] ssz, Action<T> apply) where T : ISszCodec<T>
     {
-        byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
-        Attestation.Decode(ssz, out Attestation attestation);
-
-        AssertVerdict($"step {stepIndex}: attestation {key}", expectedValid,
-            Attempt(() => runner.OnAttestation(attestation, isFromBlock: false, verifySignature: true)));
-    }
-
-    private static void RunAttesterSlashingStep(string casePath, string key, bool expectedValid, ForkChoiceRunner runner, int stepIndex)
-    {
-        byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, key + ".ssz_snappy"));
-        AttesterSlashing.Decode(ssz, out AttesterSlashing slashing);
-
-        AssertVerdict($"step {stepIndex}: attester_slashing {key}", expectedValid,
-            Attempt(() => runner.OnAttesterSlashing(slashing, verifySignatures: true)));
+        T.Decode(ssz, out T operand);
+        AssertVerdict(subject, expectedValid, Attempt(() => apply(operand)));
     }
 
     internal static Exception? Attempt(Action action)
