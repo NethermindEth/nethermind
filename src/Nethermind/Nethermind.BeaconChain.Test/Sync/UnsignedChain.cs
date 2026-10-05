@@ -40,16 +40,13 @@ internal sealed class UnsignedChain : IForkChoiceStateProvider
     public sealed record Equivocation(ChainBlock A, ChainBlock B, ChainBlock Voted, ChainBlock Slashing);
 
     public ImportableBlobBlock Anchor { get; }
-
     public BeaconChainSpec Spec => Anchor.Spec;
-
     public Hash256 AnchorRoot => Anchor.AnchorRoot;
 
     public static UnsignedChain Create(ImportableBlobBlock? anchor = null, IBeaconStateHasher? hasher = null) =>
         new(anchor ?? ImportableBlobBlock.CreateWithoutBlobs(), hasher ?? new CachedBeaconStateHasher());
 
     public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => _postStates.GetValueOrDefault(blockRoot);
-
     public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
 
     public ChainBlock Extend(Hash256 parentRoot, ulong slot, byte payloadHashByte, Attestation[]? attestations = null, AttesterSlashing[]? attesterSlashings = null, bool signed = false)

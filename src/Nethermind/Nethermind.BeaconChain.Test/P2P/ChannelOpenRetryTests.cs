@@ -270,13 +270,9 @@ public class ChannelOpenRetryTests
         }
 
         public ISession Session { get; }
-
         public int Attempts => Volatile.Read(ref _attempts);
-
         public int LateOpens => Volatile.Read(ref _lateOpens);
-
         public bool FirstCancelled => _tokens.TryPeek(out CancellationToken first) && first.IsCancellationRequested;
-
         public bool[] EarlierCancelledWhenOpened => [.. _earlierCancelled];
 
         private async Task<IReadOnlyList<ForkedSignedBeaconBlock>> OpenWhenAbandonedAsync(Hash256[] request, CancellationToken token)

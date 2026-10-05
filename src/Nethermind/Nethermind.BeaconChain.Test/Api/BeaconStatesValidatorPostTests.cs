@@ -209,9 +209,7 @@ public class BeaconStatesValidatorPostTests : BeaconApiFixture
     }
 
     private static bool IsPending(int i) => i % 4 == 1;
-
     private static ulong ActivationOf(int i) => IsPending(i) ? StateEpoch + 10 + (ulong)i : 1_000 + (ulong)i;
-
     private static ulong BalanceOf(int i) => 32_000_000_000 + (ulong)i * 1_000;
 
     private static BlsPublicKey PubkeyOf(int i)

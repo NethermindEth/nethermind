@@ -37,7 +37,6 @@ public class BeaconJsonStreamTests
     private sealed class FlushCountingWriter(PipeWriter inner) : PipeWriter
     {
         public int Flushes { get; private set; }
-
         public override void Advance(int bytes) => inner.Advance(bytes);
         public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
         public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);

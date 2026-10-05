@@ -414,7 +414,6 @@ public class InboundRequestWatchTests
         Metrics.BeaconChainReqRespFailures.TryGetValue(new ReqRespFailureKey(ProbeId, ReqRespFailureReason.InvalidMessage), out long count) ? count : 0;
 
     private static ISessionContext Context() => ReqRespTestChannel.Context(Requester);
-
     private static ISessionContext ContextWithoutPeer() => ReqRespTestChannel.Context();
 
     private static async Task<byte[]> RequestBytesAsync(CancellationToken token)
@@ -455,7 +454,6 @@ public class InboundRequestWatchTests
         private InboundRequest? _request;
 
         public void Enter(ISessionContext context) => _request = TryEnterInbound(context, ProbeId);
-
         public Task<byte[]> ReadAsync(Stream stream, CancellationToken token) => _request!.ReadRequestAsync(stream, maxSize: 8, token);
 
         public const int LingerBudget = MaxLingeringRequests;
@@ -472,7 +470,6 @@ public class InboundRequestWatchTests
         }
 
         public IAsyncDisposable? TryEnterAnother(ISessionContext context) => TryEnterInbound(context, ProbeId);
-
         public ValueTask DisposeAsync() => _request!.DisposeAsync();
     }
 
@@ -495,11 +492,8 @@ public class InboundRequestWatchTests
         }
 
         public Task WatchStarted => _watchStarted.Task;
-
         public Task WatchEnded => _watchEnded.Task;
-
         public void Teardown() => _next.TrySetResult(null);
-
         public void SendLate(byte late) => _next.TrySetResult(late);
 
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)

@@ -31,17 +31,11 @@ internal sealed class FlakyCheckpointProvider : IAsyncDisposable
     private int _blockRequests;
 
     private FlakyCheckpointProvider(WebApplication app) => _app = app;
-
     public string Url => _app.Urls.First();
-
     public int StateRequests => Volatile.Read(ref _stateRequests);
-
     public int BlockRequests => Volatile.Read(ref _blockRequests);
-
     public static TimeSpan TrickleInterval { get; } = TimeSpan.FromMilliseconds(250);
-
     public static TimeSpan TrickleDuration { get; } = TimeSpan.FromSeconds(5);
-
     public Task<byte[]> StallEntered => _stallEntered.Task;
 
     public static async Task<FlakyCheckpointProvider> StartAsync(Func<int, StateResponse> responseFor, BeaconStateGloas? state = null, string? consensusVersion = null, Func<int, StateResponse>? blockResponseFor = null)

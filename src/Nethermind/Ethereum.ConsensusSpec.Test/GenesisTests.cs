@@ -58,7 +58,6 @@ public class GenesisTests
             $"the {testCase.Fork} genesis state is a {testCase.Fork} BeaconState of the {testCase.Preset} preset, and this repo models no such container");
 
     private static IEnumerable<TestCaseData> MinimalCases() => Cases(ConsensusPreset.Minimal);
-
     private static IEnumerable<TestCaseData> MainnetCases() => ConsensusSpecArchive.MainnetEnabled ? Cases(ConsensusPreset.Mainnet) : [];
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)

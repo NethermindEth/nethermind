@@ -266,7 +266,6 @@ public class GloasSeedAndEpochCacheTests
     }
 
     private static Hash256 SlotRoot(ulong slot) => Tagged(0xB0, slot);
-
     private static Hash256 EpochMix(ulong epoch) => Tagged(0xA0, epoch);
 
     private static Hash256 Tagged(byte tag, ulong value)

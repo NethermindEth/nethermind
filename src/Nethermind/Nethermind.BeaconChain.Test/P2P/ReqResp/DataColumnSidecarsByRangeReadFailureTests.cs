@@ -152,15 +152,10 @@ public class DataColumnSidecarsByRangeReadFailureTests
         private readonly IDb _sidecars = new KeyExistsFailingDb();
 
         public IDb GetColumnDb(BeaconChainDbColumns key) => key == BeaconChainDbColumns.DataColumnSidecars ? _sidecars : _inner.GetColumnDb(key);
-
         public IEnumerable<BeaconChainDbColumns> ColumnKeys => _inner.ColumnKeys;
-
         public IColumnsWriteBatch<BeaconChainDbColumns> StartWriteBatch() => new InMemoryColumnWriteBatch<BeaconChainDbColumns>(this);
-
         public IColumnDbSnapshot<BeaconChainDbColumns> CreateSnapshot() => throw new NotSupportedException();
-
         public void Dispose() { }
-
         public void Flush(bool onlyWal = false) { }
     }
 

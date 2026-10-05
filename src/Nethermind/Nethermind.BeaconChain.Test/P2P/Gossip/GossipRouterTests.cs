@@ -631,7 +631,6 @@ public partial class GossipRouterTests
         public Hash256 FuluRoot { get; }
         public int Raised { get; private set; }
         public long BlockReads => ((MemDb)_db.GetColumnDb(BeaconChainDbColumns.Blocks)).ReadsCount;
-
         public void CorruptBlock(Hash256 root) => _db.GetColumnDb(BeaconChainDbColumns.Blocks)[root.Bytes] = [0xFF];
 
         public Hash256 PutGloasBlock(ulong slot, Hash256 parentRoot, bool store = true)
@@ -708,17 +707,11 @@ public partial class GossipRouterTests
         public event Action<PeerId, byte[]>? OnMessage;
 
         public bool IsSubscribed { get; private set; }
-
         public bool HasHandlers => OnMessage is not null;
-
         public void Subscribe() => IsSubscribed = true;
-
         public void Unsubscribe() => IsSubscribed = false;
-
         public void Publish(byte[] value) { }
-
         public void Publish(IMessage value) { }
-
         public void Deliver(byte[] message) => OnMessage?.Invoke(DeliveringPeer, message);
     }
 }

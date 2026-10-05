@@ -155,7 +155,6 @@ public class ProtoArrayBoostPassDifferentialTests
         private ulong _previousBoostScore;
 
         public Driver(CheckpointRef justified, CheckpointRef finalized, ulong anchorSlot) => Rebase(justified, finalized, anchorSlot);
-
         public int Comparisons { get; private set; }
 
         public void Rebase(CheckpointRef justified, CheckpointRef finalized, ulong anchorSlot)

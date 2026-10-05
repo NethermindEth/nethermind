@@ -843,7 +843,6 @@ public class DeferredBlockColumnFetchTests
     private sealed record HeldBlobBlocks(BeaconSyncOrchestrator Orchestrator, StuckBlocksImporter Importer, GatedColumnPeer Peer, Gate Gate, ForkedSignedBeaconBlock[] Held)
     {
         public Hash256[] HeldRoots => [.. Held.Select(static b => b.ComputeMessageRoot())];
-
         public Hash256[] HeldRootsRequested => [.. Peer.RequestedRoots.Distinct().Intersect(HeldRoots)];
     }
 
@@ -1384,14 +1383,11 @@ public class DeferredBlockColumnFetchTests
         private Func<Hash256, bool>? _columnsHeld;
 
         public HashSet<Hash256> Stuck { get; } = [];
-
         public HashSet<Hash256> EngineDown { get; } = [];
-
         public HashSet<Hash256> Invalid { get; } = [];
 
         /// <summary>Blocks reported imported without the inner importer, so a test can import a chain its blocks cannot.</summary>
         public HashSet<Hash256> Accepted { get; } = [];
-
         public List<Hash256> ImportCalls { get; } = [];
 
         public void AcceptOnceColumnsAreHeld(Hash256[] roots, DataColumnSidecarPool pool, ulong[] columns)
@@ -1420,25 +1416,15 @@ public class DeferredBlockColumnFetchTests
         }
 
         public ExecutionPayloadEnvelopeImportResult ImportEnvelope(SignedExecutionPayloadEnvelope envelope) => inner.ImportEnvelope(envelope);
-
         public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => inner.VerifyEnvelopeSignature(envelope);
-
         public void OnSlotTick(ulong slot) => inner.OnSlotTick(slot);
-
         public HeadView ComputeHead() => inner.ComputeHead();
-
         public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status) => inner.OnForkchoiceUpdated(headRoot, headExecutionHash, status);
-
         public void OnFinalized(CheckpointRef finalized) => inner.OnFinalized(finalized);
-
         public bool? OnGossipAggregate(SignedAggregateAndProof aggregate) => inner.OnGossipAggregate(aggregate);
-
         public bool? OnGossipAggregate(SignedAggregateAndProofGloas aggregate) => inner.OnGossipAggregate(aggregate);
-
         public bool? OnGossipAttesterSlashing(AttesterSlashing slashing) => inner.OnGossipAttesterSlashing(slashing);
-
         public bool? OnGossipAttesterSlashing(AttesterSlashingGloas slashing) => inner.OnGossipAttesterSlashing(slashing);
-
         public bool? OnGossipPayloadAttestation(PayloadAttestationMessage message) => inner.OnGossipPayloadAttestation(message);
     }
 
@@ -1480,21 +1466,15 @@ public class DeferredBlockColumnFetchTests
 
         public BeaconChainStore Store => _store;
         public BeaconDiscovery Discovery => _discovery;
-
         public ImportableBlobBlock Chain { get; } = ImportableBlobBlock.Create();
         public DataColumnSidecarPool SidecarPool { get; } = new();
 
         /// <summary>Starts at epoch 1, which keeps the epoch-0 block inside the data availability window.</summary>
         public SlotClock Clock { get; private set; } = null!;
-
         public IBlockImporter Importer { get; private set; } = null!;
-
         public List<IBeaconSyncPeer> Peers { get; } = [];
-
         public ulong[] Sampled { get; private set; } = [];
-
         public ulong[] Unsampled => [.. Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(static c => (ulong)c).Except(Sampled)];
-
         public IEngineDriver Engine { get; private set; } = null!;
 
         public static Fixture Create(IEngineDriver? engine = null, byte[]? identity = null)
@@ -1515,7 +1495,6 @@ public class DeferredBlockColumnFetchTests
         }
 
         public void AdvanceSlots(ulong slots) => _time.Add(TimeSpan.FromSeconds(slots * Chain.Spec.SecondsPerSlot));
-
         public void GiveColumn(ulong column) => SidecarPool.Add(Chain.BlockRoot, Chain.Block.Message!.Slot, Chain.Columns[(int)column]);
 
         public StubPeer Peer(string id, ulong[] custodied)
@@ -1604,7 +1583,6 @@ public class DeferredBlockColumnFetchTests
         public event Action<IBeaconSyncPeer>? PeerAdmitted;
 
         public int Subscribers => PeerAdmitted?.GetInvocationList().Length ?? 0;
-
         public void Admit(IBeaconSyncPeer peer) => PeerAdmitted?.Invoke(peer);
     }
 
@@ -1617,7 +1595,6 @@ public class DeferredBlockColumnFetchTests
         private TaskCompletionSource _arrival = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public int MaxInFlight => Volatile.Read(ref _maxInFlight);
-
         public void Open() => _open.TrySetResult();
 
         public async Task WaitAsync(TimeSpan timeout, CancellationToken token)
@@ -1679,23 +1656,14 @@ public class DeferredBlockColumnFetchTests
         public string Id => id;
         public ulong HeadSlot => headSlot;
         public virtual PeerColumnCustody Custody { get; } = custody ?? StubPeer.AllColumns;
-
         public virtual Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<DataColumnSidecarGloas>> RequestGloasDataColumnSidecarsByRootAsync(DataColumnsByRootIdentifier[] identifiers, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRangeAsync(ulong startSlot, ulong count, CancellationToken token) => throw new NotSupportedException();
-
         public virtual Task<IReadOnlyList<SignedExecutionPayloadEnvelope>> RequestExecutionPayloadEnvelopesByRootAsync(Hash256[] roots, CancellationToken token) => throw new NotSupportedException();
-
         public virtual void ReportFailure(PeerFailureReason reason, string? detail = null) { }
     }
 

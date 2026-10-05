@@ -18,9 +18,7 @@ internal static class LoopbackTrace
     private static int _nodes;
 
     public static bool Enabled { get; } = Environment.GetEnvironmentVariable("BEACONCHAIN_LOOPBACK_TRACE") == "1";
-
     public static ILogManager? NewNode() => Enabled ? new SinkLogManager($"n{Interlocked.Increment(ref _nodes)}") : null;
-
     public static ILogManager Or(ILogManager fallback, string tag = "pm") => Enabled ? new SinkLogManager(tag) : fallback;
 
     [AttributeUsage(AttributeTargets.Assembly)]

@@ -401,29 +401,17 @@ public partial class ColumnBackfillTests
         }
 
         public BeaconChainStore Store { get; }
-
         public SlotClock Clock { get; }
-
         public BeaconChainStatusHolder Status { get; }
-
         public ILogManager LogManager { get; }
-
         public DataColumnSidecarPool Pool { get; private set; } = null!;
-
         public ColumnBackfill Backfill { get; private set; } = null!;
-
         public Hash256[] Roots { get; }
-
         public Hash256[] BlobRoots => [Roots[1], Roots[3]];
-
         public ulong[] Sampled { get; }
-
         public ConcurrentDictionary<Hash256, byte> WithheldRoots { get; } = [];
-
         public List<Hash256> RequestedRoots { get; } = [];
-
         public Action? OnColumnsRequested { get; set; }
-
         public IReadOnlyList<StubPeer> Peers => _peers;
 
         public static Fixture Create(ILogManager? logManager = null, ColumnStoreWriter? storeWriter = null)

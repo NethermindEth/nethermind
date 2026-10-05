@@ -462,7 +462,6 @@ public class GloasForkTransitionTests
     }
 
     private static Hash256 BuilderWithdrawalCredentials(byte seed) => PrefixedCredentials(Presets.BuilderWithdrawalPrefix, seed);
-
     private static Hash256 EthWithdrawalCredentials(byte seed) => PrefixedCredentials(Presets.EthWithdrawalPrefix, seed);
 
     // Every byte differs, so an execution address read from the wrong 20-byte window of the credentials shows.

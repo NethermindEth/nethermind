@@ -221,11 +221,8 @@ public class ProposerBoostDependentRootTests
         public sealed record Block(SignedBeaconBlock Signed, Hash256 Root, BeaconStateFulu PostState);
 
         public Hash256 AnchorRoot => _anchor.AnchorRoot;
-
         public ForkChoiceRunner CreateRunner() => new(_anchor.Spec, _anchor.AnchorState, _anchor.AnchorBlock.Message!, this, _anchor.Pubkeys);
-
         public BeaconStateFulu? GetBlockState(Hash256 blockRoot) => _states.GetValueOrDefault(blockRoot);
-
         public BeaconStateFulu? CopyBlockState(Hash256 blockRoot) => GetBlockState(blockRoot)?.Clone();
 
         public void Import(ForkChoiceRunner runner, Block block, ExecutionStatus executionStatus = ExecutionStatus.Valid) =>
