@@ -453,14 +453,21 @@ def tool_version(image_id, directory):
     name = "rpcbench-version-" + run_identity() + "-" + label_hash + "-" + os.environ["RPC_PRIVATE_AUDIT_PHASE"]
     cidfile = register_container(directory, "version", name, image_id)
     try:
+        if os.environ.get("RPC_JB_PATCH_PROTOCOL") == "RPC_EXACT_COUNT_V1":
+            invocation = ["--entrypoint", "/bin/sh", image_id, "-c",
+                          'k6 version && sha256sum /app/jsonrpc-bench-runner "$(command -v k6)"']
+        else:
+            invocation = ["--entrypoint", "k6", image_id, "version"]
         command_output(["docker", "create", "--cidfile", str(cidfile), "--name", name,
-                        "--label", OWNER_LABEL + "=" + run_identity(), "--network", "none", "--read-only",
-                        "--entrypoint", "k6", image_id, "version"])
+                        "--label", OWNER_LABEL + "=" + run_identity(), "--network", "none", "--read-only", *invocation])
         container = owned_cid(directory, "version")
         version = command_output(["docker", "start", "--attach", container])
         code = command_output(["docker", "inspect", "--format", "{{.State.ExitCode}}", container])
         if code != "0" or len(version) > 4096 or not re.match(r"^k6 v2\.1\.0(?:\s|$)", version):
             raise ValueError("K6_VERSION")
+        if os.environ.get("RPC_JB_PATCH_PROTOCOL") == "RPC_EXACT_COUNT_V1":
+            import jsonbench_exact_requests
+            return jsonbench_exact_requests.binary_inventory(version)
         return version
     finally:
         stop_owned_tool(directory, "version")
@@ -493,7 +500,15 @@ def runtime_pin(image, source_head, built_current):
     directory = arm_directory(root, label) / phase
     archive_tool.private_directory(directory)
     source = Path(preparation["roots"]["SCRATCH_ROOT"]) / "jsonbench/src"
-    head = verified_source(source, os.environ["JB_REF"])
+    patch_provenance = None
+    if os.environ.get("RPC_JB_PATCH_PROTOCOL"):
+        if os.environ["RPC_JB_PATCH_PROTOCOL"] != "RPC_EXACT_COUNT_V1" or os.environ["JB_REF"] != "de1bcfadea47258ccacae2f420141032a82a9ded":
+            raise ValueError("EXACT_TOOL_PATCH_PROTOCOL_REQUIRED")
+        import jsonbench_exact_requests
+        patch_provenance = jsonbench_exact_requests.verify(source)
+        head = patch_provenance["base_commit"]
+    else:
+        head = verified_source(source, os.environ["JB_REF"])
     if head != source_head:
         raise ValueError("SOURCE_CHANGED_DURING_BUILD")
     tool_id = command_output(["docker", "image", "inspect", "--format", "{{.Id}}", image])
@@ -508,13 +523,28 @@ def runtime_pin(image, source_head, built_current):
             or not re.fullmatch(r"[^\s]+@sha256:[0-9a-f]{64}", node_ref)):
         raise ValueError("NODE_IMAGE_IDENTITY")
     fingerprint = Path(preparation["roots"]["STATE_ROOT"]) / label / "db-baseline.txt"
+    version_pin = tool_version(tool_id, directory)
+    tool_pin = dict(image_id=tool_id, json_bench_commit=head, build_in_current_invocation=True,
+                    tracked_source_clean=patch_provenance is None)
+    if patch_provenance is not None:
+        tool_pin.update(version_pin, source_patch=patch_provenance)
+    else:
+        tool_pin["k6_version"] = version_pin
     result = dict(schema=1, observed_before_load_ns=time.time_ns(),
-                  tool=dict(image_id=tool_id, json_bench_commit=head, k6_version=tool_version(tool_id, directory),
-                            build_in_current_invocation=True, tracked_source_clean=True),
+                  tool=tool_pin,
                   node=dict(container_id=node_id, image_id=node_image, image_ref=node_ref),
                   corpus=file_pin(Path(os.environ["JB_ETH_CALL_CORPUS_FILE"]).absolute()),
                   snapshot=dict(head=snapshot_head(os.environ["RPC_URL"], int(os.environ["SNAPSHOT_BLOCK"])),
                                 fingerprint=file_pin(fingerprint)))
+    if patch_provenance is not None:
+        import yaml
+        config = yaml.safe_load((source.parent / "io/benchmark.yaml").read_text(encoding="utf-8"))
+        cap = int(os.environ["JB_EXACT_REQUEST_CAP"])
+        jsonbench_exact_requests.validate_config(config, phase, cap)
+        if preparation["expected_counts"][phase] != cap:
+            raise ValueError("EXACT_PREPARED_REQUEST_COUNT_REQUIRED")
+        result["request_contract"] = dict(phase=phase, requests=cap, rps=config["rps"],
+                                          duration=config["duration"], seed=config["seed"], vus=config["vus"])
     write(directory / "runtime-pin.json", result)
     shared = {name: result[name] for name in ("tool", "corpus", "snapshot")}
     for previous in (root / "outputs").glob("*/*/runtime-pin.json"):
