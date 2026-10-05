@@ -31,62 +31,33 @@ public partial class BeaconSyncOrchestratorTests
     private const ulong ServeRangeStart = FuluAnchorSlot + 100 * 32;
     private const ulong FuluWallSlot = FuluAnchorSlot + (4096 + 100) * 32 + 5;
     private const ulong YoungWallSlot = FuluAnchorSlot + 100;
+    private const long AnchorColumnOffset = 10 - (long)(ServeRangeStart - FuluAnchorSlot);
 
-    [TestCase(new long[] { -5 }, 0L, TestName = "Columns held from below the serve range advertise the anchor")]
-    [TestCase(new long[] { 10 }, 3200L + 10L, TestName = "Columns held only from inside the serve range advertise their first slot")]
-    [TestCase(new long[0], (long)(FuluWallSlot - FuluAnchorSlot + 1), TestName = "No columns held advertise the slot after the current one")]
-    public async Task Status_advertises_the_earliest_slot_with_every_column_held(long[] columnSlotOffsets, long expectedOffset)
+    [TestCase(-5L, null, false, false, 0L, TestName = "Columns held from below the serve range advertise the anchor")]
+    [TestCase(10L, null, false, false, 3200L + 10L, TestName = "Columns held only from inside the serve range advertise their first slot")]
+    [TestCase(null, null, false, false, (long)(FuluWallSlot - FuluAnchorSlot + 1), TestName = "No columns held advertise the slot after the current one")]
+    [TestCase(AnchorColumnOffset, null, true, false, 0L, TestName = "A_node_missing_blocks_of_the_serve_range_advertises_its_anchor")]
+    [TestCase(AnchorColumnOffset, -1000L, true, false, -1000L, TestName = "Blocks and columns backfilled below the anchor advertise the slot they are held from")]
+    [TestCase(AnchorColumnOffset, 40L, true, false, 0L, TestName = "A backfill that has not reached the anchor advertises the anchor")]
+    [TestCase(AnchorColumnOffset, null, true, true, null, TestName = "Status_advertises_the_start_of_the_serve_range_once_the_backfill_reached_it")]
+    public async Task Status_advertises_the_slot_covered_by_blocks_and_columns(
+        long? columnOffset, long? backfilledOffset, bool young, bool completeBackfill, long? expectedOffset)
     {
         DataColumnSidecarPool pool = new();
-        foreach (long offset in columnSlotOffsets)
+        if (columnOffset is { } column) AddColumn(pool, (ulong)((long)ServeRangeStart + column));
+        ulong wallSlot = young ? YoungWallSlot : FuluWallSlot;
+        ulong? backfilledFrom = backfilledOffset is { } offset ? (ulong)((long)FuluAnchorSlot + offset) : null;
+        if (completeBackfill)
         {
-            AddColumn(pool, (ulong)((long)ServeRangeStart + offset));
+            backfilledFrom = DataAvailabilityBoundary.ComputeStartSlot(new SlotClock(Spec, new ManualTimestamper(WallTime(wallSlot))).CurrentEpoch, Spec);
+            pool.LowerCompletelyServableFloor(backfilledFrom.Value);
         }
-
-        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, FuluWallSlot);
-
-        await orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
-    }
-
-    [Test]
-    public async Task A_node_missing_blocks_of_the_serve_range_advertises_its_anchor()
-    {
-        DataColumnSidecarPool pool = new();
-        AddColumn(pool, FuluAnchorSlot + 10);
-        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot);
+        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, wallSlot, backfilledFrom: backfilledFrom);
 
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(FuluAnchorSlot));
-    }
-
-    [TestCase(-1000L, -1000L, TestName = "Blocks and columns backfilled below the anchor advertise the slot they are held from")]
-    [TestCase(40L, 0L, TestName = "A backfill that has not reached the anchor advertises the anchor")]
-    public async Task Status_advertises_the_slot_the_backfill_holds_blocks_from(long backfilledOffset, long expectedOffset)
-    {
-        DataColumnSidecarPool pool = new();
-        AddColumn(pool, FuluAnchorSlot + 10);
-        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot, backfilledFrom: (ulong)((long)FuluAnchorSlot + backfilledOffset));
-
-        await orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo((ulong)((long)FuluAnchorSlot + expectedOffset)));
-    }
-
-    [Test]
-    public async Task Status_advertises_the_start_of_the_serve_range_once_the_backfill_reached_it()
-    {
-        DataColumnSidecarPool pool = new();
-        AddColumn(pool, FuluAnchorSlot + 10);
-        ulong serveFrom = DataAvailabilityBoundary.ComputeStartSlot(new SlotClock(Spec, new ManualTimestamper(WallTime(YoungWallSlot))).CurrentEpoch, Spec);
-        pool.LowerCompletelyServableFloor(serveFrom);
-        (BeaconSyncOrchestrator orchestrator, BeaconChainStatusHolder statusHolder, _) = CreateStatusHarness(pool, FuluAnchorSlot, YoungWallSlot, backfilledFrom: serveFrom);
-
-        await orchestrator.RunHeadStepAsync(CancellationToken.None);
-
-        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(serveFrom));
+        ulong expected = expectedOffset is { } expectedColumn ? (ulong)((long)FuluAnchorSlot + expectedColumn) : backfilledFrom!.Value;
+        Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(expected));
     }
 
     [Test]

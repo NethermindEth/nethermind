@@ -146,8 +146,7 @@ public class ForkChoiceRunnerTests
     public void Justified_checkpoint_on_a_gloas_block_is_weighed_from_its_gloas_state([Values] bool replayInFuluContainer)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, 2 * Presets.SlotsPerEpoch + 2);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), 2 * Presets.SlotsPerEpoch + 2);
 
         ImportGloas(runner, chain.First, replayInFuluContainer);
         Hash256 headAtFork = runner.GetHead();
@@ -1000,8 +999,7 @@ public class ForkChoiceRunnerTests
     public void Attester_slashing_is_verified_under_the_justified_blocks_own_state([Values] bool signedUnderBlockStateFork)
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, GloasTestFixtures.BoundarySlot + 1);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), GloasTestFixtures.BoundarySlot + 1);
         BeaconStateGloas justifiesAnchorAtForkEpoch = chain.First.PostState.Clone();
         justifiesAnchorAtForkEpoch.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = chain.AnchorRoot };
         runner.OnBlock(chain.First.Block, justifiesAnchorAtForkEpoch);
@@ -1054,8 +1052,7 @@ public class ForkChoiceRunnerTests
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ulong currentSlot = GloasTestFixtures.BoundarySlot + 1;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, currentSlot);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), currentSlot);
         runner.OnBlock(chain.First.Block, chain.First.PostState);
         BeaconStateGloas signingState = chain.First.PostState;
         AttestationGloas currentSlotVote = SignedBoundaryVote(signingState, EpochOneVote(chain, currentSlot, chain.First.Root));
@@ -1253,8 +1250,7 @@ public class ForkChoiceRunnerTests
     public void Gloas_block_is_registered_optimistic_under_its_bids_block_hash()
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, GloasTestFixtures.BoundarySlot);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), GloasTestFixtures.BoundarySlot);
 
         runner.OnBlock(chain.First.Block, chain.First.PostState);
 
@@ -1271,8 +1267,7 @@ public class ForkChoiceRunnerTests
     public void Each_OnBlock_overload_refuses_a_slot_of_the_other_fork()
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, GloasTestFixtures.BoundarySlot);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), GloasTestFixtures.BoundarySlot);
         SignedBeaconBlock fuluAtFork = TestChain.CreateBlock(GloasTestFixtures.BoundarySlot, chain.AnchorRoot);
         SignedBeaconBlockGloas gloasBeforeFork = new() { Message = new BeaconBlockGloas { Slot = GloasTestFixtures.BoundarySlot - 1, ParentRoot = chain.AnchorRoot } };
 
@@ -1533,8 +1528,7 @@ public class ForkChoiceRunnerTests
 
     private static ForkChoiceRunner FinalizedOnFirstGloasBlock(ForkCrossingChain chain)
     {
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, 2 * Presets.SlotsPerEpoch + 2);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), 2 * Presets.SlotsPerEpoch + 2);
         runner.OnBlock(chain.First.Block, chain.First.PostState);
         runner.OnBlock(chain.Voting[0].Block, chain.Voting[0].PostState);
 
@@ -1548,8 +1542,7 @@ public class ForkChoiceRunnerTests
 
     private static ForkChoiceRunner JustifiedOnFirstGloasBlock(ForkCrossingChain chain)
     {
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, 2 * Presets.SlotsPerEpoch + 2);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), 2 * Presets.SlotsPerEpoch + 2);
         ImportGloas(runner, chain.First, replayInFuluContainer: false);
         foreach (ForkCrossingChain.ChainBlock block in chain.Voting)
         {
@@ -1579,8 +1572,7 @@ public class ForkChoiceRunnerTests
     private static (ForkChoiceRunner Runner, Action ImportChild, ulong DoctoredEpoch) TimelyChildOfInvalidGloasParent()
     {
         ForkCrossingChain chain = ForkCrossingChain.Instance;
-        ForkChoiceRunner runner = chain.CreateRunner();
-        TickToSlot(runner, 2 * Presets.SlotsPerEpoch);
+        ForkChoiceRunner runner = TickToSlot(chain.CreateRunner(), 2 * Presets.SlotsPerEpoch);
         runner.OnBlock(chain.First.Block, chain.First.PostState);
         runner.OnInvalidExecutionPayload(chain.First.Root);
 
@@ -1642,8 +1634,11 @@ public class ForkChoiceRunnerTests
     private static Hash256 BlockStateRoot(ForkCrossingChain chain, bool gloasRoot) =>
         gloasRoot ? SszRoots.HashTreeRoot(chain.First.PostState) : SszRoots.HashTreeRoot(chain.AnchorState);
 
-    private static void TickToSlot(ForkChoiceRunner runner, ulong slot) =>
+    private static ForkChoiceRunner TickToSlot(ForkChoiceRunner runner, ulong slot)
+    {
         runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
+        return runner;
+    }
 
     private static Dictionary<Hash256, ulong> Weights(ForkChoiceRunner runner)
     {

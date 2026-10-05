@@ -23,7 +23,7 @@ public class PeerHealthCheckRoundTests
     public async Task Admission_capacity_is_rechecked_within_ten_seconds(CancellationToken token)
     {
         Node local = CreateNode();
-        try
+        await using (local.P2P)
         {
             local.Config.TargetPeerCount = 0;
             PeerManager manager = new(local.P2P, local.Config, local.StatusHolder, LimboLogs.Instance);
@@ -31,10 +31,6 @@ public class PeerHealthCheckRoundTests
             Assert.That(waiting.IsCompleted, Is.False);
             local.Config.TargetPeerCount = 1;
             await waiting.WaitAsync(TimeSpan.FromSeconds(10), token);
-        }
-        finally
-        {
-            await local.P2P.DisposeAsync();
         }
     }
 
