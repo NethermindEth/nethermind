@@ -178,21 +178,8 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
     private static void EmitArray(StringBuilder code, string type, string value, Dictionary<string, Field[]> fields,
         Dictionary<string, Method> methods, ITypeSymbol? symbol)
     {
-        string item = type switch
-        {
-            "AttesterSlashing" or "AttesterSlashingGloas" or "ProposerSlashing" => "slashing",
-            "PayloadAttestation" or "Attestation" or "AttestationGloas" => "attestation",
-            "BuilderDepositRequest" or "Deposit" or "DepositRequest" => "deposit",
-            "BuilderExitRequest" or "SignedVoluntaryExit" => "exit",
-            "SignedBlsToExecutionChange" => "change",
-            "SszKzgCommitment" => "commitment",
-            "Hash256" => "node",
-            "UInt64" => "index",
-            "Transaction" or "TransactionGloas" => "transaction",
-            "Withdrawal" or "WithdrawalRequest" => "withdrawal",
-            "ConsolidationRequest" => "consolidation",
-            _ => throw new InvalidOperationException("No original loop binding for " + type),
-        };
+        string item = "item" + type;
+        if (value.Split('.')[0].TrimEnd('!') == item) item += "Item";
         string spelling = type switch
         {
             "Transaction" or "Withdrawal" => "Types." + type,
