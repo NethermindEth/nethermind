@@ -28,10 +28,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive(64 * 1024, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length + 4096);
-        string suite = UniqueSuite("TruncatedDownloadTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("TruncatedDownloadTest", out string suite, out string target);
         IOException ex = Assert.Catch<IOException>(
             () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => true : null))!;
@@ -49,9 +46,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive(64 * 1024, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite("PaddedDownloadTest");
-        string target = CachePathFor(suite);
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("PaddedDownloadTest", out string suite, out string target);
 
         TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
             selective ? _ => true : null);
@@ -69,10 +64,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite("CompleteDownloadTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("CompleteDownloadTest", out string suite, out string target);
         string extracted = TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz");
 
         Assert.Multiple(() =>
@@ -89,10 +81,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite("EmptyCacheTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("EmptyCacheTest", out string suite, out string target);
         Directory.CreateDirectory(target);
         File.WriteAllText(Path.Combine(target, ".completed"), "v0");
 
@@ -114,10 +103,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite("PopulatedCacheTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("PopulatedCacheTest", out string suite, out string target);
         string entryOnDisk = Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(entryOnDisk)!);
         File.WriteAllBytes(entryOnDisk, EntryContent);
@@ -133,10 +119,7 @@ public class TestFixtureDownloadCompletenessTests
     public void A_marker_over_a_cache_missing_a_recorded_subtree_is_treated_as_absent_and_the_archive_is_downloaded_again()
     {
         byte[] archive = BuildArchive(EntryPath, SecondEntryPath);
-        string suite = UniqueSuite("MissingSubtreeCacheTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("MissingSubtreeCacheTest", out string suite, out string target);
         using (StubArchiveServer first = new(archive, contentLength: archive.Length))
         {
             TestFixtureDownloader.EnsureDownloaded(suite, first.UrlTemplate, "v0", "general.tar.gz");
@@ -160,10 +143,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite("StaleTagCacheTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache("StaleTagCacheTest", out string suite, out string target);
         string staleEntry = Path.Combine(target, "tests", "general", "phase0", "ssz_generic", "stale.data");
         Directory.CreateDirectory(Path.GetDirectoryName(staleEntry)!);
         File.WriteAllBytes(staleEntry, [9]);
@@ -187,10 +167,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = BuildArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite(extractionTag is null ? "VersionMarkerUntaggedTest" : "VersionMarkerTaggedTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache(extractionTag is null ? "VersionMarkerUntaggedTest" : "VersionMarkerTaggedTest", out string suite, out string target);
         string entryOnDisk = Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar));
         Directory.CreateDirectory(Path.GetDirectoryName(entryOnDisk)!);
         File.WriteAllBytes(entryOnDisk, EntryContent);
@@ -211,10 +188,7 @@ public class TestFixtureDownloadCompletenessTests
     {
         byte[] archive = selective ? BuildArchive() : BuildDirectoryOnlyArchive();
         using StubArchiveServer server = new(archive, contentLength: archive.Length);
-        string suite = UniqueSuite(selective ? "FilteredToNothingTest" : "DirectoryOnlyArchiveTest");
-        string target = CachePathFor(suite);
-
-        using CacheCleanup cleanup = new(target);
+        using CacheCleanup cleanup = CreateCache(selective ? "FilteredToNothingTest" : "DirectoryOnlyArchiveTest", out string suite, out string target);
         IOException ex = Assert.Throws<IOException>(
             () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
                 selective ? _ => false : null))!;
@@ -228,10 +202,12 @@ public class TestFixtureDownloadCompletenessTests
     }
 
     // Cache roots are shared across processes; fixed suite names let concurrent runs delete each other's directories.
-    private static string UniqueSuite(string name) => $"{name}-{Guid.NewGuid():N}";
-
-    private static string CachePathFor(string suite) =>
-        Path.Combine(Path.GetTempPath(), "nethermind-eest", suite, "v0", "general");
+    private static CacheCleanup CreateCache(string name, out string suite, out string target)
+    {
+        suite = $"{name}-{Guid.NewGuid():N}";
+        target = Path.Combine(Path.GetTempPath(), "nethermind-eest", suite, "v0", "general");
+        return new(target);
+    }
 
     private static void Cleanup(string target)
     {
