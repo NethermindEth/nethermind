@@ -43,8 +43,7 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
 
-        Assert.That(Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(raw))),
-            Is.EqualTo("8e53a2bbacd1dcb44aa240c0db316d1e857b52b57048b9b17440db063ec2e60e").IgnoreCase, raw);
+        BeaconApiTestHost.AssertJsonDigest(raw, "8e53a2bbacd1dcb44aa240c0db316d1e857b52b57048b9b17440db063ec2e60e");
     }
 
     [Test]
@@ -110,74 +109,7 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK), raw.Length > 500 ? raw[..500] : raw);
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
 
-        JsonElement body = JsonDocument.Parse(raw).RootElement;
-        Assert.That(body.GetProperty("version").GetString(), Is.EqualTo("fulu"));
-        Assert.That(body.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        Assert.That(body.GetProperty("finalized").GetBoolean(), Is.False, "epoch 412,500 is after finalized epoch 412,497");
-
-        JsonElement data = body.GetProperty("data");
-        Assert.That(data.GetProperty("genesis_time").GetString(), Is.EqualTo(BeaconChainSpec.Mainnet.GenesisTime.ToString()));
-        Assert.That(data.GetProperty("slot").GetString(), Is.EqualTo(Slot.ToString()));
-        Assert.That(data.GetProperty("fork").GetProperty("previous_version").GetString(), Is.EqualTo("0x05000000"));
-        Assert.That(data.GetProperty("fork").GetProperty("current_version").GetString(), Is.EqualTo("0x06000000"));
-        Assert.That(data.GetProperty("fork").GetProperty("epoch").GetString(), Is.EqualTo("411392"));
-        Assert.That(data.GetProperty("latest_block_header").GetProperty("proposer_index").GetString(), Is.EqualTo("8"));
-        Assert.That(data.GetProperty("block_roots").GetArrayLength(), Is.EqualTo(8192));
-        Assert.That(data.GetProperty("block_roots")[8191].GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x43)));
-        Assert.That(data.GetProperty("state_roots").GetArrayLength(), Is.EqualTo(8192));
-        Assert.That(data.GetProperty("historical_roots").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { BeaconApiTestHost.Hex(32, 0x46) }));
-        Assert.That(data.GetProperty("eth1_data_votes")[0].GetProperty("deposit_count").GetString(), Is.EqualTo("1000"));
-        Assert.That(data.GetProperty("eth1_deposit_index").GetString(), Is.EqualTo("998"));
-
-        JsonElement validators = data.GetProperty("validators");
-        Assert.That(validators.GetArrayLength(), Is.EqualTo(3));
-        Assert.That(validators[1].GetProperty("slashed").GetBoolean(), Is.True, "booleans stay JSON booleans");
-        Assert.That(validators[0].GetProperty("slashed").GetBoolean(), Is.False);
-        Assert.That(validators[1].GetProperty("exit_epoch").GetString(), Is.EqualTo("412600"));
-        Assert.That(validators[0].GetProperty("exit_epoch").GetString(), Is.EqualTo(Presets.FarFutureEpoch.ToString()), "far-future epoch must not overflow or be shortened");
-        Assert.That(validators[2].GetProperty("effective_balance").GetString(), Is.EqualTo("2048000000000"));
-        Assert.That(validators[2].GetProperty("withdrawal_credentials").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x06)));
-
-        Assert.That(data.GetProperty("balances").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "32000000000", "30999999999", "2048000000001" }));
-        Assert.That(data.GetProperty("randao_mixes").GetArrayLength(), Is.EqualTo((int)Presets.EpochsPerHistoricalVector));
-        Assert.That(data.GetProperty("slashings").GetArrayLength(), Is.EqualTo((int)Presets.EpochsPerSlashingsVector));
-        Assert.That(data.GetProperty("slashings")[1].GetString(), Is.EqualTo("64000000000"));
-        // Participation flags are List[uint8]: one decimal per validator, not a packed hex blob.
-        Assert.That(data.GetProperty("previous_epoch_participation").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "1", "3", "7" }));
-        Assert.That(data.GetProperty("current_epoch_participation").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "0", "2", "255" }));
-        Assert.That(data.GetProperty("justification_bits").GetString(), Is.EqualTo("0x09"), "bits {0, 3} of a 4-bit vector, no sentinel");
-        Assert.That(data.GetProperty("previous_justified_checkpoint").GetProperty("epoch").GetString(), Is.EqualTo("412497"));
-        Assert.That(data.GetProperty("current_justified_checkpoint").GetProperty("root").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x32)));
-        Assert.That(data.GetProperty("finalized_checkpoint").GetProperty("root").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x33)));
-        Assert.That(data.GetProperty("inactivity_scores").EnumerateArray().Select(e => e.GetString()), Is.EqualTo(new[] { "0", "4", "0" }));
-
-        JsonElement syncCommittee = data.GetProperty("current_sync_committee");
-        Assert.That(syncCommittee.GetProperty("pubkeys").GetArrayLength(), Is.EqualTo(512));
-        Assert.That(syncCommittee.GetProperty("aggregate_pubkey").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(48, 0x47)));
-        Assert.That(data.GetProperty("next_sync_committee").GetProperty("aggregate_pubkey").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(48, 0x48)));
-
-        JsonElement header = data.GetProperty("latest_execution_payload_header");
-        Assert.That(header.GetProperty("base_fee_per_gas").GetString(), Is.EqualTo("1000000007"));
-        Assert.That(header.GetProperty("extra_data").GetString(), Is.EqualTo("0xbeef"));
-        Assert.That(header.GetProperty("transactions_root").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x58)));
-        Assert.That(header.GetProperty("withdrawals_root").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x59)));
-        Assert.That(header.GetProperty("excess_blob_gas").GetString(), Is.EqualTo("131072"));
-        Assert.That(header.TryGetProperty("transactions", out _), Is.False, "a header carries roots, not the payload lists");
-
-        Assert.That(data.GetProperty("next_withdrawal_index").GetString(), Is.EqualTo("5000000"));
-        Assert.That(data.GetProperty("next_withdrawal_validator_index").GetString(), Is.EqualTo("2"));
-        Assert.That(data.GetProperty("historical_summaries")[0].GetProperty("state_summary_root").GetString(), Is.EqualTo(BeaconApiTestHost.Hex(32, 0x62)));
-        Assert.That(data.GetProperty("deposit_requests_start_index").GetString(), Is.EqualTo("1900000"));
-        Assert.That(data.GetProperty("deposit_balance_to_consume").GetString(), Is.EqualTo("10"));
-        Assert.That(data.GetProperty("exit_balance_to_consume").GetString(), Is.EqualTo("20"));
-        Assert.That(data.GetProperty("earliest_exit_epoch").GetString(), Is.EqualTo("412600"));
-        Assert.That(data.GetProperty("consolidation_balance_to_consume").GetString(), Is.EqualTo("30"));
-        Assert.That(data.GetProperty("earliest_consolidation_epoch").GetString(), Is.EqualTo("412601"));
-        Assert.That(data.GetProperty("pending_deposits")[0].GetProperty("slot").GetString(), Is.EqualTo((Slot - 5).ToString()));
-        Assert.That(data.GetProperty("pending_partial_withdrawals")[0].GetProperty("withdrawable_epoch").GetString(), Is.EqualTo("412700"));
-        Assert.That(data.GetProperty("pending_consolidations")[0].GetProperty("target_index").GetString(), Is.EqualTo("2"));
-        Assert.That(data.GetProperty("proposer_lookahead").GetArrayLength(), Is.EqualTo((int)Presets.ProposerLookaheadSlots));
-        Assert.That(data.GetProperty("proposer_lookahead")[5].GetString(), Is.EqualTo("2"));
+        BeaconApiTestHost.AssertJsonDigest(raw, "73dd94790c3028ae2fd5ecdb35d9b6c63c4cc373b724adf4a60dfb4e899d38e3");
     }
 
     [Test]
