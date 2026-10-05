@@ -141,19 +141,15 @@ public class BlockSignatureBatchProcessingTests
     {
         GloasFixture fixture = SharedGloas.Value;
         BeaconStateGloas state = fixture.Pre.Clone();
-        try
+        string? refusal = Refusal(() =>
         {
             if (batched)
                 GloasBlockProcessing.ProcessBlock(state, block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec());
             else
                 GloasBlockProcessing.ProcessBlock(state, block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: true, batch: null);
-        }
-        catch (BeaconStateException e)
-        {
-            return new Outcome(e.Message, null);
-        }
+        });
 
-        return new Outcome(null, SszRoots.HashTreeRoot(state));
+        return new Outcome(refusal, refusal is null ? SszRoots.HashTreeRoot(state) : null);
     }
 
     private static void AssertBothRefuse(Outcome serial, Outcome batched, string refusal)
@@ -375,19 +371,15 @@ public class BlockSignatureBatchProcessingTests
         EpochCache cache = new();
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
         ulong maxBlobs = fixture.Chain.Spec.MaxBlobsPerBlockElectra;
-        try
+        string? refusal = Refusal(() =>
         {
             if (batched)
                 BlockProcessing.ProcessBlock(state, block, cache, fixture.Pubkeys, new AcceptingNotifier(), maxBlobs);
             else
                 BlockProcessing.ProcessBlock(state, block, cache, fixture.Pubkeys, new AcceptingNotifier(), maxBlobs, verifySignatures: true, batch);
-        }
-        catch (BeaconStateException e)
-        {
-            return new Outcome(e.Message, null);
-        }
+        });
 
-        return new Outcome(null, SszRoots.HashTreeRoot(state));
+        return new Outcome(refusal, refusal is null ? SszRoots.HashTreeRoot(state) : null);
     }
 
     private static Attestation StructurallyInvalidAttestation() => new()
