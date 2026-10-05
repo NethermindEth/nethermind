@@ -16,20 +16,6 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 [HardTimeout(60_000)]
 public class GloasSeedAndEpochCacheTests
 {
-    private const ulong Gwei = 1_000_000_000;
-
-
-    [Test]
-    public void GetSeed_for_gloas_resolves_previous_current_and_next_epoch_to_the_correct_mix()
-    {
-        // An implementation that adds EpochsPerHistoricalVector before the modulo asks GetRandaoMix
-        // for an epoch far outside its window and throws here; a correct one lands on the same slot.
-        ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;
-        BeaconStateGloas state = CreateGloasState(currentEpoch, validatorCount: 4);
-
-        RandaoMixAndEpochCacheTests.AssertSeedMatchesReference(currentEpoch, state.RandaoMixes!, (epoch, domain) => state.GetSeed(epoch, domain));
-    }
-
     [Test]
     public void GetSeed_for_gloas_refuses_an_epoch_whose_mix_is_outside_the_window_instead_of_wrapping()
     {
@@ -43,13 +29,6 @@ public class GloasSeedAndEpochCacheTests
         ulong mixOverwritten = currentEpoch - Presets.EpochsPerHistoricalVector + Presets.MinSeedLookahead;
         Assert.That(() => state.GetSeed(mixOverwritten, [1, 2, 3, 4]), Throws.TypeOf<BeaconStateException>(),
             "the seed for an epoch whose mix the vector has already overwritten must be refused");
-    }
-
-    [Test]
-    public void GetSeed_for_gloas_resolves_at_genesis_without_throwing_despite_the_lookahead_underflowing()
-    {
-        BeaconStateGloas state = CreateGloasState(currentEpoch: 0, validatorCount: 4);
-        Assert.That(() => state.GetSeed(0, [1, 2, 3, 4]), Throws.Nothing);
     }
 
     [Test]
@@ -69,7 +48,6 @@ public class GloasSeedAndEpochCacheTests
         Assert.That(gloas.GetSeed(currentEpoch, DomainType.BeaconAttester), Is.Not.EqualTo(gloas.GetSeed(currentEpoch, DomainType.PtcAttester)), "the domain must reach the preimage");
     }
 
-
     [Test]
     public void GetEpochBoundaryRoot_is_the_block_root_of_the_last_slot_before_the_epoch_and_zero_at_genesis()
     {
@@ -80,39 +58,6 @@ public class GloasSeedAndEpochCacheTests
         Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot + 7, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected));
         Assert.That(EpochCache.GetEpochBoundaryRoot(startSlot, slot => slot == startSlot - 1 ? expected : FromFirstByte(0x00)), Is.EqualTo(expected), "the first slot of the epoch keys on the same root as the rest of it");
         Assert.That(EpochCache.GetEpochBoundaryRoot(3, _ => throw new InvalidOperationException("no block precedes the genesis epoch")), Is.EqualTo(Hash256.Zero));
-    }
-
-    [Test]
-    public void GetTotalActiveBalance_refuses_two_gloas_states_that_diverged_inside_the_previous_epoch_despite_sharing_the_decision_root()
-    {
-        // Diverging after the decision slot but before the boundary: the shuffling agrees, the
-        // effective balances (recomputed at the boundary from balances each branch's own blocks
-        // moved) do not. A decision-root key would hand branch B branch A's balance silently.
-        const ulong epoch = 5;
-        BeaconStateGloas branchA = CreateBranchState(epoch, divergedAtSlot: DecisionSlot(epoch) + 5, branchRoot: FromFirstByte(0xAA), validatorCount: 10);
-        BeaconStateGloas branchB = CreateBranchState(epoch, divergedAtSlot: DecisionSlot(epoch) + 5, branchRoot: FromFirstByte(0xBB), validatorCount: 20);
-        Assert.That(branchA.GetShufflingDecisionRoot(epoch), Is.EqualTo(branchB.GetShufflingDecisionRoot(epoch)), "fixture bug: the branches must share the decision root");
-
-        EpochCache cache = new();
-        Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(10UL * 32 * Gwei));
-        Assert.That(() => cache.GetTotalActiveBalance(branchB), Throws.TypeOf<BeaconStateException>().With.Message.Contains("epoch boundary root"),
-            "branch B's balance is not branch A's; a memo keyed on anything coarser than the boundary root cannot tell them apart");
-    }
-
-    [Test]
-    public void GetTotalActiveBalance_shares_the_memo_between_same_epoch_siblings_because_effective_balances_only_change_at_the_boundary()
-    {
-        // One slot into the epoch, so the sibling blocks at the epoch's first slot have their roots recorded.
-        const ulong epoch = 5;
-        ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
-        BeaconStateGloas siblingA = CreateBranchState(epoch, divergedAtSlot: startSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
-        BeaconStateGloas siblingB = CreateBranchState(epoch, divergedAtSlot: startSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
-        Assert.That(siblingA.BlockRoots![(int)(startSlot % Presets.SlotsPerHistoricalRoot)], Is.Not.EqualTo(siblingB.BlockRoots![(int)(startSlot % Presets.SlotsPerHistoricalRoot)]), "fixture bug: siblings must differ at the first slot of the epoch");
-
-        EpochCache cache = new();
-        ulong balanceA = cache.GetTotalActiveBalance(siblingA);
-        Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA),
-            "nothing a block inside the epoch does changes the current epoch's active set or effective balances, so siblings share the value");
     }
 
     [Test]
@@ -147,7 +92,6 @@ public class GloasSeedAndEpochCacheTests
         Assert.That(next, Is.Not.SameAs(current), "a decision-root match alone must not serve another epoch's committees");
         Assert.That(next.Epoch, Is.EqualTo(nextEpoch));
     }
-
 
     [Test]
     public void Committees_of_a_fulu_state_and_the_gloas_state_upgraded_from_it_are_identical_so_the_shared_cache_may_serve_either([Values(-1, 0, 1)] int epochOffset)
@@ -276,14 +220,13 @@ public class GloasSeedAndEpochCacheTests
         return new Hash256(bytes);
     }
 
-
     private static ulong DecisionSlot(ulong epoch)
     {
         ulong decisionSlot = epoch >= Presets.MinSeedLookahead ? BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch - Presets.MinSeedLookahead) : 0;
         return decisionSlot > 0 ? decisionSlot - 1 : 0;
     }
 
-    private static BeaconStateGloas CreateBranchState(ulong epoch, ulong divergedAtSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0)
+    internal static BeaconStateGloas CreateBranchState(ulong epoch, ulong divergedAtSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0)
     {
         BeaconStateGloas state = CreateGloasState(epoch, validatorCount);
         state.Slot += slotsIntoEpoch;
@@ -292,7 +235,7 @@ public class GloasSeedAndEpochCacheTests
         return state;
     }
 
-    private static BeaconStateGloas CreateGloasState(ulong currentEpoch, int validatorCount)
+    internal static BeaconStateGloas CreateGloasState(ulong currentEpoch, int validatorCount)
     {
         BeaconStateFulu state = RandaoMixAndEpochCacheTests.CreateState(currentEpoch, validatorCount);
         return new BeaconStateGloas

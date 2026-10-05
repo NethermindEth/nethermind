@@ -54,22 +54,24 @@ public class RandaoMixAndEpochCacheTests
     }
 
     [Test]
-    public void GetSeed_still_resolves_previous_current_and_next_epoch_to_the_correct_mix()
+    [HardTimeout(60_000)]
+    public void GetSeed_still_resolves_previous_current_and_next_epoch_to_the_correct_mix([Values] bool gloas)
     {
         // Seed lookback and the historical-window check must resolve the same mix.
         ulong currentEpoch = Presets.EpochsPerHistoricalVector + 100;
-        BeaconStateFulu state = CreateState(currentEpoch, validatorCount: 4);
+        dynamic state = CreateState(gloas, currentEpoch, validatorCount: 4);
 
-        AssertSeedMatchesReference(currentEpoch, state.RandaoMixes!, (epoch, domain) => state.GetSeed(epoch, domain));
+        AssertSeedMatchesReference(currentEpoch, (Hash256[])state.RandaoMixes!, (epoch, domain) => gloas ? ((BeaconStateGloas)state).GetSeed(epoch, domain) : ((BeaconStateFulu)state).GetSeed(epoch, domain));
     }
 
     [Test]
-    public void GetSeed_resolves_at_genesis_without_throwing_despite_the_lookahead_underflowing()
+    [HardTimeout(60_000)]
+    public void GetSeed_resolves_at_genesis_without_throwing_despite_the_lookahead_underflowing([Values] bool gloas)
     {
         // epoch=0 makes "epoch - MinSeedLookahead - 1" underflow to a huge ulong; the window check
         // must still accept it because the whole vector is genesis-seeded, matching spec behaviour.
-        BeaconStateFulu state = CreateState(currentEpoch: 0, validatorCount: 4);
-        Assert.That(() => state.GetSeed(0, [1, 2, 3, 4]), Throws.Nothing);
+        dynamic state = CreateState(gloas, currentEpoch: 0, validatorCount: 4);
+        Assert.That(() => gloas ? ((BeaconStateGloas)state).GetSeed(0, [1, 2, 3, 4]) : ((BeaconStateFulu)state).GetSeed(0, [1, 2, 3, 4]), Throws.Nothing);
     }
 
     [Test]
@@ -90,15 +92,16 @@ public class RandaoMixAndEpochCacheTests
     }
 
     [Test]
-    public void GetTotalActiveBalance_refuses_reuse_across_two_branches_that_diverged_inside_the_previous_epoch()
+    [HardTimeout(60_000)]
+    public void GetTotalActiveBalance_refuses_reuse_across_two_branches_that_diverged_inside_the_previous_epoch([Values] bool gloas)
     {
         // Same shuffling decision root (the fork happened after that slot), different boundary root:
         // exactly the pair a decision-root key hands the wrong balance to without a word.
         const ulong epoch = 5;
         ulong forkSlot = DecisionSlot(epoch) + 5;
-        BeaconStateFulu branchA = CreateBranchState(epoch, forkSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10);
-        BeaconStateFulu branchB = CreateBranchState(epoch, forkSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 20);
-        Assert.That(branchA.GetShufflingDecisionRoot(epoch), Is.EqualTo(branchB.GetShufflingDecisionRoot(epoch)), "test fixture bug: the branches must share the decision root");
+        dynamic branchA = CreateBranchState(gloas, epoch, forkSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10);
+        dynamic branchB = CreateBranchState(gloas, epoch, forkSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 20);
+        Assert.That(DecisionRoot(gloas, branchA, epoch), Is.EqualTo(DecisionRoot(gloas, branchB, epoch)), "test fixture bug: the branches must share the decision root");
 
         EpochCache cache = new();
         Assert.That(cache.GetTotalActiveBalance(branchA), Is.EqualTo(10UL * 32 * Gwei));
@@ -107,21 +110,35 @@ public class RandaoMixAndEpochCacheTests
     }
 
     [Test]
-    public void GetTotalActiveBalance_shares_the_memo_between_siblings_that_diverged_inside_the_memoized_epoch()
+    [HardTimeout(60_000)]
+    public void GetTotalActiveBalance_shares_the_memo_between_siblings_that_diverged_inside_the_memoized_epoch([Values] bool gloas)
     {
         // Blocks inside the epoch move raw balances only; the active set and effective balances the
         // total is built from were fixed at the boundary both siblings share.
         // One slot into the epoch, so the sibling blocks at the epoch's first slot have their roots recorded.
         const ulong epoch = 5;
         ulong startSlot = BeaconStateAccessors.ComputeStartSlotAtEpoch(epoch);
-        BeaconStateFulu siblingA = CreateBranchState(epoch, startSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
-        BeaconStateFulu siblingB = CreateBranchState(epoch, startSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
-        Assert.That(siblingA.GetBlockRootAtSlot(startSlot), Is.Not.EqualTo(siblingB.GetBlockRootAtSlot(startSlot)), "test fixture bug: siblings must differ at the first slot of the epoch");
+        dynamic siblingA = CreateBranchState(gloas, epoch, startSlot, branchRoot: FromFirstByte(0xAA), validatorCount: 10, slotsIntoEpoch: 1);
+        dynamic siblingB = CreateBranchState(gloas, epoch, startSlot, branchRoot: FromFirstByte(0xBB), validatorCount: 10, slotsIntoEpoch: 1);
+        if (gloas)
+            Assert.That(siblingA.BlockRoots[(int)(startSlot % Presets.SlotsPerHistoricalRoot)], Is.Not.EqualTo(siblingB.BlockRoots[(int)(startSlot % Presets.SlotsPerHistoricalRoot)]), "fixture bug: siblings must differ at the first slot of the epoch");
+        else
+            Assert.That(((BeaconStateFulu)siblingA).GetBlockRootAtSlot(startSlot), Is.Not.EqualTo(((BeaconStateFulu)siblingB).GetBlockRootAtSlot(startSlot)), "test fixture bug: siblings must differ at the first slot of the epoch");
 
         EpochCache cache = new();
         ulong balanceA = cache.GetTotalActiveBalance(siblingA);
-        Assert.That(() => cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA), "same-epoch siblings legitimately share the total");
+        Assert.That(() => (ulong)cache.GetTotalActiveBalance(siblingB), Is.EqualTo(balanceA), "same-epoch siblings legitimately share the total");
     }
+
+    private static dynamic CreateState(bool gloas, ulong currentEpoch, int validatorCount) =>
+        gloas ? (object)GloasSeedAndEpochCacheTests.CreateGloasState(currentEpoch, validatorCount) : CreateState(currentEpoch, validatorCount);
+
+    private static dynamic CreateBranchState(bool gloas, ulong epoch, ulong forkSlot, Hash256 branchRoot, int validatorCount, ulong slotsIntoEpoch = 0) =>
+        gloas ? (object)GloasSeedAndEpochCacheTests.CreateBranchState(epoch, forkSlot, branchRoot, validatorCount, slotsIntoEpoch)
+            : CreateBranchState(epoch, forkSlot, branchRoot, validatorCount, slotsIntoEpoch);
+
+    private static Hash256 DecisionRoot(bool gloas, dynamic state, ulong epoch) =>
+        gloas ? ((BeaconStateGloas)state).GetShufflingDecisionRoot(epoch) : ((BeaconStateFulu)state).GetShufflingDecisionRoot(epoch);
 
     internal static void AssertSeedMatchesReference(ulong currentEpoch, Hash256[] randaoMixes, Func<ulong, byte[], Hash256> getSeed)
     {
