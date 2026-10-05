@@ -493,31 +493,87 @@ public class DeferredBlockColumnFetchTests
         Assert.That(gossipHeld, Is.EqualTo(heldCount + 1), "a gossip block still finds room in the queue");
     }
 
-    [Test]
+    public enum HeldChildOutcome { Imported, DataUnavailable, Invalid, RetrySetRefused }
+
+    [TestCase(HeldChildOutcome.Imported, true, TestName = "The_held_chain_ends_when_its_blocks_import_and_passes_to_a_child_that_waits_in_turn(False)")]
+    [TestCase(HeldChildOutcome.DataUnavailable, true, TestName = "The_held_chain_ends_when_its_blocks_import_and_passes_to_a_child_that_waits_in_turn(True)")]
+    [TestCase(HeldChildOutcome.Invalid, true, TestName = "Blocks_held_behind_an_invalid_block_are_dropped_with_one_log_line_and_fetched_again")]
+    [TestCase(HeldChildOutcome.RetrySetRefused, true, TestName = "Blocks_held_behind_a_block_the_full_retry_set_refuses_are_dropped_with_one_log_line")]
+    [TestCase(HeldChildOutcome.RetrySetRefused, false, TestName = "A_held_tip_the_full_retry_set_refuses_is_fetched_again_by_the_next_round")]
     [CancelAfter(60_000)]
-    public async Task The_held_chain_ends_when_its_blocks_import_and_passes_to_a_child_that_waits_in_turn([Values] bool childWaits, CancellationToken token)
+    public async Task Held_children_follow_their_import_outcome(HeldChildOutcome outcome, bool hasDescendant, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
-        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
+        TestLogRecorder log = new();
+        bool refused = outcome == HeldChildOutcome.RetrySetRefused;
+        bool drops = outcome == HeldChildOutcome.Invalid || refused && hasDescendant;
+        ForkedSignedBeaconBlock head = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
+        ForkedSignedBeaconBlock first = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(2, fixture.Chain.BlockRoot));
+        // A sibling is re-driven with the first child; only one fits the retry set's last place.
+        ForkedSignedBeaconBlock? sibling = refused ? new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(3, fixture.Chain.BlockRoot)) : null;
+        ForkedSignedBeaconBlock[] blocks = refused
+            ? hasDescendant ? [head, first, sibling!, new ForkedSignedBeaconBlock.OfFulu(Fixture.ChainAbove(sibling!.ComputeMessageRoot(), slots: [4])[0])] : [head, first, sibling!]
+            : [head, .. Fixture.ChainAbove(fixture.Chain.BlockRoot, outcome == HeldChildOutcome.Invalid ? [2, 3, 4, 5] : [2, 3, 4]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
         List<ulong> requestedStarts = [];
-        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks));
-        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: 0);
+        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, refused ? [head, first] : blocks));
+        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token,
+            fillers: refused ? RetrySetCapacity - 1 : 0, logs: drops ? new OneLoggerLogManager(new ILogger(log)) : null);
+        if (refused) importer.Stuck.UnionWith([first.ComputeMessageRoot(), sibling!.ComputeMessageRoot()]);
         await orchestrator.FeedRangeSyncRoundAsync(token);
+        if (refused)
+        {
+            orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(sibling!));
+            if (hasDescendant) orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(blocks[3]));
+        }
         await orchestrator.ProcessQueuedAsync(token);
         ulong? heldBefore = orchestrator.RangeHeldSlot;
-        (childWaits ? importer.Stuck : importer.Accepted).Add(blocks[1].ComputeMessageRoot());
-        importer.Accepted.UnionWith(blocks[2..].Select(static b => b.ComputeMessageRoot()));
-
+        int heldCountBefore = orchestrator.PendingGossipBlockCount;
+        ulong droppedBefore = Metrics.BeaconChainHeldBlocksDropped;
+        if (outcome is HeldChildOutcome.Imported or HeldChildOutcome.DataUnavailable)
+        {
+            // Script the held children only after the range worker has held them for their parent.
+            (outcome == HeldChildOutcome.DataUnavailable ? importer.Stuck : importer.Accepted).Add(blocks[1].ComputeMessageRoot());
+            importer.Accepted.UnionWith(blocks[2..].Select(static b => b.ComputeMessageRoot()));
+        }
+        // Invalid children remain unscripted, so the real parent becoming known exposes their invalidity.
         fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
         await orchestrator.SettleColumnFetchesAsync(token);
         int requestsBefore = requestedStarts.Count;
+        if (outcome is HeldChildOutcome.Invalid or HeldChildOutcome.RetrySetRefused) requestedStarts.Clear();
         await orchestrator.FeedRangeSyncRoundAsync(token);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBefore, Is.EqualTo(blocks[^1].Slot), "fixture: the blocks are held for the deferred block");
-        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
-        Assert.That(orchestrator.RangeHeldSlot, Is.EqualTo(childWaits ? blocks[^1].Slot : null));
-        Assert.That(requestedStarts.Skip(requestsBefore), Is.All.GreaterThan(blocks[^1].Slot), "no held block is asked for again");
+        if (outcome is HeldChildOutcome.Imported or HeldChildOutcome.DataUnavailable)
+        {
+            Assert.That(heldBefore, Is.EqualTo(blocks[^1].Slot), "fixture: the blocks are held for the deferred block");
+            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
+            Assert.That(orchestrator.RangeHeldSlot, Is.EqualTo(outcome == HeldChildOutcome.DataUnavailable ? blocks[^1].Slot : null));
+            Assert.That(requestedStarts.Skip(requestsBefore), Is.All.GreaterThan(blocks[^1].Slot), "no held block is asked for again");
+        }
+        else
+        {
+            Assert.That(heldCountBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred head are held");
+            if (refused)
+            {
+                Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the first block took the last place");
+                Assert.That(requestedStarts, Has.Some.EqualTo(sibling!.Slot), "the next round starts at the refused block, not past it");
+            }
+            else
+            {
+                Assert.That(Metrics.BeaconChainHeldBlocksDropped, Is.GreaterThanOrEqualTo(droppedBefore + (ulong)(blocks.Length - 2)), "the drop is counted");
+                Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
+                Assert.That(requestedStarts, Has.Some.EqualTo(blocks[1].Slot), "the next round fetches the dropped blocks again");
+            }
+            if (drops)
+            {
+                string[] lines = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
+                Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred head imported");
+                Assert.That(lines, Has.Length.EqualTo(1), "one line for the whole chain");
+                Assert.That(lines[0], Does.Contain(refused ? $"the 1 held block behind {sibling!.ComputeMessageRoot()}" : $"the {blocks.Length - 2} held blocks behind {blocks[1].ComputeMessageRoot()}")
+                    .And.Contain(refused ? "retry set is full" : "invalid"));
+                Assert.That(log.Messages, Has.None.Contain("Exception"));
+            }
+        }
     }
 
     [Test]
@@ -580,85 +636,6 @@ public class DeferredBlockColumnFetchTests
         Assert.That(heldAfterExpiry, Is.Zero, "the blocks behind it are dropped with it");
         Assert.That(heldSlotAfterExpiry, Is.Null);
         Assert.That(drain.RequestedStarts, Has.Some.LessThanOrEqualTo(waiting.Slot), "the next round asks for the dropped block again");
-    }
-
-    [Test]
-    [CancelAfter(60_000)]
-    public async Task Blocks_held_behind_an_invalid_block_are_dropped_with_one_log_line_and_fetched_again(CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        TestLogRecorder log = new();
-        ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), .. Fixture.ChainAbove(fixture.Chain.BlockRoot, slots: [2, 3, 4, 5]).Select(static b => new ForkedSignedBeaconBlock.OfFulu(b))];
-        List<ulong> requestedStarts = [];
-        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, blocks));
-        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter _) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: 0, new OneLoggerLogManager(new ILogger(log)));
-        await orchestrator.FeedRangeSyncRoundAsync(token);
-        await orchestrator.ProcessQueuedAsync(token);
-        int heldBefore = orchestrator.PendingGossipBlockCount;
-        ulong droppedBefore = Metrics.BeaconChainHeldBlocksDropped;
-
-        fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
-        await orchestrator.SettleColumnFetchesAsync(token);
-        requestedStarts.Clear();
-        await orchestrator.FeedRangeSyncRoundAsync(token);
-
-        string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred block are held");
-        Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred block imported");
-        Assert.That(drops, Has.Length.EqualTo(1), "one line for the whole chain");
-        Assert.That(drops[0], Does.Contain($"the {blocks.Length - 2} held blocks behind {blocks[1].ComputeMessageRoot()}").And.Contain("invalid"));
-        Assert.That(log.Messages, Has.None.Contain("Exception"));
-        Assert.That(Metrics.BeaconChainHeldBlocksDropped, Is.GreaterThanOrEqualTo(droppedBefore + (ulong)(blocks.Length - 2)), "the drop is counted");
-        Assert.That(orchestrator.PendingGossipBlockCount, Is.Zero);
-        Assert.That(requestedStarts, Has.Some.EqualTo(blocks[1].Slot), "the next round fetches the dropped blocks again");
-    }
-
-    [TestCase(true, TestName = "Blocks_held_behind_a_block_the_full_retry_set_refuses_are_dropped_with_one_log_line")]
-    [TestCase(false, TestName = "A_held_tip_the_full_retry_set_refuses_is_fetched_again_by_the_next_round")]
-    [CancelAfter(60_000)]
-    public async Task A_block_the_full_retry_set_refuses_is_fetched_again_by_the_next_round(bool hasDescendant, CancellationToken token)
-    {
-        await using Fixture fixture = Fixture.Create();
-        TestLogRecorder log = new();
-        ForkedSignedBeaconBlock head = new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block);
-        ForkedSignedBeaconBlock first = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(2, fixture.Chain.BlockRoot));
-        // A fork of the first block: the deferred head's import re-drives both, and only one finds room in the retry set.
-        ForkedSignedBeaconBlock refused = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(3, fixture.Chain.BlockRoot));
-        ForkedSignedBeaconBlock[] blocks = hasDescendant
-            ? [head, first, refused, new ForkedSignedBeaconBlock.OfFulu(Fixture.ChainAbove(refused.ComputeMessageRoot(), slots: [4])[0])]
-            : [head, first, refused];
-        List<ulong> requestedStarts = [];
-        fixture.Peers.Add(fixture.RangePeer("server", headSlot: 1000, requestedStarts, [head, first]));
-        (BeaconSyncOrchestrator orchestrator, StuckBlocksImporter importer) = await CreateOrchestratorWithFullRetrySetAsync(fixture, token, fillers: RetrySetCapacity - 1,
-            logs: hasDescendant ? new OneLoggerLogManager(new ILogger(log)) : null);
-        importer.Stuck.UnionWith([first.ComputeMessageRoot(), refused.ComputeMessageRoot()]);
-        await orchestrator.FeedRangeSyncRoundAsync(token);
-        orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(refused));
-        if (hasDescendant)
-        {
-            orchestrator.WorkWriter.TryWrite(new BeaconSyncOrchestrator.RangeBlockItem(blocks[3]));
-        }
-        await orchestrator.ProcessQueuedAsync(token);
-        int heldBefore = orchestrator.PendingGossipBlockCount;
-
-        fixture.AdmitPeer(fixture.Peer("custodian", fixture.Sampled));
-        await orchestrator.SettleColumnFetchesAsync(token);
-        requestedStarts.Clear();
-        await orchestrator.FeedRangeSyncRoundAsync(token);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(heldBefore, Is.EqualTo(blocks.Length - 1), "fixture: the blocks above the deferred head are held");
-        Assert.That(orchestrator.PendingRetryBlockCount, Is.EqualTo(RetrySetCapacity), "fixture: the first block took the last place");
-        Assert.That(requestedStarts, Has.Some.EqualTo(refused.Slot), "the next round starts at the refused block, not past it");
-        if (hasDescendant)
-        {
-            string[] drops = [.. log.Messages.Where(static line => line.StartsWith("Dropped "))];
-            Assert.That(fixture.Importer.IsKnown(fixture.Chain.BlockRoot), Is.True, "fixture: the deferred head imported");
-            Assert.That(drops, Has.Length.EqualTo(1));
-            Assert.That(drops[0], Does.Contain($"the 1 held block behind {refused.ComputeMessageRoot()}").And.Contain("retry set is full"));
-            Assert.That(log.Messages, Has.None.Contain("Exception"));
-        }
     }
 
     [Test]
