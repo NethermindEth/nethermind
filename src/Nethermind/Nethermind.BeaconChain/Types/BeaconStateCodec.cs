@@ -25,22 +25,6 @@ public static class BeaconStateCodec
     /// </remarks>
     private const int SlotOffset = 40;
 
-    /// <summary>Decodes <paramref name="ssz"/> as the only state layout this driver processes.</summary>
-    /// <exception cref="BeaconStateException">The state is too short to carry a slot.</exception>
-    /// <exception cref="NotSupportedException">The state belongs to a fork this driver cannot process.</exception>
-    public static BeaconStateFulu Decode(ReadOnlySpan<byte> ssz, BeaconChainSpec spec)
-    {
-        BeaconFork fork = ForkOf(ssz, spec, out ulong slot);
-        if (fork != BeaconFork.Fulu)
-        {
-            throw new NotSupportedException(
-                $"Beacon state at slot {slot} belongs to the {fork} fork; this driver can only process Fulu states");
-        }
-
-        BeaconStateFulu.Decode(ssz, out BeaconStateFulu state);
-        return state;
-    }
-
     /// <summary>Decodes <paramref name="ssz"/> as the state layout of the fork its slot belongs to.</summary>
     /// <remarks>
     /// Only the slot selects the layout; a caller holding untrusted bytes must still check that the
@@ -52,7 +36,8 @@ public static class BeaconStateCodec
     /// <exception cref="System.IO.InvalidDataException">The body is malformed for the layout its slot selects.</exception>
     public static ForkedBeaconState DecodeForked(ReadOnlySpan<byte> ssz, BeaconChainSpec spec)
     {
-        BeaconFork fork = ForkOf(ssz, spec, out ulong slot);
+        ulong slot = ReadSlot(ssz);
+        BeaconFork fork = spec.ForkAtEpoch(spec.GetEpoch(slot));
         switch (fork)
         {
             case BeaconFork.Fulu:
@@ -65,12 +50,6 @@ public static class BeaconStateCodec
                 throw new NotSupportedException(
                     $"Beacon state at slot {slot} belongs to the {fork} fork; this driver can only process Fulu and Gloas states");
         }
-    }
-
-    private static BeaconFork ForkOf(ReadOnlySpan<byte> ssz, BeaconChainSpec spec, out ulong slot)
-    {
-        slot = ReadSlot(ssz);
-        return spec.ForkAtEpoch(spec.GetEpoch(slot));
     }
 
     /// <summary>Reads <c>slot</c> without decoding the rest of the state.</summary>
