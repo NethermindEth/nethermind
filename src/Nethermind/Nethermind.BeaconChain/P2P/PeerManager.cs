@@ -36,20 +36,8 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>
-/// Maintains connections to the configured static peers, to peers discovered via discv5, and to
-/// peers that connected to us: dials or admits them, exchanges <c>status</c> and <c>ping</c>
-/// periodically, prunes peers on a fork digest mismatch or repeated failures, and keeps the
-/// connected count within the configured peer band.
-/// </summary>
-/// <remarks>
-/// The gossipsub peer score counts only invalid gossip deliveries (<see cref="Gossip.GossipScoring"/>) and is lost when a
-/// peer disconnects, so this class is the line of defence that outlasts a session: it cannot penalise a peer, only
-/// disconnect it, cap how many it admits, and remember which ones kept faulting. See
-/// <see cref="BanRecord"/> for the per-peer-id history that survives a single disconnect (the ban
-/// list and diagnostics), as opposed to <see cref="ManagedPeer"/>, which only lives as long as the
-/// session does.
-/// </remarks>
+/// <summary>Admits, maintains and prunes static, discovered and inbound peers within the configured peer band.</summary>
+/// <remarks>Gossipsub scores disappear on disconnect. BanRecord retains per-peer-id fault history across sessions; ManagedPeer is session-local.</remarks>
 public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
 {
     // Generous: a slow peer hammered by range-sync batches can rack up transient timeouts
@@ -134,7 +122,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // Ends the status refreshes with Run; none when Run was never started.
     private CancellationToken _runToken;
 
-    /// <summary>The chain reached at least <paramref name="Slot"/> as of <paramref name="SinceTicks"/> (UTC ticks).</summary>
     private sealed record ChainAhead(ulong Slot, long SinceTicks);
 
     // Keyed by peer id (not dial address), so a ban and the message/failure history behind it
@@ -158,11 +145,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     // Admissions in flight per session, guarded by _admissionLock: DisconnectUnadmittedAsync leaves a session one of them holds open.
     private readonly Dictionary<ISession, int> _admittingSessions = [];
 
-    /// <summary>What an admission in flight already knows about its peer: enough for the directory's
-    /// <see cref="PeerConnectionState.Connecting"/> entry and for the peer-id dedup in <see cref="IsKnown"/>.
-    /// <paramref name="Enr"/> is only ever known for a discovery-sourced dial (see
-    /// <see cref="TryAddPeerAsync"/>'s optional parameter); <c>null</c> for a static-peer reconnect or
-    /// an inbound session, which have no ENR to offer.</summary>
+    /// <summary>Admission identity for directory entries and peer-id deduplication; ENR is known only for discovery dials.</summary>
     private readonly record struct Reservation(string PeerId, PeerDirection Direction, string? Enr);
 
     /// <param name="discovery">Supplies this node's sampled columns and dials their custodians; without it no custody is sought or kept.</param>
@@ -214,20 +197,17 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>The low watermark's one real effect: maintenance (static-peer reconnect, health
-    /// checks) runs more often while under-peered instead of the knob being read nowhere.</summary>
     private TimeSpan NextMaintenanceInterval => _peers.Count < _config.MinPeerCount ? UnderPeeredMaintenanceInterval : MaintenanceInterval;
 
-    /// <summary>Internal so a test can assert the cadence choice without waiting out a real interval.</summary>
     internal TimeSpan NextMaintenanceIntervalForTest => NextMaintenanceInterval;
 
-    /// <summary>How old a peer's <c>status</c> may get before it is asked again, whatever the health checks do; settable so a test need not wait it out.</summary>
+    /// <summary>Maximum status age before a refresh is requested.</summary>
     internal TimeSpan StatusRefreshInterval { get; set; } = TimeSpan.FromMinutes(1);
 
-    /// <summary>The least time between two <c>status</c> requests to one peer outside the health checks; settable so a test need not wait it out.</summary>
+    /// <summary>Minimum interval between status refreshes outside health checks.</summary>
     internal TimeSpan MinStatusRefreshInterval { get; set; } = TimeSpan.FromSeconds(12);
 
-    /// <summary>How often an admitted peer's gossip channel is checked, and the first wait after one is opened; settable so a test need not wait it out.</summary>
+    /// <summary>Interval between gossip-channel checks and the initial check after opening.</summary>
     internal TimeSpan GossipChannelCheckInterval { get; set; } = TimeSpan.FromSeconds(5);
 
     /// <inheritdoc/>
@@ -250,8 +230,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     /// <inheritdoc/>
     public void RefreshStatusesBelow(ulong slot, string reason) => RefreshStatuses(peer => peer.HeadSlot < slot, reason);
 
-    /// <summary>Asks every connected peer that is <paramref name="due"/>, has no <c>status</c> request outstanding and was not asked within <see cref="MinStatusRefreshInterval"/>; logs once when any is asked.</summary>
-    /// <remarks>Runs off the caller's thread, at most <see cref="MaxConcurrentStatusRefreshes"/> requests at once; a failure only marks the peer's status stale.</remarks>
+    /// <remarks>Runs off the caller's thread with bounded concurrency; failure only marks status stale.</remarks>
     private void RefreshStatuses(Func<ManagedPeer, bool> due, string reason)
     {
         long now = _timestamper.UtcNowOffset.UtcTicks;
@@ -301,7 +280,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>Refreshes, every <see cref="StatusRefreshInterval"/>, the <c>status</c> of each peer not heard from within it, so a health check that keeps failing does not leave it stale.</summary>
     private async Task RefreshStatusesOnCadenceAsync(CancellationToken token)
     {
         while (!token.IsCancellationRequested)
@@ -313,17 +291,8 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>
-    /// Backpressure for the discovery dial loop: the loop should ask whether there is room rather
-    /// than deciding for itself from raw config, so this is the one place "at target" is defined.
-    /// Returns once the pool is below <see cref="IBeaconChainConfig.TargetPeerCount"/> counting both
-    /// connected peers and dials already admitted but not yet resolved, so a burst of concurrent
-    /// dials cannot itself blow through the target the moment they all land.
-    /// </summary>
-    /// <remarks>
-    /// Also returns while a sampled column has no connected custodian; <see cref="TryAddPeerAsync"/> then admits past the target
-    /// only a candidate custodying such a column, making room for it at <see cref="IBeaconChainConfig.MaxPeerCount"/>.
-    /// </remarks>
+    /// <summary>Waits until connected peers plus admission reservations are below TargetPeerCount, or sampled columns lack custodians.</summary>
+    /// <remarks>A custody-shortfall admission may exceed the target, making room at MaxPeerCount.</remarks>
     public async Task WaitForAdmissionCapacityAsync(CancellationToken token)
     {
         while (true)
@@ -376,7 +345,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return count;
     }
 
-    /// <summary>Hands discovery the sampled columns left without a connected custodian, and wakes the admission wait when there are any.</summary>
     private void PublishCustodyShortfall()
     {
         IReadOnlyList<ulong> uncustodied = UncustodiedSampledColumns();
@@ -413,18 +381,9 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         PublishCustodyShortfall();
     }
 
-    /// <summary>
-    /// Drops the worst non-static peers down to <see cref="IBeaconChainConfig.TargetPeerCount"/> once
-    /// the connected count is over <see cref="IBeaconChainConfig.MaxPeerCount"/> (the high watermark).
-    /// </summary>
-    /// <remarks>
-    /// Configured static peers are never trimmed: dropping one an operator explicitly asked for would
-    /// just have the next maintenance round reconnect it, and it is not a "worst" peer by any measure
-    /// here. Worst is ranked by consecutive health-check failures first, then by stale head slot -
-    /// the same signals the health check itself already trusts, not a new scoring scheme.
-    /// The last connected custodian of a column this node samples is kept too, since without it the node
-    /// cannot retrieve that column (fulu/das-core.md); the pool can then stay above the target.
-    /// </remarks>
+    /// <summary>Trims to TargetPeerCount when above MaxPeerCount.</summary>
+    /// <remarks>Keep static peers and the last custodian of each sampled column (fulu/das-core.md). Rank others by health failures, then
+    /// stale head; protected peers may leave the pool above target.</remarks>
     private async Task TrimToPeerBandAsync(string[] staticAddresses, CancellationToken token)
     {
         int overflow = _peers.Count - _config.MaxPeerCount;
@@ -459,7 +418,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         }
     }
 
-    /// <summary>The connected peers other than configured static ones, worst first: most consecutive health-check failures, then stalest head.</summary>
     private List<ManagedPeer> TrimmableWorstFirst(string[] staticAddresses)
     {
         // By peer id, not pool key: a static peer that connected to us first is keyed by the address it
@@ -511,7 +469,6 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return false;
     }
 
-    /// <summary>The worst non-static peer that would not be the last custodian of a sampled column once <paramref name="joining"/> is connected too.</summary>
     private ManagedPeer? WorstReplaceablePeer(PeerColumnCustody joining)
     {
         IReadOnlyList<ulong> sampled = _localCustody.Current?.SampledColumns ?? [];
@@ -608,9 +565,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
         return OrderForSelection(best.Count > 0 ? best : leastFailed, peer => peer.IsCoolingDown(now), static peer => peer.RequestsInFlight, static peer => peer.HeadSlot);
     }
 
-    /// <summary>The <see cref="MaxPeersOfferedAtFailureLimit"/> peers of <paramref name="peers"/> with the fewest request failures, then the fewest consecutive failures,
-    /// then first in <see cref="OrderForSelection{T}"/>.</summary>
-    /// <remarks>Request failures are held at the limit, so the consecutive count, which a passing health check clears, separates peers at the limit.</remarks>
+    /// <remarks>Request failures saturate at the limit; consecutive failures distinguish peers there and clear on successful health checks.</remarks>
     private static List<ManagedPeer> LeastFailed(List<ManagedPeer> peers, long now)
     {
         if (peers.Count == 0)

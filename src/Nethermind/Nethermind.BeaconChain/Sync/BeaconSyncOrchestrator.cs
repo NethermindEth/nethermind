@@ -64,10 +64,8 @@ public sealed class BeaconSyncOrchestrator(
     HeadSnapshotHolder? headSnapshots = null,
     ColumnBackfill? columnBackfill = null)
 {
-    /// <summary>Maximum parent-chain depth fetched by root for a gossip block with an unknown parent.</summary>
     private const int MaxBackfillDepth = 32;
 
-    /// <summary>Peers tried per by-root fetch before giving the block up.</summary>
     private const int MaxBackfillPeersPerRequest = 3;
 
     /// <summary>By-root backfills started per wall-clock slot for gossip blocks with an unknown parent.</summary>
@@ -87,7 +85,6 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The most held range blocks whose missing columns are fetched at once, so the blocks behind a deferred one do not wait for each other's fetch.</summary>
     internal const int MaxConcurrentHeldColumnFetches = 8;
 
-    /// <summary>Cap on blocks awaiting a data/engine-availability retry, so a stuck peer or a stalled EL cannot grow this without bound.</summary>
     private const int MaxPendingRetryBlocks = 128;
 
     /// <summary>Epochs a block or envelope may wait in a retry set, so under stalled finality a stuck one does not keep its place.</summary>
@@ -96,10 +93,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>Envelopes held per block root, first come, so forgeries naming one block cannot take every place.</summary>
     private const int MaxPendingEnvelopesPerBlock = 4;
 
-    /// <summary>Cap on envelopes held for a block not imported yet, and separately on envelopes awaiting a data or engine retry.</summary>
     private const int MaxPendingEnvelopes = 128;
 
-    /// <summary>Cap on imported Gloas blocks whose sampled columns are still recovered by root on each slot tick.</summary>
     private const int MaxColumnRecoveryBlocks = 32;
 
     private const int RecentEnvelopeRequestCapacity = 1024;
@@ -114,7 +109,6 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The most gossip votes and slashings verified per worker pass, so a flood of them delays queued blocks by one batch at most.</summary>
     internal const int VotesPerPass = 64;
 
-    /// <summary>Head-step cadence while the work queue never drains (deep range sync).</summary>
     private const int HeadStepImportInterval = 64;
 
     /// <summary>The longest the worker imports without a head step, so the execution layer's head follows fork choice while range sync imports behind the wall clock.</summary>
@@ -130,7 +124,6 @@ public sealed class BeaconSyncOrchestrator(
 
     private readonly ILogger _logger = logManager.GetClassLogger<BeaconSyncOrchestrator>();
 
-    /// <summary>Runs the importer's block and envelope imports, whose engine call blocks, off the thread pool.</summary>
     private readonly ImportThread _importThread = new();
     private readonly Channel<WorkItem> _work = Channel.CreateBounded<WorkItem>(
         new BoundedChannelOptions(WorkQueueCapacity) { SingleReader = true });
@@ -158,59 +151,45 @@ public sealed class BeaconSyncOrchestrator(
 
     private ulong _statusLogEpoch;
 
-    /// <summary>Gossip blocks waiting for their parent, keyed by the unknown parent root.</summary>
     private readonly Dictionary<Hash256, List<ForkedSignedBeaconBlock>> _pendingByParent = [];
 
-    /// <summary>Blocks that returned <see cref="BlockImportResult.DataUnavailable"/>, <see cref="BlockImportResult.EngineUnavailable"/>, <see cref="BlockImportResult.ParentPayloadUnverified"/> or <see cref="BlockImportResult.FutureSlot"/>, keyed by block root, awaiting a retry.</summary>
     private readonly Dictionary<Hash256, PendingRetry> _pendingRetry = [];
 
     /// <summary>The pending verdicts of gossip blocks whose import has not settled, by the signed copy that carried them.</summary>
     /// <remarks>Only a block whose proposer signature verified keeps one; every slot tick drops the ended ones and ignores those no longer held.</remarks>
     private readonly Dictionary<ForkedSignedBeaconBlock, GossipVerdict> _gossipVerdicts = new(ReferenceEqualityComparer.Instance);
 
-    /// <summary>Other signed copies of the blocks in <see cref="_pendingRetry"/>, by block root, oldest first; one takes the queued copy's place once that fails verification.</summary>
-    /// <remarks>
-    /// Gossip deduplicates by message id, a hash of the whole message data with the signature (p2p-interface.md <c>message-id</c>), so copies under one block root reach this node apart, and a
-    /// forged one may be queued before the genuine one. The copies count towards <see cref="MaxPendingRetryBlocks"/>.
-    /// </remarks>
+    /// <summary>Retains other signed copies oldest-first, counting them against the retry cap. Gossip IDs include signatures (p2p-interface.md message-id), so a forgery may arrive before the genuine copy.</summary>
     private readonly Dictionary<Hash256, List<PendingRetry>> _pendingRetryCopies = [];
     private int _pendingRetryCopyCount;
 
     /// <summary>Blocks fetched by root that wait in <see cref="_pendingByParent"/> behind a fetched ancestor, so they import as fetched; bounded like that queue.</summary>
     private readonly LruCache<Hash256, HeldFetchedBlock> _heldFetched = new(MaxPendingGossipBlocks, nameof(_heldFetched));
 
-    /// <summary>The custodians asked for the missing columns of each block in <see cref="_pendingRetry"/>, kept across slots so every custodian is reached.</summary>
     private readonly Dictionary<Hash256, RangeSync.ColumnFetchRotation> _columnFetchRotations = [];
 
-    /// <summary>The roots whose by-root column fetch is running, at most one each; the fetch runs off the worker and ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
     private readonly HashSet<Hash256> _columnFetchesInFlight = [];
 
     /// <summary>Deferred blocks whose fetch was running when a custodian was admitted; the fetch asks again when it ends short, as that custodian may not be in its rotation.</summary>
     private readonly HashSet<Hash256> _fetchAgainOnEnd = [];
 
-    /// <summary>The block whose refused-block fetch is running, so the blocks a full retry set refuses cost at most one fetch at a time.</summary>
     private Hash256? _refusedFetchRoot;
 
-    /// <summary>The roots the sidecar pool may wake the worker for, once every sampled column of one is held.</summary>
     private readonly HashSet<Hash256> _columnWatched = [];
 
-    /// <summary>The roots of the blocks in <see cref="_pendingByParent"/> held for a parent waiting on a payload.</summary>
     private readonly HashSet<Hash256> _heldForPayload = [];
 
     /// <summary>Envelopes that answered <see cref="ExecutionPayloadEnvelopeImportResult.UnknownBlock"/>, held until the block they name imports.</summary>
     /// <remarks>specs/gloas/p2p-interface.md <c>execution_payload</c>: an envelope for a block not yet seen MAY be queued until the block is retrieved.</remarks>
     private readonly EnvelopeParking _pendingEnvelopesByBlock = new(MaxPendingEnvelopesPerBlock, MaxPendingEnvelopes);
 
-    /// <summary>Envelopes that answered <see cref="ExecutionPayloadEnvelopeImportResult.DataUnavailable"/> or <see cref="ExecutionPayloadEnvelopeImportResult.EngineUnavailable"/>, retried on each slot tick.</summary>
     private readonly EnvelopeParking _pendingEnvelopeRetry = new(MaxPendingEnvelopesPerBlock, MaxPendingEnvelopes);
 
-    /// <summary>The slot each parent envelope was last requested by root, so a parked child asks at most once per slot.</summary>
     private readonly LruCache<Hash256, ulong> _envelopeRequestedAtSlot = new(RecentEnvelopeRequestCapacity, "beacon sync envelope by-root requests");
     private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _envelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync envelope peers");
 
     private readonly LruCache<Hash256, RangeSync.ColumnFetchRotation> _rangeEnvelopePeerSelections = new(RecentEnvelopeRequestCapacity, "beacon sync range envelope peers");
 
-    /// <summary>Imported Gloas blocks whose bid commits blobs, by root, whose sampled columns are recovered by root until all are held.</summary>
     private readonly Dictionary<Hash256, ColumnRecovery> _columnRecovery = [];
 
     /// <summary>The checkpoint anchor's root, whose payload no import of this process recorded (specs/gloas/fork-choice.md get_forkchoice_store: <c>payloads={}</c>).</summary>
@@ -221,7 +200,6 @@ public sealed class BeaconSyncOrchestrator(
     private int _backfillsThisSlot;
     private ulong _backfillSlot;
 
-    /// <summary>The gossip blocks held in <see cref="_pendingByParent"/> after the backfill budget refused them, oldest first.</summary>
     private readonly Queue<ForkedSignedBeaconBlock> _heldForBackfill = new();
 
     /// <summary>The ancestor roots whose by-root fetch runs off the worker, with the chains waiting on each, gossip block first; a fetch ends with an <see cref="AncestorFetchedItem"/>.</summary>
@@ -250,16 +228,12 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary>The range-synced blocks held on the chain of <see cref="_rangeHeld"/>, by root, with their suppliers; touched by the worker only.</summary>
     private readonly Dictionary<Hash256, RangeHeldBlock> _rangeHeldRoots = [];
 
-    /// <summary>The held range blocks whose by-root column fetch runs ahead of their turn to import, at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
     private readonly HashSet<Hash256> _heldColumnFetches = [];
 
-    /// <summary>The held range blocks waiting for a place among <see cref="_heldColumnFetches"/>, oldest first; bounded by <see cref="MaxRangeHeldBlocks"/>.</summary>
     private readonly Queue<(Hash256 Root, BeaconBlock Message)> _heldColumnFetchQueue = new();
 
-    /// <summary>Refused blocks whose columns a held fetch is already fetching, imported once that fetch ends complete; at most <see cref="MaxConcurrentHeldColumnFetches"/>.</summary>
     private readonly Dictionary<Hash256, ForkedSignedBeaconBlock> _refusedOnHeldFetch = [];
 
-    /// <summary>The head slot at the latest slot tick, and the first tick it was seen at.</summary>
     private (ulong HeadSlot, ulong SinceSlot)? _headSlotSeen;
     private Hash256 _anchorExecutionHash = Hash256.Zero;
     private ulong _anchorSlot;
@@ -267,7 +241,6 @@ public sealed class BeaconSyncOrchestrator(
     private HeadView? _lastHead;
     private bool _elInSync;
 
-    // The last forkchoiceUpdated sent, so an unchanged one is not repeated each slot.
     private (ForkchoiceHashes Hashes, long SentAtMs, PayloadStatusV1 Status)? _lastForkchoice;
 
     /// <summary>How often an unchanged <c>forkchoiceUpdated</c> is still sent; well inside the EL's default 300 s CL liveness window.</summary>
@@ -275,7 +248,6 @@ public sealed class BeaconSyncOrchestrator(
     private bool _importedSinceHeadStep;
     private int _importsSinceHeadStep;
 
-    /// <summary>When the last head step started, on the slot clock.</summary>
     private long _headStepMs;
     private int _pendingCount;
     private byte[] _currentDigest = [];
@@ -293,7 +265,6 @@ public sealed class BeaconSyncOrchestrator(
 
     private sealed record Tip(Hash256 Root, ulong Slot);
 
-    /// <summary>The range-synced chain held for the deferred block <paramref name="DeferredRoot"/>, up to <paramref name="Tip"/>.</summary>
     private sealed record HeldRange(Hash256 DeferredRoot, Tip Tip);
 
     internal abstract record WorkItem;
@@ -319,7 +290,6 @@ public sealed class BeaconSyncOrchestrator(
     /// <summary><paramref name="Peer"/> was admitted; a deferred block missing a column it custodies is fetched from it now, not at the next slot tick.</summary>
     internal sealed record PeerAdmittedItem(IBeaconSyncPeer Peer) : WorkItem;
 
-    /// <summary>Wakes the worker for queued gossip votes; carries no work of its own.</summary>
     private sealed record VoteWakeItem : WorkItem
     {
         public static readonly VoteWakeItem Instance = new();
@@ -339,10 +309,8 @@ public sealed class BeaconSyncOrchestrator(
     /// <param name="AwaitsRegeneration">Whether the block waits for the next slot's regeneration budget rather than for data or a payload.</param>
     private readonly record struct PendingRetry(ForkedSignedBeaconBlock Block, ulong QueuedAtSlot, ImportOrigin Origin, IBeaconSyncPeer? ServedBy, bool AwaitsRegeneration);
 
-    /// <summary>A block fetched by root and held behind a fetched ancestor, with the peer that served it.</summary>
     private sealed record HeldFetchedBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? ServedBy);
 
-    /// <summary>A range-synced block held on the chain of <see cref="_rangeHeld"/>, with the peer that served it.</summary>
     private readonly record struct RangeHeldBlock(ForkedSignedBeaconBlock Block, IBeaconSyncPeer? Source);
 
     /// <summary>How a block reached this node, which decides the regeneration budget its import is charged to.</summary>
@@ -643,7 +611,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Reads the stored envelope of <paramref name="root"/>; an unreadable record is logged and treated as absent, so it cannot stop the restart.</summary>
     private bool TryReadStoredEnvelope(Hash256 root, [NotNullWhen(true)] out SignedExecutionPayloadEnvelope? envelope)
     {
         try
@@ -724,7 +691,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    // Reads the next vote only if it was queued before the tick of tickSlot; the single reader makes the peek and the read one step.
     private bool TryReadVoteBefore(ulong tickSlot, out QueuedVote vote)
     {
         if (!(_votes.Reader.TryPeek(out vote) && vote.NewestSlotTick < tickSlot && _votes.Reader.TryRead(out vote)))
@@ -909,13 +875,7 @@ public sealed class BeaconSyncOrchestrator(
         null => MessageValidity.Ignored,
     });
 
-    /// <summary>Gives the pending verdict of the gossip block <paramref name="block"/>, if any, once its import settled.</summary>
-    /// <remarks>
-    /// phase0 p2p-interface.md beacon_block: the importer verifies the expected proposer and its signature, after every check gossip orders
-    /// before them, ahead of these results, so the block is accepted then. Only a block that waits for its parent's payload after its signature
-    /// verified keeps its verdict for the retry (gloas/p2p-interface.md beacon_block: IGNORE until the parent payload is seen, MAY queue);
-    /// A proven gossip rejection charges the sender; other failures, including missing state or data, are ignored.
-    /// </remarks>
+    /// <summary>Settles a block verdict after proposer verification. Only a verified block waiting on its parent payload keeps a verdict; proven gossip rejection charges the sender, while unavailable dependencies are ignored (p2p-interface.md beacon_block).</summary>
     private void SettleBlockVerdict(ForkedSignedBeaconBlock block, BlockImportResult result, bool rejectGossip)
     {
         if (_gossipVerdicts.Count == 0 || result is BlockImportResult.ParentPayloadUnverified || !_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
@@ -929,7 +889,6 @@ public sealed class BeaconSyncOrchestrator(
             : result == BlockImportResult.Invalid && rejectGossip ? MessageValidity.Rejected : MessageValidity.Ignored);
     }
 
-    /// <summary>Ignores the pending verdict of <paramref name="block"/>, if any: the block is held or dropped before its signature is checked.</summary>
     private void IgnoreBlockVerdict(ForkedSignedBeaconBlock block)
     {
         if (_gossipVerdicts.Remove(block, out GossipVerdict? verdict))
@@ -938,7 +897,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Keeps the pending verdict of a gossip block until its import settles; a second verdict for the same copy is ignored.</summary>
     private void TrackGossipVerdict(ForkedSignedBeaconBlock block, GossipVerdict? verdict)
     {
         if (verdict is not null && !verdict.IsCompleted && !_gossipVerdicts.TryAdd(block, verdict))
@@ -947,7 +905,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Drops the ended verdicts and ignores those of blocks no longer held, so an evicted block's message waits no longer.</summary>
     private void SweepGossipVerdicts()
     {
         foreach ((ForkedSignedBeaconBlock block, GossipVerdict verdict) in _gossipVerdicts.ToArray())
@@ -980,7 +937,6 @@ public sealed class BeaconSyncOrchestrator(
         gossipRouter.MarkSlashedIndicesSeen(intersecting);
     }
 
-    /// <summary>Imports a range-synced block, and notes it when it waits for a retry or for a parent that does, so the next round does not fetch it again.</summary>
     private async Task ImportRangeBlockAsync(RangeBlockItem item, CancellationToken token)
     {
         ForkedSignedBeaconBlock block = item.Block;
@@ -1043,7 +999,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Has the columns of a held blob block fetched by root now, not when its parent imports, so the blocks behind a deferred block do not fetch one after another.</summary>
     private void QueueHeldColumnFetch(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token)
     {
         if (block is ForkedSignedBeaconBlock.OfFulu { Block.Message: { Body.BlobKzgCommitments.Length: > 0 } message })
@@ -1067,7 +1022,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Starts the by-root column fetch of each deferred block that misses a column <paramref name="peer"/> custodies.</summary>
     private void FetchDeferredColumnsFrom(IBeaconSyncPeer peer, CancellationToken token)
     {
         if (_pendingRetry.Count == 0 || columnPool is null || _custody.Current is not { } custody)
@@ -1257,14 +1211,7 @@ public sealed class BeaconSyncOrchestrator(
         return result;
     }
 
-    /// <summary>
-    /// Has the pool wake the worker once a deferred Fulu block's sampled columns are all held, and starts fetching its missing
-    /// ones by root from a bounded number of custodians, rotating through every connected custodian of a missing column across calls and slots.
-    /// </summary>
-    /// <remarks>
-    /// A custodian behind peers that answered with nothing, or one that connected since the last attempt, is still reached
-    /// (fulu/das-core.md, every sampled column), while one fetch costs a bounded number of requests however many peers are connected.
-    /// </remarks>
+    /// <summary>Watches sampled columns and fetches missing ones with bounded custodian rotation. New and previously unsuccessful custodians remain eligible (fulu/das-core.md).</summary>
     /// <param name="refused">Whether the retry set refused the block: it is neither watched nor given a stored rotation, and the fetch ends with an import attempt of it.</param>
     private void AwaitColumns(ForkedSignedBeaconBlock block, Hash256 root, CancellationToken token, bool refused = false)
     {
@@ -1312,7 +1259,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Asks the pool to queue one <see cref="ColumnsHeldItem"/> for <paramref name="root"/> when every sampled column of it is held.</summary>
     private void WatchColumns(Hash256 root, bool gloas)
     {
         if (columnPool is not null
@@ -1323,7 +1269,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Drops the pool's watch on <paramref name="root"/> once no block or envelope waits on it, so a sidecar for it queues nothing.</summary>
     private void ReleaseColumnWatch(Hash256 root)
     {
         if (_columnWatched.Count == 0 || _pendingRetry.ContainsKey(root) || _pendingEnvelopeRetry.Contains(root) || !_columnWatched.Remove(root))
@@ -1334,7 +1279,6 @@ public sealed class BeaconSyncOrchestrator(
         columnPool!.Unwatch(root);
     }
 
-    /// <summary>Drops the watches of roots whose block or envelope left the retry sets by a path other than a block import.</summary>
     private void ReleaseIdleColumnWatches()
     {
         if (_columnWatched.Count == 0)
@@ -1349,8 +1293,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Runs <paramref name="fetch"/> off the worker unless one is running for <paramref name="root"/>; it ends with a <see cref="ColumnFetchEndedItem"/>.</summary>
-    /// <returns>Whether a fetch was started.</returns>
     private bool StartColumnFetch(Hash256 root, Func<CancellationToken, Task<bool>> fetch, CancellationToken token, ForkedSignedBeaconBlock? refused = null)
     {
         if (!_columnFetchesInFlight.Add(root))
@@ -1387,7 +1329,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Retries the block and the envelopes held for <paramref name="root"/> now that their columns are held, without waiting for the slot tick.</summary>
     private async Task RetryOnColumnsAsync(Hash256 root, CancellationToken token)
     {
         if (_pendingRetry.TryGetValue(root, out PendingRetry pending))
@@ -1442,7 +1383,6 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
-    /// <summary>Keeps <paramref name="copy"/>, another signed copy of the queued block <paramref name="root"/>, unless the retry set is full; a copy kept already takes its provenance as the queued block would.</summary>
     private void QueueRetryCopy(Hash256 root, PendingRetry copy)
     {
         _pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies);
@@ -1467,8 +1407,6 @@ public sealed class BeaconSyncOrchestrator(
         _pendingRetryCopyCount++;
     }
 
-    /// <summary>Queues the oldest other copy of <paramref name="root"/> in the retry set in place of the queued copy, which left it.</summary>
-    /// <returns>The promoted copy, or <c>null</c> when none is kept.</returns>
     private PendingRetry? PromoteRetryCopy(Hash256 root)
     {
         if (!_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies))
@@ -1488,12 +1426,10 @@ public sealed class BeaconSyncOrchestrator(
         return next;
     }
 
-    /// <summary>Whether the signed block <paramref name="block"/> waits in the retry set as the queued block <paramref name="root"/> or as a kept copy of it.</summary>
     private bool IsWaitingCopy(Hash256 root, ForkedSignedBeaconBlock block) =>
         (_pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block))
         || (_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies) && copies.Exists(copy => IsSameSignedBlock(copy.Block, block)));
 
-    /// <summary>Gives the waiting signed block <paramref name="block"/> of <paramref name="root"/>, queued or kept, the by-root origin and supplier when it came from gossip.</summary>
     private void RecordFetchedProvenance(Hash256 root, ForkedSignedBeaconBlock block, IBeaconSyncPeer? servedBy)
     {
         if (_pendingRetry.TryGetValue(root, out PendingRetry queued) && IsSameSignedBlock(queued.Block, block))
@@ -1509,7 +1445,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Forgets the kept copy of <paramref name="root"/> that is the signed block <paramref name="block"/>.</summary>
     private void RemoveRetryCopy(Hash256 root, ForkedSignedBeaconBlock block)
     {
         if (_pendingRetryCopies.TryGetValue(root, out List<PendingRetry>? copies)
@@ -1523,7 +1458,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Forgets every kept copy of <paramref name="root"/>, once the block imported or none of its copies can.</summary>
     private void RemoveRetryCopies(Hash256 root)
     {
         if (_pendingRetryCopies.Remove(root, out List<PendingRetry>? copies))
@@ -1532,10 +1466,8 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Has the importer forget the deferral it kept for <paramref name="root"/>, a block the orchestrator dropped, instead of holding it until finality.</summary>
     private void ReleaseImporterDeferral(Hash256 root) => (_importer as BlockImporter)?.Release(root);
 
-    /// <summary>Ends the held range chain of the deferred block <paramref name="root"/> once it leaves the retry set, so a round starts from the sync tip again.</summary>
     private void ReleaseRangeHeld(Hash256 root)
     {
         if (_rangeHeld?.DeferredRoot == root)
@@ -1545,10 +1477,8 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Ends the range-sync round in flight and drops its queued blocks, so the next round starts from the sync tip.</summary>
     private void EndRangeSyncRound() => _ = Interlocked.Exchange(ref _rangeSyncRestart, new CancellationTokenSource()).CancelAsync();
 
-    /// <summary>Moves the held tip back to the deferred block its chain waits on once the tip is dropped, so the next round fetches the dropped blocks again instead of starting past them.</summary>
     private void LowerRangeHeldTip()
     {
         if (_rangeHeld is not { } held)
@@ -1573,7 +1503,6 @@ public sealed class BeaconSyncOrchestrator(
         _heldColumnFetchQueue.Clear();
     }
 
-    /// <summary>Keeps in the fetch queue only the blocks still held, so blocks dropped and fetched again cannot pile up behind fetches that wait on a slow peer.</summary>
     private void DropHeldColumnFetchesOfDroppedBlocks()
     {
         for (int waiting = _heldColumnFetchQueue.Count; waiting > 0; waiting--)
@@ -1639,14 +1568,7 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Retries every pending block once per slot tick, straight through <see cref="ImportBlockAsync"/>
-    /// - never through <see cref="ProcessGossipBlockAsync"/>, whose seen-proposal gate would drop the
-    /// retry as a repeat. A pending block whose slot has fallen behind the finalized checkpoint is
-    /// dropped instead of retried, and so is one that has waited more than <see cref="MaxPendingRetryAgeEpochs"/>
-    /// since it was queued, which bounds a stuck block under stalled finality; with <see cref="MaxPendingRetryBlocks"/>,
-    /// that is what stops a stuck block from being retried forever.
-    /// </summary>
+    /// <summary>Retries directly through ImportBlockAsync, bypassing gossip duplicate detection. Finalized or over-age entries are dropped so stalled finality cannot retain them indefinitely.</summary>
     private async Task DrainPendingRetriesAsync(CancellationToken token)
     {
         if (_pendingRetry.Count == 0)
@@ -1688,8 +1610,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private bool IsRetryExpired(ulong queuedAtSlot, ulong currentSlot) => currentSlot > queuedAtSlot + MaxPendingRetryAgeEpochs * spec.SlotsPerEpoch;
 
-    /// <summary>Drops held envelopes at or below the finalized slot or past their age, then retries each envelope waiting on its data or the engine.</summary>
-    /// <remarks>An envelope's slot is its own unverified claim, so the per-root and total caps and the age bound are what bound a forged one.</remarks>
+    /// <summary>Drops finalized or over-age envelopes and retries data/engine deferrals. Their claimed slots are unverified, so per-root, total and age limits bound forged entries.</summary>
     private async Task DrainPendingEnvelopesAsync(CancellationToken token)
     {
         ulong finalizedSlot = FinalizedSlot;
@@ -1714,8 +1635,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Queues an envelope that waits on its blob data or on the engine for a retry on the slot tick.</summary>
-    /// <param name="source">The req/resp peer that served the envelope, penalized if a retry finds it invalid.</param>
     private void OnEnvelopeDataUnavailable(SignedExecutionPayloadEnvelope envelope, ExecutionPayloadEnvelopeImportResult result, bool retryingOnColumns, CancellationToken token, IBeaconSyncPeer? source)
     {
         Hash256 root = envelope.Message!.BeaconBlockRoot!;
@@ -1735,8 +1654,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Remembers an imported Gloas block whose bid commits blobs, so <see cref="RecoverGloasColumns"/> fetches its missing sampled columns.</summary>
-    /// <returns>The new entry, or <c>null</c> when the block demands no columns or is tracked already.</returns>
     private ColumnRecovery? TrackColumnRecovery(Hash256 root, ForkedSignedBeaconBlock block)
     {
         if (block is not ForkedSignedBeaconBlock.OfGloas { Block.Message.Body.SignedExecutionPayloadBid.Message: { BlobKzgCommitments.Length: > 0 } bid }
@@ -1798,7 +1715,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Whether <paramref name="root"/> is the anchor or the parent of a held or retried Gloas block, whose payload must verify before a FULL child imports (specs/gloas/fork-choice.md on_block).</summary>
     private bool NeedsParentPayload(Hash256 root)
     {
         if (root == _anchorRoot) return true;
@@ -1891,7 +1807,6 @@ public sealed class BeaconSyncOrchestrator(
         return result;
     }
 
-    /// <summary>Re-drives every block in the retry set that waits on the payload just recorded for <paramref name="blockRoot"/>.</summary>
     private async Task OnPayloadRecordedAsync(Hash256 blockRoot, CancellationToken token)
     {
         // The execution layer now holds the payload, and only forkchoiceUpdated makes it the head.
@@ -1917,8 +1832,6 @@ public sealed class BeaconSyncOrchestrator(
     private static bool IsPayloadRecorded(ExecutionPayloadEnvelopeImportResult? result) =>
         result is ExecutionPayloadEnvelopeImportResult.Valid or ExecutionPayloadEnvelopeImportResult.Optimistic or ExecutionPayloadEnvelopeImportResult.AlreadyKnown;
 
-    /// <summary>Imports the envelopes held for <paramref name="blockRoot"/> in arrival order until one records its payload; the rest are dropped.</summary>
-    /// <returns>Whether an envelope recorded the payload or found it recorded already.</returns>
     private async Task<bool> ImportHeldEnvelopesAsync(Hash256 blockRoot, CancellationToken token)
     {
         if (_pendingEnvelopesByBlock.Take(blockRoot) is not { } held)
@@ -2186,13 +2099,7 @@ public sealed class BeaconSyncOrchestrator(
         await ImportBlockAsync(block, token);
     }
 
-    /// <summary>Whether a by-root backfill may start for <paramref name="block"/>: one per unknown parent and <see cref="MaxBackfillsPerSlot"/> per wall-clock slot.</summary>
-    /// <remarks>
-    /// The block's proposer signature is checked only once its parent chain is fetched and it imports, so without this bound each
-    /// forged unknown-parent block would buy an outbound request. The key is the parent, not the (slot, proposer): an unsigned
-    /// block naming the real proposer must not take the backfill of the real block. A parent released after a failed fetch keeps
-    /// its share of the budget, so failed fetches cannot buy more requests.
-    /// </remarks>
+    /// <summary>Allows one backfill per unknown parent within the wall-slot budget. Signature verification follows ancestor retrieval, so key by parent rather than (slot, proposer); failed fetches still spend the budget.</summary>
     private bool TryTakeBackfill(ForkedSignedBeaconBlock block)
     {
         ulong currentSlot = slotClock.CurrentSlot;
@@ -2265,23 +2172,12 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
-    /// <summary>
-    /// Whether <paramref name="blockRoot"/> is a Gloas block waiting in the retry set for its own parent's payload, or a
-    /// block held for one; specs/gloas/p2p-interface.md <c>beacon_block</c> lets a client queue a block until the parent payload is retrieved.
-    /// </summary>
     private bool IsWaitingForPayload(Hash256 blockRoot) =>
         // A Gloas block is retried for its parent's payload unless it waits for a regeneration.
         (_pendingRetry.TryGetValue(blockRoot, out PendingRetry parked) && parked.Block is ForkedSignedBeaconBlock.OfGloas && !parked.AwaitsRegeneration)
         || _heldForPayload.Contains(blockRoot);
 
-    /// <summary>Holds <paramref name="block"/> until its parent, found by <see cref="IsWaitingForPayload"/>, imports.</summary>
-    /// <remarks>
-    /// The block is held only once the importer defers it too, which it does only after its proposer and proposer signature
-    /// check out, and its (slot, proposer) is then marked seen: the queue is bounded, so unsigned or repeated proposals must
-    /// not be able to crowd out the real block. The seen gate covers fetched ancestors too, or one equivocating proposer
-    /// could fill the queue through forged children naming each of its blocks; such an ancestor imports once range sync or
-    /// a later by-root fetch delivers it after its parent. A block the full queue cannot take is not marked seen.
-    /// </remarks>
+    /// <summary>Holds only proposer-verified blocks, marking their proposal seen after admission to the bounded queue. Fetched ancestors obey the same gate; refused entries remain unseen.</summary>
     /// <param name="fetchedByRoot">Whether this node fetched the block, so the importer does not charge it to the gossip regeneration budget.</param>
     /// <param name="servedBy">The peer that served a block fetched by root, blamed if the block is invalid.</param>
     /// <returns>Whether the block is held.</returns>
@@ -2337,9 +2233,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Holds <paramref name="chain"/> from index <paramref name="from"/> down to its gossip block at index 0, stopping at the first block not held.</summary>
-    /// <remarks>A held fetched block keeps its supplier, so its release imports it as fetched by root.</remarks>
-    /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
     private async Task HoldChainForWaitingParentAsync(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, int from, CancellationToken token)
     {
         for (int i = from; i >= 0; i--)
@@ -2356,14 +2249,7 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>
-    /// Walks the unknown ancestors of the gossip block <paramref name="chain"/>[0] by root, one fetch at a time and to a bounded
-    /// depth, then imports the chain oldest-first once the parent of its last block is known.
-    /// </summary>
-    /// <remarks>
-    /// A fetch can wait out several peers' timeouts, so it runs off the worker and the walk resumes on its
-    /// <see cref="AncestorFetchedItem"/>; head imports and slot ticks do not wait behind it.
-    /// </remarks>
+    /// <summary>Fetches ancestors off-worker, one request at a time to bounded depth, then imports oldest-first. AncestorFetchedItem resumes the walk without delaying head imports or ticks.</summary>
     /// <param name="sources">The peer that served each block of <paramref name="chain"/>; <c>null</c> for the gossip block.</param>
     private async Task AdvanceBackfillAsync(List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, CancellationToken token)
     {
@@ -2436,7 +2322,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Releases the backfill of <paramref name="block"/>'s parent; see <see cref="ReleaseBackfill"/>.</summary>
     private void EndBackfill(ForkedSignedBeaconBlock block) => ReleaseBackfill(block.ParentRoot);
 
     /// <summary>Releases the backfill of <paramref name="root"/> unless it imported, waits for a retry or is held behind an ancestor that does, so a later block may fetch it again within the slot's spent budget.</summary>
@@ -2448,7 +2333,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Whether <paramref name="root"/> waits for a retry or for its payload, or is held behind an ancestor that does, so it is not fetched again.</summary>
     private bool HoldsBackfill(Hash256 root) => _pendingRetry.ContainsKey(root) || IsWaitingForPayload(root) || IsHeldFetched(root);
 
     /// <summary>Forgets, at the start of a slot, the backfilled parents that no walk in flight started from and nothing retries or holds.</summary>
@@ -2472,13 +2356,11 @@ public sealed class BeaconSyncOrchestrator(
         _backfilledParents.RemoveWhere(root => !HoldsBackfill(root) && !walked.Contains(root));
     }
 
-    /// <summary>Whether the block fetched by root as <paramref name="root"/> is still held in <see cref="_pendingByParent"/>; the cap of refused backfills can evict it while <see cref="_heldFetched"/> keeps its entry.</summary>
     private bool IsHeldFetched(Hash256 root) =>
         _heldFetched.TryGet(root, out HeldFetchedBlock? held)
         && _pendingByParent.TryGetValue(held.Block.ParentRoot, out List<ForkedSignedBeaconBlock>? siblings)
         && siblings.Contains(held.Block);
 
-    /// <summary>Adds <paramref name="chain"/> to the fetch of <paramref name="root"/>, starting one off the worker unless one runs.</summary>
     private void StartAncestorFetch(Hash256 root, List<ForkedSignedBeaconBlock> chain, List<IBeaconSyncPeer?> sources, CancellationToken token)
     {
         if (_ancestorFetches.TryGetValue(root, out List<(List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)>? waiting))
@@ -2513,7 +2395,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Resumes the chains waiting on the fetched ancestor, or holds their gossip blocks for range sync when no peer returned it.</summary>
     private async Task OnAncestorFetchedAsync(AncestorFetchedItem fetched, CancellationToken token)
     {
         if (!_ancestorFetches.Remove(fetched.Root, out List<(List<ForkedSignedBeaconBlock> Chain, List<IBeaconSyncPeer?> Sources)>? chains))
@@ -2586,7 +2467,6 @@ public sealed class BeaconSyncOrchestrator(
         _ = Interlocked.Exchange(ref _rangeSyncWake, new CancellationTokenSource()).CancelAsync();
     }
 
-    /// <summary>Whether two blocks with the same message root also carry the same signature, so they are the same signed block.</summary>
     private static bool IsSameSignedBlock(ForkedSignedBeaconBlock first, ForkedSignedBeaconBlock second) =>
         ReferenceEquals(first, second) || (first, second) switch
         {
@@ -2722,12 +2602,7 @@ public sealed class BeaconSyncOrchestrator(
         return ForkchoiceUpdatedAsync(new HeadView(anchorRoot, _anchorSlot, _anchorExecutionHash, null, null, anchor, anchor), _anchorExecutionHash, CancellationToken.None);
     }
 
-    /// <summary>Sends <c>forkchoiceUpdated</c> unless the same head, safe and finalized hashes were sent within <see cref="ForkchoiceResendInterval"/>.</summary>
-    /// <remarks>
-    /// The Engine API asks for the call when the fork choice state changes; an unchanged repeat each slot tells the EL nothing.
-    /// It is still resent at that interval, as the EL treats a CL that sends neither this nor <c>newPayload</c> for a while as gone.
-    /// A failed call returns <c>null</c> and is not remembered, so the next head step sends it again.
-    /// </remarks>
+    /// <summary>Deduplicates unchanged forkchoiceUpdated calls within ForkchoiceResendInterval while maintaining EL liveness. Failed calls are not remembered and retry at the next head step.</summary>
     private async Task<PayloadStatusV1?> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
@@ -3020,7 +2895,6 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Records the head slot at this slot tick; whether it has not moved for an epoch of ticks, so a catch-up still advancing is left running.</summary>
     private bool HasHeadStalled(ulong headSlot, ulong slot)
     {
         if (_headSlotSeen is not { } seen || seen.HeadSlot != headSlot)
@@ -3031,14 +2905,7 @@ public sealed class BeaconSyncOrchestrator(
         return slot >= seen.SinceSlot + spec.SlotsPerEpoch;
     }
 
-    /// <summary>
-    /// Restarts range sync from the fork-choice head, at most once per epoch: ends the round in flight and the wait after it,
-    /// and moves the sync tip to the head when it is on another block.
-    /// </summary>
-    /// <remarks>
-    /// A round follows the wall clock past blocks that did not import, which then fail as <see cref="BlockImportResult.UnknownParent"/>,
-    /// so a block the head waits on is fetched again only by a round that starts from the head.
-    /// </remarks>
+    /// <summary>Restarts the round and inter-round wait from the fork-choice head, at most once per epoch, so blocks skipped by an advancing sync tip can be fetched again.</summary>
     private void ResumeRangeSyncFromHead(ulong slot)
     {
         if (_lastHead is not { } head || (_rangeSyncResumedAtSlot is { } resumedAt && slot < resumedAt + spec.SlotsPerEpoch))
@@ -3128,12 +2995,7 @@ public sealed class BeaconSyncOrchestrator(
         }
     }
 
-    /// <summary>Writes each block of <paramref name="run"/> in order, each followed by its envelope when the chain carries that payload, then clears the run.</summary>
-    /// <remarks>
-    /// A block's payload is on the chain when the next block's bid builds on it (<c>bid.parent_block_hash</c> equals its
-    /// <c>bid.block_hash</c>); the last block's envelope is written when a peer served it. A missing envelope a full child
-    /// needs is recovered by root once that child is parked.
-    /// </remarks>
+    /// <summary>Writes blocks in order with available envelopes. A FULL child proves its parent payload belongs to the chain; the last envelope needs a peer response. Missing required envelopes are recovered by root.</summary>
     private async Task WriteGloasRunAsync(List<ForkedSignedBeaconBlock.OfGloas> run, List<IBeaconSyncPeer> sources, CancellationToken restart, CancellationToken token)
     {
         if (run.Count == 0)
@@ -3160,11 +3022,6 @@ public sealed class BeaconSyncOrchestrator(
     private static bool IsPayloadOnChain(ForkedSignedBeaconBlock.OfGloas block, ForkedSignedBeaconBlock.OfGloas child) =>
         BidOf(child).ParentBlockHash == BidOf(block).BlockHash;
 
-    /// <summary>
-    /// Requests the envelopes of <paramref name="run"/> by range from up to <see cref="MaxBackfillPeersPerRequest"/> peers, until
-    /// every block whose payload the chain carries has one; each envelope must name a block of the run and match its slot and bid.
-    /// </summary>
-    /// <returns>The first matching envelope for each block of <paramref name="run"/>, with the peer that served it, by index.</returns>
     private async Task<(SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[]> FetchRunEnvelopesAsync(List<ForkedSignedBeaconBlock.OfGloas> run, CancellationToken token)
     {
         (SignedExecutionPayloadEnvelope Envelope, IBeaconSyncPeer Source)?[] found = new (SignedExecutionPayloadEnvelope, IBeaconSyncPeer)?[run.Count];
@@ -3264,7 +3121,6 @@ public sealed class BeaconSyncOrchestrator(
         return true;
     }
 
-    /// <summary>Dials discovered candidates until cancellation, with scheduling owned by the peer manager.</summary>
     private Task RunDiscoveryDialLoopAsync(CancellationToken token)
         => peerManager!.DialDiscoveredPeersAsync(discovery!.DiscoverPeers(token), token);
 

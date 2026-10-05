@@ -64,16 +64,13 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     private const int FailuresBeforeBatchShrink = 3;
 
-    /// <summary>How many peers <see cref="FetchGloasColumnsByRootAsync"/> and <see cref="FetchColumnsByRootAsync"/> ask before giving up for this call.</summary>
     private const int MaxByRootColumnPeers = 3;
 
-    /// <summary>How many distinct peers one batch's Fulu columns are requested from.</summary>
     private const int MaxColumnPeersPerBatch = 8;
 
     /// <summary>The fewest columns one peer is asked for in a batch, so a small sample still spreads over several custodians rather than one supernode.</summary>
     private const int MinColumnsPerPeer = 2;
 
-    /// <summary>How many times one batch's still-missing columns are requested, each time from peers that have not failed it.</summary>
     private const int MaxColumnRounds = 3;
 
     /// <summary>No further column round starts once a batch has spent this long on columns; the importer fetches what is left by root.</summary>
@@ -82,7 +79,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
 
     private readonly ILogger _logger = logManager.GetClassLogger<RangeSync>();
 
-    /// <summary>Resolved lazily and cached internally, the same pattern <see cref="BlockImporterFactory"/> uses: discovery has not started when this object is constructed.</summary>
     private readonly INodeColumnCustodySource _custodySource = new DiscoveryNodeCustodySource(discovery);
 
     /// <summary>The anchor a run restarts from when its first block does not link to the unverified anchor it was given; <paramref name="Rejected"/> runs when that happens.</summary>
@@ -236,7 +232,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <returns>The verified batch and the root of each of its blocks, or <c>null</c> when the request failed or the batch did not link up; not <c>Linked</c> when <paramref name="allowFirstMismatch"/> and the first block does not link to <paramref name="parentRoot"/>.</returns>
     private async Task<(IReadOnlyList<ForkedSignedBeaconBlock> Blocks, Hash256[] Roots, bool Linked)?> FetchAndVerifyBatchAsync(
         IBeaconSyncPeer peer,
         ulong startSlot,
@@ -390,7 +385,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <returns>The sampled columns some blob-carrying block of the batch lacks, and the first and last slot of a block lacking one.</returns>
     private List<ulong> MissingBatchColumns(NodeColumnCustody custody, Dictionary<Hash256, BeaconBlock> blobBlocksByRoot, out ulong firstSlot, out ulong lastSlot)
     {
         firstSlot = ulong.MaxValue;
@@ -431,10 +425,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return true;
     }
 
-    /// <summary>
-    /// Assigns each of <paramref name="missing"/> to a peer reaching <paramref name="startSlot"/>, or else <paramref name="batchStartSlot"/>, that custodies it, serves the range
-    /// from <paramref name="startSlot"/> and is not in <paramref name="excluded"/>; empty when no such peer exists.
-    /// </summary>
+    /// <summary>Assigns each missing column to an eligible custodian, preferring status heads reaching the missing slot over the batch start. A per-peer even-share cap leaves overflow for later rounds, so only retrying callers set it.</summary>
     /// <param name="batchStartSlot">The batch's first slot, which its blocks were requested from peers reaching. A column no custodian reaching <paramref name="startSlot"/>
     /// custodies goes to one reaching only the batch start: a later round's first missing slot can lie past every peer's last status although a peer served the block there
     /// (phase0/p2p-interface.md Status), while a custodian whose status reaches that slot is likelier to hold it.</param>
@@ -516,7 +507,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         if (_logger.IsDebug) _logger.Debug($"No connected sync peer custodies the missing sampled columns [{string.Join(", ", missing)}]: 0 custodians among {connectedPeers} peers");
     }
 
-    /// <summary>What a by-range column request delivered: every sidecar it read, also when the request then failed and the peer was penalized.</summary>
     private readonly record struct ColumnsReply(IReadOnlyList<DataColumnSidecar> Sidecars, bool Failed);
 
     private async Task<ColumnsReply> RequestColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
@@ -735,7 +725,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return MissingColumns(blockRoot, custody).Count == 0;
     }
 
-    /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
     private static async Task<IReadOnlyList<TSidecar>?> RequestColumnsByRootAsync<TSidecar>(
         IBeaconSyncPeer peer,
         Hash256 blockRoot,
@@ -856,18 +845,7 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return MissingGloasColumns(blockRoot, custody).Length == 0;
     }
 
-    /// <summary>
-    /// Requests and verifies this node's missing sampled Gloas data column sidecars for every blob-carrying Gloas block
-    /// in <paramref name="blocks"/> inside the data availability window. Never fails the batch, as <see cref="FetchColumnsForBatchAsync"/>.
-    /// </summary>
-    /// <remarks>
-    /// The request window spans only those blocks, so it lies wholly in Gloas epochs as the Gloas request requires, and each column is asked of
-    /// one peer that custodies it as in <see cref="FetchColumnsForBatchAsync"/>. A sidecar must name a Gloas block of this batch and that block's slot,
-    /// and pass gloas/p2p-interface.md <c>verify_data_column_sidecar</c> and <c>verify_data_column_sidecar_kzg_proofs</c> against the block's bid;
-    /// a column already pooled is not verified again. As in <see cref="FetchColumnsForBatchAsync"/>, a peer is asked for at most an even share of the missing columns,
-    /// one that fails or leaves a requested column unserved is not asked again for the batch, and up to <see cref="MaxColumnRounds"/> rounds request only what is still
-    /// missing, within <see cref="ColumnBatchBudget"/>. A failed Gloas reply delivers no sidecars to keep.
-    /// </remarks>
+    /// <summary>Fetches and verifies missing Gloas columns against each named block's slot and bid. Only the Gloas availability window is requested; pooled copies are skipped. Bounded rounds exclude failed/unserved custodians and never fail the block batch; failed replies retain no sidecars.</summary>
     private async Task FetchGloasColumnsForBatchAsync(IReadOnlyList<ForkedSignedBeaconBlock> blocks, Hash256[] roots, CancellationToken token)
     {
         ulong windowStartEpoch = DataAvailabilityStartEpoch();
@@ -939,7 +917,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         }
     }
 
-    /// <returns>The sampled columns some blob-carrying Gloas block of the batch lacks, and the first and last slot of a block lacking one.</returns>
     private List<ulong> MissingGloasBatchColumns(NodeColumnCustody custody, Dictionary<Hash256, (ulong Slot, ExecutionPayloadBid Bid)> bidsByRoot, out ulong firstSlot, out ulong lastSlot)
     {
         firstSlot = ulong.MaxValue;
@@ -967,7 +944,6 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
         return missing;
     }
 
-    /// <returns>The peer's sidecars, or <c>null</c> when the request failed and the peer was penalized.</returns>
     private static async Task<IReadOnlyList<DataColumnSidecarGloas>?> RequestGloasColumnsByRangeAsync(IBeaconSyncPeer peer, ulong startSlot, ulong count, ulong[] columns, CancellationToken token)
     {
         try

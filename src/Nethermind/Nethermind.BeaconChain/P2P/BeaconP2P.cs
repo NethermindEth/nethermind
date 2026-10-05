@@ -40,17 +40,9 @@ using ILoggerFactory = Microsoft.Extensions.Logging.ILoggerFactory;
 
 namespace Nethermind.BeaconChain.P2P;
 
-/// <summary>
-/// The beacon chain libp2p host: TCP + noise + yamux with the eth2 req/resp protocols and
-/// gossipsub registered, exposing typed request methods over dialed sessions and pubsub topics.
-/// </summary>
-/// <remarks>
-/// The host identity is a secp256k1 key persisted in the store metadata column, so the peer ID is
-/// stable across restarts (and reusable for the discv5 ENR in a later milestone). Gossipsub uses
-/// the eth2 parameters: <c>StrictNoSign</c>, the eth2 message-id function
-/// (<see cref="Eth2MessageId"/>), D=8/D_low=6/D_high=12/D_lazy=6, a 700 ms heartbeat, and a seen
-/// TTL of two epochs (p2p-interface.md, gossipsub parameters).
-/// </remarks>
+/// <summary>Hosts beacon libp2p TCP/noise/yamux, eth2 req/resp and gossipsub, exposing typed requests and topics.</summary>
+/// <remarks>Persisted secp256k1 identity survives restarts and supplies the discv5 ENR key. Uses eth2 StrictNoSign, Eth2MessageId,
+/// D=8/D_low=6/D_high=12/D_lazy=6, 700 ms heartbeat and two-epoch seen TTL (p2p-interface.md).</remarks>
 public sealed class BeaconP2P : IAsyncDisposable
 {
     private const string IdentityMetadataKey = "p2pIdentityKey";

@@ -9,11 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.BeaconChain.Sync;
 
-/// <summary>
-/// Serves the importer's availability rule from the gossip-validated sidecar pool. Nothing else
-/// fills that pool today, so a block whose columns never arrived over gossip (every range-synced
-/// block) has no columns here and is judged unavailable.
-/// </summary>
+/// <summary>Reads availability from the gossip-validated sidecar pool; blocks without pooled columns remain unavailable.</summary>
 internal sealed class DataColumnPoolSource(DataColumnSidecarPool pool) : IDataColumnSource
 {
     public bool TryGetColumn(Hash256 blockRoot, ulong columnIndex, [NotNullWhen(true)] out DataColumnSidecar? sidecar) =>

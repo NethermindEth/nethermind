@@ -61,13 +61,10 @@ public sealed class BlockImporter : IBlockImporter
     private static readonly StringLabel GossipAttesterSlashingRejected = new("gossip_attester_slashing");
     private static readonly StringLabel GossipPayloadAttestationRejected = new("gossip_payload_attestation");
 
-    /// <summary>Covers the orchestrator's retry set and gossip hold queue, 128 blocks each.</summary>
     private const int MaxDeferredBlocks = 256;
 
-    /// <summary>Parent or ancestor states regenerated per wall-clock slot for blocks from gossip; trusted replays are not counted.</summary>
     private const int MaxUntrustedRegenerationsPerSlot = 2;
 
-    /// <summary>Parent states regenerated per wall-clock slot for blocks fetched by root, which a gossip block can name.</summary>
     private const int MaxByRootRegenerationsPerSlot = 2;
 
     private readonly BeaconChainSpec _spec;
@@ -78,7 +75,6 @@ public sealed class BlockImporter : IBlockImporter
     private readonly SlotClock _clock;
     private readonly ILogger _logger;
 
-    /// <summary>The <c>is_data_available</c> rule for blocks from the network; store replays use <see cref="ReplayedBlockAvailability"/>.</summary>
     private readonly IDataAvailabilityRule _availability;
 
     private readonly PostStateCache _states;
@@ -88,7 +84,6 @@ public sealed class BlockImporter : IBlockImporter
     private readonly ProposerLookaheadHolder? _proposerLookaheads;
     private readonly FailedBlockRoots? _failedBlocks;
 
-    /// <summary>Imported-but-not-finalized block roots and their slots, for store pruning at finalization.</summary>
     private readonly Dictionary<Hash256, ulong> _unfinalized = [];
 
     /// <summary>
@@ -99,7 +94,6 @@ public sealed class BlockImporter : IBlockImporter
 
     private EpochCache _lineageCache = new() { Hasher = new CachedBeaconStateHasher() };
 
-    /// <summary>Whether the current lineage head block is the first block of its epoch (its post-state is then a checkpoint-root candidate).</summary>
     private bool _lineageBlockStartsEpoch = true;
 
     /// <summary>Null until the first index update, so a restart reconciles the index even when the head is still the anchor.</summary>
@@ -117,22 +111,18 @@ public sealed class BlockImporter : IBlockImporter
 
     private readonly Hash256? _gloasAnchorParentBlockHash;
 
-    /// <summary>The proposer signature domain of Fulu blocks, <c>null</c> for a Gloas anchor.</summary>
     private readonly Hash256? _fuluProposerDomain;
 
-    /// <summary>The proposer signature domain of Gloas blocks.</summary>
     private readonly Hash256 _gloasProposerDomain = null!;
 
     private ulong _regenerationSlot;
 
     private int _regenerationsThisSlot;
 
-    /// <summary>The block that spent a regeneration for each (slot, proposer) from gossip, above the finalized slot.</summary>
     private readonly Dictionary<(ulong Slot, ulong ProposerIndex), Hash256> _regenerationProposals = [];
 
     private int _byRootRegenerationsThisSlot;
 
-    /// <summary>How the block whose import runs now reached this node, which decides the regeneration budget it is charged to.</summary>
     private RequestedImport _importing;
 
     private enum RequestedImport
@@ -236,7 +226,6 @@ public sealed class BlockImporter : IBlockImporter
     internal static bool IsAboveFinalized(ForkChoiceRunner runner, Hash256 blockRoot) =>
         runner.GetBlockSlot(blockRoot) is ulong slot && slot > BeaconStateAccessors.ComputeStartSlotAtEpoch(runner.FinalizedCheckpoint.Epoch);
 
-    /// <summary>Whether an EIP-7917 lookahead taken at <paramref name="stateEpoch"/> names <paramref name="proposerIndex"/> for <paramref name="slot"/>; <c>true</c> outside its two-epoch window.</summary>
     private static bool IsInLookahead(ulong stateEpoch, ulong[] lookahead, ulong slot, ulong proposerIndex)
     {
         ulong epoch = BeaconStateAccessors.ComputeEpochAtSlot(slot);
@@ -622,7 +611,6 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.Imported;
     }
 
-    /// <summary>The Gloas <c>on_block</c> with its state transition; every fallible step runs before anything is stored.</summary>
     private BlockImportResult ImportGloas(ForkedSignedBeaconBlock.OfGloas forked, Hash256 blockRoot, bool verifySignatures, long receivedMs)
     {
         SignedBeaconBlockGloas signedBlock = forked.Block;
@@ -856,20 +844,7 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
-    /// <summary>
-    /// Answers <see cref="BlockImportResult.ParentPayloadUnverified"/> for a block whose full parent's payload is not
-    /// verified, or whose parent is itself deferred, once its proposer and proposer signature check out against the
-    /// post-state of <paramref name="ancestorRoot"/>, the nearest ancestor fork choice holds.
-    /// </summary>
-    /// <remarks>
-    /// A deferred block waits in a bounded queue and is marked seen for its (slot, proposer), so an unsigned
-    /// one must be refused here or it could crowd out the real block. The proposer domain is the one the block's
-    /// own pre-state has: its fork version is fixed for every epoch from the ancestor's on. Past the ancestor's
-    /// lookahead window the proposer of a child of the ancestor is read from a copy of the ancestor's post-state advanced
-    /// by <c>process_slots</c>, the pre-state the block's own transition starts from; the clock check has already bounded
-    /// that distance. A block with deferred blocks in between is not deferred there: their RANDAO reveals feed the seed
-    /// of that lookahead, and their states are not held.
-    /// </remarks>
+    /// <summary>Checks deferred Gloas children against the nearest held ancestor before reserving retry space. Past its lookahead, a direct child uses an advanced state copy; intervening deferred blocks have unknown RANDAO effects and cannot supply that proposer seed.</summary>
     private BlockImportResult DeferForParentPayload(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, Hash256 ancestorRoot, bool parentDeferred)
     {
         BeaconBlockGloas block = signedBlock.Message!;
@@ -932,7 +907,6 @@ public sealed class BlockImporter : IBlockImporter
         return BlockImportResult.ParentPayloadUnverified;
     }
 
-    /// <summary>The deferral of a Gloas block whose parent is deferred too, after the <c>on_block</c> checks that precede its transition.</summary>
     private BlockImportResult DeferBehindDeferredParent(SignedBeaconBlockGloas signedBlock, Hash256 blockRoot, DeferredBlock parent)
     {
         ulong slot = signedBlock.Message!.Slot;
@@ -947,8 +921,6 @@ public sealed class BlockImporter : IBlockImporter
         return DeferForParentPayload(signedBlock, blockRoot, parent.AncestorRoot, parentDeferred: true);
     }
 
-    /// <summary>Checks the block's proposer against the lookahead of <paramref name="state"/> and its proposer signature under that state's domain.</summary>
-    /// <returns>Why the proposal is refused, or <c>null</c>.</returns>
     private string? CheckProposal(SignedBeaconBlockGloas signedBlock, BeaconStateGloas state)
     {
         BeaconBlockGloas block = signedBlock.Message!;
@@ -1093,10 +1065,8 @@ public sealed class BlockImporter : IBlockImporter
             headNode.PayloadStatus == ForkChoicePayloadStatus.Full);
     }
 
-    /// <summary>specs/gloas/fork-choice.md <c>notify_forkchoice_updated</c>: a Gloas checkpoint block maps to its bid's <c>parent_block_hash</c>.</summary>
     private Hash256? CheckpointExecutionHash(Hash256 root) => GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
 
-    /// <summary>The bid's <c>parent_block_hash</c> of a Gloas block fork choice holds, a Gloas anchor's included; <c>null</c> for a Fulu block.</summary>
     private Hash256? GetParentBlockHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? (root == _gloasAnchorRoot ? _gloasAnchorParentBlockHash : null);
 
     /// <inheritdoc/>
@@ -1326,8 +1296,7 @@ public sealed class BlockImporter : IBlockImporter
         }
     }
 
-    /// <summary>The Gloas body replay, under the Fulu replay's policy.</summary>
-    /// <remarks>Payload attestations are not fed: fork choice keeps no payload timeliness votes yet (the spec's <c>notify_ptc_messages</c>).</remarks>
+    /// <remarks>Fork choice applies payload attestations during OnBlock; they must not be replayed here.</remarks>
     private void ApplyBodyOperations(BeaconBlockBodyGloas body, Hash256 blockRoot)
     {
         foreach (AttestationGloas attestation in body.Attestations!)
@@ -1410,8 +1379,6 @@ public sealed class BlockImporter : IBlockImporter
         return false;
     }
 
-    /// <summary>Publishes the EIP-7917 proposer lookahead of <paramref name="head"/>'s post-state with the block its shuffling was decided by.</summary>
-    /// <remarks>A head whose post-state is not held keeps the previous lookahead, which stays right for chains through its own dependent root.</remarks>
     private void PublishProposerLookahead(Hash256 head, ForkChoiceSnapshot? snapshot)
     {
         if (_proposerLookaheads is null || snapshot is null)
@@ -1432,14 +1399,7 @@ public sealed class BlockImporter : IBlockImporter
         _proposerLookaheads.Current = new ProposerLookaheadSnapshot(epoch, dependentRoot, lookahead);
     }
 
-    /// <summary>Makes the canonical slot index name exactly the new head's ancestry: each ancestor at its slot, and no entry at a slot the chain skips or above its head.</summary>
-    /// <remarks>
-    /// The walk stops below the first already-canonical ancestor whose empty slots under it hold no entry. So one head change
-    /// costs one write per block and per stale entry above the common ancestor, one read per slot from the common ancestor's
-    /// parent up to the higher of the new head and the index's recorded top slot (capped at the clock's next slot, above which nothing is indexed), and never walks past the fork-choice root.
-    /// Every change is computed from the index as it was and applied in one batch, so an interrupted update leaves the
-    /// previous index whole and the next head change starts from it.
-    /// </remarks>
+    /// <summary>Reconciles the canonical index with head ancestry, removing skipped and higher slots. Stops below the first clean canonical ancestor, caps stale-tail reads at the clock's next slot, and applies changes atomically so interruption preserves the previous index.</summary>
     private void UpdateCanonicalIndex(Hash256 head)
     {
         if (head == _canonicalHead)
@@ -1498,7 +1458,6 @@ public sealed class BlockImporter : IBlockImporter
         if (_logger.IsDebug) _logger.Debug($"Persisted beacon state snapshot at epoch {blockEpoch} ({blockRoot})");
     }
 
-    /// <summary>Deletes non-canonical blocks at or below the finalized slot and stops tracking the finalized range.</summary>
     private void PruneStore(ulong finalizedSlot)
     {
         List<Hash256>? finalizedRoots = null;
@@ -1529,18 +1488,7 @@ public sealed class BlockImporter : IBlockImporter
         if (pruned > 0 && _logger.IsDebug) _logger.Debug($"Pruned {pruned} non-canonical blocks below finalized slot {finalizedSlot}");
     }
 
-    /// <summary>
-    /// Carries one block's execution verdict from the state transition's <c>newPayload</c> hook
-    /// back to the importer.
-    /// </summary>
-    /// <remarks>
-    /// The verdict has to bind to the block that produced it. Reading it from a field on the
-    /// shared <see cref="IEngineDriver"/> binds it instead to whichever caller ran
-    /// <c>newPayload</c> last, which can admit a block to fork choice as
-    /// <see cref="ExecutionStatus.Valid"/> when it was only <see cref="ExecutionStatus.Optimistic"/>.
-    /// That is not recoverable: invalidating a node fork choice already holds as valid throws.
-    /// One instance per import, so the binding holds by construction rather than by call ordering.
-    /// </remarks>
+    /// <summary>Captures one import's execution verdict. A shared notifier field could substitute another caller's VALID verdict for SYNCING, which fork choice cannot later invalidate; per-import ownership prevents that race.</summary>
     private sealed class ImportVerdict(IEngineDriver engine) : INewPayloadNotifier
     {
         private BeaconBlockBody? _primed;

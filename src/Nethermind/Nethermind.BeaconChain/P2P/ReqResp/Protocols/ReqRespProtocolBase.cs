@@ -108,15 +108,8 @@ public abstract class ReqRespProtocolBase
         }
     }
 
-    /// <summary>
-    /// Starts a re-armable per-chunk timeout whose token also fires once <paramref name="overallCeiling"/>
-    /// elapses, regardless of how often the per-chunk deadline is re-armed. Without this, a peer that
-    /// drip-feeds one valid chunk just under the per-chunk timeout can hold a streamed request open
-    /// indefinitely: the spec's TTFB_TIMEOUT/RESP_TIMEOUT bound a single chunk, not the whole exchange,
-    /// and the current spec deprecated them without introducing a replacement overall deadline (see
-    /// consensus-specs PR #3767) — so <paramref name="overallCeiling"/> is this implementation's own
-    /// bound, not a spec constant.
-    /// </summary>
+    /// <summary>Starts a re-armable chunk timeout with an overall ceiling that is never re-armed.</summary>
+    /// <remarks>The overall ceiling is implementation-defined: chunk bounds alone let drip-fed responses keep exchanges open indefinitely.</remarks>
     protected BoundedTimeout StartBoundedTimeout(TimeSpan initial, TimeSpan overallCeiling)
     {
         CancellationTokenSource overall = new(overallCeiling);
@@ -163,18 +156,9 @@ public abstract class ReqRespProtocolBase
     protected static void RecordFailure(string protocolId, ReqRespFailureReason reason) =>
         Metrics.BeaconChainReqRespFailures.Increment(new ReqRespFailureKey(protocolId, reason));
 
-    /// <summary>
-    /// Reserves an inbound slot for <paramref name="protocolId"/> from the peer identified by
-    /// <paramref name="context"/>, enforcing <see cref="MaxConcurrentRequests"/>. Returns <c>null</c>
-    /// (after recording a <see cref="ReqRespFailureReason.LimitExceeded"/> failure) when the peer
-    /// already holds the cap for this protocol id; the caller must then refuse the stream without
-    /// reading or writing to it. Dispose the returned slot once the request has been served.
-    /// </summary>
-    /// <remarks>
-    /// A session whose remote peer id is not resolved is metered against one shared budget rather
-    /// than let through: an unattributable stream is exactly the one an attacker would arrange, so
-    /// the cap must not be escapable by withholding identity.
-    /// </remarks>
+    /// <summary>Reserves a protocol slot under MaxConcurrentRequests; dispose it after serving.</summary>
+    /// <returns>Null, recording LimitExceeded, when capped; refuse the stream without reading or writing.</returns>
+    /// <remarks>Unidentified sessions share one budget so withholding identity cannot evade the cap.</remarks>
     protected InboundRequest? TryEnterInbound(ISessionContext context, string protocolId)
     {
         PeerId? peerId = context.State.RemotePeerId;
@@ -224,9 +208,7 @@ public abstract class ReqRespProtocolBase
         return null;
     }
 
-    /// <summary>Decrements a peer's in-flight count, removing the entry at zero.</summary>
-    /// <remarks>Leaving zero-count entries behind would grow this dictionary for as long as the
-    /// process runs, which peer churn alone would then turn into an unbounded leak.</remarks>
+    /// <remarks>Remove zero-count entries to bound the table under peer churn.</remarks>
     private static void Release(ConcurrentDictionary<PeerId, int> counts, PeerId peerId)
     {
         while (counts.TryGetValue(peerId, out int current))
@@ -261,13 +243,11 @@ public abstract class ReqRespProtocolBase
         }
     }
 
-    /// <summary>An inbound stream being served: it holds the peer's concurrency slot and, once the request is read, watches the stream for bytes that must not follow it.</summary>
+    /// <summary>Holds an inbound concurrency slot and observes trailing request bytes while serving.</summary>
     /// <remarks>
-    /// A request is complete once its payload is read, so serving starts without waiting for the requester's EOF; bytes that arrive later are reported, not waited for.
-    /// The channel is torn down when the listener returns, so disposing ends the response with an EOF and then holds the listener until the requester ends its side,
-    /// at the longest <see cref="WatchLingerAfterServed"/>: a requester that reads to the end of the response ends its side at once, so the wait is over then.
-    /// The concurrency slot is released after response EOF, before awaiting requester closure (consensus-specs networking, Req/Resp interaction).
-    /// <see cref="MaxLingeringRequests"/> bounds completed requests awaiting closure; excess listeners return immediately.
+    /// Serving starts after payload read, without waiting for requester EOF. Disposal sends response EOF, releases the
+    /// concurrency slot, then waits up to WatchLingerAfterServed for requester closure. MaxLingeringRequests caps these waits;
+    /// excess listeners return immediately (consensus-specs networking Req/Resp interaction).
     /// </remarks>
     protected sealed class InboundRequest(ReqRespProtocolBase owner, ISessionContext context, string protocolId, IDisposable slot) : IAsyncDisposable
     {
@@ -438,17 +418,11 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
     protected abstract int MaxResponseSize { get; }
     protected abstract byte[] EncodeRequest(TRequest request);
 
-    /// <exception cref="Eth2ReqRespException">Implementations must throw this, not a decode-library
-    /// exception, when <paramref name="ssz"/> fails length or structural validation; <see cref="ListenAsync"/>
-    /// catches only this type to answer with an error chunk instead of letting the failure escape the
-    /// session.</exception>
+    /// <exception cref="Eth2ReqRespException">Malformed SSZ must use this exception type so ListenAsync normalizes failed exchanges.</exception>
     protected abstract TRequest DecodeRequest(byte[] ssz);
     protected abstract byte[] EncodeResponse(TResponse response);
 
-    /// <exception cref="Eth2ReqRespException">Implementations must throw this, not a decode-library
-    /// exception, when <paramref name="ssz"/> fails length or structural validation, matching every
-    /// other failure <see cref="DialAsync"/> can raise (a truncated read, an error-code response) so
-    /// callers see one exception type for a failed exchange.</exception>
+    /// <exception cref="Eth2ReqRespException">Malformed SSZ must use this exception type so DialAsync normalizes failed exchanges.</exception>
     protected abstract TResponse DecodeResponse(byte[] ssz);
 
     /// <summary>Produces the listen-side response for a decoded request.</summary>

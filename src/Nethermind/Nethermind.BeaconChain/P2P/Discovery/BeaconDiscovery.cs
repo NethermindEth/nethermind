@@ -44,17 +44,9 @@ using Libp2pPublicKey = Nethermind.Libp2p.Core.Dto.PublicKey;
 
 namespace Nethermind.BeaconChain.P2P.Discovery;
 
-/// <summary>
-/// A plugin-owned discv5 instance discovering beacon chain peers on its own UDP port, independent
-/// of the execution-layer discovery stack.
-/// </summary>
-/// <remarks>
-/// Composes the same discv5 Kademlia services as <c>DiscoveryV5App</c> in a private container, but with
-/// <see cref="AcceptAllDiscv5RecordFilter"/> (consensus-only ENRs are the peers we are after), the persisted
-/// libp2p identity as the node key (so the ENR's secp256k1 key matches the libp2p peer id), and a local ENR
-/// carrying the <c>eth2</c> fork id entry. Discovered ENRs are filtered by fork digest and converted to dialable
-/// libp2p multiaddrs.
-/// </remarks>
+/// <summary>Discovers beacon peers through an independent UDP discv5 instance.</summary>
+/// <remarks>Uses a private DiscoveryV5App-style container with AcceptAllDiscv5RecordFilter, the persisted libp2p key and eth2 ENR fork id.
+/// Fork-compatible ENRs become dialable multiaddrs.</remarks>
 public sealed class BeaconDiscovery(
     IBeaconChainConfig config,
     BeaconChainSpec spec,
