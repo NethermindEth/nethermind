@@ -18,20 +18,24 @@ internal static class GuestWord
         Unsafe.Add(ref word, 3) = 0;
     }
 
-    /// <summary>Whether the word at <paramref name="left"/> is below the word at <paramref name="right"/>, both in limb layout.</summary>
+    /// <summary>
+    /// Whether the word <paramref name="left"/> limbs from <paramref name="words"/> is below the word <paramref name="right"/>
+    /// limbs from it, both in limb layout.
+    /// </summary>
+    /// <remarks>Both are addressed off <paramref name="words"/> itself, so each access folds its constant into its own offset.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsBelow(ref ulong left, ref ulong right)
+    internal static bool IsBelow(ref ulong words, nint left, nint right)
     {
-        ulong leftLimb = Unsafe.Add(ref left, 3);
-        ulong rightLimb = Unsafe.Add(ref right, 3);
+        ulong leftLimb = Unsafe.Add(ref words, left + 3);
+        ulong rightLimb = Unsafe.Add(ref words, right + 3);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        leftLimb = Unsafe.Add(ref left, 2);
-        rightLimb = Unsafe.Add(ref right, 2);
+        leftLimb = Unsafe.Add(ref words, left + 2);
+        rightLimb = Unsafe.Add(ref words, right + 2);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        leftLimb = Unsafe.Add(ref left, 1);
-        rightLimb = Unsafe.Add(ref right, 1);
+        leftLimb = Unsafe.Add(ref words, left + 1);
+        rightLimb = Unsafe.Add(ref words, right + 1);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
-        return left < right;
+        return Unsafe.Add(ref words, left) < Unsafe.Add(ref words, right);
     }
 
     /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, left by <paramref name="shift"/> bits, below 256.</summary>

@@ -30,7 +30,11 @@ namespace Nethermind.Evm.ZkEvm.Test;
 public class GuestOpcodeHandlerTests
 {
     private const byte STOP = (byte)Instruction.STOP;
+    private const byte ADD = (byte)Instruction.ADD;
     private const byte SUB = (byte)Instruction.SUB;
+    private const byte AND = (byte)Instruction.AND;
+    private const byte OR = (byte)Instruction.OR;
+    private const byte XOR = (byte)Instruction.XOR;
     private const byte LT = (byte)Instruction.LT;
     private const byte GT = (byte)Instruction.GT;
     private const byte EQ = (byte)Instruction.EQ;
@@ -54,6 +58,7 @@ public class GuestOpcodeHandlerTests
     private const byte DUP1 = (byte)Instruction.DUP1;
     private const byte DUP2 = (byte)Instruction.DUP2;
     private const byte SWAP1 = (byte)Instruction.SWAP1;
+    private const byte POP = (byte)Instruction.POP;
     private const byte CALLDATALOAD = (byte)Instruction.CALLDATALOAD;
     private const byte KECCAK256 = (byte)Instruction.KECCAK256;
     private const byte INVALID = (byte)Instruction.INVALID;
@@ -240,6 +245,41 @@ public class GuestOpcodeHandlerTests
             (growingStores - 1) * (2 + 2 + 3) + (3 + 3 + 3) + MemoryCost(growingStores),
             overflow);
 
+        // Carries and borrows through every limb, and operands in either order.
+        BigInteger wordA = new(WordA, isUnsigned: true, isBigEndian: true);
+        BigInteger wordB = new(WordB, isUnsigned: true, isBigEndian: true);
+        BigInteger allOnes = (BigInteger.One << 256) - 1;
+        (BigInteger Top, BigInteger Second)[] operands =
+        [
+            (wordA, wordB), (wordB, wordA), (allOnes, 1), (1, allOnes), (ulong.MaxValue, 1), (0, 1),
+            (BigInteger.One << 192, (BigInteger.One << 192) - 1),
+        ];
+        (byte Op, string Name, Func<BigInteger, BigInteger, BigInteger> Apply)[] operations =
+        [
+            (ADD, "ADD", static (a, b) => a + b), (SUB, "SUB", static (a, b) => a - b),
+            (AND, "AND", static (a, b) => a & b), (OR, "OR", static (a, b) => a | b), (XOR, "XOR", static (a, b) => a ^ b),
+        ];
+        foreach ((byte op, string name, Func<BigInteger, BigInteger, BigInteger> apply) in operations)
+        {
+            foreach ((BigInteger top, BigInteger second) in operands)
+            {
+                yield return Succeeds($"{name} of {top:x} and {second:x}",
+                    Code([PUSH32, .. Word(second), PUSH32, .. Word(top), op, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                    Word(apply(top, second)));
+            }
+        }
+
+        // At every depth: the word moved to the top is stored first, then the word under it after the copy, or for a
+        // swap the word sent down, once the words between are popped.
+        for (int n = 1; n <= 16; n++)
+        {
+            yield return Succeeds($"DUP{n}", Code([.. DistinctWords(n), (byte)(DUP1 + n - 1), PUSH1, 0, MSTORE, PUSH1, 32, MSTORE, STOP]),
+                3 * (ulong)n + 3 + (3 + 3) + (3 + 3) + MemoryCost(2), [.. DistinctWord(0), .. DistinctWord(n - 1)]);
+            yield return Succeeds($"SWAP{n}",
+                Code([.. DistinctWords(n + 1), (byte)(SWAP1 + n - 1), PUSH1, 0, MSTORE, .. Filled(n - 1, POP), PUSH1, 32, MSTORE, STOP]),
+                3 * (ulong)(n + 1) + 3 + (3 + 3) + 2 * (ulong)(n - 1) + (3 + 3) + MemoryCost(2), [.. DistinctWord(0), .. DistinctWord(n)]);
+        }
+
         // Words wholly inside the input data, one ending at its last byte, and ones that run past it or start past it,
         // which read as zero-padded.
         byte[] input = Enumerable.Range(1, 40).Select(static b => (byte)b).ToArray();
@@ -299,6 +339,17 @@ public class GuestOpcodeHandlerTests
         yield return Fails("ISZERO on an empty stack", Code(ISZERO), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 on an empty stack", Code(DUP1), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 onto a full stack", Code([.. Filled(1024, PUSH0), DUP1]), EvmExceptionType.StackOverflow);
+        foreach (int n in (int[])[2, 16])
+        {
+            yield return Fails($"DUP{n} one word short", Code([.. Filled(n - 1, PUSH0), (byte)(DUP1 + n - 1)]), EvmExceptionType.StackUnderflow);
+            yield return Fails($"DUP{n} onto a full stack", Code([.. Filled(1024, PUSH0), (byte)(DUP1 + n - 1)]), EvmExceptionType.StackOverflow);
+        }
+
+        foreach (int n in (int[])[1, 16])
+        {
+            yield return Fails($"SWAP{n} one word short", Code([.. Filled(n, PUSH0), (byte)(SWAP1 + n - 1)]), EvmExceptionType.StackUnderflow);
+        }
+
         // DUP1 fits but the selector's PUSH4 does not, so DUP1 runs unfused before the push faults.
         yield return Fails("DUP1 PUSH4 EQ PUSH2 JUMPI on a stack one short of full",
             Code([.. Filled(1023, PUSH0), DUP1, PUSH4, 0, 0, 0, 0, EQ, PUSH2, 0, 0, JUMPI]), EvmExceptionType.StackOverflow);
@@ -322,6 +373,11 @@ public class GuestOpcodeHandlerTests
         yield return Fails("KECCAK256 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("KECCAK256 of 2^32 bytes", Code(PUSH5, 1, 0, 0, 0, 0, PUSH1, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("SHL with one operand", Code(PUSH1, 1, SHL), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[ADD, SUB, AND, OR, XOR])
+        {
+            yield return Fails($"{(Instruction)op} with one operand", Code(PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
+
         yield return Fails("SHR with one operand", Code(PUSH1, 1, SHR), EvmExceptionType.StackUnderflow);
     }
 
@@ -480,6 +536,12 @@ public class GuestOpcodeHandlerTests
     }
 
     private static byte[] Filled(int length, byte op) => Enumerable.Repeat(op, length).ToArray();
+
+    /// <summary>PUSH32s of <see cref="DistinctWord"/> 0 to <paramref name="count"/> - 1, in that order.</summary>
+    private static byte[] DistinctWords(int count) => Enumerable.Range(0, count).SelectMany(static k => (byte[])[PUSH32, .. DistinctWord(k)]).ToArray();
+
+    /// <summary>A word whose bytes all differ, and differ from every other word's bytes at the same position.</summary>
+    private static byte[] DistinctWord(int k) => Enumerable.Range(0, 32).Select(i => (byte)(13 * k + i)).ToArray();
 
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 
