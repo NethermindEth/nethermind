@@ -82,7 +82,7 @@ public class Eip8253TransitionTests
 
             AssertOnlyBump(forkBal.GetAccountChanges(Target), balanceChangeIndex: 2);
             AssertOnlyBump(forkBal.GetAccountChanges(AbsentTarget), balanceChangeIndex: null);
-            Assert.That(Eip8253Constants.MainnetAccounts.Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
+            Assert.That(Eip8253Constants.MainnetAccounts.ToArray().Select(a => forkBal.GetAccountChanges(a)?.NonceChanges),
                 Is.All.EqualTo(new[] { new NonceChange(0, 1) }), "every listed account records the bump at index 0");
             Assert.That(forkBal.GetAccountChanges(LookAlike)!.NonceChanges, Is.Empty, "an unlisted account of the same shape is not bumped");
 
@@ -186,13 +186,13 @@ public class Eip8253TransitionTests
     [Test]
     public void Mainnet_list_has_the_published_accounts_in_address_hash_order()
     {
-        IReadOnlyList<Address> accounts = Eip8253Constants.MainnetAccounts;
+        Address[] accounts = Eip8253Constants.MainnetAccounts.ToArray();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(accounts, Has.Count.EqualTo(28));
+            Assert.That(accounts, Has.Length.EqualTo(28));
             Assert.That(accounts.Select(static a => Keccak.Compute(a.Bytes).ToString()), Is.Ordered.Using((IComparer<string>)StringComparer.Ordinal));
-            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Mainnet), Is.SameAs(accounts));
-            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Sepolia), Is.Empty);
+            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Mainnet).ToArray(), Is.EqualTo(accounts));
+            Assert.That(Eip8253Constants.GetAccounts(BlockchainIds.Sepolia).IsEmpty, Is.True);
         }
     }
 

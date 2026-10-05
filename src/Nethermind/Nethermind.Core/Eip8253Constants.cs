@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 
 namespace Nethermind.Core;
 
@@ -13,7 +13,9 @@ public static class Eip8253Constants
     /// Ordered by address hash, matching <c>assets/eip-8253/targeted-accounts.json</c> in the EIPs repository.
     /// Chains that share Mainnet state after Spurious Dragon share this list; other chains derive their own.
     /// </remarks>
-    public static IReadOnlyList<Address> MainnetAccounts { get; } =
+    public static ReadOnlySpan<Address> MainnetAccounts => _mainnetAccounts;
+
+    private static readonly Address[] _mainnetAccounts =
     [
         new("0xf468bcbc4a0bfdb06336e773382c5202e674db71"),
         new("0xd8253352f6044cfe55bcc0748c3fa37b7df81f98"),
@@ -47,5 +49,5 @@ public static class Eip8253Constants
 
     /// <summary>Returns the accounts the EIP-8253 transition bumps on the chain with <paramref name="chainId"/>.</summary>
     /// <remarks>Only Mainnet has a published list; every other chain gets an empty one and the transition is a no-op.</remarks>
-    public static IReadOnlyList<Address> GetAccounts(ulong chainId) => chainId == BlockchainIds.Mainnet ? MainnetAccounts : [];
+    public static ReadOnlySpan<Address> GetAccounts(ulong chainId) => chainId == BlockchainIds.Mainnet ? MainnetAccounts : [];
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,8 +35,8 @@ public sealed class ZeroNonceStorageAccountsTransition(ISpecProvider specProvide
             return;
         }
 
-        IReadOnlyList<Address> accounts = Eip8253Constants.GetAccounts(specProvider.ChainId);
-        if (accounts.Count == 0)
+        ReadOnlySpan<Address> accounts = Eip8253Constants.GetAccounts(specProvider.ChainId);
+        if (accounts.IsEmpty)
         {
             return;
         }
@@ -58,7 +57,7 @@ public sealed class ZeroNonceStorageAccountsTransition(ISpecProvider specProvide
     }
 
     // The list, not the account's shape, selects what is bumped, so an absent account is created with nonce 1.
-    private static void Apply(IWorldState state, IReadOnlyList<Address> accounts)
+    private static void Apply(IWorldState state, ReadOnlySpan<Address> accounts)
     {
         foreach (Address address in accounts)
         {
