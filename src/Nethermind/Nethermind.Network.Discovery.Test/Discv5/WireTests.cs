@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -679,13 +678,7 @@ public class WireTests
     {
         while (from.Outbound.TryDequeue(out byte[]? data))
         {
-            ArrayPoolSpan<byte> buffer = new(data.Length);
-            data.CopyTo(buffer.AsMemory());
-            PooledUdpReceiveResult packet = new(from.Endpoint, buffer);
-            if (!to.Transport.TryEnqueue(packet))
-            {
-                packet.Dispose();
-            }
+            to.Transport.Receive(PooledUdpReceiveResult.Copy(data, from.Endpoint));
         }
     }
 

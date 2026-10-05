@@ -6,32 +6,31 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
-using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.Rlp;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery.Discv4;
 
-public class NettyDiscoveryHandler(
+public class DiscoveryHandler(
     IDiscoveryMsgListener? discoveryManager,
-    IChannel? channel,
     IMessageSerializationService? msgSerializationService,
     ITimestamper? timestamper,
     ILogManager? logManager,
     NodeFilter? inboundMessageFilter = null,
     int? globalInboundMessageBurst = null,
     int? inboundMessageQueueCapacity = null,
-    int? inboundMessageWorkerCount = null) : NettyDiscoveryBaseHandler(logManager, channel ?? throw new ArgumentNullException(nameof(channel))), IMsgSender
+    int? inboundMessageWorkerCount = null) : IMsgSender
 {
+    private const int MaxPacketSize = DiscoveryConnectionsPool.MaxPacketSize;
     private static readonly TimeSpan MaxFutureExpirationOffset = TimeSpan.FromHours(1);
     private static readonly TimeSpan DefaultInboundMessageWindow = TimeSpan.FromMilliseconds(100);
     private static readonly TimeSpan DefaultGlobalInboundMessageWindow = TimeSpan.FromMilliseconds(100);
@@ -40,7 +39,7 @@ public class NettyDiscoveryHandler(
     private const int DefaultGlobalInboundMessageBurst = 512;
     private const int DefaultInboundMessageQueueCapacity = 1_024;
     private const int DefaultInboundMessageWorkerCount = 4;
-    private readonly ILogger _logger = logManager?.GetClassLogger<NettyDiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
+    private readonly ILogger _logger = logManager?.GetClassLogger<DiscoveryHandler>() ?? throw new ArgumentNullException(nameof(logManager));
     private readonly IDiscoveryMsgListener _discoveryMsgListener = discoveryManager ?? throw new ArgumentNullException(nameof(discoveryManager));
     private readonly IMessageSerializationService _msgSerializationService = msgSerializationService ?? throw new ArgumentNullException(nameof(msgSerializationService));
     private readonly ITimestamper _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
@@ -56,39 +55,32 @@ public class NettyDiscoveryHandler(
         });
     private readonly int _inboundMessageWorkerCount = Math.Max(1, inboundMessageWorkerCount ?? DefaultInboundMessageWorkerCount);
     private int _dispatchWorkersStarted;
+    private IDatagramSocket? _socket;
+    private Action<PooledUdpReceiveResult>? _forward;
 
-    protected override void CloseInbound() => _inboundMessages.Writer.TryComplete();
+    private IDatagramSocket Socket => _socket ?? throw new InvalidOperationException("Discovery channel is not initialized.");
 
-    public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
+    /// <summary>
+    /// Attaches the handler to the discovery socket.
+    /// </summary>
+    /// <param name="socket">The socket used to send messages.</param>
+    /// <param name="forward">Receives datagrams that are not valid discv4 messages, taking ownership of them.</param>
+    internal void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
     {
-        //In case of SocketException we log it as debug to avoid noise
-        if (exception is SocketException)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Exception when processing discovery messages (SocketException): {exception}");
-        }
-        else
-        {
-            if (_logger.IsError) _logger.Error("Exception when processing discovery messages", exception);
-        }
-
-        _ = LogDisconnectFailureAsync(context.DisconnectAsync());
+        _socket = socket;
+        _forward = forward;
     }
 
-    public override void ChannelReadComplete(IChannelHandlerContext context) => context.Flush();
+    internal void CloseInbound() => _inboundMessages.Writer.TryComplete();
 
-    public Task SendMsg(DiscoveryMsg discoveryMsg)
-        => Channel.EventLoop.InEventLoop
-            ? SendMsgCore(discoveryMsg)
-            : Channel.EventLoop.SubmitAsync(static (handler, message) =>
-                ((NettyDiscoveryHandler)handler).SendMsgCore((DiscoveryMsg)message), this, discoveryMsg).Unwrap();
-
-    private async Task SendMsgCore(DiscoveryMsg discoveryMsg)
+    public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
+        IDatagramSocket socket = Socket;
         IByteBuffer msgBuffer;
         try
         {
             if (_logger.IsTrace) TraceSending(discoveryMsg);
-            msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
+            msgBuffer = Serialize(discoveryMsg, NethermindBuffers.DiscoveryAllocator);
         }
         catch (Exception e)
         {
@@ -111,14 +103,17 @@ public class NettyDiscoveryHandler(
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "disc v4", discoveryMsg.MsgType.ToString(), size);
         }
 
-        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
         try
         {
-            await Channel.WriteAndFlushAsync(packet);
+            await socket.SendToAsync(msgBuffer.ReadAllBytesAsMemory(), discoveryMsg.FarAddress!);
         }
         catch (Exception e)
         {
             if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
+        }
+        finally
+        {
+            msgBuffer.Release();
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
@@ -133,15 +128,15 @@ public class NettyDiscoveryHandler(
     private void TraceSendFailure(DiscoveryMsg message, Exception exception) =>
         _logger.Trace($"Error when sending a discovery message Msg: {message} ,Exp: {exception}");
 
-    private bool TryAcceptPacket(DatagramPacket packet, out MsgType type, out bool shouldForward, out EndPoint address)
+    private bool TryAcceptPacket(PooledUdpReceiveResult packet, out MsgType type, out bool shouldForward)
     {
         type = default;
         shouldForward = true;
 
-        IByteBuffer content = packet.Content;
-        address = packet.Sender is IPEndPoint senderEndpoint ? NormalizeEndpoint(senderEndpoint) : packet.Sender;
+        ReadOnlySpan<byte> content = packet.Buffer.Span;
+        IPEndPoint address = packet.RemoteEndPoint;
 
-        int size = content.ReadableBytes;
+        int size = content.Length;
 
         if (size < 98)
         {
@@ -149,8 +144,7 @@ public class NettyDiscoveryHandler(
             return false;
         }
 
-        int readerIndex = content.ReaderIndex;
-        byte msgTypeByte = content.GetByte(readerIndex + 97);
+        byte msgTypeByte = content[97];
         if (FromMsgTypeByte(msgTypeByte) is not { } resolvedType)
         {
             if (_logger.IsTrace) TraceUnsupportedMessageType(msgTypeByte, address);
@@ -167,9 +161,9 @@ public class NettyDiscoveryHandler(
             return false;
         }
 
-        if (address is IPEndPoint remoteEndpoint && !TryAcceptInbound(remoteEndpoint))
+        if (!TryAcceptInbound(address))
         {
-            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {remoteEndpoint}");
+            if (_logger.IsTrace) _logger.Trace($"Rate limiting discovery message {type} from {address}");
             return false;
         }
 
@@ -184,26 +178,30 @@ public class NettyDiscoveryHandler(
             _logger.Trace($"Unsupported message type: {messageType}, sender: {sender}");
     }
 
-    protected override void ChannelRead0(IChannelHandlerContext ctx, DatagramPacket packet)
+    /// <summary>
+    /// Handles a datagram received on the discovery socket, taking ownership of it.
+    /// </summary>
+    internal void Receive(PooledUdpReceiveResult packet)
     {
-        if (!TryAcceptPacket(packet, out MsgType type, out bool shouldForward, out EndPoint address))
+        if (!TryAcceptPacket(packet, out MsgType type, out bool shouldForward))
         {
             if (shouldForward)
             {
-                packet.Content.ResetReaderIndex();
-                ctx.FireChannelRead(packet.Retain());
+                Forward(packet);
+            }
+            else
+            {
+                packet.Dispose();
             }
             return;
         }
 
-        int size = packet.Content.ReadableBytes;
         EnsureDispatchWorkersStarted();
 
-        packet.Retain();
-        if (!_inboundMessages.Writer.TryWrite(new InboundDiscoveryPacket(ctx, packet, type, address, size)))
+        if (!_inboundMessages.Writer.TryWrite(new InboundDiscoveryPacket(packet, type)))
         {
-            ReferenceCountUtil.Release(packet);
-            if (_logger.IsDebug) _logger.Debug($"Dropping discovery message because inbound dispatch queue is full, type: {type}, sender: {address}");
+            packet.Dispose();
+            if (_logger.IsDebug) _logger.Debug($"Dropping discovery message because inbound dispatch queue is full, type: {type}, sender: {packet.RemoteEndPoint}");
         }
     }
 
@@ -314,27 +312,16 @@ public class NettyDiscoveryHandler(
     private bool TryAcceptInbound(IPEndPoint remoteEndpoint)
         => _inboundMessageLimiter.TryAccept(remoteEndpoint.Address);
 
-    private async Task LogDisconnectFailureAsync(Task disconnectTask)
-    {
-        try
-        {
-            await disconnectTask;
-        }
-        catch (Exception e)
-        {
-            if (_logger.IsTrace) _logger.Trace($"Error while disconnecting on context on {this} : {e}");
-        }
-    }
-
     private async Task ProcessInboundMessagesAsync()
     {
         try
         {
             await foreach (InboundDiscoveryPacket packet in _inboundMessages.Reader.ReadAllAsync())
             {
+                bool forwarded = false;
                 try
                 {
-                    ProcessInboundMessage(packet);
+                    forwarded = ProcessInboundMessage(packet);
                 }
                 catch (Exception e)
                 {
@@ -342,7 +329,10 @@ public class NettyDiscoveryHandler(
                 }
                 finally
                 {
-                    ReferenceCountUtil.Release(packet.Packet);
+                    if (!forwarded)
+                    {
+                        packet.Packet.Dispose();
+                    }
                 }
             }
         }
@@ -352,24 +342,26 @@ public class NettyDiscoveryHandler(
         }
     }
 
-    private void ProcessInboundMessage(InboundDiscoveryPacket packet)
+    /// <returns><c>true</c> when the packet was forwarded, passing on its ownership.</returns>
+    private bool ProcessInboundMessage(InboundDiscoveryPacket packet)
     {
         if (!TryDeserialize(packet, out DiscoveryMsg? msg))
         {
-            ForwardPacket(packet);
-            return;
+            Forward(packet.Packet);
+            return true;
         }
 
         ReportMsgByType(msg, packet.Size);
 
         if (!ValidateMsg(msg, packet.Type, packet.Address, packet.Size))
         {
-            ForwardPacket(packet);
-            return;
+            Forward(packet.Packet);
+            return true;
         }
 
         // Discv4 request handling can wait for response packets that must be decoded by this same bounded queue.
         DispatchMessage(msg);
+        return false;
     }
 
     private void DispatchMessage(DiscoveryMsg msg)
@@ -396,19 +388,22 @@ public class NettyDiscoveryHandler(
     private bool TryDeserialize(InboundDiscoveryPacket packet, [NotNullWhen(true)] out DiscoveryMsg? msg)
     {
         msg = null;
-        IByteBuffer content = packet.Packet.Content;
-        int readerIndex = content.ReaderIndex;
-        IByteBuffer msgBuffer = content.RetainedSlice(readerIndex, packet.Size);
+        if (!MemoryMarshal.TryGetArray(packet.Packet.Buffer, out ArraySegment<byte> segment))
+        {
+            return false;
+        }
+
+        IByteBuffer msgBuffer = Unpooled.WrappedBuffer(segment.Array, segment.Offset, segment.Count);
 
         try
         {
             msg = Deserialize(packet.Type, msgBuffer);
-            msg.FarAddress = (IPEndPoint)packet.Address;
+            msg.FarAddress = packet.Address;
             return true;
         }
         catch (Exception e)
         {
-            if (_logger.IsTrace) TraceDeserializationFailure(packet, msgBuffer, e);
+            if (_logger.IsTrace) TraceDeserializationFailure(packet, e);
             return false;
         }
         finally
@@ -417,21 +412,19 @@ public class NettyDiscoveryHandler(
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
-        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, IByteBuffer messageBuffer, Exception exception) =>
-            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {GetBytes(messageBuffer).AsSpan().ToHexString()}, {exception.Message}");
-
-        static byte[] GetBytes(IByteBuffer messageBuffer)
-        {
-            byte[] bytes = GC.AllocateUninitializedArray<byte>(messageBuffer.ReadableBytes);
-            messageBuffer.GetBytes(messageBuffer.ReaderIndex, bytes);
-            return bytes;
-        }
+        void TraceDeserializationFailure(InboundDiscoveryPacket failedPacket, Exception exception) =>
+            _logger.Trace($"Error during deserialization of the message, type: {failedPacket.Type}, sender: {failedPacket.Address}, msg: {failedPacket.Packet.Buffer.Span.ToHexString()}, {exception.Message}");
     }
 
-    private static void ForwardPacket(InboundDiscoveryPacket packet)
+    private void Forward(PooledUdpReceiveResult packet)
     {
-        packet.Packet.Content.ResetReaderIndex();
-        packet.Context.FireChannelRead(packet.Packet.Retain());
+        if (_forward is null)
+        {
+            packet.Dispose();
+            return;
+        }
+
+        _forward(packet);
     }
 
     private void EnsureDispatchWorkersStarted()
@@ -475,5 +468,10 @@ public class NettyDiscoveryHandler(
         }
     }
 
-    private readonly record struct InboundDiscoveryPacket(IChannelHandlerContext Context, DatagramPacket Packet, MsgType Type, EndPoint Address, int Size);
+    private readonly record struct InboundDiscoveryPacket(PooledUdpReceiveResult Packet, MsgType Type)
+    {
+        public IPEndPoint Address => Packet.RemoteEndPoint;
+
+        public int Size => Packet.Buffer.Length;
+    }
 }

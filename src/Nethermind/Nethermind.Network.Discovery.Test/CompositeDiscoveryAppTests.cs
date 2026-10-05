@@ -6,11 +6,12 @@ using System.Collections.Generic;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
-using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
-using DotNetty.Transport.Channels.Sockets;
+using Nethermind.Config;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Enr;
@@ -40,7 +41,7 @@ public class CompositeDiscoveryAppTests
 
     [Test]
     [NonParallelizable]
-    public async Task StartAsync_ReleasesChannelAndEventLoopWhenBindFails()
+    public async Task StartAsync_ReleasesSocketWhenBindFails()
     {
         int port;
         using (Socket blocker = CreateUdpListenerSocket(IPAddress.Any, 0))
@@ -51,8 +52,7 @@ public class CompositeDiscoveryAppTests
             ipResolver.Resolve(Arg.Any<CancellationToken>()).Returns(new ValueTask<IIPResolver.NethermindIp>(
                 new IIPResolver.NethermindIp(IPAddress.Any, IPAddress.Loopback)));
             NetworkListenerState listenerState = new(networkConfig, ipResolver, LimboLogs.Instance);
-            IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-            discoveryApp.StopAsync().Returns(Task.CompletedTask);
+            RecordingDiscoveryApp discoveryApp = new();
             RecordingChannelFactory channelFactory = new();
             CompositeDiscoveryApp app = new(
                 networkConfig,
@@ -64,14 +64,14 @@ public class CompositeDiscoveryAppTests
 
             Assert.That(async () => await app.StartAsync(), Throws.TypeOf<PortInUseException>());
 
-            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(1));
+            Assert.That(channelFactory.CreatedSockets, Has.Count.EqualTo(1));
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(app.HasEventLoopGroup, Is.False);
                 Assert.That(listenerState.DiscoveryAddress, Is.Null);
-                AssertChannelsClosed(channelFactory.CreatedChannels);
+                AssertSocketsClosed(channelFactory.CreatedSockets);
+                Assert.That(discoveryApp.InitializedSockets, Is.Empty);
+                Assert.That(discoveryApp.StopAsyncCoreCalls, Is.EqualTo(1));
             }
-            await discoveryApp.Received(1).StopAsync();
         }
 
         using Socket released = CreateUdpListenerSocket(IPAddress.Any, port);
@@ -85,12 +85,7 @@ public class CompositeDiscoveryAppTests
 
         NetworkConfig networkConfig = new() { DiscoveryPort = port };
         NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
-        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-        bool initializedOnEventLoop = false;
-        discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call =>
-            initializedOnEventLoop = ((IChannel)call[0]).EventLoop.InEventLoop);
-        discoveryApp.StartAsync().Returns(Task.CompletedTask);
-        discoveryApp.StopAsync().Returns(Task.CompletedTask);
+        RecordingDiscoveryApp discoveryApp = new();
         RecordingChannelFactory channelFactory = new();
         CompositeDiscoveryApp app = new(
             networkConfig,
@@ -103,15 +98,14 @@ public class CompositeDiscoveryAppTests
         try
         {
             await app.StartAsync();
-            await discoveryApp.Received(1).StartAsync();
 
-            Assert.That(channelFactory.CreatedChannels, Has.Count.EqualTo(2));
+            Assert.That(channelFactory.CreatedSockets, Has.Count.EqualTo(2));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
-                Assert.That(channelFactory.CreatedChannels[0].Open, Is.False);
-                Assert.That(initializedOnEventLoop, Is.True);
-                discoveryApp.Received(1).InitializeChannel(channelFactory.CreatedChannels[1]);
+                Assert.That(channelFactory.CreatedSockets[0].SafeHandle.IsClosed, Is.True);
+                Assert.That(discoveryApp.InitializedSockets, Has.Count.EqualTo(1));
+                Assert.That(discoveryApp.InitializedSockets[0].LocalEndpoint, Is.EqualTo(new IPEndPoint(IPAddress.Any, port)));
             }
         }
         finally
@@ -121,50 +115,36 @@ public class CompositeDiscoveryAppTests
     }
 
     [Test]
-    [NonParallelizable]
-    public async Task StopAsync_CompletesWhenEventLoopCannotTerminate()
+    public async Task StartAsync_ForwardsDatagramsAlongProtocols()
     {
-        NetworkConfig networkConfig = new() { DiscoveryPort = GetAvailableUdpPort() };
-        NetworkListenerState listenerState = new(IPAddress.Any, IPAddress.IPv6Any, LimboLogs.Instance);
-        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
-        underlyingLogger.IsWarn.Returns(true);
-        IDiscoveryApp discoveryApp = Substitute.For<IDiscoveryApp>();
-        IEventLoop? eventLoop = null;
-        discoveryApp.When(app => app.InitializeChannel(Arg.Any<IChannel>())).Do(call => eventLoop = ((IChannel)call[0]).EventLoop);
-        discoveryApp.StartAsync().Returns(Task.CompletedTask);
-        discoveryApp.StopAsync().Returns(Task.CompletedTask);
+        LocalChannelFactory channelFactory = new(nameof(StartAsync_ForwardsDatagramsAlongProtocols), new NetworkConfig());
+        IPEndPoint listener = new(IPAddress.Loopback, 30303);
+        NetworkListenerState listenerState = new(IPAddress.Loopback, IPAddress.Loopback, LimboLogs.Instance);
+        RecordingDiscoveryApp first = new(forwardAll: true);
+        RecordingDiscoveryApp second = new();
         CompositeDiscoveryApp app = new(
-            networkConfig,
-            new DiscoveryConfig { UdpChannelCloseTimeout = 100 },
-            new OneLoggerLogManager(new ILogger(underlyingLogger)),
+            new NetworkConfig { DiscoveryPort = listener.Port },
+            new DiscoveryConfig(),
+            LimboLogs.Instance,
             listenerState,
-            [discoveryApp],
-            new RecordingChannelFactory());
+            [first, second],
+            channelFactory);
+        byte[] data = [1, 2, 3];
 
-        using ManualResetEventSlim wedge = new();
-        Task? wedged = null;
         try
         {
             await app.StartAsync();
-            Assert.That(eventLoop, Is.Not.Null);
+            using IDatagramSocket sender = channelFactory.CreateDatagramSocket();
+            sender.Bind(IPEndPoint.Parse("127.0.0.2:30303"));
 
-            // Standing in for DotNetty's shutdown livelock: an event loop that cannot reach termination.
-            wedged = eventLoop!.SubmitAsync(() =>
-            {
-                wedge.Wait();
-                return true;
-            });
+            await sender.SendToAsync(data, listener);
 
-            // Generous against the shutdown budget, so an unbounded wait fails here instead of hanging the host.
-            await app.StopAsync().WaitAsync(TimeSpan.FromSeconds(30));
-
-            underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
-                message.StartsWith("Could not shut discovery event loop down")));
+            Assert.That(await second.Received.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.EqualTo(data));
+            Assert.That(first.InitializedSockets, Is.EqualTo(second.InitializedSockets));
         }
         finally
         {
-            wedge.Set();
-            if (wedged is not null) await wedged.WaitAsync(TimeSpan.FromSeconds(30));
+            await app.StopAsync();
         }
     }
 
@@ -227,23 +207,23 @@ public class CompositeDiscoveryAppTests
 
         NetworkListenerState listenerState = CreateListenerState(configuredIp, address);
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         int expectedDatagrams = (acceptsIpv4 ? 1 : 0) + (acceptsIpv6 ? 1 : 0);
         int receivedDatagrams = 0;
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
-            IChannel channel = await pool.BindAsync(
-                () => CreateBootstrap(eventLoopGroup, () =>
+            IDatagramSocket socket = pool.Bind(
+                bindAddress => CreateSocket(bindAddress),
+                0,
+                datagram =>
                 {
+                    datagram.Dispose();
                     if (Interlocked.Increment(ref receivedDatagrams) == expectedDatagrams)
                     {
                         received.TrySetResult();
                     }
-                }),
-                bindAddress => CreateChannel(bindAddress),
-                0);
-            int port = ((IPEndPoint)channel.LocalAddress).Port;
+                });
+            int port = socket.LocalEndpoint!.Port;
 
             if (acceptsIpv4)
             {
@@ -274,7 +254,6 @@ public class CompositeDiscoveryAppTests
         finally
         {
             await pool.StopAsync();
-            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
@@ -293,32 +272,33 @@ public class CompositeDiscoveryAppTests
         InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
         underlyingLogger.IsWarn.Returns(true);
         DiscoveryConnectionsPool pool = CreatePool(listenerState, new ILogger(underlyingLogger));
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        List<IChannel> createdChannels = [];
+        List<Socket> createdSockets = [];
         try
         {
-            await pool.BindAsync(
-                () => CreateBootstrap(eventLoopGroup, () => received.TrySetResult()),
-                address => CreateChannel(portInUse ? address : IPAddress.Any, createdChannels),
-                port);
+            pool.Bind(
+                address => CreateSocket(portInUse ? address : IPAddress.Any, createdSockets),
+                port,
+                datagram =>
+                {
+                    datagram.Dispose();
+                    received.TrySetResult();
+                });
 
             await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, port);
             await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             underlyingLogger.Received(1).Warn(Arg.Is<string>(message =>
                 message.StartsWith("Failed to bind discovery UDP channel") && message.Contains(typeof(SocketException).FullName!)));
-            Assert.That(createdChannels, Has.Count.EqualTo(2));
+            Assert.That(createdSockets, Has.Count.EqualTo(2));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
-                Assert.That(createdChannels[0].Open, Is.False);
-                Assert.That(createdChannels[0].CloseCompletion.IsCompletedSuccessfully, Is.True);
+                Assert.That(createdSockets[0].SafeHandle.IsClosed, Is.True);
             }
         }
         finally
         {
             await pool.StopAsync();
-            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
@@ -339,34 +319,29 @@ public class CompositeDiscoveryAppTests
             InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
             underlyingLogger.IsError.Returns(true);
             DiscoveryConnectionsPool pool = CreatePool(listenerState, new ILogger(underlyingLogger));
-            IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
-            List<IChannel> createdChannels = [];
+            List<Socket> createdSockets = [];
             try
             {
                 Assert.That(
-                    async () => await pool.BindAsync(
-                        () => CreateBootstrap(eventLoopGroup),
-                        _ => CreateChannel(IPAddress.Any, createdChannels),
-                        port),
+                    () => pool.Bind(
+                        _ => CreateSocket(IPAddress.Any, createdSockets),
+                        port,
+                        static datagram => datagram.Dispose()),
                     Throws.TypeOf<PortInUseException>());
-                Assert.That(createdChannels, Has.Count.EqualTo(2));
+                Assert.That(createdSockets, Has.Count.EqualTo(2));
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(listenerState.DiscoveryAddress, Is.Null);
-                    AssertChannelsClosed(createdChannels);
+                    AssertSocketsClosed(createdSockets);
                 }
             }
             finally
             {
                 await pool.StopAsync();
-                await ShutdownEventLoopAsync(eventLoopGroup);
             }
 
             underlyingLogger.Received(1).Error(
                 Arg.Is<string>(message => message.StartsWith("Error when establishing discovery connection")),
-                Arg.Any<Exception>());
-            underlyingLogger.DidNotReceive().Error(
-                "Error during udp channel stop process",
                 Arg.Any<Exception>());
         }
 
@@ -390,21 +365,19 @@ public class CompositeDiscoveryAppTests
             port = ((IPEndPoint)blocker.LocalEndPoint!).Port;
             NetworkListenerState listenerState = CreateListenerState(configuredIp, IPAddress.Parse(localIp));
             DiscoveryConnectionsPool pool = CreatePool(listenerState);
-            IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
             try
             {
                 Assert.That(
-                    async () => await pool.BindAsync(
-                        () => CreateBootstrap(eventLoopGroup),
-                        address => CreateChannel(address),
-                        port),
+                    () => pool.Bind(
+                        address => CreateSocket(address),
+                        port,
+                        static datagram => datagram.Dispose()),
                     Throws.TypeOf<PortInUseException>());
                 Assert.That(listenerState.DiscoveryAddress, Is.Null);
             }
             finally
             {
                 await pool.StopAsync();
-                await ShutdownEventLoopAsync(eventLoopGroup);
             }
         }
 
@@ -418,14 +391,13 @@ public class CompositeDiscoveryAppTests
         NetworkListenerState listenerState = CreateListenerState("0.0.0.0", IPAddress.Any);
         listenerState.Changed += (_, _) => throw new InvalidOperationException("subscriber failure");
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         bool stopped = false;
         try
         {
-            await pool.BindAsync(
-                () => CreateBootstrap(eventLoopGroup),
-                address => CreateChannel(address),
-                0);
+            pool.Bind(
+                address => CreateSocket(address),
+                0,
+                static datagram => datagram.Dispose());
             Assert.That(listenerState.DiscoveryAddress, Is.EqualTo(IPAddress.Any));
 
             await pool.StopAsync();
@@ -438,30 +410,28 @@ public class CompositeDiscoveryAppTests
             {
                 await pool.StopAsync();
             }
-            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
     [Test]
     [NonParallelizable]
-    public async Task ListenerState_ClearsWhenChannelClosesUnexpectedly()
+    public async Task ListenerState_ClearsWhenSocketClosesUnexpectedly()
     {
         NetworkListenerState listenerState = CreateListenerState("0.0.0.0", IPAddress.Any);
         DiscoveryConnectionsPool pool = CreatePool(listenerState);
-        IEventLoopGroup eventLoopGroup = new MultithreadEventLoopGroup(1);
         try
         {
-            IChannel channel = await pool.BindAsync(
-                () => CreateBootstrap(eventLoopGroup),
-                address => CreateChannel(address),
-                0);
+            IDatagramSocket socket = pool.Bind(
+                address => CreateSocket(address),
+                0,
+                static datagram => datagram.Dispose());
             TaskCompletionSource cleared = new(TaskCreationOptions.RunContinuationsAsynchronously);
             listenerState.Changed += (_, _) =>
             {
                 if (listenerState.DiscoveryAddress is null) cleared.TrySetResult();
             };
 
-            await channel.CloseAsync();
+            socket.Dispose();
             await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
 
             Assert.That(listenerState.DiscoveryAddress, Is.Null);
@@ -469,19 +439,85 @@ public class CompositeDiscoveryAppTests
         finally
         {
             await pool.StopAsync();
-            await ShutdownEventLoopAsync(eventLoopGroup);
         }
     }
 
-    /// <summary>Shuts <paramref name="eventLoopGroup"/> down, failing rather than hanging when it does not terminate.</summary>
-    /// <remarks>
-    /// While confirming shutdown, DotNetty queues a wake-up task that its own next confirmation then reads as
-    /// pending work, so a task landing in the queue at that moment leaves the event loop spinning instead of
-    /// terminating. Bounding the wait turns that livelock into a failure of this test rather than a hang that
-    /// takes down the whole test host.
-    /// </remarks>
-    private static Task ShutdownEventLoopAsync(IEventLoopGroup eventLoopGroup)
-        => eventLoopGroup.ShutdownGracefullyAsync(TimeSpan.Zero, TimeSpan.FromSeconds(1)).WaitAsync(TimeSpan.FromSeconds(5));
+    [Test]
+    public async Task Receive_SkipsDatagramsOfInvalidSize([Values(0, DiscoveryConnectionsPool.MaxPacketSize + 1)] int size)
+    {
+        byte[] invalid = new byte[size];
+        byte[] first = [1, 2, 3];
+        byte[] second = [4, 5, 6];
+
+        List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
+            IPEndPoint.Parse("127.0.0.2:10000"), 2, invalid, first, invalid, second);
+
+        Assert.That(received[0].Data, Is.EqualTo(first));
+        Assert.That(received[1].Data, Is.EqualTo(second));
+    }
+
+    [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
+    [TestCase("2001:db8::2", "2001:db8::2")]
+    public async Task Receive_ReportsSenderInCanonicalForm(string senderAddress, string expectedAddress)
+    {
+        List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
+            new IPEndPoint(IPAddress.Parse(senderAddress), 10000), 1, [1, 2, 3]);
+
+        Assert.That(received[0].Sender, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), 10000)));
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Receive_UpdatesDiscoveryBytesReceivedMetric()
+    {
+        byte[] data = new byte[100];
+        long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
+
+        await ReceiveThroughPoolAsync(IPEndPoint.Parse("127.0.0.2:10000"), 1, data);
+
+        Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
+    }
+
+    /// <summary>
+    /// Sends <paramref name="datagrams"/> from <paramref name="sender"/> to a pool listening on an in-memory socket
+    /// and returns the first <paramref name="expectedCount"/> datagrams the pool delivers.
+    /// </summary>
+    private static async Task<List<(byte[] Data, IPEndPoint Sender)>> ReceiveThroughPoolAsync(
+        IPEndPoint sender,
+        int expectedCount,
+        params byte[][] datagrams)
+    {
+        LocalChannelFactory channelFactory = new(TestContext.CurrentContext.Test.ID, new NetworkConfig());
+        DiscoveryConnectionsPool pool = CreatePool(new NetworkListenerState(IPAddress.Loopback, IPAddress.Loopback, LimboLogs.Instance));
+        Channel<(byte[] Data, IPEndPoint Sender)> received = Channel.CreateUnbounded<(byte[] Data, IPEndPoint Sender)>();
+        try
+        {
+            IDatagramSocket socket = pool.Bind(_ => channelFactory.CreateDatagramSocket(), 30303, datagram =>
+            {
+                received.Writer.TryWrite((datagram.Buffer.ToArray(), datagram.RemoteEndPoint));
+                datagram.Dispose();
+            });
+            using IDatagramSocket senderSocket = channelFactory.CreateDatagramSocket();
+            senderSocket.Bind(sender);
+            foreach (byte[] datagram in datagrams)
+            {
+                await senderSocket.SendToAsync(datagram, socket.LocalEndpoint!);
+            }
+
+            using CancellationTokenSource cancellationSource = new(TimeSpan.FromSeconds(5));
+            List<(byte[] Data, IPEndPoint Sender)> result = [];
+            while (result.Count < expectedCount)
+            {
+                result.Add(await received.Reader.ReadAsync(cancellationSource.Token));
+            }
+
+            return result;
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
 
     private static NodeRecord CreateDualStackRecord()
     {
@@ -502,15 +538,11 @@ public class CompositeDiscoveryAppTests
             new DiscoveryConfig { UdpChannelCloseTimeout = 1_000 },
             listenerState);
 
-    private static void AssertChannelsClosed(IReadOnlyList<IChannel> channels)
+    private static void AssertSocketsClosed(IReadOnlyList<Socket> sockets)
     {
-        foreach (IChannel channel in channels)
+        foreach (Socket socket in sockets)
         {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(channel.Open, Is.False);
-                Assert.That(channel.CloseCompletion.IsCompletedSuccessfully, Is.True);
-            }
+            Assert.That(socket.SafeHandle.IsClosed, Is.True);
         }
     }
 
@@ -523,22 +555,11 @@ public class CompositeDiscoveryAppTests
         return new NetworkListenerState(networkConfig, ipResolver, LimboLogs.Instance);
     }
 
-    private static Bootstrap CreateBootstrap(IEventLoopGroup eventLoopGroup, Action? onReceive = null)
-        => new Bootstrap()
-            .Group(eventLoopGroup)
-            .Handler(new ActionChannelInitializer<IDatagramChannel>(channel =>
-            {
-                if (onReceive is not null)
-                {
-                    channel.Pipeline.AddLast(new DatagramObserver(onReceive));
-                }
-            }));
-
-    private static IChannel CreateChannel(IPAddress address, List<IChannel>? createdChannels = null)
+    private static IDatagramSocket CreateSocket(IPAddress address, List<Socket>? createdSockets = null)
     {
-        IChannel channel = new SocketDatagramChannel(CompositeDiscoveryApp.CreateDatagramSocket(address));
-        createdChannels?.Add(channel);
-        return channel;
+        Socket socket = CompositeDiscoveryApp.CreateDatagramSocket(address);
+        createdSockets?.Add(socket);
+        return new UdpDatagramSocket(socket);
     }
 
     private static async Task SendAsync(AddressFamily addressFamily, IPAddress address, int port)
@@ -574,19 +595,59 @@ public class CompositeDiscoveryAppTests
         return ((IPEndPoint)socket.LocalEndPoint!).Port;
     }
 
-    private sealed class DatagramObserver(Action onReceive) : SimpleChannelInboundHandler<DatagramPacket>
-    {
-        protected override void ChannelRead0(IChannelHandlerContext context, DatagramPacket message) => onReceive();
-    }
-
     private sealed class RecordingChannelFactory : IChannelFactory
     {
-        public List<IChannel> CreatedChannels { get; } = [];
+        public List<Socket> CreatedSockets { get; } = [];
 
-        public IChannel CreateDatagramChannel() => CreateChannel(IPAddress.Any, CreatedChannels);
+        public IDatagramSocket CreateDatagramSocket() => CreateSocket(IPAddress.Any, CreatedSockets);
 
         public IServerChannel CreateServer() => throw new NotSupportedException();
 
         public IChannel CreateClient() => throw new NotSupportedException();
+    }
+
+    /// <summary>
+    /// Records how <see cref="CompositeDiscoveryApp"/> drives a protocol, optionally forwarding every datagram.
+    /// </summary>
+    private sealed class RecordingDiscoveryApp(bool forwardAll = false) : KademliaDiscoveryApp(
+        "test discovery",
+        new NetworkConfig { ExternalIp = "127.0.0.1" },
+        new FixedIpResolver(new NetworkConfig { ExternalIp = "127.0.0.1" }),
+        new ProcessExitSource(CancellationToken.None),
+        LimboLogs.Instance.GetClassLogger<RecordingDiscoveryApp>())
+    {
+        private Action<PooledUdpReceiveResult>? _forward;
+
+        public List<IDatagramSocket> InitializedSockets { get; } = [];
+
+        public TaskCompletionSource<byte[]> Received { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public int StopAsyncCoreCalls { get; private set; }
+
+        internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
+        {
+            InitializedSockets.Add(socket);
+            _forward = forward;
+        }
+
+        internal override void Receive(PooledUdpReceiveResult datagram)
+        {
+            if (forwardAll)
+            {
+                _forward!(datagram);
+                return;
+            }
+
+            Received.TrySetResult(datagram.Buffer.ToArray());
+            datagram.Dispose();
+        }
+
+        protected override Task RunDiscoveryAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+        protected override Task StopAsyncCore()
+        {
+            StopAsyncCoreCalls++;
+            return Task.CompletedTask;
+        }
     }
 }

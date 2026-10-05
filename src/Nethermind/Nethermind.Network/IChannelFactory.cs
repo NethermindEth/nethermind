@@ -11,5 +11,5 @@ public interface IChannelFactory
 
     IChannel CreateClient();
 
-    IChannel CreateDatagramChannel();
+    IDatagramSocket CreateDatagramSocket();
 }

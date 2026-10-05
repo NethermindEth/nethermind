@@ -3,13 +3,11 @@
 
 using Autofac;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Common.Utilities;
-using DotNetty.Transport.Channels.Embedded;
-using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Crypto;
@@ -19,13 +17,13 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.Discovery.Discv5;
 using Nethermind.Network.Enr;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using NSubstitute;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
@@ -640,30 +638,39 @@ public class DiscoveryV5AppTests
     }
 
     [Test]
-    public async Task Initialized_channel_sends_packets_from_discv5_transport()
+    public async Task Initialized_channel_connects_discv5_transport_to_socket()
     {
         ILifetimeScope? discv5Scope = null;
         await using DiscoveryV5App discoveryApp = CreateDiscoveryV5App(
             IPAddress.Parse("8.8.8.8"),
             builder => builder.RegisterBuildCallback(scope => discv5Scope = scope));
-        EmbeddedChannel channel = new();
+        IDatagramSocket socket = Substitute.For<IDatagramSocket>();
         byte[] data = [1, 2, 3];
-        IPEndPoint destination = IPEndPoint.Parse("127.0.0.1:30303");
+        IPEndPoint remote = IPEndPoint.Parse("127.0.0.1:30303");
+        using CancellationTokenSource cancellationSource = new(10_000);
 
-        discoveryApp.InitializeChannel(channel);
-        await discv5Scope!.Resolve<DiscoveryV5Transport>().SendAsync(data, destination, CancellationToken.None);
+        discoveryApp.InitializeChannel(socket, static datagram => datagram.Dispose());
+        DiscoveryV5Transport transport = discv5Scope!.Resolve<DiscoveryV5Transport>();
+        await transport.SendAsync(data, remote, CancellationToken.None);
+        await using IAsyncEnumerator<PooledUdpReceiveResult> enumerator = transport
+            .ReadMessagesAsync(cancellationSource.Token)
+            .GetAsyncEnumerator(cancellationSource.Token);
+        discoveryApp.Receive(PooledUdpReceiveResult.Copy(data, remote));
 
-        DatagramPacket packet = channel.ReadOutbound<DatagramPacket>();
+        _ = socket.Received(1).SendToAsync(
+            Arg.Is<ReadOnlyMemory<byte>>(datagram => datagram.ToArray().SequenceEqual(data)),
+            remote,
+            Arg.Any<CancellationToken>());
+        Assert.That(await enumerator.MoveNextAsync(), Is.True);
+        PooledUdpReceiveResult received = enumerator.Current;
         try
         {
-            Assert.That(packet, Is.Not.Null);
-            Assert.That(packet.Content.ReadAllBytesAsArray(), Is.EqualTo(data));
-            Assert.That(packet.Recipient, Is.EqualTo(destination));
+            Assert.That(received.Buffer, Is.SequenceEqualTo(data));
+            Assert.That(received.RemoteEndPoint, Is.EqualTo(remote));
         }
         finally
         {
-            ReferenceCountUtil.Release(packet);
-            await channel.CloseAsync();
+            received.Dispose();
         }
     }
 }

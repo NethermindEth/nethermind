@@ -38,12 +38,11 @@ public class XdcDiscoveryTests
         Assert.That(buffer.GetByte(97), Is.EqualTo((byte)5));
     }
 
-    private sealed class ExposedXdcNettyDiscoveryHandler : XdcNettyDiscoveryHandler
+    private sealed class ExposedXdcDiscoveryHandler : XdcDiscoveryHandler
     {
-        public ExposedXdcNettyDiscoveryHandler()
+        public ExposedXdcDiscoveryHandler()
             : base(
                 Substitute.For<IDiscoveryMsgListener>(),
-                Substitute.For<DotNetty.Transport.Channels.IChannel>(),
                 Substitute.For<IMessageSerializationService>(),
                 Timestamper.Default,
                 Nethermind.Logging.LimboLogs.Instance)
@@ -55,9 +54,9 @@ public class XdcDiscoveryTests
 
     [TestCase((byte)5, MsgType.Ping)]
     [TestCase((byte)1, null)]
-    public void XdcNettyDiscoveryHandler_FromMsgTypeByte(byte input, MsgType? expected)
+    public void XdcDiscoveryHandler_FromMsgTypeByte(byte input, MsgType? expected)
     {
-        ExposedXdcNettyDiscoveryHandler handler = new();
+        ExposedXdcDiscoveryHandler handler = new();
         Assert.That(handler.ExposedFromMsgTypeByte(input), Is.EqualTo(expected));
     }
 }

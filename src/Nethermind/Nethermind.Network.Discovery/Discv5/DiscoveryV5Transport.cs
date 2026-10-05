@@ -29,10 +29,19 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
     internal void BindSender(Func<byte[], IPEndPoint, Task> sender) => _sender = sender;
 
     /// <summary>
-    /// Queues a received datagram, transferring ownership of its buffer to the transport on success.
+    /// Queues a received datagram, taking ownership of its buffer; the datagram is dropped when the queue is full or closed.
     /// </summary>
-    /// <returns><c>false</c> when the queue is full or closed; the caller then still owns the buffer.</returns>
-    internal bool TryEnqueue(PooledUdpReceiveResult result) => _inboundQueue.Writer.TryWrite(result);
+    internal void Receive(PooledUdpReceiveResult result)
+    {
+        if (_inboundQueue.Writer.TryWrite(result))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {result.RemoteEndPoint}, bytes: {result.Buffer.Length}.");
+            return;
+        }
+
+        result.Dispose();
+        if (_logger.IsWarn) _logger.Warn("Skipping discovery v5 message as inbound buffer is full");
+    }
 
     public async Task SendAsync(byte[] data, IPEndPoint destination, CancellationToken token)
     {
