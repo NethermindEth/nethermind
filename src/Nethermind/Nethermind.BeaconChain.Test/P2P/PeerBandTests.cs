@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
+using System.Reflection;
 using Multiformats.Address;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
@@ -15,6 +17,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Libp2p.Core;
 using Nethermind.Logging;
+using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
@@ -32,16 +35,71 @@ public class PeerBandTests
     public void An_address_without_a_peer_id_has_no_key(string address) =>
         Assert.That(() => PeerManager.ExtractPeerIdForTest(address), Throws.ArgumentException);
 
-    /// <summary>Refuse static DNS peers: libp2p caches a failed name resolution for the peer ID.</summary>
     [TestCase("not a multiaddr")]
     [TestCase("/ip4/1.2.3.4/tcp/9000")]
-    [TestCase("/dns4/example.org/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/dns4/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/dns4/example.org/udp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/dns4/example.org/tcp/9000/ws/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/dns4/example.org/tcp/9000/wss/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
+    [TestCase("/dnsaddr/example.org/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e")]
     public void A_static_peer_that_cannot_be_dialed_is_a_configuration_error(string address)
     {
         Node node = CreateNode();
         node.Config.StaticPeers = address;
 
         Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
+    }
+
+    [Test]
+    public void A_static_peer_with_a_dns_name_and_peer_id_is_accepted([Values("dns", "dns4", "dns6")] string protocol)
+    {
+        Node node = CreateNode();
+        node.Config.StaticPeers = $"/{protocol}/beacon.invalid/tcp/9000/p2p/16Uiu2HAkyxG4bkiFUNXPANdX7n13Lz8A2WsDyNkAyJ1Lfs6AXD2e";
+
+        Assert.That(() => new PeerManager(node.P2P, node.Config, node.StatusHolder, LimboLogs.Instance), Throws.Nothing);
+    }
+
+    [Test]
+    [CancelAfter(60_000)]
+    public async Task A_static_dns_peer_is_retried_after_name_resolution_fails(CancellationToken token)
+    {
+        Node server = CreateNode();
+        Node client = CreateNode();
+        SetMatchingStatus(server, client);
+        await using PeerHostScope nodes = new(client.P2P, server.P2P);
+        await nodes.StartAsync(token, server.P2P, client.P2P);
+
+        const string hostname = "beacon.invalid";
+        int queries = 0;
+        IDnsLookup lookup = Substitute.For<IDnsLookup>();
+        lookup.QueryAAsync(hostname).Returns(_ => Interlocked.Increment(ref queries) == 1
+            ? Task.FromException<IEnumerable<IPAddress>>(new InvalidOperationException("injected name resolution failure"))
+            : Task.FromResult<IEnumerable<IPAddress>>([IPAddress.Loopback]));
+        FieldInfo resolver = typeof(LocalPeer).GetField("_multiaddrResolver", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        resolver.SetValue(client.P2P.LocalPeerForTest!, new MultiaddrResolver(lookup));
+        client.Config.StaticPeers = LoopbackAddress(server.P2P).Replace("/ip4/127.0.0.1/", $"/dns4/{hostname}/", StringComparison.Ordinal);
+        Assert.That(client.Config.StaticPeers, Does.StartWith($"/dns4/{hostname}/"));
+        PeerManager manager = new(client.P2P, client.Config, client.StatusHolder, LimboLogs.Instance);
+
+        await manager.RunMaintenanceRoundAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queries, Is.EqualTo(1));
+            Assert.That(manager.PeerCount, Is.Zero);
+            Assert.That(client.P2P.SessionCountForTest, Is.Zero);
+        }
+
+        await manager.RunMaintenanceRoundAsync(token);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queries, Is.EqualTo(2), "the same static hostname must be resolved again");
+            Assert.That(manager.PeerCount, Is.EqualTo(1));
+            Assert.That(manager.GetBestPeers(0).Single().HeadSlot, Is.EqualTo(AnchorSlot));
+            Assert.That(client.P2P.LocalPeerForTest!.Sessions.Single().RemoteAddress.GetPeerId(), Is.EqualTo(server.P2P.LocalPeerId));
+        }
+        ulong sequence = await client.P2P.PingAsync(client.P2P.LocalPeerForTest!.Sessions.Single(), token);
+        Assert.That(sequence, Is.EqualTo(server.Metadata.Current.SeqNumber));
     }
 
     [Test]
