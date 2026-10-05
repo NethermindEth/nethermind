@@ -23,9 +23,7 @@ public class SszDecoderFuzzTests
     private interface ITarget
     {
         int Iterations { get; }
-
         byte[][] ValidEncodings(int seed);
-
         void Decode(byte[] ssz);
     }
 
@@ -82,13 +80,7 @@ public class SszDecoderFuzzTests
     {
         ITarget container = (ITarget)target;
         byte[][] valid = container.ValidEncodings(seed);
-        foreach (byte[] encoding in valid)
-        {
-            container.Decode(encoding);
-        }
-
-        SszFuzzer.RunPrefixes(valid, PrefixSweepLength, container.Decode, static e => e is InvalidDataException);
-        SszFuzzer.Run(seed, valid, container.Iterations, container.Decode, static e => e is InvalidDataException);
+        CheckEncodings(seed, valid, container.Iterations, container.Decode, static e => e is InvalidDataException);
     }
 
     [Test]
@@ -107,13 +99,7 @@ public class SszDecoderFuzzTests
             Assert.That(SignedBeaconBlockCodec.Encode(block, spec).AsSpan().SequenceEqual(ssz), Is.True, "an accepted block encoding must be canonical");
         }
 
-        foreach (byte[] encoding in valid)
-        {
-            DecodeAndReencode(encoding);
-        }
-
-        SszFuzzer.RunPrefixes(valid, PrefixSweepLength, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException);
-        SszFuzzer.Run(seed, valid, 150, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException);
+        CheckEncodings(seed, valid, 150, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException);
     }
 
     [Test]
@@ -137,12 +123,17 @@ public class SszDecoderFuzzTests
             Assert.That(encoded.AsSpan().SequenceEqual(ssz), Is.True, "an accepted state encoding must be canonical");
         }
 
+        CheckEncodings(seed, valid, 12, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException or NotSupportedException);
+    }
+
+    private static void CheckEncodings(int seed, byte[][] valid, int iterations, Action<byte[]> decode, Func<Exception, bool> isRefusal)
+    {
         foreach (byte[] encoding in valid)
         {
-            DecodeAndReencode(encoding);
+            decode(encoding);
         }
 
-        SszFuzzer.RunPrefixes(valid, PrefixSweepLength, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException or NotSupportedException);
-        SszFuzzer.Run(seed, valid, 12, DecodeAndReencode, static e => e is InvalidDataException or BeaconStateException or NotSupportedException);
+        SszFuzzer.RunPrefixes(valid, PrefixSweepLength, decode, isRefusal);
+        SszFuzzer.Run(seed, valid, iterations, decode, isRefusal);
     }
 }

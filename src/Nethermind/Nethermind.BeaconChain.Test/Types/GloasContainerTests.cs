@@ -8,7 +8,6 @@ using System.Reflection;
 using Ethereum.Test.Base;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
@@ -199,7 +198,7 @@ public class GloasContainerTests
             ParentExecutionRequests = new ExecutionRequestsGloas(),
         };
 
-        AssertRoundTrips(body, BeaconBlockBodyGloas.Encode, BeaconBlockBodyGloas.Decode, BeaconBlockBodyGloas.Merkleize);
+        AssertRoundTrips(body);
     }
 
     [Test]
@@ -310,33 +309,25 @@ public class GloasContainerTests
 
     private static void AssertRoundTripsAndMatchesRoot<T>(T value, string expectedRootHex) where T : class, ISszCodec<T>
     {
-        AssertRoundTrips(value, T.Encode, T.Decode, T.Merkleize);
+        AssertRoundTrips(value);
         Hash256 root = SszRoots.HashTreeRoot(value);
         Assert.That(root.ToString(), Is.EqualTo(expectedRootHex).IgnoreCase);
     }
 
-    private static void AssertRoundTrips<T>(T value, System.Func<T, byte[]> encode, DecodeDelegate<T> decode, MerkleizeDelegate<T> merkleize)
+    private static void AssertRoundTrips<T>(T value) where T : class, ISszCodec<T>
     {
-        byte[] encoded = encode(value);
-        decode(encoded, out T decoded);
-        byte[] reEncoded = encode(decoded);
-        merkleize(value, out UInt256 originalRoot);
-        merkleize(decoded, out UInt256 decodedRoot);
+        byte[] encoded = T.Encode(value);
+        T.Decode(encoded, out T decoded);
+        byte[] reEncoded = T.Encode(decoded);
+        T.Merkleize(value, out UInt256 originalRoot);
+        T.Merkleize(decoded, out UInt256 decodedRoot);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(reEncoded, Is.EqualTo(encoded));
         Assert.That(decodedRoot, Is.EqualTo(originalRoot));
     }
 
-    private delegate void DecodeDelegate<T>(ReadOnlySpan<byte> data, out T value);
-    private delegate void MerkleizeDelegate<T>(T value, out UInt256 root);
-
     private static byte[] Filled(int length, byte value) => Enumerable.Repeat(value, length).ToArray();
-    private static byte[] Hex(string hex) => Bytes.FromHexString(hex);
-
-    private static Nethermind.Merge.Plugin.SszRest.SszKzgCommitment Kzg(string hex) =>
-        Nethermind.Merge.Plugin.SszRest.SszKzgCommitment.FromSpan(Hex(hex));
-
     private static BlsSignature Signature(byte value) => new(Filled(BlsSignature.Length, value));
 
     private static Nethermind.Merge.Plugin.SszRest.SszKzgCommitment SszKzgCommitmentOf(byte value) =>
