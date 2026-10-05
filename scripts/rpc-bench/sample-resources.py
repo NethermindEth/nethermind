@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import select
 import signal
 import subprocess
 import sys
@@ -201,6 +202,12 @@ def normalize(out_path: str, requests: int) -> None:
     _write(out_path, _with_rates(summary))
 
 
+def _control_closed() -> bool:
+    if not select.select([sys.stdin], [], [], 0)[0]:
+        return False
+    return not sys.stdin.buffer.read(1)
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -208,13 +215,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     sample_parser.add_argument("--container", required=True)
     sample_parser.add_argument("--out", required=True)
     sample_parser.add_argument("--interval", type=float, default=0.25)
+    sample_parser.add_argument("--control-stdin", action="store_true", help="stop on control-pipe EOF")
     normalize_parser = subparsers.add_parser("normalize", help="restate a sample against the delivered request count")
     normalize_parser.add_argument("--out", required=True)
     normalize_parser.add_argument("--requests", type=int, required=True)
     arguments = parser.parse_args(argv)
     try:
         if arguments.command == "sample":
-            sample(arguments.container, arguments.out, arguments.interval)
+            sample(arguments.container, arguments.out, arguments.interval,
+                   _control_closed if arguments.control_stdin else None)
         else:
             normalize(arguments.out, arguments.requests)
     except ResourceSampleError as error:

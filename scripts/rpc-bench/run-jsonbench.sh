@@ -290,16 +290,23 @@ fi
 
 # Resource sampling brackets container execution only.
 sampler_pid=""
+sampler_control_fd=""
 if [[ -n "${RESOURCE_SAMPLER_CONTAINER:-}" && -n "${RESOURCE_SAMPLER_OUT:-}" ]]; then
-  python3 "$HERE/sample-resources.py" sample --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" &
-  sampler_pid=$!
+  coproc RPC_RESOURCE_SAMPLER {
+    exec python3 "$HERE/sample-resources.py" sample --container "$RESOURCE_SAMPLER_CONTAINER" --out "$RESOURCE_SAMPLER_OUT" --control-stdin >&2
+  }
+  sampler_pid="${RPC_RESOURCE_SAMPLER_PID:-}"
+  sampler_control_fd="${RPC_RESOURCE_SAMPLER[1]:-}"
+  sampler_output_fd="${RPC_RESOURCE_SAMPLER[0]:-}"
+  [[ -z "$sampler_output_fd" ]] || exec {sampler_output_fd}<&-
 fi
 stop_resource_sampler() {
+  if [[ -n "$sampler_control_fd" ]]; then
+    exec {sampler_control_fd}>&- || true
+    sampler_control_fd=""
+  fi
   [[ -n "$sampler_pid" ]] || return 0
-  # Both guarded: the sampler exits nonzero within a second when the container's cgroup is not under one of
-  # its known roots, and bash has reaped it by now - so under errexit an unguarded kill/wait would abort the
-  # script after a benchmark that already succeeded, and the sweep would book it as a failed cell.
-  kill -TERM "$sampler_pid" 2>/dev/null || true
+  # Bash waits for its own child; EOF closes the sampler without signalling a reusable PID.
   wait "$sampler_pid" 2>/dev/null || true
   sampler_pid=""
   return 0
