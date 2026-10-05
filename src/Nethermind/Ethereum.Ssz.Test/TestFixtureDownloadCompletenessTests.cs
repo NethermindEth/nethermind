@@ -24,22 +24,43 @@ public class TestFixtureDownloadCompletenessTests
     private static readonly byte[] EntryContent = [1, 2, 3, 4];
 
     [Test]
-    public void A_body_shorter_than_its_content_length_is_refused_and_leaves_no_completion_marker()
+    public void A_body_shorter_than_its_content_length_is_refused_and_leaves_no_completion_marker([Values] bool selective)
     {
-        byte[] archive = BuildArchive();
+        byte[] archive = BuildArchive(64 * 1024, EntryPath);
         using StubArchiveServer server = new(archive, contentLength: archive.Length + 4096);
         string suite = UniqueSuite("TruncatedDownloadTest");
         string target = CachePathFor(suite);
 
         using CacheCleanup cleanup = new(target);
-        IOException ex = Assert.Throws<IOException>(
-            () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz"))!;
+        IOException ex = Assert.Catch<IOException>(
+            () => TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+                selective ? _ => true : null))!;
 
         Assert.Multiple(() =>
         {
-            Assert.That(ex.Message, Does.Contain("truncated"));
+            Assert.That(ex.Message, Does.Contain("expected"));
             Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.False,
                 "a truncated archive marked complete is cached and read as green by every suite using it");
+        });
+    }
+
+    [Test]
+    public void A_complete_body_with_trailing_tar_padding_is_marked_complete([Values] bool selective)
+    {
+        byte[] archive = BuildArchive(64 * 1024, EntryPath);
+        using StubArchiveServer server = new(archive, contentLength: archive.Length);
+        string suite = UniqueSuite("PaddedDownloadTest");
+        string target = CachePathFor(suite);
+        using CacheCleanup cleanup = new(target);
+
+        TestFixtureDownloader.EnsureDownloaded(suite, server.UrlTemplate, "v0", "general.tar.gz",
+            selective ? _ => true : null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(File.Exists(Path.Combine(target, ".completed")), Is.True);
+            Assert.That(File.ReadAllBytes(Path.Combine(target, EntryPath.Replace('/', Path.DirectorySeparatorChar))),
+                Is.EqualTo(EntryContent));
         });
     }
 
@@ -225,7 +246,9 @@ public class TestFixtureDownloadCompletenessTests
 
     private static byte[] BuildArchive() => BuildArchive(EntryPath);
 
-    private static byte[] BuildArchive(params string[] entryPaths)
+    private static byte[] BuildArchive(params string[] entryPaths) => BuildArchive(0, entryPaths);
+
+    private static byte[] BuildArchive(int trailingPadding, params string[] entryPaths)
     {
         using MemoryStream tar = new();
         using (TarWriter writer = new(tar, leaveOpen: true))
@@ -237,9 +260,10 @@ public class TestFixtureDownloadCompletenessTests
             }
         }
 
+        tar.SetLength(tar.Length + trailingPadding);
         tar.Position = 0;
         using MemoryStream gz = new();
-        using (GZipStream compressor = new(gz, CompressionMode.Compress, leaveOpen: true))
+        using (GZipStream compressor = new(gz, trailingPadding == 0 ? CompressionLevel.Optimal : CompressionLevel.NoCompression, leaveOpen: true))
         {
             tar.CopyTo(compressor);
         }
