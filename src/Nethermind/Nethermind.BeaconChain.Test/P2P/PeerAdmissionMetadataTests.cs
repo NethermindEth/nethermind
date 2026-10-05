@@ -14,13 +14,13 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class PeerAdmissionMetadataTests
 {
     // The metadata timeout plus margin for a loaded loopback dial, still under the 15 s request timeout a missing bound would cost.
     private static readonly TimeSpan Within = PeerManager.AdmissionMetadataTimeout + TimeSpan.FromSeconds(5);
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task An_admitted_peer_is_announced_once_it_is_in_the_pool(CancellationToken token)
     {
         Node client = CreateNode();
@@ -43,7 +43,6 @@ public class PeerAdmissionMetadataTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_that_never_answers_metadata_is_admitted_within_the_admission_timeout_and_frees_the_dial_slot(CancellationToken token)
     {
         Node client = CreateNode();
@@ -80,7 +79,6 @@ public class PeerAdmissionMetadataTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_that_breaks_the_protocol_and_closes_while_its_metadata_is_awaited_keeps_its_dial_backoff(CancellationToken token)
     {
         Node client = CreateNode();

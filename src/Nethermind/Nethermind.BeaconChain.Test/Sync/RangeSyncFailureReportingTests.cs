@@ -14,6 +14,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
+[CancelAfter(30_000)]
 public class RangeSyncFailureReportingTests
 {
     private const ulong AnchorSlot = 10;
@@ -31,7 +32,6 @@ public class RangeSyncFailureReportingTests
     [TestCase(BadPeerBehavior.RequestTimesOut, PeerFailureReason.RequestFailed)]
     [TestCase(BadPeerBehavior.SessionIsGone, PeerFailureReason.SessionClosed)]
     [TestCase(BadPeerBehavior.SessionIsGoneAfterABlock, PeerFailureReason.SessionClosed)]
-    [CancelAfter(30_000)]
     public async Task Every_failure_is_reported_under_the_reason_that_describes_it(BadPeerBehavior behavior, PeerFailureReason expected, CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);
@@ -56,7 +56,6 @@ public class RangeSyncFailureReportingTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_reply_that_fails_after_some_blocks_keeps_them_and_only_the_rest_is_requested(CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) = TestChain.BuildLinkedChain(AnchorSlot, 11, 12);

@@ -254,7 +254,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task HistoryFixture_stale_progress_without_blocks_is_not_claimed(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
@@ -267,7 +266,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task HistoryFixture_garbage_progress_is_ignored([Values(3, 8, 16)] int kind, CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
@@ -308,7 +306,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Backfill_stops_at_the_wall_clock_retention_boundary(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([5, 20, 35], 40);
@@ -329,7 +326,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Cached_verified_columns_are_persisted_again_after_a_write_failure(CancellationToken token)
     {
         FaultyColumnsDb db = new();
@@ -344,7 +340,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Block_requests_try_at_most_three_peers_per_attempt(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
@@ -360,7 +355,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_forged_cut_reply_under_empty_slots_is_asked_for_again_and_its_peer_penalized(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2], 5);
@@ -383,7 +377,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Cancellation_stops_backfill_while_waiting_for_head(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);
@@ -395,7 +388,6 @@ public partial class ColumnBackfillTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task HistoryFixture_head_at_slack_boundary_counts_as_followed(CancellationToken token)
     {
         await using HistoryFixture p = HistoryFixture.Build([2, 5], 7);

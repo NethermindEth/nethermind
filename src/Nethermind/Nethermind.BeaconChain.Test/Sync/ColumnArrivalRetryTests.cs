@@ -12,10 +12,10 @@ using static Nethermind.BeaconChain.Test.Sync.DeferredBlockColumnFetchTests;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 
+[CancelAfter(30_000)]
 public class ColumnArrivalRetryTests
 {
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_deferred_block_imports_when_gossip_completes_its_columns_without_waiting_for_a_tick(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -46,7 +46,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Sidecars_of_a_root_nobody_waits_on_queue_nothing_and_repeats_of_an_awaited_column_queue_once(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -72,7 +71,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_deferral_fetches_by_root_only_the_missing_columns_and_asks_nobody_again_in_the_same_slot(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -95,7 +93,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_by_root_fetch_runs_off_the_worker_once_per_block_and_its_columns_import_the_block_through_the_queue(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -123,7 +120,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Fetched_columns_reach_the_importer_only_as_queued_work(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -143,7 +139,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_failed_by_root_fetch_leaves_the_tick_retry_working([Values] bool faults, CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -172,7 +167,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task A_block_still_deferred_after_a_tick_imports_when_gossip_completes_its_columns(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();
@@ -198,7 +192,6 @@ public class ColumnArrivalRetryTests
     }
 
     [Test]
-    [CancelAfter(30_000)]
     public async Task Columns_that_are_held_but_do_not_verify_do_not_make_the_worker_retry_in_a_loop(CancellationToken token)
     {
         await using Fixture fixture = Fixture.Create();

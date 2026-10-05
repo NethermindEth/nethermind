@@ -23,6 +23,7 @@ using static Nethermind.BeaconChain.Test.P2P.PeerBandTests;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
+[CancelAfter(60_000)]
 public class SampledColumnCustodianTests
 {
     private const string PartialCustodianKey = "1c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29111";
@@ -30,7 +31,6 @@ public class SampledColumnCustodianTests
     private const string LocalKey = "3c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f29133";
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_sampled_column_without_a_custodian_is_sought_through_discovery_and_only_its_custodian_is_admitted_past_the_target(CancellationToken token)
     {
         using PrivateKey partialKey = new(PartialCustodianKey);
@@ -69,7 +69,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_dialed_peer_whose_metadata_never_answers_custodies_what_its_enr_advertises(CancellationToken token)
     {
         using PrivateKey supernodeKey = new(SupernodeKey);
@@ -97,7 +96,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task Trimming_to_the_target_keeps_the_last_custodian_of_a_sampled_column([Values(1, 2)] int supernodeCount, CancellationToken token)
     {
         Node[] supernodes = [.. Enumerable.Range(0, supernodeCount).Select(static _ => CreateNode(custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups))];
@@ -145,7 +143,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_dropped_for_repeated_failures_is_logged_at_info_with_its_last_failure(CancellationToken token)
     {
         SwitchableStatusSource serverStatus = new();
@@ -172,7 +169,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_last_custodian_failing_health_checks_is_dropped_and_its_columns_are_sought(CancellationToken token)
     {
         SwitchableStatusSource supernodeStatus = new();
@@ -220,7 +216,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_last_custodian_at_the_failure_limit_stays_connected_but_is_not_picked_and_a_replacement_is_admitted(CancellationToken token)
     {
         Node failing = CreateNode(custodyGroupCount: Eip7594DasConstants.NumberOfCustodyGroups);
@@ -261,7 +256,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_peer_at_the_failure_limit_counts_as_a_custodian_when_the_pool_makes_room([Values] bool overTheCeiling, CancellationToken token)
     {
         using PrivateKey localKey = new(LocalKey);
@@ -308,7 +302,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task At_the_peer_ceiling_a_candidate_custodying_a_missing_column_replaces_the_worst_peer_unless_it_is_a_last_custodian(
         [Values] CeilingCase ceilingCase, CancellationToken token)
     {
@@ -358,7 +351,6 @@ public class SampledColumnCustodianTests
     }
 
     [Test]
-    [CancelAfter(60_000)]
     public async Task A_dial_reserved_below_the_ceiling_drops_no_peer_when_the_pool_reaches_the_ceiling_meanwhile(CancellationToken token)
     {
         SwitchableStatusSource lateStatus = new();

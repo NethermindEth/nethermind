@@ -18,7 +18,6 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public partial class RangeSyncTests
 {
     [Test]
-    [CancelAfter(30_000)]
     public async Task Batch_crossing_the_fork_fetches_fulu_columns_only_for_its_fulu_blocks(CancellationToken token)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();
