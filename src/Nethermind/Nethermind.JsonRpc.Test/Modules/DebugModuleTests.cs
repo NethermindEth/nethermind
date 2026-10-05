@@ -425,12 +425,35 @@ public class DebugModuleTests
         BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
 
         setup(header, parent, _blockFinder, _blockchainBridge);
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
 
         ResultWrapper<GethLikeTxTrace> actual = invoke(CreateModule(), header);
 
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
+    [Test]
+    public void DebugTraceTransaction_WithRetainedParentAndMissingPoststate_ReachesTracer()
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
+        _debugBridge.GetTransactionBlockHash(TestItem.KeccakA).Returns(header.Hash);
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockFinder.FindHeader(header.ParentHash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(header).Returns(false);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        GethLikeTxTrace trace = new();
+        _debugBridge.GetTransactionTrace(TestItem.KeccakA, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>()).Returns(trace);
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceTransaction(TestItem.KeccakA,
+            new GethTraceOptions { Tracer = "noopTracer" });
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success));
+            Assert.That(actual.Data, Is.SameAs(trace));
+        }
     }
 
     [Test]
@@ -750,6 +773,11 @@ public class DebugModuleTests
             (
                 "ByBlockhashAndIndex",
                 static (module, header) => module.debug_traceTransactionByBlockhashAndIndex(header.Hash!, 0),
+                static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
+            ),
+            (
+                "ByTransactionHash",
+                static (module, _) => module.debug_traceTransaction(TestItem.KeccakA, new GethTraceOptions { Tracer = "noopTracer" }),
                 static (header, finder) => finder.FindHeader(header.Hash!).Returns(header)
             )
         ];
