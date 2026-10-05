@@ -11,7 +11,8 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// <see cref="StaticCodeCache"/> is built for concurrent readers and bounded memory, so every probe reads a seqlock
 /// header and every hit stamps a clock, several times the cost of a map lookup on the guest. A block's code is bounded
-/// by its witness and the guest runs one thread, so nothing here needs either.
+/// by its witness and its gas (CREATE/CREATE2 deployments and EIP-7702 delegations also land here), and the guest
+/// runs one thread, so nothing here needs either.
 /// </remarks>
 public sealed class GuestCodeCache(int capacity) : ICodeCache
 {
