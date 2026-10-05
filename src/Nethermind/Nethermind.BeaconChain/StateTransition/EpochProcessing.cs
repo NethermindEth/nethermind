@@ -26,7 +26,6 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static partial class EpochProcessing
 {
     public static partial void ProcessEpoch(BeaconStateFulu state, EpochCache cache);
-
     public static partial void ProcessJustificationAndFinalization(BeaconStateFulu state, EpochCache cache);
 
     /// <summary>
@@ -159,9 +158,7 @@ public static partial class EpochProcessing
 
     /// <summary>Electra <c>process_pending_deposits</c> (EIP-7251): churn-limited sweep of the pending deposit queue.</summary>
     public static partial void ProcessPendingDeposits(BeaconStateFulu state, EpochCache cache);
-
     private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
-
     private static partial void ApplyPendingDeposit(BeaconStateFulu state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
 
     /// <summary>Electra <c>process_pending_consolidations</c> (EIP-7251): sweep consolidations whose source is withdrawable.</summary>
@@ -214,13 +211,9 @@ public static partial class EpochProcessing
     }
 
     public static partial void ProcessSlashingsReset(BeaconStateFulu state);
-
     public static partial void ProcessRandaoMixesReset(BeaconStateFulu state);
-
     public static partial void ProcessHistoricalSummariesUpdate(BeaconStateFulu state);
-
     public static partial void ProcessParticipationFlagUpdates(BeaconStateFulu state);
-
     public static partial void ProcessSyncCommitteeUpdates(BeaconStateFulu state);
 
     /// <summary>Altair <c>get_next_sync_committee</c> with Electra balance-weighted sampling.</summary>
@@ -264,10 +257,7 @@ public static partial class EpochProcessing
         balance -= Math.Min(balance, delta);
 
     private static partial bool IsEligibleValidator(Validator validator, ulong previousEpoch);
-
     private static partial bool IsUnslashedParticipant(Validator validator, byte participation, int flagIndex, ulong epoch);
-
     private static partial bool IsInInactivityLeak(BeaconStateFulu state);
-
     private static partial Hash256 HashTreeRootOfRoots(Hash256[] roots);
 }

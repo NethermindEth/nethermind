@@ -17,30 +17,20 @@ namespace Nethermind.BeaconChain.StateTransition;
 public static partial class GloasStateAccessors
 {
     public static partial ulong GetCurrentEpoch(this BeaconStateGloas state);
-
     public static partial ulong GetPreviousEpoch(this BeaconStateGloas state);
-
     public static partial Hash256 GetBlockRoot(this BeaconStateGloas state, ulong epoch);
-
     public static partial Hash256 GetSeed(this BeaconStateGloas state, ulong epoch, ReadOnlySpan<byte> domainType);
-
     public static partial Hash256 GetRandaoMix(this BeaconStateGloas state, ulong epoch);
-
     public static partial Hash256 GetBlockRootAtSlot(this BeaconStateGloas state, ulong slot);
-
     public static partial Hash256 GetShufflingDecisionRoot(this BeaconStateGloas state, ulong epoch);
-
     public static partial Hash256 GetDomain(this BeaconStateGloas state, ReadOnlySpan<byte> domainType, ulong? epoch = null);
-
     public static partial ulong GetBeaconProposerIndex(this BeaconStateGloas state);
 
     public static ulong ComputeTimeAtSlot(this BeaconStateGloas state, ulong slot) =>
         state.GenesisTime + (slot - Presets.GenesisSlot) * Presets.SecondsPerSlot;
 
     public static partial void IncreaseBalance(this BeaconStateGloas state, int index, ulong delta);
-
     public static partial void DecreaseBalance(this BeaconStateGloas state, int index, ulong delta);
-
     public static partial ulong GetPendingBalanceToWithdraw(this BeaconStateGloas state, int validatorIndex);
 
     /// <summary>
@@ -82,11 +72,8 @@ public static partial class GloasStateAccessors
     }
 
     public static partial int[] GetActiveValidatorIndices(this BeaconStateGloas state, ulong epoch);
-
     public static partial ulong GetTotalBalance(this BeaconStateGloas state, IEnumerable<int> indices);
-
     public static partial ulong GetTotalActiveBalance(this BeaconStateGloas state, EpochCache cache);
-
     public static partial ulong GetBaseRewardPerIncrement(this BeaconStateGloas state, EpochCache cache);
 
     /// <summary>
@@ -121,9 +108,7 @@ public static partial class GloasStateAccessors
     }
 
     public static partial ulong ComputeExitEpochAndUpdateChurn(this BeaconStateGloas state, ulong exitBalance, EpochCache cache);
-
     public static partial ulong ComputeConsolidationEpochAndUpdateChurn(this BeaconStateGloas state, ulong consolidationBalance, EpochCache cache);
-
     public static partial void InitiateValidatorExit(this BeaconStateGloas state, int index, EpochCache cache);
 
     /// <summary>Spec <c>add_validator_to_registry</c> (Electra, unmodified in Gloas): appends a deposit-derived validator and its per-validator list entries.</summary>
@@ -150,7 +135,6 @@ public static partial class GloasStateAccessors
     }
 
     public static partial ulong[] GetAttestingIndices(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees);
-
     public static partial IndexedAttestationGloas GetIndexedAttestation(this BeaconStateGloas state, AttestationGloas attestation, CommitteeCache committees);
 
     /// <summary>
