@@ -41,8 +41,15 @@ public enum BeaconFork
 /// shapes (list limits, vector lengths) live in the container definitions instead, since the
 /// SSZ source generator requires compile-time constants.
 /// </remarks>
-public class BeaconChainSpec
+public record BeaconChainSpec
 {
+    /// <summary>Configuration copies retain reference identity.</summary>
+    public virtual bool Equals(BeaconChainSpec? other) => ReferenceEquals(this, other);
+    /// <inheritdoc/>
+    public override int GetHashCode() => System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(this);
+    /// <inheritdoc/>
+    public override string ToString() => base.ToString()!;
+
     /// <summary>
     /// The execution-layer chain id this spec was selected for (<c>0</c> for ad hoc specs built
     /// outside <see cref="ForChainId"/>, e.g. in tests).
@@ -300,20 +307,9 @@ public class BeaconChainSpec
         }
 
         ulong gloasEpoch = epoch ?? GloasForkEpoch;
-        return new()
+        return this with
         {
-            ChainId = ChainId,
-            CheckpointSyncUrl = CheckpointSyncUrl,
-            Bootnodes = Bootnodes,
-            SecondsPerSlot = SecondsPerSlot,
-            SlotsPerEpoch = SlotsPerEpoch,
-            GenesisTime = GenesisTime,
-            GenesisValidatorsRoot = GenesisValidatorsRoot,
             Forks = gloasEpoch == Presets.FarFutureEpoch ? earlier : [.. earlier, new ForkScheduleEntry(gloasVersion, gloasEpoch)],
-            BlobSchedule = BlobSchedule,
-            ElectraForkEpoch = ElectraForkEpoch,
-            FuluForkEpoch = FuluForkEpoch,
-            MaxBlobsPerBlockElectra = MaxBlobsPerBlockElectra,
             GloasForkEpoch = gloasEpoch,
             GloasForkVersion = gloasVersion,
         };
