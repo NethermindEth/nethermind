@@ -571,6 +571,7 @@ namespace Nethermind.Trie
             PrepareRlp(tree, ref path, bufferPool, canBeParallel, out _);
 
         /// <param name="previous">A re-encoded branch's RLP from before the re-encode, which <see cref="ComputeKeccak"/> may resume from.</param>
+        [MethodImpl(PrepareRlpInlining)]
         private CappedArray<byte> PrepareRlp(ITrieNodeResolver tree, ref TreePath path,
             ICappedArrayPool? bufferPool, bool canBeParallel, out PreviousRlp previous)
         {
@@ -903,6 +904,7 @@ namespace Nethermind.Trie
             SetItem(i, child);
         }
 
+        [MethodImpl(SetChildInlining)]
         public void SetChild(int i, TrieNode? node)
         {
             if (IsSealed)
