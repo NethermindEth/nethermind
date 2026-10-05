@@ -118,12 +118,7 @@ public class SignatureSetBoundsTests
     {
         BeaconStateFulu state = CreateFuluState(KeyCount);
         Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator updated = validators[i].Clone();
-            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
-            validators[i] = updated;
-        }
+        InstallValidatorKeys(validators, validators.Length);
 
         state.Slot = 1;
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = Committee(validators, resized == Resized.Committee ? length : Presets.SyncCommitteeSize), AggregatePubkey = Pubkey(0x60) };

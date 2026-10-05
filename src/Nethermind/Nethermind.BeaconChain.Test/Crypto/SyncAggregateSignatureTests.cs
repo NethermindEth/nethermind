@@ -384,12 +384,7 @@ public class SyncAggregateSignatureTests
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         Validator[] validators = state.Validators!;
-        for (int i = 0; i < keyedValidators; i++)
-        {
-            Validator updated = validators[i].Clone();
-            updated.Pubkey = new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
-            validators[i] = updated;
-        }
+        InstallValidatorKeys(validators, keyedValidators);
 
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = [.. members.Select(m => validators[m].Pubkey)], AggregatePubkey = Pubkey(0x60) };
         ulong previousSlot = state.Slot - 1;
@@ -489,12 +484,7 @@ public class SyncAggregateSignatureTests
     {
         BeaconStateFulu state = CreateFuluState(RegistrySize + 2);
         Validator[] validators = state.Validators!;
-        for (int i = 0; i < validators.Length; i++)
-        {
-            Validator updated = validators[i].Clone();
-            updated.Pubkey = i == NegatedKeyIndex ? NegatedKey(KeyIndex) : new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress());
-            validators[i] = updated;
-        }
+        InstallValidatorKeys(validators, validators.Length, static i => i == NegatedKeyIndex ? NegatedKey(KeyIndex) : new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()));
 
         state.Slot = 1;
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = [.. members.Select(m => validators[m].Pubkey)], AggregatePubkey = Pubkey(0x60) };

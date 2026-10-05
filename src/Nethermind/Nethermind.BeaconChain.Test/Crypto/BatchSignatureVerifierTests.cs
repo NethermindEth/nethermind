@@ -5,17 +5,13 @@ using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Crypto;
 
 [TestFixture]
 public class BatchSignatureVerifierTests
 {
-    private static readonly byte[] MasterSkBytes = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
-
-    private static Bls.SecretKey DeriveKey(int index) =>
-        new(new Bls.SecretKey(MasterSkBytes, Bls.ByteOrder.LittleEndian), unchecked((uint)index));
-
     private static byte[] CompressedPubkey(Bls.SecretKey sk) => new Bls.P1(sk).Compress();
     private static byte[] Sign(Bls.SecretKey sk, byte[] message) => BlsSigner.Sign(sk, message).Bytes.ToArray();
     private static byte[] Msg(byte fill) => Enumerable.Repeat(fill, 32).ToArray();

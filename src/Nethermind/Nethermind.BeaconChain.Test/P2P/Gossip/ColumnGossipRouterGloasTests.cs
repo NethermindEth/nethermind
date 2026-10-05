@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Google.Protobuf;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.P2P;
@@ -19,6 +18,7 @@ using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.SszRest;
+using NSubstitute;
 using Snappier;
 using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
@@ -29,6 +29,7 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 // whose block is not held yet must be parked, because its message id is never redelivered once dropped.
 public class ColumnGossipRouterGloasTests
 {
+    private static readonly PeerId DeliveringPeer = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
     private const ulong Column = 5;
     private static readonly ulong BlockSlot = FirstGloasSlot + 1;
     private static readonly Hash256 UnknownRoot = new(Enumerable.Repeat((byte)0xEE, 32).ToArray());
@@ -171,11 +172,11 @@ public class ColumnGossipRouterGloasTests
     [Test]
     public void Accepted_sidecar_raised_again_on_its_topic_is_processed_once()
     {
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, ForwardingTopic topic) = CreateWithTopic();
+        (ColumnGossipRouter router, DataColumnSidecarPool pool, ITopic topic) = CreateWithTopic();
         byte[] message = Encode(Sidecar());
 
         MessageValidity validity = router.Handle(Column, gloasTopic: true, message);
-        topic.Deliver(message);
+        topic.OnMessage += Raise.Event<Action<PeerId, byte[]>>(DeliveringPeer, message);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(validity, Is.EqualTo(MessageValidity.Accepted));
@@ -577,7 +578,7 @@ public class ColumnGossipRouterGloasTests
 
         DataColumnSidecarPool pool = new();
         ColumnGossipRouter restarted = new(Sepolia, new SlotClock(Sepolia, WallClock(Sepolia, BlockSlot)), LimboLogs.Instance, pool, new BeaconChainStore(database!, Sepolia));
-        restarted.Start(_ => new ForwardingTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
+        restarted.Start(_ => CreateTopic(), ForkDigest.Compute(Sepolia, Sepolia.GetEpoch(BlockSlot)), [Column]);
 
         MessageValidity genuine = restarted.Handle(Column, gloasTopic: true, Encode(Sidecar()));
 
@@ -598,7 +599,7 @@ public class ColumnGossipRouterGloasTests
         return (router, pool);
     }
 
-    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ForwardingTopic Topic) CreateWithTopic(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
+    private static (ColumnGossipRouter Router, DataColumnSidecarPool Pool, ITopic Topic) CreateWithTopic(BeaconChainSpec? spec = null, ulong? wallSlot = null, ulong[]? subscribed = null,
         Action<MemColumnsDb<BeaconChainDbColumns>, BeaconChainStore>? populate = null, ManualTimestamper? timestamper = null, FailedBlockRoots? failedBlocks = null, bool legacyBlockIndex = false)
     {
         spec ??= Sepolia;
@@ -620,7 +621,7 @@ public class ColumnGossipRouterGloasTests
         DataColumnSidecarPool pool = new();
         SlotClock clock = new(spec, timestamper ?? WallClock(spec, slot));
         ColumnGossipRouter router = new(spec, clock, LimboLogs.Instance, pool, store, failedBlocks: failedBlocks);
-        ForwardingTopic topic = new();
+        ITopic topic = CreateTopic();
         router.Start(_ => topic, ForkDigest.Compute(spec, spec.GetEpoch(slot)), subscribed ?? [Column]);
         return (router, pool, topic);
     }
@@ -716,17 +717,10 @@ public class ColumnGossipRouterGloasTests
     private static TestCaseData Case(string name, DataColumnSidecarGloas sidecar, ulong subnet, MessageValidity expected, ColumnGossipDropReason? reason, Outcome outcome) =>
         new TestCaseData(sidecar, subnet, expected, reason, outcome).SetName(name);
 
-    private sealed class ForwardingTopic : ITopic
+    private static ITopic CreateTopic()
     {
-        private static readonly PeerId DeliveringPeer = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
-
-        public event Action<PeerId, byte[]>? OnMessage;
-
-        public bool IsSubscribed => true;
-        public void Subscribe() { }
-        public void Unsubscribe() { }
-        public void Publish(byte[] value) { }
-        public void Publish(IMessage value) { }
-        public void Deliver(byte[] message) => OnMessage?.Invoke(DeliveringPeer, message);
+        ITopic topic = Substitute.For<ITopic>();
+        topic.IsSubscribed.Returns(true);
+        return topic;
     }
 }

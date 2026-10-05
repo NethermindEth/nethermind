@@ -8,10 +8,10 @@ using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Sync;
+using Nethermind.BeaconChain.Test.StateTransition;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
@@ -23,8 +23,6 @@ namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
 public class ColumnGossipRouterCensorshipTests
 {
-    private static readonly byte[] ProposerMasterKey = Bytes.FromHexString("0x2cd4ba406b522459d57a0bed51a397435c0bb11dd5f3ca1152b3694bb91d7c22");
-
     [Test]
     [CancelAfter(60_000)]
     public async Task A_column_censored_over_gossip_is_recovered_by_root_when_its_block_is_deferred([Values] bool checkedHeader, CancellationToken token)
@@ -86,7 +84,7 @@ public class ColumnGossipRouterCensorshipTests
 
     private static BlsSignature SignHeader(BeaconBlockHeader header, BeaconChainSpec spec)
     {
-        Bls.SecretKey proposerKey = new(new Bls.SecretKey(ProposerMasterKey, Bls.ByteOrder.LittleEndian), 0);
+        Bls.SecretKey proposerKey = GloasTestFixtures.DeriveKey(0);
         Hash256 domain = Domains.ComputeDomain(DomainType.BeaconProposer, spec.VersionForEpoch(spec.GetEpoch(header.Slot)), spec.GenesisValidatorsRoot);
         return new BlsSignature(BlsSigner.Sign(proposerKey, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(header), domain).Bytes).Bytes);
     }
