@@ -362,6 +362,48 @@ public class FrameTxSignatureValidatorTests
         Assert.That(error, Is.Not.Null);
     }
 
+    [Test]
+    public void Validate_PreemptedBeforeAnEntry_StopsWithoutAVerdict()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures = [DigestEntry(TestItem.PrivateKeyA, 1), DigestEntry(TestItem.PrivateKeyB, 2), DigestEntry(TestItem.PrivateKeyC, 3)];
+        int polls = 0;
+
+        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
+            () => ++polls > 1, out bool preempted, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.False);
+            Assert.That(preempted, Is.True);
+            Assert.That(error, Is.Null, "a preempted validation reached no verdict");
+            Assert.That(polls, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Validate_NotPreempted_PollsBeforeEachVerifyingEntry()
+    {
+        Transaction tx = CreateFrameTx();
+        tx.FrameSignatures =
+        [
+            new TxFrameSignature(TxFrameSignature.SchemeArbitrary, null, default, new byte[] { 0xde, 0xad }),
+            DigestEntry(TestItem.PrivateKeyA, 1),
+            DigestEntry(TestItem.PrivateKeyB, 2),
+        ];
+        int polls = 0;
+
+        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
+            () => ++polls < 0, out bool preempted, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.True, error);
+            Assert.That(preempted, Is.False);
+            Assert.That(polls, Is.EqualTo(2), "an ARBITRARY entry does no elliptic-curve work, so it is not polled");
+        }
+    }
+
     private bool Validate(Transaction tx, out string? error) =>
         FrameTxSignatureValidator.Validate(tx, FrameTxSigHash.ComputeValue(tx), _ethereumEcdsa, SecP256r1Precompile.Instance, _spec, out error);
 
@@ -373,6 +415,15 @@ public class FrameTxSignatureValidatorTests
         ValueHash256 sigHash = FrameTxSigHash.ComputeValue(tx);
         Signature signature = _ecdsa.Sign(key, in sigHash);
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, signer, default, ToVrs(signature));
+    }
+
+    private TxFrameSignature DigestEntry(PrivateKey key, byte fill)
+    {
+        // An explicit digest is signed as given, so entries can be built independently of each other.
+        byte[] digest = new byte[Hash256.Size];
+        digest[31] = fill;
+        Signature signature = _ecdsa.Sign(key, new ValueHash256(digest));
+        return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, ToVrs(signature));
     }
 
     private static byte[] ToVrs(Signature signature)

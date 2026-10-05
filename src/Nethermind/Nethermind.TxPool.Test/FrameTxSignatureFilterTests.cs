@@ -111,6 +111,37 @@ internal class FrameTxSignatureFilterTests
         Assert.That(verified, Is.True);
     }
 
+    [TestCase(TxHandlingOptions.None, false, true)]
+    [TestCase(TxHandlingOptions.None, true, false)]
+    [TestCase(TxHandlingOptions.PersistentBroadcast, false, false)]
+    public void Accept_WhileProcessingABlock_DefersOnlyAGossipedVerification(TxHandlingOptions options, bool carriesBlobs, bool refetchable)
+    {
+        Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
+        if (carriesBlobs) tx.BlobVersionedHashes = [TestItem.KeccakA.BytesToArray()];
+        SignSecp256k1(tx, TestItem.PrivateKeyA, signer: null);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        bool deferred = options == TxHandlingOptions.None;
+        long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
+        long preempted = Metrics.FrameTxSignatureVerificationsPreempted;
+
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
+        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+        AcceptTxResult result = filter.Accept(tx, ref state, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted), result.ToString());
+            Assert.That(state.FrameSignaturesVerified, Is.EqualTo(!deferred));
+            Assert.That(state.FrameValidationYielded, Is.EqualTo(refetchable));
+            Assert.That(Metrics.PendingTransactionsFrameTxSignatureInvalid, Is.EqualTo(invalid), "a yield is not a verdict on the signature");
+            Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(deferred ? preempted + 1 : preempted));
+        }
+    }
+
     private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)
     {
         IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();

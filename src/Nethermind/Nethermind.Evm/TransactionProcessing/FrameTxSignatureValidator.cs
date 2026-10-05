@@ -33,7 +33,14 @@ public static class FrameTxSignatureValidator
     public static readonly Address P256VerifyPrecompileAddress = PrecompiledAddresses.P256Verify;
 
     public static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false, preempt: null, out _);
+
+    /// <summary>Validation that stops before the next verifying entry once <paramref name="preempt"/> returns
+    /// <see langword="true"/>, so a caller yielding to other work holds the CPU for at most one more verification.</summary>
+    /// <param name="preempted">Set when validation stopped early. No verdict was reached then, so the result is
+    /// <see langword="false"/> and <paramref name="error"/> is <see langword="null"/>.</param>
+    public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, Func<bool>? preempt, out bool preempted, out string? error)
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false, preempt, out preempted);
 
     /// <summary>Same validation, optionally accepting a SECP256K1 or P256 entry with empty signature bytes as a
     /// placeholder. Simulation can also skip signature verification while retaining structural checks.</summary>
@@ -41,16 +48,17 @@ public static class FrameTxSignatureValidator
     /// execution-apis#907 exempts signature checks from eth_simulateV1, so placeholder bytes need not be a
     /// canonical signature nor, for P256, carry the signer's public key.</remarks>
     internal static bool Validate(Transaction tx, in ValueHash256 sigHash, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification)
-        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification);
+        => Validate(tx, sigHash, sigHashComputed: true, ecdsa, p256Precompile, spec, out error, allowEmptySignatures, skipVerification, preempt: null, out _);
 
     /// <summary>Same validation for callers without a sig hash: computed lazily, so a transaction whose
     /// entries all carry an explicit digest never pays for it.</summary>
     public static bool Validate(Transaction tx, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error)
-        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false);
+        => Validate(tx, default, sigHashComputed: false, ecdsa, p256Precompile, spec, out error, allowEmptySignatures: false, skipVerification: false, preempt: null, out _);
 
-    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification = false)
+    private static bool Validate(Transaction tx, ValueHash256 sigHash, bool sigHashComputed, IEthereumEcdsa ecdsa, IPrecompile? p256Precompile, IReleaseSpec spec, out string? error, bool allowEmptySignatures, bool skipVerification, Func<bool>? preempt, out bool preempted)
     {
         error = null;
+        preempted = false;
         TxFrameSignature[]? signatures = tx.FrameSignatures;
         if (signatures is null || signatures.Length == 0) return true;
 
@@ -78,6 +86,13 @@ public static class FrameTxSignatureValidator
                     continue;
                 }
                 return Fail(InvalidSignature, out error);
+            }
+
+            // Polled per entry rather than once, since the elliptic-curve work is what a caller yields.
+            if (preempt?.Invoke() == true)
+            {
+                preempted = true;
+                return false;
             }
 
             if (signature.Msg.IsEmpty && !sigHashComputed)

@@ -133,6 +133,10 @@ namespace Nethermind.TxPool
         public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
+        [Description("Number of EIP-8141 frame transaction signature verifications at admission stopped because block processing preempted them.")]
+        public static long FrameTxSignatureVerificationsPreempted;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]
         public static long PendingTransactionsFrameTxSimulationDeferred;
 
