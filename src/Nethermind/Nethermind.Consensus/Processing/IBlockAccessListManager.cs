@@ -58,10 +58,6 @@ public interface IBlockAccessListManager
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void InstallPredeploys(IReleaseSpec spec);
-
-    /// <summary>Applies the EIP-8253 nonce bump if <paramref name="header"/> is the fork block.</summary>
-    /// <remarks>Owned here because the BAL path must write through the pre-execution (index 0) world state;
-    /// without a BAL the bump is written to the block's world state.</remarks>
     void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
