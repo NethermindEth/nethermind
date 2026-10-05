@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.IO;
-using System.Runtime.ExceptionServices;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Storage;
 using Nethermind.BeaconChain.Types;
@@ -232,25 +231,10 @@ public class BeaconChainStoreEnvelopeTests
         _ => throw new ArgumentOutOfRangeException(nameof(corruption)),
     };
 
-    private static void Prune(BeaconChainStore store, ulong currentEpoch, ulong finalizedSlot)
-    {
-        Exception? error = null;
-        Thread thread = new(() =>
-        {
-            try
-            {
-                store.PruneExecutionPayloadEnvelopes(currentEpoch, finalizedSlot);
-            }
-            catch (Exception e)
-            {
-                error = e;
-            }
-        })
-        { IsBackground = true };
-        thread.Start();
-        Assert.That(thread.Join(TimeSpan.FromSeconds(10)), Is.True, "a prune returns");
-        if (error is not null) ExceptionDispatchInfo.Throw(error);
-    }
+    private static void Prune(BeaconChainStore store, ulong currentEpoch, ulong finalizedSlot) =>
+        Task.Factory.StartNew(() => store.PruneExecutionPayloadEnvelopes(currentEpoch, finalizedSlot),
+            CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)
+            .WaitAsync(TimeSpan.FromSeconds(10)).GetAwaiter().GetResult();
 
     private static Hash256 RootOf(SignedExecutionPayloadEnvelope envelope) => envelope.Message!.BeaconBlockRoot!;
 
