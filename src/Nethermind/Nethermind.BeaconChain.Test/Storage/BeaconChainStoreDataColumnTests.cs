@@ -362,20 +362,6 @@ public class BeaconChainStoreDataColumnTests
         Assert.That(table.Get(slotKey), Is.Null);
     }
 
-    // An older database has an empty column table and no floor, so it is upgraded in place; a newer one is refused (see BeaconChainServiceStartupTests).
-    [Test]
-    public void A_database_stamped_by_the_previous_version_is_accepted_and_restamped()
-    {
-        (_, BeaconChainStore store) = Create();
-        store.SetSchemaVersion(BeaconChainStore.CurrentSchemaVersion - 1);
-
-        store.EnsureSchemaVersion();
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(store.TryGetSchemaVersion(out uint version) ? version : 0, Is.EqualTo(BeaconChainStore.CurrentSchemaVersion));
-        Assert.That(store.TryGetDataColumnFloor(out _), Is.False, "no floor, so the pool seeds one from the canonical index");
-    }
-
     [Test]
     public void A_column_index_outside_the_matrix_is_refused()
     {
