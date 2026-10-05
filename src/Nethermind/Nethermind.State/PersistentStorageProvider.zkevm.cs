@@ -29,7 +29,7 @@ internal sealed partial class PersistentStorageProvider
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (UInt256 key in BlockChange.Keys)
+            foreach (SlotKey key in BlockChange.Keys)
             {
                 ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
                 UInt256 after = change.After;

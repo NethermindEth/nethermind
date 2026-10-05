@@ -92,7 +92,7 @@ internal sealed partial class PersistentStorageProvider
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (KeyValuePair<UInt256, StorageChangeTrace> kvp in BlockChange)
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
             {
                 UInt256 after = kvp.Value.After;
                 if (kvp.Value.IsPendingWrite)
