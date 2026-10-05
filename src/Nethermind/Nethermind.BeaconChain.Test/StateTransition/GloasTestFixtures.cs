@@ -128,13 +128,9 @@ internal static class GloasTestFixtures
         Hash256[] blockRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
         Hash256[] stateRoots = Enumerable.Repeat(Hash256.Zero, (int)Presets.SlotsPerHistoricalRoot).ToArray();
 
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = CreateActiveValidator(Pubkey((byte)(0x50 + i)));
-            balances[i] = 32 * Gwei;
-        }
+        Validator[] validators = Enumerable.Range(0, validatorCount).Select(static i =>
+            CreateActiveValidator(Pubkey((byte)(0x50 + i)))).ToArray();
+        ulong[] balances = Enumerable.Repeat(32 * Gwei, validatorCount).ToArray();
 
         return new BeaconStateFulu
         {

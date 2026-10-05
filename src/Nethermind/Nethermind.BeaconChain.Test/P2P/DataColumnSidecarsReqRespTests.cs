@@ -170,11 +170,8 @@ public class DataColumnSidecarsReqRespTests
     public void DialAsync_rejects_more_identifiers_than_MaxRequestBlocks_before_writing_to_the_wire()
     {
         DataColumnSidecarsByRootProtocol protocol = new(Spec, new DataColumnSidecarPool());
-        DataColumnsByRootIdentifier[] request = new DataColumnsByRootIdentifier[BlocksProtocolBase.MaxRequestBlocks + 1];
-        for (int i = 0; i < request.Length; i++)
-        {
-            request[i] = new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [0] };
-        }
+        DataColumnsByRootIdentifier[] request = Enumerable.Range(0, (int)BlocksProtocolBase.MaxRequestBlocks + 1)
+            .Select(static _ => new DataColumnsByRootIdentifier { BlockRoot = Hash256.Zero, Columns = [0] }).ToArray();
 
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => protocol.DialAsync(null!, null!, new(request, Gloas: false)));
     }

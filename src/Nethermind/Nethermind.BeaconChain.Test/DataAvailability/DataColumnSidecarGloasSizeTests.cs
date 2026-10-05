@@ -37,11 +37,8 @@ public class DataColumnSidecarGloasSizeTests
     [TestCase(9UL, new ulong[] { 4096 }, 4096)]
     public void The_bound_uses_the_largest_blob_count_in_the_whole_schedule(ulong electraMaxBlobs, ulong[] scheduledMaxBlobs, int expectedBlobs)
     {
-        BlobScheduleEntry[] schedule = new BlobScheduleEntry[scheduledMaxBlobs.Length];
-        for (int i = 0; i < schedule.Length; i++)
-        {
-            schedule[i] = new BlobScheduleEntry((ulong)(i + 1) * 100, scheduledMaxBlobs[i]);
-        }
+        BlobScheduleEntry[] schedule = scheduledMaxBlobs.Select(static (maximum, i) =>
+            new BlobScheduleEntry((ulong)(i + 1) * 100, maximum)).ToArray();
 
         ulong bound = DataColumnSidecarGloasSize.ComputeMax(SpecWith(schedule, electraMaxBlobs));
 

@@ -31,10 +31,9 @@ public partial class RangeSyncTests
         ThrowsMidBatch,
     }
 
-    [TestCase(BadPeerBehavior.WrongParentBatch)]
-    [TestCase(BadPeerBehavior.ThrowsMidBatch)]
+    [Test]
     [CancelAfter(30_000)]
-    public async Task Yields_continuity_verified_blocks_and_refetches_bad_batches_from_another_peer(BadPeerBehavior behavior, CancellationToken token)
+    public async Task Yields_continuity_verified_blocks_and_refetches_bad_batches_from_another_peer([Values] BadPeerBehavior behavior, CancellationToken token)
     {
         (SignedBeaconBlock _, Hash256 anchorRoot, SignedBeaconBlock[] chain) =
             TestChain.BuildLinkedChain(AnchorSlot, 11, 12, 13, 14, 16, 17, 18);

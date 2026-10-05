@@ -58,9 +58,8 @@ public class FullColumnSetAvailabilityTests
     [Test]
     public void HasExactlyOneSidecarPerColumn_rejects_a_duplicate_index()
     {
-        DataColumnSidecar[] columns = new DataColumnSidecar[Eip7594DasConstants.NumberOfColumns];
-        for (int i = 0; i < columns.Length; i++)
-            columns[i] = new DataColumnSidecar { Index = 0 }; // every sidecar claims index 0
+        DataColumnSidecar[] columns = Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns)
+            .Select(static _ => new DataColumnSidecar { Index = 0 }).ToArray();
 
         Assert.That(DataColumnAvailability.HasExactlyOneSidecarPerColumn(columns), Is.False,
             "128 sidecars all claiming column 0 must not be treated as the full 128-column set");
@@ -83,13 +82,8 @@ public class FullColumnSetAvailabilityTests
     public void HasExactlyOneSidecarPerColumn_accepts_the_full_set_exactly_once_each() =>
         Assert.That(DataColumnAvailability.HasExactlyOneSidecarPerColumn(FullIndexSet()), Is.True);
 
-    private static DataColumnSidecar[] FullIndexSet()
-    {
-        DataColumnSidecar[] columns = new DataColumnSidecar[Eip7594DasConstants.NumberOfColumns];
-        for (int i = 0; i < columns.Length; i++)
-            columns[i] = new DataColumnSidecar { Index = (ulong)i };
-        return columns;
-    }
+    private static DataColumnSidecar[] FullIndexSet() => Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns)
+        .Select(static i => new DataColumnSidecar { Index = (ulong)i }).ToArray();
 
     private static IEnumerable<TestCaseData> BlockMatches()
     {

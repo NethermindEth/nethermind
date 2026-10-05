@@ -54,11 +54,8 @@ internal sealed class ImportableBlobBlock
 
     public static ImportableBlobBlock Create(int blobCount = 2, int validatorCount = ValidatorCount)
     {
-        BlsPublicKey[] pubkeys = new BlsPublicKey[validatorCount];
-        for (int i = 0; i < pubkeys.Length; i++)
-        {
-            pubkeys[i] = new BlsPublicKey(new Bls.P1(DeriveKey(i)).Compress());
-        }
+        BlsPublicKey[] pubkeys = Enumerable.Range(0, validatorCount).Select(static i =>
+            new BlsPublicKey(new Bls.P1(DeriveKey(i)).Compress())).ToArray();
 
         BeaconStateFulu anchorState = CreateState(pubkeys);
         SignedBeaconBlock anchorBlock = TestChain.CreateBlock(slot: 0, parentRoot: Hash(0x02));

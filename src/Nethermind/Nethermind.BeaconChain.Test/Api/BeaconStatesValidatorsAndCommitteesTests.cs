@@ -232,13 +232,9 @@ public class BeaconStatesValidatorsAndCommitteesTests : BeaconApiFixture
 
     private void PutActiveState(Hash256 root, int validatorCount)
     {
-        Validator[] validators = new Validator[validatorCount];
-        ulong[] balances = new ulong[validatorCount];
-        for (int i = 0; i < validatorCount; i++)
-        {
-            validators[i] = MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000);
-            balances[i] = 32_000_000_000;
-        }
+        Validator[] validators = Enumerable.Range(0, validatorCount).Select(static _ =>
+            MakeValidator(0, 0, Presets.FarFutureEpoch, Presets.FarFutureEpoch, false, 32_000_000_000)).ToArray();
+        ulong[] balances = Enumerable.Repeat(32_000_000_000UL, validatorCount).ToArray();
         PutState(root, validators, balances);
     }
 

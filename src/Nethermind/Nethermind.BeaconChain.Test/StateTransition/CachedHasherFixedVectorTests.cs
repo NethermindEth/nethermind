@@ -176,35 +176,12 @@ public class CachedHasherFixedVectorTests
         new("PtcWindow", (int)Presets.PtcWindowLength, n => Items<PayloadTimelinessCommittee>(n)),
     ];
 
-    private static Hash256[]? Roots(int? length)
-    {
-        if (length is null)
-            return null;
-        Hash256[] roots = new Hash256[length.Value];
-        Array.Fill(roots, Hash256.Zero);
-        return roots;
-    }
+    private static Hash256[]? Roots(int? length) => length is null ? null : Enumerable.Repeat(Hash256.Zero, length.Value).ToArray();
 
-    private static ulong[]? Words(int? length)
-    {
-        if (length is null)
-            return null;
-        ulong[] words = new ulong[length.Value];
-        Array.Fill(words, 7UL);
-        return words;
-    }
+    private static ulong[]? Words(int? length) => length is null ? null : Enumerable.Repeat(7UL, length.Value).ToArray();
 
     private static BitArray? Bits(int? length) => length is null ? null : new BitArray(length.Value, true);
 
-    private static T[]? Items<T>(int? length) where T : new()
-    {
-        if (length is null)
-            return null;
-        T[] items = new T[length.Value];
-        for (int i = 0; i < items.Length; i++)
-        {
-            items[i] = new T();
-        }
-        return items;
-    }
+    private static T[]? Items<T>(int? length) where T : new() =>
+        length is null ? null : Enumerable.Range(0, length.Value).Select(static _ => new T()).ToArray();
 }
