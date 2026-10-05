@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 
@@ -175,6 +176,40 @@ internal static class JsonRpcRequestDecoder
             : jsonReader.CurrentState;
 
         return parsed;
+    }
+
+    /// <summary>Narrows <paramref name="message"/> to its next top-level JSON value at or after <paramref name="offset"/>, advancing it past that value.</summary>
+    /// <returns><c>false</c> once nothing but whitespace is left.</returns>
+    /// <exception cref="JsonException">The next value is malformed or truncated.</exception>
+    public static bool TryReadNextDocument(
+        ReadOnlyMemory<byte> message,
+        ref int offset,
+        out ReadOnlyMemory<byte> document,
+        out JsonTokenType rootToken)
+    {
+        int start = offset + CountLeadingJsonWhitespace(message.Span[offset..]);
+        if (start == message.Length)
+        {
+            document = default;
+            rootToken = JsonTokenType.None;
+            return false;
+        }
+
+        Utf8JsonReader reader = new(message.Span[start..], isFinalBlock: true, new JsonReaderState(SocketJsonReaderOptions));
+        if (!reader.Read())
+        {
+            ThrowNoValue();
+        }
+
+        rootToken = reader.TokenType;
+        reader.Skip();
+        int length = checked((int)reader.BytesConsumed);
+        document = message.Slice(start, length);
+        offset = start + length;
+        return true;
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNoValue() => throw new JsonException("Expected a JSON value.");
     }
 
     public static JsonReaderState CreateJsonReaderState(JsonRpcProcessingOptions options) =>
