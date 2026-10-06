@@ -778,7 +778,14 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
     }
 
     /// <summary>Connected under <paramref name="address"/>, or under any other address as the same peer id.</summary>
-    private bool IsConnected(string address) => _peers.ContainsKey(address) || TryFindConnected(ExtractPeerId(address), out _);
+    private bool IsConnected(string address)
+    {
+        if (!_peers.TryGetValue(address, out ManagedPeer? peer) && !TryFindConnected(ExtractPeerId(address), out peer)) return false;
+        if (!peer!.IsSessionClosed) return true;
+
+        RemoveClosedSession(peer);
+        return false;
+    }
 
     /// <summary>Connected or in flight, by peer id: the identity check behind every admission path's dedup.</summary>
     private bool IsKnown(string peerId)
