@@ -8,11 +8,12 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using G1Affine = Nethermind.Crypto.Bls.P1Affine;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -669,17 +670,17 @@ public static partial class GloasBlockProcessing
         // withdrawals (not the earlier builder/partial/builder-sweep stages) count toward whether
         // the sweep filled MAX_WITHDRAWALS_PER_PAYLOAD.
         ulong validatorCount = (ulong)state.Validators!.Length;
-        Withdrawal? lastValidatorWithdrawal = null;
+        ulong? lastValidatorIndex = null;
         for (int i = withdrawals.Length - 1; i >= 0; i--)
         {
             if (!IsBuilderIndex(withdrawals[i].ValidatorIndex))
             {
-                lastValidatorWithdrawal = withdrawals[i];
+                lastValidatorIndex = withdrawals[i].ValidatorIndex;
                 break;
             }
         }
-        state.NextWithdrawalValidatorIndex = withdrawals.Length == Presets.MaxWithdrawalsPerPayload && lastValidatorWithdrawal is { } last
-            ? (last.ValidatorIndex + 1) % validatorCount
+        state.NextWithdrawalValidatorIndex = withdrawals.Length == Presets.MaxWithdrawalsPerPayload && lastValidatorIndex is { } last
+            ? (last + 1) % validatorCount
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
     }
 
@@ -694,18 +695,18 @@ public static partial class GloasBlockProcessing
     private static (Withdrawal[] Withdrawals, int ProcessedBuilderWithdrawals, int ProcessedPartialWithdrawals, int ProcessedBuildersSweep) GetExpectedWithdrawals(BeaconStateGloas state)
     {
         ulong withdrawalIndex = state.NextWithdrawalIndex;
-        List<Withdrawal> withdrawals = [];
+        RefList16<Withdrawal> withdrawals = new();
 
-        int processedBuilderWithdrawals = GetBuilderWithdrawals(state, ref withdrawalIndex, withdrawals);
-        int processedPartialWithdrawals = GetPendingPartialWithdrawals(state, ref withdrawalIndex, withdrawals);
-        int processedBuildersSweep = GetBuildersSweepWithdrawals(state, ref withdrawalIndex, withdrawals);
-        GetValidatorsSweepWithdrawals(state, ref withdrawalIndex, withdrawals);
+        int processedBuilderWithdrawals = GetBuilderWithdrawals(state, ref withdrawalIndex, ref withdrawals);
+        int processedPartialWithdrawals = GetPendingPartialWithdrawals(state, ref withdrawalIndex, ref withdrawals);
+        int processedBuildersSweep = GetBuildersSweepWithdrawals(state, ref withdrawalIndex, ref withdrawals);
+        GetValidatorsSweepWithdrawals(state, ref withdrawalIndex, ref withdrawals);
 
-        return ([.. withdrawals], processedBuilderWithdrawals, processedPartialWithdrawals, processedBuildersSweep);
+        return (withdrawals.AsSpan().ToArray(), processedBuilderWithdrawals, processedPartialWithdrawals, processedBuildersSweep);
     }
 
     /// <summary>Spec <c>get_builder_withdrawals</c> (new in Gloas).</summary>
-    private static int GetBuilderWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, List<Withdrawal> accumulated)
+    private static int GetBuilderWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, ref RefList16<Withdrawal> accumulated)
     {
         int limit = Presets.MaxWithdrawalsPerPayload - 1;
         int processedCount = 0;
@@ -718,7 +719,7 @@ public static partial class GloasBlockProcessing
             {
                 Index = withdrawalIndex++,
                 ValidatorIndex = ToBuilderWithdrawalIndex(withdrawal.BuilderIndex),
-                Address = withdrawal.FeeRecipient,
+                Address = withdrawal.FeeRecipient!,
                 Amount = withdrawal.Amount,
             });
             processedCount++;
@@ -727,7 +728,7 @@ public static partial class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>get_builders_sweep_withdrawals</c> (new in Gloas).</summary>
-    private static int GetBuildersSweepWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, List<Withdrawal> accumulated)
+    private static int GetBuildersSweepWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, ref RefList16<Withdrawal> accumulated)
     {
         Builder[] builders = state.Builders!;
         if (builders.Length == 0)
@@ -751,7 +752,7 @@ public static partial class GloasBlockProcessing
                 {
                     Index = withdrawalIndex++,
                     ValidatorIndex = ToBuilderWithdrawalIndex(builderIndex),
-                    Address = builder.ExecutionAddress,
+                    Address = builder.ExecutionAddress!,
                     Amount = builder.Balance,
                 });
             }
@@ -762,7 +763,7 @@ public static partial class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>get_pending_partial_withdrawals</c> (Electra, unmodified in Gloas): the shared budget's third argument is the only Gloas-era change (it now shares the overall withdrawal cap with the builder stages ahead of it).</summary>
-    private static int GetPendingPartialWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, List<Withdrawal> accumulated)
+    private static int GetPendingPartialWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, ref RefList16<Withdrawal> accumulated)
     {
         ulong epoch = state.GetCurrentEpoch();
         int withdrawalsLimit = Math.Min(accumulated.Count + Presets.MaxPendingPartialsPerWithdrawalsSweep, Presets.MaxWithdrawalsPerPayload - 1);
@@ -775,7 +776,7 @@ public static partial class GloasBlockProcessing
 
             int index = RequireRegistryIndex(pending.ValidatorIndex, state.Validators!.Length, "Validator");
             Validator validator = state.Validators[index];
-            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated, pending.ValidatorIndex);
+            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated.AsSpan(), pending.ValidatorIndex);
             bool isEligible = validator.ExitEpoch == Presets.FarFutureEpoch && validator.EffectiveBalance >= Presets.MinActivationBalance && balance > Presets.MinActivationBalance;
             if (isEligible)
             {
@@ -793,7 +794,7 @@ public static partial class GloasBlockProcessing
     }
 
     /// <summary>Spec <c>get_validators_sweep_withdrawals</c> (Electra, unmodified in Gloas): the final stage, which alone is allowed to fill the full <c>MAX_WITHDRAWALS_PER_PAYLOAD</c> budget.</summary>
-    private static void GetValidatorsSweepWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, List<Withdrawal> accumulated)
+    private static void GetValidatorsSweepWithdrawals(BeaconStateGloas state, ref ulong withdrawalIndex, ref RefList16<Withdrawal> accumulated)
     {
         ulong epoch = state.GetCurrentEpoch();
         int bound = Math.Min(state.Validators!.Length, Presets.MaxValidatorsPerWithdrawalsSweep);
@@ -806,7 +807,7 @@ public static partial class GloasBlockProcessing
 
             int index = RequireRegistryIndex(validatorIndex, state.Validators.Length, "Validator");
             Validator validator = state.Validators[index];
-            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated, validatorIndex);
+            ulong balance = state.Balances![index] - TotalWithdrawn(accumulated.AsSpan(), validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
                 accumulated.Add(new Withdrawal
@@ -831,7 +832,7 @@ public static partial class GloasBlockProcessing
         }
     }
 
-    private static partial ulong TotalWithdrawn(List<Withdrawal> withdrawals, ulong validatorIndex);
+    private static partial ulong TotalWithdrawn(ReadOnlySpan<Withdrawal> withdrawals, ulong validatorIndex);
 
     /// <summary>Spec <c>apply_withdrawals</c> (Gloas): a builder-flagged withdrawal debits the builder registry instead of a validator balance, and saturates rather than throwing on underflow.</summary>
     private static void ApplyWithdrawals(BeaconStateGloas state, Withdrawal[] withdrawals)

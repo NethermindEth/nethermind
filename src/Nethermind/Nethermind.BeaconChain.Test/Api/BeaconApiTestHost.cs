@@ -27,8 +27,8 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.SszRest;
 using Snappier;
 using ExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
-using Transaction = Nethermind.BeaconChain.Types.Transaction;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Transaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.Test.Api;
 

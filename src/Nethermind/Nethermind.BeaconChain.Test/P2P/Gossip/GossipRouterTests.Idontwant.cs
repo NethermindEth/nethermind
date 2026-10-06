@@ -79,7 +79,7 @@ public partial class GossipRouterTests
         SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);
         byte[] transaction = new byte[4096];
         new Random(1).NextBytes(transaction);
-        block.Message!.Body!.ExecutionPayload!.Transactions = [new Transaction { Bytes = transaction }];
+        block.Message!.Body!.ExecutionPayload!.Transactions = [new Nethermind.Merge.Plugin.SszRest.SszTransaction { Bytes = transaction }];
         return Snappy.CompressToArray(SignedBeaconBlock.Encode(block));
     }
 }

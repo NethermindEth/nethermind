@@ -7,7 +7,6 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz.Merkleization;
 
 namespace Nethermind.BeaconChain.DataAvailability;

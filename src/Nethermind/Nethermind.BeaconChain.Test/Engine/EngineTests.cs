@@ -20,8 +20,8 @@ using Nethermind.Merge.Plugin.SszRest;
 using NSubstitute;
 using NSubstitute.Extensions;
 using BeaconExecutionPayload = Nethermind.BeaconChain.Types.ExecutionPayload;
-using BeaconTransaction = Nethermind.BeaconChain.Types.Transaction;
-using BeaconWithdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using BeaconTransaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
+using BeaconWithdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.Test.Engine;
 
@@ -30,8 +30,10 @@ public class EngineTests
     private static readonly Hash256 TestHash = new("0x1111111111111111111111111111111111111111111111111111111111111111");
 
     [Test]
-    public void Payload_converter_maps_fields_versioned_hashes_and_requests()
+    public void Payload_converter_maps_fields_versioned_hashes_and_requests([Values] bool sliced)
     {
+        byte[] transaction = Bytes.FromHexString(sliced ? "0xff02abcdff" : "0x02abcd");
+        ReadOnlyMemory<byte> transactionBytes = sliced ? transaction.AsMemory(1, 3) : transaction;
         byte[] commitment = Enumerable.Repeat((byte)0xaa, 48).ToArray();
         DepositRequest deposit = new()
         {
@@ -63,7 +65,7 @@ public class EngineTests
             ExtraData = Bytes.FromHexString("0xdeadbeef"),
             BaseFeePerGas = 7,
             BlockHash = CreateHash(0x55),
-            Transactions = [new BeaconTransaction { Bytes = Bytes.FromHexString("0x02abcd") }],
+            Transactions = [new BeaconTransaction { Bytes = transactionBytes }],
             Withdrawals = [new BeaconWithdrawal { Index = 1, ValidatorIndex = 2, Address = new Address("0x2222222222222222222222222222222222222222"), Amount = 3 }],
             BlobGasUsed = 131072,
             ExcessBlobGas = 262144,
@@ -102,6 +104,7 @@ public class EngineTests
         Assert.That(converted.Timestamp, Is.EqualTo(1_700_000_000));
         AssertAdditionalPayloadFields(converted, payload.GasUsed, payload.ExtraData, payload.BaseFeePerGas, payload.Withdrawals![0]);
         Assert.That(converted.Transactions, Is.EqualTo(new[] { Bytes.FromHexString("0x02abcd") }));
+        Assert.That(ReferenceEquals(converted.Transactions[0], transaction), Is.EqualTo(!sliced));
         Assert.That(converted.BlobGasUsed, Is.EqualTo(131072ul));
         Assert.That(converted.ExcessBlobGas, Is.EqualTo(262144ul));
         Assert.That(versionedHashes.Single()!.Bytes.ToArray(), Is.EqualTo(expectedVersionedHash));

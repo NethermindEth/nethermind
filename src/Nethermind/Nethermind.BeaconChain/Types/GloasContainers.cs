@@ -5,7 +5,6 @@ using System.Collections;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Types;
@@ -168,7 +167,7 @@ public partial class SignedExecutionPayloadBid
 
 /// <summary>Gloas transaction: <c>ProgressiveList[Byte]</c> (specs/gloas/beacon-chain.md).</summary>
 /// <remarks>
-/// Its raw-byte encoding matches pre-Gloas <see cref="Transaction"/>, but its progressive root differs.
+/// Its raw-byte encoding matches pre-Gloas <see cref="SszTransaction"/>, but its progressive root differs.
 /// <c>isCollectionItself</c> omits the container offset within <see cref="ExecutionPayloadGloas.Transactions"/>.
 /// </remarks>
 [SszContainer(isCollectionItself: true)]
@@ -218,7 +217,7 @@ public partial class ExecutionPayloadGloas
     public TransactionGloas[]? Transactions { get; set; }
     [SszField(14)]
     [SszProgressiveList]
-    public Withdrawal[]? Withdrawals { get; set; }
+    public SszWithdrawal[]? Withdrawals { get; set; }
     [SszField(15)]
     public ulong BlobGasUsed { get; set; }
     [SszField(16)]

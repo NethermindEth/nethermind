@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.DataAvailability;

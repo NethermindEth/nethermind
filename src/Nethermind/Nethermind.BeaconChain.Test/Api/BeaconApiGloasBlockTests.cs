@@ -286,7 +286,7 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
                 BaseFeePerGas = 9,
                 BlockHash = FilledHash(0xb7),
                 Transactions = [new TransactionGloas { Bytes = [0x02, 0xf8] }],
-                Withdrawals = [new Nethermind.BeaconChain.Types.Withdrawal { Index = 100, ValidatorIndex = 200, Address = new Address(Hex(20, 0xb8)), Amount = 300 }],
+                Withdrawals = [new Nethermind.Merge.Plugin.SszRest.SszWithdrawal { Index = 100, ValidatorIndex = 200, Address = new Address(Hex(20, 0xb8)), Amount = 300 }],
                 BlobGasUsed = 131_072,
                 ExcessBlobGas = 262_144,
                 BlockAccessList = [0xc0, 0x01],

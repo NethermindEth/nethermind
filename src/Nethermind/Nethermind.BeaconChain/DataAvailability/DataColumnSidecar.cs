@@ -3,7 +3,6 @@
 
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.DataAvailability;

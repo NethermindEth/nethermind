@@ -134,12 +134,12 @@ public class BeaconChainStoreDataColumnScanTests
         for (ulong slot = first; slot < first + blocks; slot++)
         {
             SignedBeaconBlock block = TestChain.CreateBlock(slot, Hash256.Zero);
-            Transaction[] transactions = new Transaction[500];
+            Nethermind.Merge.Plugin.SszRest.SszTransaction[] transactions = new Nethermind.Merge.Plugin.SszRest.SszTransaction[500];
             for (int i = 0; i < transactions.Length; i++)
             {
                 byte[] bytes = new byte[200];
                 random.NextBytes(bytes);
-                transactions[i] = new Transaction { Bytes = bytes };
+                transactions[i] = new Nethermind.Merge.Plugin.SszRest.SszTransaction { Bytes = bytes };
             }
 
             block.Message!.Body!.ExecutionPayload!.Transactions = transactions;

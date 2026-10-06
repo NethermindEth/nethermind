@@ -13,7 +13,7 @@ Deposit Proof=proof Data=data
 VoluntaryExit Epoch=epoch ValidatorIndex=validator_index
 SignedVoluntaryExit Message=message Signature=signature
 SyncAggregate SyncCommitteeBits=sync_committee_bits SyncCommitteeSignature=sync_committee_signature
-Withdrawal Index=index ValidatorIndex=validator_index Address=address Amount=amount
+SszWithdrawal Index=index ValidatorIndex=validator_index Address=address Amount=amount
 ExecutionPayload ParentHash=parent_hash FeeRecipient=fee_recipient StateRoot=state_root ReceiptsRoot=receipts_root LogsBloom=logs_bloom PrevRandao=prev_randao BlockNumber=block_number GasLimit=gas_limit GasUsed=gas_used Timestamp=timestamp ExtraData=extra_data BaseFeePerGas=base_fee_per_gas BlockHash=block_hash Transactions=transactions Withdrawals=withdrawals BlobGasUsed=blob_gas_used ExcessBlobGas=excess_blob_gas
 BlsToExecutionChange ValidatorIndex=validator_index FromBlsPubkey=from_bls_pubkey ToExecutionAddress=to_execution_address
 SignedBlsToExecutionChange Message=message Signature=signature
@@ -67,7 +67,7 @@ method private WriteExecutionRequests ExecutionRequests requests - object
 method private WriteExecutionPayload ExecutionPayload payload - object
 method public WriteSignedExecutionPayloadEnvelope SignedExecutionPayloadEnvelope signed - object
 method private WriteExecutionPayload ExecutionPayloadGloas payload - object
-method private WriteWithdrawals Withdrawal withdrawals withdrawals array
+method private WriteWithdrawals SszWithdrawal withdrawals withdrawals array
 method private WriteExecutionPayloadHeader ExecutionPayloadHeader header - object
 method private WriteAttestationData AttestationData data - object
 method private WriteSignedBeaconBlockHeader SignedBeaconBlockHeader header - object

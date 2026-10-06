@@ -22,7 +22,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using NSubstitute;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.Test.Sync;
 

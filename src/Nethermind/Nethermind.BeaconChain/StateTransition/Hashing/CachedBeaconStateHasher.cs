@@ -226,7 +226,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         BuilderPendingPayment.MerkleizeVector(state.BuilderPendingPayments, out roots[41]);
         BuilderPendingWithdrawal.MerkleizeProgressiveList(state.BuilderPendingWithdrawals ?? [], out roots[42]);
         ExecutionPayloadBid.Merkleize(state.LatestExecutionPayloadBid, out roots[43]);
-        Withdrawal.MerkleizeProgressiveList(state.PayloadExpectedWithdrawals ?? [], out roots[44]);
+        SszWithdrawal.MerkleizeProgressiveList(state.PayloadExpectedWithdrawals ?? [], out roots[44]);
         roots[45] = _ptcWindow.Root(state.PtcWindow);
 
         Merkle.MerkleizeProgressive(out UInt256 root, roots);

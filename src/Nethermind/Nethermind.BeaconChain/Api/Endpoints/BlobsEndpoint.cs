@@ -12,7 +12,6 @@ using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Engine;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 

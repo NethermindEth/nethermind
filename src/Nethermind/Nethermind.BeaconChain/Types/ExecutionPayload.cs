@@ -8,24 +8,6 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Types;
 
-/// <summary>Capella <c>Withdrawal</c>.</summary>
-[SszContainer]
-public partial class Withdrawal
-{
-    public ulong Index { get; set; }
-    public ulong ValidatorIndex { get; set; }
-    public Address? Address { get; set; }
-    public ulong Amount { get; set; }
-}
-
-/// <summary>Bellatrix <c>Transaction</c>: ByteList[<c>MAX_BYTES_PER_TRANSACTION</c> = 2**30].</summary>
-[SszContainer(isCollectionItself: true)]
-public partial class Transaction
-{
-    [SszList(1_073_741_824)]
-    public byte[]? Bytes { get; set; }
-}
-
 /// <summary>Deneb <c>ExecutionPayload</c> (unchanged in Electra and Fulu).</summary>
 [SszContainer]
 public partial class ExecutionPayload
@@ -45,9 +27,9 @@ public partial class ExecutionPayload
     public UInt256 BaseFeePerGas { get; set; }
     public Hash256? BlockHash { get; set; }
     [SszList(1_048_576)]
-    public Transaction[]? Transactions { get; set; }
+    public SszTransaction[]? Transactions { get; set; }
     [SszList(16)]
-    public Withdrawal[]? Withdrawals { get; set; }
+    public SszWithdrawal[]? Withdrawals { get; set; }
     public ulong BlobGasUsed { get; set; }
     public ulong ExcessBlobGas { get; set; }
 }
