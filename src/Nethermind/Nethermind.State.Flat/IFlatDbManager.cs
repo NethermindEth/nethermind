@@ -7,7 +7,9 @@ namespace Nethermind.State.Flat;
 
 public interface IFlatDbManager : IFlatCommitTarget
 {
-    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage);
+    /// <param name="filterInMemorySlotReads">Serve the bundle's slot reads through the in-memory snapshots' negative
+    /// filter (<see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>); for read-only execution only.</param>
+    SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads);
     ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock);
 
     /// <inheritdoc cref="GatherReadOnlySnapshotBundle(in StateId)"/>

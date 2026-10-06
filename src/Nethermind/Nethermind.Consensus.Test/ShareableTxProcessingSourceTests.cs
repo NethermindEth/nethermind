@@ -12,6 +12,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -55,6 +56,36 @@ public class ShareableTxProcessingSourceTests
         }
     }
 
+    // Only the shareable source serves eth_call, eth_estimateGas and eth_createAccessList; block processing helpers,
+    // the prewarmer, block production and the BAL parent readers keep creating their envs from the plain factory.
+    [TestCase(true, TestName = "Build_ShareableSource_UsesReadOnlyQueryWorldState")]
+    [TestCase(false, TestName = "Create_ReadOnlyTxProcessingEnvFactory_UsesResettableWorldState")]
+    public void Build_WorldStateFollowsTheSource(bool shareable)
+    {
+        IWorldStateManager spy = null!;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IWorldStateManager>((_, inner) => spy = ForwardingSpy(inner))
+            .Build();
+
+        if (shareable)
+        {
+            using IShareableTxProcessorSource source = container.Resolve<IShareableTxProcessorSource>();
+            source.Build(IWorldState.PreGenesis).Dispose();
+        }
+        else
+        {
+            using IReadOnlyTxProcessorSource source = container.Resolve<IReadOnlyTxProcessingEnvFactory>().Create();
+            source.Build(IWorldState.PreGenesis).Dispose();
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            spy.Received(shareable ? 1 : 0).CreateReadOnlyQueryWorldState();
+            spy.Received(shareable ? 0 : 1).CreateResettableWorldState();
+        }
+    }
+
     [Test]
     public void OnSubsequentBuild_GiveDifferentWorldState()
     {
@@ -72,5 +103,15 @@ public class ShareableTxProcessingSourceTests
         IReadOnlyTxProcessingScope scope2 = _shareableSource.Build(IWorldState.PreGenesis);
 
         Assert.That(scope1.WorldState, Is.SameAs(scope2.WorldState));
+    }
+
+    private static IWorldStateManager ForwardingSpy(IWorldStateManager inner)
+    {
+        IWorldStateManager spy = Substitute.For<IWorldStateManager>();
+        spy.GlobalWorldState.Returns(inner.GlobalWorldState);
+        spy.GlobalStateReader.Returns(inner.GlobalStateReader);
+        spy.CreateResettableWorldState().Returns(_ => inner.CreateResettableWorldState());
+        spy.CreateReadOnlyQueryWorldState().Returns(_ => inner.CreateReadOnlyQueryWorldState());
+        return spy;
     }
 }

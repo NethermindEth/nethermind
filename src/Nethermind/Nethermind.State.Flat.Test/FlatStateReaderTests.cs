@@ -77,7 +77,7 @@ public class FlatStateReaderTests
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
             throw new StateNotRetainedException($"State {baseBlock} no longer exists; concurrently removed.");
 
-        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
         public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => false;
@@ -89,7 +89,7 @@ public class FlatStateReaderTests
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
             new(new SnapshotPooledList(0), persistenceReader, false, PersistedSnapshotStack.Empty(false));
 
-        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
         public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => true;
@@ -164,7 +164,7 @@ public class FlatStateReaderTests
         public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
             new(new SnapshotPooledList(0), new NoopPersistenceReader(), false, PersistedSnapshotStack.Empty(false), isHistorical: true);
 
-        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) => throw new NotSupportedException();
+        public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads) => throw new NotSupportedException();
         public void FlushCache(CancellationToken cancellationToken) { }
         public void DropStateNotReachableFrom(in StateId head) { }
         public bool HasStateForBlock(in StateId stateId) => true;

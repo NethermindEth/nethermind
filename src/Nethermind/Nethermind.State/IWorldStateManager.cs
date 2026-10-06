@@ -23,6 +23,12 @@ public interface IWorldStateManager
     /// <returns></returns>
     IWorldStateScopeProvider CreateResettableWorldState();
 
+    /// <summary>
+    /// Like <see cref="CreateResettableWorldState"/>, for read-only queries that never feed block processing
+    /// (eth_call, eth_estimateGas, eth_createAccessList). A backend may tune its reads for them.
+    /// </summary>
+    IWorldStateScopeProvider CreateReadOnlyQueryWorldState();
+
     IOverridableWorldScope CreateOverridableWorldScope();
 
     /// <summary>

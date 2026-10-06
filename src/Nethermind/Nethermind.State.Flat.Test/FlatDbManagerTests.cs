@@ -487,7 +487,7 @@ public class FlatDbManagerTests
         await using FlatDbManager inner = CreateManager();
         HistoricalFlatDbManager manager = WrapHistory(inner);
 
-        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage), Throws.TypeOf<StateUnavailableException>());
+        Assert.That(() => manager.GatherSnapshotBundle(historicalBlock, usage, filterInMemorySlotReads: false), Throws.TypeOf<StateUnavailableException>());
     }
 
     // The per-block marker binds the captured state root; a query below the barrier for the same height but a

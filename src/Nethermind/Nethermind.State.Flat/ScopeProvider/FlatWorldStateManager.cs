@@ -48,8 +48,14 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() =>
-        new FlatScopeProvider(
+    public IWorldStateScopeProvider CreateResettableWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: false);
+
+    // Block processing, the prewarmer, block production and witness generation come through
+    // CreateResettableWorldState and keep the plain loop; only the query path reads through the filter.
+    public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: true);
+
+    private FlatScopeProvider CreateReadOnlyScopeProvider(bool filterInMemorySlotReads) =>
+        new(
             codeDb,
             flatDbManager,
             configuration,
@@ -57,7 +63,8 @@ public class FlatWorldStateManager(
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             stateHeaderProvider,
             logManager,
-            isReadOnly: true);
+            isReadOnly: true,
+            filterInMemorySlotReads: filterInMemorySlotReads);
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
