@@ -1958,6 +1958,14 @@ public partial class EngineModuleTests
         {
             if (blockHash == Volatile.Read(ref _watched)) WaitEntered.TrySetResult();
         }
+
+        /// <summary>Completes once the handler waits for a watched block to leave the queue while a copy of it is still there.</summary>
+        public TaskCompletionSource RemovalWaitPending { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public void OnRemovalWait(Hash256 blockHash, bool pending)
+        {
+            if (pending && blockHash == Volatile.Read(ref _watched)) RemovalWaitPending.TrySetResult();
+        }
     }
 
     /// <summary>Passes every call through, reporting the handler's commit waits to a <see cref="CommitWaitProbe"/>.</summary>
@@ -1996,7 +2004,12 @@ public partial class EngineModuleTests
             return false;
         }
 
-        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false) => inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+        public ValueTask WaitUntilRemovedAsync(Hash256 blockHash, bool executedOnly = false)
+        {
+            ValueTask wait = inner.WaitUntilRemovedAsync(blockHash, executedOnly);
+            if (IsCalledFromNewPayloadHandler()) probe.OnRemovalWait(blockHash, !wait.IsCompleted);
+            return wait;
+        }
 
         public void Start() => inner.Start();
 

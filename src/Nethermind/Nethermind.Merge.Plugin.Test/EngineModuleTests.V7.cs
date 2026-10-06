@@ -18,6 +18,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Test;
@@ -1154,6 +1155,70 @@ public partial class EngineModuleTests
             Assert.That(first.Data.PayloadStatus.InclusionListSatisfied, Is.Null, "the failed evaluation cannot answer");
             Assert.That(second.Data.PayloadStatus.InclusionListSatisfied, Is.False);
             Assert.That(evaluations, Is.EqualTo(2), "the retained list must survive an evaluation that threw");
+        }
+    }
+
+    /// <summary>
+    /// A payload resent with another inclusion list while the copy a timed-out request left behind is still queued.
+    /// That copy's verdict judged the list it carried, so it must not answer the resend.
+    /// </summary>
+    [Test, NonParallelizable]
+    public async Task NewPayloadV6_judges_a_list_resent_while_an_earlier_copy_is_queued_against_that_list()
+    {
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 30_000 },
+            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = chain.BlockTree.Head!;
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        byte[][] requests = built.Data!.ExecutionRequests!;
+        Assert.That(payload.Transactions, Is.Empty);
+
+        payload.ParentBeaconBlockRoot = Keccak.Zero;
+        payload.ExecutionRequests = requests;
+        Block queuedCopy = payload.TryGetBlock(parent.TotalDifficulty).Data!;
+        queuedCopy.Header.IsPostMerge = true;
+        Assert.That(queuedCopy.CalculateHash(), Is.EqualTo(payload.BlockHash));
+
+        TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        TaskCompletionSource firstCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) =>
+        {
+            if (e.Block.Hash != payload.BlockHash) return;
+            if (ReferenceEquals(e.Block, queuedCopy)) firstCopyQueued.TrySetResult();
+            else secondCopyQueued.TrySetResult();
+        };
+
+        Task<ResultWrapper<PayloadStatusV2>> resend;
+        try
+        {
+            OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+            Assert.That(await chain.BlockTree.SuggestBlockAsync(queuedCopy, BlockTreeSuggestOptions.ForceDontSetAsMain), Is.EqualTo(AddBlockResult.Added));
+            _ = Task.Run(async () => await chain.BlockProcessingQueue.Enqueue(queuedCopy, ProcessingOptions.EthereumMerge));
+            await firstCopyQueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+            probe.Watch(payload.BlockHash);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, [Rlp.Encode(BuildInclusionListTransfer()).Bytes]);
+            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseProcessing.TrySetResult();
+            branchProcessor.ProcessingRelease = null;
+        }
+
+        ResultWrapper<PayloadStatusV2> result = await resend;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.InclusionListSatisfied, Is.False);
         }
     }
 
