@@ -45,11 +45,12 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
     {
         IncrementalValuesProvider<TypeModel> types = context.SyntaxProvider.ForAttributeWithMetadataName(
             AttributeName,
-            static (node, _) => node is ClassDeclarationSyntax,
+            static (node, _) => node is ClassDeclarationSyntax or RecordDeclarationSyntax,
             static (ctx, _) => TypeModelBuilder.Build((INamedTypeSymbol)ctx.TargetSymbol, ctx.Attributes[0], ctx.SemanticModel.Compilation));
 
         IncrementalValueProvider<ImmutableArray<ConverterTarget>> handWritten = context.SyntaxProvider.CreateSyntaxProvider(
-                static (node, _) => node is ClassDeclarationSyntax { BaseList: not null },
+                // Syntactic prefilter; a converter deriving through another base is still caught by the run-time contract check.
+                static (node, _) => node is ClassDeclarationSyntax { BaseList: { } baseList } && baseList.Types.Any(static t => t.Type.ToString().Contains("JsonConverter")),
                 static (ctx, ct) => ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) is INamedTypeSymbol converter && TypeModelBuilder.GetConverterTarget(converter) is { } target
                     ? new ConverterTarget(target, converter.ToDisplayString())
                     : null)
@@ -62,7 +63,7 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
         context.RegisterSourceOutput(resolved, static (spc, item) =>
         {
             if (Report(spc, item.Type, item.HandWritten)) return;
-            spc.AddSource(item.Type.WriterName + ".g.cs", SourceText.From(JsonWriterEmitter.EmitWriter(item.Type), System.Text.Encoding.UTF8));
+            spc.AddSource(item.Type.HintName, SourceText.From(JsonWriterEmitter.EmitWriter(item.Type), System.Text.Encoding.UTF8));
         });
 
         context.RegisterSourceOutput(resolved.Collect(), static (spc, items) =>
@@ -84,7 +85,7 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
 
     private static bool Report(SourceProductionContext spc, TypeModel type, ImmutableArray<ConverterTarget> handWritten)
     {
-        Location location = type.Location ?? Location.None;
+        Location location = type.Location?.ToLocation() ?? Location.None;
         string name = type.FullName.Replace("global::", string.Empty);
         foreach (ConverterTarget target in handWritten)
         {

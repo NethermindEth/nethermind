@@ -9,6 +9,7 @@ using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Nethermind.Serialization.Json;
@@ -67,6 +68,9 @@ public class JsonWriterGeneratorTests
                 public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options) { }
             }
             """);
+        yield return Case("NJW003", "factory converter on a nullable value type",
+            "[GenerateJsonWriter] public class Target { [JsonConverter(typeof(JsonStringEnumConverter))] public DayOfWeek? Day { get; set; } }");
+        yield return Case("NJW003", "dynamic property", "[GenerateJsonWriter] public class Target { public dynamic A { get; set; } }");
         yield return Case("NJW003", "name conflict", "[GenerateJsonWriter] public class Target { public int A { get; set; } [JsonPropertyName(\"A\")] public int B { get; set; } }");
 
         static TestCaseData Case(string id, string name, string source) => new TestCaseData(id, source).SetArgDisplayNames(name);
@@ -130,6 +134,15 @@ public class JsonWriterGeneratorTests
                 public int this[int i] => i;
             }
             """);
+        yield return Case("record class with names needing escapes", """
+            [GenerateJsonWriter]
+            public record Target
+            {
+                public int Plain { get; init; } = 1;
+                [JsonPropertyName("line\nbreak \"quoted\" \\ back")] public string Escaped { get; init; } = "e";
+                [JsonPropertyName("café <tag>")] public string NonAscii { get; init; } = "n";
+            }
+            """);
         yield return Case("converters, nested objects and object-typed values", """
             [GenerateJsonWriter]
             public class Target : IJsonOnSerializing, IJsonOnSerialized
@@ -138,6 +151,7 @@ public class JsonWriterGeneratorTests
                 [JsonConverter(typeof(JsonStringEnumConverter))] public DayOfWeek Day { get; set; } = DayOfWeek.Friday;
                 public Nested Child { get; set; } = new();
                 public object Boxed { get; set; } = new Nested();
+                [JsonConverter(typeof(ConstantObjectConverter))] public object Converted { get; set; } = "original";
                 public List<Nested> Items { get; set; } = [new(), new()];
                 public int[] Empty { get; set; } = [];
                 public long? Optional { get; set; } = 7;
@@ -152,6 +166,11 @@ public class JsonWriterGeneratorTests
                 public override int Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => 0;
                 public override void Write(Utf8JsonWriter writer, int value, JsonSerializerOptions options) => writer.WriteStringValue(value.ToString("x"));
             }
+            public class ConstantObjectConverter : JsonConverter<object>
+            {
+                public override object Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => null;
+                public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => writer.WriteStringValue("converted");
+            }
             """);
 
         static TestCaseData Case(string name, string source) => new TestCaseData(source).SetArgDisplayNames(name);
@@ -160,8 +179,9 @@ public class JsonWriterGeneratorTests
     [TestCaseSource(nameof(SupportedShapes))]
     public void Supported_shapes_write_what_the_metadata_path_writes(string source)
     {
-        GeneratorDriverRunResult result = Run(Usings + source, out Compilation compilation);
-        Assert.That(result.Diagnostics, Is.Empty);
+        // The STJ generator builds the metadata the way production contexts do, so the comparison is against source-gen output.
+        GeneratorDriverRunResult result = Run(Usings + source + ProbeContext, out Compilation compilation, withSystemTextJsonGenerator: true);
+        Assert.That(result.Diagnostics.Where(static d => d.Id.StartsWith("NJW", StringComparison.Ordinal)), Is.Empty);
 
         using MemoryStream stream = new();
         Microsoft.CodeAnalysis.Emit.EmitResult emitted = compilation.Emit(stream);
@@ -170,19 +190,32 @@ public class JsonWriterGeneratorTests
         Assembly assembly = Assembly.Load(stream.ToArray());
         Type target = assembly.GetType("Target", throwOnError: true)!;
         JsonConverter writer = (JsonConverter)Activator.CreateInstance(assembly.GetType("TargetJsonWriter", throwOnError: true)!)!;
+        IJsonTypeInfoResolver context = (IJsonTypeInfoResolver)assembly.GetType("ProbeContext", throwOnError: true)!.GetProperty("Default")!.GetValue(null)!;
 
-        // Creating the writer ran the module initializer, which registered generated writers globally; drop them here.
-        JsonSerializerOptions metadataOptions = GeneratedJsonWriters.GetMetadataOptions(EthereumJsonSerializer.JsonOptions);
-        JsonSerializerOptions options = new(metadataOptions);
-        options.Converters.Insert(0, writer);
-
-        // Fresh instances, since serialization callbacks change state the output reflects.
-        using (Assert.EnterMultipleScope())
+        foreach (JsonIgnoreCondition defaultIgnore in new[] { JsonIgnoreCondition.Never, JsonIgnoreCondition.WhenWritingNull, JsonIgnoreCondition.WhenWritingDefault })
         {
-            Assert.That(((IGeneratedJsonWriter)writer).IsActive(options), Is.True, "the writer deferred to the metadata path");
-            Assert.That(JsonSerializer.Serialize(Activator.CreateInstance(target), target, options), Is.EqualTo(JsonSerializer.Serialize(Activator.CreateInstance(target), target, metadataOptions)));
+            // Creating the writer ran the module initializer, which registered generated writers globally; drop them here.
+            JsonSerializerOptions metadataOptions = new(GeneratedJsonWriters.GetMetadataOptions(EthereumJsonSerializer.JsonOptions)) { DefaultIgnoreCondition = defaultIgnore };
+            metadataOptions.TypeInfoResolverChain.Insert(0, context);
+            JsonSerializerOptions options = new(metadataOptions);
+            options.Converters.Insert(0, writer);
+
+            // Fresh instances, since serialization callbacks change state the output reflects.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(((IGeneratedJsonWriter)writer).IsActive(options), Is.True, $"the writer deferred to the metadata path with {defaultIgnore}");
+                Assert.That(JsonSerializer.Serialize(Activator.CreateInstance(target), target, options),
+                    Is.EqualTo(JsonSerializer.Serialize(Activator.CreateInstance(target), target, metadataOptions)), defaultIgnore.ToString());
+            }
         }
     }
+
+    private const string ProbeContext = """
+
+        [JsonSourceGenerationOptions(GenerationMode = JsonSourceGenerationMode.Metadata)]
+        [JsonSerializable(typeof(Target))]
+        internal partial class ProbeContext : JsonSerializerContext;
+        """;
 
     [Test]
     public void Registration_routes_each_writer_to_the_serializer_or_the_dispatch()
@@ -190,7 +223,13 @@ public class JsonWriterGeneratorTests
         GeneratorDriverRunResult result = Run(Usings + """
             namespace A { [GenerateJsonWriter] public class One { public int X { get; set; } } }
             namespace B { [GenerateJsonWriter(RegisterWithSerializer = false)] public class Two { public int Y { get; set; } } }
-            """, out _);
+            namespace A { [GenerateJsonWriter] public class Same { public int X { get; set; } } }
+            namespace B { [GenerateJsonWriter] public class Same { public int X { get; set; } } }
+            """, out Compilation compilation);
+
+        // Types sharing a simple name in different namespaces must not collide on their generated file names.
+        Assert.That(result.Diagnostics, Is.Empty, string.Join(Environment.NewLine, result.Diagnostics));
+        Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
 
         string registration = result.GeneratedTrees.Single(static t => Path.GetFileName(t.FilePath) == "GeneratedJsonWriterRegistration.g.cs").GetText().ToString();
         string withSerializer = registration[..registration.IndexOf("RegisterForDispatch(", StringComparison.Ordinal)];
@@ -203,7 +242,7 @@ public class JsonWriterGeneratorTests
         }
     }
 
-    private static GeneratorDriverRunResult Run(string source, out Compilation output)
+    private static GeneratorDriverRunResult Run(string source, out Compilation output, bool withSystemTextJsonGenerator = false)
     {
         CSharpParseOptions parseOptions = CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Preview);
         CSharpCompilation compilation = CSharpCompilation.Create(
@@ -212,9 +251,24 @@ public class JsonWriterGeneratorTests
             BuildMetadataReferences(),
             new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, nullableContextOptions: NullableContextOptions.Disable));
 
-        GeneratorDriver driver = CSharpGeneratorDriver.Create(CreateGenerator()).WithUpdatedParseOptions(parseOptions);
+        IIncrementalGenerator[] generators = withSystemTextJsonGenerator ? [CreateGenerator(), CreateSystemTextJsonGenerator()] : [CreateGenerator()];
+        GeneratorDriver driver = CSharpGeneratorDriver.Create(generators).WithUpdatedParseOptions(parseOptions);
         driver = driver.RunGeneratorsAndUpdateCompilation(compilation, out output, out ImmutableArray<Diagnostic> _);
         return driver.GetRunResult();
+    }
+
+    /// <summary>Loads the System.Text.Json source generator from the targeting pack of the running runtime.</summary>
+    private static IIncrementalGenerator CreateSystemTextJsonGenerator()
+    {
+        string runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
+        string version = Path.GetFileName(runtimeDirectory);
+        string dotnetRoot = Path.GetFullPath(Path.Combine(runtimeDirectory, "..", "..", ".."));
+        string path = Path.Combine(dotnetRoot, "packs", "Microsoft.NETCore.App.Ref", version, "analyzers", "dotnet", "cs", "System.Text.Json.SourceGeneration.dll");
+        Assert.That(File.Exists(path), Is.True, $"System.Text.Json source generator not found at {path}");
+
+        Assembly assembly = Assembly.LoadFrom(path);
+        Type generatorType = assembly.GetTypes().Single(static t => !t.IsAbstract && typeof(IIncrementalGenerator).IsAssignableFrom(t));
+        return (IIncrementalGenerator)Activator.CreateInstance(generatorType)!;
     }
 
     private static IIncrementalGenerator CreateGenerator()

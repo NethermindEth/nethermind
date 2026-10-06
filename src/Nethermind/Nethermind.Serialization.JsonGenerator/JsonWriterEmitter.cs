@@ -94,8 +94,9 @@ internal static class JsonWriterEmitter
         sb.AppendLine("    {");
         sb.Append("        if (!").Append(Runtime).AppendLine(".GeneratedJsonWriters.SupportsOptions(options)) return null;");
         sb.Append("        ").Append(Stj).Append(".JsonEncodedText[] names = ").Append(Runtime).Append(".GeneratedJsonWriters.GetPropertyNames<").Append(type.FullName)
-            .Append(">(options, Contract, ").Append(Bool(type.HasOnSerializing)).Append(", ").Append(Bool(type.HasOnSerialized)).AppendLine(");");
-        sb.AppendLine("        return names is null ? null : new State(names, options);");
+            .Append(">(options, Contract, ").Append(Bool(type.HasOnSerializing)).Append(", ").Append(Bool(type.HasOnSerialized)).Append(", out ")
+            .Append(Stj).AppendLine(".Serialization.JsonConverter[] propertyConverters);");
+        sb.AppendLine("        return names is null ? null : new State(names, propertyConverters, options);");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -130,7 +131,8 @@ internal static class JsonWriterEmitter
         sb.AppendLine("            {");
         sb.Append("                writer.WritePropertyName(state.Name").Append(i).AppendLine(");");
 
-        string writeValue = p.IsObject
+        // A property-level converter replaces the object dispatch, as it does in the metadata path.
+        string writeValue = p.IsObject && p.ConverterTypeName is null
             ? $"{Runtime}.TypeInfoJsonSerializer.Serialize(writer, {v}, typeof(object), options);"
             : $"state.Converter{i}.Write(writer, {v}, options);";
         string depthCheck = $"if (writer.CurrentDepth >= state.MaxDepth) {Runtime}.GeneratedJsonWriters.ThrowMaxDepthExceeded(state.MaxDepth);";
@@ -190,7 +192,8 @@ internal static class JsonWriterEmitter
         }
 
         sb.AppendLine();
-        sb.Append("        public State(").Append(Stj).Append(".JsonEncodedText[] names, ").Append(Stj).AppendLine(".JsonSerializerOptions options)");
+        sb.Append("        public State(").Append(Stj).Append(".JsonEncodedText[] names, ").Append(Stj).Append(".Serialization.JsonConverter[] propertyConverters, ")
+            .Append(Stj).AppendLine(".JsonSerializerOptions options)");
         sb.AppendLine("        {");
         sb.Append("            MaxDepth = ").Append(Runtime).AppendLine(".GeneratedJsonWriters.GetMaxDepth(options);");
         sb.Append("            SkipNull = options.DefaultIgnoreCondition is ").Append(Stj).Append(".Serialization.JsonIgnoreCondition.WhenWritingNull or ")
@@ -202,7 +205,8 @@ internal static class JsonWriterEmitter
             if (!p.Emit) continue;
             sb.Append("            Name").Append(i).Append(" = names[").Append(i).AppendLine("];");
             sb.Append("            Converter").Append(i).Append(" = ").Append(Runtime).Append(".GeneratedJsonWriters.GetConverter<").Append(p.TypeName).Append(">(");
-            if (p.ConverterTypeName is not null) sb.Append("new ").Append(p.ConverterTypeName).Append("(), ");
+            // The metadata contract's own property-level converter instance, so both paths share it.
+            if (p.ConverterTypeName is not null) sb.Append("propertyConverters[").Append(i).Append("], ");
             sb.AppendLine("options);");
             sb.Append("            HandleNull").Append(i).Append(" = Converter").Append(i).AppendLine(".HandleNull;");
         }
@@ -213,5 +217,5 @@ internal static class JsonWriterEmitter
 
     private static string Bool(bool value) => value ? "true" : "false";
 
-    private static string Literal(string value) => "\"" + value.Replace("\\", "\\\\").Replace("\"", "\\\"") + "\"";
+    private static string Literal(string value) => Microsoft.CodeAnalysis.CSharp.SymbolDisplay.FormatLiteral(value, quote: true);
 }

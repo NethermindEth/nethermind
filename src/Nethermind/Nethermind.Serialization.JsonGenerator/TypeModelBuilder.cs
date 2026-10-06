@@ -93,7 +93,7 @@ internal static class TypeModelBuilder
             registerWithSerializer,
             new EquatableArray<PropertyModel>([.. entries.Select(static e => e.Model)]),
             new EquatableArray<DiagnosticModel>([.. diagnostics]),
-            type.Locations.FirstOrDefault());
+            LocationModel.From(type.Locations.FirstOrDefault()));
     }
 
     /// <summary>Gets the type a hand-written <c>JsonConverter&lt;T&gt;</c> declared by <paramref name="converter"/> converts.</summary>
@@ -173,6 +173,12 @@ internal static class TypeModelBuilder
         if (!canUseGetter && !canUseSetter) return null;
         if (property.Type.IsRefLikeType) return null;
 
+        if (property.Type.TypeKind == TypeKind.Dynamic)
+        {
+            diagnostics.Add(new DiagnosticModel("NJW003", $"property '{property.Name}' is dynamic"));
+            return null;
+        }
+
         bool ignored = ignoreCondition == "Always";
         if (!ignored)
         {
@@ -211,7 +217,7 @@ internal static class TypeModelBuilder
             Emit: kind == ContractKind.Written && ignoreCondition != "WhenWriting",
             ignoreCondition,
             nullKind,
-            IsObject: propertyType.SpecialType == SpecialType.System_Object || propertyType.TypeKind == TypeKind.Dynamic);
+            IsObject: propertyType.SpecialType == SpecialType.System_Object);
 
         return new Entry(property, model, order);
     }
@@ -229,7 +235,9 @@ internal static class TypeModelBuilder
         string? target = GetConverterTarget(converterType);
         string propertyType = property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
 
-        if (converterType.IsAbstract || !hasParameterlessConstructor || (!isFactory && target != propertyType))
+        // A factory may decline Nullable<T> and be applied to T with a nullable wrapper, which the writer cannot reproduce.
+        bool factoryOnNullable = isFactory && property.Type.OriginalDefinition.SpecialType == SpecialType.System_Nullable_T;
+        if (converterType.IsAbstract || !hasParameterlessConstructor || (!isFactory && target != propertyType) || factoryOnNullable)
         {
             diagnostics.Add(new DiagnosticModel("NJW003", $"property '{property.Name}' has a [JsonConverter] the generator cannot build for its exact type"));
             return null;

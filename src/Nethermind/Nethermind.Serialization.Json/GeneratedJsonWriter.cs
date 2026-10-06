@@ -206,9 +206,15 @@ internal static class GeneratedJsonWriters
     /// Checks the metadata contract of <typeparamref name="T"/> under <paramref name="options"/> against the one a writer was
     /// generated for and returns the encoded property names, or <see langword="null"/> when they differ.
     /// </summary>
-    public static JsonEncodedText[]? GetPropertyNames<T>(JsonSerializerOptions options, GeneratedJsonProperty[] contract, bool hasOnSerializing, bool hasOnSerialized)
+    /// <param name="propertyConverters">The property-level converter instances the metadata path uses, by contract index.</param>
+    public static JsonEncodedText[]? GetPropertyNames<T>(JsonSerializerOptions options, GeneratedJsonProperty[] contract, bool hasOnSerializing, bool hasOnSerialized,
+        out JsonConverter?[] propertyConverters)
     {
-        JsonTypeInfo info = TypeInfoJsonSerializer.GetTypeInfo<T>(GetMetadataOptions(options));
+        propertyConverters = new JsonConverter?[contract.Length];
+        JsonSerializerOptions metadataOptions = GetMetadataOptions(options);
+        if (!IsContractUncustomized(typeof(T), metadataOptions)) return null;
+
+        JsonTypeInfo info = TypeInfoJsonSerializer.GetTypeInfo<T>(metadataOptions);
         if (info.Kind != JsonTypeInfoKind.Object ||
             info.PolymorphismOptions is not null ||
             info.NumberHandling is not null ||
@@ -235,7 +241,7 @@ internal static class GeneratedJsonWriters
             }
 
             if (property.PropertyType != expected.PropertyType ||
-                property.CustomConverter?.GetType() != expected.ConverterType ||
+                !IsExpectedConverter(property.CustomConverter, expected) ||
                 property.IsExtensionData ||
                 property.NumberHandling is not null ||
                 (expected.Kind == GeneratedJsonPropertyKind.Written && property.Get is null) ||
@@ -245,9 +251,40 @@ internal static class GeneratedJsonWriters
             }
 
             names[i] = JsonEncodedText.Encode(name, options.Encoder);
+            propertyConverters[i] = property.CustomConverter;
         }
 
         return names;
+    }
+
+    // Source-generated metadata expands a factory named by the attribute into the converter it creates for the property type.
+    private static bool IsExpectedConverter(JsonConverter? actual, in GeneratedJsonProperty expected) =>
+        expected.ConverterType is null
+            ? actual is null
+            : actual is not null && (actual.GetType() == expected.ConverterType ||
+                (typeof(JsonConverterFactory).IsAssignableFrom(expected.ConverterType) && actual is not JsonConverterFactory && actual.Type == expected.PropertyType));
+
+    /// <summary>
+    /// Whether the resolver that supplies <paramref name="type"/>'s metadata builds it unmodified, so the property checks above
+    /// see every setting that affects writing.
+    /// </summary>
+    /// <remarks>
+    /// A resolver modifier can change predicates and accessors the checks cannot compare, such as
+    /// <see cref="JsonPropertyInfo.ShouldSerialize"/>; such contracts stay on the metadata path.
+    /// </remarks>
+    private static bool IsContractUncustomized(Type type, JsonSerializerOptions options)
+    {
+        foreach (IJsonTypeInfoResolver resolver in options.TypeInfoResolverChain)
+        {
+            if (resolver.GetTypeInfo(type, options) is null) continue;
+
+            // The first resolver that answers is the one the options use.
+            // Exact type: a derived resolver can override GetTypeInfo and customize the contract itself.
+            return resolver is JsonSerializerContext ||
+                (resolver.GetType() == typeof(DefaultJsonTypeInfoResolver) && ((DefaultJsonTypeInfoResolver)resolver).Modifiers.Count == 0);
+        }
+
+        return false;
     }
 
     /// <summary>Gets the converter <paramref name="options"/> resolve for a property of type <typeparamref name="TProperty"/>.</summary>

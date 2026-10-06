@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
@@ -144,6 +145,30 @@ public class GeneratedJsonWriterTests
         {
             Assert.That(GetWriter(typeof(EIP1559TransactionForRpc), options).IsActive(options), Is.False);
             Assert.That(Serialize(value, typeof(TransactionForRpc), options), Is.EqualTo(Serialize(value, value.GetType(), options)));
+        }
+    }
+
+    [Test]
+    public void Contracts_customized_by_a_resolver_modifier_use_the_metadata_path()
+    {
+        DefaultJsonTypeInfoResolver modified = new();
+        modified.Modifiers.Add(static info =>
+        {
+            if (info.Type != typeof(FilterLog)) return;
+            foreach (JsonPropertyInfo property in info.Properties)
+            {
+                if (property.Name == "removed") property.ShouldSerialize = static (_, _) => false;
+            }
+        });
+
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.TypeInfoResolverChain.Insert(0, modified);
+        FilterLog value = new(3, 25_000_000, 1_700_000_000, TestItem.KeccakA, 2, TestItem.KeccakB, TestItem.AddressA, [1], [TestItem.KeccakC], removed: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetWriter(typeof(FilterLog), options).IsActive(options), Is.False);
+            Assert.That(System.Text.Encoding.UTF8.GetString(Serialize(value, typeof(FilterLog), options)), Does.Not.Contain("removed"));
         }
     }
 

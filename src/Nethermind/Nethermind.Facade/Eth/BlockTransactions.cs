@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
@@ -35,9 +36,14 @@ public sealed class BlockTransactions
 
     internal static BlockTransactions Empty => EmptyInstance;
 
-    public static implicit operator BlockTransactions(Hash256[] hashes) => hashes.Length == 0 ? EmptyInstance : new(hashes, null);
+    // A null array maps to a null wrapper, so the field stays omitted as it did when the property held the array.
+    [return: NotNullIfNotNull(nameof(hashes))]
+    public static implicit operator BlockTransactions?(Hash256[]? hashes) =>
+        hashes is null ? null : hashes.Length == 0 ? EmptyInstance : new(hashes, null);
 
-    public static implicit operator BlockTransactions(TransactionForRpc[] transactions) => transactions.Length == 0 ? EmptyInstance : new(null, transactions);
+    [return: NotNullIfNotNull(nameof(transactions))]
+    public static implicit operator BlockTransactions?(TransactionForRpc[]? transactions) =>
+        transactions is null ? null : transactions.Length == 0 ? EmptyInstance : new(null, transactions);
 }
 
 /// <summary>Writes hashes or full transactions as the array the RPC block carries, and reads each form back.</summary>

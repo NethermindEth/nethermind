@@ -47,7 +47,9 @@ namespace Nethermind.JsonRpc.Benchmark;
 public class RpcResultSerializationBenchmarks
 {
     private const string Generated = "generated writers";
-    private const string Metadata = "metadata path";
+
+    // Only the block and log writers can be switched off; transactions reach their writers through the dispatch either way.
+    private const string Metadata = "block and log metadata path";
 
     private readonly ArrayBufferWriter<byte> _buffer = new(1 << 20);
     private JsonSerializerOptions _generated = null!;
