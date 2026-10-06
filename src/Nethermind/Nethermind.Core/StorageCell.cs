@@ -42,8 +42,17 @@ namespace Nethermind.Core
 
         public bool Equals(StorageCell other) => Equals(in other);
 
+#if ZK_EVM
+        // Guest only: one storage access probes several maps with the same cell, so it is hashed once, when made.
+        // The guest seeds its hashes before it makes any cell.
+        private readonly long _hashCode64 = address.GetHashCode64(in index);
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public long GetHashCode64() => _hashCode64;
+#else
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public long GetHashCode64() => _address.Value.GetHashCode64(in Index);
+#endif
 
         public override bool Equals(object? obj)
         {

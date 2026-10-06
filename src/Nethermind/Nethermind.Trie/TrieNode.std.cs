@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -174,6 +175,24 @@ namespace Nethermind.Trie
             }
         }
 
+        /// <summary>Publishes the RLP a node was resolved from.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void WriteLoadedRlp(CappedArray<byte> value) => WriteRlp(value);
+
+        /// <summary>Gives this clone of <paramref name="original"/> its RLP, <paramref name="rlp"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void InitClonedRlp(CappedArray<byte> rlp, TrieNode original) => InitRlp(rlp);
+
+        /// <summary>What <see cref="ComputeKeccak"/> may reuse of a node's RLP from before it is re-encoded: nothing here.</summary>
+        private readonly struct PreviousRlp { }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private PreviousRlp ReadPreviousRlp() => default;
+
+        /// <summary>Computes the keccak of <paramref name="rlp"/>, this node's encoding.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static Hash256 ComputeKeccak(ReadOnlySpan<byte> rlp, in PreviousRlp previous) =>
+            Nethermind.Core.Crypto.Keccak.Compute(rlp);
         private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
             ICappedArrayPool? bufferPool)
         {
@@ -203,5 +222,32 @@ namespace Nethermind.Trie
 
         /// <summary>How <see cref="GetChildWithChildPath"/> is inlined: left to the JIT.</summary>
         private const MethodImplOptions GetChildWithChildPathInlining = default;
+
+        /// <summary>How <see cref="SetChild"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions SetChildInlining = default;
+
+        /// <summary>How <see cref="PrepareRlp"/> is inlined: left to the JIT.</summary>
+        private const MethodImplOptions PrepareRlpInlining = default;
+
+        /// <summary>Called once a node's key has been replaced.</summary>
+        /// <remarks>Nothing to do on the host, whose leaf encoder never reads a leaf's previous RLP.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void OnKeyChanged() { }
+
+        /// <summary>Encodes <paramref name="node"/>, a leaf, from the key item of its previous RLP; never on the host.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            rlp = default;
+            return false;
+        }
+
+        /// <summary>Descends <paramref name="path"/> into child <paramref name="index"/> of the node being encoded.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnterChildPath(ref TreePath path, int index) => path.AppendMut(index);
+
+        /// <summary>Climbs <paramref name="path"/> back out of the child <see cref="EnterChildPath"/> entered.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void LeaveChildPath(ref TreePath path) => path.TruncateOne();
     }
 }
