@@ -34,16 +34,10 @@ public class SszRoundTripTests
         BeaconStateFulu original = CreateSyntheticState<BeaconStateFulu>();
         original.ProposerLookahead = [.. Enumerable.Range(0, 64).Select(static i => (ulong)(i % 4))];
 
-        byte[] encoded = BeaconStateFulu.Encode(original);
-        BeaconStateFulu.Decode(encoded, out BeaconStateFulu decoded);
-        byte[] reEncoded = BeaconStateFulu.Encode(decoded);
-        BeaconStateFulu.Merkleize(original, out UInt256 fuluRoot);
-        BeaconStateFulu.Merkleize(decoded, out UInt256 decodedRoot);
         BeaconStateElectra.Merkleize(CreateSyntheticState<BeaconStateElectra>(), out UInt256 electraRoot);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(reEncoded, Is.EqualTo(encoded));
-        Assert.That(decodedRoot, Is.EqualTo(fuluRoot));
+        (BeaconStateFulu decoded, UInt256 fuluRoot) = GloasContainerTests.AssertRoundTrips(original);
         Assert.That(fuluRoot, Is.Not.EqualTo(electraRoot), "proposer_lookahead must be mixed into the Fulu root");
         Assert.That(decoded.Validators, Has.Length.EqualTo(4));
         Assert.That(decoded.ProposerLookahead, Is.EqualTo(original.ProposerLookahead));
