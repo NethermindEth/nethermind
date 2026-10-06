@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
@@ -19,6 +20,11 @@ namespace Nethermind.Consensus.AuRa;
 /// </remarks>
 public sealed class AuRaHeaderDecoder : HeaderDecoder
 {
+    public AuRaHeaderDecoder() { }
+
+    /// <inheritdoc cref="HeaderDecoder(ISpecProvider)"/>
+    public AuRaHeaderDecoder(ISpecProvider? specProvider) : base(specProvider) { }
+
     protected override BlockHeader DecodeSealAndCreateHeader(
         ref RlpReader decoderContext,
         Hash256 parentHash,
