@@ -32,6 +32,9 @@ public partial class EthRpcModuleTests
     [TestCase("eth_fillTransaction", """{"gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Fill, zero gas price")]
     [TestCase("eth_signTransaction", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Sign, gas price with an authorization list")]
     [TestCase("eth_fillTransaction", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Fill, gas price with an authorization list")]
+    [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x1","authorizationList":AUTH}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an authorization list")]
+    [TestCase("eth_createAccessList", """{"gasPrice":"0x1","authorizationList":[]}""", "both gasPrice and authorizationList specified", TestName = "Create access list, gas price with an empty authorization list")]
+    [TestCase("eth_createAccessList", """{"type":"0x4","gasPrice":"0x0"}""", "gasPrice must be non-zero after london fork", TestName = "Create access list, set-code type with a zero gas price")]
     public async Task Fee_default_rules_reject_the_request(string method, string feeFields, string expected) =>
         Assert.That(await FeeDefaultsError(method, feeFields.Replace("AUTH", SetCodeAuthorization), london: true), Is.EqualTo(expected));
 
@@ -53,15 +56,16 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo($"maxFeePerGas (0x0) < maxPriorityFeePerGas ({suggested})"), serialized);
     }
 
-    [Test]
-    public async Task Send_from_an_account_this_node_does_not_hold_keeps_its_report()
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", TestName = "Fee cap below the priority fee")]
+    [TestCase("""{"gasPrice":"0x0"}""", TestName = "Zero gas price")]
+    [TestCase("""{"gasPrice":"0x9184e72a000"}""", TestName = "Valid request")]
+    public async Task Send_from_an_account_this_node_does_not_hold_reports_an_unknown_account(string feeFields)
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
-        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction",
-            FeeDefaultsRequest("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", ForeignAccount));
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(feeFields, ForeignAccount));
 
-        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (10) < maxPriorityFeePerGas (1000000000)"), serialized);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("unknown account"), serialized);
     }
 
     [TestCase(ForeignAccount, false, """{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Unknown account, fee cap below the priority fee")]

@@ -8,6 +8,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Numerics;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -15,6 +16,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Json;
+
+[assembly: InternalsVisibleTo("Nethermind.JsonRpc")]
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -108,7 +111,7 @@ public abstract class TransactionForRpc
             : PromoteToEip1559IfTypeDefaulted().ToValidatedTransaction();
 
     /// <summary>The first field signing needs that the request leaves out, or null when gas, fees and nonce are set.</summary>
-    public string? MissingSigningField() =>
+    internal string? MissingSigningField() =>
         Gas is null ? "gas not specified"
         : !HasFeeFields(this) ? "missing gasPrice or maxFeePerGas/maxPriorityFeePerGas"
         // All concrete tx subtypes (AccessList, EIP1559, Blob, SetCode) derive from LegacyTransactionForRpc.

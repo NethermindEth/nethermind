@@ -76,6 +76,7 @@ public partial class EthRpcModule(
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
+    private const string UnknownAccount = "unknown account";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -352,14 +353,22 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
     {
-        // Fees are checked for an account this node holds, ahead of the rest of the request; blob transactions are
-        // not sent this way.
-        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
+        ResultWrapper<Hash256> result = await SignAndSendTransaction(rpcTx);
+
+        // A request from an account this node does not hold fails as an unknown account whatever else is wrong with
+        // it, so the wallet is asked only once the request has failed.
+        return result.Result.ResultType == ResultType.Failure && !HoldsAccount((rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero)
+            ? ResultWrapper<Hash256>.Fail(UnknownAccount, ErrorCodes.InvalidInput)
+            : result;
+    }
+
+    private Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
+    {
+        // Blob transactions are not sent this way.
         if (rpcTx is not BlobTransactionForRpc
             && _blockFinder.Head?.Header is { } head
-            && Array.IndexOf(_wallet.GetAccounts(), from) >= 0
             && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError)
         {
             return Task.FromResult(ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput));
@@ -432,9 +441,9 @@ public partial class EthRpcModule(
         // The account is looked up only once the request itself is valid.
         if (!_wallet.TrySignTransaction(tx, chainId))
         {
-            string signingError = Array.IndexOf(_wallet.GetAccounts(), tx.SenderAddress) >= 0
+            string signingError = HoldsAccount(tx.SenderAddress)
                 ? "authentication needed: password or unlock"
-                : "unknown account";
+                : UnknownAccount;
             return ResultWrapper<SignTransactionResult>.Fail(signingError, ErrorCodes.InvalidInput);
         }
 
@@ -444,6 +453,8 @@ public partial class EthRpcModule(
 
         return BuildSignedResult(tx);
     }
+
+    private bool HoldsAccount(Address? address) => Array.IndexOf(_wallet.GetAccounts(), address) >= 0;
 
     private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
     {
