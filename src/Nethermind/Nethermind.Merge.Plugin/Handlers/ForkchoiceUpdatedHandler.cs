@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.State;
 using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Merge.Plugin.Handlers;
@@ -49,7 +50,8 @@ public class ForkchoiceUpdatedHandler(
     IMergeConfig mergeConfig,
     ILogManager logManager,
     IBlockProcessingPauseControl pauseControl,
-    BlockTreeMutationLock mutationLock) : IForkchoiceUpdatedHandler
+    BlockTreeMutationLock mutationLock,
+    IStateReader stateReader) : IForkchoiceUpdatedHandler
 {
     /// <summary>How long a forkchoice update gives the head block's commit after its verdict before answering SYNCING.</summary>
     /// <remarks>
@@ -293,6 +295,13 @@ public class ForkchoiceUpdatedHandler(
 
         bool newHeadTheSameAsCurrentHead = _blockTree.Head!.Hash == newHeadHeader.Hash;
         bool shouldUpdateHead = !newHeadTheSameAsCurrentHead;
+        // A processed block whose state was pruned cannot be built on; a re-execution restoring it was waited for above.
+        if (shouldUpdateHead && !stateReader.HasStateForBlock(newHeadHeader))
+        {
+            if (_logger.IsInfo) _logger.Info($"Syncing... New head {newHeadHeader.ToString(BlockHeader.Format.Short)} has no state. Request: {requestStr}.");
+            return ForkchoiceUpdatedV1Result.Syncing;
+        }
+
         // TryUpdateMainChain walks back to the current main chain itself, loading blocks one at a time, and
         // returns false (without mutating) if a predecessor is missing - the same gate the old TryGetBranch gave.
         if (shouldUpdateHead && !_blockTree.TryUpdateMainChain(newHeadHeader, wereProcessed: true, forceUpdateHeadBlock: true))
@@ -411,10 +420,15 @@ public class ForkchoiceUpdatedHandler(
     /// once and it gets the SYNCING it always got; blocks queued behind a committing head, another copy of it included,
     /// do not delay its commit, so the wait is for that copy alone.
     /// </summary>
+    /// <remarks>
+    /// A block re-executed because its state was pruned keeps the processed flag from its first run, so for a processed
+    /// head the missing state, not the flag, says a commit may still be due.
+    /// </remarks>
     private async Task WaitForHeadCommitAsync(BlockHeader newHeadHeader)
     {
         Hash256 hash = newHeadHeader.GetOrCalculateHash();
-        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { WasProcessed: false }) return;
+        if (_blockTree.GetInfo(newHeadHeader.Number, hash).Info is not { } info
+            || (info.WasProcessed && stateReader.HasStateForBlock(newHeadHeader))) return;
 
         await processingQueue.WaitForExecutedCopyAsync(hash, _commitWait);
     }
