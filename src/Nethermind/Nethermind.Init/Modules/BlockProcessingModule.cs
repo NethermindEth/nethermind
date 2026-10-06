@@ -61,7 +61,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
 
             // Block processing components common between rpc, validation and production
             .AddScoped<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeCalculator>()
-            .AddScoped<ITransactionProcessor, EthereumTransactionProcessor>()
+            .AddScoped<EthereumTransactionProcessor>()
             .AddSingleton<ITransactionProcessorFactory, TransactionProcessorFactory<EthereumGasPolicy>>()
             .AddScoped<ICodeInfoRepository, CacheCodeInfoRepository>()
                 .AddSingleton<IPrecompileProvider, EthereumPrecompileProvider>()
@@ -155,6 +155,14 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IGenesisBuilder, GenesisBuilder>()
             .AddScoped<IGenesisLoader, GenesisLoader>()
             ;
+
+        // Marked for the pre-warm handoff, which mirrors this processor's execution. A chain that registers its own
+        // processor replaces the registration, and with it the mark.
+        builder.Register(static ctx => ctx.Resolve<EthereumTransactionProcessor>())
+            .As<ITransactionProcessor>()
+            .InstancePerLifetimeScope()
+            .ExternallyOwned()
+            .WithMetadata(PrewarmerEnvFactory.HandoffMetadata, true);
 
         builder.AddSingleton<IMainStateBlockProducerEnvFactory, GlobalWorldStateBlockProducerEnvFactory>();
 
