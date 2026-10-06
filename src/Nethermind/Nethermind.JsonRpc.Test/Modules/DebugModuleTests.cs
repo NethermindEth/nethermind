@@ -507,11 +507,7 @@ public class DebugModuleTests
         _blockFinder.FindHeader(selector).Returns(validated.Header);
         _blockFinder.FindBlock(selector).Returns(replacement);
         _blockFinder.FindBlock(validated.Hash!).Returns(validated);
-        _blockchainBridge.HasStateForBlock(validated.Header).Returns(_ =>
-        {
-            _blockFinder.Head.Returns(replacement);
-            return true;
-        });
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
         _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
             .Returns(Array.Empty<GethLikeTxTrace>());
 
@@ -520,7 +516,11 @@ public class DebugModuleTests
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
         if (streaming)
         {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingBlockResult)actual.Data).WriteAsJson(writer);
             _blockFinder.Received(1).FindBlock(validated.Hash!);
+            _debugBridge.Received(1).GetBlockTrace(validated, Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>(), writer);
         }
         else
         {
