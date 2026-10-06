@@ -1379,7 +1379,8 @@ namespace Nethermind.TxPool
         /// Dependency updates never recreate entries: block production can evict during simulation.</remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec)
         {
-            if (PendingPaymasterCache.KeyFor(tx) is Address paymaster
+            if (!_txPoolConfig.FrameTxWidthEnabled
+                && PendingPaymasterCache.KeyFor(tx) is Address paymaster
                 && _pendingPaymasters.GetPendingCount(paymaster) > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
                 && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(paymaster, state))
             {
@@ -1414,16 +1415,40 @@ namespace Nethermind.TxPool
                         && !(_senderBaselines.TryGetValue(tx.SenderAddress!, out ValueHash256 baseline) && baseline == tx.Hash!.ValueHash256)
                         ? FrameTxWidthCharge.For(tx, spec, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
                         : UInt256.Zero;
+                    Address? chargedPaymaster = _txPoolConfig.FrameTxWidthEnabled
+                        && PendingPaymasterCache.KeyFor(tx) is Address sponsor
+                        && !(_paymasterBaselines.TryGetValue(sponsor, out ValueHash256 sponsorBaseline) && sponsorBaseline == tx.Hash!.ValueHash256)
+                        && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(sponsor, state)
+                        ? sponsor
+                        : null;
+                    UInt256 paymasterCharge = chargedPaymaster is null
+                        ? UInt256.Zero
+                        : FrameTxWidthCharge.For(tx, spec, _txPoolConfig.FrameTxWidthSafetyFactorPermille);
                     if (_senderWidth.GetWidth(tx.SenderAddress!) < widthCharge)
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
                         return false;
                     }
+                    if (chargedPaymaster is not null && _paymasterWidth.GetWidth(chargedPaymaster) < paymasterCharge)
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
+                        return false;
+                    }
                     // Signature validation is state-independent; admission's verdict still holds.
                     FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                    if (!simulated.NodeBound && chargedPaymaster is not null && _paymasterWidth.GetWidth(chargedPaymaster) < paymasterCharge)
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
+                        return false;
+                    }
                     if (!simulated.NodeBound && !_senderWidth.TrySpend(tx.SenderAddress!, widthCharge))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
+                        return false;
+                    }
+                    if (!simulated.NodeBound && chargedPaymaster is not null && !_paymasterWidth.TrySpend(chargedPaymaster, paymasterCharge))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
                         return false;
                     }
                     if (simulated.Outcome != FrameTxSimulationOutcome.Accepted)

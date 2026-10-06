@@ -5429,6 +5429,144 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_BeyondThePaymasterBaseline_IsAdmittedOnlyAgainstEarnedPaymasterWidth()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB, TestItem.PrivateKeyC, TestItem.PrivateKeyE);
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyC, TestItem.PrivateKeyD);
+
+            AcceptTxResult baselineResult = _txPool.SubmitTx(baseline, TxHandlingOptions.None);
+            AcceptTxResult withoutWidth = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
+            int simulations = simulator.ReceivedCalls().Count();
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)WidthChargeOf(additional, Eip8141Prototype.Instance) }]);
+            AcceptTxResult withWidth = _txPool.SubmitTx(additional, TxHandlingOptions.None);
+            _txPool.RemoveTransaction(additional.Hash);
+            AcceptTxResult afterRemoval = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyE, TestItem.PrivateKeyD), TxHandlingOptions.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(baselineResult, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(withoutWidth, Is.EqualTo(AcceptTxResult.PaymasterWidthUnmet));
+                Assert.That(simulations, Is.EqualTo(1), "a paymaster short of width is refused before the prefix is simulated");
+                Assert.That(withWidth, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.PaymasterWidthUnmet), "removal returns no width");
+                Assert.That(_frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD), Is.EqualTo(UInt256.Zero));
+            }
+        }
+
+        [Test]
+        public async Task Revalidation_beyond_the_paymaster_baseline_spends_paymaster_width_until_it_is_gone()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 2) }]);
+            Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+            int pendingWhileWidthLasts = _txPool.GetPendingTransactionsCount();
+            UInt256 widthAfterOneRevalidation = _frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD);
+            simulator.ClearReceivedCalls();
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pendingWhileWidthLasts, Is.EqualTo(2), "width, not the pending cap, decides");
+                Assert.That(widthAfterOneRevalidation, Is.EqualTo(UInt256.Zero), "the rerun prefix spent the paymaster's charge");
+                Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { baseline.Hash }), "the baseline survives without width");
+                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
+            }
+        }
+
+        [Test]
+        public async Task Revalidation_deferred_by_an_admission_bound_spends_no_paymaster_width()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            UInt256 charge = WidthChargeOf(additional, Eip8141Prototype.Instance);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+            Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            SimulatesAs(simulator, FrameTxSimulationResult.RejectIndeterminate("budget exhausted"));
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+                Assert.That(_frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD), Is.EqualTo(charge));
+            }
+        }
+
+        [Test]
+        public async Task Paymaster_baseline_that_left_the_pool_is_charged_like_any_other_when_it_returns()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 3) }]);
+            Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            simulator.Simulate(Arg.Is<Transaction>(tx => tx.Hash == baseline.Hash), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(FrameTxSimulationResult.Reject("prefix reverts"));
+            Block first = Build.A.Block.WithNumber(1).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(first);
+            Hash256[] pendingAfterTheBaselineLeft = _txPool.GetPendingTransactions().Select(static tx => tx.Hash).ToArray();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            AcceptTxResult returned = _txPool.SubmitTx(baseline, TxHandlingOptions.None);
+            Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
+            second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
+            await RaiseBlockAddedToMainAndWaitForNewHead(second);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pendingAfterTheBaselineLeft, Is.EqualTo(new[] { additional.Hash }));
+                Assert.That(returned, Is.EqualTo(AcceptTxResult.Accepted), "the last of the width admits it beyond the baseline");
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "neither is the baseline, and no width is left to revalidate them");
+            }
+        }
+
+        [Test]
+        [Repeat(20)]
+        public void SubmitTx_ConcurrentSponsoredSubmissions_AdmitTheBaselineAndWhatThePaymasterWidthCovers()
+        {
+            const int submissions = 16;
+            const int covered = 3;
+            PrivateKey[] senders = TestItem.PrivateKeys.Skip(16).Take(submissions).ToArray();
+            CreatePoolWithPaymasterWidth(KeyedNonceSpecProvider(), senders);
+            Transaction[] sponsored = senders.Select(sender => SponsoredFrameTx(sender, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1])).ToArray();
+            UInt256[] charges = sponsored.Select(static tx => WidthChargeOf(tx)).ToArray();
+            UInt256 earned = charges.Max() * covered;
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(sponsored[0]).TestObject, [new TxReceipt { GasUsed = (ulong)earned }]);
+
+            using Barrier start = new(submissions);
+            AcceptTxResult[] results = new AcceptTxResult[submissions];
+            Parallel.For(0, submissions, new ParallelOptions { MaxDegreeOfParallelism = submissions }, i =>
+            {
+                start.SignalAndWait();
+                results[i] = _txPool.SubmitTx(sponsored[i], TxHandlingOptions.None);
+            });
+
+            using (Assert.EnterMultipleScope())
+            {
+                UInt256 left = _frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD);
+                UInt256[] acceptedCharges = Enumerable.Range(0, submissions).Where(i => results[i] == AcceptTxResult.Accepted).Select(i => charges[i]).ToArray();
+                UInt256 acceptedTotal = acceptedCharges.Aggregate(UInt256.Zero, static (sum, charge) => sum + charge);
+                Assert.That(results.Count(static r => r == AcceptTxResult.Accepted), Is.EqualTo(1 + covered));
+                Assert.That(results.Count(static r => r == AcceptTxResult.PaymasterWidthUnmet), Is.EqualTo(submissions - 1 - covered));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1 + covered));
+                Assert.That(left, Is.LessThan(charges.Min()), "no refusal left width that covered it");
+                Assert.That(acceptedCharges.Any(baseline => earned - left == acceptedTotal - baseline), Is.True, "every admission but the baseline spent exactly its charge");
+            }
+        }
+
+        [Test]
         public void SubmitTx_FrameTransaction_RejectedAfterTheCapIsCounted_ReleasesThePaymasterSlot()
         {
             // The cap counts ahead of the filters that resolve the payer, so a rejection there must hand the
@@ -5884,10 +6022,10 @@ namespace Nethermind.TxPool.Test
         private static ISpecProvider KeyedNonceSpecProvider() =>
             new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true });
 
-        private static UInt256 WidthChargeOf(Transaction tx)
+        private static UInt256 WidthChargeOf(Transaction tx, IReleaseSpec spec = null)
         {
             tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
-            return FrameTxWidthCharge.For(tx, KeyedNonceSpecProvider().GenesisSpec, 1000);
+            return FrameTxWidthCharge.For(tx, spec ?? KeyedNonceSpecProvider().GenesisSpec, 1000);
         }
 
         private Transaction BuildKeyedFrameTx(Address sender, UInt256 nonceKey, ulong seq, UInt256 value, UInt256 maxFee)
@@ -6838,6 +6976,23 @@ namespace Nethermind.TxPool.Test
             SimulatesAs(simulator, result);
             _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0 },
                 specProvider ?? new TestSpecProvider(Eip8141Prototype.Instance), frameTxPrefixSimulator: simulator);
+            return simulator;
+        }
+
+        /// <remarks>A pool with MATCHA width on, whose simulator approves the code-carrying paymaster <see cref="TestItem.AddressD"/>.</remarks>
+        private IFrameTxPrefixSimulator CreatePoolWithPaymasterWidth(ISpecProvider specProvider, params PrivateKey[] senders)
+        {
+            IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressD));
+            _txPool = CreatePool(new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxWidthEnabled = true, FrameTxRevalidationDeferralBudget = 4 },
+                specProvider, frameTxPrefixSimulator: simulator);
+            foreach (PrivateKey sender in senders)
+            {
+                EnsureSenderBalance(sender.Address, UInt256.MaxValue);
+            }
+
+            EnsureSenderBalance(TestItem.AddressD, UInt256.MaxValue);
+            _stateProvider.InsertCode([0x60, 0x00], TestItem.AddressD);
             return simulator;
         }
 
