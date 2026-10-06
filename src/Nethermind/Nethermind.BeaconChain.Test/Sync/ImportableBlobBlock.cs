@@ -60,14 +60,7 @@ internal sealed class ImportableBlobBlock
         anchorMessage.Body!.ExecutionPayload!.BlockHash = anchorState.LatestExecutionPayloadHeader!.BlockHash;
         // Genesis shape: the header's state root is zero until the first process_slot fills it in,
         // which is what makes hash_tree_root(latest_block_header) equal the anchor block root.
-        anchorState.LatestBlockHeader = new BeaconBlockHeader
-        {
-            Slot = 0,
-            ProposerIndex = anchorMessage.ProposerIndex,
-            ParentRoot = anchorMessage.ParentRoot,
-            StateRoot = Hash256.Zero,
-            BodyRoot = SszRoots.HashTreeRoot(anchorMessage.Body),
-        };
+        anchorState.LatestBlockHeader = HeaderFor(anchorMessage).Message!;
         anchorMessage.StateRoot = SszRoots.HashTreeRoot(anchorState);
         Hash256 anchorRoot = SszRoots.HashTreeRoot(anchorMessage);
 
