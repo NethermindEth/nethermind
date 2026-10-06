@@ -1222,6 +1222,71 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>
+    /// A payload resent after its newPayload timed out, while the copy that request queued is still waiting.
+    /// A resend without that copy's list must not take its verdict; one with the same list takes it, executing once.
+    /// </summary>
+    [TestCase(false, true, null, TestName = "NewPayloadV6_does_not_answer_an_empty_list_resend_from_a_queued_copy_with_a_list")]
+    [TestCase(true, false, 1, TestName = "NewPayloadV6_answers_a_same_list_resend_from_the_queued_copy")]
+    [NonParallelizable]
+    public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied, int? executions)
+    {
+        CommitWaitProbe probe = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
+            new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 3_000 },
+            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Block parent = chain.BlockTree.Head!;
+        byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
+
+        ResultWrapper<ForkchoiceUpdatedV2Result> build = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(parent.Hash!, Keccak.Zero, parent.Hash!), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> built = await rpc.engine_getPayloadV6(Bytes.FromHexString(build.Data.PayloadId!));
+        ExecutionPayloadV4 payload = built.Data!.ExecutionPayload;
+        byte[][] requests = built.Data!.ExecutionRequests!;
+        Assert.That(payload.Transactions, Is.Empty);
+
+        int copiesQueued = 0;
+        int executed = 0;
+        TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        chain.BlockProcessingQueue.BlockAdded += (_, e) =>
+        {
+            if (e.Block.Hash == payload.BlockHash && Interlocked.Increment(ref copiesQueued) == 2) secondCopyQueued.TrySetResult();
+        };
+        chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
+        {
+            if (e.BlockHash == payload.BlockHash) Interlocked.Increment(ref executed);
+        };
+
+        TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TestBranchProcessorInterceptor branchProcessor = (TestBranchProcessorInterceptor)chain.BranchProcessor;
+        Task<ResultWrapper<PayloadStatusV2>> resend;
+        try
+        {
+            OccupyBlockProcessor(chain, parent, releaseProcessing.Task);
+            ResultWrapper<PayloadStatusV2> timedOut = await rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, inclusionList);
+            Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+
+            probe.Watch(payload.BlockHash);
+            resend = rpc.engine_newPayloadV6(payload, [], Keccak.Zero, requests, resendSameList ? inclusionList : []);
+            await Task.WhenAny(secondCopyQueued.Task, probe.RemovalWaitPending.Task).WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        finally
+        {
+            releaseProcessing.TrySetResult();
+            branchProcessor.ProcessingRelease = null;
+        }
+
+        ResultWrapper<PayloadStatusV2> result = await resend;
+        await WaitForCommit(chain, payload.BlockHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(satisfied));
+            if (executions is not null) Assert.That(Volatile.Read(ref executed), Is.EqualTo(executions));
+        }
+    }
+
     /// <summary>Builds a Bogota chain whose <see cref="NewPayloadHandler"/> reads state through <paramref name="headState"/>.</summary>
     private async Task<MergeTestBlockchain> CreateBlockchainWithHeadState(HeadStateInterceptor headState,
         MergeConfig? mergeConfig = null, Action<ContainerBuilder>? configure = null)

@@ -486,7 +486,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource firstCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!, true).Returns(_ =>
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, false).Returns(_ =>
         {
             waitRequested.TrySetResult();
             return new ValueTask(firstCopyRemoved.Task);

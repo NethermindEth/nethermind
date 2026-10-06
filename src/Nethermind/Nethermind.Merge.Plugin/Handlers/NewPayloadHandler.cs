@@ -65,6 +65,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
+    private readonly ConcurrentDictionary<Hash256, QueuedInclusionList> _queuedInclusionLists = new();
+
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
     private readonly bool _simulateBlockProduction;
@@ -756,7 +758,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // list ever judged, so let the first copy finish first. A copy already gone costs nothing here.
             if (addResult == AddBlockResult.AlreadyKnown)
             {
-                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: !HasInclusionList(block)).AsTask();
+                bool queuedWithSameList = (_queuedInclusionLists.TryGetValue(block.Hash!, out QueuedInclusionList? queued) ? queued.Digest : default) == ilDigest;
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: queuedWithSameList).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
@@ -806,7 +809,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
+                _ = Task.Run(() => EnqueueAsync(block, ilDigest, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -861,13 +864,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
 
-    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task EnqueueAsync(Block block, ValueHash256 ilDigest, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
+        QueuedInclusionList queued = new(ilDigest);
+        _queuedInclusionLists[block.Hash!] = queued;
         try
         {
             ValueTask enqueue;
             using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
             await enqueue;
+            await _processingQueue.WaitUntilRemovedAsync(block.Hash!);
         }
         catch (Exception e)
         {
@@ -877,6 +883,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // own completion, not the hash's: by now a re-sent payload may have registered a fresh one.
             if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
             blockProcessed.TrySetException(e);
+        }
+        finally
+        {
+            _queuedInclusionLists.TryRemove(new KeyValuePair<Hash256, QueuedInclusionList>(block.Hash!, queued));
         }
     }
 
@@ -1037,6 +1047,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         /// <summary>Marks the block as gone without committing.</summary>
         /// <returns><c>true</c> when the answer is already cached, so the entry must be deleted.</returns>
         public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
+    }
+
+    /// <summary>The inclusion list a copy this handler queued carries, so a resend knows whether that copy's verdict is its own.</summary>
+    private sealed class QueuedInclusionList(ValueHash256 digest)
+    {
+        public ValueHash256 Digest { get; } = digest;
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
