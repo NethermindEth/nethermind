@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -42,6 +43,64 @@ public class BlockCodeCacheTests
             {
                 ValueHash256 hash = Hash(i);
                 Assert.That(cache.Get(in hash), i < 10 ? Is.SameAs(codes[i]) : Is.Null, $"code {i}");
+            }
+
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
+    public void Past_the_cap_code_of_warming_and_finished_transactions_gives_way_to_a_running_transaction()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        Load(cache, count: 3);
+        using (cache.BeginTransaction()) Load(cache, count: 7, first: 3);
+
+        CodeInfo[] codes;
+        using (cache.BeginTransaction()) codes = Load(cache, count: 10, first: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 20; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i < 10 ? Is.Null : Is.SameAs(codes[i - 10]), $"code {i}");
+            }
+
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
+    public void Past_the_cap_code_running_transactions_use_is_not_evicted()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        CodeInfo[] concurrent = [];
+        using ManualResetEventSlim loaded = new();
+        using ManualResetEventSlim finish = new();
+        Thread concurrentTransaction = new(() =>
+        {
+            using (cache.BeginTransaction())
+            {
+                concurrent = Load(cache, count: 4);
+                loaded.Set();
+                finish.Wait();
+            }
+        });
+        concurrentTransaction.Start();
+        loaded.Wait();
+
+        CodeInfo[] codes;
+        using (cache.BeginTransaction()) codes = Load(cache, count: 10, first: 4);
+        finish.Set();
+        concurrentTransaction.Join();
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 14; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i < 4 ? Is.SameAs(concurrent[i]) : i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
             }
 
             Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
@@ -95,12 +154,12 @@ public class BlockCodeCacheTests
         Assert.That(cache.Get(in hash), Is.Null);
     }
 
-    private static CodeInfo[] Load(BlockCodeCache cache, int count)
+    private static CodeInfo[] Load(BlockCodeCache cache, int count, int first = 0)
     {
         CodeInfo[] codes = new CodeInfo[count];
         for (int i = 0; i < count; i++)
         {
-            ValueHash256 hash = Hash(i);
+            ValueHash256 hash = Hash(first + i);
             codes[i] = new CodeInfo(new byte[LargeCodeLength]);
             cache.Set(in hash, codes[i]);
         }

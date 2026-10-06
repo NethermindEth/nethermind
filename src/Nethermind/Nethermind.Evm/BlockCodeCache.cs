@@ -1,7 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -13,8 +15,11 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// A warm CALL costs 100 gas whatever the size of the code, so a block can call more distinct large contracts, round
 /// and round, than the process-wide cache holds; each call would then read and analyse its code again. Code loaded
-/// during the block is kept here, up to a cap on the memory it retains. Past the cap, code is not taken in rather than
-/// evicting other code, as evicting on a cycle over a set larger than the cache misses on every load.
+/// during the block is kept here, up to a cap on the memory it retains. Past the cap, code no running transaction has
+/// used gives way to a running transaction's code; code a running transaction uses is never evicted, as evicting on a
+/// cycle over a set larger than the cache misses on every load. Warmth does not outlive a transaction, so reloading
+/// code a finished transaction used is paid for by the next one's cold access, and earlier transactions cannot fill
+/// the cap to leave a later one without retention.
 /// The process-wide cache is probed first, so a block it serves pays nothing here.
 /// </remarks>
 public sealed class BlockCodeCache : ICodeCache
@@ -24,6 +29,11 @@ public sealed class BlockCodeCache : ICodeCache
 
     /// <summary>Charged per entry on top of its code and jump-destination bitmap: the objects, padding and dictionary entry.</summary>
     internal const int EntryOverheadBytes = 256;
+
+    /// <summary>The transaction executing on this thread, or 0 outside one.</summary>
+    [ThreadStatic] private static long t_transaction;
+
+    private static long s_lastTransaction;
 
     private readonly ICodeCache _inner;
     private readonly long _maxBytes;
@@ -50,9 +60,29 @@ public sealed class BlockCodeCache : ICodeCache
     /// <remarks>Lets warming share the block's code without spending the budget of the block's own execution.</remarks>
     public BlockCodeCache WithLimit(long maxBytes) => new(_inner, maxBytes, _retained);
 
-    public CodeInfo? Get(in ValueHash256 codeHash) =>
-        _inner.Get(in codeHash)
-        ?? (Volatile.Read(ref _retained.Bytes) != 0 && _retained.Code.TryGetValue(codeHash, out CodeInfo? codeInfo) ? codeInfo : null);
+    /// <summary>Marks the calling thread as executing a block transaction until the returned scope is disposed.</summary>
+    /// <remarks>Code loaded outside a transaction, as warming does, is kept too, but gives way to a transaction's code past the cap.</remarks>
+    public TransactionScope BeginTransaction()
+    {
+        long transaction = Interlocked.Increment(ref s_lastTransaction);
+        lock (_retained.Running) _retained.Running.Add(transaction);
+        long previous = t_transaction;
+        t_transaction = transaction;
+        return new TransactionScope(this, transaction, previous);
+    }
+
+    public CodeInfo? Get(in ValueHash256 codeHash)
+    {
+        CodeInfo? codeInfo = _inner.Get(in codeHash);
+        if (codeInfo is not null || Volatile.Read(ref _retained.Bytes) == 0 || !_retained.Code.TryGetValue(codeHash, out Entry? entry))
+        {
+            return codeInfo;
+        }
+
+        long transaction = t_transaction;
+        if (transaction != 0 && entry.Transaction != transaction) entry.Transaction = transaction;
+        return entry.Code;
+    }
 
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
@@ -60,7 +90,13 @@ public sealed class BlockCodeCache : ICodeCache
 
         // Racing loads may each pass the check, overshooting the cap by at most one code per thread.
         long charge = codeInfo.CodeLength + (codeInfo.CodeLength >> 3) + EntryOverheadBytes;
-        if (Volatile.Read(ref _retained.Bytes) + charge <= _maxBytes && _retained.Code.TryAdd(codeHash, codeInfo))
+        long transaction = t_transaction;
+        if (Volatile.Read(ref _retained.Bytes) + charge > _maxBytes && (transaction == 0 || !_retained.TryMakeRoom(charge, _maxBytes)))
+        {
+            return;
+        }
+
+        if (_retained.Code.TryAdd(codeHash, new Entry(codeInfo, charge, transaction)))
         {
             Interlocked.Add(ref _retained.Bytes, charge);
         }
@@ -71,6 +107,7 @@ public sealed class BlockCodeCache : ICodeCache
     {
         _retained.Code.Clear();
         Volatile.Write(ref _retained.Bytes, 0);
+        _retained.SweptAtFinished = -1;
     }
 
     public void Clear()
@@ -79,9 +116,89 @@ public sealed class BlockCodeCache : ICodeCache
         _inner.Clear();
     }
 
+    private void EndTransaction(long transaction, long previous)
+    {
+        t_transaction = previous;
+        lock (_retained.Running)
+        {
+            _retained.Running.Remove(transaction);
+            _retained.Finished++;
+        }
+    }
+
+    public readonly struct TransactionScope : IDisposable
+    {
+        private readonly BlockCodeCache _cache;
+        private readonly long _transaction;
+        private readonly long _previous;
+
+        internal TransactionScope(BlockCodeCache cache, long transaction, long previous)
+        {
+            _cache = cache;
+            _transaction = transaction;
+            _previous = previous;
+        }
+
+        public void Dispose() => _cache.EndTransaction(_transaction, _previous);
+    }
+
+    private sealed class Entry(CodeInfo code, long charge, long transaction)
+    {
+        public readonly CodeInfo Code = code;
+        public readonly long Charge = charge;
+
+        /// <summary>The latest transaction to use the code, or 0 if only code outside a transaction has.</summary>
+        public long Transaction = transaction;
+    }
+
     private sealed class Retained
     {
-        public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Code = new();
+        public readonly ConcurrentDictionary<ValueHash256, Entry> Code = new();
+        public readonly HashSet<long> Running = [];
+        private readonly Lock _sweepLock = new();
         public long Bytes;
+
+        /// <summary>Transactions finished, guarded by <see cref="Running"/>.</summary>
+        public int Finished;
+
+        /// <summary><see cref="Finished"/> at the last sweep, or -1 before the block's first.</summary>
+        public int SweptAtFinished = -1;
+
+        /// <summary>Evicts the code no running transaction has used, unless that was done since the last transaction finished.</summary>
+        /// <returns>Whether <paramref name="charge"/> now fits under <paramref name="maxBytes"/>.</returns>
+        public bool TryMakeRoom(long charge, long maxBytes)
+        {
+            if (!_sweepLock.TryEnter()) return false;
+            try
+            {
+                // Read before the running set: a transaction stamped after it may already own code, so it is kept, while
+                // one stamped before and not yet running has stamped no code.
+                long lastTransaction = Volatile.Read(ref s_lastTransaction);
+                HashSet<long> running;
+                int finished;
+                lock (Running)
+                {
+                    if (Finished == SweptAtFinished) return false;
+                    finished = Finished;
+                    running = [.. Running];
+                }
+
+                foreach (KeyValuePair<ValueHash256, Entry> pair in Code)
+                {
+                    long transaction = pair.Value.Transaction;
+                    if (transaction <= lastTransaction && !running.Contains(transaction) && Code.TryRemove(pair))
+                    {
+                        Interlocked.Add(ref Bytes, -pair.Value.Charge);
+                    }
+                }
+
+                SweptAtFinished = finished;
+                return Volatile.Read(ref Bytes) + charge <= maxBytes;
+            }
+            finally
+            {
+                _sweepLock.Exit();
+            }
+        }
     }
 }
