@@ -18,6 +18,8 @@ public sealed class CommitmentEmitter : IDisposable
     public const int WalkMaxOpenWindowNodes = 50_000;
     private const int TipExactBranchEntries = 1 << 18;
     private const int WalkExactBranchEntriesCeiling = 1 << 14;
+    private const int TipExtensionTargetEntries = 1 << 16;
+    private const int WalkExtensionTargetEntries = 1 << 12;
     private const int ShallowStorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
@@ -43,6 +45,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
     private readonly ClockCache<NodePathKey, bool> _exactBranches;
+    private readonly ClockCache<NodePathKey, bool> _extensionTargets;
+    private readonly HashSet<NodePathKey> _blockAdoptedTargets = [];
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
@@ -57,10 +61,11 @@ public sealed class CommitmentEmitter : IDisposable
     private ulong _retainedFloor;
     private ulong _fineFloor;
 
-    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors, bool deepStorageSnapshots)
+    private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, int extensionTargetEntries, bool respectFloors, bool deepStorageSnapshots)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
         _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
+        _extensionTargets = new ClockCache<NodePathKey, bool>(extensionTargetEntries);
         _respectFloors = respectFloors;
         _maxSpareWindows = Math.Min(maxOpenWindowNodes, MaxSpareWindowsCeiling);
         _history = history;
@@ -73,7 +78,7 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForWalk(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, bool deepStorageSnapshots = false) =>
-        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), respectFloors: false, deepStorageSnapshots);
+        new(history, policy, metadata, WalkMaxOpenWindowNodes, WalkExactBranchEntries(policy), WalkExtensionTargetEntries, respectFloors: false, deepStorageSnapshots);
 
     private static int WalkExactBranchEntries(CommitmentDepthPolicy policy)
     {
@@ -84,7 +89,7 @@ public sealed class CommitmentEmitter : IDisposable
     }
 
     public static CommitmentEmitter ForTip(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata) =>
-        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, respectFloors: true, deepStorageSnapshots: false);
+        new(history, policy, metadata, DefaultMaxOpenWindowNodes, TipExactBranchEntries, TipExtensionTargetEntries, respectFloors: true, deepStorageSnapshots: false);
 
     public CommitmentDepthPolicy Policy => _policy;
 
@@ -117,6 +122,7 @@ public sealed class CommitmentEmitter : IDisposable
         _blockDirtyChildren.Clear();
         _blockStorageMaxDepth.Clear();
         _blockTrieDepths.Clear();
+        _blockAdoptedTargets.Clear();
     }
 
     public void RecordAccountNode(in TreePath path, ReadOnlySpan<byte> rlp)
@@ -210,6 +216,8 @@ public sealed class CommitmentEmitter : IDisposable
                     : _policy.AccountTier(key.Depth);
 
                 ReadOnlySpan<byte> rlp = length == EmptyRecord ? ReadOnlySpan<byte>.Empty : _blockArena.Slice(offset, length);
+                if (tier != CommitmentTier.Recomputed && length != EmptyRecord) NoteExtensionTarget(key, rlp);
+
                 switch (tier)
                 {
                     case CommitmentTier.PerChange:
@@ -226,6 +234,7 @@ public sealed class CommitmentEmitter : IDisposable
 
         }
 
+        foreach (NodePathKey adopted in _blockAdoptedTargets) _extensionTargets.Delete(adopted);
         if (_policy.ClosesWindow(_block))
         {
             FlushWindows(_policy.WindowAtOrBelow(_block));
@@ -457,10 +466,24 @@ public sealed class CommitmentEmitter : IDisposable
             {
                 NodePathKey childKey = key.Child(index);
                 if (_blockNodes.ContainsKey(childKey) || _blockDirtyChildren.Contains(childKey)) changed |= (ushort)(1 << index);
+                else if (_extensionTargets.Contains(childKey))
+                {
+                    changed |= (ushort)(1 << index);
+                    _blockAdoptedTargets.Add(childKey);
+                }
             }
         }
 
         return changed;
+    }
+
+    private void NoteExtensionTarget(in NodePathKey key, ReadOnlySpan<byte> rlp)
+    {
+        Span<byte> nibbles = stackalloc byte[CommitmentDepthPolicy.MaxTrieDepth];
+        if (!NodeViews.TryReadExtensionPath(rlp, nibbles, out int nibbleCount)) return;
+        if (key.Depth + nibbleCount > (key.IsStorage ? StorageRecordDepth : AccountRecordDepth)) return;
+
+        _extensionTargets.Set(key.Descendant(nibbles[..nibbleCount]), true);
     }
 
     private void WriteWhole(in NodePathKey key, bool exact, ulong suffix, ReadOnlySpan<byte> rlp)
@@ -595,6 +618,12 @@ public sealed class CommitmentEmitter : IDisposable
         {
             TreePath child = new TreePath(_path, Depth).Append(nibble);
             return new NodePathKey(Scope, child.Path, (byte)child.Length, IsStorage);
+        }
+
+        public NodePathKey Descendant(ReadOnlySpan<byte> nibbles)
+        {
+            TreePath descendant = new TreePath(_path, Depth).Append(nibbles);
+            return new NodePathKey(Scope, descendant.Path, (byte)descendant.Length, IsStorage);
         }
 
         public int WritePrefix(Span<byte> destination, bool exact)
