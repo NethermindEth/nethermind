@@ -338,7 +338,10 @@ public class FrameTransactionForRpcTests
 
         Transaction tx = rpc.ToTransaction(spec: eip7999 ? BogotaWithMaxFee : Bogota.Instance).Data!;
 
-        UInt256 expected = (UInt256)(3 * tx.GasLimit) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
+        // Priced over max_gas, which includes intrinsic gas, as the processor checks it and the per-gas shape escrows it.
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, BogotaWithMaxFee, out _, out _, out ulong maxGas, estimateSignatureBytes: true), Is.True);
+        Assert.That(maxGas, Is.GreaterThan(tx.GasLimit));
+        UInt256 expected = (UInt256)(3 * maxGas) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
         Assert.That(tx.MaxFee, Is.EqualTo(eip7999 ? expected : null));
     }
 

@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -224,6 +225,27 @@ public partial class FrameTxProcessorTests
         TransactionResult result = ProcessWith(tx, ExecutionOptions.SkipValidationAndCommit, BudgetBaseFee);
 
         Assert.That(result.TransactionExecuted, Is.EqualTo(executes), result.ErrorDescription);
+    }
+
+    // A per-gas RPC call converted to a budget must buy what that price buys without EIP-7999.
+    [Test]
+    public void Execute_PerGasRpcCallAtTheBaseFee_ConvertsToACoveringBudget([Values] bool eip7999)
+    {
+        UseBogotaFrames(eip7999);
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(FrameTx(nonce: 0, SelfVerifyFrame()));
+        rpc.MaxFeePerGas = BudgetBaseFee;
+        rpc.MaxPriorityFeePerGas = 0;
+        Transaction tx = rpc.ToTransaction(spec: Spec).Data!;
+        tx.SenderAddress = Sender;
+
+        TransactionResult result = Process(tx, baseFeePerGas: BudgetBaseFee);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.MaxFee is not null, Is.EqualTo(eip7999));
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription);
+        }
     }
 
     [Test]

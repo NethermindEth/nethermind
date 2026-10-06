@@ -59,6 +59,10 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     [DoesNotReturn, StackTraceHidden]
+    private static void ThrowShortFeeList() =>
+        throw new RlpException($"{nameof(TxType.FrameTx)} fees must hold two or three items");
+
+    [DoesNotReturn, StackTraceHidden]
     private static void ThrowMissingSidecar() =>
         throw new RlpException($"Blob-carrying {nameof(TxType.FrameTx)} in mempool form must carry a {nameof(ShardBlobNetworkWrapper)}");
 
@@ -138,6 +142,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
         UInt256 firstFee = decoderContext.DecodeUInt256();
+        if (decoderContext.Position >= feesCheck) ThrowShortFeeList();
         UInt256 secondFee = decoderContext.DecodeUInt256();
         // The arity tells the fee shapes apart; which one the fork admits is a validation rule.
         if (decoderContext.Position == feesCheck)

@@ -2033,7 +2033,7 @@ namespace Nethermind.TxPool
                     }
 
                     // it is not affecting non-blob txs - for them MaxFeePerBlobGas is null, so check is skipped
-                    if (tx.MaxFeePerBlobGas < _headInfo.CurrentFeePerBlobGas)
+                    if (tx.IsBelowBlobBaseFee(_headInfo.CurrentFeePerBlobGas))
                     {
                         gasBottleneck = UInt256.Zero;
                     }

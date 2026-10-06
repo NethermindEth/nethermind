@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
@@ -111,8 +113,8 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.RecentRootReferences = references;
 
         // EIP-7999 admits only the max_fee shape, so a call priced per gas is converted to the budget those prices
-        // buy: the per-gas cap over the frame gas plus the per-blob cap over the blob gas.
-        UInt256? maxFee = MaxFee ?? (spec is { IsEip7999Enabled: true } ? BudgetFor(tx, MaxFeePerGas ?? UInt256.Zero, totalFrameGas) : null);
+        // buy, as the per-gas shape escrows it: the per-gas cap over max_gas plus the per-blob cap over the blob gas.
+        UInt256? maxFee = MaxFee ?? (spec is { IsEip7999Enabled: true } ? BudgetFor(tx, MaxFeePerGas ?? UInt256.Zero, spec) : null);
         if (maxFee is { } budget)
         {
             tx.MaxFee = budget;
@@ -125,12 +127,19 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     public override bool ShouldSetBaseFee() => base.ShouldSetBaseFee() || MaxFee.IsPositive();
 
-    private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, ulong gas) =>
-        UInt256.MultiplyOverflow(maxFeePerGas, (UInt256)gas, out UInt256 gasBudget)
-        || UInt256.MultiplyOverflow(tx.MaxFeePerBlobGas.GetValueOrDefault(), (UInt256)tx.GetBlobGas(), out UInt256 blobBudget)
-        || UInt256.AddOverflow(gasBudget, blobBudget, out UInt256 budget)
-            ? UInt256.MaxValue
-            : budget;
+    private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, IReleaseSpec spec)
+    {
+        // Measured as the processor does before pricing, so max_gas here is the one the budget is checked against.
+        tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
+        if (tx.NonceKeys is not null) tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
+
+        return !FrameTxValidation.TryCalculateGasBudget(tx, spec, out _, out _, out ulong maxGas, estimateSignatureBytes: true)
+            || UInt256.MultiplyOverflow(maxFeePerGas, (UInt256)maxGas, out UInt256 gasBudget)
+            || UInt256.MultiplyOverflow(tx.MaxFeePerBlobGas.GetValueOrDefault(), (UInt256)tx.GetBlobGas(), out UInt256 blobBudget)
+            || UInt256.AddOverflow(gasBudget, blobBudget, out UInt256 budget)
+                ? UInt256.MaxValue
+                : budget;
+    }
 
     public new static FrameTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);
