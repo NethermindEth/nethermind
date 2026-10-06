@@ -10,16 +10,16 @@ using Nethermind.Int256;
 namespace Nethermind.Consensus.Processing;
 
 /// <summary>Installs the frame-transaction cluster's predeploy runtime code at activation.</summary>
-/// <remarks>A predeploy with empty canonical code has nothing to compare against, so it must declare a nonce
-/// or it is never installed. The nonce of 1 follows the EIP-2935/4788/7002/7251 convention.</remarks>
+/// <remarks>A predeploy with empty canonical code has nothing to compare against, so its nonce is what marks
+/// it installed. The nonce of 1 follows the EIP-2935/4788/7002/7251 convention.</remarks>
 public static class PredeployInstaller
 {
-    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
+    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong Nonce, Func<IReleaseSpec, bool> IsActive);
 
     private static readonly Predeploy[] Predeploys =
     [
-        new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled, PreservesHigherNonce: true),
-        new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true),
+        new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled),
+        new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled),
     ];
 
     internal static bool HasActivePredeploys(IReleaseSpec spec)
@@ -52,7 +52,7 @@ public static class PredeployInstaller
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
             bool codeSatisfied = code.IsEmpty || readState.GetCodeSpan(predeploy.Address).SequenceEqual(code.Span);
-            if (codeSatisfied && (predeploy.Nonce is not ulong required || nonce >= required))
+            if (codeSatisfied && nonce >= predeploy.Nonce)
             {
                 continue;
             }
@@ -63,10 +63,7 @@ public static class PredeployInstaller
                 writeState.InsertCode(predeploy.Address, code, spec);
             }
 
-            if (predeploy.Nonce is ulong predeployNonce)
-            {
-                writeState.SetNonce(predeploy.Address, predeploy.PreservesHigherNonce ? Math.Max(nonce, predeployNonce) : predeployNonce);
-            }
+            writeState.SetNonce(predeploy.Address, Math.Max(nonce, predeploy.Nonce));
         }
     }
 }
