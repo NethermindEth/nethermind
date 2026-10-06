@@ -254,7 +254,8 @@ public static class IdleProbe
                     if (!Eval(n.A!, out UInt256 x)) { v = default; return false; }
                     Span<byte> buf = stackalloc byte[32];
                     x.ToBigEndian(buf);
-                    v = new UInt256(ValueKeccak.Compute(buf).Bytes, true) + n.Value;
+                    UInt256 h = new(ValueKeccak.Compute(buf).Bytes, true);
+                    UInt256.Add(in h, in n.Value, out v);
                     return true;
                 }
             default:
@@ -263,7 +264,8 @@ public static class IdleProbe
                     Span<byte> buf = stackalloc byte[64];
                     x.ToBigEndian(buf[..32]);
                     y.ToBigEndian(buf.Slice(32, 32));
-                    v = new UInt256(ValueKeccak.Compute(buf).Bytes, true) + n.Value;
+                    UInt256 h = new(ValueKeccak.Compute(buf).Bytes, true);
+                    UInt256.Add(in h, in n.Value, out v);
                     return true;
                 }
         }
@@ -282,8 +284,9 @@ public static class IdleProbe
         {
             for (int delta = 0; delta < MaxDelta; delta++)
             {
-                UInt256 baseHash = w - (ulong)delta;
-                if (delta > 0 && baseHash > w) break;
+                UInt256 dv0 = (ulong)delta;
+                if (w < dv0) break;
+                UInt256.Subtract(in w, in dv0, out UInt256 baseHash);
                 if (!Keccaks.TryGetValue(baseHash, out (UInt256 W0, UInt256 W1, bool Two) pre)) continue;
                 UInt256 dv = (ulong)delta;
                 Node a = Derive(in pre.W0, depth + 1);
