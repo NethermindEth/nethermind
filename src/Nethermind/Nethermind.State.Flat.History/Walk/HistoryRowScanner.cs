@@ -156,6 +156,7 @@ internal sealed class HistoryRowScanner(
                     if (!collector!.TryAdd(key, view.CurrentValue))
                     {
                         outcome = collector.DistinctKeys == 1 ? ScanOutcome.SinglePathOverflow : ScanOutcome.Split;
+                        group.Rows.Reset();
                         nextLower = NextGroupLower(group.Prefix);
                         break;
                     }

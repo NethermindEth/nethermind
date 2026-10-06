@@ -392,7 +392,6 @@ internal sealed class HistoryWalkRun
             return;
         }
 
-        rows.Reset();
         if (group.Outcome == ScanOutcome.Split)
         {
             SplitStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);

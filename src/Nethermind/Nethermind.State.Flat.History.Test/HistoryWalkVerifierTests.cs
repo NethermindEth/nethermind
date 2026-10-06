@@ -1016,6 +1016,7 @@ public class HistoryWalkVerifierTests
 
         public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
         {
+            // Only the group scan reads with HintReadAhead; a read-ahead change in either scan breaks this split.
             bool groupScan = (flags & ReadFlags.HintReadAhead) != 0;
             bool wholeBucket = !groupScan && firstKeyInclusive.Length > sizeof(uint) && lastKeyExclusive.Length > sizeof(uint) + 1
                 && !firstKeyInclusive[sizeof(uint)..].ContainsAnyExcept((byte)0)
