@@ -349,18 +349,18 @@ internal static partial class SszCodecHelpers
         }
     }
 
-    internal static void ValidateSszListLimit<T>(ReadOnlySpan<T> items, ulong limit, string typeName, string fieldName)
+    internal static void ValidateSszListLimit(int count, ulong limit, string typeName, string fieldName)
     {
-        if ((ulong)items.Length > limit)
+        if ((ulong)count > limit)
         {
-            ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {items.Length}.");
+            ThrowInvalidSszValue(typeName, fieldName, $"expected at most {limit} elements but found {count}.");
         }
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static byte[] DecodeSszByteList(ReadOnlySpan<byte> data, ulong limit, string typeName, string fieldName)
     {
-        ValidateSszListLimit(data, limit, typeName, fieldName);
+        ValidateSszListLimit(data.Length, limit, typeName, fieldName);
         byte[] result = global::System.GC.AllocateUninitializedArray<byte>(data.Length);
         CopyBytes(data, result);
         return result;
@@ -670,7 +670,7 @@ internal static partial class SszCodecHelpers
         {
             Kind.Vector when property.Type.Name == "BitArray" => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.Vector => $"ValidateSszVectorLength({SpanExpression(property, expression)}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
-            Kind.List => $"ValidateSszListLimit({SpanExpression(property, expression)}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
+            Kind.List => $"ValidateSszListLimit({(property.IsMemoryLikeProperty ? expression : SpanExpression(property, expression))}.Length, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitVector => $"ValidateSszBitvectorLength({expression}, {property.Length}, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             Kind.BitList => $"ValidateSszBitlistLimit({expression}, {property.Limit}UL, nameof({decl.TypeReferenceName}), nameof({property.Name}));",
             _ => string.Empty,
@@ -1023,7 +1023,7 @@ internal static partial class SszCodecHelpers
         {
             string length = m.Kind is Kind.BitList or Kind.ProgressiveBitList
                 ? $"(container.{m.Name} is not null ? container.{m.Name}.Length / 8 + 1 : 1)"
-                : $"({m.Type.StaticLength} * {SpanExpression(m, $"container.{m.Name}")}.Length)";
+                : $"({m.Type.StaticLength} * {(m.IsMemoryLikeProperty ? $"container.{m.Name}" : SpanExpression(m, $"container.{m.Name}"))}.Length)";
             return m.IsNullable && (m.Kind is Kind.List or Kind.ProgressiveList) && CanEncodeNullAsDefault(m)
                 ? $"(container.{m.Name} is null ? 0 : {length})"
                 : length;
