@@ -182,16 +182,10 @@ public class BlockSignatureBatchVectorTests
 
         foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
-            string? operationsRoot = ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, "operations");
             IEnumerable<string> table = fork == "gloas" ? GloasOperations.Keys : FuluOperations.Keys;
-            foreach (string opName in table)
-            {
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(operationsRoot is null ? null : Path.Combine(operationsRoot, opName), "pre.ssz_snappy"))
-                {
-                    string vectorName = $"{ConsensusPreset.Mainnet}/{fork}/operations/{opName}/{Path.GetFileName(caseDir)}";
-                    yield return new TestCaseData(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, opName, caseDir, vectorName)).SetName(vectorName);
-                }
-            }
+            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, [fork], "operations", "pre.ssz_snappy",
+                         static (p, f, operation, path, name) => new OperationCase(p.ToString(), f, operation, path, name), table))
+                yield return testCase;
         }
     }
 }
