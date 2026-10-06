@@ -137,11 +137,13 @@ jobs:
       - name: Submit package
         env:
           GH_TOKEN: ${{ steps.gh-app.outputs.token }}
+          APP_USER: ${{ steps.gh-app.outputs.app-slug }}[bot]
         run: |
           head_branch=feature/v$TAG_NAME-${{ github.run_number }}-${{ github.run_attempt }}
           message="Update for v$TAG_NAME"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          app_user_id=$(gh api "/users/$APP_USER" --jq .id)
+          git config user.name "$APP_USER"
+          git config user.email "$app_user_id+$APP_USER@users.noreply.github.com"
           git checkout -b $head_branch
           git add $FORMULA
           git commit -am "$message"
@@ -155,8 +157,6 @@ jobs:
     permissions:
       contents: read
       id-token: write
-    env:
-      NUGET_HOST: 'https://www.nuget.org'
     steps:
       - name: Check out repository
         uses: actions/checkout@v7
@@ -182,11 +182,11 @@ jobs:
         id: login
         with:
           user: ${{ secrets.NUGET_USER }}
-          audience: ${{ env.NUGET_HOST }}
-          token-service-url: ${{ env.NUGET_HOST }}/api/v2/token
 
       - name: Submit package
         working-directory: src/Nethermind
+        env:
+          NUGET_API_KEY: ${{ steps.login.outputs.NUGET_API_KEY }}
         run: |
           package_output="$(mktemp -d)"
           dotnet pack Nethermind.ReferenceAssemblies/Nethermind.ReferenceAssemblies.csproj -c release -p:SaveDiskSpace=true --output "$package_output"
@@ -195,7 +195,7 @@ jobs:
           test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.nupkg' -print -quit)"
           test -n "$(find "$package_output" -maxdepth 1 -name 'Nethermind.Kademlia.*.snupkg' -print -quit)"
           dotnet nuget push "$package_output/*.nupkg" --skip-duplicate \
-            -k "${{ steps.login.outputs.NUGET_API_KEY }}" -s ${{ env.NUGET_HOST }}/api/v2/package
+            -k "$NUGET_API_KEY" -s https://api.nuget.org/v3/index.json
 
       - name: Create GitHub app token
         id: gh-app
