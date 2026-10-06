@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Evm.CodeAnalysis;
@@ -126,13 +127,16 @@ public class GuestJumpDestinationTests
     [Test]
     public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
     {
-        byte[] code = [PUSH1, 0, JUMPDEST, PUSH1, JUMPDEST, (byte)Instruction.CALLDEST];
+        // The PUSH32 data JUMPDEST lies too far past the real one for it to anchor a scan, so a scan resumes at the cursor.
+        const int dataJumpDest = 100;
+        byte[] code = [PUSH1, 0, JUMPDEST, .. Enumerable.Repeat((byte)Instruction.PUSH32, dataJumpDest), (byte)Instruction.CALLDEST];
+        code[dataJumpDest] = JUMPDEST;
         CodeInfo codeInfo = new(code);
         byte stackMemory = 0;
         EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
         enabled.UseCallDestinations();
-        Assert.That(enabled.IsJumpDestination(4), Is.False, "PUSH data");
-        Assert.That(enabled.AnalyzeJumpDestination(4, ref code[0]), Is.False, "PUSH data, jump handler");
+        Assert.That(enabled.IsJumpDestination(dataJumpDest), Is.False, "PUSH data");
+        Assert.That(enabled.AnalyzeJumpDestination(dataJumpDest, ref code[0]), Is.False, "PUSH data, jump handler");
 
         EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
         Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
