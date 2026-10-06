@@ -440,24 +440,19 @@ public class HistoryWindowPrunerTests
     public void RunOnePass_KeysWithLongLiveTails_DeletesExactlyTheDeadRowsAndSeeksPastEachLiveTail()
     {
         // 1. A plain and a sliced address each hold dead rows below their floor and 40 live rows above it.
-        // 2. One full pass with an unlimited budget that counts the account rows it visits.
+        // 2. One full pass with an unlimited budget that counts the rows it visits; only the account column has rows.
         // 3. Exactly the dead rows go, and each key is read only up to the live-row threshold.
         SeedLongLiveTails();
         using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
-        List<CountingBudget> budgets = [];
+        CountingBudget budget = new();
 
-        bool completed = pruner.RunOnePass(CancellationToken.None, () =>
-        {
-            CountingBudget budget = new();
-            budgets.Add(budget);
-            return budget;
-        });
+        bool completed = pruner.RunOnePass(CancellationToken.None, budget);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(completed, Is.True, "an unlimited budget finishes the cycle in one pass");
             AssertOnlyLiveTailRowsSurvive();
-            Assert.That(budgets[0].Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + HistoryWindowPruner.LiveRowsBeforeSkip)),
+            Assert.That(budget.Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + HistoryWindowPruner.LiveRowsBeforeSkip)),
                 "the account sweep must read each key's dead rows plus the live-row threshold and seek past the rest of the live tail, not read every live row");
         }
     }
@@ -471,7 +466,7 @@ public class HistoryWindowPrunerTests
         SeedLongLiveTails();
         using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
 
-        bool yieldedPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 10));
+        bool yieldedPass = pruner.RunOnePass(CancellationToken.None, new CountdownBudget(rowsBeforeExhaustion: 10));
         bool resumedPass = pruner.RunOnePass(CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
