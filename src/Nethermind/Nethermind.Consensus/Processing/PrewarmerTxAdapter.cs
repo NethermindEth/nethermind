@@ -38,10 +38,33 @@ public class PrewarmerTxAdapter(
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
+            long start = HandoffDiagnostics.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.TxStarted(start);
+            int outcome = HandoffDiagnostics.NotEligible;
             if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
-                && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
+                && TryReplay(footprint, transaction, txTracer, out TransactionResult result, out outcome))
             {
+                if (HandoffDiagnostics.Enabled)
+                {
+                    HandoffDiagnostics.RecordReplayWrites(footprint!);
+                    HandoffDiagnostics.Count(HandoffDiagnostics.Replayed, start, transaction);
+                }
+
                 return result;
+            }
+
+            if (HandoffDiagnostics.Enabled)
+            {
+                HandoffDiagnostics.Observing = true;
+                try
+                {
+                    return baseAdapter.Execute(transaction, txTracer);
+                }
+                finally
+                {
+                    HandoffDiagnostics.Observing = false;
+                    HandoffDiagnostics.Count(outcome, start, transaction);
+                }
             }
         }
 
@@ -54,13 +77,16 @@ public class PrewarmerTxAdapter(
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
 
-    private bool TryReplay(TransactionFootprint? footprint, Transaction tx, ITxTracer txTracer, out TransactionResult result)
+    private bool TryReplay(TransactionFootprint? footprint, Transaction tx, ITxTracer txTracer, out TransactionResult result, out int outcome)
     {
         result = default;
+        outcome = HandoffDiagnostics.NotEligible;
         if (footprint is null)
         {
             Tally = Tally with { Missing = Tally.Missing + 1 };
             Blockchain.Metrics.PrewarmHandoffsMissing++;
+            outcome = HandoffDiagnostics.Missing;
+            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.CountAbsence(preWarmer.FootprintStatus(tx));
             return false;
         }
 
@@ -72,10 +98,13 @@ public class PrewarmerTxAdapter(
         // The pre-execution checks a warm run skips: the gas left in the block, and a sender with code (EIP-3607).
         if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!)) return false;
 
-        if (!footprint.Matches(worldState))
+        int mismatch = footprint.Mismatch(worldState);
+        if (mismatch != 0)
         {
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;
+            outcome = HandoffDiagnostics.Rejected;
+            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.CountMismatch(mismatch, tx);
             return false;
         }
 
@@ -87,6 +116,7 @@ public class PrewarmerTxAdapter(
         catch (Exception ex)
         {
             worldState.Restore(snapshot);
+            outcome = HandoffDiagnostics.Failed;
             Blockchain.Metrics.PrewarmHandoffFailures++;
             if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
             return false;

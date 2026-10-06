@@ -39,21 +39,28 @@ internal sealed class TransactionFootprint(
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
 
-    public bool Matches(IWorldState state)
+    public bool Matches(IWorldState state) => Mismatch(state) == 0;
+
+    /// <summary>Experiment only: the first precondition that does not hold, 0 when all do.</summary>
+    public int Mismatch(IWorldState state)
     {
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
         {
-            if (!account.IsMet(state)) return false;
+            int field = account.FirstUnmet(state);
+            if (field != 0) return field;
         }
 
         foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
         {
             state.Get(in slot.Cell, out UInt256 value);
-            if (value != slot.Value) return false;
+            if (value != slot.Value) return 7;
         }
 
-        return true;
+        return 0;
     }
+
+    /// <summary>Experiment only.</summary>
+    public ReadOnlySpan<StateEffect> Effects => effects;
 
     public void Replay(IWorldState state, IReleaseSpec spec)
     {
@@ -99,22 +106,26 @@ internal struct AccountPrecondition
     public ValueHash256 CodeHash;
     public int BalanceValueReads;
 
-    public readonly bool IsMet(IWorldState state)
+    public readonly bool IsMet(IWorldState state) => FirstUnmet(state) == 0;
+
+    /// <summary>Experiment only: 1 existence, 2 liveness, 3 nonce, 4 balance, 5 minimum balance, 6 code; 0 when met.</summary>
+    public readonly int FirstUnmet(IWorldState state)
     {
         AccountFields fields = Fields;
-        if (fields == AccountFields.None) return true;
+        if (fields == AccountFields.None) return 0;
         Address address = Address;
-        if ((fields & AccountFields.Existence) != 0 && state.AccountExists(address) != Exists) return false;
-        if ((fields & AccountFields.Liveness) != 0 && state.IsDeadAccount(address) != IsDead) return false;
-        if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return false;
+        if ((fields & AccountFields.Existence) != 0 && state.AccountExists(address) != Exists) return 1;
+        if ((fields & AccountFields.Liveness) != 0 && state.IsDeadAccount(address) != IsDead) return 2;
+        if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return 3;
         if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance)) != 0)
         {
             ref readonly UInt256 balance = ref state.GetBalance(address);
-            if (((fields & AccountFields.Balance) != 0 && balance != Balance) || balance < MinimumBalance) return false;
+            if ((fields & AccountFields.Balance) != 0 && balance != Balance) return 4;
+            if (balance < MinimumBalance) return 5;
         }
 
-        if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return false;
-        return true;
+        if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return 6;
+        return 0;
     }
 }
 

@@ -1,0 +1,216 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System;
+using System.Buffers;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.Text;
+using System.Text.Json;
+using System.Threading;
+using Nethermind.Core;
+using Nethermind.Core.Threading;
+using Nethermind.Evm.State;
+using Nethermind.Int256;
+using Nethermind.State;
+
+namespace Nethermind.Consensus.Processing;
+
+/// <summary>Experiment only: per-block diagnostics of the pre-warm handoff, written into the slow-block log.</summary>
+/// <remarks>Enabled by NETHERMIND_EXP_HANDOFF_DIAG=1. Main-thread state except the statuses kept in <see cref="BlockFootprints"/>.</remarks>
+public static class HandoffDiagnostics
+{
+    public static readonly bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_EXP_HANDOFF_DIAG") == "1";
+
+    public const int Replayed = 0, Rejected = 1, Missing = 2, NotEligible = 3, Failed = 4;
+    private static readonly string[] OutcomeNames = ["replayed", "rejected", "missing", "not_eligible", "failed"];
+    private static readonly long[] Counts = new long[OutcomeNames.Length];
+    private static readonly long[] Ticks = new long[OutcomeNames.Length];
+    private static readonly long[] Gas = new long[OutcomeNames.Length];
+
+    internal static readonly string[] MismatchNames = ["none", "existence", "liveness", "nonce", "balance", "min_balance", "code", "slot"];
+    private static readonly long[] Mismatches = new long[MismatchNames.Length];
+    private static readonly long[] MismatchGas = new long[MismatchNames.Length];
+
+    public const int NotStarted = 0, Running = 1, Stored = 2, Overtaken = 3, FailedRun = 4, Sender = 5, Unfunded = 6,
+        OpaqueTryGetAccount = 7, OpaqueEmptyIfDeleted = 8, OpaqueReset = 9, OpaqueCommit = 10, OpaqueOverlay = 11,
+        OpaqueAmbiguousRestore = 12, OpaqueUnplacedRestore = 13, OpaqueChangedRead = 14, OtherTransaction = 15;
+    internal static readonly string[] StatusNames = ["not_started", "running", "stored", "overtaken", "failed_run", "sender", "unfunded",
+        "opaque_try_get_account", "opaque_empty_if_deleted", "opaque_reset", "opaque_commit", "opaque_overlay",
+        "opaque_ambiguous_restore", "opaque_unplaced_restore", "opaque_changed_read", "other_tx"];
+    private static readonly long[] Absences = new long[StatusNames.Length];
+    private static readonly long[] AbsenceGas = new long[StatusNames.Length];
+    private static readonly long[] AbsenceTicks = new long[StatusNames.Length];
+
+    private static readonly Dictionary<AddressAsKey, int> ReplayWrites = [];
+    private static readonly Dictionary<AddressAsKey, int> ExecutedWrites = [];
+
+    /// <summary>Set by block processing around transactions it executes, so their storage writes are attributed.</summary>
+    public static bool Observing;
+
+    internal static BlockFootprints? Block;
+    private static long _firstTxStart, _lastTxEnd;
+    private static int _lastAbsence = -1;
+
+    internal static void TxStarted(long timestamp)
+    {
+        if (_firstTxStart == 0) _firstTxStart = timestamp;
+    }
+
+    internal static void Count(int outcome, long start, Transaction tx)
+    {
+        long end = Stopwatch.GetTimestamp();
+        Counts[outcome]++;
+        Ticks[outcome] += end - start;
+        Gas[outcome] += (long)tx.SpentGas;
+        if (outcome == Missing && _lastAbsence >= 0)
+        {
+            AbsenceTicks[_lastAbsence] += end - start;
+            AbsenceGas[_lastAbsence] += (long)tx.SpentGas;
+        }
+
+        _lastAbsence = -1;
+        _lastTxEnd = end;
+    }
+
+    internal static void CountMismatch(int code, Transaction tx)
+    {
+        Mismatches[code]++;
+        MismatchGas[code] += (long)tx.GasLimit;
+    }
+
+    internal static void CountAbsence(int status)
+    {
+        Absences[status]++;
+        _lastAbsence = status;
+    }
+
+    internal static void RecordReplayWrites(TransactionFootprint footprint)
+    {
+        foreach (ref readonly StateEffect effect in footprint.Effects)
+        {
+            if (effect.Kind != EffectKind.SetStorage) continue;
+            ref int count = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(ReplayWrites, effect.Address, out _);
+            count++;
+        }
+    }
+
+    internal static void RecordExecutedWrite(Address address)
+    {
+        ref int count = ref System.Runtime.InteropServices.CollectionsMarshal.GetValueRefOrAddDefault(ExecutedWrites, address, out _);
+        count++;
+    }
+
+    /// <summary>The block's diagnostics as a JSON object; clears them for the next block.</summary>
+    public static string? TakeBlockJson()
+    {
+        ArrayBufferWriter<byte> buffer = new(1024);
+        using (Utf8JsonWriter writer = new(buffer))
+        {
+            writer.WriteStartObject();
+            for (int i = 0; i < OutcomeNames.Length; i++)
+            {
+                writer.WriteNumber(OutcomeNames[i], Counts[i]);
+                writer.WriteNumber(OutcomeNames[i] + "_ms", Math.Round(Ticks[i] * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteNumber(OutcomeNames[i] + "_gas", Gas[i]);
+            }
+
+            writer.WriteStartObject("mismatch");
+            for (int i = 1; i < MismatchNames.Length; i++)
+            {
+                if (Mismatches[i] == 0) continue;
+                writer.WriteNumber(MismatchNames[i], Mismatches[i]);
+                writer.WriteNumber(MismatchNames[i] + "_gas_limit", MismatchGas[i]);
+            }
+
+            writer.WriteEndObject();
+            writer.WriteStartObject("absence");
+            for (int i = 0; i < StatusNames.Length; i++)
+            {
+                if (Absences[i] == 0) continue;
+                writer.WriteNumber(StatusNames[i], Absences[i]);
+                writer.WriteNumber(StatusNames[i] + "_ms", Math.Round(AbsenceTicks[i] * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteNumber(StatusNames[i] + "_gas", AbsenceGas[i]);
+            }
+
+            writer.WriteEndObject();
+
+            int replayOnly = 0, replayOnlySlots = 0, executedAccounts = 0, executedSlots = 0, both = 0;
+            foreach (KeyValuePair<AddressAsKey, int> entry in ReplayWrites)
+            {
+                if (ExecutedWrites.ContainsKey(entry.Key))
+                {
+                    both++;
+                }
+                else
+                {
+                    replayOnly++;
+                    replayOnlySlots += entry.Value;
+                }
+            }
+
+            foreach (KeyValuePair<AddressAsKey, int> entry in ExecutedWrites)
+            {
+                executedAccounts++;
+                executedSlots += entry.Value;
+            }
+
+            writer.WriteStartObject("storage_writers");
+            writer.WriteNumber("replay_only_accounts", replayOnly);
+            writer.WriteNumber("replay_only_writes", replayOnlySlots);
+            writer.WriteNumber("executed_accounts", executedAccounts);
+            writer.WriteNumber("executed_writes", executedSlots);
+            writer.WriteNumber("shared_accounts", both);
+            writer.WriteEndObject();
+
+            BlockFootprints? block = Block;
+            if (block is not null && _firstTxStart != 0)
+            {
+                static double ToMs(long ticks) => Math.Round(ticks * 1000.0 / Stopwatch.Frequency, 3);
+                long warmed = Volatile.Read(ref block.WarmedAt);
+                writer.WriteNumber("prewarm_start_to_first_tx_ms", ToMs(_firstTxStart - block.CreatedAt));
+                writer.WriteNumber("txs_ms", ToMs(_lastTxEnd - _firstTxStart));
+                if (warmed != 0) writer.WriteNumber("warmup_done_before_last_tx_ms", ToMs(_lastTxEnd - warmed));
+            }
+
+            writer.WriteEndObject();
+        }
+
+        Array.Clear(Counts);
+        Array.Clear(Ticks);
+        Array.Clear(Gas);
+        Array.Clear(Mismatches);
+        Array.Clear(MismatchGas);
+        Array.Clear(Absences);
+        Array.Clear(AbsenceGas);
+        Array.Clear(AbsenceTicks);
+        ReplayWrites.Clear();
+        ExecutedWrites.Clear();
+        _firstTxStart = 0;
+        _lastTxEnd = 0;
+        _lastAbsence = -1;
+        return Encoding.UTF8.GetString(buffer.WrittenSpan);
+    }
+}
+
+/// <summary>Experiment only: attributes the storage writes of transactions block processing executes.</summary>
+public sealed class HandoffWriteObserver(IWorldState state) : WorldStateDecorator(state), IWorldState
+{
+    private static bool Observed => HandoffDiagnostics.Observing && ProcessingThread.IsBlockProcessingThread;
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue)
+    {
+        if (Observed) HandoffDiagnostics.RecordExecutedWrite(storageCell.Address);
+        base.Set(in storageCell, in newValue);
+    }
+
+    public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
+    {
+        if (Observed) HandoffDiagnostics.RecordExecutedWrite(storageCell.Address);
+        State.Set(in storageCell, in newValue, in currentValue);
+    }
+
+    public bool HasCode(Address address) => State.HasCode(address);
+
+    public void MarkStorageDestroyed(Address address) => State.MarkStorageDestroyed(address);
+}

@@ -266,6 +266,7 @@ namespace Nethermind.Consensus.Processing
             blockData.CurrentContractsAnalyzed = Evm.Metrics.MainThreadContractsAnalysed;
             blockData.CurrentCreatesOps = Evm.Metrics.MainThreadCreates;
             blockData.CurrentSelfDestructOps = Evm.Metrics.MainThreadSelfDestructs;
+            blockData.HandoffJson = HandoffDiagnostics.Enabled ? HandoffDiagnostics.TakeBlockJson() : null;
 
             // Pre-compute deltas for slow block logging (done here on the block-processing thread)
             // Skip entirely when slow block logging is disabled (-1)
@@ -760,6 +761,12 @@ namespace Nethermind.Consensus.Processing
                     WriteCacheEntry(writer, "code", data.DeltaCodeCacheHits, data.DeltaCodeCacheMisses, codeHitRate);
                     writer.WriteEndObject();
 
+                    if (data.HandoffJson is not null)
+                    {
+                        writer.WritePropertyName("prewarm_handoff");
+                        writer.WriteRawValue(data.HandoffJson);
+                    }
+
                     writer.WriteStartObject("evm");
                     writer.WriteNumber("opcodes", data.CurrentOpCodes - data.StartOpCodes);
                     writer.WriteNumber("sload", data.CurrentSLoadOps - data.StartSLoadOps);
@@ -964,6 +971,7 @@ namespace Nethermind.Consensus.Processing
             public long DeltaBloomsTime;
             public long DeltaReceiptsRootTime;
             public ArrayPoolList<long>? PerTxTicks;
+            public string? HandoffJson;
         }
     }
 }

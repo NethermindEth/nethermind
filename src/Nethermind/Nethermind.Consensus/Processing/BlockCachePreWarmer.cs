@@ -207,6 +207,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             {
                 blockState.Footprints = footprints;
                 Volatile.Write(ref _footprints, footprints);
+                if (HandoffDiagnostics.Enabled) HandoffDiagnostics.Block = footprints;
             }
             // A block access list already enumerates the block's reads; discovery adds nothing.
             List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
@@ -226,6 +227,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
+                    if (footprints is not null) Volatile.Write(ref footprints.WarmedAt, Stopwatch.GetTimestamp());
                     discoveryWork?.WaitForCompletion();
                 }
                 finally
@@ -922,6 +924,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <returns>Whether the transaction can have one at all.</returns>
+    /// <summary>Experiment only: what the run of the transaction the main thread just started came to.</summary>
+    internal int FootprintStatus(Transaction tx) => Volatile.Read(ref _footprints)?.Status(_mainThreadTxIndex, tx) ?? HandoffDiagnostics.OtherTransaction;
+
     internal bool TryFindFootprint(Transaction tx, BlockHeader header, out TransactionFootprint? footprint)
     {
         BlockFootprints? footprints = Volatile.Read(ref _footprints);
@@ -1354,15 +1359,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // A heavy sender's transactions are warmed apart on the parent state; each starts at its own nonce.
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
+        footprints.SetStatus(txIndex, HandoffDiagnostics.Running);
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (result && recorder.Finish(tx, in result) is { } footprint) footprints.Store(txIndex, footprint);
+            footprints.SetStatus(txIndex, result ? recorder.DropReason : HandoffDiagnostics.FailedRun);
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
         {
+            footprints.SetStatus(txIndex, HandoffDiagnostics.Overtaken);
             recorder.Discard();
             return TransactionResult.Ok;
         }
@@ -1372,9 +1380,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         // A sender the parent state cannot fund fails before anything runs; warm it as before.
-        return result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance
-            ? scope.TransactionProcessor.Warmup(tx, tracer)
-            : result;
+        if (result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance)
+        {
+            footprints.SetStatus(txIndex, HandoffDiagnostics.Unfunded);
+            return scope.TransactionProcessor.Warmup(tx, tracer);
+        }
+
+        return result;
     }
 
     internal const int MinCalldataWordsForAddressWarm = 8;

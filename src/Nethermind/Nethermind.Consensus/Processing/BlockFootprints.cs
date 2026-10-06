@@ -14,6 +14,20 @@ internal sealed class BlockFootprints(Block block)
     private readonly Hash256? _blockHash = block.Hash;
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
 
+    // Experiment only: what each transaction's run came to, and when the warm-up started and ended.
+    private readonly int[] _status = new int[block.Transactions.Length];
+    public readonly long CreatedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+    public long WarmedAt;
+
+    public void SetStatus(int index, int status) => Volatile.Write(ref _status[index], status);
+
+    public int Status(int index, Transaction tx)
+    {
+        if ((uint)index >= (uint)_status.Length) return HandoffDiagnostics.OtherTransaction;
+        TransactionFootprint? footprint = Volatile.Read(ref _footprints[index]);
+        return footprint is not null && !ReferenceEquals(footprint.Transaction, tx) ? HandoffDiagnostics.OtherTransaction : Volatile.Read(ref _status[index]);
+    }
+
     /// <remarks>
     /// Needs receipts without a per-transaction state root (EIP-658). EIP-8037 gas accounting and a block access list
     /// (EIP-7928) are built while transactions execute, which a replay does not.
