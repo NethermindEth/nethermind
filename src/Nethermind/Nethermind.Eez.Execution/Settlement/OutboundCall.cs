@@ -60,8 +60,8 @@ public static class OutboundCall
                 };
             }
 
-            ExecutionEntry derived = Authorize(effect.Entry, effect.Update, observed.CallHash, observed.CallGas, rollupId);
-            authorized.Add(new AuthorizedOutbound(load, effect.TransactionIndex, derived));
+            (ExecutionEntry baseDaEntry, ValueHash256 pending) = Authorize(effect.Entry, effect.Update, observed.CallHash, observed.CallGas, rollupId);
+            authorized.Add(new AuthorizedOutbound(load, effect.TransactionIndex, baseDaEntry, pending, effect.Entry.RollingHash));
         }
 
         return next < events.Length ? throw Unclaimed(events[next]) : authorized.ToArray();
@@ -69,25 +69,27 @@ public static class OutboundCall
 
     /// <param name="eventCallHash">The call hash of the EEZL2 <c>CrossChainCallExecuted</c> event.</param>
     /// <param name="eventCallGas">The call gas the event carries; only zero is supported.</param>
-    /// <returns>The entry the call's DA sidecar must encode.</returns>
+    /// <returns>
+    /// The entry the call's DA sidecar carries before its result, and the rolling hash up to the call's begin. An
+    /// immediate entry publishes no result on L1, so the result and the rolling hash's end are checked against DA.
+    /// </returns>
     /// <exception cref="EezSettlementException">The entry does not execute exactly the observed call.</exception>
-    public static ExecutionEntry Authorize(ExecutionEntry entry, StateUpdate update, in ValueHash256 eventCallHash, ulong eventCallGas, ulong rollupId)
+    public static (ExecutionEntry BaseDaEntry, ValueHash256 PendingRollingHash) Authorize(ExecutionEntry entry, RollupUpdate update, in ValueHash256 eventCallHash,
+        ulong eventCallGas, ulong rollupId)
     {
         Require(entry.Calls.Length == 1, "the entry must carry exactly one call");
         CrossChainCall call = entry.Calls[0];
         Require(entry.DestinationRollupId == rollupId, $"the entry must target rollup {rollupId}");
         Require(call.SourceRollupId == rollupId, $"the call must come from rollup {rollupId}");
+        Require(entry.Success && entry.ReturnData.Length == 0, "an immediate entry must succeed and carry no return data");
         Require(eventCallGas == 0, "only calls without gas are supported");
         ValueHash256 callHash = CrossChainCallHash.Compute(false, call.SourceAddress, rollupId, call.TargetAddress, EezConstants.L1RollupId,
             call.Value, eventCallGas, call.Data);
         Require(callHash == eventCallHash, "the entry executes a different call than the one emitted");
-        ValueHash256 rollingHash = RollingHash.CallEnd(
-            RollingHash.CallBegin(RollingHash.SeedL1(update, entry.ProxyEntryHash), callHash),
-            entry.Success, entry.ReturnData);
-        Require(entry.RollingHash == rollingHash, "the entry's rolling hash does not record the call");
         Require(call.SourceAddress != EezConstants.SystemAddress, "the system address cannot make outbound calls");
         Require(update.EtherDelta == EtherDelta.Debit(call.Value), "the rollup must be debited the call's value");
-        return entry with { StateUpdates = [], RollingHash = default };
+        ValueHash256 pending = RollingHash.CallBegin(RollingHash.SeedL1(update, entry.ProxyEntryHash), callHash);
+        return (entry with { RollupUpdates = [], RollingHash = default }, pending);
     }
 
     private static EezSettlementException Unclaimed(OutboundEvent observed) =>

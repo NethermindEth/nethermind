@@ -193,7 +193,7 @@ public sealed class PostBatchPoster(
             ?? throw new L1SourceIncompleteException(receipt.BlockNumber, $"L1 does not serve the logs of block {receipt.BlockNumber}.");
         foreach (EezL1Log log in logs)
         {
-            if (log.BlockHash == receipt.BlockHash && log.Data is { Length: 32 } && new ValueHash256(log.Data) == settles)
+            if (log.BlockHash == receipt.BlockHash && L1BatchScanner.SettledRootOf(log) == settles)
             {
                 return true;
             }

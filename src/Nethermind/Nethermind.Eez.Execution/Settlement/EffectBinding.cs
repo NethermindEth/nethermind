@@ -16,14 +16,14 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// </summary>
 public static class EffectBinding
 {
-    /// <param name="updates">The state updates <see cref="StateUpdateChain.Verify"/> returned for the batch.</param>
+    /// <param name="updates">The state updates <see cref="RollupUpdateChain.Verify"/> returned for the batch.</param>
     /// <param name="checkpoints">
     /// The settling block's checkpoints: its empty prefix when it has transactions, then one per effect transaction.
     /// </param>
     /// <param name="effectTransactions">The settling block's effect transactions, ascending.</param>
     /// <param name="systemTransactions">Whether each transaction of the settling block is a system transaction.</param>
     /// <exception cref="EezSettlementException">The entries do not describe the settling block's effects.</exception>
-    public static BoundEffect[] Bind(PostBatch batch, StateUpdate[] updates, ulong rollupId,
+    public static BoundEffect[] Bind(PostBatch batch, RollupUpdate[] updates, ulong rollupId,
         ReadOnlySpan<EezTransactionCheckpoint> checkpoints, ReadOnlySpan<int> effectTransactions, ReadOnlySpan<bool> systemTransactions)
     {
         ExecutionEntry[] entries = batch.Entries;
@@ -75,9 +75,9 @@ public static class EffectBinding
                 $"The anchor's checkpoint is at transaction {checkpoints[0].TransactionIndex}, not at the empty prefix.");
         }
 
-        if (updates[0].NewState != checkpoints[0].BlockHash.ValueHash256)
+        if (updates[0].NewRoot != checkpoints[0].BlockHash.ValueHash256)
         {
-            throw new EezSettlementException($"The anchor ends at {updates[0].NewState}, not at the settling block's empty prefix {checkpoints[0].BlockHash}.");
+            throw new EezSettlementException($"The anchor ends at {updates[0].NewRoot}, not at the settling block's empty prefix {checkpoints[0].BlockHash}.");
         }
 
         ReadOnlySpan<EezTransactionCheckpoint> effectCheckpoints = checkpoints[1..];
@@ -99,10 +99,10 @@ public static class EffectBinding
                     $"Checkpoint {i} is at transaction {effectCheckpoints[i].TransactionIndex}, not at effect transaction {transactionIndex}.");
             }
 
-            if (updates[entryIndex].NewState != effectCheckpoints[i].BlockHash.ValueHash256)
+            if (updates[entryIndex].NewRoot != effectCheckpoints[i].BlockHash.ValueHash256)
             {
                 throw new EezSettlementException(
-                    $"Entry {entryIndex} claims block {updates[entryIndex].NewState}, but transaction {transactionIndex} ends block {effectCheckpoints[i].BlockHash}.");
+                    $"Entry {entryIndex} claims block {updates[entryIndex].NewRoot}, but transaction {transactionIndex} ends block {effectCheckpoints[i].BlockHash}.");
             }
 
             effects[i] = new BoundEffect(entryIndex, transactionIndex, claimedShape, entries[entryIndex], updates[entryIndex]);

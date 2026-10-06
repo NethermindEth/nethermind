@@ -41,6 +41,23 @@ public class L1BatchScannerTests
     /// 1. its <c>BatchPosted</c> log leads to the transaction by block hash and index;
     /// 2. its four <c>L2ExecutionPerformed</c> logs settle the anchor and the three effects.
     /// </summary>
+    [TestCase(64, true, TestName = "RootThenEtherBalance")]
+    [TestCase(32, false, TestName = "RootOnly")]
+    [TestCase(96, false, TestName = "ExtraWord")]
+    public void SettledRootOf_LogData_ReadsTheRootOnlyFromTheCurrentShape(int length, bool read)
+    {
+        byte[] data = new byte[length];
+        data[31] = 0x42;
+
+        ValueHash256? root = L1BatchScanner.SettledRootOf(new EezL1Log { Data = data });
+
+        Assert.That(root.HasValue, Is.EqualTo(read), "L2ExecutionPerformed carries the new root and then the rollup's ether balance");
+        if (read)
+        {
+            Assert.That(root!.Value.Bytes[31], Is.EqualTo(0x42), "the root is the first word");
+        }
+    }
+
     [Test]
     public async Task Scan_RecordedDevnetBatch_SettlesItWhole()
     {
@@ -196,7 +213,7 @@ public class L1BatchScannerTests
     {
         Address = Registry,
         Topics = [L1BatchScanner.L2ExecutionPerformedTopic],
-        Data = root.ToByteArray(),
+        Data = [.. root.ToByteArray(), .. new byte[32]],
         BlockNumber = block,
         BlockHash = BlockHash,
         TransactionHash = transaction,

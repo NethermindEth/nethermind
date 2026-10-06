@@ -32,7 +32,7 @@ public static class RollingHash
         {
             statesHash.Bytes.CopyTo(buffer);
             BinaryPrimitives.WriteUInt64BigEndian(buffer.Slice(HashSize, sizeof(ulong)), state.RollupId);
-            state.CurrentState.Bytes.CopyTo(buffer[(HashSize + sizeof(ulong))..]);
+            state.CurrentRoot.Bytes.CopyTo(buffer[(HashSize + sizeof(ulong))..]);
             statesHash = ValueKeccak.Compute(buffer);
         }
 
@@ -40,8 +40,8 @@ public static class RollingHash
     }
 
     /// <summary>The L1 seed of an entry whose single state update is <paramref name="update"/>.</summary>
-    public static ValueHash256 SeedL1(StateUpdate update, in ValueHash256 proxyEntryHash) =>
-        SeedL1([new StateCommitment(update.RollupId, update.CurrentState)], proxyEntryHash);
+    public static ValueHash256 SeedL1(RollupUpdate update, in ValueHash256 proxyEntryHash) =>
+        SeedL1([new StateCommitment(update.RollupId, update.CurrentRoot)], proxyEntryHash);
 
     /// <summary>The L2 rolling hash of an entry that delivers one call and records its result.</summary>
     public static ValueHash256 SingleL2Call(in ValueHash256 callHash, bool success, ReadOnlySpan<byte> returnData) =>

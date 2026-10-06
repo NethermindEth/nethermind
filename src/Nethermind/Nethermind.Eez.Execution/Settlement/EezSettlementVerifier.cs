@@ -36,7 +36,7 @@ public static class EezSettlementVerifier
         PostBatch batch = Decode(postBatchCalldata);
         PostBatchProfile.Validate(batch, context.RollupId, context.ProofSystem);
         EezStatelessBlockResult settling = window[^1];
-        StateUpdate[] updates = StateUpdateChain.Verify(batch, context.RollupId, window[0].Block.Header.ParentHash!.ValueHash256, settling.Hash.ValueHash256);
+        RollupUpdate[] updates = RollupUpdateChain.Verify(batch, context.RollupId, window[0].Block.Header.ParentHash!.ValueHash256, settling.Hash.ValueHash256);
 
         SettlingBlock observations = SettlingBlock.Inspect(settling.Block, settling.Receipts, context.RollupId);
         Block[] blocks = new Block[window.Count];

@@ -111,7 +111,7 @@ public class ResumePointFinderTests
     {
         Address = Registry,
         Topics = [L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId)],
-        Data = root.BytesToArray(),
+        Data = [.. root.Bytes, .. new byte[32]],
         BlockNumber = l1Block,
         BlockHash = L1Hash(l1Block),
         TransactionHash = Keccak.Compute($"tx {l1Block} {transactionIndex}"),

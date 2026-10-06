@@ -47,10 +47,10 @@ public class SettlementCheckTests
     {
         (SettlementCheck check, byte[] calldata, EezStatelessBlock[] blocks, (Hash256, Hash256)[] claims, ulong from) = Setup();
         PostBatch batch = EezCalldata.DecodePostAndVerifyBatch(calldata);
-        StateUpdate update = batch.Entries[0].StateUpdates[0] with { NewState = Keccak.Compute("not the settling block").ValueHash256 };
+        RollupUpdate update = batch.Entries[0].RollupUpdates[0] with { NewRoot = Keccak.Compute("not the settling block").ValueHash256 };
         byte[] tampered = EezCalldata.EncodePostAndVerifyBatch(batch with
         {
-            Entries = [batch.Entries[0] with { StateUpdates = [update], RollingHash = RollingHash.SeedL1(update, default) }],
+            Entries = [batch.Entries[0] with { RollupUpdates = [update], RollingHash = RollingHash.SeedL1(update, default) }],
         });
 
         Assert.Throws<EezSettlementException>(() => check.Verify(tampered, check.Execute(tampered, blocks, claims, from)),

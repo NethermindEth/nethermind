@@ -142,8 +142,8 @@ public class EezSettlementVerifierTests
             new(fixture.PrecedingBlock, Build.A.BlockHeader.TestObject, [new TxReceipt { StatusCode = 1, Logs = [] }], []),
         ];
         PostBatch recorded = EezCalldata.DecodePostAndVerifyBatch(RecordedBatch());
-        StateUpdate chain = new(1, fixture.Settling.ParentHash!.ValueHash256, fixture.PrecedingBlock.Hash!.ValueHash256, Int256.Int256.Zero);
-        PostBatch batch = recorded with { Entries = [recorded.Entries[0] with { StateUpdates = [chain] }] };
+        RollupUpdate chain = new(1, fixture.Settling.ParentHash!.ValueHash256, fixture.PrecedingBlock.Hash!.ValueHash256, Int256.Int256.Zero);
+        PostBatch batch = recorded with { Entries = [recorded.Entries[0] with { RollupUpdates = [chain] }] };
 
         Assert.That(Assert.Throws<EezSettlementException>(() => EezSettlementVerifier.Verify(EezCalldata.EncodePostAndVerifyBatch(batch), window, Context(), Spec.Value))!.Message,
             Does.Contain("only the settling block"));
@@ -174,7 +174,7 @@ public class EezSettlementVerifierTests
         Case(static b => b with { CallData = DaWithBeneficiary(b.CallData, 0xff) }, "another beneficiary", "DaClaimsAnotherBeneficiary"),
         Case(static b => b with { CallData = [.. b.CallData, 0x03] }, "truncated", "DaWithTrailingBytes"),
         Case(static b => b with { BlockNumber = 1 }, "block number", "OutsideTheProfile"),
-        Case(static b => b with { Entries = [b.Entries[0] with { StateUpdates = [b.Entries[0].StateUpdates[0] with { NewState = default }] }] }, "window's last block",
+        Case(static b => b with { Entries = [b.Entries[0] with { RollupUpdates = [b.Entries[0].RollupUpdates[0] with { NewRoot = default }] }] }, "window's last block",
             "ClaimsAnotherEnd"),
     ];
 

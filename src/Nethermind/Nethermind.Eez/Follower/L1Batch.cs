@@ -21,12 +21,12 @@ public sealed record L1Batch(ulong BlockNumber, Hash256 BlockHash, Hash256 Trans
         List<ValueHash256> chain = [];
         foreach (ExecutionEntry entry in batch.Entries)
         {
-            foreach (StateUpdate update in entry.StateUpdates)
+            foreach (RollupUpdate update in entry.RollupUpdates)
             {
                 if (update.RollupId == rollupId)
                 {
-                    current ??= update.CurrentState;
-                    chain.Add(update.NewState);
+                    current ??= update.CurrentRoot;
+                    chain.Add(update.NewRoot);
                 }
             }
         }

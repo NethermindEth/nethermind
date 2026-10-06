@@ -22,9 +22,9 @@ internal static class EezAbi
     private const int RollupProofSystemsHead = 2 * Word;
     private const int PostBatchHead = 12 * Word;
     private const int L2ExecutionEntryHead = 6 * Word;
-    private const int L2StaticExecutionEntryHead = 5 * Word;
-    private const int StateUpdateSize = 4 * Word;
-    private const int ExpectedStateRootSize = 2 * Word;
+    private const int L2StaticExecutionEntryHead = 6 * Word;
+    private const int RollupUpdateSize = 4 * Word;
+    private const int ExpectedRootSize = 2 * Word;
 
     public delegate T TupleReader<T>(AbiReader reader, int start, out int size);
 
@@ -40,14 +40,14 @@ internal static class EezAbi
 
     public static int Size(ExecutionEntry entry) =>
         ExecutionEntryHead
-        + StaticArraySize(entry.StateUpdates.Length, StateUpdateSize)
+        + StaticArraySize(entry.RollupUpdates.Length, RollupUpdateSize)
         + DynamicArraySize(entry.Calls, Size)
         + DynamicArraySize(entry.ExpectedCalls, Size)
         + Size(entry.ReturnData);
 
     public static int Size(StaticExecutionEntry entry) =>
         StaticExecutionEntryHead
-        + StaticArraySize(entry.ExpectedStateRoots.Length, ExpectedStateRootSize)
+        + StaticArraySize(entry.ExpectedRoots.Length, ExpectedRootSize)
         + DynamicArraySize(entry.Calls, Size)
         + Size(entry.ReturnData);
 
@@ -55,7 +55,7 @@ internal static class EezAbi
 
     public static int Size(PostBatch batch) =>
         PostBatchHead
-        + StaticArraySize(batch.ExpectedStateRoots.Length, ExpectedStateRootSize)
+        + StaticArraySize(batch.ExpectedRoots.Length, ExpectedRootSize)
         + DynamicArraySize(batch.Entries, Size)
         + DynamicArraySize(batch.StaticEntries, Size)
         + StaticArraySize(batch.ProofSystems.Length, Word)
@@ -113,11 +113,11 @@ internal static class EezAbi
 
     public static void Write(ref AbiWriter writer, ExecutionEntry entry)
     {
-        int stateUpdates = ExecutionEntryHead;
-        int calls = stateUpdates + StaticArraySize(entry.StateUpdates.Length, StateUpdateSize);
+        int rollupUpdates = ExecutionEntryHead;
+        int calls = rollupUpdates + StaticArraySize(entry.RollupUpdates.Length, RollupUpdateSize);
         int expectedCalls = calls + DynamicArraySize(entry.Calls, Size);
         int returnData = expectedCalls + DynamicArraySize(entry.ExpectedCalls, Size);
-        writer.WriteOffset(stateUpdates);
+        writer.WriteOffset(rollupUpdates);
         writer.Write(entry.ProxyEntryHash);
         writer.WriteOffset(calls);
         writer.WriteOffset(expectedCalls);
@@ -125,13 +125,13 @@ internal static class EezAbi
         writer.Write(entry.DestinationRollupId);
         writer.Write(entry.Success);
         writer.WriteOffset(returnData);
-        writer.Write((ulong)entry.StateUpdates.Length);
-        foreach (StateUpdate update in entry.StateUpdates)
+        writer.Write((ulong)entry.RollupUpdates.Length);
+        foreach (RollupUpdate update in entry.RollupUpdates)
         {
             writer.Write(update.RollupId);
-            writer.Write(update.CurrentState);
-            writer.Write(update.NewState);
             writer.Write(update.EtherDelta);
+            writer.Write(update.CurrentRoot);
+            writer.Write(update.NewRoot);
         }
 
         WriteDynamicArray(ref writer, entry.Calls, Size, Write);
@@ -142,7 +142,7 @@ internal static class EezAbi
     public static void Write(ref AbiWriter writer, StaticExecutionEntry entry)
     {
         int roots = StaticExecutionEntryHead;
-        int calls = roots + StaticArraySize(entry.ExpectedStateRoots.Length, ExpectedStateRootSize);
+        int calls = roots + StaticArraySize(entry.ExpectedRoots.Length, ExpectedRootSize);
         int returnData = calls + DynamicArraySize(entry.Calls, Size);
         writer.WriteOffset(roots);
         writer.Write(entry.ProxyEntryHash);
@@ -151,7 +151,7 @@ internal static class EezAbi
         writer.Write(entry.DestinationRollupId);
         writer.Write(entry.Success);
         writer.WriteOffset(returnData);
-        WriteExpectedStateRoots(ref writer, entry.ExpectedStateRoots);
+        WriteExpectedRoots(ref writer, entry.ExpectedRoots);
         WriteDynamicArray(ref writer, entry.Calls, Size, Write);
         writer.WriteBytes(entry.ReturnData);
     }
@@ -170,7 +170,7 @@ internal static class EezAbi
     public static void Write(ref AbiWriter writer, PostBatch batch)
     {
         int roots = PostBatchHead;
-        int entries = roots + StaticArraySize(batch.ExpectedStateRoots.Length, ExpectedStateRootSize);
+        int entries = roots + StaticArraySize(batch.ExpectedRoots.Length, ExpectedRootSize);
         int staticEntries = entries + DynamicArraySize(batch.Entries, Size);
         int proofSystems = staticEntries + DynamicArraySize(batch.StaticEntries, Size);
         int rollups = proofSystems + StaticArraySize(batch.ProofSystems.Length, Word);
@@ -189,7 +189,7 @@ internal static class EezAbi
         writer.WriteOffset(proofs);
         writer.Write(batch.BlockNumber);
         writer.Write(batch.BindMsgSenderInPublicInput);
-        WriteExpectedStateRoots(ref writer, batch.ExpectedStateRoots);
+        WriteExpectedRoots(ref writer, batch.ExpectedRoots);
         WriteDynamicArray(ref writer, batch.Entries, Size, Write);
         WriteDynamicArray(ref writer, batch.StaticEntries, Size, Write);
         writer.Write((ulong)batch.ProofSystems.Length);
@@ -229,6 +229,7 @@ internal static class EezAbi
     {
         int incoming = L2StaticExecutionEntryHead;
         int returnData = incoming + DynamicArraySize(entry.IncomingCalls, Size);
+        writer.Write(entry.ExpectedEntryIndex);
         writer.Write(entry.ProxyEntryHash);
         writer.WriteOffset(incoming);
         writer.Write(entry.RollingHash);
@@ -254,13 +255,13 @@ internal static class EezAbi
         }
     }
 
-    private static void WriteExpectedStateRoots(ref AbiWriter writer, ExpectedStateRoot[] roots)
+    private static void WriteExpectedRoots(ref AbiWriter writer, ExpectedRoot[] roots)
     {
         writer.Write((ulong)roots.Length);
-        foreach (ExpectedStateRoot root in roots)
+        foreach (ExpectedRoot root in roots)
         {
             writer.Write(root.RollupId);
-            writer.Write(root.StateRoot);
+            writer.Write(root.Root);
         }
     }
 
@@ -299,7 +300,7 @@ internal static class EezAbi
     {
         int tail = start + ExecutionEntryHead;
         reader.ExpectOffset(start, start, tail);
-        StateUpdate[] stateUpdates = ReadStateUpdates(reader, tail, out int updatesSize);
+        RollupUpdate[] rollupUpdates = ReadRollupUpdates(reader, tail, out int updatesSize);
         tail += updatesSize;
         reader.ExpectOffset(start + 2 * Word, start, tail);
         CrossChainCall[] calls = ReadDynamicArray(reader, tail, ReadCrossChainCall, out int callsSize);
@@ -310,7 +311,7 @@ internal static class EezAbi
         reader.ExpectOffset(start + 7 * Word, start, tail);
         byte[] returnData = reader.ReadBytes(tail, out int returnDataSize);
         size = tail + returnDataSize - start;
-        return new ExecutionEntry(stateUpdates, reader.ReadHash(start + Word), calls, expectedCalls, reader.ReadHash(start + 4 * Word),
+        return new ExecutionEntry(rollupUpdates, reader.ReadHash(start + Word), calls, expectedCalls, reader.ReadHash(start + 4 * Word),
             reader.ReadUInt64(start + 5 * Word), reader.ReadBool(start + 6 * Word), returnData);
     }
 
@@ -318,7 +319,7 @@ internal static class EezAbi
     {
         int tail = start + StaticExecutionEntryHead;
         reader.ExpectOffset(start, start, tail);
-        ExpectedStateRoot[] roots = ReadExpectedStateRoots(reader, tail, out int rootsSize);
+        ExpectedRoot[] roots = ReadExpectedRoots(reader, tail, out int rootsSize);
         tail += rootsSize;
         reader.ExpectOffset(start + 2 * Word, start, tail);
         CrossChainCall[] calls = ReadDynamicArray(reader, tail, ReadCrossChainCall, out int callsSize);
@@ -349,7 +350,7 @@ internal static class EezAbi
     {
         int tail = start + PostBatchHead;
         reader.ExpectOffset(start, start, tail);
-        ExpectedStateRoot[] roots = ReadExpectedStateRoots(reader, tail, out int partSize);
+        ExpectedRoot[] roots = ReadExpectedRoots(reader, tail, out int partSize);
         tail += partSize;
         reader.ExpectOffset(start + Word, start, tail);
         ExecutionEntry[] entries = ReadDynamicArray(reader, tail, ReadExecutionEntry, out partSize);
@@ -395,13 +396,14 @@ internal static class EezAbi
     public static L2StaticExecutionEntry ReadL2StaticExecutionEntry(AbiReader reader, int start, out int size)
     {
         int tail = start + L2StaticExecutionEntryHead;
-        reader.ExpectOffset(start + Word, start, tail);
+        reader.ExpectOffset(start + 2 * Word, start, tail);
         CrossChainCall[] incoming = ReadDynamicArray(reader, tail, ReadCrossChainCall, out int incomingSize);
         tail += incomingSize;
-        reader.ExpectOffset(start + 4 * Word, start, tail);
+        reader.ExpectOffset(start + 5 * Word, start, tail);
         byte[] returnData = reader.ReadBytes(tail, out int returnDataSize);
         size = tail + returnDataSize - start;
-        return new L2StaticExecutionEntry(reader.ReadHash(start), incoming, reader.ReadHash(start + 2 * Word), reader.ReadBool(start + 3 * Word), returnData);
+        return new L2StaticExecutionEntry(reader.ReadUInt256(start), reader.ReadHash(start + Word), incoming, reader.ReadHash(start + 3 * Word),
+            reader.ReadBool(start + 4 * Word), returnData);
     }
 
     public static T[] ReadDynamicArray<T>(AbiReader reader, int position, TupleReader<T> read, out int size)
@@ -421,31 +423,31 @@ internal static class EezAbi
         return items;
     }
 
-    private static StateUpdate[] ReadStateUpdates(AbiReader reader, int position, out int size)
+    private static RollupUpdate[] ReadRollupUpdates(AbiReader reader, int position, out int size)
     {
-        int count = reader.ReadCount(position, StateUpdateSize);
-        StateUpdate[] updates = new StateUpdate[count];
+        int count = reader.ReadCount(position, RollupUpdateSize);
+        RollupUpdate[] updates = new RollupUpdate[count];
         for (int i = 0; i < count; i++)
         {
-            int at = position + Word + i * StateUpdateSize;
-            updates[i] = new StateUpdate(reader.ReadUInt64(at), reader.ReadHash(at + Word), reader.ReadHash(at + 2 * Word), reader.ReadInt256(at + 3 * Word));
+            int at = position + Word + i * RollupUpdateSize;
+            updates[i] = new RollupUpdate(reader.ReadUInt64(at), reader.ReadHash(at + 2 * Word), reader.ReadHash(at + 3 * Word), reader.ReadInt192(at + Word));
         }
 
-        size = StaticArraySize(count, StateUpdateSize);
+        size = StaticArraySize(count, RollupUpdateSize);
         return updates;
     }
 
-    private static ExpectedStateRoot[] ReadExpectedStateRoots(AbiReader reader, int position, out int size)
+    private static ExpectedRoot[] ReadExpectedRoots(AbiReader reader, int position, out int size)
     {
-        int count = reader.ReadCount(position, ExpectedStateRootSize);
-        ExpectedStateRoot[] roots = new ExpectedStateRoot[count];
+        int count = reader.ReadCount(position, ExpectedRootSize);
+        ExpectedRoot[] roots = new ExpectedRoot[count];
         for (int i = 0; i < count; i++)
         {
-            int at = position + Word + i * ExpectedStateRootSize;
-            roots[i] = new ExpectedStateRoot(reader.ReadUInt64(at), reader.ReadHash(at + Word));
+            int at = position + Word + i * ExpectedRootSize;
+            roots[i] = new ExpectedRoot(reader.ReadUInt64(at), reader.ReadHash(at + Word));
         }
 
-        size = StaticArraySize(count, ExpectedStateRootSize);
+        size = StaticArraySize(count, ExpectedRootSize);
         return roots;
     }
 

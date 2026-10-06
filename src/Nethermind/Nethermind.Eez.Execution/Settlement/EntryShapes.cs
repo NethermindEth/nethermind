@@ -5,7 +5,7 @@ namespace Nethermind.Eez.Execution.Settlement;
 
 public static class EntryShapes
 {
-    public static EntryShape Classify(ExecutionEntry entry, StateUpdate update, ulong rollupId)
+    public static EntryShape Classify(ExecutionEntry entry, RollupUpdate update, ulong rollupId)
     {
         if (!entry.Success || entry.ExpectedCalls.Length != 0)
         {
