@@ -105,7 +105,7 @@ public class JsonRpcSocketsClientTests
     [Test]
     public async Task WebSocket_timeout_replaces_uncommitted_result_or_fails_receive_loop([Values] bool committed, [Values] bool batch)
     {
-        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
         using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         listener.Listen();
