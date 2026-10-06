@@ -107,6 +107,12 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
             if (isTrace) TraceProcessingBlock(suggestedBlock, toBeProcessed);
             if (toBeProcessed.IsGenesis)
             {
+                // Only GenesisLoader processes genesis without a base state. A longer branch that reaches
+                // genesis found no state on its ancestry, and would replay genesis on an empty state.
+                if (blocksToBeAddedToMain.Count > 1)
+                {
+                    ThrowNoAncestorState(suggestedBlock);
+                }
                 break;
             }
 
@@ -207,6 +213,10 @@ internal sealed class ProcessingBranchBuilder(IBlockTree blockTree, IStateReader
         [DoesNotReturn, StackTraceHidden]
         static void ThrowMaxBranchSizeReached()
             => throw new InvalidOperationException($"Maximum size of branch reached ({MaxBranchSize}). This is unexpected.");
+
+        [DoesNotReturn, StackTraceHidden]
+        static void ThrowNoAncestorState(Block suggestedBlock)
+            => throw new InvalidOperationException($"No ancestor of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} has state.");
     }
 
     [Todo(Improve.Refactor, "This probably can be made conditional (in DEBUG only)")]
