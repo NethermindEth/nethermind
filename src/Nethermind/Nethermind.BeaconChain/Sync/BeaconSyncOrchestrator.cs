@@ -2512,6 +2512,12 @@ public sealed class BeaconSyncOrchestrator(
             }
         }
 
+        // Needs a pre-Gloas head from this run, so a restart past the fork does not show it again.
+        if (_lastHead is { } priorHead && spec.GetEpoch(priorHead.HeadSlot) < spec.GloasForkEpoch && spec.GetEpoch(head.HeadSlot) >= spec.GloasForkEpoch && _logger.IsInfo)
+        {
+            _logger.Info(GloasForkBanner.Render(head.HeadSlot, spec.GetEpoch(head.HeadSlot)));
+        }
+
         _lastHead = head;
         Metrics.BeaconChainHeadSlot = head.HeadSlot;
         Volatile.Write(ref _publishedHeadSlot, head.HeadSlot);
