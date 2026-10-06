@@ -168,7 +168,7 @@ internal sealed class HistoryWalkRun
             partitions.Add(() => WithSlot(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                ProcessAccountPartition(prefix, item, found, new StoragePresenceProbe(_storageHistory, _token));
+                ProcessAccountPartition(prefix, item, found, new StoragePresenceProbe(_storageHistory, _logger, _token));
                 CompleteItem(item, found);
             }));
         }
