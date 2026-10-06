@@ -222,13 +222,12 @@ public sealed class HistoryWindowPruner(
     private TimeSpan PassBudget() => TimeSpan.FromSeconds(Math.Max(1, config.HistoryPrunePassBudgetSeconds));
 
     /// <summary>Internal so tests can drive a cycle instead of racing the wake-signal loop.</summary>
-    internal bool RunOnePass(CancellationToken token, Func<IPruneBudget>? budgetFactory = null)
+    internal bool RunOnePass(CancellationToken token, IPruneBudget? budget = null)
     {
         _lastPassCompactionTime = TimeSpan.Zero;
         TimeSpan passBudget = PassBudget();
-        Func<IPruneBudget> newBudget = budgetFactory ?? (() => new WallClockBudget(passBudget));
 
-        if (RunReadPathWindowPass(passBudget, newBudget, token)) return true;
+        if (RunReadPathWindowPass(passBudget, budget, token)) return true;
 
         Metrics.FlatHistoryPrunePassesYielded++;
         return false;
@@ -236,7 +235,7 @@ public sealed class HistoryWindowPruner(
 
     /// <summary>A floor advance must publish before draining old scopes and before any delete. Returns whether
     /// this pass finished all four columns.</summary>
-    private bool RunReadPathWindowPass(TimeSpan passBudget, Func<IPruneBudget> newBudget, CancellationToken token)
+    private bool RunReadPathWindowPass(TimeSpan passBudget, IPruneBudget? budget, CancellationToken token)
     {
         ulong retention = config.HistoryRetentionBlocks;
         if (retention == 0) return true;
@@ -310,10 +309,15 @@ public sealed class HistoryWindowPruner(
         // Retained down to the deepest scope floor, so a sliced address stays answerable. Coarse, never wrong.
         ulong markersAndClearsFloor = _cycleMarkersAndClearsFloor;
 
-        if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, newBudget(), token);
-        if (!_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, newBudget(), token);
-        if (!_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, newBudget(), token);
-        if (!_blocksSwept) _blocksSwept = PruneBlockMarkers(markersAndClearsFloor, newBudget(), token);
+        // Started after the drains: they have their own timeout, and counting them here could leave the sweeps none.
+        budget ??= new WallClockBudget(passBudget);
+
+        // A sweep yields only once the shared budget or the token runs out, so a column after a yielded one would
+        // seek just to yield again.
+        if (!_accountSwept) _accountSwept = PruneVersionedColumn(_accountHistory, AccountCursorKey, HistoryKeyLayout.Account, floor, hasScopes, budget, token);
+        if (_accountSwept && !_storageSwept) _storageSwept = PruneVersionedColumn(_storageHistory, StorageCursorKey, HistoryKeyLayout.Storage, floor, hasScopes, budget, token);
+        if (_storageSwept && !_clearsSwept) _clearsSwept = PruneClearsColumn(markersAndClearsFloor, budget, token);
+        if (_clearsSwept && !_blocksSwept) _blocksSwept = PruneBlockMarkers(markersAndClearsFloor, budget, token);
 
         bool completed = _accountSwept && _storageSwept && _clearsSwept && _blocksSwept;
 
