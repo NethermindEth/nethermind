@@ -590,6 +590,32 @@ public class DebugModuleTests
     }
 
     [Test]
+    [Platform("Linux,MacOsX")]
+    public async Task DebugGetBadBlocks_WhenPartialFileCleanupFails_PreservesWriteError()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        string file = Path.Combine(directory.Path, "bad-blocks.json");
+        _debugBridge.GetBadBlocks().Returns(FailAfterReplacingFile());
+
+        using JsonRpcResponse response = await Request("debug_getBadBlocks", file);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.Default));
+            Assert.That(RpcTest.AssertError(response).Message, Is.EqualTo("original write error"));
+        }
+
+        IEnumerable<Block> FailAfterReplacingFile()
+        {
+            yield return Build.A.Block.WithNumber(1).TestObject;
+            // Unix allows unlinking the open output; a directory at that path makes cleanup fail.
+            File.Delete(file);
+            Directory.CreateDirectory(file);
+            throw new IOException("original write error");
+        }
+    }
+
+    [Test]
     public async Task DebugMigrateReceipts_WhenInvoked_ReturnsBridgeResult()
     {
         _debugBridge.MigrateReceipts(Arg.Any<ulong>(), Arg.Any<ulong>()).Returns(true);
