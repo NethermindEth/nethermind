@@ -2150,7 +2150,7 @@ public partial class EngineModuleTests
         }
     }
 
-    /// <summary>Makes a block head while its commit is held, which forkchoice no longer does as it waits for that commit.</summary>
+    /// <summary>Makes a block head while its commit is held, bypassing forkchoice, which waits for that commit.</summary>
     private static void MoveHeadBeforeCommit(MergeTestBlockchain chain, Hash256 blockHash)
     {
         BlockHeader header = chain.BlockTree.FindHeader(blockHash, BlockTreeLookupOptions.None)!;
