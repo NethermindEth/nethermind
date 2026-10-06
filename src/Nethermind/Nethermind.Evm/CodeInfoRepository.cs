@@ -41,6 +41,11 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
     private const int MaxIndexedNumber = 0x100;
 
+    // CodeInfo's static constructor cannot be preinitialized by ILC (its empty analyzer holds a
+    // ReadOnlyMemory), so every CodeInfo.Empty read on the guest pays a class-init check; the hot
+    // readers below use this per-repository copy instead.
+    private readonly CodeInfo _emptyCodeInfo = CodeInfo.Empty;
+
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
         _localPrecompiles = precompileProvider.GetPrecompiles();
@@ -95,7 +100,7 @@ public class CodeInfoRepository : ICodeInfoRepository
         vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
 
     public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
-        vmSpec.IsPrecompile(target) ? CodeInfo.Empty : InternalGetCodeInfo(target);
+        vmSpec.IsPrecompile(target) ? _emptyCodeInfo : InternalGetCodeInfo(target);
 
     /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
     /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
@@ -119,7 +124,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// <summary>Resolves the code stored under <paramref name="codeHash"/> for <paramref name="address"/>.</summary>
     /// <remarks>Overridden by a repository that serves code from a cache instead of the world state.</remarks>
     protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
-        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
+        codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
