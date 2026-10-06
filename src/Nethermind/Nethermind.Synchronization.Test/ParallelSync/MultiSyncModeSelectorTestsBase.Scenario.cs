@@ -262,6 +262,26 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
+                public ScenarioBuilder IfAHeavierShorterBranchBecomesBestDuringTheSnapshot()
+                {
+                    // The best full block is read on the longer branch, the best header right after on the heavier one.
+                    _syncProgressSetups.Add(
+                        () =>
+                        {
+                            SyncProgressResolver.FindBestHeader().Returns(NewBetterBranchWithLowerNumber.Number);
+                            SyncProgressResolver.FindBestFullBlock().Returns(ChainHead.Number, NewBetterBranchWithLowerNumber.Number);
+                            SyncProgressResolver.FindBestFullState().Returns(NewBetterBranchWithLowerNumber.Number);
+                            SyncProgressResolver.FindBestProcessedBlock().Returns(NewBetterBranchWithLowerNumber.Number);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
+                            SyncProgressResolver.ChainDifficulty.Returns(NewBetterBranchWithLowerNumber.TotalDifficulty ?? 0);
+                            SyncProgressResolver.When(static r => r.RecalculateProgressPointers())
+                                .Do(static _ => throw new AssertionException("Progress pointers recalculated"));
+                            return "heavier shorter branch became best during the snapshot";
+                        }
+                    );
+                    return this;
+                }
+
                 public ScenarioBuilder IfThisNodeIsProcessingAlreadyDownloadedBlocksInFullSync()
                 {
                     _syncProgressSetups.Add(
