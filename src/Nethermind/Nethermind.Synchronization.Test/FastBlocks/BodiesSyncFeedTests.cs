@@ -306,7 +306,7 @@ public class BodiesSyncFeedTests
     }
 
     [Test]
-    public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 60UL)] ulong barrier)
+    public async Task Progress_reaches_exactly_the_total_when_finished([Values(1UL, 60UL, 99UL)] ulong barrier)
     {
         ProgressLogger progress = new("Old Bodies", LimboLogs.Instance);
         ISyncReport syncReport = Substitute.For<ISyncReport>();
