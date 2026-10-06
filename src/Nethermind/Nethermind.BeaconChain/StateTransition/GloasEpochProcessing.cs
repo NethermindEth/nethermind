@@ -40,6 +40,7 @@ public static partial class GloasEpochProcessing
     /// <summary>Altair <c>process_inactivity_updates</c>, unmodified in Gloas.</summary>
     public static partial void ProcessInactivityUpdates(BeaconStateGloas state);
     public static partial void ProcessRewardsAndPenalties(BeaconStateGloas state, EpochCache cache);
+    internal static partial void ApplyRewardDeltas(BeaconStateGloas state, EpochCache cache);
 
     /// <summary>Electra <c>process_registry_updates</c>, unmodified in Gloas.</summary>
     public static partial void ProcessRegistryUpdates(BeaconStateGloas state, EpochCache cache);
