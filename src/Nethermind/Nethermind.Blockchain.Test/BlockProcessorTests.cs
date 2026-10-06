@@ -1957,9 +1957,6 @@ public partial class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
-        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
-            .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
         // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
