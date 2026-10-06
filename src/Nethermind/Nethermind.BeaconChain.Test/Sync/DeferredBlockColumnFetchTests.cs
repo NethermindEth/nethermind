@@ -645,7 +645,6 @@ public class DeferredBlockColumnFetchTests
         await using Fixture fixture = Fixture.Create();
         const int HeldBlocks = BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches + 4;
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, (importer, delivered) => importer.AcceptOnceColumnsAreHeld(delivered, fixture.SidecarPool, fixture.Sampled), token);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         int queuedForAPlace = scenario.Orchestrator.HeldColumnFetchQueueCount;
         int started = HeldBlocks - queuedForAPlace;
         await scenario.Gate.WaitForRequestsAsync(started, token);
@@ -682,7 +681,6 @@ public class DeferredBlockColumnFetchTests
     {
         await using Fixture fixture = Fixture.Create();
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, 2, (importer, delivered) => importer.AcceptOnceColumnsAreHeld(delivered, fixture.SidecarPool, fixture.Sampled), token, columnsArrive: false);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
 
         scenario.Gate.Open();
         await scenario.Orchestrator.SettleColumnFetchesAsync(token);
@@ -704,7 +702,6 @@ public class DeferredBlockColumnFetchTests
             importer.Accepted.UnionWith(lastWaits ? delivered[..^1] : delivered);
             if (lastWaits) importer.Stuck.Add(delivered[^1]);
         }, token);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         if (!lastWaits)
         {
             using IDisposable endedScope = Assert.EnterMultipleScope();
@@ -736,7 +733,6 @@ public class DeferredBlockColumnFetchTests
         ForkedSignedBeaconBlock sibling = new ForkedSignedBeaconBlock.OfFulu(Test.P2P.TestChain.CreateBlock(2, fixture.Chain.BlockRoot));
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, HeldBlocks, static (importer, delivered) => importer.Stuck.UnionWith(delivered), token,
             fillers: RetrySetCapacity - 1, logs: new OneLoggerLogManager(new ILogger(log)), deliveredBefore: [sibling]);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         int queuedAfterDrop = scenario.Orchestrator.HeldColumnFetchQueueCount;
 
         scenario.Gate.Open();
@@ -756,7 +752,6 @@ public class DeferredBlockColumnFetchTests
     {
         await using Fixture fixture = Fixture.Create();
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, 2, static (importer, delivered) => importer.Stuck.UnionWith(delivered), token, columnsArrive: false);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         Hash256 first = scenario.HeldRoots[0];
         int askedWhileRunning = scenario.Peer.RequestedRoots.Count(root => root == first);
 
@@ -779,7 +774,6 @@ public class DeferredBlockColumnFetchTests
         ForkedSignedBeaconBlock refused = new ForkedSignedBeaconBlock.OfFulu(fork);
         // The first held block takes the last place of the retry set once the head leaves it, so its fork is refused.
         HeldBlobBlocks scenario = await HoldBlobBlocksBehindDeferredHeadAsync(fixture, 1, static (importer, delivered) => importer.Stuck.UnionWith(delivered), token, fillers: RetrySetCapacity - 1, deliveredAfter: [refused]);
-        await ProcessUntilAsync(scenario.Orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
         Hash256 refusedRoot = refused.ComputeMessageRoot();
         int retrySetAfterDrain = scenario.Orchestrator.PendingRetryBlockCount;
         bool importedBeforeItsFetchEnded = scenario.Importer.IsKnown(refusedRoot);
@@ -839,6 +833,7 @@ public class DeferredBlockColumnFetchTests
         await orchestrator.ProcessQueuedAsync(token);
         int expectedInFlight = Math.Min(delivered.Length, BeaconSyncOrchestrator.MaxConcurrentHeldColumnFetches);
         await gate.WaitForRequestsAsync(expectedInFlight, token);
+        await ProcessUntilAsync(orchestrator, () => fixture.Importer.IsKnown(fixture.Chain.BlockRoot), token);
 
         return new HeldBlobBlocks(orchestrator, importer, peer, gate, held);
     }
