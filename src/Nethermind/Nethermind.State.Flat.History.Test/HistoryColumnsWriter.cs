@@ -38,10 +38,15 @@ internal static class HistoryColumnsWriter
 
     public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue)
     {
-        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
-
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+        RecordStorage(columns, address, slotHash, block, rawValue);
+    }
+
+    public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in ValueHash256 slotHash, ulong block, ReadOnlySpan<byte> rawValue)
+    {
+        HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
+
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
             stackalloc byte[BaseFlatPersistence.StorageKeyLength], address.ToAccountPath, slotHash);
 

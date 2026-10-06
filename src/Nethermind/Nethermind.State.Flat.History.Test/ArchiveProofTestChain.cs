@@ -23,7 +23,7 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
     private readonly IColumnsDb<FlatHistoryColumns> _historyColumns = historyColumns;
     private readonly MemDb _trieNodes = new();
     private readonly Dictionary<Address, Account> _accounts = [];
-    private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storage = [];
+    private readonly Dictionary<Address, Dictionary<ValueHash256, byte[]>> _storage = [];
     private readonly Dictionary<ulong, ValueHash256> _rootsByBlock = [];
     private StateTree? _stateTree;
 
@@ -58,6 +58,13 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
         return collector.BuildResult();
     }
 
+    public AccountProof ExpectedProof(Address address, ulong block, ValueHash256[] hashedSlots)
+    {
+        AccountProofCollector collector = new(address.ToAccountPath.Bytes, hashedSlots);
+        StateTree.Accept(collector, _rootsByBlock[block].ToCommitment());
+        return collector.BuildResult();
+    }
+
     public void Dispose() => _trieNodes.Dispose();
 
     internal sealed class BlockBuilder(ArchiveProofTestChain chain, ulong block)
@@ -79,15 +86,22 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
 
         public BlockBuilder SetStorage(Address address, in UInt256 slot, byte[] value)
         {
-            if (!chain._storage.TryGetValue(address, out Dictionary<UInt256, byte[]>? slots))
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+            return SetStorage(address, slotHash, value);
+        }
+
+        public BlockBuilder SetStorage(Address address, in ValueHash256 slotHash, byte[] value)
+        {
+            if (!chain._storage.TryGetValue(address, out Dictionary<ValueHash256, byte[]>? slots))
             {
                 slots = [];
                 chain._storage[address] = slots;
             }
 
-            slots[slot] = value;
+            slots[slotHash] = value;
             _storageChanges.Add(address);
-            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address, slot, block, value);
+            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address, slotHash, block, value);
             return this;
         }
 
@@ -100,9 +114,9 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
                     Keccak.EmptyTreeHash,
                     LimboLogs.Instance);
 
-                foreach ((UInt256 slot, byte[] value) in chain._storage[address])
+                foreach ((ValueHash256 slotHash, byte[] value) in chain._storage[address])
                 {
-                    storageTree.Set(slot, value);
+                    storageTree.Set(slotHash, value);
                 }
 
                 storageTree.Commit();

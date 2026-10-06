@@ -44,6 +44,7 @@ public class ArchiveProofTests
     private static readonly Address Contract = TestItem.AddressA;
     private static readonly Address Absent = TestItem.AddressF;
     private static readonly UInt256[] ContractSlots = [1, 2, 300, 40000];
+    private const long WarmProofAllocationCeiling = 3 * 1024;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _flatDb = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -577,13 +578,81 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void ProofOfAccountWithoutStorage_WithStorageKeysRequested_MatchesTheTrie()
+    {
+        BuildCommitments();
+
+        foreach (ulong block in (ulong[])[1, 65, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[7], block, ContractSlots);
+            AssertProofMatchesTheTrie(Absent, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void ProofOfContract_WithAbsentSlots_MatchesTheTrie()
+    {
+        BuildCommitments();
+
+        AssertProofMatchesTheTrie(Contract, Blocks, [ContractSlots[0], 5, 41000, ContractSlots[3], 7]);
+    }
+
+    [TestCase(false, TestName = "ProofThroughExtensionAndInlineNodes_FromRowsAlone_MatchesTheTrie")]
+    [TestCase(true, TestName = "ProofThroughExtensionAndInlineNodes_FromCommitments_MatchesTheTrie")]
+    public void ProofThroughExtensionAndInlineNodes_MatchesTheTrie(bool buildCommitments)
+    {
+        Address crafted = TestItem.AddressE;
+        ValueHash256 underExtensionLow = SlotUnderSharedPrefix(0x01);
+        ValueHash256 underExtensionHigh = SlotUnderSharedPrefix(0x12);
+        ValueHash256 elsewhere = new(Bytes.FromHexString("0x" + new string('5', 64)));
+        ulong block = Blocks + 1;
+        _chain.AddBlock(block, builder => builder
+            .SetStorage(crafted, underExtensionLow, [0x01])
+            .SetStorage(crafted, underExtensionHigh, [0x02])
+            .SetStorage(crafted, elsewhere, [0x03]));
+        _chain.PublishWatermark();
+        if (buildCommitments) BuildCommitments();
+
+        ValueHash256[] slots =
+        [
+            underExtensionLow,
+            underExtensionHigh,
+            elsewhere,
+            SlotUnderSharedPrefix(0x13),
+            SlotUnderSharedPrefix(0x21),
+            new(Bytes.FromHexString("0x" + new string('a', 60) + "b000")),
+        ];
+
+        Assert.That(_chain.ExpectedProof(crafted, block, slots).StorageProofs![0].Proof, Has.Length.EqualTo(2),
+            "the root branch and the extension are hashed; the branch below the extension and its leaves are inline");
+        AssertProofMatchesTheTrie(crafted, block, slots);
+    }
+
+    [Test]
+    public void CollectProof_WhenStateRootIsCached_AllocatesOnlyForThePathItWalks()
+    {
+        BuildCommitments();
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId head = _chain.StateIdAt(Blocks);
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, diagnostics: null);
+        AccountProofCollector collector = new(Contract, ContractSlots);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        source.CollectProof(collector, head, diagnostics: null);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.LessThan(WarmProofAllocationCeiling),
+            "a warm proof follows only the key's path; no node objects are built for the siblings of each branch on it");
+    }
+
+    [Test]
     public void A_covered_height_is_served_within_a_budget_too_small_for_a_root_rebuild()
     {
         BuildCommitments();
         AccountProof expected = _chain.ExpectedProof(Contract, 9, ContractSlots);
 
         AccountProofCollector collector = new(Contract, ContractSlots);
-        CreateSource(TestPolicy, maxScannedRows: 1500).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null);
+        CreateSource(TestPolicy, maxScannedRows: 1500).CollectProof(collector, _chain.StateIdAt(9), diagnostics: null);
         AccountProof actual = collector.BuildResult();
 
         Assert.That(actual.Proof,
@@ -665,7 +734,7 @@ public class ArchiveProofTests
         BuildCommitments();
 
         AccountProofCollector collector = new(_accounts[3], Array.Empty<UInt256>());
-        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null),
+        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).CollectProof(collector, _chain.StateIdAt(9), diagnostics: null),
             Throws.InstanceOf<StateUnavailableException>(),
             "commitment rows are charged against the same budget as history rows, so a budget of one row cannot walk even the root's chain and must fail closed");
     }
@@ -2069,15 +2138,22 @@ public class ArchiveProofTests
     private AccountProof ProveFromArchive(Address address, ulong block, long maxScannedRows, params UInt256[] storageKeys)
     {
         AccountProofCollector collector = new(address, storageKeys);
-        CreateSource(_policy, maxScannedRows).RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
+        CreateSource(_policy, maxScannedRows).CollectProof(collector, _chain.StateIdAt(block), diagnostics: null);
         return collector.BuildResult();
     }
 
-    private void AssertProofMatchesTheTrie(Address address, ulong block, params UInt256[] storageKeys)
-    {
-        AccountProof expected = _chain.ExpectedProof(address, block, storageKeys);
-        AccountProof actual = ProveFromArchive(address, block, storageKeys);
+    private void AssertProofMatchesTheTrie(Address address, ulong block, params UInt256[] storageKeys) =>
+        AssertProofsMatch(ProveFromArchive(address, block, storageKeys), _chain.ExpectedProof(address, block, storageKeys), address, block);
 
+    private void AssertProofMatchesTheTrie(Address address, ulong block, ValueHash256[] hashedSlots)
+    {
+        AccountProofCollector collector = new(address.ToAccountPath.Bytes, hashedSlots);
+        CreateSource(_policy).CollectProof(collector, _chain.StateIdAt(block), diagnostics: null);
+        AssertProofsMatch(collector.BuildResult(), _chain.ExpectedProof(address, block, hashedSlots), address, block);
+    }
+
+    private static void AssertProofsMatch(AccountProof actual, AccountProof expected, Address address, ulong block)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.Proof,
@@ -2087,17 +2163,21 @@ public class ArchiveProofTests
             Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
             Assert.That(actual.StorageRoot, Is.EqualTo(expected.StorageRoot));
             Assert.That(actual.CodeHash, Is.EqualTo(expected.CodeHash));
+            Assert.That(actual.StorageProofs!, Has.Length.EqualTo(expected.StorageProofs!.Length));
 
-            for (int i = 0; i < storageKeys.Length; i++)
+            for (int i = 0; i < expected.StorageProofs.Length; i++)
             {
-                Assert.That(actual.StorageProofs![i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value),
-                    $"slot {storageKeys[i]} must hold its block-{block} value");
+                Assert.That(actual.StorageProofs[i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs[i].Value!.Value),
+                    $"storage key {i} must hold its block-{block} value");
                 Assert.That(actual.StorageProofs[i].Proof,
-                    Is.EqualTo(expected.StorageProofs![i].Proof),
-                    $"the storage path proven for slot {storageKeys[i]} at block {block} must be the one the full trie holds");
+                    Is.EqualTo(expected.StorageProofs[i].Proof),
+                    $"the storage path proven for storage key {i} at block {block} must be the one the full trie holds");
             }
         }
     }
+
+    private static ValueHash256 SlotUnderSharedPrefix(byte lastByte) =>
+        new(Bytes.FromHexString("0x" + new string('a', 62) + lastByte.ToString("x2")));
 
     private static Address[] BuildAddresses(int count)
     {
