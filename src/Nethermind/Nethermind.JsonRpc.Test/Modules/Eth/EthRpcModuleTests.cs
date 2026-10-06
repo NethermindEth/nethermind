@@ -1726,6 +1726,33 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[0];
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            ForkOnBlockNumber = ulong.MaxValue,
+            ChainId = BlockchainIds.Mainnet,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        string preFork = chain.BlockTree.Head!.Number.ToHexString(true);
+        specProvider.ForkOnBlockNumber = chain.BlockTree.Head!.Number + 1;
+        await chain.AddBlock();
+
+        string proof = await chain.TestEthRpc("eth_getProof", target.ToString(), "[]", "latest");
+        string count = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), "latest");
+        string preForkCount = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), preFork);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Does.Contain("\"nonce\":\"0x1\""));
+            Assert.That(count, Does.Contain("\"result\":\"0x1\""));
+            Assert.That(preForkCount, Does.Contain("\"result\":\"0x0\""));
+        }
+    }
+
+    [Test]
     public async Task Eth_get_proof_withTrimmedAndDuplicatedStorageKey()
     {
         using Context ctx = await Context.Create();

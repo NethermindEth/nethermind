@@ -985,6 +985,19 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    [TestCase(99ul, false)]
+    [TestCase(100ul, true)]
+    public void Eip8253_activates_at_its_transition_timestamp(ulong timestamp, bool expected)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8253TransitionTimestamp = 100 },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8253Enabled, Is.EqualTo(expected));
+    }
+
     [Test]
     public void Eip2200_is_set_correctly_directly()
     {
