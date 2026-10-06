@@ -265,7 +265,7 @@ internal static class LeanEmitter
         Append(builder, "    { result := result .none .calculateAvailableGasSuccess, available := policyFromInitialization initialization, initialization }");
         Append(builder, string.Empty);
         Append(builder, "end OrdinaryStaticAdmissionExtractor.Generated");
-        return Encoding.UTF8.GetBytes(builder.ToString() + Environment.NewLine);
+        return Encoding.UTF8.GetBytes((builder.ToString() + Environment.NewLine).Replace("\r\n", "\n", StringComparison.Ordinal));
     }
 
     private static IrBranch Branch(IrDocument document, string id) =>

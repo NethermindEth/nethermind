@@ -47,6 +47,25 @@ public sealed class ExtractorTests
     }
 
     [Test]
+    public void Extraction_emits_lf_canonical_artifacts_without_carriage_returns()
+    {
+        string root = FindRepoRoot();
+        using TemporaryDirectory temporary = new();
+        ExtractionResult result = Extractor.Extract(root, temporary.Path,
+            Path.Combine(temporary.Path, Extractor.LeanFileName));
+        byte[] ir = File.ReadAllBytes(result.IrPath);
+        byte[] manifest = File.ReadAllBytes(result.ManifestPath);
+        byte[] lean = File.ReadAllBytes(result.LeanPath);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ir, Does.Not.Contain((byte)'\r'), "IR must use LF line endings.");
+            Assert.That(manifest, Does.Not.Contain((byte)'\r'), "Manifest must use LF line endings.");
+            Assert.That(lean, Does.Not.Contain((byte)'\r'), "Lean must use LF line endings.");
+        }
+    }
+
+    [Test]
     public void Generated_Lean_is_theorem_free_and_exposes_both_pure_helpers()
     {
         string root = FindRepoRoot();

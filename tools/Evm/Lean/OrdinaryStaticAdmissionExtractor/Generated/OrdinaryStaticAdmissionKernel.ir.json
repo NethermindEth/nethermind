@@ -3725,5 +3725,5 @@
     "Nonzero intrinsic state reservoirs are helper-domain witnesses; current ordinary helper inputs supply zero state, while later authorization folding is outside these entrypoints.",
     "A reservoir above 2^63 is preserved as a signed-wrap helper-domain boundary and is not asserted reachable in production."
   ],
-  "irSha256": "be3f9ae3f63ac7b8b4d14ca1be249823f0c547483e57d5a5bb52c53a41f14677"
+  "irSha256": "15cecdb573e3863a8b5c6f0e64deeb6c038379f23840c33f5acb1a0049660dfc"
 }
