@@ -235,7 +235,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             }
             long started = Stopwatch.GetTimestamp();
             PayloadStatusV1 status = await call();
-            if (_logger.IsInfo) _logger.Info($"Beacon received {operation} result: {status.Status} | {details} | {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
+            if (_logger.IsInfo) _logger.Info($"Beacon received {operation} result: {status.Status} | {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
             _isAvailable = true;
             return status;
         }
