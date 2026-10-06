@@ -27,7 +27,7 @@ public partial class PatriciaTree
     /// <remarks>
     /// So it is when the parent is dirty and unhashed and already holds the same, unhashed child: updating it would store
     /// that child again and clear a hash already cleared. A write leaves each ancestor of a node it changes dirty and
-    /// unhashed and holding that node, hashing runs bottom up, and a commit seals only hashed nodes, so every level
+    /// unhashed and holding that node, hashing runs bottom up, and a sealed node is never pending, so every level
     /// above is in the same state. Saves the write the climb through the levels an earlier write of the block has
     /// already dirtied, the top of a storage trie for all but its first slot.
     /// <para>
