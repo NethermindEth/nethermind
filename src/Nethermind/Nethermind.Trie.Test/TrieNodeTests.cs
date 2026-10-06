@@ -88,26 +88,63 @@ public class TrieNodeTests
         AssertChildHashesMatchScalarKeccak(dirtyChildren);
     }
 
-    /// <remarks>Empty slots keep the branch under 532 bytes, so its unchanged children are copied from its RLP rather than patched.</remarks>
+    /// <summary>A long leaf whose key is a 32-byte string opens like a branch of hashed children, and must still decode as a leaf.</summary>
+    /// <remarks>
+    /// 63 nibbles hex-prefix encode to exactly 32 bytes, 64 to 33; the long value puts the list past 255 bytes.
+    /// With 64 nibbles, ending the key in a, 0 puts 0xa0 where a second hash would open, leaving only the first item's header to tell it apart.
+    /// </remarks>
+    [Test]
+    public void Long_leaf_opening_with_a_hash_sized_key_decodes_as_a_leaf([Values(63, 64)] int keyNibbles)
+    {
+        byte[] key = new byte[keyNibbles];
+        for (int i = 0; i < key.Length; i++) key[i] = (byte)(i % 16);
+        key[^2] = 0xa;
+        key[^1] = 0;
+        byte[] value = new byte[300];
+        value.AsSpan().Fill(0xa0);
+
+        TrieNode leaf = TrieNodeFactory.CreateLeaf(key, value);
+        TreePath path = TreePath.Empty;
+        CappedArray<byte> rlp = leaf.RlpEncode(NullTrieNodeResolver.Instance, ref path);
+
+        TrieNode decoded = new(NodeType.Unknown, rlp.ToArray());
+        decoded.ResolveNode(NullTrieNodeResolver.Instance, TreePath.Empty);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.IsLeaf, Is.True);
+            Assert.That(decoded.Key, Is.EqualTo(key));
+            Assert.That(decoded.Value.ToArray(), Is.EqualTo(value));
+        }
+    }
+
+    public enum LastChild { Hash, Inlined, Empty }
+
+    /// <remarks>
+    /// Empty slots keep the branch under 532 bytes, so its unchanged children are copied from its RLP rather than patched.
+    /// A branch value, which no Ethereum trie has, is dropped as a fresh encoding drops it; the single byte 0x80 is
+    /// encoded <c>81 80</c>, so its last byte looks like an empty value.
+    /// </remarks>
     [Test]
     public void Reencoding_sparse_branch_matches_fresh_encoding(
-        [Values(0, 5, 13, 14, 15)] int changedIndex, [Values(0, 1, 2)] int replacementKind, [Values] bool inlinedLastChild)
+        [Values(0, 5, 13, 14, 15)] int changedIndex, [Values(0, 1, 2)] int replacementKind, [Values] LastChild lastChild,
+        [Values] bool hasValue0x80)
     {
         Context context = new();
         TrieNode original = new(NodeType.Branch);
         TrieNode expected = new(NodeType.Branch);
         for (int i = 0; i < TrieNode.BranchesCount; i++)
         {
-            if (i % 3 == 1) continue;
+            if (i % 3 == 1 || (i == 15 && lastChild == LastChild.Empty)) continue;
             Hash256 hash = Keccak.Compute([(byte)i]);
-            original.SetChild(i, inlinedLastChild && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
-            expected.SetChild(i, inlinedLastChild && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
+            original.SetChild(i, lastChild == LastChild.Inlined && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
+            expected.SetChild(i, lastChild == LastChild.Inlined && i == 15 ? context.TiniestLeaf : new TrieNode(NodeType.Unknown, hash));
         }
 
         TreePath path = TreePath.Empty;
         CappedArray<byte> oldRlp = original.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         Assert.That(oldRlp.Length, Is.LessThan(532));
-        TrieNode restored = new(NodeType.Branch, oldRlp);
+        TrieNode restored = new(NodeType.Branch, hasValue0x80 ? WithBranchValue0x80(oldRlp) : oldRlp);
         restored.ResolveNode(NullTrieNodeResolver.Instance, path);
         restored = restored.Clone();
         TrieNode? replacement = replacementKind switch
@@ -122,6 +159,18 @@ public class TrieNodeTests
         CappedArray<byte> actual = restored.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         CappedArray<byte> expectedRlp = expected.RlpEncode(NullTrieNodeResolver.Instance, ref path);
         Assert.That(actual, Is.SequenceEqualTo(expectedRlp));
+    }
+
+    private static byte[] WithBranchValue0x80(CappedArray<byte> branchRlp)
+    {
+        RlpReader reader = new(branchRlp.AsSpan());
+        int contentLength = reader.ReadSequenceLength() + 1;
+        byte[] rlp = new byte[Rlp.LengthOfSequence(contentLength)];
+        int position = Rlp.StartSequence(rlp, 0, contentLength);
+        branchRlp.AsSpan()[reader.Position..^1].CopyTo(rlp.AsSpan(position));
+        rlp[^2] = 0x81;
+        rlp[^1] = 0x80;
+        return rlp;
     }
 
     /// <remarks>

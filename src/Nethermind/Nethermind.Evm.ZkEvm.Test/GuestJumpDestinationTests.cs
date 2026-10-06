@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using System.Text;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -59,6 +60,9 @@ public class GuestJumpDestinationTests
         byte[] push32Run = Filled(400, PUSH32);
         push32Run[396] = JUMPDEST;
         yield return Shape("JUMPDEST after a PUSH32 run longer than the look-back distance", push32Run);
+
+        // Once the first JUMPDEST is marked, the later ones scan from it: one inside the PUSH32's data, one past it.
+        yield return Shape("JUMPDESTs scanned from a marked one", Code(160, (40, JUMPDEST), (70, PUSH32), (100, JUMPDEST), (120, JUMPDEST)));
 
         yield return Shape("every byte a JUMPDEST", Filled(200, JUMPDEST));
         yield return Shape("every byte a PUSH32", Filled(200, PUSH32));
@@ -227,6 +231,33 @@ public class GuestJumpDestinationTests
         AssertQueriesMatch(code, expected, "backward", backward);
         AssertQueriesMatch(code, expected, "shuffled", Shuffled(code.Length));
         AssertQueriesMatch(code, expected, "forward then backward", [.. forward, .. backward]);
+        if (code[0] != (byte)Instruction.STOP) AssertFullyAnalyzedQueriesMatch(code, expected, Shuffled(code.Length));
+    }
+
+    /// <summary>
+    /// Queries <paramref name="order"/> through every jump path on a code info whose bitmap is complete before the first
+    /// query, the state ZisK's JUMPDEST bitmap precompile leaves.
+    /// </summary>
+    /// <remarks>The state is set by reflection, as only the ZisK guest can run the precompile.</remarks>
+    private static void AssertFullyAnalyzedQueriesMatch(byte[] code, long[] expected, int[] order)
+    {
+        CodeInfo codeInfo = new(code);
+        const BindingFlags fields = BindingFlags.NonPublic | BindingFlags.Instance;
+        typeof(CodeInfo).GetField("_incrementalJumpBitmap", fields)!.SetValue(codeInfo, expected.Clone());
+        typeof(CodeInfo).GetField("_analyzedUntil", fields)!.SetValue(codeInfo, (nint)code.Length);
+        long[] bitmap = codeInfo.IncrementalJumpBitmap;
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+        foreach (int i in order)
+        {
+            bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
+            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i);
+            Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
+            Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
+            Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
+        }
+
+        Assert.That(bitmap, Is.EqualTo(expected), "bitmap after the queries");
     }
 
     /// <summary>Queries <paramref name="order"/> on one fresh code info, each query leaving its bitmap and cursor to the next.</summary>

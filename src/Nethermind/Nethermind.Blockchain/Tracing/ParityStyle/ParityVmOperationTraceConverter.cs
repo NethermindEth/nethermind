@@ -83,7 +83,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             else if (reader.ValueTextEquals("push"u8))
             {
                 reader.Read();
-                value.Push = JsonSerializer.Deserialize<byte[][]>(ref reader, options);
+                value.Push = TypeInfoJsonSerializer.Deserialize<byte[][]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("store"u8))
             {
@@ -119,13 +119,13 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             if (reader.ValueTextEquals("data"u8))
             {
                 reader.Read();
-                memory.Data = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                memory.Data = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("off"u8))
             {
                 reader.Read();
                 // Older stores hold it as a hex string.
-                memory.Offset = JsonSerializer.Deserialize<long>(ref reader, options);
+                memory.Offset = TypeInfoJsonSerializer.Deserialize<long>(ref reader, options);
             }
             else
             {
@@ -153,12 +153,12 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
             if (reader.ValueTextEquals("key"u8))
             {
                 reader.Read();
-                store.Key = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                store.Key = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else if (reader.ValueTextEquals("val"u8))
             {
                 reader.Read();
-                store.Value = JsonSerializer.Deserialize<byte[]>(ref reader, options);
+                store.Value = TypeInfoJsonSerializer.Deserialize<byte[]>(ref reader, options);
             }
             else
             {
@@ -191,7 +191,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
 
         writer.WriteNumber("pc"u8, value.Pc);
         writer.WritePropertyName("sub"u8);
-        JsonSerializer.Serialize(writer, value.Sub, options);
+        TypeInfoJsonSerializer.Serialize(writer, value.Sub, options);
 
         writer.WriteEndObject();
     }
@@ -204,7 +204,7 @@ public class ParityVmOperationTraceConverter : JsonConverter<ParityVmOperationTr
         {
             writer.WriteStartObject();
             writer.WritePropertyName("data"u8);
-            JsonSerializer.Serialize(writer, value.Memory.Data, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Memory.Data, options);
             // A plain number, as the streaming tracer writes it; a long would otherwise serialize as a hex string.
             writer.WriteNumber("off"u8, value.Memory.Offset);
             writer.WriteEndObject();

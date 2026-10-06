@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Stateless.Execution.IO;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test.Stateless;
@@ -57,5 +59,31 @@ public class WitnessTests
         };
 
         Assert.That(() => witness.DecodeHeaders(), Throws.TypeOf<RlpException>());
+    }
+
+    [Test]
+    public void Decoded_ssz_witness_keeps_its_state_nodes([Values(0, 1, 3)] int count)
+    {
+        byte[][] nodes = new byte[count][];
+        for (int i = 0; i < count; i++) nodes[i] = [(byte)i, 0xc0, (byte)(i * 7)];
+        using Witness original = new()
+        {
+            Headers = IOwnedReadOnlyList<byte[]>.Empty,
+            Codes = IOwnedReadOnlyList<byte[]>.Empty,
+            State = new ArrayPoolList<byte[]>(nodes),
+            Keys = IOwnedReadOnlyList<byte[]>.Empty
+        };
+        ExecutionWitness.Decode(ExecutionWitness.Encode(ExecutionWitness.From(original)), out ExecutionWitness decoded);
+
+        Assert.That(Unsafe.SizeOf<SszWitnessState>(), Is.EqualTo(Unsafe.SizeOf<byte[]>()));
+        using Witness witness = decoded.ToWitness();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(witness.State.AsSpan().ToArray(), Is.EqualTo(nodes));
+            Assert.That(witness.State, Is.EqualTo(nodes));
+            Assert.That(witness.State.Count, Is.EqualTo(count));
+            for (int i = 0; i < count; i++) Assert.That(witness.State[i], Is.EqualTo(nodes[i]));
+        }
     }
 }
