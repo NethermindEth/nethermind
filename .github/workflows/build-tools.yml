@@ -26,6 +26,7 @@ jobs:
         project:
           - DocGen/DocGen.slnx
           - Bootnode/Bootnode.slnx
+          - EraManifest/EraManifest.slnx
           - Evm/Evm.slnx
           - HiveCompare/HiveCompare.slnx
           - JitAsm/JitAsm.slnx
