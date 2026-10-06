@@ -944,6 +944,26 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Eip8131_activates_only_at_its_own_transition_timestamp()
+    {
+        const ulong eip8131Timestamp = 20;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8131TransitionTimestamp = eip8131Timestamp },
+            AmsterdamTimestamp = 10,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8131Timestamp - 1)).IsEip8131Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8131Timestamp)).IsEip8131Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Frame_family_eips_activate_only_at_their_own_transition_timestamp()
     {
         const ulong eip8141Timestamp = 10;
