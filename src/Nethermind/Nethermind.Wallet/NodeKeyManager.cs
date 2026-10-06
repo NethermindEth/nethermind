@@ -5,8 +5,10 @@ using System;
 using System.IO.Abstractions;
 using System.Security;
 using Autofac.Features.AttributeFilters;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -88,7 +90,16 @@ namespace Nethermind.Wallet
             return key ?? LoadKeyFromFile();
         }
 
-        public ProtectedPrivateKey LoadSignerKey() => LoadKeyForAccount(_config.BlockAuthorAccount) ?? LoadNodeKey();
+        public ProtectedPrivateKey LoadSignerKey()
+        {
+            if (string.IsNullOrEmpty(_config.BlockAuthorAccount))
+                return LoadNodeKey();
+
+            return LoadKeyForAccount(_config.BlockAuthorAccount)
+                ?? throw new InvalidConfigurationException(
+                    $"Unable to load the key for {nameof(IKeyStoreConfig.BlockAuthorAccount)} {_config.BlockAuthorAccount} from {_config.KeyStoreDirectory}",
+                    ExitCodes.ForbiddenOptionValue);
+        }
 
         private ProtectedPrivateKey LoadKeyForAccount(string account)
         {

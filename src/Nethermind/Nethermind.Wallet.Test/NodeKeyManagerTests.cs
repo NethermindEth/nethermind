@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Security;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
@@ -87,6 +88,16 @@ namespace Nethermind.Wallet.Test
                     ? (new ProtectedPrivateKey(TestItem.PrivateKeyA, Path.Combine("testKeyStoreDir", Path.GetRandomFileName())), Result.Success)
                     : ((ProtectedPrivateKey)null, Result.Fail("nope")));
             Assert.That(test.NodeKeyManager.LoadSignerKey().Unprotect(), Is.EqualTo(TestItem.PrivateKeyA));
+        }
+
+        [Test]
+        public void LoadSignerKey_throws_when_BlockAuthorAccount_key_cannot_be_loaded()
+        {
+            NodeKeyManagerTest test = CreateTest();
+            test.KeyStoreConfig.TestNodeKey = TestItem.PrivateKeyB.ToString();
+            test.KeyStoreConfig.BlockAuthorAccount = TestItem.AddressA.ToString();
+            test.KeyStore.GetProtectedKey(TestItem.AddressA, Arg.Any<SecureString>()).Returns(((ProtectedPrivateKey)null, Result.Fail("not found")));
+            Assert.That(() => test.NodeKeyManager.LoadSignerKey(), Throws.TypeOf<InvalidConfigurationException>());
         }
 
         private NodeKeyManagerTest CreateTest()
