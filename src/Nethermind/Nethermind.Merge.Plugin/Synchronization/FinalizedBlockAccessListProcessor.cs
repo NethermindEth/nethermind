@@ -74,14 +74,16 @@ public sealed class FinalizedBlockAccessListProcessor(
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.
         _transactionsExecuted?.Invoke();
-        BlockAccessListStateReconstructor.Apply(state, list, spec, token);
+        token.ThrowIfCancellationRequested();
         state.Commit(spec);
+        state.ApplyBal(list);
         state.RecalculateStateRoot();
         if (state.StateRoot != block.StateRoot)
             throw new BlockProcessor.BlockAccessListSequentialRetryException(block.Header,
                 $"BAL reconstruction mismatched state root for {block}; retrying execution.");
         block.BlockAccessList = list;
-        block.AccountChanges = state.GetAccountChanges();
+        // The world state never sees the list's writes, so its own change record would miss them.
+        block.AccountChanges = list.GetStateChangedAddresses();
         Metrics.FinalizedBlockAccessListReconstructions++;
         return (block, receipts);
 
