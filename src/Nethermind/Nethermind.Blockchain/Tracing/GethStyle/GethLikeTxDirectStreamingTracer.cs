@@ -63,6 +63,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
     private PooledDictionary<UInt256, UInt256>? _pendingStorageMap;
 
+    private readonly long _limit;
+    private long _resultSize;
     private int _entriesSinceLastFlush;
     private bool _disposed;
 
@@ -80,6 +82,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
 
         _transaction = transaction;
+        _limit = options.Limit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
@@ -115,6 +118,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _storageByAddress.Clear();
         _pendingStorageMap = null;
         _entriesSinceLastFlush = 0;
+        _resultSize = 0;
         ResetTrace();
     }
 
@@ -127,6 +131,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
     {
         FinalizePendingOpcode();
+        if (_limit != 0 && _resultSize > _limit) return;
 
         _hasPendingOpcode = true;
         _pendingPc = pc;
@@ -203,7 +208,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void RecordStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
     {
-        if (!IsTracingOpLevelStorage) return;
+        if (!IsTracingOpLevelStorage || !_hasPendingOpcode) return;
         if (!_storageByAddress.TryGetValue(address, out PooledDictionary<UInt256, UInt256>? contractStorage))
         {
             contractStorage = _storageMapPool.TryPop(out PooledDictionary<UInt256, UInt256>? pooled)
@@ -279,6 +284,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private void WriteOpcodeJson()
     {
         _writer.WriteStartObject();
+        // Exclude the array separator: Geth counts individually serialized log objects.
+        long entryStart = _writer.BytesCommitted + _writer.BytesPending - 1;
         _writer.WriteNumber("pc"u8, _pendingPc);
         _writer.WriteString("op"u8, OpcodeJsonNames.Get(_pendingOpcode));
         _writer.WriteNumber("gas"u8, _pendingGas);
@@ -295,6 +302,8 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (IsTracingReturnData && _returnDataByteCount > 0) WriteReturnDataValue();
 
         _writer.WriteEndObject();
+        if (_limit > 0)
+            _resultSize += _writer.BytesCommitted + _writer.BytesPending - entryStart;
     }
 
     private void WriteReturnDataValue()

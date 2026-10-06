@@ -6,9 +6,11 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -51,6 +53,13 @@ public static class VirtualMachineStatics
     /// each keep a scope per core — so it is multiplied by tens on a node. Sizes above it are rare enough to be
     /// worth a pool round-trip and too large to hold that many times over.</remarks>
     public const int MaxRetainedPrecompileScratch = 64 * 1024;
+
+    /// <summary>Deepest child call frame a VM keeps for reuse; deeper frames and the top-level frame use the pools.</summary>
+    /// <remarks>A kept frame holds its data stack (32 KiB, pinned), its 1 KiB inline memory and its environment, about
+    /// 34 KiB in all, so a VM that has reached this depth retains about 270 KiB until it is disposed, which hands the
+    /// data stacks back to the pool. Like the ID scratch above, that is multiplied by the pooled VMs, so the depth is
+    /// kept to where most calls end.</remarks>
+    internal const int MaxCachedFrameDepth = 8;
 
     public static readonly UInt256 P255Int = new(0, 0, 0, 9223372036854775808); // 2^255
     public static ref readonly UInt256 P255 => ref P255Int;
@@ -129,7 +138,7 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            returnData.CopyTo(scratch);
+            Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
@@ -153,7 +162,7 @@ internal struct ReturnDataScratch
 public partial class VirtualMachine<TGasPolicy>(
     IBlockhashProvider? blockHashProvider,
     ISpecProvider? specProvider,
-    ILogManager? logManager) : IVirtualMachine<TGasPolicy>
+    ILogManager? logManager) : IVirtualMachine<TGasPolicy>, IDisposable
     where TGasPolicy : struct, IGasPolicy<TGasPolicy>
 {
     private readonly UInt256 _chainId = (specProvider ?? throw new ArgumentNullException(nameof(specProvider))).ChainId;
@@ -162,6 +171,13 @@ public partial class VirtualMachine<TGasPolicy>(
     protected readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
     protected readonly ILogger _logger = logManager?.GetClassLogger<VirtualMachine>() ?? throw new ArgumentNullException(nameof(logManager));
     protected readonly VmStateStack<TGasPolicy> _stateStack = new(MaxCallDepth + 1);
+
+    // Child frames and their environments by call depth (slot 0, the top level, stays empty). A VM runs one
+    // transaction at a time and child frames nest strictly, so each slot is free again before its depth is
+    // re-entered; this replaces the thread-static pool round-trip (VmState, environment and data stack) per frame.
+    // Not readonly: Dispose swaps both for empty arrays.
+    internal VmState<TGasPolicy>?[] FrameCache = new VmState<TGasPolicy>?[MaxCachedFrameDepth + 1];
+    internal ExecutionEnvironment?[] EnvironmentCache = new ExecutionEnvironment?[MaxCachedFrameDepth + 1];
 
     // These execution-scoped fields are initialized before opcode dispatch; current state is cleared between executions.
     protected IWorldState _worldState = null!;
@@ -550,8 +566,65 @@ public partial class VirtualMachine<TGasPolicy>(
             // Normal exits clear both fields; populated frame state therefore means exceptional unwind.
             if (vm._currentState is not null || vm._stateStack.Count != 0)
             {
-                vm.DisposeActiveFrames(topLevel);
+                vm.UnwindActiveFrames(topLevel);
             }
+        }
+    }
+
+    // Out of FrameCleanupScope.Dispose: a try/finally there stops the JIT inlining it into every execution.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void UnwindActiveFrames(VmState<TGasPolicy> topLevel)
+    {
+        try
+        {
+            DisposeActiveFrames(topLevel);
+        }
+        finally
+        {
+            ForgetOrphanedFrames();
+        }
+    }
+
+    /// <summary>
+    /// Drops what an exceptional unwind leaves claimed: the cache slots, so the next transaction gets fresh frames
+    /// there, and <see cref="ReturnData"/>, which may still hold a staged child frame.
+    /// </summary>
+    /// <remarks>
+    /// Such a slot holds a child frame that CALL or CREATE staged and the loop never entered - a tracer threw in
+    /// between, as a cancelled <c>CancellationTxTracer</c> does from <c>ReportActionRemainingGas</c> - or its
+    /// environment, or a frame whose disposal threw. Nothing disposes them, and such a frame must not be disposed
+    /// now: the unwind has already restored the access journals to before its snapshot, and the transaction
+    /// processor recycles those journals next, so its restore would throw or undo another transaction's accesses.
+    /// Its environment stays referenced by it, so that is not put back into service either. Once the slots and
+    /// <see cref="ReturnData"/> are cleared, this VM holds no reference to the frame or its environment, so the GC
+    /// collects both, with their data stack, code and input, instead of the VM keeping them until it runs again.
+    /// </remarks>
+    private void ForgetOrphanedFrames()
+    {
+        ReturnData = null;
+        VmState<TGasPolicy>.ForgetUnreleased(FrameCache);
+        ExecutionEnvironment.ForgetInUse(EnvironmentCache);
+    }
+
+    /// <summary>
+    /// Returns the data stacks of the cached child frames to the shared tier of the stack pool and empties the frame
+    /// and environment caches.
+    /// </summary>
+    /// <remarks>
+    /// The owner calls this once it is done with the VM, on any thread: the stacks go to the tier every thread rents
+    /// from, not to the calling thread's own, which may never run an EVM frame again. The caches are swapped out
+    /// atomically, so a second call returns nothing, and a VM used after disposal takes every child frame from the
+    /// pools. A frame that is not released keeps its stack, see <see cref="VmState{TGasPolicy}.ReturnCachedStacks"/>.
+    /// Disposal must not race a transaction on this VM; one that finds a transaction running leaves the stacks to the
+    /// GC rather than hand back a stack the transaction may still enter.
+    /// </remarks>
+    public void Dispose()
+    {
+        VmState<TGasPolicy>?[] frames = Interlocked.Exchange(ref FrameCache, Array.Empty<VmState<TGasPolicy>?>());
+        EnvironmentCache = Array.Empty<ExecutionEnvironment?>();
+        if (_currentState is null && _stateStack.Count == 0)
+        {
+            VmState<TGasPolicy>.ReturnCachedStacks(frames);
         }
     }
 
@@ -1492,6 +1565,11 @@ public partial class VirtualMachine<TGasPolicy>(
             vmState.InitializeStacks(codeSpan, out stack);
         }
 
+        if (_useCallDestinations)
+        {
+            stack.UseCallDestinations();
+        }
+
         // Operate on the frame gas by reference so exceptional halts keep the latest
         // gas/state-gas accounting without needing interpreter-wide exception handling.
         ref TGasPolicy gas = ref vmState.Gas;
@@ -1644,7 +1722,9 @@ public partial class VirtualMachine<TGasPolicy>(
             EvmExceptionType.StackOverflow or
             EvmExceptionType.StackUnderflow or
             EvmExceptionType.InvalidJumpDestination or
-            EvmExceptionType.AccessViolation => new(exceptionType),
+            EvmExceptionType.AccessViolation or
+            EvmExceptionType.ReturnStackOverflow or
+            EvmExceptionType.ReturnStackUnderflow => new(exceptionType),
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }

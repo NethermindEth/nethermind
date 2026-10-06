@@ -433,6 +433,56 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             }
         }
 
+        /// <remarks>
+        /// Even seeds leave out DUPN, SWAPN and EXCHANGE, so a CALLDEST byte is never an EIP-8024 immediate and the analysis
+        /// takes its vectorized form; odd seeds include them, so most samples take the EIP-8024 walk.
+        /// </remarks>
+        [Test]
+        public void Call_destinations_match_the_eip8024_walk([Range(0, 19)] int seed)
+        {
+            byte[] alphabet = seed % 2 == 0
+                ? [0x00, 0x5b, 0xbb, 0x60, 0x61, 0x7f]
+                : [0x00, 0x5b, 0xbb, 0x60, 0x61, 0x7f, 0xe6, 0xe7, 0xe8];
+            uint state = ((uint)seed * 2654435761u) | 1u;
+            for (int sample = 0; sample < 40; sample++)
+            {
+                byte[] code = new byte[1 + (int)(NextRandom(ref state) % (sample % 10 == 0 ? 5000u : 700u))];
+                for (int i = 0; i < code.Length; i++)
+                    code[i] = sample % 4 == 0 ? (byte)NextRandom(ref state) : alphabet[NextRandom(ref state) % (uint)alphabet.Length];
+
+                CodeInfo codeInfo = new(code);
+                Assert.That(codeInfo.JumpAndCallDestinationBitmap, Is.EqualTo(CallDestinationWalk(code)), $"seed {seed} sample {sample}");
+            }
+        }
+
+        [Test]
+        public void Code_without_call_destinations_shares_the_jump_bitmap()
+        {
+            CodeInfo codeInfo = new(new byte[] { (byte)Instruction.PUSH1, (byte)Instruction.CALLDEST - 1, (byte)Instruction.JUMPDEST });
+
+            Assert.That(codeInfo.JumpAndCallDestinationBitmap, Is.SameAs(codeInfo.JumpDestinationBitmap));
+        }
+
+        /// <summary>Marks every JUMPDEST and CALLDEST instruction, stepping over PUSH data and valid EIP-8024 immediates.</summary>
+        private static long[] CallDestinationWalk(byte[] code)
+        {
+            long[] bitmap = JumpDestinationAnalyzer.CreateBitmap(code.Length);
+            // Code that starts with STOP halts before any jump, so it is not analyzed.
+            if (code[0] == (byte)Instruction.STOP) return new long[1];
+
+            for (int pc = 0; pc < code.Length; pc++)
+            {
+                byte op = code[pc];
+                byte next = pc + 1 < code.Length ? code[pc + 1] : (byte)0x5b;
+                if (op is (byte)Instruction.JUMPDEST or (byte)Instruction.CALLDEST) bitmap[pc >> 6] |= 1L << pc;
+                else if (op is >= (byte)Instruction.PUSH1 and <= (byte)Instruction.PUSH32) pc += op - (byte)Instruction.PUSH1 + 1;
+                else if (op is (byte)Instruction.DUPN or (byte)Instruction.SWAPN && next is not (>= 0x5b and <= 0x7f)) pc++;
+                else if (op is (byte)Instruction.EXCHANGE && next is not (>= 0x52 and <= 0x7f)) pc++;
+            }
+
+            return bitmap;
+        }
+
         [TestCaseSource(nameof(EdgeCases))]
         public void Edge_cases_match_the_reference(byte[] code)
         {

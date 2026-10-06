@@ -112,6 +112,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         }
 
         IReleaseSpec releaseSpec = _specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp);
+        // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
+        if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
 
         ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
@@ -127,10 +129,6 @@ public partial class EngineRpcModule : IEngineRpcModule
             long startTime = Stopwatch.GetTimestamp();
             try
             {
-                // Start tx-root computation before asynchronous GC-region admission so it can
-                // overlap that work; keep it inside the lock so competing requests cannot run
-                // trie work concurrently.
-                _ = executionPayload.StartTxRootComputation();
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {

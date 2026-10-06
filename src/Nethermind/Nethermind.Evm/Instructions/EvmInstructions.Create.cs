@@ -140,6 +140,7 @@ public static partial class EvmInstructions
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
@@ -230,6 +231,7 @@ public static partial class EvmInstructions
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
+            vm.EnvironmentCache,
             codeInfo: new CodeInfo(initCode),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
@@ -240,6 +242,7 @@ public static partial class EvmInstructions
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            vm.FrameCache,
             gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
