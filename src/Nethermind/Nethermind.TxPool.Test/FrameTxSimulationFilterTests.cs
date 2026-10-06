@@ -217,6 +217,24 @@ public class FrameTxSimulationFilterTests
         Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Accepted));
     }
 
+    [Test]
+    public void Accept_WhileProcessingABlock_NeverPreemptsATxReaddedFromAReorg()
+    {
+        TestReadOnlyStateProvider state = DeployedCodeSenderState();
+        Transaction tx = SelfVerifyTx(TestItem.AddressA);
+        IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
+        headInfo.IsProcessingBlock.Returns(true);
+        headInfo.IsBuildingBlock.Returns(true);
+        IFrameTxPrefixSimulator simulator = Substitute.For<IFrameTxPrefixSimulator>();
+        simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
+            .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
+        FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { ReaddedFromReorg = true };
+
+        Assert.That(filter.Accept(tx, ref filteringState, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+        simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), null);
+    }
+
     [TestCase(true, TxHandlingOptions.None, false, true)]
     [TestCase(false, TxHandlingOptions.None, false, false)]
     [TestCase(true, TxHandlingOptions.PersistentBroadcast, false, false)]

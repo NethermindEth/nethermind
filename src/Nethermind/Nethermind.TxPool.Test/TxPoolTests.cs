@@ -5121,6 +5121,33 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        [Test]
+        public async Task Frame_tx_readded_from_a_reorg_during_block_work_is_not_deferred()
+        {
+            _txPool = CreatePool(null, new TestSpecProvider(Eip8141Prototype.Instance));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            Transaction tx = BuildFrameTx(nonce: 0, TestItem.PrivateKeyA.Address, deadline: null);
+            // Two signatures: only an entry after the first can yield, so this tx would be deferred if gossiped now.
+            tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 2)];
+            tx.Hash = tx.CalculateHash();
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block blockA = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
+            await RaiseBlockAddedToMainAndWaitForNewHead(blockA);
+            Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.False, "the included tx must have left the pool");
+
+            long before = Metrics.FrameTxSignatureVerificationsPreempted;
+            _blockTree.IsProcessingBlock = true;
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject, blockA);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.TryGetPendingTransaction(tx.Hash!, out _), Is.True,
+                    "a re-added tx has no peer to refetch it from, so block work must not defer it");
+                Assert.That(Metrics.FrameTxSignatureVerificationsPreempted, Is.EqualTo(before));
+            }
+        }
+
         private int TrackedFrameTxDependencies() => ((FrameTxDependencyIndex)typeof(TxPool)
             .GetField("_frameDependencies", BindingFlags.Instance | BindingFlags.NonPublic)!
             .GetValue(_txPool)!).Count;
