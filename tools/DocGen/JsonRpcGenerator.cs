@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -13,6 +14,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 using Nethermind.Stats.Model;
 using Spectre.Console;
@@ -80,6 +82,14 @@ internal static class JsonRpcGenerator
         [typeof(PublicKeyConverter)] = "_string_ (hex data)",
         [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
         [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
+    };
+
+    // Stand-ins documenting the wire shape a hand-written converter writes in place of the CLR shape,
+    // keyed by the converted type or, where the type keeps its CLR shape elsewhere, by the member converter
+    private static readonly Dictionary<Type, Type> _wireShapes = new()
+    {
+        [typeof(ParityTraceActionConverter)] = typeof(ParityTraceActionShape),
+        [typeof(ParityTxTraceFromReplay)] = typeof(ParityTxTraceFromReplayShape),
     };
 
     internal static void Generate(string path)
@@ -320,6 +330,7 @@ internal static class JsonRpcGenerator
     private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
+        type = _wireShapes.GetValueOrDefault(type, type);
 
         parentTypes ??= new List<string>();
 
@@ -352,8 +363,11 @@ internal static class JsonRpcGenerator
         if (IsOpaqueJson(type))
             return;
 
-        foreach ((string name, Type memberType, Type? memberConverter) in GetSerializedMembers(type))
+        foreach ((string name, Type clrMemberType, Type? memberConverter) in GetSerializedMembers(type))
         {
+            Type memberType = memberConverter is not null && _wireShapes.TryGetValue(memberConverter, out Type? shape)
+                ? shape
+                : clrMemberType;
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
 
             file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
@@ -564,5 +578,44 @@ internal static class JsonRpcGenerator
             : null;
 
         return itemType is not null;
+    }
+
+    /// <summary>The object <see cref="ParityTraceActionConverter"/> writes for call, create, reward and self-destruct actions.</summary>
+    private sealed class ParityTraceActionShape
+    {
+        public Address? Address { get; init; }
+        public Address? Author { get; init; }
+        public UInt256 Balance { get; init; }
+        public string? CallType { get; init; }
+        public string? CreationMethod { get; init; }
+        public Address? From { get; init; }
+        public ulong Gas { get; init; }
+        public byte[]? Init { get; init; }
+        public byte[]? Input { get; init; }
+        public Address? RefundAddress { get; init; }
+        public string? RewardType { get; init; }
+        public Address? To { get; init; }
+        public UInt256 Value { get; init; }
+    }
+
+    /// <summary>A trace entry <see cref="ParityTraceActionFromReplayJsonConverter"/> writes, one per action with its subtraces flattened after it.</summary>
+    private sealed class ParityReplayTraceEntryShape
+    {
+        public ParityTraceActionShape? Action { get; init; }
+        public string? Error { get; init; }
+        public ParityTraceResult? Result { get; init; }
+        public int Subtraces { get; init; }
+        public int[]? TraceAddress { get; init; }
+        public string? Type { get; init; }
+    }
+
+    /// <summary>The object <see cref="ParityTxTraceFromReplayJsonConverter"/> writes.</summary>
+    private sealed class ParityTxTraceFromReplayShape
+    {
+        public byte[]? Output { get; init; }
+        public Dictionary<Address, ParityAccountStateChange>? StateDiff { get; init; }
+        public ParityReplayTraceEntryShape[]? Trace { get; init; }
+        public Hash256? TransactionHash { get; init; }
+        public ParityVmTrace? VmTrace { get; init; }
     }
 }
