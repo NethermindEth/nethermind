@@ -153,10 +153,8 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
     {
         HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/execution_payload_envelopes/{Root}", Json);
         string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
-        JsonElement envelope = JsonDocument.Parse(raw).RootElement;
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         // Fork choice holds the block VALID but not its payload: that status covers only the payload the bid builds on.
-        Assert.That(envelope.GetProperty("execution_optimistic").GetBoolean(), Is.True);
         Assert.That((await ReadJsonAsync(await _host.GetAsync($"/eth/v2/beacon/blocks/{Root}", Json))).RootElement.GetProperty("execution_optimistic").GetBoolean(), Is.False);
         Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("gloas"));
         BeaconApiTestHost.AssertJsonDigest(raw, "74bc619fb686804b52f870dd9eeb027611023d57728c03725a45172dac1d4d6a");
