@@ -2094,6 +2094,25 @@ public partial class EngineModuleTests
         }
     }
 
+    /// <summary>A block below finalized keeps the execution-apis#786 MAY-skip answer even without state, and the head stays.</summary>
+    [Test]
+    public async Task forkchoiceUpdatedV1_answers_a_block_below_finalized_without_state()
+    {
+        ConcurrentDictionary<Hash256, byte> pruned = new();
+        using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned);
+        IReadOnlyList<ExecutionPayload> blocks = await ProduceCanonicalBranchV1(chain, finalizedIndex: 2);
+        pruned[blocks[1].BlockHash] = 0;
+
+        ResultWrapper<ForkchoiceUpdatedV1Result> result =
+            await chain.EngineRpcModule.engine_forkchoiceUpdatedV1(new(blocks[1].BlockHash, Keccak.Zero, Keccak.Zero));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(chain.BlockTree.HeadHash, Is.EqualTo(blocks[^1].BlockHash));
+        }
+    }
+
     /// <summary>A forkchoice update to a head whose re-execution is still committing waits for that commit, then moves the head.</summary>
     /// <remarks>The re-executed block keeps its processed flag from its first run, so the flag cannot say whether its state has landed.</remarks>
     [Test]

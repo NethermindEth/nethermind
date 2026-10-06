@@ -298,7 +298,7 @@ public class ForkchoiceUpdatedHandler(
         // A processed block whose state was pruned cannot be built on; a re-execution restoring it was waited for above.
         if (shouldUpdateHead && !stateReader.HasStateForBlock(newHeadHeader))
         {
-            if (_logger.IsInfo) _logger.Info($"Syncing... New head {newHeadHeader.ToString(BlockHeader.Format.Short)} has no state. Request: {requestStr}.");
+            if (_logger.IsInfo) _logger.Info($"Syncing... State of new head {newHeadHeader.ToString(BlockHeader.Format.Short)} is unavailable (pruned), head not moved. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
