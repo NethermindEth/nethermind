@@ -70,6 +70,19 @@ public class GuestArith256Tests
         Assert.That(result, Is.EqualTo(UInt256.Zero));
     }
 
+    /// <remarks>The ZisK guest multiplies MUL's factors below 2^128 this way, which only the guest can run.</remarks>
+    [TestCase(1ul, 1ul)]
+    [TestCase(ulong.MaxValue, ulong.MaxValue)]
+    [TestCase(0x0123_4567_89ab_cdefUL, 0xfedc_ba98_7654_3210UL)]
+    public void A_product_of_factors_below_2_to_128_survives_reduction_modulo_the_largest_word(ulong high, ulong low)
+    {
+        UInt256 left = new(low, high, 0, 0);
+        UInt256 right = new(high, low, 0, 0);
+        UInt256.MultiplyMod(in left, in right, in Max, out UInt256 reduced);
+
+        Assert.That(reduced, Is.EqualTo((UInt256)((BigInteger)left * (BigInteger)right)));
+    }
+
     /// <summary>Runs ADDMOD or MULMOD on <c>a</c> (top), <c>b</c> and <c>m</c>, the way the interpreter pops them.</summary>
     private static UInt256 Run3(Instruction op, UInt256 a, UInt256 b, UInt256 m)
     {
