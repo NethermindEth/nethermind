@@ -5,6 +5,9 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MathNet.Numerics.Random;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
@@ -27,6 +30,23 @@ public class DetailedProgressSerializerTest
         }
 
         cts.Cancel();
+    }
+
+    [Test]
+    public void DisplayProgressReport_reports_heal_phase_without_full_state_estimate_when_snap_sync([Values] bool snapSync)
+    {
+        DetailedProgress data = new(BlockchainIds.Mainnet, null, snapSync) { DataSize = 200_000_000 };
+        TestLogger testLogger = new() { IsDebug = false };
+        ILogger logger = new(testLogger);
+
+        data.DisplayProgressReport(0, new BranchProgress(0, logger), logger);
+
+        string report = testLogger.LogList[^1];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(report, snapSync ? Does.StartWith("State Sync (Phase 2 of 2, healing) ") : Does.StartWith("State Sync  "));
+            Assert.That(report, snapSync ? Does.Not.Contain("%)") : Does.Contain("%)"));
+        }
     }
 
     private void ChangeData(CancellationToken token)
