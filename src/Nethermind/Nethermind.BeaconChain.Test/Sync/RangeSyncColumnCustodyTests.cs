@@ -211,14 +211,7 @@ public class RangeSyncColumnCustodyTests
         Hash256 secondRoot = SszRoots.HashTreeRoot(second);
         ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), new ForkedSignedBeaconBlock.OfFulu(new SignedBeaconBlock { Message = second, Signature = default })];
         ulong lackingColumn = fixture.Sampled[0];
-        foreach (ulong column in fixture.Sampled)
-        {
-            fixture.SidecarPool.Add(fixture.Chain.BlockRoot, first.Slot, fixture.Chain.Columns[(int)column]);
-            if (column != lackingColumn)
-            {
-                fixture.SidecarPool.Add(secondRoot, second.Slot, fixture.Chain.Columns[(int)column]);
-            }
-        }
+        fixture.PoolBatchExcept(secondRoot, second.Slot, fixture.Chain.Columns, lackingColumn);
 
         List<(ulong Start, ulong Count)> requests = [];
         StubPeer[] peers = [.. Enumerable.Range(0, 2).Select(i => new StubPeer($"peer-{i}", second.Slot, (_, _) => blocks, (start, count, _) =>
@@ -246,14 +239,7 @@ public class RangeSyncColumnCustodyTests
         (SignedBeaconBlock second, Hash256 secondRoot, DataColumnSidecar[] secondColumns) = ImportableBlobBlock.BlobBlockAt(first.Slot + 1, fixture.Chain.BlockRoot);
         ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), new ForkedSignedBeaconBlock.OfFulu(second)];
         ulong lackingColumn = fixture.Sampled[0];
-        foreach (ulong column in fixture.Sampled)
-        {
-            fixture.SidecarPool.Add(fixture.Chain.BlockRoot, first.Slot, fixture.Chain.Columns[(int)column]);
-            if (column != lackingColumn)
-            {
-                fixture.SidecarPool.Add(secondRoot, second.Message!.Slot, secondColumns[(int)column]);
-            }
-        }
+        fixture.PoolBatchExcept(secondRoot, second.Message!.Slot, secondColumns, lackingColumn);
 
         Func<ulong, ulong, ulong[], DataColumnSidecar[]> serveSecond = (_, _, columns) => [.. columns.Select(c => secondColumns[(int)c])];
         StubPeer blockSource = new("blocks", second.Message!.Slot, (_, _) => blocks, custody: PeerColumnCustody.None);
@@ -282,14 +268,7 @@ public class RangeSyncColumnCustodyTests
         ForkedSignedBeaconBlock[] blocks = [new ForkedSignedBeaconBlock.OfFulu(fixture.Chain.Block), new ForkedSignedBeaconBlock.OfFulu(second)];
         ulong reachedColumn = fixture.Sampled[0];
         ulong behindColumn = fixture.Sampled[1];
-        foreach (ulong column in fixture.Sampled)
-        {
-            fixture.SidecarPool.Add(fixture.Chain.BlockRoot, first.Slot, fixture.Chain.Columns[(int)column]);
-            if (column != reachedColumn && column != behindColumn)
-            {
-                fixture.SidecarPool.Add(secondRoot, second.Message!.Slot, secondColumns[(int)column]);
-            }
-        }
+        fixture.PoolBatchExcept(secondRoot, second.Message!.Slot, secondColumns, reachedColumn, behindColumn);
 
         Func<ulong, ulong, ulong[], DataColumnSidecar[]> serveSecond = (_, _, columns) => [.. columns.Select(c => secondColumns[(int)c])];
         StubPeer blockSource = new("blocks", second.Message!.Slot, (_, _) => blocks, custody: PeerColumnCustody.None);
@@ -455,6 +434,18 @@ public class RangeSyncColumnCustodyTests
         public ulong[] Sampled => fixture.Sampled;
         public static Fixture Create() => new(DeferredBlockColumnFetchTests.Fixture.Create(identity: TestItem.PrivateKeyA.KeyBytes));
         public void AdvanceSlots(ulong slots) => fixture.AdvanceSlots(slots);
+
+        public void PoolBatchExcept(Hash256 secondRoot, ulong secondSlot, DataColumnSidecar[] secondColumns, params ulong[] missingIndices)
+        {
+            foreach (ulong column in Sampled)
+            {
+                SidecarPool.Add(Chain.BlockRoot, Chain.Block.Message!.Slot, Chain.Columns[(int)column]);
+                if (!missingIndices.Contains(column))
+                {
+                    SidecarPool.Add(secondRoot, secondSlot, secondColumns[(int)column]);
+                }
+            }
+        }
 
         public StubPeer Peer(string id, ulong[]? custodied = null, PeerColumnCustody? custody = null)
         {
