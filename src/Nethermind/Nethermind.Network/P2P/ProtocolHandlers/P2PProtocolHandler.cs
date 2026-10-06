@@ -199,7 +199,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceStartingProtocolHandler(Capability capability)
-            => Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
+            => Logger.Trace($"{Session:hide} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceDisconnect(int reason, EthDisconnectReason disconnectReason)
@@ -209,15 +209,15 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TracePing()
-            => Logger.Trace($"{Session} Received PING on {Session.RemotePort}");
+            => Logger.Trace($"{Session:hide} Received PING on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TracePong()
-            => Logger.Trace($"{Session} Received PONG on {Session.RemotePort}");
+            => Logger.Trace($"{Session:hide} Received PONG on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceDuplicateCapability(Capability capability)
-            => Logger.Trace($"{Session.RemoteNodeId} duplicate capability {capability} ignored on {Session.RemotePort}");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} duplicate capability {capability} ignored on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisconnectTooManyCapabilities()
@@ -225,11 +225,11 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceUnsupportedCapability(Capability capability)
-            => Logger.Trace($"{Session.RemoteNodeId} advertised unsupported capability {capability} on {Session.RemotePort}");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} advertised unsupported capability {capability} on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceStartingHandler(Capability capability)
-            => Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} Starting handler for {capability} on {Session.RemotePort:hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisconnectUnhandledPacket(int packetType) => DisconnectBreachOfProtocol($"Unknown P2P message type {packetType}");
@@ -237,7 +237,7 @@ public class P2PProtocolHandler(
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisconnectBreachOfProtocol(string details)
         {
-            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId} {details}");
+            if (Logger.IsDebug) Logger.Debug($"{Session.RemoteNodeId:hide} {details:hide}");
             Session.InitiateDisconnect(DisconnectReason.BreachOfProtocol, details);
         }
     }
@@ -278,7 +278,7 @@ public class P2PProtocolHandler(
 
         if (hello.NodeId == _localNodeId || Session.RemoteNodeId == _localNodeId)
         {
-            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session}: remote identity is this node's own identity");
+            if (Logger.IsDebug) Logger.Debug($"Disconnecting {Session:hide}: remote identity is this node's own identity");
             Session.InitiateDisconnect(DisconnectReason.IdentitySameAsSelf, "connection to self");
             return;
         }
@@ -345,11 +345,11 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedHello()
-            => Logger.Trace($"{Session} P2P received hello.");
+            => Logger.Trace($"{Session:hide} P2P received hello.");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DebugInconsistentNodeId(HelloMessage hello, bool isInbound)
-            => Logger.Debug($"Inconsistent Node ID details - expected {Session.RemoteNodeId}, " +
+            => Logger.Debug($"Inconsistent Node ID details - expected {Session.RemoteNodeId:hide}, " +
                             $"received hello with {hello.NodeId} " +
                             $"on {(isInbound ? "IN connection" : "OUT connection")}");
 
@@ -361,11 +361,11 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceAgreedCapability(Capability capability)
-            => Logger.Trace($"{Session.RemoteNodeId} Agreed on {capability.ProtocolCode} v{capability.Version}");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} Agreed on {capability.ProtocolCode} v{capability.Version}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCapabilityNotSupported(Capability capability)
-            => Logger.Trace($"{Session.RemoteNodeId} Capability not supported {capability.ProtocolCode} v{capability.Version}");
+            => Logger.Trace($"{Session.RemoteNodeId:hide} Capability not supported {capability.ProtocolCode} v{capability.Version}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void DisconnectNoCapabilityMatched(IOwnedReadOnlyList<Capability> capabilities)
@@ -418,11 +418,11 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void WarnDuplicatePing()
-            => Logger.Warn($"Another ping request in process: {Session.Node:c}");
+            => Logger.Warn($"Another ping request in process: {Session.Node.ToString("c"):hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceSendingPing()
-            => Logger.Trace($"{Session} P2P sending ping on {Session.RemotePort} ({RemoteClientId})");
+            => Logger.Trace($"{Session:hide} P2P sending ping on {Session.RemotePort:hide} ({RemoteClientId:hide})");
     }
 
     public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -436,7 +436,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceSendingDisconnect(DisconnectReason reason, string details)
-            => Logger.Trace($"Sending disconnect {reason} ({details}) to {Session.Node:s}");
+            => Logger.Trace($"Sending disconnect {reason} ({details:hide}) to {Session.Node.ToString("s"):hide}");
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void ReportDisconnect(DisconnectReason reason, string details)
@@ -461,7 +461,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceSendingHello()
-            => Logger.Trace($"{Session} {Name} sending hello with Client ID {ProductInfo.PublicClientId}, protocol {Name}, listen port {ListenPort}");
+            => Logger.Trace($"{Session:hide} {Name} sending hello with Client ID {ProductInfo.PublicClientId}, protocol {Name}, listen port {ListenPort}");
     }
 
     private void HandlePing()
@@ -471,7 +471,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceRespondingToPing()
-            => Logger.Trace($"{Session} P2P responding to ping");
+            => Logger.Trace($"{Session:hide} P2P responding to ping");
     }
 
     private void Close(EthDisconnectReason ethDisconnectReason)
@@ -484,7 +484,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceReceivedDisconnect(EthDisconnectReason reason)
-            => Logger.Trace($"{Session} P2P received disconnect [{reason}]");
+            => Logger.Trace($"{Session:hide} P2P received disconnect [{reason}]");
     }
 
     public override string Name => Protocol.P2P;
@@ -501,7 +501,7 @@ public class P2PProtocolHandler(
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceHandlingPong()
-            => Logger.Trace($"{Session} sending P2P pong");
+            => Logger.Trace($"{Session:hide} sending P2P pong");
     }
 
     public override void Dispose() => ClearProtocolEvents();

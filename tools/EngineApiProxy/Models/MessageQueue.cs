@@ -3,6 +3,7 @@
 
 using System.Collections.Concurrent;
 using System.Threading.Channels;
+using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging;
 
 namespace Nethermind.EngineApiProxy.Models;
@@ -118,7 +119,7 @@ public class MessageQueue(ILogManager logManager)
                 {
                     message.Request.OriginalHeaders.TryGetValue("Host", out host);
                 }
-                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {host}");
+                _logger.Debug($"Dequeued message: {message.Request.Method} with id {message.Request.Id} from {LogEndpoint.Address(host)}");
                 return message;
             }
         }

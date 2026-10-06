@@ -239,7 +239,7 @@ public class OptimismCLP2P : IDisposable
                 {
                     break;
                 }
-                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer.RemoteAddress}");
+                if (_logger.IsWarn) _logger.Warn($"Unable to get Payload from peer {peer.RemoteAddress:hide}");
             }
 
             if (response is null)

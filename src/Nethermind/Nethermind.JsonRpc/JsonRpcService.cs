@@ -46,7 +46,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         (int? errorCode, string? errorMessage, string methodName, ResolvedMethodInfo? method, bool operatorActionable) = Validate(rpcRequest, context);
         if (errorCode.HasValue)
         {
-            if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {rpcRequest}");
+            if (_logger.IsDebug) _logger.Debug($"Validation error when handling request: {DescribeRequestForLog(rpcRequest)}");
             JsonRpcErrorResponse errorResponse = GetErrorResponse(methodName, errorCode.Value, errorMessage, null, in rpcRequest.IdRef);
             if (operatorActionable && errorResponse.Error is not null)
             {
@@ -98,16 +98,12 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => (ErrorCodes.InternalError, "Internal error", false),
         };
 
-        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(rpcRequest, ex)}", ex);
+        if (!suppressWarning && _logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(rpcRequest)}, exception: {ex.GetType().Name}");
         return GetErrorResponse(rpcRequest.Method, errorCode, errorText, suppressWarning ? null : GetExceptionText(ex), in rpcRequest.IdRef, suppressWarning: suppressWarning);
     }
 
-    // Formatting the request parses and stringifies its params, which for engine_newPayload is a
-    // multi-megabyte payload. When the heap is already exhausted that would just throw again.
-    private static string DescribeForErrorLog(JsonRpcRequest request, Exception ex) =>
-        ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
-            ? $"Id:{request.Id}, {request.Method}(params omitted)"
-            : request.ToString();
+    private static string DescribeRequestForLog(JsonRpcRequest? request) =>
+        request is null ? "null" : $"Id:{request.Id}, {request.Method}(params omitted)";
 
     private async ValueTask<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
@@ -239,7 +235,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool useUtf8Parameters = CanDeserializeParametersFromUtf8(request, expectedParameters);
         JsonElement providedParameters = useUtf8Parameters ? default : request.Params;
 
-        LogRequest(methodName, expectedParameters, useUtf8Parameters, providedParametersUtf8, providedParameters);
+        LogRequest(methodName, useUtf8Parameters, providedParametersUtf8, providedParameters);
 
         return expectedParameters.Length == 0
             ? PrepareNoParameters(
@@ -321,17 +317,15 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // not demote it either - -32602 alone would otherwise read as the caller's fault at both sites.
             if (IsNodeFault(e))
             {
-                // Formatting the params would allocate on an already exhausted heap, so they are omitted and the
-                // exception is passed to the logger rather than interpolated (same reason as DescribeForErrorLog).
-                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}", e);
+                if (_logger.IsError) _logger.Error($"Failed to bind JSON RPC parameters for {methodName}: {e.GetType().Name}");
                 JsonRpcErrorResponse nodeFault = GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", null, in request.IdRef);
                 if (nodeFault.Error is not null) nodeFault.Error.OperatorActionable = true;
                 return nodeFault;
             }
 
-            // Caller-supplied params that fail to bind are answered with -32602; the echo of the params and the
-            // exception (with its stack trace) is Debug-only detail, not an operator warning (#13156).
-            if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName} with params [{GetParamsForLog(request)}] {e}");
+            // Caller-supplied params that fail to bind are answered with -32602. Their values and exception
+            // messages can contain credentials, so the Debug line retains only the method and failure type.
+            if (_logger.IsDebug) _logger.Debug($"Incorrect JSON RPC parameters when calling {methodName}: {e.GetType().Name}");
             string message = GetSafePublicMessage(e) ?? "Invalid params";
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, message, null, in request.IdRef);
         }
@@ -465,7 +459,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private void LogRequest(
         string methodName,
-        ExpectedParameter[] expectedParameters,
         bool useUtf8Parameters,
         ReadOnlyMemory<byte> providedParametersUtf8,
         JsonElement providedParameters)
@@ -477,11 +470,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (useUtf8Parameters)
         {
-            LogRequest(methodName, providedParametersUtf8, expectedParameters);
+            LogRequest(methodName, providedParametersUtf8);
         }
         else
         {
-            LogRequest(methodName, providedParameters, expectedParameters);
+            LogRequest(methodName, providedParameters);
         }
     }
 
@@ -603,14 +596,14 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // "invalid params" (or a generic internal error) for history the node does not hold reads as a
             // retry-forever signal to indexers. EIP-4444 defines the accurate code.
             ResourceNotFoundException or TargetInvocationException { InnerException: ResourceNotFoundException } =>
-                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
+                LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.PrunedHistoryUnavailable,
                     ErrorMessages.PrunedHistoryUnavailable, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             TargetParameterCountException or ArgumentException =>
-                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
+                LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction)),
 
             JsonException or TargetInvocationException and { InnerException: JsonException } when !isStreaming =>
-                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
+                LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", GetExceptionText(ex), in request.IdRef, returnAction)),
 
             OperationCanceledException or { InnerException: OperationCanceledException } =>
                 GetErrorResponse(methodName, ErrorCodes.Timeout,
@@ -627,7 +620,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                 GetErrorResponse(methodName, ErrorCodes.LimitExceeded, "Too many requests", null, in request.IdRef, returnAction, suppressWarning: true),
 
             InsufficientBalanceException or { InnerException: InsufficientBalanceException } =>
-                KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
+                LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.InvalidInput, GetInsufficientBalanceMessage(ex), GetExceptionText(ex), in request.IdRef, returnAction)),
 
             RejectedCallException or { InnerException: RejectedCallException } when (ex as RejectedCallException ?? ex.InnerException as RejectedCallException) is { Reason: var rejection } =>
                 GetErrorResponse(methodName, TransactionErrorCodes.Get(rejection.Error) ?? ErrorCodes.Default, rejection.ErrorDescription, null, in request.IdRef, returnAction),
@@ -661,19 +654,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             _ => HandleException(ex, methodName, request, returnAction)
         };
 
-        // GetExceptionText drops the stack trace from error.data on purpose, so the arms that answer with it and log
-        // nothing else of their own would leave the trace recoverable nowhere - a diagnosis regression, not part of
-        // the leak fix. Debug, because those arms are the caller's fault (#13156). HandleException logs at Error for
-        // itself and is deliberately not routed through here: a second line would be duplicate, not detail.
-        JsonRpcErrorResponse KeepTrace(Exception ex, JsonRpcErrorResponse response)
+        // Exception messages can include caller-supplied parameter values. Keep the failure type in the log;
+        // HandleException already logs at Error, so it does not need a second line here.
+        JsonRpcErrorResponse LogFailureType(Exception ex, JsonRpcErrorResponse response)
         {
-            _logger.DebugError($"Exception during {methodName} execution", ex);
+            if (_logger.IsDebug) _logger.Debug($"Exception during {methodName} execution: {ex.GetType().Name}");
             return response;
         }
 
         JsonRpcErrorResponse HandleException(Exception ex, string methodName, JsonRpcRequest request, Action? returnAction)
         {
-            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeForErrorLog(request, ex)}", ex);
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {DescribeRequestForLog(request)}, exception: {ex.GetType().Name}");
             return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", GetExceptionText(ex), in request.IdRef, returnAction);
         }
 
@@ -685,20 +676,19 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             // HasStateForBlock only checks the state root; subtree nodes can still be pruned out
             // after a successful guard. Surface as -32000 (Geth wire parity) and warn so operators
             // can investigate whether it's a legitimate pruning gap or a deeper issue.
-            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.Message}");
-            // The Warn above carries the message but not the exception, so the trace still needs KeepTrace.
-            return KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
+            if (_logger.IsWarn) _logger.Warn($"Missing trie node during {methodName}: {ex.GetType().Name}");
+            return LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.ResourceNotFound, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
         }
 
         JsonRpcErrorResponse HandleStateNotRetained(StateNotRetainedException ex, string methodName, JsonRpcRequest request, Action? returnAction) =>
-            KeepTrace(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
+            LogFailureType(ex, GetErrorResponse(methodName, ErrorCodes.ResourceUnavailable, ex.Message, GetExceptionText(ex), in request.IdRef, returnAction));
     }
 
     /// <summary>Renders an exception chain for <c>error.data</c> without exposing its stack trace.</summary>
     /// <remarks>
     /// <c>error.data</c> is returned to unauthenticated callers, and <see cref="Exception.ToString"/> embeds the
     /// stack trace, which these builds render with the build machine's absolute source paths and with the internal
-    /// call graph. Only the chain's types and messages are reported here; the full trace is written to the node log.
+    /// call graph. Only the chain's types and messages are reported to the caller.
     /// </remarks>
     private static string GetExceptionText(Exception ex)
     {
@@ -713,7 +703,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         return text.ToString();
     }
 
-    private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
+    private void LogRequest(string methodName, JsonElement providedParameters)
     {
         if (_methodsLoggingFiltering.Contains(methodName))
         {
@@ -726,12 +716,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         if (providedParameters.ValueKind == JsonValueKind.Array)
         {
-            foreach (JsonElement param in providedParameters.EnumerateArray())
+            foreach (JsonElement _ in providedParameters.EnumerateArray())
             {
-                string? parameter = IsPassphraseParameter(paramsCount, expectedParameters)
-                    ? "{passphrase}"
-                    : param.GetRawText();
-                if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
+                if (!AppendLogParameter(builder, "{redacted}", ref paramsLength, paramsCount)) break;
                 paramsCount++;
             }
         }
@@ -739,7 +726,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         _logger.Trace(builder.Append(']').ToString());
     }
 
-    private void LogRequest(string methodName, ReadOnlyMemory<byte> providedParameters, ExpectedParameter[] expectedParameters)
+    private void LogRequest(string methodName, ReadOnlyMemory<byte> providedParameters)
     {
         if (_methodsLoggingFiltering.Contains(methodName))
         {
@@ -752,12 +739,9 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonReaderState readerState = default;
         int offset = 0;
         bool started = false;
-        while (JsonRpcArrayReader.TryReadNextItem(providedParameters, ref offset, ref readerState, ref started, out ReadOnlyMemory<byte> param))
+        while (JsonRpcArrayReader.TryReadNextItemRange(providedParameters, ref offset, ref readerState, ref started, out _, out _))
         {
-            string parameter = IsPassphraseParameter(paramsCount, expectedParameters)
-                ? "{passphrase}"
-                : Encoding.UTF8.GetString(param.Span);
-            if (!AppendLogParameter(builder, parameter, ref paramsLength, paramsCount)) break;
+            if (!AppendLogParameter(builder, "{redacted}", ref paramsLength, paramsCount)) break;
             paramsCount++;
         }
 
@@ -784,21 +768,6 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         builder.Append(parameter);
         paramsLength += parameter?.Length ?? 0;
         return true;
-    }
-
-    private static bool IsPassphraseParameter(int paramsCount, ExpectedParameter[] expectedParameters) =>
-        (uint)paramsCount < (uint)expectedParameters.Length && expectedParameters[paramsCount].Info?.Name == "passphrase";
-
-    private static string GetParamsForLog(JsonRpcRequest request)
-    {
-        if (request.Params.ValueKind != JsonValueKind.Undefined)
-        {
-            return string.Join(", ", request.Params);
-        }
-
-        return request.ParamsUtf8.IsEmpty
-            ? string.Empty
-            : Encoding.UTF8.GetString(request.ParamsUtf8.Span);
     }
 
     private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter, ReadOnlyMemory<byte> providedParameterUtf8)
@@ -1071,7 +1040,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Action? disposableAction = null,
         bool suppressWarning = false)
     {
-        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}, message: {errorMessage}, errorData: {errorData}");
+        if (_logger.IsDebug) _logger.Debug($"Sending error response, method: {(string.IsNullOrEmpty(methodName) ? "none" : methodName)}, id: {id}, errorType: {errorCode}");
         // Counted here, at the funnel every error response passes through: concurrency-cap
         // rejections reach this point along two distinct paths (module rental before invocation,
         // and the override-environment cap during invocation), and their warnings are suppressed

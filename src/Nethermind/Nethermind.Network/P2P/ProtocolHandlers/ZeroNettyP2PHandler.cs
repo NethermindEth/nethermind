@@ -181,7 +181,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
         }
         else
         {
-            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session)}: {exception}");
+            if (_logger.IsDebug) _logger.Debug($"Error in communication with {GetClientId(_session):hide}: {exception:hide}");
         }
 
         if (exception is IInternalNethermindException)
@@ -203,7 +203,7 @@ public class ZeroNettyP2PHandler(ISession session, ILogManager logManager) : Sim
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceCommunicationError(Exception communicationException) =>
-            _logger.Trace($"Error in communication with {GetClientId(_session)} ({communicationException.GetType().Name}): {communicationException}");
+            _logger.Trace($"Error in communication with {GetClientId(_session):hide} ({communicationException.GetType().Name}): {communicationException:hide}");
     }
 
     private static string GetClientId(ISession? session) =>

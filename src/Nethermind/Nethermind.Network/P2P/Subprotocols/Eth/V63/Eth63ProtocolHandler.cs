@@ -87,7 +87,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             long startTime = Stopwatch.GetTimestamp();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return response;
         }

@@ -172,11 +172,11 @@ public class StartRpc(INethermindApi api, IJsonRpcServiceConfigurer[] serviceCon
             {
                 File.Move(oldPath, newPath);
 
-                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath} to {newPath}");
+                if (logger.IsWarn) logger.Warn($"Moved JWT secret from {oldPath:hide} to {newPath:hide}");
             }
             catch (Exception ex)
             {
-                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath}.", ex);
+                if (logger.IsError) logger.Error($"Failed moving JWT secret to {newPath:hide}.", SensitiveLogMasking.Enabled ? null : ex);
 
                 jsonRpcConfig.JwtSecretFile = oldPath;
             }

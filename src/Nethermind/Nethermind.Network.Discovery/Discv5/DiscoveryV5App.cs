@@ -141,7 +141,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         {
             if (record.EnrSequence < node.HighestObservedEnrSequence)
             {
-                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node:s}.");
+                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node.ToString("s"):hide}.");
                 return;
             }
 
@@ -152,7 +152,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
             if (!enrNode.IdHash.Equals(node.IdHash))
             {
-                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node:s} with mismatched ENR identity.");
+                if (Logger.IsTrace) Logger.Trace($"Skipping discv5 discovery node {node.ToString("s"):hide} with mismatched ENR identity.");
                 return;
             }
 
@@ -161,7 +161,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
         catch (Exception e)
         {
-            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node}: {e}");
+            if (Logger.IsTrace) Logger.Trace($"Unable to parse discv5 discovery ENR for {node:hide}: {e:hide}");
         }
     }
 
@@ -191,7 +191,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     {
         if (!DiscoveryAddressSupport.Supports(LocalIp, node.DiscoveryAddress.Address))
         {
-            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node:s}.");
+            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node.ToString("s"):hide}.");
             return BootNodeAddResult.Skipped;
         }
 
@@ -202,13 +202,13 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     {
         if (!seen.Add(node.IdHash))
         {
-            if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node:s}.");
+            if (Logger.IsTrace) Logger.Trace($"Skipping duplicate discv5 bootnode {node.ToString("s"):hide}.");
             return BootNodeAddResult.Duplicate;
         }
 
         node.IsBootnode = true;
         bootNodes.Add(node);
-        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node:s}, has ENR: {node.Enr is not null}.");
+        if (Logger.IsDebug) Logger.Debug($"Accepted discv5 bootnode {node.ToString("s"):hide}, has ENR: {node.Enr is not null}.");
         return BootNodeAddResult.Added;
     }
 

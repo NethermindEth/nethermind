@@ -85,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         public override void Init()
         {
-            if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"{Name} subprotocol initializing with {Node.ToString("c"):hide}");
 
             if (SyncServer.Head is null)
             {
@@ -364,7 +364,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
-            void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+            void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node.ToString("c"):hide} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
         }
 
         protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);
@@ -388,7 +388,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
             catch (Exception e)
             {
-                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node:c} failed: " + e.Message);
+                if (Logger.IsDebug) Logger.Debug($"Handling {msg} from {Node.ToString("c"):hide} failed: {e.Message:hide}");
                 throw;
             }
 
@@ -443,7 +443,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new InvalidOperationException($"Trying to send a block {block.Hash} with null total difficulty");
             }
 
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NewBlock to {Node.ToString("c"):hide}");
 
             NewBlockMessage msg = new() { Block = block, TotalDifficulty = block.TotalDifficulty.Value };
 
@@ -452,7 +452,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         private void HintNewBlock(Hash256 blockHash, ulong number)
         {
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node:c}");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} HintBlock to {Node.ToString("c"):hide}");
 
             NewBlockHashesMessage msg = new((blockHash, number));
             Send(msg);

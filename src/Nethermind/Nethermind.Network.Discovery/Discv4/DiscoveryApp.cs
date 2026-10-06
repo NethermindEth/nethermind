@@ -68,7 +68,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
     {
         if (!TryCreateReachableNode(node, LocalIp, out Node? reachableNode))
         {
-            if (Logger.IsTrace) Logger.Trace($"Skipping discv4 node with no discovery endpoint reachable from the local listener: {node:s}.");
+            if (Logger.IsTrace) Logger.Trace($"Skipping discv4 node with no discovery endpoint reachable from the local listener: {node.ToString("s"):hide}.");
             return;
         }
 
@@ -158,7 +158,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                     preferredEndpoint: null,
                     out node))
                 {
-                    if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode}");
+                    if (logger.IsDebug) logger.Debug($"ENR bootnode ignored in discv4 because it has no usable discovery endpoint reachable from the local listener: {bootnode:hide}");
                     continue;
                 }
 
@@ -169,7 +169,7 @@ public class DiscoveryApp : KademliaDiscoveryApp
                 node = new Node(bootnode.NodeId, bootnode.Host, bootnode.Port, bootnode.DiscoveryPort);
                 if (!DiscoveryAddressSupport.Supports(localIp, node.DiscoveryAddress.Address))
                 {
-                    if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node:s}.");
+                    if (logger.IsTrace) logger.Trace($"Skipping unreachable discv4 bootnode address family {node.ToString("s"):hide}.");
                     continue;
                 }
             }

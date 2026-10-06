@@ -3,6 +3,7 @@
 
 using System.CommandLine;
 using Nethermind.EngineApiProxy.Config;
+using Nethermind.EngineApiProxy.Utilities;
 using Nethermind.Logging.NLog;
 using NLog;
 using NLog.Config;
@@ -40,6 +41,12 @@ public class Program
         Option<string?> logFileOption = new("--log-file")
         {
             Description = "Path to log file (if not specified, only console logging is used)"
+        };
+
+        Option<bool> maskSensitiveDataOption = new("--mask-sensitive-data")
+        {
+            Description = "Hide endpoint addresses and local paths in logs",
+            DefaultValueFactory = _ => false
         };
 
         Option<bool> validateAllBlocksOption = new("--validate-all-blocks")
@@ -86,6 +93,7 @@ public class Program
             portOption,
             logLevelOption,
             logFileOption,
+            maskSensitiveDataOption,
             validateAllBlocksOption,
             feeRecipientOption,
             validationModeOption,
@@ -103,6 +111,8 @@ public class Program
                 int port = parseResult.GetValue(portOption);
                 string logLevel = parseResult.GetValue(logLevelOption) ?? "Info";
                 string? logFile = parseResult.GetValue(logFileOption);
+                bool maskSensitiveData = parseResult.GetValue(maskSensitiveDataOption);
+                Logging.SensitiveLogMasking.Enabled = maskSensitiveData;
                 bool validateAllBlocks = parseResult.GetValue(validateAllBlocksOption);
                 string feeRecipient = parseResult.GetValue(feeRecipientOption) ?? "0x8943545177806ed17b9f23f0a21ee5948ecaa776";
                 ValidationMode validationMode = parseResult.GetValue(validationModeOption);
@@ -138,7 +148,7 @@ public class Program
                     }
 
                     ConfigureFileLogging(logDirectory, logFileName, logLevel);
-                    logger.Info($"File logging enabled. Logs will be written to {Path.Combine(logDirectory, logFileName)}");
+                    logger.Info($"File logging enabled. Logs will be written to {LogEndpoint.Address(Path.Combine(logDirectory, logFileName))}");
                 }
 
                 // Check required parameters
@@ -193,7 +203,7 @@ public class Program
             }
             catch (Exception ex)
             {
-                Console.Error.WriteLine($"Error: {ex.Message}");
+                Console.Error.WriteLine($"Error: {(Logging.SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
                 return 1;
             }
         });

@@ -190,7 +190,7 @@ public class TdxService : ITdxService
             throw new PlatformNotSupportedException("TDX attestation is only supported on Linux");
         }
 
-        _logger.Debug($"Saved TDX key to {keyPath}");
+        _logger.Debug($"Saved TDX key to {keyPath:hide}");
     }
 
     private string GetConfigDir()

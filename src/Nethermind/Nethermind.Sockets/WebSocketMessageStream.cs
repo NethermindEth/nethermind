@@ -112,7 +112,7 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
             {
                 if (socketException.SocketErrorCode == SocketError.ConnectionReset)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message:hide}.");
                 }
                 else
                 {
@@ -123,7 +123,7 @@ public sealed class WebSocketMessageStream(WebSocket socket, ILogManager logMana
             {
                 if (webSocketException.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely)
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message}.");
+                    if (_logger.IsTrace) _logger.Trace($"Client disconnected: {innerException.Message:hide}.");
                 }
                 else
                 {

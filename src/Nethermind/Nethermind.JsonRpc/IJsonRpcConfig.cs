@@ -12,7 +12,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "false")]
     bool Enabled { get; set; }
 
-    [ConfigItem(Description = "The JSON-RPC service host.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The JSON-RPC service host.", DefaultValue = "127.0.0.1", IsSensitiveWhenMasked = true)]
     string Host { get; set; }
 
     [ConfigItem(Description = "The request timeout, in milliseconds.", DefaultValue = "20000")]
@@ -47,7 +47,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "The path to the base file for diagnostic recording.",
-        DefaultValue = "logs/rpc.{counter}.txt")]
+        DefaultValue = "logs/rpc.{counter}.txt", IsSensitiveWhenMasked = true)]
     string RpcRecorderBaseFilePath { get; set; }
 
     [ConfigItem(Description = "The diagnostic recording mode.", DefaultValue = "None")]
@@ -59,7 +59,7 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC service WebSockets port.", DefaultValue = "8545", IsPortOption = true)]
     int WebSocketsPort { get; set; }
 
-    [ConfigItem(Description = "The path to connect a UNIX domain socket over.")]
+    [ConfigItem(Description = "The path to connect a UNIX domain socket over.", IsSensitiveWhenMasked = true)]
     string IpcUnixDomainSocketPath { get; set; }
 
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
@@ -95,7 +95,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "An array of additional JSON-RPC URLs to listen at with protocol and JSON-RPC namespace list. For instance, `[http://localhost:8546|http;ws|eth;web3]`.",
-        DefaultValue = "[]")]
+        DefaultValue = "[]", IsSensitive = true)]
     string[] AdditionalRpcUrls { get; set; }
 
     [ConfigItem(Description = "The maximum gas limit for `eth_call` and `eth_estimateGas`.", DefaultValue = "100000000")]
@@ -113,7 +113,7 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(
         Description = "The path to a file with the list of new-line-separated JSON-RPC calls. If specified, only the calls from that file are allowed.",
-        DefaultValue = "Data/jsonrpc.filter")]
+        DefaultValue = "Data/jsonrpc.filter", IsSensitiveWhenMasked = true)]
     string CallsFilterFilePath { get; set; }
 
     [ConfigItem(Description = "The max length of HTTP request body, in bytes.", DefaultValue = "30000000")]
@@ -171,7 +171,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null")]
+    [ConfigItem(Description = "The path to the JWT secret file required for the Engine API authentication.", DefaultValue = "null", IsSensitiveWhenMasked = true)]
     public string JwtSecretFile { get; set; }
 
     [ConfigItem(Description = "Whether to disable authentication of the Engine API. Should not be used in production environments.", DefaultValue = "false", HiddenFromDocs = true)]
@@ -187,7 +187,7 @@ public interface IJsonRpcConfig : IConfig
         DefaultValue = "[engine_newPayloadV1,engine_newPayloadV2,engine_newPayloadV3,engine_forkchoiceUpdatedV1,engine_forkchoiceUpdatedV2,flashbots_validateBuilderSubmissionV3,eth_signTransaction]")]
     public string[]? MethodsLoggingFiltering { get; set; }
 
-    [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1")]
+    [ConfigItem(Description = "The Engine API host.", DefaultValue = "127.0.0.1", IsSensitiveWhenMasked = true)]
     string EngineHost { get; set; }
 
     [ConfigItem(Description = "The Engine API port.", DefaultValue = "null", IsPortOption = true)]

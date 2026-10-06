@@ -89,7 +89,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public void Disconnect(DisconnectReason reason, string details)
         {
-            if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node:c} because of the {details}");
+            if (Logger.IsTrace) Logger.Trace($"Disconnecting {Node.ToString("c"):hide} because of the {details:hide}");
             Session.InitiateDisconnect(reason, details);
         }
 
@@ -143,7 +143,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"Sending headers request to {Session.Node.ToString("c"):hide}:");
                 Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
                 Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");
@@ -293,7 +293,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             long startTime = Stopwatch.GetTimestamp();
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Received headers request from {Session.Node:c}:");
+                Logger.Trace($"Received headers request from {Session.Node.ToString("c"):hide}:");
                 Logger.Trace($"  MaxHeaders: {message.MaxHeaders}");
                 Logger.Trace($"  Reverse: {message.Reverse}");
                 Logger.Trace($"  Skip: {message.Skip}");
@@ -316,7 +316,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             // }
 
             BlockHeadersMessage resp = await FulfillBlockHeadersRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockHeaders to {Node.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }
@@ -344,13 +344,13 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
         {
             using GetBlockBodiesMessage message = request;
-            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
+            if (Logger.IsTrace) Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node.ToString("c"):hide}:");
 
             long startTime = Stopwatch.GetTimestamp();
 
             Interlocked.Increment(ref Counter);
             BlockBodiesMessage resp = await FulfillBlockBodiesRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} BlockBodies to {Node.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             return resp;
         }
 
@@ -403,7 +403,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             using GetReceiptsMessage message = msg;
             long startTime = Stopwatch.GetTimestamp();
             ReceiptsMessage resp = await FulfillReceiptsRequest(message, cancellationToken);
-            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} Receipts to {Node.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
 
             return resp;
         }
@@ -434,7 +434,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 if (sizeEstimate + blockSize > HardOutgoingReceiptsMessageSizeLimit)
                 {
                     // An empty prefix means the block alone does not fit, so this peer can never get it from us.
-                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node:c}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
+                    if (txReceipts.Count == 0 && Logger.IsDebug) Logger.Debug($"Cannot serve receipts of {blockHash} to {Node.ToString("c"):hide}: estimated {blockSize} bytes exceeds the {HardOutgoingReceiptsMessageSizeLimit} bytes limit.");
                     break;
                 }
 

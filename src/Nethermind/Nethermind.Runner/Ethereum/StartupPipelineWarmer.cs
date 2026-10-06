@@ -100,7 +100,7 @@ internal static class StartupPipelineWarmer
             }
             catch (Exception exception)
             {
-                if (logger.IsWarn) logger.Warn($"Could not delete startup warmup directory '{directory.FullName}': {exception.Message}");
+                if (logger.IsWarn) logger.Warn($"Could not delete startup warmup directory '{directory.FullName:hide}': {(SensitiveLogMasking.Enabled ? exception.GetType().Name : exception.Message)}");
             }
         }
     }

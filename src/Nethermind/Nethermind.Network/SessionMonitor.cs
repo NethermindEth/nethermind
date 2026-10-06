@@ -153,7 +153,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceNoPongReceived(DateTime pingSentAt, ISession monitoredSession) =>
-                _logger.Trace($"No pong received in response to the {pingSentAt:T} ping at {monitoredSession.Node:c} | last pong time {monitoredSession.LastPongUtc:T}");
+                _logger.Trace($"No pong received in response to the {pingSentAt:T} ping at {monitoredSession.Node.ToString("c"):hide} | last pong time {monitoredSession.LastPongUtc:T}");
         }
 
         private void StartPingTimer()

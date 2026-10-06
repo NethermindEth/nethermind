@@ -170,7 +170,7 @@ public class Eth69ProtocolHandler(
             throw new ArgumentException($"Latest block ({latest.Number}) hash is not provided.");
 
         if (Logger.IsTrace)
-            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node:c}");
+            Logger.Trace($"OUT {Counter:D5} BlockRangeUpdate to {Node.ToString("c"):hide}");
 
         BlockRangeUpdateMessage msg = new()
         {

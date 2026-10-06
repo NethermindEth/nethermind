@@ -45,7 +45,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     public async Task<bool> RemoveAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         bool removed = TryRemoveNode(networkNode.NodeId);
-        if (_logger.IsInfo) _logger.Info(removed ? $"Static node was removed: {networkNode}" : $"Static node was not found: {networkNode}");
+        if (_logger.IsInfo) _logger.Info($"Static node {(removed ? "was removed" : "was not found")}: {networkNode:hide}");
 
         return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }

@@ -128,7 +128,7 @@ namespace Nethermind.Network
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceAddingCandidatePeer(Node n)
-                => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n:s}");
+                => _logger.Trace($"Adding a {(n.IsBootnode ? "bootnode" : "stored")} candidate peer {n.ToString("s"):hide}");
         }
 
         private void MergeNodeState(Node incoming, Node pooled)
@@ -164,7 +164,7 @@ namespace Nethermind.Network
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         private void DebugPromoted(Node node, string role)
-            => _logger.Debug($"Promoting already pooled peer {node:s} to {role}");
+            => _logger.Debug($"Promoting already pooled peer {node.ToString("s"):hide} to {role}");
 
         public Peer GetOrAdd(NetworkNode networkNode)
         {

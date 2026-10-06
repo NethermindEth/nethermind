@@ -398,7 +398,7 @@ namespace Nethermind.KeyStore
                 string[] files = FindKeyFiles(address);
                 if (files.Length == 0)
                 {
-                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory)}.");
+                    if (_logger.IsError) _logger.Error($"A {_keyStoreIOSettingsProvider.KeyName} for address: {address} does not exists in directory {Path.GetFullPath(_keyStoreIOSettingsProvider.StoreDirectory):hide}.");
                     return null;
                 }
 

@@ -197,7 +197,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (batch.Responses is null)
                     {
                         AddAgainAllItems();
-                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo} failed to satisfy request.");
+                        if (_logger.IsTrace) _logger.Trace($"Peer {peerInfo:hide} failed to satisfy request.");
                         Interlocked.Increment(ref _data.NotAssignedCount);
                         return SyncResponseHandlingResult.LesserQuality;
                     }

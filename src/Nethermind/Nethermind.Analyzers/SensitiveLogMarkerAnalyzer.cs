@@ -12,7 +12,7 @@ using Microsoft.CodeAnalysis.Operations;
 namespace Nethermind.Analyzers;
 
 /// <summary>
-/// Rejects sensitive log markers that are not handled by the informational log interpolation handler.
+/// Rejects sensitive log markers that are not handled by a log interpolation handler.
 /// </summary>
 [DiagnosticAnalyzer(LanguageNames.CSharp)]
 public sealed class SensitiveLogMarkerAnalyzer : DiagnosticAnalyzer
@@ -21,13 +21,22 @@ public sealed class SensitiveLogMarkerAnalyzer : DiagnosticAnalyzer
 
     private static readonly DiagnosticDescriptor Rule = new(
         DiagnosticId,
-        "Use the sensitive log marker directly with the Info handler",
-        "Log marker ':{0}' is not handled here; use ':hide' in a direct ILogger.Info interpolation",
+        "Use the sensitive log marker directly with a log handler",
+        "Log marker ':{0}' is not handled here; use ':hide' in a direct ILogger interpolation",
         category: "Security",
         defaultSeverity: DiagnosticSeverity.Error,
         isEnabledByDefault: true,
-        description: "Only an interpolation bound to InfoInterpolatedStringHandler can mask ':hide'. " +
-                     "String materialization, other log levels, case variants, and the retired ':sensitive' marker are rejected.");
+        description: "Only an interpolation bound to a Nethermind logging handler can mask ':hide'. " +
+                     "String materialization, case variants, and the retired ':sensitive' marker are rejected.");
+
+    private static readonly string[] HandlerTypeNames =
+    [
+        "InfoInterpolatedStringHandler",
+        "DebugInterpolatedStringHandler",
+        "TraceInterpolatedStringHandler",
+        "WarnInterpolatedStringHandler",
+        "ErrorInterpolatedStringHandler"
+    ];
 
     public override ImmutableArray<DiagnosticDescriptor> SupportedDiagnostics => [Rule];
 
@@ -50,12 +59,12 @@ public sealed class SensitiveLogMarkerAnalyzer : DiagnosticAnalyzer
             !string.Equals(marker, "sensitive", StringComparison.OrdinalIgnoreCase))
             return;
 
-        if (format == "hide" && IsHandledByInfo(context, interpolation)) return;
+        if (format == "hide" && IsHandledByLogger(context, interpolation)) return;
 
         context.ReportDiagnostic(Diagnostic.Create(Rule, clause.FormatStringToken.GetLocation(), format));
     }
 
-    private static bool IsHandledByInfo(SyntaxNodeAnalysisContext context, InterpolationSyntax interpolation)
+    private static bool IsHandledByLogger(SyntaxNodeAnalysisContext context, InterpolationSyntax interpolation)
     {
         if (interpolation.Parent is not InterpolatedStringExpressionSyntax expression) return false;
 
@@ -72,11 +81,16 @@ public sealed class SensitiveLogMarkerAnalyzer : DiagnosticAnalyzer
 
         if (value.Parent is not ArgumentSyntax argument) return false;
 
-        INamedTypeSymbol? handlerType = context.Compilation.GetTypeByMetadataName(
-            "Nethermind.Logging.InfoInterpolatedStringHandler");
-        if (handlerType is null) return false;
-
         IArgumentOperation? operation = context.SemanticModel.GetOperation(argument, context.CancellationToken) as IArgumentOperation;
-        return SymbolEqualityComparer.Default.Equals(operation?.Parameter?.Type, handlerType);
+        ITypeSymbol? argumentType = operation?.Parameter?.Type;
+        if (argumentType is null) return false;
+
+        foreach (string handlerTypeName in HandlerTypeNames)
+        {
+            INamedTypeSymbol? handlerType = context.Compilation.GetTypeByMetadataName($"Nethermind.Logging.{handlerTypeName}");
+            if (SymbolEqualityComparer.Default.Equals(argumentType, handlerType)) return true;
+        }
+
+        return false;
     }
 }

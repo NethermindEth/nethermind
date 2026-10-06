@@ -58,15 +58,17 @@ public class EthereumBeaconApi : IBeaconApi
             {
                 if (_logger.IsWarn)
                 {
-                    _logger.Warn($"Unsuccessful {uri} request. Status code: {response.StatusCode}");
+                    _logger.Warn($"Unsuccessful {uri:hide} request. Status code: {response.StatusCode}");
                 }
 
                 return default;
             }
 
             if (_logger.IsDebug)
-                _logger.Debug(
-                    $"GetData<{typeof(T)}>({uri}) result: {await response.Content.ReadAsStringAsync(cancellationToken)}");
+            {
+                string content = await response.Content.ReadAsStringAsync(cancellationToken);
+                _logger.Debug($"GetData<{typeof(T)}>({uri:hide}) result: {content}");
+            }
 
             T? decoded =
                 _jsonSerializer.Deserialize<T>(await response.Content.ReadAsStreamAsync(cancellationToken));
@@ -79,7 +81,7 @@ public class EthereumBeaconApi : IBeaconApi
         }
         catch (Exception e)
         {
-            if (_logger.IsWarn) _logger.Warn($"Beacon API request exception({uri}): {e.Message}");
+            if (_logger.IsWarn) _logger.Warn($"Beacon API request exception({uri:hide}): {e.Message:hide}");
         }
 
         return default;

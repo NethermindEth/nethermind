@@ -118,7 +118,7 @@ public class Eth68ProtocolHandler(ISession session,
 
         RequestPooledTransactions(message.Hashes, message.Sizes, message.Types);
 
-        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node:c} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
+        if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} {nameof(NewPooledTransactionHashesMessage68)} to {Node.ToString("c"):hide} in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds}ms");
     }
 
     protected void RequestPooledTransactions(

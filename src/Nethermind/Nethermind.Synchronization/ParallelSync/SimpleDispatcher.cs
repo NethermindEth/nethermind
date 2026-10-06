@@ -174,11 +174,11 @@ public class SimpleDispatcher<T>(
             }
             catch (ConcurrencyLimitReachedException)
             {
-                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer}");
+                if (_logger.IsDebug) _logger.Debug($"{request} - concurrency limit reached. Peer: {peer:hide}");
             }
             catch (TimeoutException)
             {
-                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer}");
+                if (_logger.IsDebug) _logger.Debug($"{request} - timed out. Peer: {peer:hide}");
             }
             catch (OperationCanceledException)
             {

@@ -178,7 +178,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             if (Logger.IsTrace)
             {
-                Logger.Trace($"Sending headers request to {Session.Node:c}:");
+                Logger.Trace($"Sending headers request to {Session.Node.ToString("c"):hide}:");
                 Logger.Trace($"  Starting blockhash: {message.StartBlockHash}");
                 Logger.Trace($"  Starting number: {message.StartBlockNumber}");
                 Logger.Trace($"  Skip: {message.Skip}");

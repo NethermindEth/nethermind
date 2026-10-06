@@ -42,7 +42,7 @@ namespace Nethermind.Runner.JsonRpc
 
             if (!string.IsNullOrEmpty(_path))
             {
-                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path}");
+                if (_logger.IsInfo) _logger.Info($"Starting the JSON-RPC over an IPC service: {_path:hide}");
 
                 Task.Factory.StartNew(_ => StartServer(_path, cancellationToken), cancellationToken, TaskCreationOptions.LongRunning);
             }
@@ -61,7 +61,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path}.", ex);
+                if (_logger.IsError) _logger.Error($"Failed to start IPC server at {path:hide}.", SensitiveLogMasking.Enabled ? null : ex);
                 return;
             }
 
@@ -92,7 +92,7 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     _fileSystem.File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite); // 600 (rw-------)
 
-                    if (_logger.IsTrace) _logger.Trace($"Restricted IPC socket permissions to 600 at {path}.");
+                    if (_logger.IsTrace) _logger.Trace($"Restricted IPC socket permissions to 600 at {path:hide}.");
                 }
                 else if (OperatingSystem.IsWindows())
                 {
@@ -105,7 +105,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path}: {ex}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to set restrictive permissions on IPC socket at {path:hide}: {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.ToString())}");
             }
         }
 
@@ -163,7 +163,7 @@ namespace Nethermind.Runner.JsonRpc
             }
             catch (Exception ex)
             {
-                if (_logger.IsWarn) _logger.Warn($"Cannot delete Unix socket file at {path}. {ex.Message}");
+                if (_logger.IsWarn) _logger.Warn($"Cannot delete Unix socket file at {path:hide}. {(SensitiveLogMasking.Enabled ? ex.GetType().Name : ex.Message)}");
             }
         }
 

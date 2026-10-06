@@ -148,7 +148,7 @@ public abstract class KademliaDiscoveryApp(
     {
         IIPResolver.NethermindIp ip = await _ipResolver.Resolve(cancellationToken);
 
-        if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
+        if (Logger.IsDebug) Logger.Debug($"Discovery    : udp://{ip.ExternalIp:hide}:{_networkConfig.DiscoveryPort}");
 
         ThisNodeInfo.AddInfo("Discovery    :", $"udp://{ip.ExternalIp}:{_networkConfig.DiscoveryPort}");
     }

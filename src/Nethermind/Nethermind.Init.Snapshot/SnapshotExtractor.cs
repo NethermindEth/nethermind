@@ -29,7 +29,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         Task.Factory.StartNew(() =>
         {
             if (_logger.IsInfo)
-                _logger.Info($"Extracting streamed snapshot to {destinationPath}. Do not interrupt!");
+                _logger.Info($"Extracting streamed snapshot to {destinationPath:hide}. Do not interrupt!");
 
             Stream decompressedStream = OpenDecompressedStream(archiveStream, extension, leaveOpen: true);
             try
@@ -48,7 +48,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
     private void Extract(string archivePath, string destinationPath, int stripComponents, CancellationToken cancellationToken)
     {
         if (_logger.IsInfo)
-            _logger.Info($"Extracting snapshot to {destinationPath}. Do not interrupt!");
+            _logger.Info($"Extracting snapshot to {destinationPath:hide}. Do not interrupt!");
 
         string extension = Path.GetExtension(archivePath).ToLowerInvariant();
         string innerExtension = Path.GetExtension(Path.GetFileNameWithoutExtension(archivePath)).ToLowerInvariant();
@@ -58,7 +58,7 @@ internal sealed class SnapshotExtractor(ILogManager logManager)
         else if (SnapshotArchiveFormat.IsTarBased(extension, innerExtension))
             ExtractTar(archivePath, destinationPath, extension, stripComponents, cancellationToken);
         else
-            throw new NotSupportedException($"Unsupported snapshot archive format: {archivePath}");
+            throw new NotSupportedException($"Unsupported snapshot archive format: {(SensitiveLogMasking.Enabled ? "[redacted]" : archivePath)}");
 
         EnsureNotEmpty(destinationPath);
     }

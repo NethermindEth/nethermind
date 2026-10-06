@@ -58,7 +58,7 @@ internal sealed class DiscoveryConnectionsPool(
             }
             catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
             {
-                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port}. Retrying on {fallbackAddress}:{port}. {e}");
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress:hide}:{port}. Retrying on {fallbackAddress:hide}:{port}. {e:hide}");
                 return await BindAsync(bootstrapFactory, channelFactory, fallbackAddress, port);
             }
         }

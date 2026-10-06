@@ -4,6 +4,7 @@
 using System.Buffers;
 using System.Net;
 using System.Net.Http.Headers;
+using Nethermind.Logging;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -85,9 +86,8 @@ internal sealed class SnapshotHttpClient : IDisposable
                             return response;
 
                         HttpStatusCode status = response.StatusCode;
-                        string? reason = response.ReasonPhrase;
                         response.Dispose();
-                        throw new HttpRequestException($"Snapshot request failed with status {(int)status} {reason}.", null, status);
+                        throw new HttpRequestException($"Snapshot request failed with status {(int)status}.", null, status);
                     }
             }
         }
@@ -102,7 +102,7 @@ internal sealed class SnapshotHttpClient : IDisposable
         Uri redirectUri = new(currentUri, location);
         if (currentUri.Scheme == Uri.UriSchemeHttps && redirectUri.Scheme != Uri.UriSchemeHttps)
             throw new IOException(
-                $"Snapshot redirect from {currentUri} to {redirectUri} would downgrade the transport from https; refusing to follow.");
+                $"Snapshot redirect from {SensitiveLogMasking.SafeUrl(currentUri)} to {SensitiveLogMasking.SafeUrl(redirectUri)} would downgrade the transport from https; refusing to follow.");
 
         return redirectUri;
     }

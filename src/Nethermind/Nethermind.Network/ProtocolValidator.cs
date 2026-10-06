@@ -114,10 +114,10 @@ namespace Nethermind.Network
 
         protected bool Disconnect(ISession session, DisconnectReason reason, CompatibilityValidationType type, string details, string traceDetails = "")
         {
-            if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId}, {details}{traceDetails}");
+            if (_logger.IsTrace) _logger.Trace($"Initiating disconnect with peer: {session.RemoteNodeId:hide}, {details:hide}{traceDetails:hide}");
             _nodeStatsManager.ReportFailedValidation(session.Node, type);
             session.InitiateDisconnect(reason, details);
-            if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host}:{session.Node.Port}, reason: {reason} ({details}).");
+            if (session.Node.IsStatic && _logger.IsWarn) _logger.Warn($"Disconnected an invalid static node: {session.Node.Host:hide}:{session.Node.Port:hide}, reason: {reason} ({details:hide}).");
             return false;
         }
 

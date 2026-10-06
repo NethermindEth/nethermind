@@ -124,6 +124,15 @@ public class SnapshotHttpStreamTests
         Assert.Throws<IOException>(() => SnapshotHttpClient.ResolveRedirect(new Uri(from), new Uri(to)),
             "following a redirect off https would expose the headers the integrity policy relies on");
 
+    [Test]
+    public void ResolveRedirect_Downgrade_DoesNotExposeUrlCredentials()
+    {
+        IOException? error = Assert.Throws<IOException>(() => SnapshotHttpClient.ResolveRedirect(
+            new Uri("https://user:secret@host/private?token=abc"), new Uri("http://other/private?token=xyz")));
+
+        Assert.That(error!.Message, Does.Not.Contain("secret").And.Not.Contain("token"));
+    }
+
     [TestCase("https://host/a", "https://other/b", TestName = "HttpsToHttps")]
     [TestCase("http://host/a", "http://other/b", TestName = "HttpToHttp")]
     [TestCase("https://host/a", "/b", TestName = "RelativeKeepsScheme")]

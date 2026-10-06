@@ -79,7 +79,7 @@ public class PowForwardHeaderProvider(
 
         syncReport.FullSyncBlocksDownloaded.TargetValue = peerInfo.HeadNumber;
 
-        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
+        if (_logger.IsTrace) _logger.Trace($"Allocated {peerInfo:hide} for PoW header info. currentNumber: {_currentNumber} skipLastN: {skipLastN}, maxHeaders: {maxHeaders}");
 
         // Provide a way so that it does not redownload if part of the. I guess it does not care about skiplastn and maxheaders.
         // TODO: Unit test this mechanism.
@@ -95,7 +95,7 @@ public class PowForwardHeaderProvider(
         if (headers is not null)
         {
             ReadOnlySpan<BlockHeader?> headersSpan = headers.AsSpan();
-            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
+            if (_logger.IsTrace) _logger.Trace($"Assembled batch from {peerInfo:hide} of {headersSpan.Length} header from {headersSpan[0].ToString(BlockHeader.Format.Short)} to {headersSpan[^1].ToString(BlockHeader.Format.Short)}");
         }
         else
         {
@@ -138,7 +138,7 @@ public class PowForwardHeaderProvider(
 
     private void OnNewBestPeer(PeerInfo newBestPeer)
     {
-        if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer}, new best peer: {newBestPeer}");
+        if (_logger.IsTrace) _logger.Trace($"On new best peer. Current best peer: {_currentBestPeer:hide}, new best peer: {newBestPeer:hide}");
         if (newBestPeer?.HeadHash != _currentBestPeer?.HeadHash)
         {
             LastResponseBatch = null;
@@ -159,7 +159,7 @@ public class PowForwardHeaderProvider(
             if (!ImprovementRequirementSatisfied(bestPeer)) return null;
             if (_currentNumber > bestPeer!.HeadNumber) return null;
 
-            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer} (our best {blockTree.BestKnownNumber})");
+            if (_logger.IsDebug) _logger.Debug($"Continue full sync with {bestPeer:hide} (our best {blockTree.BestKnownNumber})");
 
             ulong upperDownloadBoundary = bestPeer.HeadNumber.SaturatingSub(skipLastN);
             if (_currentNumber > upperDownloadBoundary)
@@ -174,7 +174,7 @@ public class PowForwardHeaderProvider(
             }
 
             headersToRequest = Math.Min(headersToRequest, (ulong)bestPeer.MaxHeadersPerRequest());
-            if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
+            if (_logger.IsTrace) _logger.Trace($"Full sync request {_currentNumber}+{headersToRequest} to peer {bestPeer:hide} with {bestPeer.HeadNumber} blocks. Got {_currentNumber} and asking for {headersToRequest} more.");
 
             cancellation.ThrowIfCancellationRequested();
             try
@@ -210,7 +210,7 @@ public class PowForwardHeaderProvider(
             }
             catch (EthSyncException e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer}, {e}");
+                if (_logger.IsDebug) _logger.Debug($"Failed to download forward header from {bestPeer:hide}, {e:hide}");
                 syncPeerPool.ReportBreachOfProtocol(bestPeer, DisconnectReason.ForwardSyncFailed, e.Message);
             }
 
@@ -228,7 +228,7 @@ public class PowForwardHeaderProvider(
             _ancestorLookupLevel++;
             if (_ancestorLookupLevel >= _ancestorJumps.Length)
             {
-                if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer}");
+                if (_logger.IsWarn) _logger.Warn($"Could not find common ancestor with {bestPeer:hide}");
                 throw new EthSyncException("Peer with inconsistent chain in sync");
             }
 
@@ -264,7 +264,7 @@ public class PowForwardHeaderProvider(
     {
         if (headers.Length > 0 && headers[0] is not null && headers[0].Number != startNumber)
         {
-            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer} does not start at the requested {startNumber}");
+            if (_logger.IsTrace) _logger.Trace($"Block list from peer {bestPeer:hide} does not start at the requested {startNumber}");
             throw new EthSyncException("Peer sent a block list that does not start at the requested number");
         }
 
@@ -280,7 +280,7 @@ public class PowForwardHeaderProvider(
             BlockHeader? previous = headers[i - 1];
             if (previous is null || headers[i].ParentHash != previous.Hash || headers[i].Number != previous.Number + 1)
             {
-                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer}");
+                if (_logger.IsTrace) _logger.Trace($"Inconsistent block list from peer {bestPeer:hide}");
                 throw new EthSyncException("Peer sent an inconsistent block list");
             }
         }

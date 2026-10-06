@@ -38,7 +38,7 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
         if (_inboundQueue.Writer.TryWrite(queuedPacket))
         {
-            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender}, bytes: {msg.Content.ReadableBytes}.");
+            if (_logger.IsTrace) _logger.Trace($"Queued discv5 UDP packet from {msg.Sender:hide}, bytes: {msg.Content.ReadableBytes}.");
             return;
         }
 
@@ -57,7 +57,7 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
 
         try
         {
-            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
+            if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination:hide}, bytes: {data.Length}.");
             await Channel.WriteAndFlushAsync(packet).WaitAsync(token);
             Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
         }
@@ -68,13 +68,13 @@ public sealed class NettyDiscoveryV5Handler(ILogManager loggerManager, IChannel?
         }
         catch (SocketException exception)
         {
-            _logger.DebugError("Error sending data", exception);
+            _logger.DebugError("Error sending data", SensitiveLogMasking.Enabled ? null : exception);
             throw;
         }
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void TraceAddressNotAvailable(IPEndPoint failedDestination, SocketException exception) =>
-            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination}", exception);
+            _logger.TraceError($"Failed to send discv5 UDP packet to {failedDestination:hide}", SensitiveLogMasking.Enabled ? null : exception);
     }
 
     internal async IAsyncEnumerable<PooledUdpReceiveResult> ReadMessagesAsync([System.Runtime.CompilerServices.EnumeratorCancellation] CancellationToken token = default)

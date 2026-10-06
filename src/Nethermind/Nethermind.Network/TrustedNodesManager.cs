@@ -56,7 +56,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
     {
         NetworkNode networkNode = new(enode);
         bool added = TryAddNode(networkNode);
-        if (_logger.IsInfo) _logger.Info(added ? $"Trusted node added: {enode}" : $"Trusted node was already added: {enode}");
+        if (_logger.IsInfo) _logger.Info($"Trusted node {(added ? "added" : "was already added")}: {enode:hide}");
 
         if (added)
         {
@@ -73,7 +73,7 @@ public class TrustedNodesManager(string trustedNodesPath, ILogManager logManager
         // TryRemoveNode fires NodeRemoved BEFORE the file write: a cancelled SaveFileAsync must not leave
         // the peer disconnected in-memory but still persisted as trusted.
         bool removed = TryRemoveNode(networkNode.NodeId);
-        if (_logger.IsInfo) _logger.Info(removed ? $"Trusted node was removed: {enode}" : $"Trusted node was not found: {enode}");
+        if (_logger.IsInfo) _logger.Info($"Trusted node {(removed ? "was removed" : "was not found")}: {enode:hide}");
 
         return await UnpersistAsync(removed, networkNode, updateFile, cancellationToken);
     }

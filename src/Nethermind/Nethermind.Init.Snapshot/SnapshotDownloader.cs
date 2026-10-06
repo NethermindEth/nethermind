@@ -37,7 +37,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         long existingSize = file.Exists ? file.Length : 0;
 
         if (_logger.IsInfo)
-            _logger.Info($"Downloading snapshot from {url} to {file.FullName}");
+            _logger.Info($"Downloading snapshot from {SensitiveLogMasking.SafeUrl(url)} to {file.FullName:hide}");
 
         if (existingSize > 0)
         {
@@ -78,7 +78,7 @@ internal sealed class SnapshotDownloader(ILogManager logManager) : IDisposable
         await CopyWithProgressAsync(contentStream, fileStream, progress, cancellationToken).ConfigureAwait(false);
 
         if (_logger.IsInfo)
-            _logger.Info($"Snapshot downloaded to {destinationPath}.");
+            _logger.Info($"Snapshot downloaded to {destinationPath:hide}.");
     }
 
     public Task<SnapshotRemoteInfo> ProbeAsync(string url, CancellationToken cancellationToken) =>

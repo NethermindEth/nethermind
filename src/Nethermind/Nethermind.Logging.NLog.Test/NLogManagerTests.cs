@@ -62,15 +62,76 @@ namespace Nethermind.Logging.NLog.Test
         }
 
         [Test]
-        public void Info_interpolation_skips_values_when_level_is_disabled()
+        public void Other_log_levels_mask_marked_interpolated_values([Values] bool maskSensitiveData)
+        {
+            MemoryTarget target = new() { Layout = "${level}|${message}" };
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Trace, target));
+            using NLogManager manager = new("test");
+            ILogger logger = manager.GetLogger("SensitiveLogLevelsTests");
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+
+            string endpoint = "192.0.2.42:30303";
+            logger.Trace($"Peer {endpoint:hide}");
+            logger.Debug($"Peer {endpoint:hide}");
+            logger.Warn($"Peer {endpoint,24:hide}");
+            Guid peerId = Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee");
+            logger.Warn($"Peer ID {peerId:hide}");
+            logger.Error($"Peer {endpoint:hide}");
+            logger.Error($"Peer {endpoint:hide}", new InvalidOperationException("failure"));
+            logger.DebugError($"Peer {endpoint:hide}");
+            logger.DebugWarn($"Peer {endpoint:hide}");
+            logger.TraceError($"Peer {endpoint:hide}");
+            logger.TraceWarn($"Peer {endpoint:hide}");
+
+            string displayedEndpoint = maskSensitiveData ? "[redacted]" : endpoint;
+            Assert.That(target.Logs, Is.EqualTo(new[]
+            {
+                $"Trace|Peer {displayedEndpoint}",
+                $"Debug|Peer {displayedEndpoint}",
+                $"Warn|Peer {displayedEndpoint,24}",
+                $"Warn|Peer ID {(maskSensitiveData ? "[redacted]" : peerId.ToString())}",
+                $"Error|Peer {displayedEndpoint}",
+                $"Error|Peer {displayedEndpoint}",
+                $"Error|DEBUG/ERROR: Peer {displayedEndpoint}",
+                $"Warn|DEBUG/WARN: Peer {displayedEndpoint}",
+                $"Error|TRACE/ERROR: Peer {displayedEndpoint}",
+                $"Warn|TRACE/WARN: Peer {displayedEndpoint}"
+            }));
+        }
+
+        [Test]
+        public void SafeUrl_never_exposes_credentials_or_request_path([Values] bool maskSensitiveData)
+        {
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+            const string url = "https://user:password@example.org:8545/private?token=secret";
+            string expected = maskSensitiveData ? "[redacted]" : "https://example.org:8545";
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(SensitiveLogMasking.SafeUrl(url), Is.EqualTo(expected));
+                Assert.That(SensitiveLogMasking.SafeUrl(new Uri(url)), Is.EqualTo(expected));
+                Assert.That(SensitiveLogMasking.SafeUrl("https://example.org/era/mainnet/"),
+                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org/era/mainnet/"));
+                Assert.That(SensitiveLogMasking.SafeUrl("https://example.org/era/mainnet/?token=secret"),
+                    Is.EqualTo(maskSensitiveData ? "[redacted]" : "https://example.org/era/mainnet/"));
+                Assert.That(SensitiveLogMasking.SafeUrl("not a URL"), Is.EqualTo("[redacted]"));
+            }
+        }
+
+        [Test]
+        public void Interpolation_skips_values_when_level_is_disabled()
         {
             MemoryTarget target = new() { Layout = "${message}" };
-            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Warn, target));
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("OtherLogger", Level.Trace, target));
             using NLogManager manager = new("test");
             ILogger logger = manager.GetLogger("DisabledSensitiveLogTests");
             int evaluated = 0;
 
             logger.Info($"Peer {GetEndpoint():hide}");
+            logger.Debug($"Peer {GetEndpoint():hide}");
+            logger.Trace($"Peer {GetEndpoint():hide}");
+            logger.Warn($"Peer {GetEndpoint():hide}");
+            logger.Error($"Peer {GetEndpoint():hide}");
 
             Assert.That(evaluated, Is.Zero);
             Assert.That(target.Logs, Is.Empty);

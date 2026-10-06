@@ -31,18 +31,76 @@ public class SensitiveLogMarkerAnalyzerTests
                 public void AppendFormatted<T>(T value, int alignment, string format) { }
             }
 
+            [InterpolatedStringHandler]
+            public ref struct DebugInterpolatedStringHandler
+            {
+                public DebugInterpolatedStringHandler(int literalLength, int formattedCount, ILogger logger, out bool shouldAppend)
+                {
+                    shouldAppend = true;
+                }
+
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T value, string format) { }
+            }
+
+            [InterpolatedStringHandler]
+            public ref struct TraceInterpolatedStringHandler
+            {
+                public TraceInterpolatedStringHandler(int literalLength, int formattedCount, ILogger logger, out bool shouldAppend)
+                {
+                    shouldAppend = true;
+                }
+
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T value, string format) { }
+            }
+
+            [InterpolatedStringHandler]
+            public ref struct WarnInterpolatedStringHandler
+            {
+                public WarnInterpolatedStringHandler(int literalLength, int formattedCount, ILogger logger, out bool shouldAppend)
+                {
+                    shouldAppend = true;
+                }
+
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T value, string format) { }
+            }
+
+            [InterpolatedStringHandler]
+            public ref struct ErrorInterpolatedStringHandler
+            {
+                public ErrorInterpolatedStringHandler(int literalLength, int formattedCount, ILogger logger, out bool shouldAppend)
+                {
+                    shouldAppend = true;
+                }
+
+                public void AppendLiteral(string value) { }
+                public void AppendFormatted<T>(T value, string format) { }
+            }
+
             public struct ILogger
             {
                 public void Info(string text) { }
                 public void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler) { }
+                public void Debug(string text) { }
+                public void Debug([InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler) { }
+                public void Trace(string text) { }
+                public void Trace([InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler) { }
                 public void Warn(string text) { }
+                public void Warn([InterpolatedStringHandlerArgument("")] ref WarnInterpolatedStringHandler handler) { }
+                public void Error(string text) { }
+                public void Error([InterpolatedStringHandlerArgument("")] ref ErrorInterpolatedStringHandler handler) { }
+                public void DebugError([InterpolatedStringHandlerArgument("")] ref DebugInterpolatedStringHandler handler) { }
+                public void TraceWarn([InterpolatedStringHandlerArgument("")] ref TraceInterpolatedStringHandler handler) { }
+                public void Other(string text) { }
             }
         }
 
         """;
 
     [Test]
-    public async Task Direct_info_interpolation_accepts_hide_marker()
+    public async Task Direct_log_interpolation_accepts_hide_marker()
     {
         string source = TestPrelude + """
             class C
@@ -53,6 +111,12 @@ public class SensitiveLogMarkerAnalyzerTests
                     logger.Info($"Node {endpoint,24:hide}");
                     logger.Info($"First {endpoint:hide}" + $" second {endpoint:hide}");
                     logger.Info($"Port {42:D5}");
+                    logger.Debug($"Node {endpoint:hide}");
+                    logger.Trace($"Node {endpoint:hide}");
+                    logger.Warn($"Node {endpoint:hide}");
+                    logger.Error($"Node {endpoint:hide}");
+                    logger.DebugError($"Node {endpoint:hide}");
+                    logger.TraceWarn($"Node {endpoint:hide}");
                 }
             }
             """;
@@ -71,14 +135,14 @@ public class SensitiveLogMarkerAnalyzerTests
                     logger.Info(added ? $"Added {endpoint:{|#0:hide|}}" : "already added");
                     string message = $"Node {endpoint:{|#1:hide|}}";
                     logger.Info(message);
-                    logger.Warn($"Node {endpoint:{|#2:hide|}}");
+                    logger.Other($"Node {endpoint:{|#2:hide|}}");
                     logger.Info($"Outer {$"Inner {endpoint:{|#3:hide|}}"}");
                     logger.Info($"Node {endpoint:{|#4:Hide|}}");
                     logger.Info($"Node {endpoint:{|#5:sensitive|}}");
                     logger.Info($"Node {endpoint:{|#6:Sensitive|}}");
                     logger.Info($"Node {endpoint:{|#7:hide|}}" + " suffix");
                     System.Guid peer = default;
-                    logger.Warn($"Peer {peer:{|#8:hide|}}");
+                    logger.Other($"Peer {peer:{|#8:hide|}}");
                     logger.Info(($"Node {endpoint:{|#9:hide|}}"));
                 }
             }
@@ -104,7 +168,7 @@ public class SensitiveLogMarkerAnalyzerTests
             class C
             {
                 static void Use(ILogger logger, string endpoint) =>
-                    logger.Warn($"Node {endpoint:{|#0:hide|}}");
+                    logger.Other($"Node {endpoint:{|#0:hide|}}");
             }
             """;
 
