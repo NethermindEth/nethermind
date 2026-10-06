@@ -325,6 +325,9 @@ public sealed class BeaconP2P : IAsyncDisposable
         _gossipSubscriptions?.GetTopic(topicId) ??
         (_router ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started")).GetTopic(topicId);
 
+    internal void Publish(string topicId, byte[] data) =>
+        (_router ?? throw new InvalidOperationException($"{nameof(BeaconP2P)} is not started")).Publish(topicId, data);
+
     /// <summary>Feeds known peer addresses to the peer store so the pubsub router connects to them.</summary>
     public void Discover(Multiaddress[] addresses) => _serviceProvider.GetRequiredService<PeerStore>().Discover(addresses);
 
@@ -591,14 +594,14 @@ public sealed class BeaconP2P : IAsyncDisposable
     public async Task<ulong> PingAsync(ISession session, CancellationToken token)
     {
         using CancellationTokenSource cts = Timeout(session, token);
-        return await ExchangeAsync<Eth2PingProtocol, ulong, ulong>(session, () => _metadataSource.Current.SeqNumber, cts, token, timing: null);
+        return await ExchangeControlAsync<Eth2PingProtocol, ulong>(session, _metadataSource.Current.SeqNumber, cts, token);
     }
 
     /// <param name="timeout">Bounds the request; the request timeout when omitted.</param>
     public async Task<MetaDataV3> RequestMetaDataAsync(ISession session, CancellationToken token, TimeSpan? timeout = null)
     {
         using CancellationTokenSource cts = Timeout(session, token, timeout);
-        return await ExchangeAsync<MetaDataProtocolV3, ulong, MetaDataV3>(session, () => 0, cts, token, timing: null);
+        return await ExchangeControlAsync<MetaDataProtocolV3, MetaDataV3>(session, 0, cts, token);
     }
 
     /// <summary>Sends <c>goodbye</c> best-effort; failures are ignored since the peer is being dropped anyway.</summary>
@@ -607,7 +610,7 @@ public sealed class BeaconP2P : IAsyncDisposable
         using CancellationTokenSource cts = Timeout(token, RequestTimeout);
         try
         {
-            await session.DialAsync<GoodbyeProtocol, ulong, ulong>(reason, cts.Token);
+            await ExchangeControlAsync<GoodbyeProtocol, ulong>(session, reason, cts, token);
         }
         catch (Exception e) when (e is not OperationCanceledException || !token.IsCancellationRequested)
         {
@@ -669,6 +672,20 @@ public sealed class BeaconP2P : IAsyncDisposable
         catch (Exception e) when (!token.IsCancellationRequested && NameFailure(e, session, cts, timing, Stopwatch.GetElapsedTime(startedAt)) is { } named)
         {
             throw named;
+        }
+    }
+
+    private async Task<TResponse> ExchangeControlAsync<TProtocol, TResponse>(ISession session, ulong value, CancellationTokenSource cts, CancellationToken token)
+        where TProtocol : ISessionProtocol<Uint64Request, TResponse>
+    {
+        RequestTiming timing = new();
+        try
+        {
+            return await ExchangeAsync<TProtocol, Uint64Request, TResponse>(session, () => timing.Track(new Uint64Request(value)), cts, token, timing);
+        }
+        finally
+        {
+            _ = timing.Settled();
         }
     }
 

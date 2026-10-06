@@ -38,8 +38,7 @@ public class ReqRespLimitsTests
         TestReqRespProtocol protocol = new() { WatchLingerAfterServed = closeRequester ? TimeSpan.FromSeconds(10) : TimeSpan.FromMilliseconds(50) };
         ISessionContext context = attributed ? NewPeerContext() : ReqRespTestChannel.Context();
         Task<IOResult> writing = channel.WriteAsync(new ReadOnlySequence<byte>(emptyRequest ? new byte[] { 1, 9 } : new byte[] { 2, 9 }), token).AsTask();
-        TaskCompletionSource releasedAdmission = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        Task serving = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, emptyRequest, token, releasedAdmission);
+        Task serving = protocol.ServeRejectedAsync(new ChannelStreamAdapter(channel.Reverse), context, emptyRequest, token);
 
         ReadResult response = await channel.ReadAsync(1, ReadBlockingMode.WaitAll, token);
         ReadResult eof = await channel.ReadAsync(1, ReadBlockingMode.WaitAny, token);
@@ -55,9 +54,11 @@ public class ReqRespLimitsTests
             Assert.That(writing.IsCompleted, Is.False, "rejection must not drain the remaining invalid bytes");
         }
 
-        await releasedAdmission.Task.WaitAsync(token);
         await using IAsyncDisposable? first = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId);
-        await using IAsyncDisposable? second = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId);
+        IAsyncDisposable? second;
+        while ((second = protocol.TryEnter(context, TestReqRespProtocol.ProtocolId)) is null)
+            await Task.Delay(1, token);
+        await using IAsyncDisposable secondSlot = second;
         Assert.That(first, Is.Not.Null, "completed response releases admission while lingering");
         Assert.That(second, Is.Not.Null);
         Assert.That(protocol.TryEnter(context, TestReqRespProtocol.ProtocolId), Is.Null, "admission remains bounded");
@@ -173,8 +174,8 @@ public class ReqRespLimitsTests
             .Returns(call => ReadAsync(call.ArgAt<int>(0)));
         Task Dial() => protocolKind switch
         {
-            0 => ping.DialAsync(channel, null!, 0),
-            1 => meta.DialAsync(channel, null!, 0),
+            0 => ping.DialAsync(channel, null!, new(0)),
+            1 => meta.DialAsync(channel, null!, new(0)),
             _ => invalidDecoder.DialAsync(channel, null!, request),
         };
         if (failure == 0)
@@ -461,8 +462,8 @@ public class ReqRespLimitsTests
         string id = metadata ? metadataProtocol.Id : protocol.Id;
         long before = FailureCount(id, ReqRespFailureReason.Timeout);
         ReqRespTimeoutException? cut = Assert.ThrowsAsync<ReqRespTimeoutException>(() => metadata
-            ? metadataProtocol.DialAsync(channel, NewPeerContext(), 0)
-            : protocol.DialAsync(channel, NewPeerContext(), 7));
+            ? metadataProtocol.DialAsync(channel, NewPeerContext(), new(0))
+            : protocol.DialAsync(channel, NewPeerContext(), new(7)));
 
         using (Assert.EnterMultipleScope())
         {
@@ -478,13 +479,15 @@ public class ReqRespLimitsTests
     public async Task Metadata_dial_sends_only_eof_before_reading_the_response(CancellationToken token)
     {
         LocalMetadataSource source = new();
-        ISessionProtocol<ulong, MetaDataV3> protocol = new MetaDataProtocolV3(source);
+        ISessionProtocol<Uint64Request, MetaDataV3> protocol = new MetaDataProtocolV3(source);
+        RequestTiming timing = new();
         Channel channel = new();
         Task reply = ReplyAsync();
         try
         {
-            MetaDataV3 response = await protocol.DialAsync(channel, NewPeerContext(), 0).WaitAsync(token);
+            MetaDataV3 response = await protocol.DialAsync(channel, NewPeerContext(), timing.Track(new Uint64Request(0))).WaitAsync(token);
             Assert.That(MetaDataV3.Encode(response), Is.EqualTo(MetaDataV3.Encode(source.Current)));
+            Assert.That((timing.ChannelOpened, timing.Chunks, timing.Settled().IsCompletedSuccessfully), Is.EqualTo((true, 1, true)));
             await reply;
         }
         finally
@@ -506,12 +509,12 @@ public class ReqRespLimitsTests
     [CancelAfter(5_000)]
     public async Task Goodbye_dial_returns_without_waiting_for_a_response([Values(1ul, ulong.MaxValue)] ulong reason, CancellationToken token)
     {
-        ISessionProtocol<ulong, ulong> protocol = new GoodbyeProtocol();
+        ISessionProtocol<Uint64Request, ulong> protocol = new GoodbyeProtocol();
         Channel channel = new();
         Task<ulong> read = ReadAsync();
         try
         {
-            ulong response = await protocol.DialAsync(channel, NewPeerContext(), reason).WaitAsync(token);
+            ulong response = await protocol.DialAsync(channel, NewPeerContext(), new(reason)).WaitAsync(token);
             ulong request = await read;
             using (Assert.EnterMultipleScope())
             {
@@ -646,10 +649,11 @@ public class ReqRespLimitsTests
 
         public IAsyncDisposable? TryEnter(ISessionContext context, string protocolId) => TryEnterInbound(context, protocolId);
 
-        public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token, TaskCompletionSource? releasedAdmission = null)
+        public async Task ServeRejectedAsync(Stream stream, ISessionContext context, bool emptyRequest, CancellationToken token)
         {
-            InboundRequest? request = TryEnterInbound(context, ProtocolId);
-            Assert.That(request, Is.Not.Null);
+            InboundRequest? request;
+            while ((request = TryEnterInbound(context, ProtocolId)) is null)
+                await Task.Delay(1, token);
             try
             {
                 if (emptyRequest)
@@ -668,9 +672,7 @@ public class ReqRespLimitsTests
             }
             finally
             {
-                Task disposing = request!.DisposeAsync().AsTask();
-                releasedAdmission?.TrySetResult();
-                await disposing;
+                await request.DisposeAsync();
             }
         }
     }

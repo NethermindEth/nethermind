@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.Discovery;
 using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
+using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Storage;
@@ -22,8 +23,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Libp2p.Core;
+using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using NSubstitute;
+using Snappier;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
 namespace Nethermind.BeaconChain.Test.Sync;
@@ -32,6 +36,43 @@ namespace Nethermind.BeaconChain.Test.Sync;
 public class GloasAnchorImportTests
 {
     private const ulong ForkSlot = 32;
+
+    [Test]
+    public async Task Pending_column_gossip_settles_through_block_import_and_slot_work([Values] bool earlyColumn)
+    {
+        (SignedGloasChain chain, SignedGloasChain.Block anchor) = CreateAnchor();
+        SignedGloasChain.Block child = chain.Next(anchor, ForkSlot + 1, full: false, 0xA2,
+            blobCommitments: DataColumnSidecarGloasTestFixture.Commitments());
+        BeaconChainStore store = chain.CreateStore();
+        SignedGloasChain.EnvelopeEngine engine = new();
+        ManualTimestamper time = new(DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + (ForkSlot + 1) * chain.Spec.SecondsPerSlot + 6));
+        SlotClock clock = new(chain.Spec, time);
+        ManualTimestamper columnTime = new(time.UtcNow.AddSeconds(earlyColumn ? -(long)chain.Spec.SecondsPerSlot : 0));
+        DataColumnSidecarPool columns = new();
+        ColumnGossipRouter router = new(chain.Spec, new SlotClock(chain.Spec, columnTime), LimboLogs.Instance, columns, store);
+        ITopic topic = Substitute.For<ITopic>();
+        topic.IsSubscribed.Returns(true);
+        router.Start(_ => topic, ForkDigest.Compute(chain.Spec, chain.Spec.GetEpoch(child.Bid.Slot)), [0]);
+        IBlockImporter importer = CreateFactoryImporter(chain, anchor, engine, store, clock);
+        BeaconSyncOrchestrator orchestrator = CreateOrchestrator(chain, store, engine, clock, router);
+        orchestrator.Initialize(importer, anchor.Forked, anchor.Root);
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+        DataColumnSidecarGloas sidecar = DataColumnSidecarGloasTestFixture.BuildSidecar(0, child.Bid.Slot, child.Root);
+        PeerId peer = new Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
+        router.Handle(0, true, Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar)), verdict, peer);
+        Assert.That(given, Is.Empty);
+
+        Assert.That(await orchestrator.ImportBlockAsync(child.Forked, CancellationToken.None), Is.EqualTo(BlockImportResult.Imported));
+        Assert.That(given, earlyColumn ? Is.Empty : Is.EqualTo(new[] { MessageValidity.Accepted }));
+        columnTime.Add(TimeSpan.FromSeconds(chain.Spec.SecondsPerSlot));
+        await orchestrator.ProcessSlotAsync(child.Bid.Slot, CancellationToken.None);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(new[] { MessageValidity.Accepted }));
+        Assert.That(columns.TryGetGloas(child.Root, 0, out _), Is.True);
+        Assert.That(columns.PendingGloasCount, Is.Zero);
+    }
 
     [Test]
     public async Task A_checkpoint_anchor_with_blobs_imports_a_full_child_after_columns_are_served_by_root([Values] bool delayedColumns)
@@ -728,7 +769,7 @@ public class GloasAnchorImportTests
         Attestation2 = SignedIndexedAttestation(state, Vote(targetEpoch * ForkSlot, targetEpoch - 1, targetEpoch, 0x61), [0, 1]),
     };
 
-    private static BeaconSyncOrchestrator CreateOrchestrator(SignedGloasChain chain, BeaconChainStore store, IEngineDriver engine, SlotClock clock)
+    private static BeaconSyncOrchestrator CreateOrchestrator(SignedGloasChain chain, BeaconChainStore store, IEngineDriver engine, SlotClock clock, ColumnGossipRouter? columnRouter = null)
     {
         IBeaconSyncPeerPool pool = Substitute.For<IBeaconSyncPeerPool>();
         return new BeaconSyncOrchestrator(
@@ -742,7 +783,8 @@ public class GloasAnchorImportTests
             clock,
             new GossipRouter(chain.Spec, clock, LimboLogs.Instance),
             new BeaconChainStatusHolder(chain.Spec, Timestamper.Default),
-            LimboLogs.Instance)
+            LimboLogs.Instance,
+            columnRouter: columnRouter)
         {
             GossipStarted = true,
         };

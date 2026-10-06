@@ -223,7 +223,7 @@ public partial class GossipRouterTests
         using PubsubRouter pubsub = new(new PeerStore(), GossipScoring.Configure(p2p.PubsubSettingsForTest, [topic], Spec));
         pubsub.GetTopic(topic);
         (PeerId sender, _, Action<Rpc> receive) = ConnectSubscribedPeer(pubsub, topic);
-        (PeerId neighbor, _, _) = ConnectSubscribedPeer(pubsub, topic);
+        (PeerId neighbor, List<Rpc> forwarded, _) = ConnectSubscribedPeer(pubsub, topic);
         IRoutingStateContainer routing = pubsub;
         routing.Mesh[topic].UnionWith([sender, neighbor]);
         TaskCompletionSource<GossipVerdict> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -242,11 +242,15 @@ public partial class GossipRouterTests
         Rpc rpc = new();
         rpc.Publish.Add(new Message { Topic = topic, Data = ByteString.CopyFrom(payload) });
         receive(rpc);
-        await validate(await pending.Task.WaitAsync(TimeSpan.FromSeconds(10)));
+        GossipVerdict deferred = await pending.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(forwarded.SelectMany(static rpc => rpc.Publish), Is.Empty, "pending messages are not forwarded");
+        await validate(deferred);
         await pubsub.Heartbeat();
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(given, Is.EqualTo(expected), "the worker must distinguish invalid input from unavailable local data");
+        Assert.That(forwarded.SelectMany(static rpc => rpc.Publish).Select(static message => message.Data.ToByteArray()),
+            Is.EqualTo(expected == MessageValidity.Accepted ? new[] { payload } : []));
         Assert.That(routing.Mesh[topic].Contains(sender), Is.EqualTo(expected != MessageValidity.Rejected), "invalid-message scoring charges the delivering peer");
         Assert.That(routing.Mesh[topic], Does.Contain(neighbor), "a peer that did not deliver the invalid message keeps its score");
     }
