@@ -18,9 +18,9 @@ namespace Nethermind.Eez.Test;
 
 public class BatchDerivationTests
 {
-    private const string Window = "captured-devnet-window-438";
-    private const int From = 433;
-    private const int To = 438;
+    private const string Window = "captured-devnet-window-384";
+    private const int From = 379;
+    private const int To = 384;
 
     private static readonly Lazy<ISpecProvider> Spec = new(static () => StatelessFixtures.ReadSpecProvider(Window, "chain-config.json"));
 

@@ -25,9 +25,9 @@ namespace Nethermind.Eez.Test;
 /// </summary>
 public class EezSettlementEffectsFixtureTests
 {
-    private const string Window = "captured-devnet-window-438";
-    private const int From = 433;
-    private const int To = 438;
+    private const string Window = "captured-devnet-window-384";
+    private const int From = 379;
+    private const int To = 384;
 
     /// <summary>The recorded attester's key, a well-known public test key.</summary>
     private static readonly PrivateKey AttesterKey = new("59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d");

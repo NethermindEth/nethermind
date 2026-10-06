@@ -32,7 +32,7 @@ public class L1BatchScannerTests
     public void SetUp()
     {
         _l1 = Substitute.For<IEezL1Api>();
-        _recordedBatch = StatelessFixtures.ReadPostBatch("captured-devnet-window-438");
+        _recordedBatch = StatelessFixtures.ReadPostBatch("captured-devnet-window-384");
         Transaction(TransactionIndex, TransactionHash, _recordedBatch);
     }
 
