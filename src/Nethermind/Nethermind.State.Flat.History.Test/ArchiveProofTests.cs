@@ -327,6 +327,51 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void StorageSplitChildren_WhileOtherItemsAreQueued_RunOnMoreThanOneWorker()
+    {
+        // 1. Two workers; a 40-row budget overflows the contract's group, so its storage splits into nibble children.
+        // 2. The first thread to start a child holds it until a second thread starts one.
+        // 3. The other worker finishes its current item and must take a forked child before it dequeues another item.
+        object gate = new();
+        int firstThread = 0;
+        bool held = false;
+        int itemsDone = 0;
+        int? itemsDoneWhenHelped = null;
+        using ManualResetEventSlim helped = new();
+
+        void OnStorageChild()
+        {
+            int thread = Environment.CurrentManagedThreadId;
+            bool hold;
+            lock (gate)
+            {
+                if (firstThread == 0) firstThread = thread;
+                if (thread != firstThread && itemsDoneWhenHelped is null)
+                {
+                    itemsDoneWhenHelped = Volatile.Read(ref itemsDone);
+                    helped.Set();
+                }
+
+                hold = thread == firstThread && !held;
+                held |= hold;
+            }
+
+            if (hold) helped.Wait(TimeSpan.FromSeconds(30));
+        }
+
+        HistoryWalkVerdict verdict = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40).VerifyRangeParallel(0, _chain.Head, workers: 2,
+            AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, onItemDone: _ => Interlocked.Increment(ref itemsDone), onStorageChild: OnStorageChild);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstThread, Is.Not.Zero, "precondition: the contract's storage overflows the budget and splits into children");
+            Assert.That(verdict.Mismatches, Is.Empty, "precondition: the walk over an intact history finds nothing");
+            Assert.That(itemsDoneWhenHelped, Is.Not.Null, "a forked child must be taken by the worker that did not fork it");
+            Assert.That(itemsDoneWhenHelped, Is.LessThan(HistoryWalkRun.WorkItems - 2), "the second worker helps before it has drained the queue of top-level items");
+        }
+    }
+
+    [Test]
     public void A_build_leaves_no_scratch_series_behind([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);

@@ -30,8 +30,6 @@ internal sealed class MismatchSink(int capacity = MismatchSink.MaxRecorded, Mism
 
     private readonly List<HistoryWalkMismatch> _mismatches = [];
 
-    public MismatchBudget? Budget => budget;
-
     public int Count
     {
         get
