@@ -1256,7 +1256,7 @@
         "type": "Project",
         "dependencies": {
           "Nethermind.Api": "[2.2.0-preview, )",
-          "Open.NAT.Core": "[2.1.0.5, )"
+          "SharpOpenNat": "[4.0.19, )"
         }
       },
       "nethermind.wallet": {
@@ -1625,12 +1625,6 @@
         "resolved": "2.1.2",
         "contentHash": "yTP24PcuFmUw1RxQgYmIMxvpAJ1ciT/zv8Sb7OZHTuM/x9Tupz+DvEqeu9HykSYmI3/bGuy1ZZ7k/rZgfuIAuw=="
       },
-      "Open.NAT.Core": {
-        "type": "CentralTransitive",
-        "requested": "[2.1.0.5, )",
-        "resolved": "2.1.0.5",
-        "contentHash": "F/4WoNK1rYCMGZM6B1LVlgxf2wLogJc2ohMZxwmJw7Aky2Hc1IgFZvEj/cxcv5QQSFTvPN5AWYKomFXHukOUIg=="
-      },
       "Polly": {
         "type": "CentralTransitive",
         "requested": "[8.7.0, )",
@@ -1654,6 +1648,12 @@
         "requested": "[2.0.0.2, )",
         "resolved": "2.0.0.2",
         "contentHash": "ZSDp3iPpXw4KW+e1yKQbarn1byN8aP+B0FNy0oMPC+htu6XVxqr1ezeSfG4kmRWG4VUu1RT0Zp3HzkH6inrIIw=="
+      },
+      "SharpOpenNat": {
+        "type": "CentralTransitive",
+        "requested": "[4.0.19, )",
+        "resolved": "4.0.19",
+        "contentHash": "kc9xubcDMkIuFYX9zcVIEG6/MMSCHumNsgWSJxLvz2miAiHh8lVIuah67j/hu+GlUkuD/HVAhUrllTbUyOBRKg=="
       },
       "Snappier": {
         "type": "CentralTransitive",
