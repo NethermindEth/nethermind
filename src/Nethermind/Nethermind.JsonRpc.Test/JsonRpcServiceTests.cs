@@ -1238,11 +1238,14 @@ public class JsonRpcServiceTests
     // #13156 follow-up: -32600 is overloaded. It is returned both for a request the caller got wrong ("Method is
     // required") and for a namespace this node has disabled, whose message is a remediation instruction for the
     // operator. Only the first may be demoted out of WARN, so the disabled cases carry OperatorActionable.
-    [TestCase(ModuleResolution.Disabled, true)]
-    [TestCase(ModuleResolution.EndpointDisabled, true)]
-    [TestCase(ModuleResolution.NotAuthenticated, false)]
+    [TestCase(ModuleResolution.Disabled, true, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.Disabled, true, RpcEndpoint.IPC)]
+    [TestCase(ModuleResolution.EndpointDisabled, true, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.EndpointDisabled, true, RpcEndpoint.IPC)]
+    [TestCase(ModuleResolution.NotAuthenticated, false, RpcEndpoint.Http)]
+    [TestCase(ModuleResolution.NotAuthenticated, false, RpcEndpoint.IPC)]
     public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable,
-        [Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
+        RpcEndpoint endpoint)
     {
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
         moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
