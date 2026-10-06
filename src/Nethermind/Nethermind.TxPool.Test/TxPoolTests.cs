@@ -5438,7 +5438,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult baselineResult = _txPool.SubmitTx(baseline, TxHandlingOptions.None);
             AcceptTxResult withoutWidth = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
             int simulations = simulator.ReceivedCalls().Count();
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)WidthChargeOf(additional, Eip8141Prototype.Instance) }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)WidthChargeOf(additional, Eip8141Prototype.Instance) }]);
             AcceptTxResult withWidth = _txPool.SubmitTx(additional, TxHandlingOptions.None);
             _txPool.RemoveTransaction(additional.Hash);
             AcceptTxResult afterRemoval = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyE, TestItem.PrivateKeyD), TxHandlingOptions.None);
@@ -5460,7 +5460,7 @@ namespace Nethermind.TxPool.Test
             IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 2) }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 2) }]);
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -5489,7 +5489,7 @@ namespace Nethermind.TxPool.Test
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
             UInt256 charge = WidthChargeOf(additional, Eip8141Prototype.Instance);
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)(charge * 2) }]);
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -5510,7 +5510,7 @@ namespace Nethermind.TxPool.Test
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
             UInt256 charge = WidthChargeOf(additional);
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)(charge * 2) }]);
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -5537,7 +5537,7 @@ namespace Nethermind.TxPool.Test
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
             UInt256 charge = WidthChargeOf(additional);
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD)).TestObject, [new TxReceipt { GasUsed = (ulong)charge }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD)).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)charge }]);
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
             AcceptTxResult result = _txPool.SubmitTx(additional, TxHandlingOptions.None);
@@ -5603,7 +5603,7 @@ namespace Nethermind.TxPool.Test
             IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
             Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
             Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD);
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 3) }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)(WidthChargeOf(additional, Eip8141Prototype.Instance) * 3) }]);
             Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
 
@@ -5637,7 +5637,7 @@ namespace Nethermind.TxPool.Test
             Transaction[] sponsored = senders.Select(sender => SponsoredFrameTx(sender, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1])).ToArray();
             UInt256[] charges = sponsored.Select(static tx => WidthChargeOf(tx)).ToArray();
             UInt256 earned = charges.Max() * covered;
-            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(sponsored[0]).TestObject, [new TxReceipt { GasUsed = (ulong)earned }]);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(sponsored[0]).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)earned }]);
 
             using Barrier start = new(submissions);
             AcceptTxResult[] results = new AcceptTxResult[submissions];

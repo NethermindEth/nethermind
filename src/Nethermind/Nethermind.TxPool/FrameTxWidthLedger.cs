@@ -55,7 +55,7 @@ public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager l
                 SenderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed, txPoolConfig.FrameTxWidthCap);
             }
 
-            if (PendingPaymasterCache.KeyFor(blockTx) is Address paymaster)
+            if (blockTx.SupportsFrames && receipts[i].Payer is Address paymaster && paymaster != blockTx.SenderAddress)
             {
                 PaymasterWidth.Earn(paymaster, (UInt256)receipts[i].GasUsed, txPoolConfig.FrameTxWidthCap);
             }

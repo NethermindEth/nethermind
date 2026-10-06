@@ -304,13 +304,28 @@ public class FrameTxWidthFilterTests
         FrameTxWidthLedger ledger = new(new TxPoolConfig { FrameTxWidthEnabled = enabled, FrameTxWidthCap = widthCap }, LimboLogs.Instance);
         Transaction finalized = FrameTx(nonce: 0, nonceKeys: null, frames: sponsored ? [OnlyVerify(), Pay(Paymaster)] : [SelfVerify()]);
 
-        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { GasUsed = 90_000 }]);
+        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { Payer = sponsored ? Paymaster : Sender, GasUsed = 90_000 }]);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(ledger.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo((UInt256)expected));
             Assert.That(ledger.PaymasterWidth.Count, Is.EqualTo(expected == 0 ? 0 : 1));
             Assert.That(ledger.SenderWidth.Count, Is.Zero, "paymaster width is held apart from sender width");
+        }
+    }
+
+    [Test]
+    public void EarnWidthOnFinalization_FirstPaymentCapableTargetDidNotPay_CreditsThePayerInTheReceipt()
+    {
+        FrameTxWidthLedger ledger = new(new TxPoolConfig { FrameTxWidthEnabled = true }, LimboLogs.Instance);
+        Transaction finalized = FrameTx(nonce: 0, nonceKeys: null, frames: [OnlyVerify(), Pay(Paymaster), Pay(TestItem.AddressC)]);
+
+        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { Payer = TestItem.AddressC, GasUsed = 90_000 }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ledger.PaymasterWidth.GetWidth(TestItem.AddressC), Is.EqualTo((UInt256)90_000));
+            Assert.That(ledger.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(UInt256.Zero));
         }
     }
 
