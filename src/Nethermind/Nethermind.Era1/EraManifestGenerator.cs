@@ -11,6 +11,9 @@ namespace Nethermind.Era1;
 /// Rebuilds or checks the <see cref="EraExporter.AccumulatorFileName"/> and <see cref="EraExporter.ChecksumsFileName"/>
 /// manifests of existing era1 files without access to the chain that produced them.
 /// </summary>
+/// <remarks>
+/// Era1 contents are read from physical disk. The supplied file system handles discovery and manifest files only.
+/// </remarks>
 public static class EraManifestGenerator
 {
     /// <summary>
