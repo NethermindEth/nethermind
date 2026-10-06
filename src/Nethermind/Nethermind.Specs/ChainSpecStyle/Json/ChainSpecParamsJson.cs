@@ -190,11 +190,13 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Eip8037TransitionTimestamp { get; set; }
     public ulong? Eip7778TransitionTimestamp { get; set; }
+    public ulong? Eip7668TransitionTimestamp { get; set; }
 
     public ulong? Eip7928TransitionTimestamp { get; set; }
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8253TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
     public ulong? Eip8141TransitionTimestamp { get; set; }
@@ -206,6 +208,8 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
+    public ulong? Eip3298TransitionTimestamp { get; set; }
+    public ulong? Eip8131TransitionTimestamp { get; set; }
 
     public ulong? Eip7805TransitionTimestamp { get; set; }
 

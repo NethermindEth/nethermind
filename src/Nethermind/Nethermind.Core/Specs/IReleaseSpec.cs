@@ -415,6 +415,15 @@ namespace Nethermind.Core.Specs
         bool IsEip7981Enabled { get; }
 
         /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// </summary>
+        /// <remarks>
+        /// Replaces the EIP-7976 calldata floor and the EIP-7981 access-list surcharge with a flat 64 gas per content
+        /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
+        /// </remarks>
+        bool IsEip8131Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -487,11 +496,31 @@ namespace Nethermind.Core.Specs
         public bool IsEip8246Enabled { get; }
 
         /// <summary>
+        /// EIP-8253: Bump nonce of zero-nonce storage accounts.
+        /// </summary>
+        /// <remarks>
+        /// Irregular state transition at the fork block: each listed account gets nonce 1 before any
+        /// pre-execution system call, so a later CREATE/CREATE2 to it fails the EIP-684 nonce check.
+        /// </remarks>
+        public bool IsEip8253Enabled { get; }
+
+        /// <summary>
         /// EIP-2780: Reduce intrinsic transaction gas (TX_BASE_COST) and reprice value-transfer
         /// and cold-account costs against actual state work.
         /// </summary>
         /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
         public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Requires EIP-7778: removing the cap is only safe while block gas excludes refunds, otherwise uncapped
+        /// refunds would let a block exceed its gas limit in work. Specified as a delta on EIP-8037 and EIP-8038;
+        /// enabled without them, it still strikes whichever storage-clear refund and refund cap the spec would
+        /// otherwise apply, and the pre-EIP-3529 SELFDESTRUCT refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
 
         /// <summary>
         /// EIP-7805: Inclusion lists
