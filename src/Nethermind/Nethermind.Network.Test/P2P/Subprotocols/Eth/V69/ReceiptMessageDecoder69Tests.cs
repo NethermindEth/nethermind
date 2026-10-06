@@ -75,6 +75,17 @@ public class ReceiptMessageDecoder69Tests
         Assert.That(Decode(encoded)!.Logs, Has.Length.EqualTo(ReceiptRlpBuilder.UnbackedLogCount));
     }
 
+    [TestCase(5)]
+    [TestCase(31)]
+    [TestCase(33)]
+    [TestCase(34)]
+    public void Decode_normalizes_invalid_post_state_length_to_rlp_exception(int length)
+    {
+        byte[] encoded = ReceiptRlpBuilder.EncodeReceipt69WithFirstItem(TxType.EIP1559, new byte[length]);
+
+        Assert.That(() => Decode(encoded), Throws.TypeOf<RlpException>());
+    }
+
     [Test]
     public void Encoding_throws_on_null_logs([Values("length", "encode")] string operation)
     {
