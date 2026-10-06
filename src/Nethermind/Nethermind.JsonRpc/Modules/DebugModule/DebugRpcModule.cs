@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.IO;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
@@ -19,6 +20,7 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Reporting;
 using System.Collections.Generic;
@@ -680,10 +682,50 @@ public class DebugRpcModule(
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
-    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
+    public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks(string? file = null)
     {
         IEnumerable<BadBlock> badBlocks = debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, specProvider, _blockDecoder, blockForRpcFactory));
-        return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        if (file is null)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Success(badBlocks);
+        }
+
+        // Non-string arguments arrive as their raw JSON text, so a relative path could be "123" or "{}".
+        if (!Path.IsPathFullyQualified(file))
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail("file path must be absolute", ErrorCodes.InvalidParams);
+        }
+
+        FileStream stream;
+        try
+        {
+            stream = new FileStream(file, FileMode.CreateNew, FileAccess.Write);
+        }
+        catch (IOException) when (Path.Exists(file))
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail("location would overwrite an existing file", ErrorCodes.Default);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or ArgumentException or NotSupportedException)
+        {
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
+        }
+
+        try
+        {
+            using (stream)
+            {
+                EthereumJsonSerializer.SerializeToStream(stream, badBlocks);
+            }
+        }
+        catch (Exception e)
+        {
+            // A partial file would make every retry on the same path fail with "would overwrite".
+            File.Delete(file);
+            if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
+            return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
+        }
+
+        return ResultWrapper<IEnumerable<BadBlock>>.Success(null);
     }
 
     private CancellationTokenSource BuildTimeoutCancellationTokenSource() =>
