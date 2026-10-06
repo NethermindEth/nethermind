@@ -54,7 +54,7 @@ internal sealed class TracingProducedBlockProcessor(
             return processor.Process(block, options, tracer, token);
         }
 
-        BlockReceiptsTracer? receiptsTracer = (_dumpOptions & DumpOptions.Receipts) != 0 ? new BlockReceiptsTracer() : null;
+        BlockReceiptsTracer? receiptsTracer = (_dumpOptions & DumpOptions.Receipts) != 0 ? new BlockReceiptsTracer(parallel: true) : null;
         ParityLikeBlockTracer? parityTracer = (_dumpOptions & DumpOptions.Parity) != 0
             ? new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace, specProvider)
             : null;
@@ -159,7 +159,13 @@ internal sealed class TracingProducedBlockProcessor(
 
     private void DeleteOldestDumps()
     {
-        FileInfo[] files = new DirectoryInfo(DumpDirectory).GetFiles();
+        DirectoryInfo directory = new(DumpDirectory);
+        FileInfo[] files = [
+            .. directory.GetFiles("block_*_0x*.rlp"),
+            .. directory.GetFiles("receipts_*_0x*.json"),
+            .. directory.GetFiles("parityStyle_*_0x*.json"),
+            .. directory.GetFiles("gethStyle_*_0x*.json")
+        ];
         if (files.Length <= MaxDumpFiles) return;
 
         Array.Sort(files, static (a, b) => b.LastWriteTimeUtc.CompareTo(a.LastWriteTimeUtc));
@@ -193,6 +199,6 @@ internal sealed class TracingProducedBlockProcessor(
 
         public void EndTxTrace() => receiptsTracer.EndTxTrace();
 
-        public void EndBlockTrace() => receiptsTracer.EndBlockTrace();
+        public void EndBlockTrace() => receiptsTracer.EndBlockTrace(accumulateBlockBloom: false);
     }
 }

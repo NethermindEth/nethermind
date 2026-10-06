@@ -73,6 +73,8 @@ public class TracingProducedBlockProcessorTests
     {
         const int maxDumpFiles = 2;
         using TempDirectory dumpDirectory = new();
+        string unrelatedFile = Path.Combine(dumpDirectory.Path, "notes.txt");
+        File.WriteAllText(unrelatedFile, "keep");
         Block[] blocks = Enumerable.Range(1, producedBlocks).Select(static n => Build.A.Block.WithNumber((ulong)n).TestObject).ToArray();
         DateTime writeTime = DateTime.UtcNow.AddHours(-1);
         foreach (Block block in blocks)
@@ -86,7 +88,45 @@ public class TracingProducedBlockProcessorTests
         }
 
         Assert.That(Directory.GetFiles(dumpDirectory.Path).Select(Path.GetFileName),
-            Is.EquivalentTo(blocks.TakeLast(maxDumpFiles).Select(static b => $"receipts_{b.Number}_{b.Hash}.json")));
+            Is.EquivalentTo(blocks.TakeLast(maxDumpFiles).Select(static b => $"receipts_{b.Number}_{b.Hash}.json").Append("notes.txt")));
+    }
+
+    [TestCase(1)]
+    [TestCase(16)]
+    public void Receipt_dump_does_not_modify_producer_header(int transactionCount)
+    {
+        using TempDirectory dumpDirectory = new();
+        Transaction[] transactions = Enumerable.Range(0, transactionCount)
+            .Select(static n => Build.A.Transaction.WithNonce((ulong)n).TestObject).ToArray();
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        const ulong producerGas = 123456;
+        block.Header.GasUsed = producerGas;
+        block.Header.GasUsedPerDimension = (producerGas, 7);
+        Bloom producerBloom = block.Header.Bloom!;
+        IBlockchainProcessor inner = Substitute.For<IBlockchainProcessor>();
+        inner.Process(block, ProcessingOptions.ProducingBlock, Arg.Any<IBlockTracer>(), Arg.Any<CancellationToken>())
+            .Returns(call =>
+            {
+                IBlockTracer tracer = call.Arg<IBlockTracer>();
+                tracer.StartNewBlockTrace(block);
+                foreach (Transaction tx in transactions)
+                {
+                    tracer.StartNewTxTrace(tx).MarkAsSuccess(TestItem.AddressA, 100, [], []);
+                    tracer.EndTxTrace();
+                }
+                tracer.EndBlockTrace();
+                return block;
+            });
+
+        CreateProcessor(inner, DumpOptions.Receipts, dumpDirectory.Path)
+            .Process(block, ProcessingOptions.ProducingBlock, NullBlockTracer.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.GasUsed, Is.EqualTo(producerGas));
+            Assert.That(block.Header.GasUsedPerDimension, Is.EqualTo((producerGas, 7UL)));
+            Assert.That(block.Header.Bloom, Is.SameAs(producerBloom));
+        }
     }
 
     [Test]
@@ -122,6 +162,7 @@ public class TracingProducedBlockProcessorTests
         JsonElement geth = ReadDump("gethStyle", block);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(block.GasUsed, Is.EqualTo(2UL * GasCostOf.Transaction));
             Assert.That(receipts.EnumerateArray().Select(static r => r.GetProperty("txHash").GetString()), Is.EqualTo(includedHashes), "receipt tx hashes");
             Assert.That(receipts.EnumerateArray().Select(static r => r.GetProperty("index").GetInt32()), Is.EqualTo(new[] { 0, 1 }), "receipt indexes");
             Assert.That(receipts.EnumerateArray().Select(static r => r.GetProperty("blockHash").GetString()), Is.All.EqualTo(blockHash), "receipt block hashes");
