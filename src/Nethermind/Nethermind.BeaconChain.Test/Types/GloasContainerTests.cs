@@ -126,40 +126,20 @@ public class GloasContainerTests
     [Test]
     public void BeaconBlockBodyGloas_round_trips_with_a_stable_root()
     {
-        BeaconBlockBodyGloas body = new()
-        {
-            RandaoReveal = Signature(0x40),
-            Eth1Data = new Eth1Data { DepositRoot = Hash(0x41), DepositCount = 1, BlockHash = Hash(0x42) },
-            Graffiti = Hash(0x43),
-            ProposerSlashings = [],
-            AttesterSlashings = [],
-            Attestations = [],
-            Deposits = [],
-            VoluntaryExits = [],
-            SyncAggregate = new SyncAggregate { SyncCommitteeBits = new BitArray(512), SyncCommitteeSignature = Signature(0x44) },
-            BlsToExecutionChanges = [],
-            SignedExecutionPayloadBid = new SignedExecutionPayloadBid
-            {
-                Message = new ExecutionPayloadBid
-                {
-                    ParentBlockHash = Hash(0x45),
-                    ParentBlockRoot = Hash(0x46),
-                    BlockHash = Hash(0x47),
-                    PrevRandao = Hash(0x48),
-                    FeeRecipient = new Address(Filled(Address.Size, 0x49)),
-                    GasLimit = 36_000_000,
-                    BuilderIndex = ulong.MaxValue,
-                    Slot = 123,
-                    Value = 0,
-                    ExecutionPayment = 0,
-                    BlobKzgCommitments = [],
-                    ExecutionRequestsRoot = Hash(0x4A),
-                },
-                Signature = Signature(0x4B),
-            },
-            PayloadAttestations = [],
-            ParentExecutionRequests = new ExecutionRequestsGloas(),
-        };
+        BeaconBlockBodyGloas body = SignedBeaconBlockBuilders.CreateMinimalGloasBlock(123, bidParentRoot: Hash(0x46)).Message!.Body!;
+        body.RandaoReveal = Signature(0x40);
+        body.Eth1Data = new Eth1Data { DepositRoot = Hash(0x41), DepositCount = 1, BlockHash = Hash(0x42) };
+        body.Graffiti = Hash(0x43);
+        body.SyncAggregate!.SyncCommitteeSignature = Signature(0x44);
+        SignedExecutionPayloadBid signedBid = body.SignedExecutionPayloadBid!;
+        ExecutionPayloadBid bid = signedBid.Message!;
+        bid.ParentBlockHash = Hash(0x45);
+        bid.BlockHash = Hash(0x47);
+        bid.PrevRandao = Hash(0x48);
+        bid.FeeRecipient = new Address(Filled(Address.Size, 0x49));
+        bid.GasLimit = 36_000_000;
+        bid.ExecutionRequestsRoot = Hash(0x4A);
+        signedBid.Signature = Signature(0x4B);
 
         AssertRoundTrips(body);
     }
