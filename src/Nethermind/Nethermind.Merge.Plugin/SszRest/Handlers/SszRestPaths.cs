@@ -22,7 +22,8 @@ public static class SszRestPaths
     /// </summary>
     /// <remarks>
     /// To add support for a new fork, add it as a <see cref="Forks.NamedReleaseSpec"/> with its
-    /// engine-API version overrides and update the <c>latest</c> argument here.
+    /// engine-API version overrides and update the <c>latest</c> argument here and the marker EIPs in
+    /// <see cref="GetEngineApiForkName"/>.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
         BuildForkSpecsByUrl(Forks.Bogota.Instance);
@@ -168,30 +169,23 @@ public static class SszRestPaths
     }
 
     /// <summary>
-    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface. Named forks
-    /// walk up the parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>);
-    /// chainspec releases use their fork marker EIPs. Matched
+    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface. Matched
     /// case-insensitively against the <c>Eth-Execution-Version</c> value, so it is returned as-is
     /// (no per-call lowercasing).
     /// </summary>
-    public static string? GetEngineApiForkName(IReleaseSpec spec)
+    /// <remarks>
+    /// Each fork is detected by its marker EIP rather than by <see cref="Forks.NamedReleaseSpec"/> identity,
+    /// because chainspec-based networks build plain release specs. BPO eras therefore resolve to their base
+    /// fork (e.g. <c>bpo1 → osaka</c>), and anything before Shanghai resolves to <c>paris</c>.
+    /// </remarks>
+    public static string GetEngineApiForkName(IReleaseSpec spec) => spec switch
     {
-        if (spec is not Forks.NamedReleaseSpec named)
-        {
-            if (spec.IsBogotaEnabled) return "bogota";
-            if (spec.IsAmsterdamEnabled) return "amsterdam";
-            if (spec.IsOsakaEnabled) return "osaka";
-            if (spec.IsPragueEnabled) return "prague";
-            if (spec.IsCancunEnabled) return "cancun";
-            if (spec.IsShanghaiEnabled) return "shanghai";
-            return "paris";
-        }
-
-        for (Forks.NamedReleaseSpec? n = named; n is not null; n = n.Parent)
-        {
-            if (n.Name is { } name && _forkSpecByUrl.ContainsKey(name))
-                return name;
-        }
-        return null;
-    }
+        { IsBogotaEnabled: true } => "bogota",
+        { IsAmsterdamEnabled: true } => "amsterdam",
+        { IsOsakaEnabled: true } => "osaka",
+        { IsPragueEnabled: true } => "prague",
+        { IsCancunEnabled: true } => "cancun",
+        { IsShanghaiEnabled: true } => "shanghai",
+        _ => "paris"
+    };
 }

@@ -172,11 +172,30 @@ public class SszMiddlewareTests
         Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
     }
 
+    private static readonly TestCaseData[] NamedReleaseEngineApiForkCases =
+    [
+        new TestCaseData(London.Instance, "paris"),
+        new TestCaseData(Paris.Instance, "paris"),
+        new TestCaseData(Shanghai.Instance, "shanghai"),
+        new TestCaseData(Cancun.Instance, "cancun"),
+        new TestCaseData(Prague.Instance, "prague"),
+        new TestCaseData(Osaka.Instance, "osaka"),
+        new TestCaseData(BPO1.Instance, "osaka"),
+        new TestCaseData(BPO5.Instance, "osaka"),
+        new TestCaseData(Amsterdam.Instance, "amsterdam"),
+        new TestCaseData(Eip8141Prototype.Instance, "amsterdam"),
+        new TestCaseData(Bogota.Instance, "bogota"),
+    ];
+
+    [TestCaseSource(nameof(NamedReleaseEngineApiForkCases))]
+    public void Named_release_resolves_engine_api_fork(IReleaseSpec spec, string expectedFork) =>
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
+
     [Test]
     public void Chain_spec_release_covers_every_supported_engine_api_fork()
     {
         ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();
-        HashSet<string?> forks = [SszRestPaths.GetEngineApiForkName(provider.GenesisSpec)];
+        HashSet<string> forks = [SszRestPaths.GetEngineApiForkName(provider.GenesisSpec)];
         foreach (ForkActivation activation in provider.TransitionActivations)
             forks.Add(SszRestPaths.GetEngineApiForkName(provider.GetSpec(activation)));
 
