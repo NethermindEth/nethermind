@@ -36,14 +36,15 @@ internal sealed class TracingProducedBlockProcessor(
     IBlockchainProcessor processor,
     IMiningConfig miningConfig,
     ISpecProvider specProvider,
-    ILogManager logManager) : IBlockchainProcessor
+    ILogManager logManager,
+    ProducedBlockDumpDirectory? dumpDirectory = null) : IBlockchainProcessor
 {
     internal static readonly string DefaultDumpDirectory = Path.Combine(Path.GetTempPath(), "nethermind-produced-blocks");
 
     private readonly DumpOptions _dumpOptions = miningConfig.DumpProducedBlocks;
     private readonly ILogger _logger = logManager.GetClassLogger<TracingProducedBlockProcessor>();
 
-    internal string DumpDirectory { get; init; } = DefaultDumpDirectory;
+    internal string DumpDirectory { get; init; } = dumpDirectory?.Path ?? DefaultDumpDirectory;
 
     internal int MaxDumpFiles { get; init; } = 256;
 

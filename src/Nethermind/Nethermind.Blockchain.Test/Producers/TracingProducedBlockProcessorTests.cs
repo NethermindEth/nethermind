@@ -132,6 +132,7 @@ public class TracingProducedBlockProcessorTests
     [Test]
     public async Task Producer_environment_dumps_only_included_transactions_tagged_with_produced_block()
     {
+        using TempDirectory dumpDirectory = new();
         Transaction[] candidates = [];
         ITxSource txSource = Substitute.For<ITxSource>();
         txSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<BlockHeader>(), Arg.Any<ulong>(), Arg.Any<PayloadAttributes?>(), Arg.Any<bool>())
@@ -141,6 +142,7 @@ public class TracingProducedBlockProcessorTests
 
         using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
             .AddSingleton(txSourceFactory)
+            .AddSingleton(new ProducedBlockDumpDirectory(dumpDirectory.Path))
             .AddDecorator<IMiningConfig>(static (_, config) =>
             {
                 config.DumpProducedBlocks = DumpOptions.Receipts | DumpOptions.Parity | DumpOptions.Geth;
@@ -157,9 +159,9 @@ public class TracingProducedBlockProcessorTests
 
         string[] includedHashes = [included0.Hash!.ToString(), included1.Hash!.ToString()];
         string blockHash = block.Hash!.ToString();
-        JsonElement receipts = ReadDump("receipts", block);
-        JsonElement parity = ReadDump("parityStyle", block);
-        JsonElement geth = ReadDump("gethStyle", block);
+        JsonElement receipts = ReadDump("receipts", block, dumpDirectory.Path);
+        JsonElement parity = ReadDump("parityStyle", block, dumpDirectory.Path);
+        JsonElement geth = ReadDump("gethStyle", block, dumpDirectory.Path);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(block.GasUsed, Is.EqualTo(2UL * GasCostOf.Transaction));
@@ -202,18 +204,11 @@ public class TracingProducedBlockProcessorTests
             .SignedAndResolved(sender)
             .TestObject;
 
-    private static JsonElement ReadDump(string prefix, Block block)
+    private static JsonElement ReadDump(string prefix, Block block, string directory)
     {
-        string dumpFile = Path.Combine(TracingProducedBlockProcessor.DefaultDumpDirectory, $"{prefix}_{block.Number}_{block.Hash}.json");
-        try
-        {
-            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(dumpFile));
-            return document.RootElement.Clone();
-        }
-        finally
-        {
-            File.Delete(dumpFile);
-        }
+        string dumpFile = Path.Combine(directory, $"{prefix}_{block.Number}_{block.Hash}.json");
+        using JsonDocument document = JsonDocument.Parse(File.ReadAllText(dumpFile));
+        return document.RootElement.Clone();
     }
 
     private sealed class TempDirectory : IDisposable
