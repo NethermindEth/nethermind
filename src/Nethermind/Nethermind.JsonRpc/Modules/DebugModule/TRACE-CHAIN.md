@@ -17,10 +17,10 @@ Each transaction uses the requested Go-style duration, defaulting to five second
 ## Resource and termination behavior
 
 - Replay requires retained parent state; this endpoint does not regenerate pruned state.
-- Subscriptions use the existing bounded exclusive Debug pool and its queue limits. A rental covers one block's replay, notification and result disposal, and is returned between blocks so queued Debug work can proceed. A slow block can still delay ordinary requests. Pool rental timeout remains applicable; enabling Debug on an untrusted endpoint permits expensive work.
+- Subscriptions use the existing bounded exclusive Debug pool and its queue limits. A rental covers one block's replay, notification and result disposal, and is returned between blocks so queued Debug work can proceed. A slow block can still delay ordinary requests. Admitted subscription rentals wait until acquisition or cancellation, without the ordinary request rental timeout. Queue admission limits remain enforced; enabling Debug on an untrusted endpoint permits expensive work.
 - Notifications are awaited, not accumulated in an unbounded producer queue. A slow recipient applies backpressure.
 - Use `debug_unsubscribe` with the returned ID to cancel replay or a pending rental. Closing the connection also cancels its subscriptions.
 - Natural completion releases replay resources but retains the lightweight subscription registration until unsubscribe/disconnect. Consequently, unsubscribe after the terminal notification returns `true`, matching Geth. Long-lived clients should unsubscribe completed subscriptions.
-- There is no additional terminal-error notification. Missing blocks/state or rental failures after acknowledgement terminate production and are logged. Clients must not treat a missing terminal block notification as successful completion.
+- There is no additional terminal-error notification. Missing blocks/state or queue admission failures after acknowledgement terminate production and are logged. Clients must not treat a missing terminal block notification as successful completion.
 
 This describes the native transport/lifecycle contract, not a claim that every existing tracer output or invalid-request diagnostic is identical to Geth. In particular, generic HTTP and invalid-selector error wording may differ.

@@ -1035,17 +1035,35 @@ public class DebugModuleTests
         resource.Received(1).Dispose();
     }
 
-    [Test]
-    public void TraceChain_transaction_timeout_is_distinct_from_subscription_cancellation()
+    [TestCase("0", false)]
+    [TestCase("1h", false)]
+    [TestCase("bad", true)]
+    [TestCase("1", true)]
+    public void TraceChain_transaction_timeout_preserves_tracer_ownership(string timeout, bool invalid)
     {
         Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
         Block block = Build.A.Block.WithTransactions(transaction).TestObject;
+        ITxTracer owned = Substitute.For<ITxTracer>();
         IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
-        inner.StartNewTxTrace(transaction).Returns(NullTxTracer.Instance);
-        using TraceChainBlockTracer tracer = new(block, inner, new TraceChainOptions { Timeout = "0" });
-        using ITxTracer txTracer = tracer.StartNewTxTrace(transaction);
-        Assert.Throws<OperationCanceledException>(() => tracer.EndTxTrace());
-        Assert.That(tracer.TransactionTimedOut, Is.True);
+        inner.StartNewTxTrace(transaction).Returns(owned);
+        using (TraceChainBlockTracer tracer = new(block, inner, new TraceChainOptions { Timeout = timeout }))
+        {
+            if (invalid)
+            {
+                Assert.Throws<FormatException>(() => tracer.StartNewTxTrace(transaction));
+            }
+            else
+            {
+                using (tracer.StartNewTxTrace(transaction))
+                {
+                    owned.DidNotReceive().Dispose();
+                    if (timeout == "0") Assert.Throws<OperationCanceledException>(() => tracer.EndTxTrace());
+                    else tracer.EndTxTrace();
+                }
+            }
+            Assert.That(tracer.TransactionTimedOut, Is.EqualTo(timeout == "0"));
+        }
+        owned.Received(1).Dispose();
     }
 
     [Test]

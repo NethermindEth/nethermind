@@ -103,7 +103,7 @@ namespace Nethermind.JsonRpc.Modules
             _sharedAsTask = Task.FromResult(_shared);
         }
 
-        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath();
+        public Task<T> GetModule(bool canBeShared) => canBeShared ? SharedPath() : SlowPath(_timeout);
 
         private Task<T> SharedPath()
         {
@@ -114,9 +114,9 @@ namespace Nethermind.JsonRpc.Modules
         bool IExclusiveRpcModulePool.SupportsExclusiveRental => true;
 
         async ValueTask<IRpcModule> IExclusiveRpcModulePool.RentExclusive(CancellationToken cancellationToken) =>
-            await SlowPath(cancellationToken);
+            await SlowPath(Timeout.Infinite, cancellationToken);
 
-        private async Task<T> SlowPath(CancellationToken cancellationToken = default)
+        private async Task<T> SlowPath(int timeout, CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (!_semaphore.Wait(0))
@@ -124,7 +124,7 @@ namespace Nethermind.JsonRpc.Modules
                 _limits.AcquireQueuedSlot();
                 try
                 {
-                    if (!await _semaphore.WaitAsync(_timeout, cancellationToken))
+                    if (!await _semaphore.WaitAsync(timeout, cancellationToken))
                     {
                         throw new ModuleRentalTimeoutException($"Unable to rent an instance of {typeof(T).Name}. Too many concurrent requests.");
                     }

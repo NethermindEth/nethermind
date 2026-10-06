@@ -48,6 +48,7 @@ public partial class DebugRpcModuleTests
     [TestCase("noopTracer", false, "9223372036854775807ns")]
     [TestCase("noopTracer", true, "0", "execution timeout")]
     [TestCase("{fault:function(){},result:function(){return {};}}", true, "0", "execution timeout")]
+    [TestCase("callTracer", true, "bad", "time: invalid duration \"bad\"")]
     [TestCase("noopTracer", true, "bad", "time: invalid duration \"bad\"")]
     [TestCase("noopTracer", true, "1", "time: missing unit in duration \"1\"")]
     [TestCase("{fault:function(){}}", true, "bad", "trace object must expose a function result()")]

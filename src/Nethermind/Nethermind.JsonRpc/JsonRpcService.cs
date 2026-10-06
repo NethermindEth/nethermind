@@ -134,7 +134,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
         bool isDebugSubscription = method.MethodInfo.DeclaringType == typeof(Modules.DebugModule.IDebugSubscriptionRpcModule);
-        JsonRpcContext? previousContext = JsonRpcContext.Current.Value;
+        JsonRpcContext? previousContext = isDebugSubscription ? JsonRpcContext.Current.Value : null;
         if (isDebugSubscription) JsonRpcContext.Current.Value = context;
         try
         {

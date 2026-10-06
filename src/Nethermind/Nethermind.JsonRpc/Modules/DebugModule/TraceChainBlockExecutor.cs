@@ -72,8 +72,16 @@ internal sealed class TraceChainBlockTracer(Block block, IBlockTracer<GethLikeTx
         _transactionCancellation = new(token);
         if (cancellation is not null) cancellation.Token = _transactionCancellation.Token;
         ITxTracer tracer = inner.StartNewTxTrace(transaction);
-        _transactionCancellation.Start(options?.ParseTimeout() ?? TimeSpan.FromSeconds(5));
-        return tracer.WithCancellation(_transactionCancellation.Token);
+        try
+        {
+            _transactionCancellation.Start(options?.ParseTimeout() ?? TimeSpan.FromSeconds(5));
+            return tracer.WithCancellation(_transactionCancellation.Token);
+        }
+        catch
+        {
+            tracer.Dispose();
+            throw;
+        }
     }
 
     public void EndTxTrace()
