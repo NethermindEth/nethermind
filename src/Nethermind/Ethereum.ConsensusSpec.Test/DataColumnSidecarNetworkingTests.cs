@@ -270,21 +270,11 @@ public class DataColumnSidecarNetworkingTests
     private static bool IsSynchronousVerdict(string fork, string reason, ColumnVerdict verdict) =>
         SynchronousVerdicts.TryGetValue(fork, out (string Reason, ColumnVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
-    private static IEnumerable<TestCaseData> MainnetCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled) yield break;
-
-        foreach (string fork in Forks)
-        {
-            string? suitePath = ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, Suite);
-            string? handlerRoot = suitePath is null ? null : Path.Combine(suitePath, Handler);
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerRoot, "meta.yaml"))
-            {
-                string vectorName = $"{ConsensusPreset.Mainnet}/{fork}/{Suite}/{Handler}/{Path.GetRelativePath(handlerRoot!, caseDir).Replace('\\', '/')}";
-                yield return new TestCaseData(new GossipValidationCase(nameof(ConsensusPreset.Mainnet), fork, Handler, caseDir, vectorName)).SetName(vectorName);
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> MainnetCases() =>
+        ConsensusSpecArchive.MainnetEnabled
+            ? FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, Forks, Suite, "meta.yaml",
+                static (p, fork, handler, path, name) => new GossipValidationCase(p.ToString(), fork, handler, path, name), [Handler], relativeNames: true)
+            : [];
 
     private sealed record Observation(string Expected, string? Reason, ColumnVerdict Verdict);
 

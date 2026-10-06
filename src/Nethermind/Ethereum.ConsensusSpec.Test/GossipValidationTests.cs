@@ -481,16 +481,9 @@ public class GossipValidationTests
 
         foreach ((string fork, string[] handlers) in Suites.Concat(UnroutedSuites))
         {
-            string? suitePath = ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, Suite);
-            foreach (string handler in handlers)
-            {
-                string? handlerRoot = suitePath is null ? null : Path.Combine(suitePath, handler);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerRoot, "meta.yaml"))
-                {
-                    string vectorName = $"{ConsensusPreset.Mainnet}/{fork}/{Suite}/{handler}/{Path.GetRelativePath(handlerRoot!, caseDir).Replace('\\', '/')}";
-                    yield return new TestCaseData(new GossipValidationCase(nameof(ConsensusPreset.Mainnet), fork, handler, caseDir, vectorName)).SetName(vectorName);
-                }
-            }
+            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, [fork], Suite, "meta.yaml",
+                         static (p, f, handler, path, name) => new GossipValidationCase(p.ToString(), f, handler, path, name), handlers, relativeNames: true))
+                yield return testCase;
         }
     }
 
