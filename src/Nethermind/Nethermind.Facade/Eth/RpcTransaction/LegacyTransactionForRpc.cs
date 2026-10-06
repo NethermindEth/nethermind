@@ -113,7 +113,6 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        // Directly, since the setter keeps the previous value for null.
         _input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
 

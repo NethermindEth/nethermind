@@ -34,26 +34,30 @@ public class BlockTransactionsViewTests
     {
         (string Name, Transaction Tx)[] transactions = DiverseTransactions();
         TransactionForRpcContext[] contexts = [Pending, Mined];
-        int compared = 0;
+        Dictionary<Type, int> crossShape = [];
 
         using (Assert.EnterMultipleScope())
         {
             foreach ((string firstName, Transaction first) in transactions)
-            foreach ((string secondName, Transaction second) in transactions)
-            foreach (TransactionForRpcContext firstContext in contexts)
-            foreach (TransactionForRpcContext secondContext in contexts)
-            {
-                TransactionForRpc reused = TransactionForRpc.FromTransaction(first, firstContext);
-                if (reused.GetType() != TransactionForRpc.FromTransaction(second, secondContext).GetType()) continue;
+                foreach ((string secondName, Transaction second) in transactions)
+                    foreach (TransactionForRpcContext firstContext in contexts)
+                        foreach (TransactionForRpcContext secondContext in contexts)
+                        {
+                            TransactionForRpc reused = TransactionForRpc.FromTransaction(first, firstContext);
+                            if (reused.GetType() != TransactionForRpc.FromTransaction(second, secondContext).GetType()) continue;
 
-                reused.Populate(second, secondContext);
-                Assert.That(Serialize(reused), Is.EqualTo(Serialize(TransactionForRpc.FromTransaction(second, secondContext))), $"{firstName} then {secondName}");
-                compared++;
-            }
+                            reused.Populate(second, secondContext);
+                            Assert.That(Serialize(reused), Is.EqualTo(Serialize(TransactionForRpc.FromTransaction(second, secondContext))), $"{firstName} then {secondName}");
+                            if (firstName != secondName) crossShape[reused.GetType()] = crossShape.GetValueOrDefault(reused.GetType()) + 1;
+                        }
         }
 
-        // Every transaction type with an RPC type has at least two shapes in the set, so each gets refilled across shapes.
-        Assert.That(compared, Is.GreaterThan(transactions.Length * contexts.Length * contexts.Length));
+        // A reset skipped for some shapes only shows when an instance is refilled from a shape that sets the property.
+        Assert.That(crossShape.Keys, Is.EquivalentTo(new[]
+        {
+            typeof(LegacyTransactionForRpc), typeof(AccessListTransactionForRpc), typeof(EIP1559TransactionForRpc),
+            typeof(BlobTransactionForRpc), typeof(SetCodeTransactionForRpc), typeof(FrameTransactionForRpc),
+        }), "every RPC type needs at least two shapes");
     }
 
     [Test]
@@ -64,14 +68,14 @@ public class BlockTransactionsViewTests
         using (Assert.EnterMultipleScope())
         {
             foreach ((string firstName, Transaction first) in transactions)
-            foreach ((string secondName, Transaction second) in transactions)
-            {
-                Block block = Build.A.Block.WithNumber(25_000_000).WithBaseFeePerGas(7).WithTransactions(first, second).TestObject;
-                BlockForRpc view = new(block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
-                BlockForRpc materialized = new(block, includeFullTransactionData: true, MainnetSpecProvider.Instance) { Transactions = view.Transactions!.Full };
+                foreach ((string secondName, Transaction second) in transactions)
+                {
+                    Block block = Build.A.Block.WithNumber(25_000_000).WithBaseFeePerGas(7).WithTransactions(first, second).TestObject;
+                    BlockForRpc view = new(block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
+                    BlockForRpc materialized = new(block, includeFullTransactionData: true, MainnetSpecProvider.Instance) { Transactions = view.Transactions!.Full };
 
-                Assert.That(Serialize(view), Is.EqualTo(Serialize(materialized)), $"{firstName} then {secondName}");
-            }
+                    Assert.That(Serialize(view), Is.EqualTo(Serialize(materialized)), $"{firstName} then {secondName}");
+                }
         }
     }
 
@@ -166,6 +170,12 @@ public class BlockTransactionsViewTests
         Transaction keyedFrame = FrameTx(SelfVerify(PrefixFrameGas), OnlyVerify());
         keyedFrame.NonceKeys = [1, 2];
 
+        Transaction signedFrame = FrameTx(SelfVerify(PrefixFrameGas));
+        signedFrame.FrameSignatures = [new TxFrameSignature(1, TestItem.AddressC, new byte[] { 1 }, new byte[] { 2, 3 })];
+        signedFrame.RecentRootReferences = [new RecentRootReference(TestItem.KeccakC.ValueHash256, 5, TestItem.KeccakD.ValueHash256)];
+        signedFrame.MaxFeePerBlobGas = 3;
+        signedFrame.BlobVersionedHashes = [TestItem.KeccakE.BytesToArray()];
+
         return
         [
             ("legacy", Build.A.Transaction.WithType(TxType.Legacy).WithNonce(1).WithGasPrice(7).WithTo(TestItem.AddressB).WithValue(5).WithData([1, 2]).SignedAndResolved().TestObject),
@@ -178,12 +188,15 @@ public class BlockTransactionsViewTests
             ("1559, create", Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(BlockchainIds.Mainnet).WithTo(null).WithCode([0x60]).WithMaxFeePerGas(9).SignedAndResolved().TestObject),
             ("blob, with network wrapper", Build.A.Transaction.WithType(TxType.Blob).WithChainId(BlockchainIds.Mainnet).WithShardBlobTxTypeAndFields(2, isMempoolTx: true).WithMaxFeePerGas(30).SignedAndResolved().TestObject),
             ("blob, without network wrapper", Build.A.Transaction.WithType(TxType.Blob).WithChainId(BlockchainIds.Mainnet).WithShardBlobTxTypeAndFields(1, isMempoolTx: false).WithMaxFeePerGas(40).SignedAndResolved().TestObject),
+            ("blob, higher blob fee cap", Build.A.Transaction.WithType(TxType.Blob).WithChainId(BlockchainIds.Mainnet).WithShardBlobTxTypeAndFields(1, isMempoolTx: false)
+                .WithMaxFeePerBlobGas(9).WithMaxFeePerGas(40).SignedAndResolved().TestObject),
             ("set code", Build.A.Transaction.WithType(TxType.SetCode).WithChainId(BlockchainIds.Mainnet).WithAuthorizationCodeIfAuthorizationListTx().WithMaxFeePerGas(30).SignedAndResolved().TestObject),
             ("set code, two authorizations", Build.A.Transaction.WithType(TxType.SetCode).WithChainId(BlockchainIds.Mainnet)
                 .WithAuthorizationCode([new AuthorizationTuple(1, TestItem.AddressC, 2, new Signature(new byte[64], 0)), new AuthorizationTuple(1, TestItem.AddressD, 3, new Signature(new byte[64], 1))])
                 .WithMaxFeePerGas(30).SignedAndResolved().TestObject),
             ("frame", FrameTx(SelfVerify(PrefixFrameGas))),
             ("frame, nonce keys", keyedFrame),
+            ("frame, signatures and root references", signedFrame),
         ];
     }
 }
