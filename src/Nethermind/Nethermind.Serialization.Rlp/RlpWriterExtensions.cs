@@ -255,7 +255,7 @@ public static class RlpWriterExtensions
                 writer.WriteByte(0);
                 writer.WriteZero(256);
             }
-            else if (bloom is null)
+            else if (bloom is null || bloom.IsZeroLength)
             {
                 writer.WriteByte(EmptyArrayByte);
             }
@@ -319,7 +319,7 @@ public static class RlpWriterExtensions
             else
             {
                 output[0] = prefix;
-                Bytes.Copy(valueSpan.Slice(leadingZeroBytes, valueLength), output.Slice(1));
+                valueSpan.Slice(leadingZeroBytes, valueLength).CopyTo(output.Slice(1));
                 output = output.Slice(0, 1 + valueLength);
             }
 

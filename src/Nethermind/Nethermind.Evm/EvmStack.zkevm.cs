@@ -35,20 +35,24 @@ public ref partial struct EvmStack
     /// <summary>Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, and reports whether it is a jump destination.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool AnalyzeJumpDestination(int destination) =>
-        _codeInfo is not null && _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
+        _codeInfo is not null && ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) &&
+        _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
 
     /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
-    /// look-back proves it a jump destination, and reports whether it did.
+    /// look-back proves it the destination of the jump running, and reports whether it did.
     /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
     /// <remarks>
     /// A false answer leaves the destination to <see cref="AnalyzeJumpDestination"/>. The bitmap is reached only once
     /// the destination is proven, so a frameless handler does not hold it through the look-back.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly bool TryMarkJumpDestination(nint destination)
+    internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
     {
-        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref Code)) return false;
+        if (_codeInfo is null || !ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) ||
+            !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;
@@ -84,16 +88,17 @@ public ref partial struct EvmStack
         return (long)((bits >> (int)destination) << 63) < 0;
     }
 
-    /// <summary>The slot at <paramref name="index"/>, counted up from the bottom of the stack, for callers that have bounded the index.</summary>
+    /// <summary>The bottom slot of the stack.</summary>
     /// <remarks>
-    /// Guest dispatch carries the head outside <see cref="Head"/> (see <c>VirtualMachine.Dispatch.zkevm.cs</c>), so its
-    /// handlers address slots by the head they hold rather than through <see cref="PeekBytesByRefUnchecked()"/>.
+    /// Guest dispatch carries it, and the head, outside the stack (see <c>VirtualMachine.Dispatch.zkevm.cs</c>), so its
+    /// handlers address slots off the two they hold rather than through <see cref="PeekBytesByRefUnchecked()"/>.
     /// </remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal readonly ref byte SlotUnchecked(nint index) => ref Unsafe.Add(ref _stack, index * WordSize);
+    internal readonly ref byte Bottom => ref _stack;
 
     /// <summary>The first word of <see cref="_jumpDestinations"/>, which the bit test indexes without a null check.</summary>
     private ref long _jumpDestinationBits;
+
+    partial void OnJumpDestinationsReplaced() => _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations!);
 
     // Resolved when the stack is built, as the host form is: resolving on the first jump put a call and a
     // write barrier into every handler that validates a jump. A stack over code without its code info gets

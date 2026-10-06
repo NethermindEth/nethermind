@@ -19,12 +19,8 @@ namespace Nethermind.Core.Collections
     /// Due to snapshots <see cref="Remove"/> is not supported.
     /// Items are kept in an <see cref="OptimizedHashSet{T}"/>, so the comparer must be the item's own equality.
     /// </remarks>
-    public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
+    public sealed partial class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
     {
-        // Removing entries one by one beats zeroing every bucket only while few remain: add, restore, clear and reuse
-        // cycles on Address and StorageCell journals put the crossover between about Capacity/100 and Capacity/1000.
-        private const int SparseClearCapacityDivisor = 256;
-
         private readonly List<T> _items = [];
         private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
 
@@ -65,22 +61,7 @@ namespace Nethermind.Core.Collections
             return false;
         }
 
-        public void Clear()
-        {
-            if (Count <= _set.Capacity / SparseClearCapacityDivisor)
-            {
-                foreach (T item in CollectionsMarshal.AsSpan(_items))
-                {
-                    _set.Remove(item);
-                }
-            }
-            else
-            {
-                _set.Clear();
-            }
-
-            _items.Clear();
-        }
+        public partial void Clear();
 
         /// <summary>Enumerates the items in the order they were first added, excluding those dropped by <see cref="Restore"/>.</summary>
         public List<T>.Enumerator GetEnumerator() => _items.GetEnumerator();
