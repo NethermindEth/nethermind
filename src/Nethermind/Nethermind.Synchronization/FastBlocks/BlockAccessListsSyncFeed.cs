@@ -200,7 +200,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
     private void PostFinishCleanUp()
     {
-        _syncReport.FastBlockAccessLists.Update(_pivotNumber);
+        _syncReport.FastBlockAccessLists.Update(_pivotNumber - _barrier);
         _syncReport.FastBlockAccessLists.MarkEnd();
     }
 

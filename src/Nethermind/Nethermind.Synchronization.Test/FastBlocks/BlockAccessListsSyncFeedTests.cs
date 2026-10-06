@@ -57,7 +57,7 @@ public class BlockAccessListsSyncFeedTests
         _feed.InitializeFeed();
     }
 
-    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null) =>
+    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null, ISyncReport? syncReport = null) =>
         new(
             specProvider,
             _blockTree,
@@ -65,7 +65,7 @@ public class BlockAccessListsSyncFeedTests
             _syncPointers,
             _syncPeerPool,
             new TestSyncConfig { FastSync = true, PivotNumber = 1 },
-            new NullSyncReport(),
+            syncReport ?? new NullSyncReport(),
             _metadataDb,
             logManager ?? LimboLogs.Instance);
 
@@ -269,12 +269,15 @@ public class BlockAccessListsSyncFeedTests
         const ulong pivot = 40;
         const ulong activation = 20;
         ConcurrentBag<ulong> lookups = [];
+        ProgressLogger progress = new("Old Block Access Lists", LimboLogs.Instance);
+        ISyncReport syncReport = Substitute.For<ISyncReport>();
+        syncReport.FastBlockAccessLists.Returns(progress);
         ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation, headersAvailable: true, lookups);
         _syncPeerPool
             .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
             .Returns(Task.FromResult<int?>(3));
         _feed.Dispose();
-        _feed = CreateFeed(specProvider);
+        _feed = CreateFeed(specProvider, syncReport: syncReport);
         _feed.InitializeFeed();
         _feed.Activate();
         lookups.Clear();
@@ -301,6 +304,11 @@ public class BlockAccessListsSyncFeedTests
         Assert.That(await _feed.PrepareRequest(), Is.Null);
         Assert.That(await _feed.PrepareRequest(), Is.Null);
         Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(progress.TargetValue, Is.EqualTo(pivot - activation + 1));
+            Assert.That(progress.CurrentValue, Is.EqualTo(progress.TargetValue));
+        }
 
         using BlockAccessListsSyncFeed restarted = CreateFeed(specProvider);
         Assert.That(restarted.IsFinished, Is.True);
