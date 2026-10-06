@@ -168,78 +168,62 @@ internal sealed class BeaconApiTestHost : IAsyncDisposable
 
         Hash256[] proof = Enumerable.Range(0, 33).Select(static i => FilledHash((byte)(0x30 + i))).ToArray();
 
-        return new SignedBeaconBlock
-        {
-            Message = new BeaconBlock
+        SignedBeaconBlock block = Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders.CreateMinimalBlock(slot);
+        BeaconBlockBody body = block.Message!.Body!;
+        ExecutionPayload payload = body.ExecutionPayload!;
+        body.RandaoReveal = FilledSignature(0x02);
+        body.Eth1Data = new Eth1Data { DepositRoot = FilledHash(0x03), DepositCount = 1234, BlockHash = FilledHash(0x04) };
+        body.Graffiti = FilledHash(0x05);
+        body.ProposerSlashings = [new ProposerSlashing { SignedHeader1 = header1, SignedHeader2 = header2 }];
+        body.AttesterSlashings =
+        [
+            new AttesterSlashing
             {
-                Slot = slot,
-                ProposerIndex = 77,
-                ParentRoot = parent,
-                StateRoot = FilledHash(0x01),
-                Body = new BeaconBlockBody
-                {
-                    RandaoReveal = FilledSignature(0x02),
-                    Eth1Data = new Eth1Data { DepositRoot = FilledHash(0x03), DepositCount = 1234, BlockHash = FilledHash(0x04) },
-                    Graffiti = FilledHash(0x05),
-                    ProposerSlashings = [new ProposerSlashing { SignedHeader1 = header1, SignedHeader2 = header2 }],
-                    AttesterSlashings =
-                    [
-                        new AttesterSlashing
-                        {
-                            Attestation1 = new IndexedAttestation { AttestingIndices = [1, 2, 3], Data = attestationData, Signature = FilledSignature(0x41) },
-                            Attestation2 = new IndexedAttestation { AttestingIndices = [2, 3], Data = attestationData, Signature = FilledSignature(0x42) },
-                        },
-                    ],
-                    Attestations = [new Attestation { AggregationBits = aggregationBits, Data = attestationData, Signature = FilledSignature(0x43), CommitteeBits = committeeBits }],
-                    Deposits =
-                    [
-                        new Deposit
-                        {
-                            Proof = proof,
-                            Data = new DepositData { Pubkey = FilledPubkey(0x51), WithdrawalCredentials = FilledHash(0x52), Amount = 32_000_000_000, Signature = FilledSignature(0x53) },
-                        },
-                    ],
-                    VoluntaryExits = [new SignedVoluntaryExit { Message = new VoluntaryExit { Epoch = 412_400, ValidatorIndex = 9 }, Signature = FilledSignature(0x61) }],
-                    SyncAggregate = new SyncAggregate { SyncCommitteeBits = syncBits, SyncCommitteeSignature = FilledSignature(0x71) },
-                    ExecutionPayload = new ExecutionPayload
-                    {
-                        ParentHash = FilledHash(0x81),
-                        FeeRecipient = new Address(Filled(20, 0x82)),
-                        StateRoot = FilledHash(0x83),
-                        ReceiptsRoot = FilledHash(0x84),
-                        LogsBloom = new Bloom(Filled(256, 0x85)),
-                        PrevRandao = FilledHash(0x86),
-                        BlockNumber = 23_000_000,
-                        GasLimit = 30_000_000,
-                        GasUsed = 21_000,
-                        Timestamp = 1_750_000_000,
-                        ExtraData = Bytes.FromHexString("0xc0ffee"),
-                        BaseFeePerGas = 7,
-                        BlockHash = FilledHash(0x87),
-                        Transactions = [new Transaction { Bytes = Bytes.FromHexString("0x02f870") }, new Transaction { Bytes = Bytes.FromHexString("0x01") }],
-                        Withdrawals = [new Withdrawal { Index = 100, ValidatorIndex = 200, Address = new Address(Filled(20, 0x88)), Amount = 300 }],
-                        BlobGasUsed = 131_072,
-                        ExcessBlobGas = 0,
-                    },
-                    BlsToExecutionChanges =
-                    [
-                        new SignedBlsToExecutionChange
-                        {
-                            Message = new BlsToExecutionChange { ValidatorIndex = 11, FromBlsPubkey = FilledPubkey(0x91), ToExecutionAddress = new Address(Filled(20, 0x92)) },
-                            Signature = FilledSignature(0x93),
-                        },
-                    ],
-                    BlobKzgCommitments = [SszKzgCommitment.FromSpan(Filled(48, 0xa1)), SszKzgCommitment.FromSpan(Filled(48, 0xa2))],
-                    ExecutionRequests = new ExecutionRequests
-                    {
-                        Deposits = [new DepositRequest { Pubkey = FilledPubkey(0xb1), WithdrawalCredentials = FilledHash(0xb2), Amount = 1_000_000_000, Signature = FilledSignature(0xb3), Index = 42 }],
-                        Withdrawals = [new WithdrawalRequest { SourceAddress = new Address(Filled(20, 0xc1)), ValidatorPubkey = FilledPubkey(0xc2), Amount = 5 }],
-                        Consolidations = [new ConsolidationRequest { SourceAddress = new Address(Filled(20, 0xd1)), SourcePubkey = FilledPubkey(0xd2), TargetPubkey = FilledPubkey(0xd3) }],
-                    },
-                },
+                Attestation1 = new IndexedAttestation { AttestingIndices = [1, 2, 3], Data = attestationData, Signature = FilledSignature(0x41) },
+                Attestation2 = new IndexedAttestation { AttestingIndices = [2, 3], Data = attestationData, Signature = FilledSignature(0x42) },
             },
-            Signature = FilledSignature(0x06),
+        ];
+        body.Attestations = [new Attestation { AggregationBits = aggregationBits, Data = attestationData, Signature = FilledSignature(0x43), CommitteeBits = committeeBits }];
+        body.Deposits =
+        [
+            new Deposit
+            {
+                Proof = proof,
+                Data = new DepositData { Pubkey = FilledPubkey(0x51), WithdrawalCredentials = FilledHash(0x52), Amount = 32_000_000_000, Signature = FilledSignature(0x53) },
+            },
+        ];
+        body.VoluntaryExits = [new SignedVoluntaryExit { Message = new VoluntaryExit { Epoch = 412_400, ValidatorIndex = 9 }, Signature = FilledSignature(0x61) }];
+        body.SyncAggregate = new SyncAggregate { SyncCommitteeBits = syncBits, SyncCommitteeSignature = FilledSignature(0x71) };
+        payload.ParentHash = FilledHash(0x81);
+        payload.FeeRecipient = new Address(Filled(20, 0x82));
+        payload.StateRoot = FilledHash(0x83);
+        payload.ReceiptsRoot = FilledHash(0x84);
+        payload.LogsBloom = new Bloom(Filled(256, 0x85));
+        payload.PrevRandao = FilledHash(0x86);
+        payload.BlockHash = FilledHash(0x87);
+        payload.Transactions = [new Transaction { Bytes = Bytes.FromHexString("0x02f870") }, new Transaction { Bytes = Bytes.FromHexString("0x01") }];
+        payload.Withdrawals = [new Withdrawal { Index = 100, ValidatorIndex = 200, Address = new Address(Filled(20, 0x88)), Amount = 300 }];
+        payload.BlobGasUsed = 131_072;
+        body.BlsToExecutionChanges =
+        [
+            new SignedBlsToExecutionChange
+            {
+                Message = new BlsToExecutionChange { ValidatorIndex = 11, FromBlsPubkey = FilledPubkey(0x91), ToExecutionAddress = new Address(Filled(20, 0x92)) },
+                Signature = FilledSignature(0x93),
+            },
+        ];
+        body.BlobKzgCommitments = [SszKzgCommitment.FromSpan(Filled(48, 0xa1)), SszKzgCommitment.FromSpan(Filled(48, 0xa2))];
+        body.ExecutionRequests = new ExecutionRequests
+        {
+            Deposits = [new DepositRequest { Pubkey = FilledPubkey(0xb1), WithdrawalCredentials = FilledHash(0xb2), Amount = 1_000_000_000, Signature = FilledSignature(0xb3), Index = 42 }],
+            Withdrawals = [new WithdrawalRequest { SourceAddress = new Address(Filled(20, 0xc1)), ValidatorPubkey = FilledPubkey(0xc2), Amount = 5 }],
+            Consolidations = [new ConsolidationRequest { SourceAddress = new Address(Filled(20, 0xd1)), SourcePubkey = FilledPubkey(0xd2), TargetPubkey = FilledPubkey(0xd3) }],
         };
+        block.Message.ProposerIndex = 77;
+        block.Message.ParentRoot = parent;
+        block.Message.StateRoot = FilledHash(0x01);
+        block.Signature = FilledSignature(0x06);
+        return block;
     }
 
     public static BeaconStateFulu MinimalState(BeaconChainSpec spec, ulong slot, Fork fork, Validator[] validators, ulong[] balances, Hash256[] randaoMixes) => new()
