@@ -32,8 +32,8 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
     /// body. Anything that changes an account's code — including a reverted deployment — produces a
     /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
-    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
-    /// the every-lookup-through-the-world-state behaviour that mode requires.
+    /// generation) the hash stays default and the memo never fires, which is exactly the
+    /// every-lookup-through-the-world-state behaviour that mode requires.
     /// </remarks>
     private CodeInfo? _lastResolved;
 
@@ -41,7 +41,12 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
     /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
     /// re-read and re-analysis on the next miss.</remarks>
+#if ZK_EVM
+    // The guest's per-block GuestCodeCache never evicts, so a memo hit has no ticker to refresh.
+    private const int MemoHitsPerTickerRefresh = int.MaxValue;
+#else
     private const int MemoHitsPerTickerRefresh = 64;
+#endif
     private int _memoHits;
 
     private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)

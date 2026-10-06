@@ -14,7 +14,7 @@ namespace Nethermind.Evm;
 /// by its witness and its gas (CREATE/CREATE2 deployments and EIP-7702 delegations also land here), and the guest
 /// runs one thread, so nothing here needs either.
 /// </remarks>
-public sealed class GuestCodeCache(int capacity) : ICodeCache
+internal sealed class GuestCodeCache(int capacity) : ICodeCache
 {
     private readonly OptimizedDictionary<ValueHash256, CodeInfo> _codes = new(capacity);
 
