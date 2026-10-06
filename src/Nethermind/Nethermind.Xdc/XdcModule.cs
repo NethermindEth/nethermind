@@ -189,6 +189,7 @@ public class XdcModule : Module
             ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
             logManager,
             new XdcTransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
+            ctx.Resolve<FrameTxWidthLedger>(),
             ctx.Resolve<ITxGossipPolicy>(),
             [
                 new SignTransactionFilter(ctx.Resolve<ISnapshotManager>(), blockTree, specProvider),

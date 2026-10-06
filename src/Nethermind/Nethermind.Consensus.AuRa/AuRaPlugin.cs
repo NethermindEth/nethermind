@@ -160,6 +160,7 @@ namespace Nethermind.Consensus.AuRa
                 ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
                 logManager,
                 CreateTxPoolTxComparer(ctx, txPriorityContract, localDataSource),
+                ctx.Resolve<FrameTxWidthLedger>(),
                 ctx.Resolve<ITxGossipPolicy>(),
                 [new TxFilterAdapter(blockTree, txPoolFilter, logManager, specProvider)],
                 txPriorityContract is not null || localDataSource is not null,

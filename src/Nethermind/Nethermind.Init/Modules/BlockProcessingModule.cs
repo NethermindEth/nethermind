@@ -132,6 +132,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 ctx.ResolveKeyed<ITxValidator>(ITxValidator.SpecChangeTxValidatorKey),
                 ctx.Resolve<ILogManager>(),
                 ctx.Resolve<ITransactionComparerProvider>().GetDefaultComparer(),
+                ctx.Resolve<FrameTxWidthLedger>(),
                 ctx.Resolve<ITxGossipPolicy>(),
                 frameTxPrefixSimulator: ctx.ResolveOptional<IFrameTxPrefixSimulator>()))
             .AddSingleton<ITxSender, ITxPool, IWallet, ISpecProvider, ITimestamper, INonceManager, IEthereumEcdsa>((txPool, wallet, specProvider, timestamper, nonceManager, ecdsa) =>
@@ -153,6 +154,8 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddSingleton<ISealer>(NullSealEngine.Instance)
             .AddSingleton<ISealEngine, SealEngine>()
             .AddSingleton<IBlockProducerTxSourceFactory, TxPoolTxSourceFactory>()
+            .AddSingleton<FrameTxWidthLedger>()
+                .Bind<IFrameTxWidthLedger, FrameTxWidthLedger>()
             .AddSingleton<IBlockProductionPolicy, BlockProductionPolicy>()
 
             .AddSingleton<IGasPriceOracle, IBlockFinder, ISpecProvider, ILogManager, IBlocksConfig>((blockTree, specProvider, logManager, blocksConfig) =>
