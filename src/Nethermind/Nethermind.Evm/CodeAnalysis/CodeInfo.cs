@@ -62,9 +62,9 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
     /// <remarks>
     /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
-    /// last padding byte, which is STOP.
+    /// next-to-last padding byte, which is STOP; the guest reads that opcode together with the byte after it.
     /// </remarks>
-    internal const int ExecutionPadding = 33;
+    internal const int ExecutionPadding = 34;
 
     /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
     /// <remarks>
@@ -156,6 +156,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
     }
+
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    internal long[] JumpAndCallDestinationBitmap
+        => _analyzer?.JumpAndCallDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     public override bool Equals(object? obj)
         => Equals(obj as CodeInfo);

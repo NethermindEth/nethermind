@@ -87,6 +87,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip7623Enabled { get; set; }
     public bool IsEip7976Enabled { get; set; }
     public bool IsEip7981Enabled { get; set; }
+    public bool IsEip8131Enabled { get; set; }
     public bool IsEip7883Enabled { get; set; }
     public bool IsEip5656Enabled { get; set; }
     public bool IsEip6780Enabled { get; set; }
@@ -96,6 +97,7 @@ public class ReleaseSpec : IReleaseSpec
     public bool IsEip8250Enabled { get; set; }
     public bool IsEip8272Enabled { get; set; }
     public bool IsEip7906Enabled { get; set; }
+    public bool IsEip7979Enabled { get; set; }
     public bool IsEip4788Enabled { get; set; }
     public bool IsEip7702Enabled { get; set; }
     public bool IsEip7823Enabled { get; set; }

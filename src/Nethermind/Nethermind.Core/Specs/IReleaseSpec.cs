@@ -342,6 +342,12 @@ namespace Nethermind.Core.Specs
         bool IsEip7906Enabled { get; }
 
         /// <summary>
+        /// EIP-7979: call and return opcodes (<c>CALLSUB</c>, <c>CALLDEST</c>, <c>RETURNSUB</c>) with a per-frame return stack.
+        /// </summary>
+        /// <remarks>Assumes EIP-8024 is active: a <c>CALLDEST</c> byte in a valid EIP-8024 immediate is never a destination.</remarks>
+        bool IsEip7979Enabled { get; }
+
+        /// <summary>
         /// EIP-8038: State-access gas cost update
         /// </summary>
         bool IsEip8038Enabled { get; }
@@ -407,6 +413,15 @@ namespace Nethermind.Core.Specs
         /// Access List Token Floor Pricing
         /// </summary>
         bool IsEip7981Enabled { get; }
+
+        /// <summary>
+        /// EIP-8131: Unified Transaction Content Floor.
+        /// </summary>
+        /// <remarks>
+        /// Replaces the EIP-7976 calldata floor and the EIP-7981 access-list surcharge with a flat 64 gas per content
+        /// byte (calldata, access-list entries, authorizations and blob versioned hashes) at the floor.
+        /// </remarks>
+        bool IsEip8131Enabled { get; }
 
         /// <summary>
         /// Should transactions be validated against chainId.

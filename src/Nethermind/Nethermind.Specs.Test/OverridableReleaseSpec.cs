@@ -70,6 +70,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7623Enabled { get; set; } = spec.IsEip7623Enabled;
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
+        public bool IsEip8131Enabled { get; set; } = spec.IsEip8131Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
@@ -102,6 +103,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
 
         public bool IsEip7906Enabled { get; set; } = spec.IsEip7906Enabled;
+        public bool IsEip7979Enabled { get; set; } = spec.IsEip7979Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;

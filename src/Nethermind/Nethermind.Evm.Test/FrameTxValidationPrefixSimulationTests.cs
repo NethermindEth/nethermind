@@ -47,9 +47,14 @@ public class FrameTxValidationPrefixSimulationTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true });
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8272Enabled = true });
+    }
+
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
@@ -237,6 +242,27 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.True);
             Assert.That(tracer.Violated, Is.False);
             Assert.That(tracer.Payer, Is.EqualTo(Sender));
+        }
+    }
+
+    [Test]
+    public void Simulate_PrefixRunsAnEip7979Subroutine_ResolvesPayerOnlyWhenEnabled([Values] bool eip7979)
+    {
+        // CALLSUB and RETURNSUB are pure control flow, so the prefix may use them once they are defined.
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip7979Enabled = eip7979 });
+        byte[] approve = ApproveCode(FrameFlags.ApproveExecutionAndPayment);
+        byte subroutine = (byte)(3 + approve.Length);
+        byte[] code = [(byte)Instruction.PUSH1, subroutine, (byte)Instruction.CALLSUB, .. approve, (byte)Instruction.CALLDEST, (byte)Instruction.RETURNSUB];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(eip7979));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(eip7979 ? Sender : null));
         }
     }
 
