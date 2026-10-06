@@ -6,6 +6,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 
@@ -54,7 +55,7 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
     /// <see cref="MessageValidity.Accepted"/> only for a data column sidecar that passed every check; otherwise
     /// <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>, including for a consumed message.
     /// </returns>
-    internal MessageValidity Validate(Message message, GossipVerdict verdict)
+    internal MessageValidity Validate(Message message, GossipVerdict verdict, PeerId? source = null)
     {
         bool parsed = GossipTopics.TryParse(message.Topic, out _, out string? name);
         string label = parsed && IsHandledName(name!) ? name! : UnhandledTopicLabel;
@@ -73,7 +74,7 @@ public sealed class GossipMessageValidator(GossipRouter gossip, ColumnGossipRout
         }
 
         return column
-            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray())
+            ? columns.Handle(subnetId, gloas, message.Data.ToByteArray(), verdict, source)
             : gossip.Handle(topicName!, gloas, message.Data.ToByteArray(), verdict);
     }
 

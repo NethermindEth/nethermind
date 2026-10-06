@@ -52,14 +52,16 @@ public class ColumnGossipRouterSubscriptionTests
     }
 
     [Test]
-    public void Reconstructed_column_is_published_only_on_its_own_digest()
+    public void Reconstructed_column_is_published_only_on_its_active_digest([Values] bool retired)
     {
         const int required = Eip7594DasConstants.RequiredColumnsForReconstruction;
         using IContainer container = BuildContainer();
         ColumnGossipRouter router = container.Resolve<ColumnGossipRouter>();
         Dictionary<string, RecordingTopic> topics = [];
-        router.Start(id => topics[id] = new RecordingTopic(), Bpo1Digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)]);
+        List<string> crossSeeded = [];
+        router.Start(id => topics[id] = new RecordingTopic(), Bpo1Digest, [.. Enumerable.Range(0, required + 1).Select(static i => (ulong)i)], (id, _) => crossSeeded.Add(id));
         router.SubscribeDigest(Bpo2Digest);
+        if (retired) router.UnsubscribeDigest(Bpo2Digest);
 
         // An imported block's header on a branch from the finalized checkpoint needs no key cache or lookahead, so its columns pass every check.
         BeaconBlockHeader header = DataColumnSidecarTestFixture.BuildValidSidecar(0, Bpo2Slot).SignedBlockHeader!.Message!;
@@ -79,9 +81,10 @@ public class ColumnGossipRouterSubscriptionTests
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(container.Resolve<DataColumnSidecarPool>().TryGet(blockRoot, required, out _), Is.True, "the missing column was reconstructed");
-        Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.EqualTo(new[] { Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(required, Bpo2Slot))) }),
+        Assert.That(topics[SubnetTopic(Bpo2Digest, required)].Published, Is.EqualTo(retired ? [] : new[] { Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(required, Bpo2Slot))) }),
             "fulu/das-core.md: a reconstructed column of a subscribed subnet goes to its topic of the sidecar's fork digest");
         Assert.That(topics[SubnetTopic(Bpo1Digest, required)].Published, Is.Empty, "never re-broadcast on the other fork's topic");
+        Assert.That(crossSeeded, Is.EquivalentTo(retired ? [] : Enumerable.Range(required + 1, required - 1).Select(column => SubnetTopic(Bpo2Digest, (ulong)column))));
     }
 
     private static string SubnetTopic(byte[] digest, ulong subnet) => GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(subnet));

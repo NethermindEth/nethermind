@@ -424,8 +424,9 @@ public class RequestFailureCauseTests
             TaskCompletionSource<ulong> pending = new(TaskCreationOptions.RunContinuationsAsynchronously);
             if (i < 2) timeouts.Add(pending);
             Task<ulong> response = i == 2 ? Task.FromResult(0UL) : pending.Task;
-            session.DialAsync<Eth2PingProtocol, ulong, ulong>(default, default).ReturnsForAnyArgs(_ =>
+            session.DialAsync<Eth2PingProtocol, Uint64Request, ulong>(default!, default).ReturnsForAnyArgs(call =>
             {
+                using RequestTiming.Exchange exchange = RequestTiming.Open(call.Arg<Uint64Request>());
                 if (!response.IsCompleted && Interlocked.Increment(ref failedPings) == 2)
                 {
                     bothPingsFailed.TrySetResult();

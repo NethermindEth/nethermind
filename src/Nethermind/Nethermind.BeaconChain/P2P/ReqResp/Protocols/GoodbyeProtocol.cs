@@ -24,22 +24,23 @@ public static class GoodbyeReason
 
 /// <summary>The eth2 <c>goodbye</c> protocol.</summary>
 /// <remarks>The listener answers with one success chunk echoing the reason (p2p-interface Goodbye); the dial side does not await it before disconnecting.</remarks>
-public sealed class GoodbyeProtocol : SingleChunkProtocol<ulong, ulong>
+public sealed class GoodbyeProtocol : SingleChunkProtocol<Uint64Request, ulong>
 {
     public override string Id => "/eth2/beacon_chain/req/goodbye/1/ssz_snappy";
     protected override int MaxRequestSize => sizeof(ulong);
     protected override int MaxResponseSize => sizeof(ulong);
-    protected override byte[] EncodeRequest(ulong request) => Eth2PingProtocol.EncodeUint64(request);
-    protected override ulong DecodeRequest(byte[] ssz) => Eth2PingProtocol.DecodeUint64(ssz);
+    protected override byte[] EncodeRequest(Uint64Request request) => Eth2PingProtocol.EncodeUint64(request.Value);
+    protected override Uint64Request DecodeRequest(byte[] ssz) => new(Eth2PingProtocol.DecodeUint64(ssz));
     protected override byte[] EncodeResponse(ulong response) => Eth2PingProtocol.EncodeUint64(response);
     protected override ulong DecodeResponse(byte[] ssz) => Eth2PingProtocol.DecodeUint64(ssz);
-    protected override ulong HandleRequest(ulong request) => request;
+    protected override ulong HandleRequest(Uint64Request request) => request.Value;
 
-    public override async Task<ulong> DialAsync(IChannel downChannel, ISessionContext context, ulong request)
+    public override async Task<ulong> DialAsync(IChannel downChannel, ISessionContext context, Uint64Request request)
     {
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
         Stream stream = new ChannelStreamAdapter(downChannel);
         using CancellationTokenSource cts = StartTimeout(RespTimeout);
-        await WriteRequestAndEofAsync(downChannel, stream, Eth2PingProtocol.EncodeUint64(request), cts.Token);
-        return request;
+        await WriteRequestAndEofAsync(downChannel, stream, Eth2PingProtocol.EncodeUint64(request.Value), cts.Token);
+        return request.Value;
     }
 }

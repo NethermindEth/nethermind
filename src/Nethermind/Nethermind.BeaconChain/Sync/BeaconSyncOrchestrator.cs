@@ -1055,6 +1055,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         SettleBlockVerdict(block, result, rejectGossip);
+        columnRouter?.RetryPendingGloas();
 
         PendingRetry? promoted = null;
         if (result == BlockImportResult.Imported)
@@ -1896,6 +1897,7 @@ public sealed class BeaconSyncOrchestrator(
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token, TipUpdate tipUpdate)
     {
+        columnRouter?.RetryPendingGloas();
         if (slot > _syncTip.Slot)
         {
             if (tipUpdate != TipUpdate.FollowHead)
@@ -2604,6 +2606,7 @@ public sealed class BeaconSyncOrchestrator(
     {
         gossipRouter.ReleaseDueMessages();
         SweepGossipVerdicts();
+        columnRouter?.RetryPendingGloas();
         _importer!.OnSlotTick(slot);
         await RunHeadStepAsync(token);
         if (_lastHead is { } stalled && HasHeadStalled(stalled.HeadSlot, slot) && GossipStarted && stalled.HeadSlot + GossipStartDistanceSlots < slot)
@@ -2744,7 +2747,7 @@ public sealed class BeaconSyncOrchestrator(
             subnets.Add(CustodyGroups.ComputeSubnetForDataColumnSidecar(column));
         }
 
-        columnRouter.Start(_getTopic!, _currentDigest, [.. subnets]);
+        columnRouter.Start(_getTopic!, _currentDigest, [.. subnets], p2p is null ? null : p2p.Publish);
         _columnGossipStarted = true;
         return true;
     }

@@ -16,6 +16,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
 using Nethermind.Network.Libp2p;
@@ -177,6 +178,12 @@ public sealed class ColumnGossipRouter(
     private readonly ILogger _logger = logManager.GetClassLogger<ColumnGossipRouter>();
     private readonly LruKeyCache<(ulong Slot, ulong ProposerIndex, ulong Index)> _seenSidecars = new(SeenCacheSize, "beacon column gossip seen sidecars");
     private readonly LruKeyCache<(Hash256 BlockRoot, ulong Index)> _seenGloasSidecars = new(SeenCacheSize, "beacon column gossip seen gloas sidecars");
+    private readonly Lock _pendingGloasLock = new();
+    private readonly Dictionary<DataColumnSidecarGloas, PendingGloasVerdict> _pendingGloasVerdicts = new(ReferenceEqualityComparer.Instance);
+    private sealed record PendingGloasVerdict(ulong Subnet, PeerId Source, GossipVerdict Verdict)
+    {
+        public int Validating;
+    }
 
     // The signature each stored block was imported with, or null for a stored root that is not a readable Fulu block.
     private readonly LruCache<Hash256, BlsSignature?> _importedHeaderSignatures = new(ImportedHeaderCacheSize, "beacon column gossip imported headers");
@@ -231,6 +238,7 @@ public sealed class ColumnGossipRouter(
     internal delegate bool DataColumnReconstructor(IReadOnlyList<DataColumnSidecar> heldColumns, out DataColumnSidecar[] fullMatrix);
 
     private Func<string, ITopic>? _getTopic;
+    private Action<string, byte[]>? _publishUnsubscribed;
     private IReadOnlyList<ulong> _subnets = [];
 
     /// <summary>
@@ -246,11 +254,12 @@ public sealed class ColumnGossipRouter(
     internal long HeaderSignatureVerificationCount => Interlocked.Read(ref _headerSignatureVerifications);
 
     /// <summary>Subscribes <paramref name="subnets"/> for <paramref name="forkDigest"/>; every later digest subscribes the same subnets.</summary>
-    public void Start(Func<string, ITopic> getTopic, byte[] forkDigest, IReadOnlyList<ulong> subnets)
+    public void Start(Func<string, ITopic> getTopic, byte[] forkDigest, IReadOnlyList<ulong> subnets, Action<string, byte[]>? publishUnsubscribed = null)
     {
         lock (_subscriptionLock)
         {
             _getTopic = getTopic;
+            _publishUnsubscribed = publishUnsubscribed;
             _subnets = subnets;
             SubscribeDigest(forkDigest);
         }
@@ -317,13 +326,13 @@ public sealed class ColumnGossipRouter(
     /// passed every check under an imported block's header or the expected proposer's; otherwise <see cref="MessageValidity.Rejected"/> or <see cref="MessageValidity.Ignored"/>,
     /// including for a consumed Fulu sidecar whose header this node cannot verify.
     /// </returns>
-    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message)
+    internal MessageValidity Handle(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict = null, PeerId? source = null)
     {
         bool retrying = _retrying;
         _retrying = false;
         try
         {
-            return HandleReceived(subnetId, gloasTopic, message);
+            return HandleReceived(subnetId, gloasTopic, message, verdict, source);
         }
         finally
         {
@@ -331,7 +340,7 @@ public sealed class ColumnGossipRouter(
         }
     }
 
-    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message)
+    private MessageValidity HandleReceived(ulong subnetId, bool gloasTopic, byte[] message, GossipVerdict? verdict, PeerId? source)
     {
         if (!IsSubscribed(subnetId))
         {
@@ -350,7 +359,7 @@ public sealed class ColumnGossipRouter(
             return Drop(snappy == SnappyDecodeResult.Oversized ? ColumnGossipDropReason.Oversized : ColumnGossipDropReason.InvalidSnappy, MessageValidity.Rejected);
         }
 
-        return gloasTopic ? HandleGloas(subnetId, payload!) : HandleFulu(subnetId, payload!);
+        return gloasTopic ? HandleGloas(subnetId, payload!, verdict, source) : HandleFulu(subnetId, payload!);
     }
 
     private MessageValidity HandleFulu(ulong subnetId, byte[] payload)
@@ -1005,7 +1014,7 @@ public sealed class ColumnGossipRouter(
     }
 
     /// <summary>gloas/p2p-interface.md <c>validate_data_column_sidecar_gossip</c>, in the spec's order.</summary>
-    private MessageValidity HandleGloas(ulong subnetId, byte[] payload)
+    private MessageValidity HandleGloas(ulong subnetId, byte[] payload, GossipVerdict? verdict, PeerId? source)
     {
         DataColumnSidecarGloas sidecar;
         try
@@ -1018,6 +1027,15 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.InvalidSsz, MessageValidity.Rejected);
         }
 
+        MessageValidity? validity = ValidateGloas(subnetId, sidecar);
+        if (validity is { } settled) return settled;
+        MessageValidity parked = Park(sidecar, ValidateNotFromFuture(sidecar.Slot) ?? ColumnGossipDropReason.UnknownBlock, subnetId, verdict, source);
+        RetryPendingGloas();
+        return parked;
+    }
+
+    private MessageValidity? ValidateGloas(ulong subnetId, DataColumnSidecarGloas sidecar, bool consume = true)
+    {
         if (sidecar.BeaconBlockRoot is not { } blockRoot)
         {
             return Drop(ColumnGossipDropReason.FailedStructure, MessageValidity.Rejected);
@@ -1044,11 +1062,11 @@ public sealed class ColumnGossipRouter(
             return Drop(boundsReason, convicted ? MessageValidity.Rejected : MessageValidity.Ignored);
         }
 
-        // [IGNORE] not from a future slot. One early for the next slot is parked: its message id stays dropped for the seen TTL.
+        // [IGNORE] not from a future slot. An early next-slot sidecar can retain its pending verdict until the slot starts.
         if (ValidateNotFromFuture(sidecar.Slot) is { } futureReason)
         {
             return sidecar.Slot == slotClock.CurrentSlot + 1
-                ? Park(sidecar, futureReason)
+                ? null
                 : Drop(futureReason, MessageValidity.Ignored);
         }
 
@@ -1068,7 +1086,7 @@ public sealed class ColumnGossipRouter(
         switch (blockCached ? GloasBlockLookup.Found : ReadGloasBlock(blockRoot, sidecar.Slot, out block))
         {
             case GloasBlockLookup.Unknown:
-                return Park(sidecar, ColumnGossipDropReason.UnknownBlock);
+                return null;
             case GloasBlockLookup.Unreadable:
                 return Drop(ColumnGossipDropReason.UnknownBlock, MessageValidity.Ignored);
             case GloasBlockLookup.BudgetSpent:
@@ -1102,6 +1120,7 @@ public sealed class ColumnGossipRouter(
             return Drop(ColumnGossipDropReason.FailedKzgProofs, MessageValidity.Rejected);
         }
 
+        if (!consume) return MessageValidity.Accepted;
         if (!_seenGloasSidecars.Set((blockRoot, sidecar.Index)))
         {
             return Drop(ColumnGossipDropReason.Duplicate, MessageValidity.Ignored);
@@ -1116,18 +1135,104 @@ public sealed class ColumnGossipRouter(
     /// block is retrieved") when it is for the current or next slot, the only slots the future-slot IGNORE lets through.
     /// </summary>
     /// <remarks>
-    /// The pool retains no delivering peer and <c>StrictNoSign</c> forbids <c>from</c>, so candidates
-    /// are bounded per (root, column) and globally; forgeries never displace earlier candidates.
+    /// Pending gossip retains its delivering peer and verdict until validation or pubsub expiry, bounded per peer/subnet,
+    /// (root, column) and globally. Candidates without a pubsub verdict remain available only for local data recovery.
     /// </remarks>
-    private MessageValidity Park(DataColumnSidecarGloas sidecar, ColumnGossipDropReason reason)
+    private MessageValidity Park(DataColumnSidecarGloas sidecar, ColumnGossipDropReason reason, ulong subnet, GossipVerdict? verdict, PeerId? source)
     {
         ulong currentSlot = slotClock.CurrentSlot;
-        if (sidecar.Slot == currentSlot || sidecar.Slot == currentSlot + 1)
+        if (sidecar.Slot != currentSlot && sidecar.Slot != currentSlot + 1)
+            return Drop(reason, MessageValidity.Ignored);
+
+        if (verdict is null || verdict == GossipVerdict.None || verdict.IsLocal || source is null)
+        {
+            pool?.AddPendingGloas(sidecar, currentSlot);
+            return Drop(reason, MessageValidity.Ignored);
+        }
+
+        lock (_pendingGloasLock)
+        {
+            if (verdict.IsCompleted || _pendingGloasVerdicts.Count >= DataColumnSidecarPool.MaxPendingGloasSidecars)
+                return Drop(reason, MessageValidity.Ignored);
+            int sameKey = 0;
+            foreach ((DataColumnSidecarGloas candidate, PendingGloasVerdict pending) in _pendingGloasVerdicts)
+            {
+                if (pending.Source == source && pending.Subnet == subnet)
+                    return Drop(reason, MessageValidity.Ignored);
+                if (candidate.BeaconBlockRoot == sidecar.BeaconBlockRoot && candidate.Index == sidecar.Index) sameKey++;
+            }
+            if (sameKey >= DataColumnSidecarPool.MaxPendingGloasCandidatesPerKey)
+                return Drop(reason, MessageValidity.Ignored);
+            _pendingGloasVerdicts.Add(sidecar, new(subnet, source, verdict));
+        }
+
+        try
         {
             pool?.AddPendingGloas(sidecar, currentSlot);
         }
+        finally
+        {
+            // Register after insertion: completion during a pool wake must remove the inserted candidate too.
+            verdict.ReleaseOnEnd(() => RemovePendingGloas(sidecar));
+        }
+        verdict.HandOff();
+        return MessageValidity.Ignored;
+    }
 
-        return Drop(reason, MessageValidity.Ignored);
+    private void RemovePendingGloas(DataColumnSidecarGloas sidecar)
+    {
+        lock (_pendingGloasLock) _pendingGloasVerdicts.Remove(sidecar);
+        pool?.DiscardPendingGloas(sidecar);
+    }
+
+    /// <summary>Rechecks queued Gloas gossip after block import or a slot tick, while its pubsub verdict is still pending.</summary>
+    internal void RetryPendingGloas()
+    {
+        KeyValuePair<DataColumnSidecarGloas, PendingGloasVerdict>[] pending;
+        lock (_pendingGloasLock) pending = [.. _pendingGloasVerdicts];
+        foreach ((DataColumnSidecarGloas sidecar, PendingGloasVerdict entry) in pending)
+        {
+            if (Interlocked.Exchange(ref entry.Validating, 1) != 0) continue;
+            try
+            {
+                if (entry.Verdict.IsCompleted)
+                {
+                    RemovePendingGloas(sidecar);
+                    continue;
+                }
+
+                MessageValidity? validity;
+                try
+                {
+                    validity = !IsSubscribed(entry.Subnet) || sidecar.Slot < slotClock.CurrentSlot && slotClock.CurrentSlot - sidecar.Slot > 1
+                        ? MessageValidity.Ignored : ValidateGloas(entry.Subnet, sidecar, consume: false);
+                }
+                catch (Exception e) when (e is not OutOfMemoryException)
+                {
+                    if (_logger.IsError) _logger.Error("Deferred Gloas column validation failed", e);
+                    entry.Verdict.Complete(MessageValidity.Throttled);
+                    continue;
+                }
+                if (validity == MessageValidity.Accepted)
+                {
+                    (Hash256, ulong) key = (sidecar.BeaconBlockRoot!, sidecar.Index);
+                    if (!_seenGloasSidecars.Set(key))
+                        entry.Verdict.Complete(MessageValidity.Ignored);
+                    else if (entry.Verdict.Complete(MessageValidity.Accepted))
+                    {
+                        pool?.AddGloas(sidecar);
+                        Accept(MessageValidity.Accepted);
+                    }
+                    else
+                        _seenGloasSidecars.Delete(key);
+                }
+                else if (validity is { } settled) entry.Verdict.Complete(settled);
+            }
+            finally
+            {
+                Volatile.Write(ref entry.Validating, 0);
+            }
+        }
     }
 
     /// <summary>The stateless part of <c>verify_data_column_sidecar</c> plus the blob limit every accepted bid is within, or <c>null</c> when it passes.</summary>
@@ -1291,10 +1396,10 @@ public sealed class ColumnGossipRouter(
         return true;
     }
 
-    /// <summary>Sends each reconstructed sidecar of a subscribed subnet to that subnet's topic of the sidecar's own fork digest.</summary>
+    /// <summary>Publishes reconstructed sidecars on their own fork digest, including unsubscribed subnets.</summary>
     /// <remarks>
-    /// fulu/das-core.md "Reconstruction and cross-seeding": subscribed columns MUST reach topic mesh
-    /// neighbors; other columns are only held, without SHOULD-expose gossip emission. Publication requires
+    /// fulu/das-core.md "Reconstruction and cross-seeding": subscribed columns reach mesh neighbors,
+    /// and other columns use pubsub fanout without subscribing. Publication requires
     /// a header that passed every check: reconstruction copies signatures, and sync or unverified pooled
     /// columns may carry forgeries. Failed sends release the (slot, proposer_index, index) tuple for later gossip.
     /// </remarks>
@@ -1306,12 +1411,13 @@ public sealed class ColumnGossipRouter(
         }
 
         // Every entry is a column of one block, so of one slot and one digest.
-        _publishTopics.TryGetValue(Convert.ToHexStringLower(ForkDigest.Compute(spec, spec.GetEpoch(entries[0].Slot))), out List<(ulong Subnet, ITopic Topic)>? subscribed);
+        byte[] digest = ForkDigest.Compute(spec, spec.GetEpoch(entries[0].Slot));
+        if (!_publishTopics.TryGetValue(Convert.ToHexStringLower(digest), out List<(ulong Subnet, ITopic Topic)>? subscribed)) return;
         foreach (ReconstructedSidecarToPublish entry in entries)
         {
             // A reconstructed sidecar carries the signed header of a held column, which sync may have pooled under another signature.
-            ITopic? topic = subscribed?.Find(subscription => subscription.Subnet == entry.Subnet).Topic;
-            if (topic is null || entry.Sidecar.SignedBlockHeader?.Signature != accepted)
+            ITopic? topic = subscribed.Find(subscription => subscription.Subnet == entry.Subnet).Topic;
+            if ((topic is null && _publishUnsubscribed is null) || entry.Sidecar.SignedBlockHeader?.Signature != accepted)
             {
                 continue;
             }
@@ -1325,7 +1431,9 @@ public sealed class ColumnGossipRouter(
 
             try
             {
-                topic.Publish(Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar)));
+                byte[] message = Snappy.CompressToArray(DataColumnSidecar.Encode(entry.Sidecar));
+                if (topic is not null) topic.Publish(message);
+                else _publishUnsubscribed!(GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(entry.Subnet)), message);
             }
             catch (InvalidOperationException e)
             {

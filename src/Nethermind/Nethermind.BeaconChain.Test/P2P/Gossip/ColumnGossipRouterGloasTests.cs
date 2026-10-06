@@ -24,9 +24,6 @@ using static Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders;
 
 namespace Nethermind.BeaconChain.Test.P2P.Gossip;
 
-// A Gloas sidecar is the one gossip message this node can fully validate without state, so it must be Accepted
-// (gloas/p2p-interface.md: a valid sidecar MUST be re-broadcast); REJECT follows the spec order, and a sidecar
-// whose block is not held yet must be parked, because its message id is never redelivered once dropped.
 public class ColumnGossipRouterGloasTests
 {
     private static readonly PeerId DeliveringPeer = new Nethermind.Libp2p.Core.Identity(privateKey: null, Nethermind.Libp2p.Core.Dto.KeyType.Secp256K1).PeerId;
@@ -706,6 +703,160 @@ public class ColumnGossipRouterGloasTests
     }
 
     private static byte[] Encode(DataColumnSidecarGloas sidecar) => Snappy.CompressToArray(DataColumnSidecarGloas.Encode(sidecar));
+
+    [Test]
+    public async Task Deferred_gloas_column_forwards_or_penalizes_its_peer([Values] bool badProof)
+    {
+        BeaconChainStore? store = null;
+        (ColumnGossipRouter router, _) = Create(populate: (_, value) => store = value);
+        byte[] payload = Encode(Sidecar(root: UnknownRoot,
+            mutate: badProof ? static value => value.KzgProofs = [value.KzgProofs![1], value.KzgProofs[0]] : null));
+        await GossipRouterTests.AssertDeferredPeerPenaltyAsync(GossipTopics.DataColumnSidecarTopicName(Column), payload, verdict =>
+        {
+            router.Handle(Column, true, payload, verdict, DeliveringPeer);
+            Assert.That(verdict.IsCompleted, Is.False, "unknown-block gossip retains its sender's verdict");
+            store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(Block));
+            router.RetryPendingGloas();
+            return Task.CompletedTask;
+        }, badProof ? MessageValidity.Rejected : MessageValidity.Accepted);
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Deferred_gloas_column_is_settled_after_all_block_checks([Values] bool badProof, [Values] bool wrongSlot, [Values] bool failedBlock)
+    {
+        BeaconChainStore? store = null;
+        FailedBlockRoots failed = new();
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (_, value) => store = value, failedBlocks: failed);
+        DataColumnSidecarGloas sidecar = Sidecar(root: UnknownRoot,
+            mutate: badProof ? static value => value.KzgProofs = [value.KzgProofs![1], value.KzgProofs[0]] : null);
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+
+        Assert.That(router.Handle(Column, true, Encode(sidecar), verdict, DeliveringPeer), Is.EqualTo(MessageValidity.Ignored));
+        Assert.That((given.Count, verdict.IsHandedOff), Is.EqualTo((0, true)));
+        SignedBeaconBlockGloas namedBlock = CreateMinimalGloasBlock(wrongSlot ? BlockSlot + 1 : BlockSlot);
+        namedBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.BlobKzgCommitments = DataColumnSidecarGloasTestFixture.Commitments();
+        store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(namedBlock));
+        if (failedBlock) failed.Add(UnknownRoot, BlockSlot);
+        ulong accepted = Interlocked.Read(ref Metrics.GossipAcceptedCount);
+        router.RetryPendingGloas();
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(new[] { badProof || wrongSlot || failedBlock ? MessageValidity.Rejected : MessageValidity.Accepted }));
+        Assert.That(pool.TryGetGloas(UnknownRoot, Column, out _), Is.EqualTo(!badProof && !wrongSlot && !failedBlock));
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
+        Assert.That(Interlocked.Read(ref Metrics.GossipAcceptedCount) - accepted, Is.EqualTo(badProof || wrongSlot || failedBlock ? 0 : 1));
+    }
+
+    [Test]
+    public void Early_gloas_column_is_accepted_on_its_slot_and_unresolved_columns_expire([Values] bool blockArrives)
+    {
+        ManualTimestamper time = WallClock(Sepolia, BlockSlot - 1);
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(wallSlot: BlockSlot - 1, timestamper: time);
+        Hash256 root = blockArrives ? BlockRoot : UnknownRoot;
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return true; }, null);
+        router.Handle(Column, true, Encode(Sidecar(root: root)), verdict, DeliveringPeer);
+        Assert.That(given, Is.Empty);
+
+        time.Add(TimeSpan.FromSeconds(Sepolia.SecondsPerSlot));
+        router.RetryPendingGloas();
+        if (!blockArrives)
+        {
+            Assert.That(given, Is.Empty);
+            time.Add(TimeSpan.FromSeconds(2 * Sepolia.SecondsPerSlot));
+            router.RetryPendingGloas();
+        }
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(given, Is.EqualTo(new[] { blockArrives ? MessageValidity.Accepted : MessageValidity.Ignored }));
+        Assert.That(pool.TryGetGloas(root, Column, out _), Is.EqualTo(blockArrives));
+        Assert.That(pool.GetPendingGloas(root, Column), Is.Empty);
+    }
+
+    [Test]
+    public void Abandoned_gloas_column_is_removed_and_never_accepted([Values] bool pubsubExpired)
+    {
+        BeaconChainStore? store = null;
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (_, value) => store = value);
+        List<MessageValidity> given = [];
+        GossipVerdict verdict = new(validity => { given.Add(validity); return !pubsubExpired; }, null);
+        router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot)), verdict, DeliveringPeer);
+        if (!pubsubExpired) verdict.Abandon();
+        store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(Block));
+        router.RetryPendingGloas();
+        router.RetryPendingGloas();
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(given.Count, Is.EqualTo(pubsubExpired ? 1 : 0));
+        Assert.That(pool.TryGetGloas(UnknownRoot, Column, out _), Is.False);
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
+        Assert.That(router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot))), Is.EqualTo(MessageValidity.Accepted), "a late verdict must leave no seen claim");
+    }
+
+    [Test]
+    public void Gloas_verdict_completed_during_pool_insertion_does_not_resurrect_the_candidate()
+    {
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
+        GossipVerdict verdict = new(static _ => true, null);
+        Assert.That(pool.TryWatch(UnknownRoot, [Column], gloas: true, verdict.Abandon), Is.True);
+
+        router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot)), verdict, DeliveringPeer);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(verdict.IsCompleted, Is.True);
+        Assert.That(pool.GetPendingGloas(UnknownRoot, Column), Is.Empty);
+        GossipVerdict replacement = new(static _ => true, null);
+        router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot)), replacement, DeliveringPeer);
+        Assert.That(replacement.IsHandedOff, Is.True, "completion released the peer allowance too");
+        replacement.Abandon();
+    }
+
+    [Test]
+    public void Verdict_cleanup_failure_still_releases_the_reservation([Values] bool registerAfterEnd, [Values] bool abandoned)
+    {
+        int released = 0;
+        GossipVerdict verdict = new(static _ => true, () => released++);
+        Action end = () =>
+        {
+            if (abandoned) verdict.Abandon();
+            else verdict.Complete(MessageValidity.Accepted);
+        };
+        Action cleanup = static () => throw new InvalidOperationException("cleanup failed");
+        if (registerAfterEnd)
+        {
+            end();
+            Assert.That(() => verdict.ReleaseOnEnd(cleanup), Throws.TypeOf<InvalidOperationException>());
+        }
+        else
+        {
+            verdict.ReleaseOnEnd(cleanup);
+            Assert.That(end, Throws.TypeOf<InvalidOperationException>());
+        }
+
+        Assert.That((released, verdict.Completion.IsCompleted), Is.EqualTo((1, true)));
+    }
+
+    [Test]
+    public void Pending_gloas_columns_are_bounded_per_peer_and_subnet()
+    {
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
+        GossipVerdict first = new(static _ => true, null);
+        GossipVerdict second = new(static _ => true, null);
+        router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot)), first, DeliveringPeer);
+        router.Handle(Column, true, Encode(Sidecar(root: Hash256.Zero)), second, DeliveringPeer);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(first.IsHandedOff, Is.True);
+        Assert.That(second.IsHandedOff, Is.False);
+        Assert.That(pool.PendingGloasCount, Is.EqualTo(1));
+        first.Abandon();
+        router.Handle(Column, true, Encode(Sidecar(root: Hash256.Zero)), second, DeliveringPeer);
+        Assert.That(second.IsHandedOff, Is.True, "abandonment releases the peer's queue allowance");
+        second.Abandon();
+        Assert.That(pool.PendingGloasCount, Is.Zero);
+    }
 
     private static SszKzgCommitment DistinctProof(int variant)
     {
