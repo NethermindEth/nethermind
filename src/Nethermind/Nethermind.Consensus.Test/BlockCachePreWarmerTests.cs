@@ -3201,7 +3201,8 @@ public class BlockCachePreWarmerTests
             PrewarmerTxAdapter adapter = new(
                 new NoopTxProcessorAdapter(),
                 preWarmer,
-                new PrewarmerState(preBlockCaches, isPrewarmer));
+                new PrewarmerState(preBlockCaches, isPrewarmer),
+                _processingScope.Resolve<IWorldState>());
 
             adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
 

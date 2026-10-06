@@ -63,6 +63,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PrefetchBlockAccessListCode { get; set; }
 
+    [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHandoff { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

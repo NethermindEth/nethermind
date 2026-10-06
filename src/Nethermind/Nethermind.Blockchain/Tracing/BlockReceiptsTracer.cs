@@ -47,6 +47,11 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
     protected Block Block = null!;
+
+    /// <summary>Whether the current transaction is traced only for its receipt.</summary>
+    public bool IsTracingOnlyReceipts =>
+        ReferenceEquals(_otherTracer, NullBlockTracer.Instance) && ReferenceEquals(_currentTxTracer, NullTxTracer.Instance);
+
     public bool IsTracingReceipt => true;
     public bool IsCollectingLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;

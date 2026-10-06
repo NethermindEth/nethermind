@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Evm.State;
@@ -13,8 +14,10 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime, IBlocksConfig? blocksConfig = null)
 {
+    public bool RecordsFootprints { get; } = blocksConfig?.PreWarmHandoff ?? false;
+
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
         PrewarmerState prewarmerState = new(preBlockCaches, isPrewarmer: true);
@@ -30,6 +33,11 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
                 .AddSingleton<IPrewarmerState>(prewarmerState)
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            if (RecordsFootprints)
+            {
+                // At scope level, so the transaction processor and the code repository both read through it.
+                builder.AddDecorator<IWorldState>(static (_, inner) => new FootprintRecorder(inner));
+            }
         });
 
         try
