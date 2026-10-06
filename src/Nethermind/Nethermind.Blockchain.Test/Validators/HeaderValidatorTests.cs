@@ -214,6 +214,34 @@ public class HeaderValidatorTests
         }
     }
 
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void When_orphaned_header_bloom_length_matches_eip7668([Values] bool eip7668, [Values] bool zeroLengthBloom)
+    {
+        bool expectedResult = eip7668 == zeroLengthBloom;
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        _validator = new HeaderValidator(_blockTree, Always.Valid, new TestSingleReleaseSpecProvider(spec),
+            new OneLoggerLogManager(new(_testLogger)));
+        BlockHeader header = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(Keccak.Zero)
+            .WithRequestsHash(ExecutionRequestExtensions.EmptyRequestsHash)
+            .WithBlockAccessListHash(Keccak.OfAnEmptySequenceRlp)
+            .WithSlotNumber(0)
+            .WithBloom(zeroLengthBloom ? Bloom.ZeroLength : Bloom.Empty)
+            .TestObject;
+        header.Hash = header.CalculateHash();
+
+        bool result = _validator.ValidateOrphaned(header, out string? error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(expectedResult));
+            Assert.That(error, Is.EqualTo(expectedResult ? null : BlockErrorMessages.InvalidLogsBloomLength(eip7668)));
+        }
+    }
+
     private static IEnumerable<TestCaseData> OrphanedBlobGasFieldCases()
     {
         const ulong lastPreCancun = MainnetSpecProvider.CancunBlockTimestamp - 1;

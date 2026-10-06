@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -144,6 +145,24 @@ namespace Nethermind.Core.Test.Encoding
                 Assert.That(deserialized.Recipient.Bytes.Length, Is.EqualTo(0));
                 Assert.That(deserialized.StatusCode, Is.EqualTo(txReceipt.StatusCode), "status");
             }
+        }
+
+        [Test]
+        public void Decode_computes_bloom_unless_eip7668([Values] bool eip7668)
+        {
+            TxReceipt txReceipt = Build.A.Receipt.WithAllFieldsFilled.WithCalculatedBloom().TestObject;
+            CompactReceiptStorageDecoder decoder = new();
+            RlpReader ctx = new(decoder.Encode(txReceipt, RlpBehaviors.Storage).Bytes);
+            RlpBehaviors behaviors = eip7668 ? RlpBehaviors.Storage | RlpBehaviors.Eip7668Receipts : RlpBehaviors.Storage;
+
+            AssertBloomSetOnDecode(decoder.DecodeGuardNotNull(ref ctx, behaviors), eip7668 ? Bloom.ZeroLength : txReceipt.Bloom);
+        }
+
+        /// <remarks>The bloom is set by the decoder itself, not computed lazily by a later reader.</remarks>
+        public static void AssertBloomSetOnDecode(TxReceipt decoded, Bloom expected)
+        {
+            FieldInfo bloomField = typeof(TxReceipt).GetField("_bloom", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            Assert.That(bloomField.GetValue(decoded), Is.EqualTo(expected));
         }
 
         [Test]

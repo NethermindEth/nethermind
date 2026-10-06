@@ -17,6 +17,9 @@ public static class BlockErrorMessages
     public static string InvalidLogsBloom(Bloom expected, Bloom actual) =>
         $"InvalidLogsBloom: Logs bloom in header does not match. Expected {expected}, got {actual}";
 
+    public static string InvalidLogsBloomLength(bool eip7668Enabled) =>
+        $"InvalidLogsBloom: Logs bloom in header does not match. Expected a {(eip7668Enabled ? "zero-length" : "256-byte")} bloom";
+
     public static string InvalidTxRoot(Hash256 expected, Hash256 actual) =>
         $"InvalidTxRoot: Expected {expected}, got {actual}";
 

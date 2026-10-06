@@ -32,6 +32,13 @@ public class BloomConverterTests : ConverterTestBase<Bloom>
         converter,
         static (a, b) => a is null ? b is null : a.Equals(b));
 
+    [Test]
+    public void ZeroLength_roundtrips_as_empty_hex() => TestConverter(
+        Bloom.ZeroLength,
+        "\"0x\"",
+        converter,
+        static (a, b) => ReferenceEquals(a, b));
+
     // The empty-bloom roundtrip lives in Serializes_as_full_width_prefixed_hex.
     static IEnumerable<TestCaseData> BloomTestCases =
     [

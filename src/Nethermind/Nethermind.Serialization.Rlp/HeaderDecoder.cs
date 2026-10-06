@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using System;
 using System.Diagnostics.CodeAnalysis;
@@ -12,10 +13,21 @@ namespace Nethermind.Serialization.Rlp
     public interface IHeaderDecoder : IBlockHeaderDecoder<BlockHeader> { }
     public interface IBlockHeaderDecoder<T> : IRlpDecoder<T> where T : BlockHeader { }
 
-    [method: DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
-    public class HeaderDecoder() : RlpDecoder<BlockHeader>, IHeaderDecoder
+    /// <remarks>
+    /// Without a spec provider a zero-length logs bloom is rejected; with one it is accepted only where EIP-7668 is
+    /// active, which needs the header's number and timestamp, so that check follows them.
+    /// </remarks>
+    public class HeaderDecoder : RlpDecoder<BlockHeader>, IHeaderDecoder
     {
         public const int NonceLength = 8;
+
+        private readonly ISpecProvider? _specProvider;
+
+        [DynamicDependency(DynamicallyAccessedMemberTypes.PublicConstructors, typeof(HeaderDecoder))]
+        public HeaderDecoder() { }
+
+        /// <param name="specProvider">Resolves EIP-7668 activation, which allows a zero-length logs bloom.</param>
+        public HeaderDecoder(ISpecProvider? specProvider) => _specProvider = specProvider;
 
         protected override BlockHeader? DecodeInternal(ref RlpReader decoderContext,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -32,12 +44,20 @@ namespace Nethermind.Serialization.Rlp
             rlp.DecodeKeccak(ref position, out Hash256 stateRoot);
             rlp.DecodeKeccak(ref position, out Hash256 transactionsRoot);
             rlp.DecodeKeccak(ref position, out Hash256 receiptsRoot);
-            rlp.DecodeBloom(ref position, out Bloom bloom);
+            Bloom bloom;
+            if (_specProvider is null) rlp.DecodeBloom(ref position, out bloom);
+            else rlp.DecodeBloomOrZeroLength(ref position, out bloom);
             rlp.DecodeUInt256(ref position, out UInt256 difficulty);
             rlp.DecodeULong(ref position, out ulong number);
             rlp.DecodeULong(ref position, out ulong gasLimit);
             rlp.DecodeULong(ref position, out ulong gasUsed);
             rlp.DecodeULong(ref position, out ulong timestamp);
+            if (bloom.IsZeroLength && !_specProvider!.GetSpec(new ForkActivation(number, timestamp)).IsEip7668Enabled)
+            {
+                // The same exception DecodeBloom throws for a zero-length bloom.
+                Rlp.GuardSize(actual: 0, expected: Bloom.ByteLength);
+            }
+
             rlp.DecodeByteArray(ref position, out byte[] extraData);
 
             // The seal is a virtual extension point, so the cursor goes back to the reader once here.

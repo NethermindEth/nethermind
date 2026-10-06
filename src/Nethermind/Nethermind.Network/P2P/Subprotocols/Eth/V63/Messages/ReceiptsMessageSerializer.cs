@@ -28,7 +28,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _decoder = decoder;
-            _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext), limit: BlockReceiptsRlpLimit);
+            // The message does not say which blocks the receipts belong to, so a zero-length bloom (EIP-7668) is
+            // accepted whenever the chain ever schedules the EIP; the receipts root rejects one before the fork.
+            RlpBehaviors decodeBehaviors = specProvider.GetFinalSpec().IsEip7668Enabled ? RlpBehaviors.Eip7668Receipts : RlpBehaviors.None;
+            _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)

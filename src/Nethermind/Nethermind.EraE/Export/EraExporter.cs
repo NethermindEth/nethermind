@@ -8,7 +8,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.Archive;
 using Nethermind.EraE.Config;
@@ -145,7 +144,7 @@ public sealed class EraExporter(
 
                     if (block.Header.ReceiptsRoot != Keccak.EmptyTreeHash)
                     {
-                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetReceiptSpec(block.Number), receipts, _receiptDecoder);
+                        Hash256 computedRoot = ReceiptTrie.CalculateRoot(specProvider.GetSpec(block.Header), receipts, _receiptDecoder);
                         if (computedRoot != block.Header.ReceiptsRoot)
                         {
                             throw new EraException(

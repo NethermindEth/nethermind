@@ -9,6 +9,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Test;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs;
+using Nethermind.Core.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Encoding;
@@ -290,6 +294,37 @@ public class HeaderDecoderTests
         BlockHeader blockHeader = DecodeHeader(rlp);
 
         Assert.That(blockHeader, Is.EqualTo(header).UsingBlockHeaderComparer());
+    }
+
+    [Test]
+    public void Spec_aware_decoder_accepts_empty_rlp_string_bloom_only_when_eip7668_is_active([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        HeaderDecoder decoder = new(new TestSingleReleaseSpecProvider(spec));
+        byte[] validRlp = Rlp.Encode(Build.A.BlockHeader.TestObject).Bytes;
+        byte[] crafted = HeaderRlpTestHelper.ReplaceFieldEncoding(validRlp, BloomFieldIndex, [0x80]);
+
+        if (eip7668)
+        {
+            BlockHeader decoded = Decode(decoder);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decoded.Bloom, Is.SameAs(Bloom.ZeroLength));
+                Assert.That(Rlp.Encode(decoded).Bytes, Is.EqualTo(crafted));
+            }
+        }
+        else
+        {
+            // Before the fork it fails exactly as the spec-less decoder does.
+            string expected = Assert.Throws<RlpException>(() => Decode(new HeaderDecoder()))!.Message;
+            Assert.That(() => Decode(decoder), Throws.TypeOf<RlpException>().With.Message.EqualTo(expected));
+        }
+
+        BlockHeader Decode(HeaderDecoder headerDecoder)
+        {
+            RlpReader reader = new(crafted);
+            return headerDecoder.Decode(ref reader)!;
+        }
     }
 
     [Test]
