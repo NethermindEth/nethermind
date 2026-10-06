@@ -13,7 +13,7 @@ using System.Threading;
 namespace Nethermind.Serialization.Json;
 
 /// <summary>Marks a converter emitted by the JSON writer generator.</summary>
-public interface IGeneratedJsonWriter
+internal interface IGeneratedJsonWriter
 {
     /// <summary>The exact type the writer writes.</summary>
     Type WrittenType { get; }
@@ -26,7 +26,7 @@ public interface IGeneratedJsonWriter
 }
 
 /// <summary>How a generated writer treats one entry of the type's metadata contract.</summary>
-public enum GeneratedJsonPropertyKind : byte
+internal enum GeneratedJsonPropertyKind : byte
 {
     /// <summary>The writer writes the property.</summary>
     Written,
@@ -39,7 +39,7 @@ public enum GeneratedJsonPropertyKind : byte
 }
 
 /// <summary>One entry of the metadata contract a generated writer was emitted for, in contract order.</summary>
-public readonly struct GeneratedJsonProperty(string memberName, string? explicitName, Type propertyType, Type? converterType, GeneratedJsonPropertyKind kind)
+internal readonly struct GeneratedJsonProperty(string memberName, string? explicitName, Type propertyType, Type? converterType, GeneratedJsonPropertyKind kind)
 {
     public string MemberName { get; } = memberName;
 
@@ -65,7 +65,7 @@ public readonly struct GeneratedJsonProperty(string memberName, string? explicit
 /// </para>
 /// <para>The per-options state is cached in two entries, so request and response options do not evict each other.</para>
 /// </remarks>
-public abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGeneratedJsonWriter
+internal abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGeneratedJsonWriter
     where T : class
     where TState : class
 {
@@ -141,7 +141,7 @@ public abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGenera
 }
 
 /// <summary>Runtime support shared by the converters the JSON writer generator emits.</summary>
-public static class GeneratedJsonWriters
+internal static class GeneratedJsonWriters
 {
     private const int DefaultMaxDepth = 64;
 

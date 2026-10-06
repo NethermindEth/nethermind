@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Json;
 /// identically.
 /// </remarks>
 [AttributeUsage(AttributeTargets.Class, Inherited = false)]
-public sealed class GenerateJsonWriterAttribute : Attribute
+internal sealed class GenerateJsonWriterAttribute : Attribute
 {
     /// <summary>
     /// Whether the writer is registered with <see cref="EthereumJsonSerializer"/>, which then reads the type through the metadata

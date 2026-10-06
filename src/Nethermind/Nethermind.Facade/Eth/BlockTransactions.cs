@@ -33,9 +33,7 @@ public sealed class BlockTransactions
     /// <summary>The full transactions, or <see langword="null"/> for a block carrying hashes.</summary>
     public TransactionForRpc[]? Full { get; }
 
-    public int Length => Full?.Length ?? Hashes!.Length;
-
-    public static BlockTransactions Empty => EmptyInstance;
+    internal static BlockTransactions Empty => EmptyInstance;
 
     public static implicit operator BlockTransactions(Hash256[] hashes) => hashes.Length == 0 ? EmptyInstance : new(hashes, null);
 
@@ -43,6 +41,7 @@ public sealed class BlockTransactions
 }
 
 /// <summary>Writes hashes or full transactions as the array the RPC block carries, and reads each form back.</summary>
+/// <remarks>Public because source-generated contexts in other assemblies instantiate the converter <see cref="BlockTransactions"/> names.</remarks>
 public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions>
 {
     public override BlockTransactions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

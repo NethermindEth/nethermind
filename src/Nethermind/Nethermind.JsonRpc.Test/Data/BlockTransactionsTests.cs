@@ -65,7 +65,6 @@ public class BlockTransactionsTests
         {
             Assert.That(block.Transactions!.Full, Is.Empty);
             Assert.That(block.Transactions.Hashes, Is.Empty);
-            Assert.That(block.Transactions.Length, Is.Zero);
         }
     }
 
