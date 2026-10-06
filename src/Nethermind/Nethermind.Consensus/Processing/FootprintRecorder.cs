@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
@@ -39,6 +40,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     private (Snapshot Snapshot, int Effects)[] _frames = new (Snapshot, int)[16];
     private int _frameCount;
 
+    private readonly StrongBox<ExecutionCounts> _counts = new();
+
+    // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
+    private const int RetainedCapacity = 1024;
+
     public OutcomeTracer Outcome { get; } = new();
 
     public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
@@ -47,9 +53,24 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         _accountCount = 0;
         _slotIndex.Clear();
         _slotCount = 0;
+        Array.Clear(_effects, 0, _effectCount);
         _effectCount = 0;
         _frameCount = 0;
         _opaque = false;
+        if (_accounts.Length > RetainedCapacity)
+        {
+            _accounts = new AccountPrecondition[32];
+            _accountIndex.TrimExcess();
+        }
+
+        if (_slots.Length > RetainedCapacity)
+        {
+            _slots = new SlotPrecondition[64];
+            _slotIndex.TrimExcess();
+        }
+
+        if (_effects.Length > RetainedCapacity) _effects = new StateEffect[32];
+        if (_frames.Length > RetainedCapacity) _frames = new (Snapshot, int)[16];
         Outcome.Reset(progress, txIndex, token);
 
         // As in block processing: empty transient storage, and originals (EIP-2200) taken at the transaction's start.
@@ -57,9 +78,15 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         Snapshot start = State.TakeSnapshot(newTransactionStart: true);
         _active = true;
         PushFrame(in start);
+        _counts.Value = default;
+        Evm.Metrics.Capture(_counts);
     }
 
-    public void Stop() => _active = false;
+    public void Stop()
+    {
+        _active = false;
+        Evm.Metrics.Capture(null);
+    }
 
     /// <summary>Undoes a run that stopped part way.</summary>
     public void Discard()
@@ -107,7 +134,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         StateEffect[] effects = _effectCount == 0 ? [] : _effects.AsSpan(0, _effectCount).ToArray();
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result);
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

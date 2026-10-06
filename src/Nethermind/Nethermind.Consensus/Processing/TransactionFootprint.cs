@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -22,16 +23,21 @@ internal sealed class TransactionFootprint(
     SlotPrecondition[] slots,
     StateEffect[] effects,
     in FootprintReceipt receipt,
-    in TransactionResult result)
+    in TransactionResult result,
+    in ExecutionCounts counts)
 {
     private readonly FootprintReceipt _receipt = receipt;
     private readonly TransactionResult _result = result;
+    private readonly ExecutionCounts _counts = counts;
 
     public Transaction Transaction { get; } = transaction;
 
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
     public ref readonly TransactionResult Result => ref _result;
+
+    /// <summary>What the run added to the execution counters.</summary>
+    public ref readonly ExecutionCounts Counts => ref _counts;
 
     public bool Matches(IWorldState state)
     {

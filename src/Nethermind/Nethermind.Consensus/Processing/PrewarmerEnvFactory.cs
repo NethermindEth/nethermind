@@ -9,16 +9,25 @@ using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime, IBlocksConfig? blocksConfig = null)
+public class PrewarmerEnvFactory(
+    IWorldStateManager worldStateManager,
+    ILogManager logManager,
+    ILifetimeScope parentLifetime,
+    IBlocksConfig? blocksConfig = null,
+    ITransactionProcessor? transactionProcessor = null)
 {
     /// <summary>Whether the envs record the footprints block processing takes over.</summary>
-    /// <remarks>Set by <see cref="IBlocksConfig.PreWarmHandoff"/>; off without a blocks config.</remarks>
-    public bool RecordsFootprints { get; } = blocksConfig?.PreWarmHandoff ?? false;
+    /// <remarks>
+    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only on the Ethereum transaction
+    /// processor: other chains' processors charge and validate differently.
+    /// </remarks>
+    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && transactionProcessor is EthereumTransactionProcessor;
 
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {

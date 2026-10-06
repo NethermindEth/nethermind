@@ -6,6 +6,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Autofac;
@@ -23,6 +24,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
@@ -34,6 +36,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Consensus.Test;
@@ -107,14 +110,37 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     }
 
     [Test]
-    public void Value_sent_by_a_contract_whose_balance_the_block_changed_replays_while_it_can_pay()
+    public void Value_sent_by_a_contract_whose_balance_the_block_changed_replays_while_it_can_pay([Values] bool fundedForAll)
+    {
+        Address payer = fundedForAll ? Payer : ScarcePayer;
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, payer),
+            Call(TestItem.PrivateKeyB, 0, payer),
+            Call(TestItem.PrivateKeyD, 0, payer))).Tally;
+
+        Assert.That((replayed, rejected), Is.EqualTo(fundedForAll ? (3, 0) : (1, 2)));
+    }
+
+    [Test]
+    public void A_write_undone_by_a_reverted_inner_call_stays_undone()
     {
         (int replayed, _, _) = Handoff(BuildBlock(
-            Call(TestItem.PrivateKeyA, 0, Payer),
-            Call(TestItem.PrivateKeyB, 0, Payer),
-            Call(TestItem.PrivateKeyD, 0, Payer))).Tally;
+            Call(TestItem.PrivateKeyA, 0, Caller),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei))).Tally;
 
         Assert.That(replayed, Is.EqualTo(3));
+    }
+
+    [Test]
+    public void A_value_call_to_an_account_the_block_brought_to_life_is_executed()
+    {
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, Fresh, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Gift),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei))).Tally;
+
+        Assert.That((replayed, rejected), Is.EqualTo((2, 1)));
     }
 
     [Test]
@@ -299,6 +325,101 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void Blocks_whose_gas_or_access_list_is_built_while_executing_are_not_recorded()
+    {
+        Block block = ThreeIndependentTransactions();
+        ReleaseSpec withStateGas = ((ReleaseSpec)Spec).Clone();
+        withStateGas.IsEip8037Enabled = true;
+        ReleaseSpec withAccessLists = ((ReleaseSpec)Spec).Clone();
+        withAccessLists.IsEip7928Enabled = true;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlockFootprints.AppliesTo(block, Spec), Is.True);
+            Assert.That(BlockFootprints.AppliesTo(block, withStateGas), Is.False);
+            Assert.That(BlockFootprints.AppliesTo(block, withAccessLists), Is.False);
+            Assert.That(BlockFootprints.AppliesTo(BuildBlock(), Spec), Is.False);
+        }
+    }
+
+    [Test]
+    public void Transactions_whose_checks_a_warm_run_skips_for_good_are_not_recorded()
+    {
+        Transaction free = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(0).WithMaxPriorityFeePerGas(0)
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction lastNonce = Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(ulong.MaxValue)
+            .WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Transaction system = Build.A.Transaction.WithSenderAddress(Address.SystemUser).TestObject;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BlockFootprints.IsRecordable(Call(TestItem.PrivateKeyA, 0, Counter)), Is.True);
+            Assert.That(BlockFootprints.IsRecordable(free), Is.False);
+            Assert.That(BlockFootprints.IsRecordable(lastNonce), Is.False);
+            Assert.That(BlockFootprints.IsRecordable(system), Is.False);
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public void Taken_over_transactions_count_in_the_execution_counters_like_executed_ones()
+    {
+        Block block = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyC, 0, Caller),
+            Create(TestItem.PrivateKeyD, 0, DeployCode));
+
+        long[] executed = MainThreadCounts(() => Process(block, adapter: null));
+        RunPreWarmCaches(PreWarmer, block);
+        Run run = null!;
+        long[] takenOver = MainThreadCounts(() => run = Process(block, ProductionAdapter));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Tally.Replayed, Is.EqualTo(4));
+            Assert.That(takenOver, Is.EqualTo(executed));
+            Assert.That(executed, Has.All.GreaterThan(0));
+        }
+
+        static long[] MainThreadCounts(Action process)
+        {
+            bool wasProcessing = ProcessingThread.IsBlockProcessingThread;
+            ProcessingThread.IsBlockProcessingThread = true;
+            try
+            {
+                long[] before = Read();
+                process();
+                long[] after = Read();
+                return [.. after.Select((value, i) => value - before[i])];
+            }
+            finally
+            {
+                ProcessingThread.IsBlockProcessingThread = wasProcessing;
+            }
+        }
+
+        static long[] Read() =>
+        [
+            Evm.Metrics.MainThreadOpCodes, Evm.Metrics.MainThreadSLoadOpcode, Evm.Metrics.MainThreadSStoreOpcode,
+            Evm.Metrics.MainThreadCalls, Evm.Metrics.MainThreadEmptyCalls, Evm.Metrics.MainThreadCreates
+        ];
+    }
+
+    [Test]
+    public void Only_envs_on_the_ethereum_transaction_processor_record()
+    {
+        PrewarmerEnvFactory Factory(ITransactionProcessor processor) =>
+            new(ProcessingScope.Resolve<IWorldStateManager>(), LimboLogs.Instance, ProcessingScope, new BlocksConfig(), processor);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Factory(ProcessingScope.Resolve<ITransactionProcessor>()).RecordsFootprints, Is.True);
+            Assert.That(Factory(Substitute.For<ITransactionProcessor>()).RecordsFootprints, Is.False);
+        }
+    }
+
+    [Test]
     public void The_recorder_answers_reads_the_interface_derives_from_a_whole_account()
     {
         InterfaceMapping map = typeof(FootprintRecorder).GetInterfaceMap(typeof(IAccountStateProvider));
@@ -408,6 +529,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
          0x5B, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x85, 0x5A, 0xF1, 0x00, .. ChildInitCode];
     // TSTORE(0, TLOAD(0) + 0x4e4d); SSTORE(CALLER, TLOAD(0) + 0x4e4d); STOP
     private static readonly byte[] TransientCode = [0x5F, 0x5C, 0x61, 0x4E, 0x4D, 0x01, 0x80, 0x5F, 0x5D, 0x33, 0x55, 0x00];
+    // SSTORE(0, 0x4e4d); REVERT(0, 0)
+    private static readonly byte[] UndoneCode = [0x61, 0x4E, 0x4D, 0x5F, 0x55, 0x5F, 0x5F, 0xFD];
 
     private static readonly byte[] Salt = [.. new byte[30], 0x4E, 0x4D];
     private static readonly UInt256 ChildSlot = new(0x746865726d696e64UL, 0x4e65UL, 0, 0);
@@ -420,6 +543,11 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Factory = new("0x00000000000000000000000000000000004e4d05");
     protected static readonly Address FreshFactory = new("0x00000000000000000000000000000000004e4d06");
     protected static readonly Address Transient = new("0x00000000000000000000000000000000004e4d07");
+    protected static readonly Address Undone = new("0x00000000000000000000000000000000004e4d08");
+    protected static readonly Address Caller = new("0x00000000000000000000000000000000004e4d09");
+    protected static readonly Address Gift = new("0x00000000000000000000000000000000004e4d0a");
+    protected static readonly Address ScarcePayer = new("0x00000000000000000000000000000000004e4d0b");
+    protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -478,6 +606,12 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, Factory, FactoryCode, 0);
             Deploy(worldState, FreshFactory, FactoryCode, 0);
             Deploy(worldState, Transient, TransientCode, 0);
+            Deploy(worldState, Undone, UndoneCode, 0);
+            // CALL(GAS, Undone, 0, 0, 0, 0, 0); POP; STOP
+            Deploy(worldState, Caller, [0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x73, .. Undone.Bytes, 0x5A, 0xF1, 0x50, 0x00], 0);
+            // CALL(GAS, Fresh, 0x4e4d, 0, 0, 0, 0); POP; STOP
+            Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
+            Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);

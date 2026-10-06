@@ -101,8 +101,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        ISenderRecoveryTracker? senderRecovery = null,
-        ITransactionProcessor? transactionProcessor = null
+        ISenderRecoveryTracker? senderRecovery = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -113,8 +112,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         logManager,
         blocksConfig.MempoolPreWarmConcurrency,
         senderRecovery,
-        // Other chains' processors charge and validate differently.
-        handoff: envFactory.RecordsFootprints && transactionProcessor is EthereumTransactionProcessor)
+        handoff: envFactory.RecordsFootprints)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.

@@ -99,7 +99,7 @@ public class PrewarmerTxAdapter(
         tx.SpentGas = gas.SpentGas;
         tx.BlockGasUsed = gas.EffectiveBlockGas;
         EvmMetrics.UpdateBlockGasPrice(tx.CalculateEffectiveGasPrice(spec.IsEip1559Enabled, header.BaseFeePerGas));
-        if (tx.IsContractCreation) EvmMetrics.IncrementCreates();
+        footprint.Counts.Flush();
 
         if (receipt.Success)
         {
