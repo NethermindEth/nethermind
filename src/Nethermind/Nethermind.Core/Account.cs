@@ -153,6 +153,11 @@ namespace Nethermind.Core
                   Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
         }
 
+        public Account ToAccount() =>
+            new(_nonce, _balance,
+                IsStorageEmpty ? Keccak.EmptyTreeHash : _storageRoot.ToCommitment(),
+                HasCode ? CodeHash.ToCommitment() : Keccak.OfAnEmptyString);
+
         public bool Equals(AccountStruct other) =>
             _nonce == other.Nonce &&
             _balance == other.Balance &&

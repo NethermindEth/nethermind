@@ -190,7 +190,7 @@ public class HistoryBackedPersistenceReaderTests
     }
 
     [Test]
-    public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesNoHashes()
+    public void GetAccount_ForAnAccountWithoutStorageOrCode_AllocatesLessThanAContract()
     {
         HistoryColumnsWriter.RecordAccount(_historyColumns, ContractAddress, 5, new Account(1, 100, TestItem.KeccakA, TestItem.KeccakB));
         HistoryBackedPersistenceReader reader = Reader(10);

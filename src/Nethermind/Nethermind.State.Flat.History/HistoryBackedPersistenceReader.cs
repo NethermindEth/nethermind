@@ -58,18 +58,13 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account) ? ToAccount(account) : null;
+            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account) ? account.ToAccount() : null;
         }
         catch (StateUnavailableException e)
         {
             throw StateUnavailable(e);
         }
     }
-
-    private static Account ToAccount(in AccountStruct account) =>
-        new(account.Nonce, account.Balance,
-            account.IsStorageEmpty ? Keccak.EmptyTreeHash : account.StorageRoot.ToCommitment(),
-            account.HasCode ? account.CodeHash.ToCommitment() : Keccak.OfAnEmptyString);
 
     public bool TryGetSlot(Address address, in UInt256 slot, ref UInt256 outValue)
     {
