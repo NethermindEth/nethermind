@@ -116,6 +116,14 @@ public class CliqueBlockProducerTests
                     stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
                 }
 
+                if (finalSpec.BuilderRequestsEnabled)
+                {
+                    stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
+                    stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, testnetSpecProvider.GenesisSpec);
+                    stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
+                    stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, testnetSpecProvider.GenesisSpec);
+                }
+
                 stateProvider.Commit(testnetSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
@@ -207,7 +215,7 @@ public class CliqueBlockProducerTests
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            genesis.Header.StateRoot = new Hash256("0xba946bf2140ef68f7d9d57ef06a8ac0b28002b62060c462ba398389c97f1f1fa");
+            genesis.Header.StateRoot = new Hash256("0x171741a26553c15f57aeb1080ad239c7536787d8c14b95e6cfb741e1172d3998");
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
