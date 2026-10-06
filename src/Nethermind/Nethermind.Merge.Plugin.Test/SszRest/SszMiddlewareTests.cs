@@ -1118,6 +1118,67 @@ public class SszMiddlewareTests
         Assert.That(respBody, Does.Contain("unsupported-fork"));
     }
 
+    [TestCase(7_000UL, StatusCodes.Status200OK, TestName = "ForkchoiceV5_chain_spec_bogota_payload_accepted")]
+    [TestCase(6_000UL, StatusCodes.Status400BadRequest, TestName = "ForkchoiceV5_chain_spec_amsterdam_payload_rejected")]
+    public async Task ForkchoiceV5_validates_payload_fork_against_chain_spec(ulong payloadTs, int expectedStatus)
+    {
+        _specProvider = CreateChainSpecProvider();
+        _middleware = BuildMiddleware();
+
+        ForkchoiceUpdatedV2Result fcuResult = new()
+        {
+            PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }
+        };
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(fcuResult));
+
+        ForkchoiceUpdatedV5RequestWire request = new()
+        {
+            ForkchoiceState = new ForkchoiceStateWire
+            {
+                HeadBlockHash = TestItem.KeccakA,
+                SafeBlockHash = TestItem.KeccakB,
+                FinalizedBlockHash = Keccak.Zero,
+            },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV5Wire
+                {
+                    Timestamp = payloadTs,
+                    SuggestedFeeRecipient = TestItem.AddressA,
+                    PrevRandao = Keccak.Zero,
+                    Withdrawals = [],
+                    ParentBeaconBlockRoot = Keccak.Zero,
+                    SlotNumber = 1,
+                    TargetGasLimit = 30_000_000,
+                    InclusionListTransactions = [],
+                }
+            ],
+            CustodyColumns = [],
+        };
+        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(request);
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body, fork: "bogota");
+
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(expectedStatus));
+        if (expectedStatus == StatusCodes.Status200OK)
+        {
+            await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
+                Arg.Any<ForkchoiceStateV1>(),
+                Arg.Is<PayloadAttributes?>(attributes => attributes != null && attributes.Timestamp == payloadTs),
+                Arg.Any<BitArray?>());
+        }
+        else
+        {
+            string respBody = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(respBody, Does.Contain("unsupported-fork"));
+            await _engineModule.DidNotReceive().engine_forkchoiceUpdatedV5(
+                Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>());
+        }
+    }
+
     [Test]
     public async Task Forkchoice_stale_fork_url_without_attributes_is_allowed()
     {
