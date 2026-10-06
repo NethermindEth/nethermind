@@ -35,7 +35,7 @@ public partial class DebugRpcModule
             return ResultWrapper<string>.Fail($"end block (#{last}) needs to come after start block (#{first})", ErrorCodes.InvalidInput);
 
         TraceChainSubscription pending = new(client, TraceChainSubscriptions, _logger,
-            (sink, token) => sink.ReplayModule!.TraceChainAsync(sink, first, last, options ?? new TraceChainOptions(), token));
+            (sink, token) => TraceChainAsync(sink, first, last, options ?? new TraceChainOptions(), token));
         try
         {
             TraceChainSubscriptions.AddSubscription(pending);
@@ -55,28 +55,32 @@ public partial class DebugRpcModule
         return ResultWrapper<bool>.Success(client is not null && TraceChainSubscriptions?.RemoveSubscription(client, subscriptionId) == true);
     }
 
-    private async Task TraceChainAsync(TraceChainSubscription sink, ulong first, ulong last, TraceChainOptions options, CancellationToken token)
+    private static async Task TraceChainAsync(TraceChainSubscription sink, ulong first, ulong last, TraceChainOptions options, CancellationToken token)
     {
         for (ulong number = first + 1; ; number++)
         {
-            token.ThrowIfCancellationRequested();
-            // Like Geth traceChain, endpoints bound the heights; each block is fetched by number during replay.
-            Block block = blockFinder.FindBlock(new BlockParameter(number))
-                ?? throw new InvalidOperationException($"Cannot find block {number}");
-            using ResultWrapper<string>? stateError = CheckTraceBaseState<string>(block.Header);
-            if (stateError is not null) throw new InvalidOperationException(stateError.Result.Error);
+            if (!await sink.ReplayBlockAsync(number, number == last, options, token) || number == last) break;
+        }
+    }
 
-            TraceChainTransaction?[] traces = TraceChainReplay!(block, options, token);
-            try
-            {
-                if (traces.Length != 0 || number == last)
-                    await sink.SendAsync(new TraceChainBlock(number, block.Hash!, traces), token);
-            }
-            finally
-            {
-                foreach (TraceChainTransaction? trace in traces) trace?.Result?.Dispose();
-            }
-            if (number == last) break;
+    internal async Task TraceChainBlockAsync(TraceChainSubscription sink, ulong number, bool isLast, TraceChainOptions options, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        // Like Geth traceChain, endpoints bound the heights; each block is fetched by number during replay.
+        Block block = blockFinder.FindBlock(new BlockParameter(number))
+            ?? throw new InvalidOperationException($"Cannot find block {number}");
+        using ResultWrapper<string>? stateError = CheckTraceBaseState<string>(block.Header);
+        if (stateError is not null) throw new InvalidOperationException(stateError.Result.Error);
+
+        TraceChainTransaction?[] traces = TraceChainReplay!(block, options, token);
+        try
+        {
+            if (traces.Length != 0 || isLast)
+                await sink.SendAsync(new TraceChainBlock(number, block.Hash!, traces), token);
+        }
+        finally
+        {
+            foreach (TraceChainTransaction? trace in traces) trace?.Result?.Dispose();
         }
     }
 }

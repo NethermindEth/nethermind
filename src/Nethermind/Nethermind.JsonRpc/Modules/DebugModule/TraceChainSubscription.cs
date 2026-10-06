@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-internal sealed class TraceChainSubscription : Subscription
+internal sealed class TraceChainSubscription : Subscription, IPostAcknowledgementActivation
 {
     private readonly object _gate = new();
     private readonly CancellationTokenSource _cancellation = new();
@@ -20,7 +20,6 @@ internal sealed class TraceChainSubscription : Subscription
     private Action<IRpcModule>? _returnRental;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
     internal Task Completion => _completion.Task;
-    internal DebugRpcModule? ReplayModule { get; set; }
     private bool _activated;
     private bool _producerFinished;
     private bool _cancellationFinished = true;
@@ -61,6 +60,9 @@ internal sealed class TraceChainSubscription : Subscription
         if (finished) returnLease();
     }
 
+    void IPostAcknowledgementActivation.Activate() => Activate();
+    void IPostAcknowledgementActivation.Abort() => Abort();
+
     internal void Activate()
     {
         try
@@ -87,29 +89,49 @@ internal sealed class TraceChainSubscription : Subscription
         await JsonRpcDuplexClient.SendJsonRpcResult(message, token);
     }
 
+    internal async Task<bool> ReplayBlockAsync(ulong number, bool isLast, TraceChainOptions options, CancellationToken token)
+    {
+        token.ThrowIfCancellationRequested();
+        Action<IRpcModule> returnRental = _returnRental!;
+        IRpcModule rented = await _rentalPool!.RentExclusive(token);
+        bool transferred = false;
+        try
+        {
+            OwnLease(() => returnRental(rented));
+            transferred = true;
+            token.ThrowIfCancellationRequested();
+            DebugRpcModule module = rented as DebugRpcModule
+                ?? throw new InvalidOperationException("The rented module does not support chain replay.");
+            // Unlink the completed block and join any active parent callback before returning its module.
+            using CancellationTokenSource blockCancellation = CancellationTokenSource.CreateLinkedTokenSource(token);
+            await module.TraceChainBlockAsync(this, number, isLast, options, blockCancellation.Token);
+        }
+        finally
+        {
+            if (!transferred) returnRental(rented);
+            else ReturnBlockLease();
+        }
+        return !IsDisposed;
+    }
+
+    private void ReturnBlockLease()
+    {
+        Action? returnLease;
+        lock (_gate)
+        {
+            // Cancellation callbacks may still touch the module; TryFinish returns it after they exit.
+            if (_disposed) return;
+            returnLease = _returnLease;
+            _returnLease = null;
+        }
+        returnLease?.Invoke();
+    }
+
     private async Task RunAsync()
     {
         try
         {
             CancellationToken token = _cancellation.Token;
-            if (_rentalPool is { } pool)
-            {
-                Action<IRpcModule> returnRental = _returnRental!;
-                IRpcModule rented = await pool.RentExclusive(token);
-                bool transferred = false;
-                try
-                {
-                    OwnLease(() => returnRental(rented));
-                    transferred = true;
-                    token.ThrowIfCancellationRequested();
-                    ReplayModule = rented as DebugRpcModule
-                        ?? throw new InvalidOperationException("The rented module does not support chain replay.");
-                }
-                finally
-                {
-                    if (!transferred) returnRental(rented);
-                }
-            }
             token.ThrowIfCancellationRequested();
             await _produce!(this, token);
         }
@@ -174,7 +196,6 @@ internal sealed class TraceChainSubscription : Subscription
             if (_finished || !_producerFinished || !_cancellationFinished) return;
             _finished = true;
             _produce = null;
-            ReplayModule = null;
             _rentalPool = null;
             _returnRental = null;
             returnLease = _returnLease;
@@ -194,10 +215,12 @@ internal sealed class TraceChainSubscription : Subscription
     }
 }
 
-internal sealed class PendingTraceChainResponse(TraceChainSubscription subscription) : ResultWrapper<string>
+internal sealed class PendingTraceChainResponse(TraceChainSubscription subscription) : ResultWrapper<string>, IPostAcknowledgementResponse
 {
     private bool _handedToSink;
     internal TraceChainSubscription Subscription { get; } = subscription;
+
+    IPostAcknowledgementActivation IPostAcknowledgementResponse.TakeActivation() => TakeActivation();
 
     internal TraceChainSubscription TakeActivation()
     {

@@ -8,6 +8,8 @@ using System.IO.Pipelines;
 using Nethermind.Core;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using NSubstitute;
 using Nethermind.Serialization.Json;
 using System.Reflection;
 using System.Text;
@@ -20,6 +22,14 @@ namespace Nethermind.JsonRpc.Test;
 
 public static class RpcTest
 {
+    internal static void ConfigureTraceChainRental(TraceChainSubscription subscription, IDebugRpcModule module)
+    {
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(module, Substitute.For<IDebugRpcModule>());
+        BoundedModulePool<IDebugRpcModule> pool = new(factory, 1, 10_000);
+        subscription.ConfigureRental(pool, rented => pool.ReturnModule((IDebugRpcModule)rented));
+    }
+
     public static void AssertSuccess(JsonRpcResponse response)
     {
         Assert.That(response, Is.InstanceOf<IResultWrapper>(), GetFailureMessage(response));

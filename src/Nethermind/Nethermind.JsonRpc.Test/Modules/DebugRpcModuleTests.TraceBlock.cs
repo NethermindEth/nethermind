@@ -78,13 +78,11 @@ public partial class DebugRpcModuleTests
         Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
         using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
             .debug_subscribe("traceChain", new BlockParameter(first), new BlockParameter(block.Number), JsonSerializer.Deserialize<TraceChainOptions>(JsonSerializer.Serialize(new { tracer, timeout }), EthereumJsonSerializer.JsonOptions));
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        response.Subscription.ReplayModule = (DebugRpcModule)module;
-        response.Subscription.OwnLease(() => released.SetResult());
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
         try
         {
             response.TakeActivation().Activate();
-            await released.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(notification, Is.Not.Null);
             JToken actual = JToken.Parse(notification!)["params"]!["result"]!["traces"]!;
             if (tracerError)

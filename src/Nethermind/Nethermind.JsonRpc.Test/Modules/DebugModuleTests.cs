@@ -470,12 +470,10 @@ public class DebugModuleTests
 
         using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
             .debug_subscribe("traceChain", useTags ? BlockParameter.Earliest : new BlockParameter(0UL), useTags ? BlockParameter.Latest : new BlockParameter(4UL));
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        response.Subscription.OwnLease(() => released.SetResult());
-        response.Subscription.ReplayModule = module;
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
         Assert.That(notifications, Is.Empty);
         response.TakeActivation().Activate();
-        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         _ = config.DidNotReceive().Timeout;
 
         using (Assert.EnterMultipleScope())
@@ -508,24 +506,48 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task TraceChain_holds_exclusive_lease_until_cancelled_or_completed(
-        [Values("unsubscribe", "disconnect", "completion")] string finish, [Values] bool invalidTimeout)
+    public async Task TraceChain_releases_block_lease_to_queued_debug_request(
+        [Values("unsubscribe", "disconnect", "completion", "callback")] string finish, [Values] bool invalidTimeout)
     {
         SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
         SetUpTraceChain();
         List<ulong> replayed = [];
+        int disposedTraces = 0;
+        TaskCompletionSource resultsDisposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource callbackEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseCallback = new();
+        CancellationTokenRegistration registration = default;
+        IDisposable traceResource = Substitute.For<IDisposable>();
+        traceResource.When(resource => resource.Dispose()).Do(_ =>
+        {
+            if (Interlocked.Increment(ref disposedTraces) == 2) resultsDisposed.TrySetResult();
+        });
+        int replayedWhenNormalRequest = -1;
+        int disposedWhenNormalRequest = -1;
+        _blockFinder.FindHeader(TestItem.KeccakD).Returns(_ =>
+        {
+            replayedWhenNormalRequest = replayed.Count;
+            disposedWhenNormalRequest = Volatile.Read(ref disposedTraces);
+            return (BlockHeader?)null;
+        });
         IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
         factory.Create().Returns(_ =>
         {
             DebugRpcModule module = CreateTraceChainModule(manager);
-            module.TraceChainReplay = (block, _, _) =>
+            module.TraceChainReplay = (block, _, token) =>
             {
+                if (finish == "callback") registration = token.Register(() =>
+                {
+                    callbackEntered.TrySetResult();
+                    releaseCallback.Wait(TimeSpan.FromSeconds(10));
+                });
                 replayed.Add(block.Number);
-                return ChainTraces(block);
+                return block.Transactions.Select(tx => (TraceChainTransaction?)new TraceChainTransaction(
+                    tx.Hash!, new GethLikeTxTrace(traceResource) { TxHash = tx.Hash }, null)).ToArray();
             };
             return module;
         });
-        BoundedModulePool<IDebugRpcModule> pool = new(factory, 1, 10_000);
+        ObservedExclusivePool pool = new(new BoundedModulePool<IDebugRpcModule>(factory, 1, 10_000));
         JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
         RpcModuleProvider provider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
         provider.Register(pool);
@@ -548,26 +570,118 @@ public class DebugModuleTests
         IDebugRpcModule beforeAck = await pool.GetModule(false);
         pool.ReturnModule(beforeAck);
         using TraceChainSubscription subscription = ((PendingTraceChainResponse)response).TakeActivation();
-        subscription.Activate();
-        await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
-        Task<IDebugRpcModule> waiting = pool.GetModule(false);
-        Assert.That(waiting.IsCompleted, Is.False);
-        Assert.That(replayed, Is.EqualTo(new ulong[] { 1 }), "the next block must wait for the previous send");
-        IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
-        otherClient.Id.Returns("other-client");
-        using JsonRpcContext otherContext = new(RpcEndpoint.Ws, otherClient);
-        using JsonRpcResponse denied = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), otherContext);
-        Assert.That(RpcTest.AssertSuccess<bool>(denied), Is.False);
-        if (finish == "disconnect") client.Closed += Raise.Event<EventHandler>(client, EventArgs.Empty);
-        else if (finish == "unsubscribe")
+        try
         {
-            using JsonRpcResponse unsubscribe = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), context);
-            Assert.That(RpcTest.AssertSuccess<bool>(unsubscribe), Is.True);
+            subscription.Activate();
+            await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task<JsonRpcResponse> waiting = service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("debug_traceBlockByHash", TestItem.KeccakD), context).AsTask();
+            await pool.QueuedRentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(waiting.IsCompleted, Is.False);
+            Assert.That(replayed, Is.EqualTo(new ulong[] { 1 }), "the next block must wait for the previous send");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+            using JsonRpcContext otherContext = new(RpcEndpoint.Ws, otherClient);
+            using JsonRpcResponse denied = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), otherContext);
+            Assert.That(RpcTest.AssertSuccess<bool>(denied), Is.False);
+            if (finish == "disconnect") client.Closed += Raise.Event<EventHandler>(client, EventArgs.Empty);
+            else if (finish is "unsubscribe" or "callback")
+            {
+                using JsonRpcResponse unsubscribe = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), context);
+                Assert.That(RpcTest.AssertSuccess<bool>(unsubscribe), Is.True);
+            }
+            else allowSend.SetResult();
+            if (finish == "callback")
+            {
+                await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await resultsDisposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(waiting.IsCompleted, Is.False, "the block rental outlives cancellation callbacks even after result disposal");
+                releaseCallback.Set();
+            }
+            using JsonRpcResponse normalResponse = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(RpcTest.AssertError(normalResponse).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That(replayedWhenNormalRequest, Is.EqualTo(1), "an already queued request runs before the next block");
+                Assert.That(disposedWhenNormalRequest, Is.EqualTo(2), "block results are disposed before returning the rental");
+            }
+            if (finish == "completion")
+                await subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         }
-        else allowSend.SetResult();
-        IDebugRpcModule returned = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
-        pool.ReturnModule(returned);
-        manager.RemoveClientSubscriptions(client);
+        finally
+        {
+            releaseCallback.Set();
+            manager.RemoveClientSubscriptions(client);
+            await subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            registration.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_completed_block_callbacks_are_unlinked_before_module_reuse()
+    {
+        SetUpTraceChain();
+        DebugRpcModule module = CreateTraceChainModule();
+        int oldBlockCallbacks = 0;
+        int currentBlockCallbacks = 0;
+        CancellationToken oldBlockToken = default;
+        CancellationToken currentBlockToken = default;
+        CancellationTokenRegistration oldRegistration = default;
+        CancellationTokenRegistration currentRegistration = default;
+        module.TraceChainReplay = (block, _, token) =>
+        {
+            if (block.Number == 1)
+            {
+                oldBlockToken = token;
+                oldRegistration = token.Register(() => Interlocked.Increment(ref oldBlockCallbacks));
+            }
+            else if (block.Number == 3)
+            {
+                currentBlockToken = token;
+                currentRegistration = token.Register(() => Interlocked.Increment(ref currentBlockCallbacks));
+            }
+            return ChainTraces(block);
+        };
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("per-block-callback-client");
+        TaskCompletionSource laterSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sends = 0;
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            if (Interlocked.Increment(ref sends) == 2)
+            {
+                laterSend.SetResult();
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+            }
+            return 0;
+        });
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", new BlockParameter(0UL), new BlockParameter(4UL));
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        try
+        {
+            response.TakeActivation().Activate();
+            await laterSend.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using ResultWrapper<bool> unsubscribe = ((IDebugSubscriptionRpcModule)module).debug_unsubscribe(response.Data);
+            Assert.That(unsubscribe.Data, Is.True);
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oldBlockCallbacks, Is.Zero);
+                Assert.That(oldBlockToken.IsCancellationRequested, Is.False);
+                Assert.That(currentBlockCallbacks, Is.EqualTo(1));
+                Assert.That(currentBlockToken.IsCancellationRequested, Is.True);
+            }
+        }
+        finally
+        {
+            response.Subscription.Abort();
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            oldRegistration.Dispose();
+            currentRegistration.Dispose();
+        }
     }
 
     [Test]
@@ -629,8 +743,11 @@ public class DebugModuleTests
     }
 
     [Test]
-    public async Task TraceChain_cancelled_pending_rental_frees_queue_capacity([Values] bool acknowledge)
+    public async Task TraceChain_cancelled_pending_rental_frees_queue_capacity(
+        [Values("beforeAck", "firstRental", "nextRental")] string stage)
     {
+        bool acknowledge = stage != "beforeAck";
+        bool afterFirstBlock = stage == "nextRental";
         SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
         SetUpTraceChain();
         IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
@@ -644,8 +761,16 @@ public class DebugModuleTests
         JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
         IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
         client.Id.Returns("saturated-pool-client");
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allowSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            sending.TrySetResult();
+            await allowSend.Task.WaitAsync(call.Arg<CancellationToken>());
+            return 0;
+        });
         using JsonRpcContext context = new(RpcEndpoint.IPC, client);
-        IDebugRpcModule? held = await pool.GetModule(false);
+        IDebugRpcModule? held = afterFirstBlock ? null : await pool.GetModule(false);
         try
         {
             using JsonRpcResponse response = await service.SendRequestAsync(
@@ -656,7 +781,16 @@ public class DebugModuleTests
             if (acknowledge)
             {
                 pending.TakeActivation().Activate();
-                await pool.RentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                if (afterFirstBlock)
+                {
+                    await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    Task<IDebugRpcModule> normalRental = pool.GetModule(false);
+                    Assert.That(normalRental.IsCompleted, Is.False);
+                    allowSend.SetResult();
+                    held = await normalRental.WaitAsync(TimeSpan.FromSeconds(5));
+                    await pool.NextRentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                else await pool.RentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
                 using JsonRpcResponse unsubscribe = await service.SendRequestAsync(
                     RpcTest.BuildJsonRequest("debug_unsubscribe", pending.Data), context);
                 Assert.That(RpcTest.AssertSuccess<bool>(unsubscribe), Is.True);
@@ -668,10 +802,11 @@ public class DebugModuleTests
             Task<JsonRpcResponse> normal = service.SendRequestAsync(
                 RpcTest.BuildJsonRequest("debug_traceBlockByHash", TestItem.KeccakD), context).AsTask();
             Assert.That(normal.IsCompleted, Is.False, "the cancelled subscription must not consume the only queue slot");
-            pool.ReturnModule(held);
+            pool.ReturnModule(held!);
             held = null;
             using JsonRpcResponse normalResponse = await normal.WaitAsync(TimeSpan.FromSeconds(5));
             Assert.That(RpcTest.AssertError(normalResponse).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(pool.ReturnCount, Is.EqualTo(afterFirstBlock ? 5 : acknowledge ? 4 : 3));
         }
         finally
         {
@@ -721,11 +856,19 @@ public class DebugModuleTests
     private sealed class ObservedExclusivePool(BoundedModulePool<IDebugRpcModule> inner) : IRpcModulePool<IDebugRpcModule>, IExclusiveRpcModulePool
     {
         internal TaskCompletionSource RentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource QueuedRentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource NextRentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _exclusiveRentals;
         internal Action? BeforeTransfer { get; set; }
         internal int ReturnCount;
         public IRpcModuleFactory<IDebugRpcModule> Factory => inner.Factory;
         public bool SupportsExclusiveRental => true;
-        public Task<IDebugRpcModule> GetModule(bool canBeShared) => inner.GetModule(canBeShared);
+        public Task<IDebugRpcModule> GetModule(bool canBeShared)
+        {
+            Task<IDebugRpcModule> rental = inner.GetModule(canBeShared);
+            if (!canBeShared && !rental.IsCompleted) QueuedRentalStarted.TrySetResult();
+            return rental;
+        }
         public void ReturnModule(IDebugRpcModule module)
         {
             Interlocked.Increment(ref ReturnCount);
@@ -736,6 +879,7 @@ public class DebugModuleTests
             ValueTask<IRpcModule> rental = ((IExclusiveRpcModulePool)inner).RentExclusive(cancellationToken);
             if (rental.IsCompletedSuccessfully) BeforeTransfer?.Invoke();
             RentalStarted.TrySetResult();
+            if (Interlocked.Increment(ref _exclusiveRentals) == 2) NextRentalStarted.TrySetResult();
             return rental;
         }
     }
@@ -783,11 +927,9 @@ public class DebugModuleTests
         Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
         using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
             .debug_subscribe("traceChain", new BlockParameter(0UL), new BlockParameter(4UL));
-        response.Subscription.ReplayModule = module;
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        response.Subscription.OwnLease(() => released.SetResult());
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
         response.TakeActivation().Activate();
-        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         await client.DidNotReceive().SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>());
         response.Subscription.Abort();
     }
@@ -922,11 +1064,9 @@ public class DebugModuleTests
         _blockFinder.FindBlock(new BlockParameter(1UL)).Returns(replacement);
         Block? replayed = null;
         module.TraceChainReplay = (block, _, _) => { replayed = block; return ChainTraces(block); };
-        response.Subscription.ReplayModule = module;
-        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        response.Subscription.OwnLease(() => released.SetResult());
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
         response.TakeActivation().Activate();
-        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.That(replayed, Is.SameAs(replacement));
         response.Subscription.Abort();
     }

@@ -4,7 +4,6 @@
 using System;
 using System.Diagnostics;
 using System.Collections.Generic;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using System.IO;
 using System.IO.Pipelines;
 using System.Threading;
@@ -27,7 +26,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     private long _batchStartTimestamp;
     private bool _isFirstBatchItem = true;
     private bool _holdsSendLock;
-    private List<TraceChainSubscription>? _pendingSubscriptions;
+    private List<IPostAcknowledgementActivation>? _pendingSubscriptions;
 
     public long BytesWritten { get; private set; }
     public bool StopRequested { get; private set; }
@@ -41,7 +40,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
         {
             long startTimestamp = _reportCalls ? Stopwatch.GetTimestamp() : 0;
             long responseBytes = await SocketJsonRpcResponseWriter.WriteMessageAsync(stream, sendLock, response, cancellationToken);
-            if (response is PendingTraceChainResponse pending) pending.TakeActivation().Activate();
+            if (response is IPostAcknowledgementResponse pending) pending.TakeActivation().Activate();
             report = JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report);
 
             BytesWritten += responseBytes;
@@ -89,10 +88,18 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             _topLevelResponseBytes += await SocketJsonRpcResponseWriter.WriteAsync(
                 stream, sendLock, response, isBatch: true, _topLevelResponseBytes, cancellationToken);
             // Batch item responses are disposed before the complete batch has reached the client.
-            if (response is PendingTraceChainResponse pending)
+            if (response is IPostAcknowledgementResponse pending)
             {
-                (_pendingSubscriptions ??= []).Add(pending.Subscription);
-                pending.TakeActivation();
+                IPostAcknowledgementActivation activation = pending.TakeActivation();
+                try
+                {
+                    (_pendingSubscriptions ??= []).Add(activation);
+                }
+                catch
+                {
+                    activation.Abort();
+                    throw;
+                }
             }
             report = JsonRpcResponseWriteOutcome.Of(response).ApplyTo(report);
         }
@@ -124,7 +131,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
             _topLevelResponseBytes += await stream.WriteEndOfMessageAsync();
             if (_pendingSubscriptions is not null)
             {
-                foreach (TraceChainSubscription subscription in _pendingSubscriptions) subscription.Activate();
+                foreach (IPostAcknowledgementActivation subscription in _pendingSubscriptions) subscription.Activate();
                 _pendingSubscriptions.Clear();
             }
             BytesWritten += _topLevelResponseBytes;
@@ -150,7 +157,7 @@ internal sealed class SocketJsonRpcResponseSink<TStream>(
     {
         if (_pendingSubscriptions is not null)
         {
-            foreach (TraceChainSubscription subscription in _pendingSubscriptions) subscription.Abort();
+            foreach (IPostAcknowledgementActivation subscription in _pendingSubscriptions) subscription.Abort();
             _pendingSubscriptions.Clear();
         }
         if (_holdsSendLock) sendLock.Fault();
