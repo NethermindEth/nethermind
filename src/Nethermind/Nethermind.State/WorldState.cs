@@ -88,12 +88,14 @@ namespace Nethermind.State
 
         public Account GetAccount(Address address)
         {
+            DependencyProbe.ReadAccount(address);
             DebugGuardInScope();
             return _stateProvider.GetAccount(address);
         }
 
         public bool TryGetAccount(Address address, out AccountStruct account)
         {
+            DependencyProbe.ReadAccount(address);
             // Note: This call is for compatibility with `IAccountStateProvider` and should not be called directly by VM. Because its slower.
             account = _stateProvider.GetAccount(address)
                 .WithChangedStorageRoot(_persistentStorageProvider.GetStorageRoot(address))
@@ -104,22 +106,26 @@ namespace Nethermind.State
 
         public bool IsContract(Address address)
         {
+            DependencyProbe.ReadCode(address);
             DebugGuardInScope();
             return _stateProvider.IsContract(address);
         }
 
         public void GetOriginal(in StorageCell storageCell, out UInt256 value)
         {
+            DependencyProbe.ReadSlot(in storageCell);
             DebugGuardInScope();
             _persistentStorageProvider.GetOriginal(in storageCell, out value);
         }
         public void Get(in StorageCell storageCell, out UInt256 value)
         {
+            DependencyProbe.ReadSlot(in storageCell);
             DebugGuardInScope();
             _persistentStorageProvider.Get(in storageCell, out value);
         }
         public void Set(in StorageCell storageCell, in UInt256 newValue)
         {
+            DependencyProbe.WriteSlot(in storageCell);
             DebugGuardInScope();
             _persistentStorageProvider.Set(storageCell, newValue);
         }
@@ -190,12 +196,14 @@ namespace Nethermind.State
         public void WarmUp(Address address) => _stateProvider.WarmUp(address);
         public void ClearStorage(Address address)
         {
+            DependencyProbe.WriteStorageAll(address);
             DebugGuardInScope();
             _persistentStorageProvider.ClearStorage(address);
             _transientStorageProvider.ClearStorage(address);
         }
         public void MarkStorageDestroyed(Address address)
         {
+            DependencyProbe.WriteStorageAll(address);
             DebugGuardInScope();
             _persistentStorageProvider.MarkStorageDestroyed(address);
             _transientStorageProvider.ClearStorage(address);
@@ -207,25 +215,33 @@ namespace Nethermind.State
         }
         public void DeleteAccount(Address address)
         {
+            DependencyProbe.WriteAll(address);
             DebugGuardInScope();
             _stateProvider.DeleteAccount(address);
         }
         public void CreateAccount(Address address, in UInt256 balance, in ulong nonce = default)
         {
+            DependencyProbe.WriteAll(address);
             DebugGuardInScope();
             _stateProvider.CreateAccount(address, balance, nonce);
         }
 
-        public void CreateEmptyAccountIfDeleted(Address address) => _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
+        public void CreateEmptyAccountIfDeleted(Address address)
+        {
+            DependencyProbe.WriteAll(address);
+            _stateProvider.CreateEmptyAccountIfDeletedOrNew(address);
+        }
 
         public bool InsertCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
+            DependencyProbe.WriteCode(address);
             DebugGuardInScope();
             return _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
 
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
+            DependencyProbe.WriteBalance(address);
             DebugGuardInScope();
             _stateProvider.AddToBalance(address, balanceChange, spec, out oldBalance);
         }
@@ -233,21 +249,25 @@ namespace Nethermind.State
             => AddToBalance(address, balanceChange, spec, out UInt256 oldBalance);
         public bool AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
+            DependencyProbe.WriteBalance(address);
             DebugGuardInScope();
             return _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec, out oldBalance);
         }
         public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, out UInt256 oldBalance)
         {
+            DependencyProbe.ReadBalance(address); DependencyProbe.WriteBalance(address);
             DebugGuardInScope();
             _stateProvider.SubtractFromBalance(address, balanceChange, spec, out oldBalance);
         }
         public void IncrementNonce(Address address, ulong delta, out ulong oldNonce)
         {
+            DependencyProbe.ReadNonce(address); DependencyProbe.WriteNonce(address);
             DebugGuardInScope();
             _stateProvider.IncrementNonce(address, delta, out oldNonce);
         }
         public void DecrementNonce(Address address, ulong delta)
         {
+            DependencyProbe.WriteNonce(address);
             DebugGuardInScope();
             _stateProvider.DecrementNonce(address, delta);
         }
@@ -265,11 +285,16 @@ namespace Nethermind.State
 
         public ulong GetNonce(Address address)
         {
+            DependencyProbe.ReadNonce(address);
             DebugGuardInScope();
             return _stateProvider.GetNonce(address);
         }
 
-        public bool HasCode(Address address) => _stateProvider.GetAccount(address).HasCode;
+        public bool HasCode(Address address)
+        {
+            DependencyProbe.ReadCode(address);
+            return _stateProvider.GetAccount(address).HasCode;
+        }
 
         public bool TryBeginScope(BlockHeader? baseBlock, [NotNullWhen(true)] out IDisposable? scopeCloser)
         {
@@ -383,6 +408,7 @@ namespace Nethermind.State
 
         public ref readonly UInt256 GetBalance(Address address)
         {
+            DependencyProbe.ReadBalance(address);
             DebugGuardInScope();
             return ref _stateProvider.GetBalance(address);
         }
@@ -396,6 +422,7 @@ namespace Nethermind.State
 
         public ReadOnlyMemory<byte> GetCode(Address address)
         {
+            DependencyProbe.ReadCode(address);
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
         }
@@ -408,18 +435,21 @@ namespace Nethermind.State
 
         public ref readonly ValueHash256 GetCodeHash(Address address)
         {
+            DependencyProbe.ReadCode(address);
             DebugGuardInScope();
             return ref _stateProvider.GetCodeHash(address);
         }
 
         public bool AccountExists(Address address)
         {
+            DependencyProbe.ReadAccount(address);
             DebugGuardInScope();
             return _stateProvider.AccountExists(address);
         }
 
         public bool IsNonZeroAccount(Address address, out bool accountExists)
         {
+            DependencyProbe.ReadAccount(address);
             DebugGuardInScope();
             Account? account = _stateProvider.GetThroughCache(address);
             accountExists = account is not null;
@@ -428,6 +458,7 @@ namespace Nethermind.State
 
         public bool IsDeadAccount(Address address)
         {
+            DependencyProbe.ReadAccount(address);
             DebugGuardInScope();
             return _stateProvider.IsDeadAccount(address);
         }
@@ -480,12 +511,14 @@ namespace Nethermind.State
 
         public void SetNonce(Address address, in ulong nonce)
         {
+            DependencyProbe.WriteNonce(address);
             DebugGuardInScope();
             _stateProvider.SetNonce(address, nonce);
         }
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in ulong nonce = default)
         {
+            DependencyProbe.ReadAccount(address); DependencyProbe.WriteAll(address);
             DebugGuardInScope();
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }

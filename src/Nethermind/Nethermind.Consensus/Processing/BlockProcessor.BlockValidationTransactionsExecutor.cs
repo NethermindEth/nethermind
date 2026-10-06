@@ -41,12 +41,24 @@ public partial class BlockProcessor
             SetupTxTimingMetrics(block);
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
+            bool probe = !processingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain) && block.Transactions.Length > 0;
+            if (probe) Nethermind.State.DependencyProbe.BeginBlock(block.Header.Beneficiary ?? Address.Zero);
 
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
 
-                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                if (probe) Nethermind.State.DependencyProbe.BeginTx();
+                try
+                {
+                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                }
+                catch
+                {
+                    Nethermind.State.DependencyProbe.Abort();
+                    throw;
+                }
+                if (probe) Nethermind.State.DependencyProbe.EndTx(receiptsTracer.TxReceipts[i].GasUsed);
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
@@ -54,6 +66,7 @@ public partial class BlockProcessor
                 }
             }
 
+            if (probe) Nethermind.State.DependencyProbe.EndBlock(block.Number);
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
             Metrics.PublishBlockGasPriceGauges();
 
