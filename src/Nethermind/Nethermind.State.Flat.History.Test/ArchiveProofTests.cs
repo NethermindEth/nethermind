@@ -372,6 +372,28 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void StorageSplitChildren_WhenTheFirstChildThrows_SurfacesItsFailureAndSkipsTheOtherChildren()
+    {
+        int started = 0;
+        InvalidOperationException thrown = new("first split child failed");
+
+        void OnStorageChild()
+        {
+            if (Interlocked.Increment(ref started) == 1) throw thrown;
+        }
+
+        HistoryWalkVerifier verifier = CreateVerifyOnlyVerifier(maxRowsPerPartition: 40);
+        InvalidOperationException? surfaced = Assert.Throws<InvalidOperationException>(() => verifier.VerifyRangeParallel(0, _chain.Head, workers: 1,
+            AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, onStorageChild: OnStorageChild));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(surfaced, Is.SameAs(thrown));
+            Assert.That(started, Is.EqualTo(1), "the siblings of a failed child, and the items after it, are skipped");
+        }
+    }
+
+    [Test]
     public void A_build_leaves_no_scratch_series_behind([Values(1L, 40L)] long maxRowsPerPartition)
     {
         BuildCommitments(maxRowsPerPartition);

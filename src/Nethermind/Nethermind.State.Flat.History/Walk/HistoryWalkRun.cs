@@ -303,6 +303,12 @@ internal sealed class HistoryWalkRun
                     long sequence = frontier.Issue(BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), groupFound);
                     Action replay = () =>
                     {
+                        if (join.Failed)
+                        {
+                            group.Rows.Dispose();
+                            return;
+                        }
+
                         ReplayGroup(group, item, groupFound);
                         frontier.Complete(sequence);
                     };

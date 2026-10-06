@@ -81,6 +81,9 @@ internal sealed class WalkScheduler(int workers, CancellationToken token)
         }
     }
 
+    /// <summary>Runs forked work on the calling thread until every fork of <paramref name="join"/> has finished.</summary>
+    /// <remarks>The join is checked only between forks, so an owner that has taken another item's fork finishes it
+    /// first. That delays its own item's completion and checkpoints, not the walk's total throughput.</remarks>
     public void HelpUntilDone(WalkJoin join)
     {
         bool help = t_helpDepth < MaxHelpDepth;
