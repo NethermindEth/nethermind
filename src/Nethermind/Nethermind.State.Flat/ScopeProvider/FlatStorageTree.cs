@@ -200,7 +200,10 @@ public sealed class FlatStorageTree(
         if (Volatile.Read(ref _earlyWrites) is null)
         {
             // Experiment only: a tree built ahead from the predicted final writes, reconciled slot by slot like an early tree.
-            if (_scope.TakePredictedStorage(_address, _storageRoot) is not { Applied.Count: > 0 } predicted) return null;
+            // Only onto a tree still at its pre-block root: the prediction is built on that root, and a write batch earlier
+            // in the block would otherwise lose its writes.
+            if (!ReferenceEquals(tree.RootRef, GetTrees().PreBlockRoot)
+                || _scope.TakePredictedStorage(_address, _storageRoot) is not { Applied.Count: > 0 } predicted) return null;
             tree.RootRef = predicted.Tree.RootRef;
             Interlocked.Increment(ref PredictedStorageCounters.Adopted);
             return predicted.Applied;

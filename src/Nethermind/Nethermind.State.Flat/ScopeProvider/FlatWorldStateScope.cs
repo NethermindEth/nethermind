@@ -39,6 +39,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Experiment only: storage trees built ahead from predicted final writes, taken by the block's write batch.
     private ConcurrentDictionary<AddressAsKey, PredictedStorage>? _predictedStorages;
     private volatile bool _predictionsClosed;
+    // Closing and offering share it, so nothing is offered once a write batch has started.
+    private readonly Lock _predictionsLock = new();
     // The warmer adapter only sees the scope's base, so predictions only serve its first block.
     private volatile int _committedBlocks;
 
@@ -554,13 +556,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
             tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
             tree.UpdateRootHash(canBeParallel: false);
-            if (_predictionsClosed)
+            lock (_predictionsLock)
             {
-                Interlocked.Increment(ref PredictedStorageCounters.Late);
-                return;
+                if (_predictionsClosed)
+                {
+                    Interlocked.Increment(ref PredictedStorageCounters.Late);
+                    return;
+                }
+
+                (Volatile.Read(ref _predictedStorages) ?? InitializePredictedStorages())[address] = new PredictedStorage(baseRoot, tree, applied);
             }
 
-            (Volatile.Read(ref _predictedStorages) ?? InitializePredictedStorages())[address] = new PredictedStorage(baseRoot, tree, applied);
             Interlocked.Increment(ref PredictedStorageCounters.Built);
             Interlocked.Add(ref PredictedStorageCounters.BuiltWrites, writes.Count);
         }
@@ -594,7 +600,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
-        _predictionsClosed = true;
+        lock (_predictionsLock) _predictionsClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 

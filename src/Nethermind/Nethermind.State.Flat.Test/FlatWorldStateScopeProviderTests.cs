@@ -885,6 +885,39 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void PredictedStorage_IsNotAdoptedOnceTheBlockHasWrittenTheAccount([Values] bool offeredDuringTheBatch)
+    {
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        List<(UInt256 Slot, UInt256 Value)> predicted = [(1, 0x4e4d), (2, 7)];
+
+        // A first batch writes the account, as system calls after the transactions would.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            if (offeredDuringTheBatch) scope.HintPredictedStorage(address, predicted);
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(3, 0x4e4d);
+        }
+
+        if (!offeredDuringTheBatch) scope.HintPredictedStorage(address, predicted);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 1);
+            storageBatch.Set(1, 0x4e4d);
+        }
+
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        expectedTree.Set(3, ((UInt256)0x4e4d).ToMinimalBigEndian());
+        expectedTree.Set(1, ((UInt256)0x4e4d).ToMinimalBigEndian());
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);
