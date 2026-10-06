@@ -441,6 +441,34 @@ public class FrameTxValidationTests
         Assert.That(FrameTxValidation.ValidationWorkGas(tx), Is.EqualTo(expected));
     }
 
+    private static IEnumerable<TestCaseData> AdmissionGasCases()
+    {
+        const ulong prefixAndIntrinsic = 100_000 + (ulong)Eip8141Constants.IntrinsicGasCost + (ulong)Eip8141Constants.PerFrameGasCost;
+        static TestCaseData Admission(string name, Action<Transaction> mutate, ulong expected) =>
+            new TestCaseData(mutate, expected).SetName($"AdmissionGas_{name}");
+
+        yield return Admission("PrefixLimitsOnTopOfIntrinsicGas", static _ => { }, prefixAndIntrinsic);
+        yield return Admission("FrameDataAtTheCalldataRate",
+            static t => t.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 100_000, UInt256.Zero, new byte[] { 0, 1 })],
+            prefixAndIntrinsic + GasCostOf.TxDataZero + GasCostOf.TxDataNonZeroEip2028);
+        yield return Admission("OneColdSloadPerNonceKey", static t => t.NonceKeys = [UInt256.One, (UInt256)2], prefixAndIntrinsic + 2 * GasCostOf.ColdSLoad);
+        yield return Admission("AccountNonceReadsNoNonceKey", static t => t.NonceKeys = [UInt256.Zero], prefixAndIntrinsic);
+        yield return Admission("RecentRootReferenceIntrinsicGas",
+            static t => t.RecentRootReferences = [new RecentRootReference(default, 1, default)],
+            prefixAndIntrinsic + GasCostOf.AccessAccountListEntry + GasCostOf.AccessStorageListEntry + 2 * GasCostOf.Sha3 + 7 * GasCostOf.Sha3Word);
+    }
+
+    [TestCaseSource(nameof(AdmissionGasCases))]
+    public void AdmissionGas_ChargesDataNonceKeysAndRecentRootsOnTopOfTheValidationPrefix(Action<Transaction> mutate, ulong expected)
+    {
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.IsEip2028Enabled.Returns(true);
+        spec.IsEip8250Enabled.Returns(true);
+        spec.IsEip8272Enabled.Returns(true);
+
+        Assert.That(FrameTxValidation.AdmissionGas(CreateValidFrameTx(mutate), spec), Is.EqualTo(expected));
+    }
+
     [Test]
     public void TryGetExpiryDeadline_ReadsBigEndianDeadlineFromExpiryFrame()
     {

@@ -11,6 +11,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
@@ -204,15 +205,17 @@ public class FrameTxPoolRetentionMeasurement
             _blockTree,
             _stateProvider);
 
+        TxPoolConfig config = new() { GasLimit = 30_000_000 };
         return new TxPool(
             _ethereumEcdsa,
             new BlobTxStorage(),
             headInfo,
-            new TxPoolConfig { GasLimit = 30_000_000 },
+            config,
             new TxValidator(_specProvider.ChainId),
             new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(config),
             ShouldGossip.Instance,
             incomingTxFilters: null,
             thereIsPriorityContract: false);

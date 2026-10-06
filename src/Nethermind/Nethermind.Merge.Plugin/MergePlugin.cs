@@ -142,6 +142,8 @@ public class BaseMergePluginModule : Module
             .AddSingleton<IPoSSwitcher, PoSSwitcher>()
 
             .AddSingleton<ProcessedTransactionsDbCleaner>()
+            .AddSingleton<FrameTxWidthFinalizer>()
+            .ResolveOnServiceActivation<FrameTxWidthFinalizer, ITxPool>()
 
             // AddLast (not AddFirst) so RecoverSignatures stays ahead of it, matching the pre-DI ordering.
             .AddLast<IBlockPreprocessorStep, MergeProcessingRecoveryStep>()

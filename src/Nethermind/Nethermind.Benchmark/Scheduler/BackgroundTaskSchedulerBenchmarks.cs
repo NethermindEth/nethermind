@@ -173,6 +173,7 @@ public class BackgroundTaskSchedulerBenchmarks
         public ulong HeadTimestamp => 0;
         public ulong? BlockGasLimit => null;
         public UInt256 CurrentBaseFee => UInt256.Zero;
+        public UInt256 NextBaseFee => UInt256.Zero;
         public UInt256 CurrentFeePerBlobGas => UInt256.Zero;
         public ProofVersion CurrentProofVersion => ProofVersion.V0;
         public bool IsSyncing => false;
