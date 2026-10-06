@@ -17,8 +17,8 @@ internal sealed partial class PersistentStorageProvider
     {
         /// <remarks>
         /// ILC block-copies each 104-byte pair through corelib's out-of-line Memmove several times per entry, so
-        /// the guest walks keys and reaches each entry by ref. The host keeps the pair walk: for the unchanged
-        /// reads that make up most entries, the extra lookup costs it more than the copies save.
+        /// the guest reaches each entry's key and value in place instead. The host keeps the pair walk: its dictionary has
+        /// no in-place enumerator accessors.
         /// </remarks>
         [SkipLocalsInit]
         private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
@@ -29,14 +29,16 @@ internal sealed partial class PersistentStorageProvider
             // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
-            foreach (SlotKey key in BlockChange.Keys)
+            OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator entries = BlockChange.GetEnumerator();
+            while (entries.MoveNext())
             {
-                ref StorageChangeTrace change = ref BlockChange.GetValueRefOrNullRef(key);
+                ref readonly UInt256 key = ref entries.CurrentKey.Index;
+                ref StorageChangeTrace change = ref entries.CurrentValue;
                 if (!change.IsPendingWrite)
                 {
                     skipped++;
                 }
-                else if (CommitAndWriteUnlessDelete(key, ref change, storageWriteBatch))
+                else if (CommitAndWriteUnlessDelete(in key, ref change, storageWriteBatch))
                 {
                     writes++;
                 }
