@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv5;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Discovery.Test.Discv5;
@@ -25,20 +26,17 @@ public class DiscoveryV5TransportTests
     [SetUp]
     public void Initialize()
     {
-        _sent = new();
+        RecordingDatagramSocket socket = new();
+        _sent = socket.Sent;
         _transport = new(new TestLogManager());
-        _transport.BindSender((data, destination) =>
-        {
-            _sent.Enqueue((data, destination));
-            return Task.CompletedTask;
-        });
+        _transport.BindSocket(socket);
     }
 
     [TearDown]
     public void CleanUp() => _transport.Close();
 
     [Test]
-    public async Task SendsThroughBoundSender()
+    public async Task SendsThroughBoundSocket()
     {
         byte[] data = [1, 2, 3];
         IPEndPoint to = IPEndPoint.Parse("127.0.0.1:10001");
@@ -69,7 +67,10 @@ public class DiscoveryV5TransportTests
     {
         TestLogger logger = new() { IsDebug = true, IsTrace = traceEnabled };
         DiscoveryV5Transport transport = new(new OneLoggerLogManager(new ILogger(logger)));
-        transport.BindSender((_, _) => Task.FromException(new SocketException((int)SocketError.AddressNotAvailable)));
+        IDatagramSocket socket = Substitute.For<IDatagramSocket>();
+        socket.SendToAsync(Arg.Any<ReadOnlyMemory<byte>>(), Arg.Any<IPEndPoint>(), Arg.Any<CancellationToken>())
+            .Returns(ValueTask.FromException(new SocketException((int)SocketError.AddressNotAvailable)));
+        transport.BindSocket(socket);
         IPEndPoint destination = new(IPAddress.Parse("2001:db8::1"), 30303);
 
         Assert.ThrowsAsync<SocketException>(

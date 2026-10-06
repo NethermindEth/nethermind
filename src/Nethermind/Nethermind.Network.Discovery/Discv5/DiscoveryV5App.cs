@@ -281,7 +281,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     /// <remarks>discv5 is the last protocol on the socket, so it never forwards datagrams.</remarks>
     internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
     {
-        _transport.BindSender((data, destination) => socket.SendToAsync(data, destination).AsTask());
+        _transport.BindSocket(socket);
         OnChannelActivated();
     }
 

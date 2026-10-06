@@ -13,8 +13,8 @@ namespace Nethermind.Network.Discovery.Discv5;
 /// Queues inbound discv5 datagrams for the protocol workers and sends outbound datagrams through the discovery socket.
 /// </summary>
 /// <remarks>
-/// The discovery socket is shared with discv4 and bound only when discovery starts, so the sender is attached late
-/// through <see cref="BindSender"/>.
+/// The discovery socket is shared with discv4 and bound only when discovery starts, so it is attached late
+/// through <see cref="BindSocket"/>.
 /// </remarks>
 public sealed class DiscoveryV5Transport(ILogManager logManager)
 {
@@ -23,10 +23,10 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
     private readonly ILogger _logger = logManager.GetClassLogger<DiscoveryV5Transport>();
     private readonly Channel<PooledUdpReceiveResult> _inboundQueue = Channel.CreateBounded<PooledUdpReceiveResult>(MaxMessagesBuffered);
 
-    private Func<byte[], IPEndPoint, Task>? _sender;
+    private IDatagramSocket? _socket;
     private int _activeReaders;
 
-    internal void BindSender(Func<byte[], IPEndPoint, Task> sender) => _sender = sender;
+    internal void BindSocket(IDatagramSocket socket) => _socket = socket;
 
     /// <summary>
     /// Queues a received datagram, taking ownership of its buffer; the datagram is dropped when the queue is full or closed.
@@ -47,12 +47,12 @@ public sealed class DiscoveryV5Transport(ILogManager logManager)
     {
         token.ThrowIfCancellationRequested();
 
-        Func<byte[], IPEndPoint, Task> sender = _sender ?? throw new InvalidOperationException("Discovery channel is not initialized.");
+        IDatagramSocket socket = _socket ?? throw new InvalidOperationException("Discovery channel is not initialized.");
 
         try
         {
             if (_logger.IsTrace) _logger.Trace($"Sending discv5 UDP packet to {destination}, bytes: {data.Length}.");
-            await sender(data, destination).WaitAsync(token);
+            await socket.SendToAsync(data, destination, token);
             Interlocked.Add(ref Metrics.DiscoveryBytesSent, data.Length);
         }
         catch (SocketException exception) when (exception.SocketErrorCode == SocketError.AddressNotAvailable)

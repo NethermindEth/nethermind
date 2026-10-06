@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -520,12 +519,8 @@ public class WireTests
         }
 
         DiscoveryV5Transport transport = new(new TestLogManager());
-        ConcurrentQueue<byte[]> outbound = new();
-        transport.BindSender((data, _) =>
-        {
-            outbound.Enqueue(data);
-            return Task.CompletedTask;
-        });
+        RecordingDatagramSocket outbound = new();
+        transport.BindSocket(outbound);
 
         TestNodeRecordProvider nodeRecordProvider = new(privateKey, endpoint, includeEndpointInRecord, enrSequence, recordIp);
         PacketCodec packetCodec = new(
@@ -676,9 +671,9 @@ public class WireTests
 
     private static void Pump(TestPeer from, TestPeer to)
     {
-        while (from.Outbound.TryDequeue(out byte[]? data))
+        while (from.Outbound.Sent.TryDequeue(out (byte[] Data, IPEndPoint Destination) datagram))
         {
-            to.Transport.Receive(PooledUdpReceiveResult.Copy(data, from.Endpoint));
+            to.Transport.Receive(PooledUdpReceiveResult.Copy(datagram.Data, from.Endpoint));
         }
     }
 
@@ -893,7 +888,7 @@ public class WireTests
     private sealed record TestPeer(
         KademliaAdapter Adapter,
         DiscoveryV5Transport Transport,
-        ConcurrentQueue<byte[]> Outbound,
+        RecordingDatagramSocket Outbound,
         PacketCodec PacketCodec,
         IKademlia<PublicKey, Node> Kademlia,
         TestNodeRecordProvider NodeRecordProvider,
