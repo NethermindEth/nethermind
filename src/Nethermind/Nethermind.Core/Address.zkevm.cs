@@ -15,7 +15,9 @@ public sealed partial class Address
     // its words again. An address is immutable and the guest seeds its hashes once, before hashing anything, so both
     // can be kept; 0 means not computed yet.
     private ulong _wordSum;
-    private int _hashCode;
+    // Word-sized so the address bytes after it start 8-aligned: the guest pays several times an aligned load for a
+    // misaligned one, and every compare and hash reads them a word at a time.
+    private long _hashCode;
 
     // ValueAddress and AddressAsKey hash with FastHash64For20Bytes, which takes AES where it can. The kept sums are its
     // scalar path, the guest's, so a host with AES hashes the shared way to agree with them.
@@ -26,9 +28,9 @@ public sealed partial class Address
     {
         if (HashesWithAes) return unchecked((int)GetHashCode64());
 
-        int hashCode = _hashCode;
+        long hashCode = _hashCode;
         if (hashCode == 0) _hashCode = hashCode = unchecked((int)SpanExtensions.FinalizeAddressSum(WordSum()));
-        return hashCode;
+        return (int)hashCode;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
