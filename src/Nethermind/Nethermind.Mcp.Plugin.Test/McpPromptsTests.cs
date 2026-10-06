@@ -145,6 +145,8 @@ public class McpPromptsTests
             Assert.That(instructions, Does.Contain($"native currency {symbol}"));
             Assert.That(instructions.Contains("GNO", StringComparison.Ordinal), Is.EqualTo(gnosisNote));
             Assert.That(instructions, Does.Contain("untrusted on-chain data"));
+            // Sent on every initialize; per-tool detail belongs in the guide resource and the tool descriptions.
+            Assert.That(instructions, Has.Length.LessThan(2_000));
         }
     }
 }

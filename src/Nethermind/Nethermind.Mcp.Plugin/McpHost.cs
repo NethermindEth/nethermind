@@ -52,6 +52,11 @@ public sealed class McpHost(
 
     private static readonly TimeSpan ShutdownTimeout = TimeSpan.FromSeconds(5);
 
+    // A tool body blocked inside an RPC module method ignores the MCP shutdown token and returns only when that method's own
+    // timeout fires, so the drain waits that long (plus the graceful budget) before the node disposes the services it reads.
+    private readonly TimeSpan _drainTimeout =
+        TimeSpan.FromMilliseconds(Math.Max(jsonRpcConfig.Timeout, config.ToolTimeout)) + ShutdownTimeout;
+
     private readonly ILogger _logger = logManager.GetClassLogger<McpHost>();
     private readonly SemaphoreSlim _lifecycleLock = new(1, 1);
     private WebApplication? _app;
@@ -192,8 +197,10 @@ public sealed class McpHost(
         _settings = null;
         Endpoint = null;
         // Tool bodies run on the thread pool and may outlive their requests, so they are cancelled and awaited before the
-        // node disposes the databases they read.
-        Task<bool> drainTools = tools.Executor?.StopAsync(cancellationToken) ?? Task.FromResult(true);
+        // node disposes the databases they read. The listener honours the caller's budget; the drain does not, because
+        // returning early would let the node dispose services under a body that is still running.
+        using CancellationTokenSource drainTimeout = new(_drainTimeout);
+        Task<bool> drainTools = tools.Executor?.StopAsync(drainTimeout.Token) ?? Task.FromResult(true);
         try
         {
             await app.StopAsync(cancellationToken);
@@ -202,7 +209,10 @@ public sealed class McpHost(
         {
             await app.DisposeAsync();
             settings?.Dispose();
-            await drainTools;
+            if (!drainTools.IsCompleted && _logger.IsInfo)
+                _logger.Info($"Waiting up to {_drainTimeout.TotalSeconds:0}s for running MCP tool calls to finish before node services are disposed");
+            if (!await drainTools && _logger.IsError)
+                _logger.Error($"MCP tool calls were still running {_drainTimeout.TotalSeconds:0}s after shutdown started; node services are disposed under them");
         }
 
         if (_logger.IsInfo) _logger.Info("MCP server stopped");
@@ -278,9 +288,8 @@ public sealed class McpHost(
         text.Append("Start with node_status to learn whether the node is synced and which blocks still have state, bodies and receipts (pruned nodes serve recent history only), ");
         text.Append("then read the nethermind://guide resource for which tool answers which question, block selectors, units and error codes. ");
         text.Append("Use diagnose_transaction for a pending hash or sender nonce gaps, address_activity for recent token movements, and token_price for verified on-chain USD quotes. ");
-        text.Append("Transaction diagnosis reads the core ordinary and blob pools regardless of enabled RPC modules; sender lists and nonce-gap ranges report omitted counts. Address mode exposes hashes, nonces and fees without calldata, and counts stale entries separately. pending_blocked identifies an underpriced predecessor in blockedBy; replace it first, then address the transaction's ownFeeStatus and nonceGaps. Address summary status counts cover listed entries and state omissions; stale and the gap overview cover the whole pool. Submit missing nonces. A missing hash may have been sped up or cancelled: query its sender address. History hints include transaction-index retention. With Receipt.StoreReceipts=false, historical hash lookups and receipts are unavailable; suggest only get_block for a known block, or another node for receipts. Underpriced means below the next base fee; lowTip is advisory. Compare recentTips, replacementMinimum and recommended fees; missing fee data leaves readiness unknown. Type-0 and type-1 replacements name the original type and use gasPrice advice without dynamic priority-fee fields. Blob recommendations keep headroom even when the next fee is known. ");
-        text.Append("Use swap wording only when the sender sent input tokens and received net-positive outputs. Amounts use sender net deltas; native deltas need a complete successful trace and exclude gas fees. Keep WETH separate from native currency. Third-party receipts are factual delivered-to movements, including fee handlers and tax-token swapBack. LP burns and deliveries describe liquidity removal; NFT purchases name the item, collection and payment only when the sender paid and received it. ");
-        text.Append("address_activity defaults to newest-first; order=asc selects chain order. Explicit activity starts retain readable pre-index blocks; only unavailable receipt history is reported as clamped. Empty windows widen in the same call while time remains. An index lag up to 64 blocks keeps the indexed default horizon; at 65 blocks it uses the unindexed default. indexed is true for windows wholly inside coverage, including short windows, and false for mixed pages. Capped scans narrow before time stops and recover their span after draining in both orders. Completed reads survive soft deadlines. Later scan errors preserve earlier movements and give a note with the block, error code and retry cursor. Follow its cursor after limit, byte, time or scan_error cuts; pageNetFlows and pageTransactions cover returned movements only, NFTs are excluded from flows, and undecodableLogs reports non-standard or invalid transfer events; their effects are not counted. Token metadata is read at each movement block; differing successful reads, unavailable reads and budget omissions are reported separately, and affected pageNetFlows stay raw. Fully unindexed legacy transfers, including CryptoKitties-style one-topic events, cannot be found by activity topic filters. Partially indexed layouts are also non-standard; decode_logs accepts explicit event signatures in abi. Transaction-hash decoding reads metadata at the receipt block; raw logs use current metadata because they have no block selector. Equivalent input formatting and toggling USD preserve the cursor; scannedFrom/scannedTo are attempted bounds; fromBlock/toBlock are this call's covered span and coveredTo is its last block in the scan direction. Coverage is null before merged progress. No activity is stated only after the whole query finishes without matches. Receipt clamp notes repeat on every page. Moving safe/finalized tags stay pinned on resume; changing a tag type is rejected. It excludes plain native sends. token_balances, address_activity and explain_transaction require includeUsd=true for USD; fee_estimate adds it by default. Bounded optional price reads follow the main data with a timeout safety margin and report omissions with notes, including pending explanations or unavailable paid fees/receipts. Activity prices only retained movements, and omits USD fields that exceed the movement byte budget without removing movements. USD values include pricedVia and the feed update time; peg assumptions are explicit for wrapped and bridged assets. Historical token prices and balances use the selected block timestamp, while activity and explained fees use current quotes. Stale means heartbeat plus max(60 seconds, 5%); metadata cache hits survive lookup deadlines, and only skipped cache misses count as omitted. Token balances and supplies are formatted only when decimals are known; raw units remain available. USD notes distinguish the metadata budget, transient decimals() lookup failures (retry), and contract reverts or non-standard decimals responses; unavailable/stale prices also omit USD with a note. simulate_transaction applies the configured gas cap to the whole sequence. ");
+        text.Append("Paged tools return a cursor: follow nextCursor while truncated is true. Notes in results explain clamped ranges, omissions and missing history. ");
+        text.Append("Transaction summaries say \"swapped\" only when the sender itself sent the inputs and received the outputs; other movements are listed as facts. ");
         text.Append("Amounts are hex quantities in wei with formatted fields next to them: present the formatted amounts with their symbols. ");
         if (profile.IsGnosisFamily)
             text.Append("This is a Gnosis chain: gas and native balances are in xDAI, never ETH; validators stake GNO, an ERC-20 token. GNO USD values state assumed parity with the bridged mainnet token. ");

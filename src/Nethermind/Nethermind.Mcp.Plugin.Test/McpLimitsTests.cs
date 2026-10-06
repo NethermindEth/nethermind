@@ -283,6 +283,35 @@ public class McpLimitsTests
     }
 
     [Test]
+    public async Task Host_shutdown_keeps_waiting_for_a_body_after_the_listener_budget_is_spent()
+    {
+        await using McpTestNode node = await McpTestNode.Create();
+        McpToolExecutor executor = node.Chain.Container.Resolve<McpToolExecutor>();
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<CallToolResult> gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Task<CallToolResult> stuck = executor.ExecuteLocalAsync("test", _ =>
+        {
+            entered.TrySetResult();
+            return gate.Task;
+        }, CancellationToken.None);
+        await entered.Task.WaitAsync(WaitLimit);
+
+        using CancellationTokenSource budget = new(TimeSpan.FromMilliseconds(100));
+        Task stop = node.Host.StopAsync(budget.Token);
+        bool stoppedWhileRunning = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(1))) == stop;
+        gate.SetResult(McpToolExecutor.Error(McpToolErrorCodes.InternalError, "done"));
+        await stop.WaitAsync(WaitLimit);
+        await stuck.WaitAsync(WaitLimit);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stoppedWhileRunning, Is.False, "the node disposes its services once stop returns, so stop must outlast a running body");
+            Assert.That(node.Host.Endpoint, Is.Null);
+        }
+    }
+
+    [Test]
     public async Task Detached_work_keeps_the_concurrency_slot_until_it_finishes()
     {
         await using McpTestNode node = await McpTestNode.Create(c => c.MaxConcurrentToolCalls = 1, start: false);
