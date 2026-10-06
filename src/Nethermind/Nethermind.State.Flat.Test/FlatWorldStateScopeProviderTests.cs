@@ -1880,6 +1880,30 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(warmer.AddressJobPushes, Is.EquivalentTo(new[] { TestItem.AddressA }));
     }
 
+    [TestCase(true, TestName = "Hints_WithActiveWarmer_MarkTheDedupeBloomAndReachTheWarmer")]
+    [TestCase(false, TestName = "Hints_WithNoopWarmer_LeaveTheDedupeBloomUntouched")]
+    public void Hints_FollowWhetherTheWarmerIsActive(bool activeWarmer)
+    {
+        // Both push kinds are rejected, so no warm-up stays outstanding past the asserts.
+        RecordingTrieWarmer recording = new(acceptSlotJob: false, acceptMpmcSlotJob: false);
+        using TestContext ctx = new(trieWarmer: activeWarmer ? recording : new NoopTrieWarmer());
+        FlatWorldStateScope scope = ctx.Scope;
+
+        scope.HintWarmAccount(TestItem.AddressA);
+        scope.HintWarmSlot(TestItem.AddressC, (UInt256)2);
+        scope.CreateStorageTree(TestItem.AddressB).HintSet((UInt256)1);
+
+        SnapshotBundle bundle = ctx.SnapshotBundle;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressA), Is.EqualTo(!activeWarmer), "an account hint marks the bloom only for an active warmer");
+            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressC, (UInt256)2), Is.EqualTo(!activeWarmer), "a slot hint marks the bloom only for an active warmer");
+            Assert.That(bundle.ShouldQueuePrewarm(TestItem.AddressB, (UInt256)1), Is.EqualTo(!activeWarmer), "a storage HintSet marks the bloom only for an active warmer");
+            Assert.That(recording.AddressJobPushes, Is.EqualTo(activeWarmer ? new[] { TestItem.AddressA } : Array.Empty<Address>()), "the account hint reaches an active warmer");
+            Assert.That(recording.SlotJobPushes, Is.EqualTo(activeWarmer ? 1 : 0), "the storage HintSet reaches an active warmer");
+        }
+    }
+
     private sealed class RecordingBalReaderSink : IWorldStateScopeProvider.IAsyncBalReaderSink
     {
         private readonly Lock _lock = new();

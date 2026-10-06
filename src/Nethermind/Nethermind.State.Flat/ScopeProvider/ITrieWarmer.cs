@@ -28,6 +28,11 @@ public interface ITrieWarmer
         Address? path,
         int sequenceId);
 
+    /// <summary>
+    /// <c>false</c> when every push is rejected, so callers can skip preparing warm-up jobs at all.
+    /// </summary>
+    bool IsActive => true;
+
     void OnEnterScope();
     void OnExitScope();
 
