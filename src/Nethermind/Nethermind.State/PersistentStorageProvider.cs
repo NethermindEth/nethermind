@@ -1045,8 +1045,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
-        public OptimizedDictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
-
         public void UnmarkClear()
         {
             _missingAreDefault = false;
