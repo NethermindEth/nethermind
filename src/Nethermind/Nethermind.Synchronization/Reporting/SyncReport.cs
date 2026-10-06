@@ -24,6 +24,7 @@ namespace Nethermind.Synchronization.Reporting
         private readonly IBlockFinder _blockFinder;
         private readonly ITimestamper _timestamper;
         private readonly ulong _syncBehindThresholdSeconds;
+        private readonly ulong _caughtUpThresholdSeconds;
         private readonly ILogger _logger;
         private SyncMode _currentMode = SyncMode.None;
 
@@ -34,8 +35,11 @@ namespace Nethermind.Synchronization.Reporting
         private const int NoProgressStateSyncReportFrequency = 30;
         private const int SyncAllocatedPeersReportFrequency = 30;
         private const int SyncFullPeersReportFrequency = 120;
-        internal const int SyncBehindReportFrequency = 6; // every 6 ticks x 10s = ~60s
+        // Gated on elapsed time rather than ticks, as the tick interval depends on the log level.
+        internal static readonly TimeSpan SyncBehindReportInterval = TimeSpan.FromMinutes(1);
         internal const ulong SyncBehindThresholdSlots = 25; // 5 min with 12s slots
+        internal const ulong CaughtUpThresholdSlots = 4;
+        private DateTime? _lastSyncBehindReportTime;
         private bool _isBehind;
         private bool _hasBeenAtTip;
         private (DateTime Time, ulong HeadTimestamp)? _lastCatchUpSample;
@@ -49,7 +53,9 @@ namespace Nethermind.Synchronization.Reporting
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _syncBehindThresholdSeconds = SyncBehindThresholdSlots * (blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig))).SecondsPerSlot;
+            ulong secondsPerSlot = (blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig))).SecondsPerSlot;
+            _syncBehindThresholdSeconds = SyncBehindThresholdSlots * secondsPerSlot;
+            _caughtUpThresholdSeconds = CaughtUpThresholdSlots * secondsPerSlot;
             _syncPeersReport = new SyncPeersReport(syncPeerPool, nodeStatsManager, logManager);
             _defaultReportingIntervals = TimeSpan.FromSeconds(_logger.IsDebug ? 1 : 10);
             _timer = (timerFactory ?? TimerFactory.Default).CreateTimer(_defaultReportingIntervals);
@@ -111,9 +117,11 @@ namespace Nethermind.Synchronization.Reporting
                 WriteSyncReport();
             }
 
-            if (_reportId % SyncBehindReportFrequency == 0)
+            DateTime now = _timestamper.UtcNow;
+            if (_lastSyncBehindReportTime is not { } lastSyncBehindReport || now - lastSyncBehindReport >= SyncBehindReportInterval)
             {
-                WriteSyncBehindReport();
+                _lastSyncBehindReportTime = now;
+                WriteSyncBehindReport(now);
             }
 
             if (_reportId % SyncFullPeersReportFrequency == 0)
@@ -290,7 +298,7 @@ namespace Nethermind.Synchronization.Reporting
 
         private void WriteBeaconSyncReport() => BeaconHeaders.LogProgress();
 
-        private void WriteSyncBehindReport()
+        private void WriteSyncBehindReport(DateTime now)
         {
             SyncMode currentSyncMode = _currentMode;
             if ((currentSyncMode & (SyncMode.Full | SyncMode.FastSync | SyncMode.WaitingForBlock)) == 0) return;
@@ -299,8 +307,8 @@ namespace Nethermind.Synchronization.Reporting
             Block? head = _blockFinder.Head;
             if (head is null || head.IsGenesis) return;
 
-            ulong secondsBehind = _timestamper.UnixTime.Seconds.SaturatingSub(head.Timestamp);
-            if (secondsBehind <= _syncBehindThresholdSeconds)
+            ulong secondsBehind = new UnixTime(now).Seconds.SaturatingSub(head.Timestamp);
+            if (secondsBehind <= _caughtUpThresholdSeconds)
             {
                 _hasBeenAtTip = true;
                 _lastCatchUpSample = null;
@@ -313,8 +321,16 @@ namespace Nethermind.Synchronization.Reporting
                 return;
             }
 
+            // Between the two thresholds the node is neither reported as behind nor announced as caught up.
+            if (secondsBehind <= _syncBehindThresholdSeconds) return;
+
             _isBehind = true;
-            string message = $"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{FormatCatchUpEta(head.Timestamp, secondsBehind)}";
+            (DateTime Time, ulong HeadTimestamp)? previousSample = _lastCatchUpSample;
+            _lastCatchUpSample = (now, head.Timestamp);
+
+            // The head cannot advance until state sync completes, so an estimate would only ever say the gap is not closing.
+            string eta = (currentSyncMode & SyncMode.StateNodes) == 0 ? FormatCatchUpEta(previousSample, now, head.Timestamp, secondsBehind) : "";
+            string message = $"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{eta}";
 
             // Only a node that had already reached the tip is worth warning about; on a first sync
             // being behind is the expected state and would warn for the whole sync.
@@ -326,16 +342,14 @@ namespace Nethermind.Synchronization.Reporting
         }
 
         /// <remarks>
-        /// Estimated from how much chain time the head advanced since the previous sync-behind report:
+        /// Estimated from how much chain time the head advanced since the previous sample:
         /// the gap closes only by the part of that advance exceeding the wall-clock time that passed.
+        /// A sample older than two report intervals is ignored, as it would average in a stretch
+        /// in which the node was not reporting, e.g. while out of forward sync.
         /// </remarks>
-        private string FormatCatchUpEta(ulong headTimestamp, ulong secondsBehind)
+        private static string FormatCatchUpEta((DateTime Time, ulong HeadTimestamp)? previousSample, DateTime now, ulong headTimestamp, ulong secondsBehind)
         {
-            DateTime now = _timestamper.UtcNow;
-            (DateTime Time, ulong HeadTimestamp)? previous = _lastCatchUpSample;
-            _lastCatchUpSample = (now, headTimestamp);
-
-            if (previous is not { } sample || now <= sample.Time) return "";
+            if (previousSample is not { } sample || now <= sample.Time || now - sample.Time > 2 * SyncBehindReportInterval) return "";
 
             double secondsElapsed = (now - sample.Time).TotalSeconds;
             double gapClosedPerSecond = headTimestamp.SaturatingSub(sample.HeadTimestamp) / secondsElapsed - 1;

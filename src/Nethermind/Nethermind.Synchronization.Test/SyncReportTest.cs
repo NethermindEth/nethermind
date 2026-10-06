@@ -5,13 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using Autofac;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Stats;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -162,6 +165,8 @@ namespace Nethermind.Synchronization.Test
 
         private const string BehindMessage = "Node is behind the head of the chain by";
         private const string CaughtUpMessage = "Node has caught up with the head of the chain";
+        private const string EtaMessage = "Estimated time to catch up";
+        private const string NotClosingMessage = "The gap is not closing.";
 
         private static ulong SyncBehindThreshold(ulong secondsPerSlot) => SyncReport.SyncBehindThresholdSlots * secondsPerSlot;
 
@@ -191,6 +196,30 @@ namespace Nethermind.Synchronization.Test
             return harness.Reported(BehindMessage);
         }
 
+        [Test]
+        public void Sync_behind_is_reported_once_per_interval_regardless_of_tick_length([Values] bool isDebug)
+        {
+            using SyncBehindHarness harness = new(SyncMode.Full, isDebug: isDebug);
+            harness.SetHeadBehindBy(10 * 60);
+
+            harness.Tick();
+            Assert.That(harness.Reported(BehindMessage), Is.True);
+
+            harness.Logger.ClearReceivedCalls();
+            for (TimeSpan elapsed = harness.TickInterval; elapsed < SyncReport.SyncBehindReportInterval; elapsed += harness.TickInterval)
+            {
+                harness.Clock.Add(harness.TickInterval);
+                harness.Tick();
+            }
+
+            Assert.That(harness.Reported(BehindMessage), Is.False);
+
+            harness.Clock.Add(harness.TickInterval);
+            harness.Tick();
+
+            Assert.That(harness.Reported(BehindMessage), Is.True);
+        }
+
         [TestCase(false, TestName = "No head")]
         [TestCase(true, TestName = "Genesis head")]
         public void Sync_behind_is_not_reported_without_a_meaningful_head(bool hasGenesisHead)
@@ -214,7 +243,7 @@ namespace Nethermind.Synchronization.Test
             using (Assert.EnterMultipleScope())
             {
                 harness.Logger.Received().Info(Arg.Is<string>(s => s.Contains(BehindMessage)));
-                harness.Logger.DidNotReceive().Warn(Arg.Any<string>());
+                harness.Logger.DidNotReceive().Warn(Arg.Is<string>(s => s.Contains(BehindMessage)));
             }
 
             // Reach the tip, then fall behind again - now it is a regression worth warning about.
@@ -231,15 +260,24 @@ namespace Nethermind.Synchronization.Test
         public void Caught_up_is_reported_once_after_being_behind()
         {
             using SyncBehindHarness harness = new(SyncMode.Full);
-            harness.SetHeadBehindBy(10 * 60);
 
+            // Starting at the tip leaves nothing to recover from.
+            harness.SetHeadBehindBy(12);
             harness.Tick();
+            Assert.That(harness.Reported(CaughtUpMessage), Is.False);
+
+            harness.SetHeadBehindBy(10 * 60);
+            harness.TickToNextReport();
             Assert.That(harness.Reported(BehindMessage), Is.True);
 
-            harness.SetHeadBehindBy(12);
+            // Back within the reporting threshold but not yet near the tip: neither behind nor caught up.
+            harness.SetHeadBehindBy(2 * 60);
             harness.Logger.ClearReceivedCalls();
             harness.TickToNextReport();
+            Assert.That(harness.Reported(BehindMessage) || harness.Reported(CaughtUpMessage), Is.False);
 
+            harness.SetHeadBehindBy(12);
+            harness.TickToNextReport();
             Assert.That(harness.Reported(CaughtUpMessage), Is.True);
 
             // Staying at the tip must not repeat it.
@@ -249,38 +287,46 @@ namespace Nethermind.Synchronization.Test
             Assert.That(harness.Reported(CaughtUpMessage), Is.False);
         }
 
-        [TestCase(6 * 60UL, "Estimated time to catch up: 3m 0s", TestName = "Head advancing faster than the clock")]
-        [TestCase(30UL, "The gap is not closing.", TestName = "Head advancing slower than the clock")]
-        public void Sync_behind_reports_catch_up_eta_from_head_progress_since_the_previous_report(ulong headAdvanceSeconds, string expected)
+        [TestCase(SyncMode.WaitingForBlock, 60UL, 6 * 60UL, EtaMessage + ": 3m 0s", TestName = "Head advancing faster than the clock")]
+        [TestCase(SyncMode.WaitingForBlock, 60UL, 60UL, NotClosingMessage, TestName = "Head advancing as fast as the clock")]
+        [TestCase(SyncMode.WaitingForBlock, 60UL, 30UL, NotClosingMessage, TestName = "Head advancing slower than the clock")]
+        [TestCase(SyncMode.WaitingForBlock, 3 * 60UL, 6 * 60UL, null, TestName = "Previous sample too old")]
+        [TestCase(SyncMode.FastSync | SyncMode.StateNodes, 60UL, 0UL, null, TestName = "Head held back by state sync")]
+        public void Sync_behind_reports_catch_up_eta_from_head_progress_since_the_previous_report(SyncMode syncMode, ulong secondsBetweenReports, ulong headAdvanceSeconds, string? expected)
         {
             const ulong initialSecondsBehind = 20 * 60;
-            const ulong secondsBetweenReports = 60;
 
-            using SyncBehindHarness harness = new(SyncMode.WaitingForBlock);
+            using SyncBehindHarness harness = new(syncMode);
             harness.SetHeadBehindBy(initialSecondsBehind);
 
             harness.Tick();
-            Assert.That(harness.Reported("Estimated time to catch up") || harness.Reported("The gap is not closing"), Is.False,
-                "no estimate before a second sample");
+            Assert.That(harness.Reported(EtaMessage) || harness.Reported(NotClosingMessage), Is.False, "no estimate before a second sample");
 
             harness.Clock.Add(TimeSpan.FromSeconds(secondsBetweenReports));
             harness.SetHeadBehindBy(initialSecondsBehind + secondsBetweenReports - headAdvanceSeconds);
-            harness.TickToNextReport();
+            harness.Logger.ClearReceivedCalls();
+            harness.Tick();
 
-            Assert.That(harness.Reported(expected), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(harness.Reported(BehindMessage), Is.True);
+                Assert.That(expected is null ? harness.Reported(EtaMessage) || harness.Reported(NotClosingMessage) : !harness.Reported(expected), Is.False);
+            }
         }
 
-        /// <summary>Drives a <see cref="SyncReport"/> against a manual clock and a stubbed head.</summary>
+        /// <summary>Drives the production-wired <see cref="SyncReport"/> against a manual clock and a stubbed head.</summary>
         private sealed class SyncBehindHarness : IDisposable
         {
-            private readonly ITimer _timer;
+            private readonly IContainer _container;
+            private readonly ITimer _timer = Substitute.For<ITimer>();
 
             internal SyncReport SyncReport { get; }
             internal ManualTimestamper Clock { get; } = new(SyncBehindNow);
-            internal InterfaceLogger Logger { get; }
-            internal IBlockFinder BlockFinder { get; }
+            internal TimeSpan TickInterval { get; private set; }
+            internal InterfaceLogger Logger { get; } = Substitute.For<InterfaceLogger>();
+            internal IBlockFinder BlockFinder { get; } = Substitute.For<IBlockFinder>();
 
-            internal SyncBehindHarness(SyncMode syncMode, ulong secondsPerSlot = DefaultSecondsPerSlot)
+            internal SyncBehindHarness(SyncMode syncMode, ulong secondsPerSlot = DefaultSecondsPerSlot, bool isDebug = false)
             {
                 CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
 
@@ -288,36 +334,44 @@ namespace Nethermind.Synchronization.Test
                 pool.InitializedPeersCount.Returns(1);
 
                 ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
-                _timer = Substitute.For<ITimer>();
-                timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(_timer);
+                timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(call =>
+                {
+                    TickInterval = call.Arg<TimeSpan>();
+                    return _timer;
+                });
 
-                Logger = Substitute.For<InterfaceLogger>();
                 Logger.IsInfo.Returns(true);
                 Logger.IsWarn.Returns(true);
-                ILogger logger = new(Logger);
-                ILogManager logManager = Substitute.For<ILogManager>();
-                logManager.GetClassLogger<SyncReport>().Returns(logger);
-                logManager.GetClassLogger<ProgressLogger>().Returns(logger);
+                Logger.IsDebug.Returns(isDebug);
+                ILogManager logManager = new OneLoggerLogManager(new ILogger(Logger));
 
-                BlockFinder = Substitute.For<IBlockFinder>();
+                SyncConfig syncConfig = new();
+                _container = new ContainerBuilder()
+                    .AddModule(new TestNethermindModule(new ConfigProvider(syncConfig, new BlocksConfig { SecondsPerSlot = secondsPerSlot })))
+                    .AddModule(new SynchronizerModule(syncConfig))
+                    .AddSingleton(pool)
+                    .AddSingleton(BlockFinder)
+                    .AddSingleton<ITimestamper>(Clock)
+                    .AddSingleton(timerFactory)
+                    .AddSingleton(logManager)
+                    .AddSingleton(Substitute.For<IWorldStateManager>())
+                    .Build();
 
-                SyncReport = new(pool, Substitute.For<INodeStatsManager>(), new SyncConfig { FastSync = true },
-                    Substitute.For<IPivot>(), BlockFinder, Clock, new BlocksConfig { SecondsPerSlot = secondsPerSlot }, logManager, timerFactory);
+                SyncReport = (SyncReport)_container.Resolve<ISyncReport>();
                 SyncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, syncMode));
             }
 
+            /// <summary>Keeps the head <paramref name="secondsBehind"/> behind the clock, however far the clock is advanced.</summary>
             internal void SetHeadBehindBy(ulong secondsBehind) =>
-                BlockFinder.Head.Returns(Build.A.Block.WithNumber(1).WithTimestamp(Clock.UnixTime.Seconds - secondsBehind).TestObject);
+                BlockFinder.Head.Returns(_ => Build.A.Block.WithNumber(1).WithTimestamp(Clock.UnixTime.Seconds - secondsBehind).TestObject);
 
             internal void Tick() => _timer.Elapsed += Raise.Event();
 
-            /// <summary>Advances to the next tick on which the sync-behind report runs.</summary>
+            /// <summary>Advances the clock to the next sync-behind report and ticks.</summary>
             internal void TickToNextReport()
             {
-                for (int i = 0; i < SyncReport.SyncBehindReportFrequency; i++)
-                {
-                    Tick();
-                }
+                Clock.Add(SyncReport.SyncBehindReportInterval);
+                Tick();
             }
 
             internal bool Reported(string message) =>
@@ -325,7 +379,7 @@ namespace Nethermind.Synchronization.Test
                     call.GetMethodInfo().Name is nameof(InterfaceLogger.Info) or nameof(InterfaceLogger.Warn)
                     && call.GetArguments() is [string logged] && logged.Contains(message));
 
-            public void Dispose() => SyncReport.Dispose();
+            public void Dispose() => _container.Dispose();
         }
     }
 }
