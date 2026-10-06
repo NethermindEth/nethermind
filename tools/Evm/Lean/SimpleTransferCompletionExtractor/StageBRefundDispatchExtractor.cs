@@ -295,7 +295,7 @@ internal static class StageBRefundDispatchExtractor
         lean.AppendLine("def refundPayRefundCall : CallEvidence := " + CallLiteral(payRefund));
         lean.AppendLine();
         lean.AppendLine("end SimpleTransferCompletionExtractor.StageB.Dispatch.Generated");
-        return lean.ToString();
+        return lean.ToString().Replace("\r\n", "\n", StringComparison.Ordinal);
     }
 
     private static string ReceiverLiteral(StageBRefundDispatchReceiver receiver) =>

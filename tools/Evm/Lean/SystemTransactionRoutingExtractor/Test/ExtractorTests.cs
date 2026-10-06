@@ -91,6 +91,25 @@ public class ExtractorTests
     }
 
     [Test]
+    public void Extraction_emits_lf_canonical_artifacts_without_carriage_returns()
+    {
+        using Fixture fixture = new();
+
+        string leanOutput = Path.Combine(fixture.Output, "SystemTransactionRoutingKernel.lean");
+        ExtractionResult result = Extractor.Extract(fixture.Root, fixture.Output, leanOutput);
+        byte[] ir = File.ReadAllBytes(result.IrPath);
+        byte[] manifest = File.ReadAllBytes(result.ManifestPath);
+        byte[] lean = File.ReadAllBytes(result.LeanPath);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ir, Does.Not.Contain((byte)'\r'), "IR must use LF line endings.");
+            Assert.That(manifest, Does.Not.Contain((byte)'\r'), "Manifest must use LF line endings.");
+            Assert.That(lean, Does.Not.Contain((byte)'\r'), "Lean must use LF line endings.");
+        }
+    }
+
+    [Test]
     public void Serialized_ir_rejects_malformed_unknown_and_null_values()
     {
         byte[] sourceDerived = ReadCheckedIr();

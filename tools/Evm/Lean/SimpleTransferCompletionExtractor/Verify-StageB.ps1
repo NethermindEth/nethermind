@@ -158,7 +158,7 @@ Assert-DependencyManifest `
 
 $routingDirectory = Join-Path $leanRoot "SystemTransactionRoutingExtractor/Generated"
 $routingManifest = Join-Path $routingDirectory "SystemTransactionRoutingKernel.source-manifest.json"
-if ((Get-Sha256 $routingManifest) -cne "e321f7c52ccb5fbcf5b84f86027c092d56b75e36392eb47d0bc41de186ba46ee")
+if ((Get-Sha256 $routingManifest) -cne "a22e8e983d8ca2b41eca8e0f5b11996b5bf21b297bc3ba88e1f937a0c9070066")
 {
     throw "Stage-B system-routing dependency manifest drifted."
 }

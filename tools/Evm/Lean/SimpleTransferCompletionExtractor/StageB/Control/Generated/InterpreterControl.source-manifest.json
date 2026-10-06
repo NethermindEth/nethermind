@@ -109,7 +109,7 @@
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBRefundDispatchExtractor.cs",
-      "sha256": "7db2f4db1d4cf7420284e4f892bdf65ba6d67259efc31b4209514efaf20b6862"
+      "sha256": "a9c38ce76dd5ff2ef3e60e79f054fdef8b66517e42eb0f936cefc1ab2f9a57b2"
     },
     {
       "path": "repo/tools/Evm/Lean/SimpleTransferCompletionExtractor/StageBReplay.cs",
