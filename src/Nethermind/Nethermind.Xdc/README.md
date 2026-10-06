@@ -368,7 +368,7 @@ exactly `eth/100`, `eth/164` and `eth/165` — one per registered handler. A pee
 
 [`XdcDiscoveryApp`](Discovery/XdcDiscoveryApp.cs) overrides the default Discv4 app: XDC does not implement the
 ENR request/response messages, so [`XdcKademliaAdapter`](Discovery/XdcKademliaAdapter.cs) disables remote ENR
-refresh and [`XdcNettyDiscoveryHandler`](Discovery/XdcNettyDiscoveryHandler.cs) plus
+refresh and [`XdcDiscoveryHandler`](Discovery/XdcDiscoveryHandler.cs) plus
 [`XdcPingMsgSerializer`](Discovery/XdcPingMsgSerializer.cs) adjust wire compatibility.
 
 ---
