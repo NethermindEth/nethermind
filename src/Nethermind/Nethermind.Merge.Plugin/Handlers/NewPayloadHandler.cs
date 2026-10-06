@@ -758,8 +758,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // list ever judged, so let the first copy finish first. A copy already gone costs nothing here.
             if (addResult == AddBlockResult.AlreadyKnown)
             {
-                bool queuedWithSameList = (_queuedInclusionLists.TryGetValue(block.Hash!, out QueuedInclusionList? queued) ? queued.Digest : default) == ilDigest;
-                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: queuedWithSameList).AsTask();
+                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: QueuedCopyCarriesSameList(block.Hash!, ilDigest)).AsTask();
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
@@ -809,7 +808,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                _ = Task.Run(() => EnqueueAsync(block, ilDigest, processingOptions, blockProcessed, workers));
+                QueuedInclusionList queued = new(ilDigest);
+                _queuedInclusionLists[block.Hash!] = queued;
+                _ = Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -864,10 +865,15 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
 
-    private async Task EnqueueAsync(Block block, ValueHash256 ilDigest, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    /// <summary>
+    /// Whether a copy of the block still in the queue was judged against <paramref name="ilDigest"/>, so its verdict
+    /// can answer this request. A copy queued by sync is untracked and counts as carrying no list.
+    /// </summary>
+    private bool QueuedCopyCarriesSameList(Hash256 blockHash, in ValueHash256 ilDigest) =>
+        (_queuedInclusionLists.TryGetValue(blockHash, out QueuedInclusionList? queued) ? queued.Digest : default) == ilDigest;
+
+    private async Task EnqueueAsync(Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
-        QueuedInclusionList queued = new(ilDigest);
-        _queuedInclusionLists[block.Hash!] = queued;
         try
         {
             ValueTask enqueue;

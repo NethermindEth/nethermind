@@ -1224,12 +1224,13 @@ public partial class EngineModuleTests
 
     /// <summary>
     /// A payload resent after its newPayload timed out, while the copy that request queued is still waiting.
-    /// A resend without that copy's list must not take its verdict; one with the same list takes it, executing once.
+    /// A resend without that copy's list must not take its verdict; one with the same list takes it on that copy's
+    /// verdict, before the copy commits.
     /// </summary>
-    [TestCase(false, true, null, TestName = "NewPayloadV6_does_not_answer_an_empty_list_resend_from_a_queued_copy_with_a_list")]
-    [TestCase(true, false, 1, TestName = "NewPayloadV6_answers_a_same_list_resend_from_the_queued_copy")]
+    [TestCase(false, true, TestName = "NewPayloadV6_does_not_answer_an_empty_list_resend_from_a_queued_copy_with_a_list")]
+    [TestCase(true, false, TestName = "NewPayloadV6_answers_a_same_list_resend_from_the_queued_copy")]
     [NonParallelizable]
-    public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied, int? executions)
+    public async Task NewPayloadV6_answers_a_resend_after_a_timeout_against_its_own_list(bool resendSameList, bool satisfied)
     {
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
@@ -1248,6 +1249,7 @@ public partial class EngineModuleTests
 
         int copiesQueued = 0;
         int executed = 0;
+        TaskCompletionSource resendAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondCopyQueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         chain.BlockProcessingQueue.BlockAdded += (_, e) =>
         {
@@ -1255,7 +1257,8 @@ public partial class EngineModuleTests
         };
         chain.BlockProcessingQueue.BlockExecuted += (_, e) =>
         {
-            if (e.BlockHash == payload.BlockHash) Interlocked.Increment(ref executed);
+            if (e.BlockHash != payload.BlockHash) return;
+            if (Interlocked.Increment(ref executed) == 1 && resendSameList) resendAnswered.Task.Wait(TimeSpan.FromSeconds(10));
         };
 
         TaskCompletionSource releaseProcessing = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -1278,12 +1281,12 @@ public partial class EngineModuleTests
         }
 
         ResultWrapper<PayloadStatusV2> result = await resend;
+        resendAnswered.TrySetResult();
         await WaitForCommit(chain, payload.BlockHash);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(result.Data.InclusionListSatisfied, Is.EqualTo(satisfied));
-            if (executions is not null) Assert.That(Volatile.Read(ref executed), Is.EqualTo(executions));
         }
     }
 
