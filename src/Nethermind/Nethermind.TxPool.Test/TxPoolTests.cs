@@ -5504,6 +5504,32 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_with_the_paymaster_drained_during_the_prefix_spends_no_sender_width()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(KeyedNonceSpecProvider(), TestItem.PrivateKeyA);
+            Transaction baseline = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)1]);
+            Transaction additional = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD, nonceKeys: [(UInt256)2]);
+            UInt256 charge = WidthChargeOf(additional);
+            _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { GasUsed = (ulong)(charge * 2) }]);
+            Assert.That(_txPool.SubmitTx(baseline, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(additional, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            simulator.Simulate(Arg.Is<Transaction>(tx => tx.Hash == additional.Hash), Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>>())
+                .Returns(_ =>
+                {
+                    _frameTxWidthLedger.PaymasterWidth.TrySpend(TestItem.AddressD, charge);
+                    return FrameTxSimulationResult.Accept(TestItem.AddressD);
+                });
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { baseline.Hash }));
+                Assert.That(_frameTxWidthLedger.SenderWidth.GetWidth(TestItem.AddressA), Is.EqualTo(charge));
+            }
+        }
+
+        [Test]
         public async Task Paymaster_baseline_that_left_the_pool_is_charged_like_any_other_when_it_returns()
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
