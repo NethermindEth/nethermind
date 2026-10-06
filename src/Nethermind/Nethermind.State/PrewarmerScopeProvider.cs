@@ -555,7 +555,15 @@ public class PrewarmerScopeProvider(
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
             else ColdReadWatch.Read();
 
+            if (isPrewarmer)
+            {
+                baseStorageTree.Get(storageCell.Index, out value);
+                return;
+            }
+            long probeStart = Stopwatch.GetTimestamp();
             baseStorageTree.Get(storageCell.Index, out value);
+            IdleProbe.ColdTicks += Stopwatch.GetTimestamp() - probeStart;
+            IdleProbe.ColdCount++;
         }
     }
 

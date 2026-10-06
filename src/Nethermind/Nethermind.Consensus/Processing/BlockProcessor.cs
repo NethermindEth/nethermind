@@ -88,12 +88,15 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts;
         bool processed = false;
+        bool probe = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+        if (probe) IdleProbe.BeginBlock();
         try
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
             processed = true;
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
+            if (probe) IdleProbe.EndBlock(block.Number, block.Transactions.Length, (long)block.GasUsed);
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {

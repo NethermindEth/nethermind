@@ -391,7 +391,10 @@ public static partial class EvmInstructions
             goto OutOfGas;
 
         // Retrieve the current value from persistent storage.
+        bool probeOn = Nethermind.Core.IdleProbe.Active;
+        long probeCold = Nethermind.Core.IdleProbe.ColdCount, probeTicks = Nethermind.Core.IdleProbe.ColdTicks;
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
+        if (probeOn) Nethermind.Core.IdleProbe.OnStorageRead(storageCell.Address, in storageCell.Index, Nethermind.Core.IdleProbe.ColdCount != probeCold, Nethermind.Core.IdleProbe.ColdTicks - probeTicks);
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
@@ -501,7 +504,10 @@ public static partial class EvmInstructions
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SSTORE, spec))
             goto OutOfGas;
 
+        bool probeOn = Nethermind.Core.IdleProbe.Active;
+        long probeCold = Nethermind.Core.IdleProbe.ColdCount, probeTicks = Nethermind.Core.IdleProbe.ColdTicks;
         vm.WorldState.Get(in storageCell, out UInt256 currentValue);
+        if (probeOn) Nethermind.Core.IdleProbe.OnStorageRead(storageCell.Address, in storageCell.Index, Nethermind.Core.IdleProbe.ColdCount != probeCold, Nethermind.Core.IdleProbe.ColdTicks - probeTicks);
         bool currentIsZero = currentValue.IsZero;
 
         // Determine whether the new value is identical to the current stored value.
@@ -721,7 +727,10 @@ public static partial class EvmInstructions
         if (!TGasPolicy.TryConsumeStorageAccessGas<Eip2929, Eip8038>(ref gas, in vm.VmState.AccessTracker, vm.IsTracingAccess, in storageCell, StorageAccessType.SLOAD, spec))
             goto OutOfGas;
 
+        bool probeOn = Nethermind.Core.IdleProbe.Active;
+        long probeCold = Nethermind.Core.IdleProbe.ColdCount, probeTicks = Nethermind.Core.IdleProbe.ColdTicks;
         vm.WorldState.Get(in storageCell, out value);
+        if (probeOn) Nethermind.Core.IdleProbe.OnStorageRead(storageCell.Address, in storageCell.Index, Nethermind.Core.IdleProbe.ColdCount != probeCold, Nethermind.Core.IdleProbe.ColdTicks - probeTicks);
         stack.Head++;
         if (TTracingInst.IsActive) stack.ReportPushWord(ref Unsafe.As<UInt256, byte>(ref value));
 

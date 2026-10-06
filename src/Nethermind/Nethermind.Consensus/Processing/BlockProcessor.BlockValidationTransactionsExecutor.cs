@@ -42,11 +42,23 @@ public partial class BlockProcessor
 
             bool shouldValidate = !processingOptions.ContainsFlag(ProcessingOptions.NoValidation);
 
+            bool probe = !processingOptions.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+            bool probeRecipes = probe && IdleProbe.Recipes;
+            if (probe) IdleProbe.BeginExec();
+
             for (int i = 0; i < block.Transactions.Length; i++)
             {
                 Transaction currentTx = block.Transactions[i];
 
-                ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                if (probeRecipes) IdleProbe.BeginTx(currentTx.Data, currentTx.SenderAddress, currentTx.To);
+                try
+                {
+                    ProcessTransaction(block, currentTx, i, receiptsTracer, processingOptions);
+                }
+                finally
+                {
+                    if (probeRecipes) IdleProbe.EndTx();
+                }
 
                 if (shouldValidate && block.Header.GasUsed > block.Header.GasLimit)
                 {
@@ -54,6 +66,7 @@ public partial class BlockProcessor
                 }
             }
 
+            if (probe) IdleProbe.EndExec();
             Metrics.SeedBlockGasPriceIfEmpty(block.Header.BaseFeePerGas);
             Metrics.PublishBlockGasPriceGauges();
 
