@@ -467,6 +467,43 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    [Test]
+    public void PruneBlockMarkers_WithTheMarkerFloorPinnedByASliceScope_DoesNotDeleteTheSameRangeAgain()
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8, a slice scope pinned at 5: the first cycle deletes
+        //    the markers below 5.
+        // 2. A probe marker is put back at block 2, below the pinned marker floor.
+        // 3. The watermark moves to 21, so the global floor advances while the marker floor stays at 5.
+        // 4. The second cycle must not range-delete [0, 5) again, so the probe survives.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), 5);
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool firstCycle = pruner.RunOnePass(CancellationToken.None);
+        bool belowScopeFloorDeletedByFirstCycle = availableBlocks.Get(BlockKey(4)) is null;
+
+        availableBlocks.PutSpan(BlockKey(2), ValueKeccak.Compute(BlockKey(2)).Bytes);
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 21);
+        bool secondCycle = pruner.RunOnePass(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCycle, Is.True, "precondition: the first pass must finish a whole cycle");
+            Assert.That(belowScopeFloorDeletedByFirstCycle, Is.True, "precondition: the first cycle deleted the markers below the scope floor");
+            Assert.That(secondCycle, Is.True, "precondition: the second pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(12), Is.True, "precondition: the global floor advanced to 13");
+            Assert.That(availableBlocks.Get(BlockKey(2)), Is.Not.Null,
+                "the marker floor did not move, so the second cycle must not issue the same range delete again");
+        }
+    }
+
     private static byte[] BlockKey(ulong block)
     {
         byte[] key = new byte[sizeof(ulong)];

@@ -52,6 +52,7 @@ public sealed class HistoryWindowPruner(
     private bool _blocksSwept;
     private ulong _cycleFloor;
     private ulong _cycleMarkersAndClearsFloor;
+    private ulong _markersPrunedBelow;
     private long _owedDrainGeneration;
     private long _owedDrainFailedPasses;
     private long _lastDeadWeightCheckAt;
@@ -489,13 +490,14 @@ public sealed class HistoryWindowPruner(
         return true;
     }
 
-    /// <summary>Any marker strictly below the floor is dead: a capture connect point never verifies below it. Markers
-    /// are keyed by the big-endian block number and every reserved key in the column starts with <c>history:</c>
-    /// (0x68), so <c>[0, floor)</c> holds markers only for any floor below 0x68 &lt;&lt; 56 and one range delete
-    /// replaces a scan with a point delete per marker.</summary>
+    /// <summary>Any marker strictly below the floor is dead: a capture connect point never verifies below it.</summary>
+    /// <remarks>Markers are keyed by the big-endian block number and every reserved key in the column starts with
+    /// <c>history:</c> (0x68), so <c>[0, floor)</c> holds markers only for any floor below 0x68 &lt;&lt; 56. A floor
+    /// already deleted below is skipped: a slice scope pins it, and every repeated range delete would leave another
+    /// tombstone each marker read consults until compaction.</remarks>
     private void PruneBlockMarkers(ulong floor)
     {
-        if (floor == 0) return;
+        if (floor <= _markersPrunedBelow) return;
 
         Span<byte> lowerBound = stackalloc byte[BlockBytes];
         Span<byte> upperBound = stackalloc byte[BlockBytes];
@@ -507,6 +509,7 @@ public sealed class HistoryWindowPruner(
         IRangeRemovableKeyValueStore markers = (IRangeRemovableKeyValueStore)_availableBlocks;
         markers.RemoveRange(lowerBound, upperBound);
         markers.ReclaimRange(lowerBound, upperBound);
+        _markersPrunedBelow = floor;
     }
 
     private static int FlushBatchIfNeeded(IDb column, ref IWriteBatch batch, int sinceFlush)
