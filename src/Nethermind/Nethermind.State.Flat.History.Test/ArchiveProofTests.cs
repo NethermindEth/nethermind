@@ -995,6 +995,73 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void ServingMetadata_AfterEachPublishAndRaise_IsReadWithoutColumnGets()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        ulong epoch = EpochPolicy.EpochBlocks;
+        ServingMetadata empty = ReadServingMetadata(metadata);
+
+        metadata.WriteStamp(EpochPolicy);
+        metadata.TryPublishVerifiedCoverage(0, epoch - 1, out _, out _);
+        ServingMetadata published = ReadServingMetadata(metadata);
+
+        metadata.AdvanceTipSeries(epoch, epoch + 5, out _);
+        ServingMetadata advanced = ReadServingMetadata(metadata);
+
+        metadata.TryRaiseRetainedFromEpoch(1);
+        ServingMetadata raised = ReadServingMetadata(metadata);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(empty, Is.EqualTo(new ServingMetadata(false, false, false, 0, 0, 0, 3)), "the first read of an empty column loads each value once");
+            Assert.That(published, Is.EqualTo(new ServingMetadata(true, true, true, 0, epoch - 1, 0, 0)));
+            Assert.That(advanced, Is.EqualTo(new ServingMetadata(true, true, true, 0, epoch + 5, 0, 0)));
+            Assert.That(raised, Is.EqualTo(new ServingMetadata(true, true, true, epoch, epoch + 5, 1, 0)));
+        }
+    }
+
+    [Test]
+    public void ServingMetadata_OverAPersistedColumn_LoadsEachValueOnce()
+    {
+        ulong epoch = EpochPolicy.EpochBlocks;
+        using (CommitmentMetadata writer = new(_historyColumns, EpochPolicy))
+        {
+            writer.WriteStamp(EpochPolicy);
+            writer.TryPublishVerifiedCoverage(0, 2 * epoch, out _, out _);
+            writer.TryRaiseRetainedFromEpoch(1);
+        }
+
+        using CommitmentMetadata restarted = new(_historyColumns, EpochPolicy);
+        ServingMetadata first = ReadServingMetadata(restarted);
+        ServingMetadata second = ReadServingMetadata(restarted);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(new ServingMetadata(true, true, true, epoch, 2 * epoch, 1, 3)));
+            Assert.That(second, Is.EqualTo(first with { ColumnGets = 0 }));
+        }
+    }
+
+    [Test]
+    public void ServingMetadata_AfterLayoutDiscard_DropsTheMirroredCoverageAndFloor()
+    {
+        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        metadata.WriteStamp(EpochPolicy);
+        metadata.TryPublishVerifiedCoverage(0, 2 * EpochPolicy.EpochBlocks, out _, out _);
+        metadata.TryRaiseRetainedFromEpoch(1);
+        Assert.That(ReadServingMetadata(metadata).HasCoverage, Is.True, "precondition: the coverage is mirrored");
+
+        metadata.EnsureLayout(TestPolicy, discardMismatched: true, LimboLogs.Instance.GetClassLogger<ArchiveProofTests>());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(metadata.TryReadStamp(TestPolicy, out bool matches) && matches, Is.True);
+            Assert.That(metadata.TryGetCoverage(out _, out _), Is.False, "the discarded coverage must not be served from memory");
+            Assert.That(metadata.RetainedFromEpoch, Is.EqualTo(0ul));
+        }
+    }
+
+    [Test]
     public void The_storage_trie_depth_is_one_record_however_the_contract_is_identified()
     {
         ValueHash256 full = Keccak.Compute(Contract.Bytes).ValueHash256;
@@ -1909,6 +1976,16 @@ public class ArchiveProofTests
 
     private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
 
+    private ServingMetadata ReadServingMetadata(CommitmentMetadata metadata)
+    {
+        SnapshotableMemDb column = (SnapshotableMemDb)_historyColumns.GetColumnDb(FlatHistoryColumns.AccountCommitments);
+        long before = column.ReadsCount;
+        bool hasStamp = metadata.TryReadStamp(EpochPolicy, out bool stampMatches);
+        bool hasCoverage = metadata.TryGetCoverage(out ulong from, out ulong to);
+        ulong retained = metadata.RetainedFromEpoch;
+        return new ServingMetadata(hasStamp, stampMatches, hasCoverage, from, to, retained, column.ReadsCount - before);
+    }
+
     private readonly List<CommitmentMetadata> _metadatas = [];
 
     private CommitmentMetadata Metadata(CommitmentDepthPolicy policy)
@@ -2154,4 +2231,6 @@ public class ArchiveProofTests
         for (int index = 0; index < count; index++) slots[index] = first + (ulong)index;
         return slots;
     }
+
+    private readonly record struct ServingMetadata(bool HasStamp, bool StampMatches, bool HasCoverage, ulong From, ulong To, ulong RetainedFromEpoch, long ColumnGets);
 }
