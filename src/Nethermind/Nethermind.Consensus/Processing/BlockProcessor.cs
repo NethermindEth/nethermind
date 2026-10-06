@@ -89,6 +89,8 @@ public partial class BlockProcessor(
         TxReceipt[] receipts;
         bool processed = false;
         bool probe = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
+        bool apical = probe && ApicalProbe.Enabled;
+        if (apical) ApicalProbe.BeginBlock();
         if (probe) IdleProbe.BeginBlock();
         try
         {
@@ -97,6 +99,7 @@ public partial class BlockProcessor(
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
             if (probe) IdleProbe.EndBlock(block.Number, block.Transactions.Length, (long)block.GasUsed);
+            if (apical) ApicalProbe.EndBlock();
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
