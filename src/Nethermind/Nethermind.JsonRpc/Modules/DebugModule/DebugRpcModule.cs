@@ -36,7 +36,7 @@ using Nethermind.Consensus.Stateless;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
-public class DebugRpcModule(
+public partial class DebugRpcModule(
     ILogManager logManager,
     IDebugBridge debugBridge,
     IJsonRpcConfig jsonRpcConfig,
@@ -45,7 +45,7 @@ public class DebugRpcModule(
     IBlocksConfig blocksConfig,
     IBlockFinder blockFinder,
     IBlockForRpcFactory blockForRpcFactory)
-    : IDebugRpcModule
+    : IDebugRpcModule, IDebugSubscriptionRpcModule
 {
     private readonly ILogger _logger = logManager.GetClassLogger<DebugRpcModule>();
     private static readonly TxDecoder TxRlpDecoder = TxDecoder.Instance;

@@ -9,6 +9,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.JsonRpc.Modules.Subscribe;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -21,6 +22,7 @@ public class DebugModuleFactory(
     ILogManager logManager
 ) : IRpcModuleFactory<IDebugRpcModule>
 {
+    private readonly SubscriptionManager _traceChainSubscriptions = new(new SubscriptionFactory(), logManager);
     private readonly SharedParallelBlockTracer _parallelTracer = new(envFactory, rootLifetimeScope, prefixSeeds, parallelBudgets, logManager,
         builder => ConfigureTracerContainer(builder, validationBlockProcessingModules));
 
@@ -30,6 +32,7 @@ public class DebugModuleFactory(
             // Note: Not overriding `IReceiptStorage` to null.
             .AddModule(validationBlockProcessingModules)
             .AddModule(new TransactionTraceModule(validationBlockProcessingModules))
+            .AddScoped<TraceChainBlockExecutor>()
 
             // So the debug rpc change the adapter sometime.
             .AddScoped<ITransactionProcessorAdapter, ChangeableTransactionProcessorAdapter>()
@@ -50,15 +53,19 @@ public class DebugModuleFactory(
             if (parallelTracer is not null) builder.AddScoped<IParallelBlockTracer>(parallelTracer);
         });
 
-        // Pass only `IGethStyleTracer` into the debug rpc lifetime.
-        // This is to prevent leaking processor or world state accidentally.
-        // `GethStyleTracer` must be very careful to always dispose overridable env.
+        // Pass only tracing entry points into the RPC lifetime, never a processor or world state outside its scope.
         ILifetimeScope debugRpcModuleLifetime = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddScoped<IGethStyleTracer>(tracerLifecycle.Resolve<IGethStyleTracer>()));
 
         debugRpcModuleLifetime.Disposer.AddInstanceForAsyncDisposal(tracerLifecycle);
         rootLifetimeScope.Disposer.AddInstanceForAsyncDisposal(debugRpcModuleLifetime);
 
-        return debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
+        IDebugRpcModule module = debugRpcModuleLifetime.Resolve<IDebugRpcModule>();
+        if (module is DebugRpcModule debugModule)
+        {
+            debugModule.TraceChainSubscriptions = _traceChainSubscriptions;
+            debugModule.TraceChainReplay = tracerLifecycle.Resolve<TraceChainBlockExecutor>().Trace;
+        }
+        return module;
     }
 }

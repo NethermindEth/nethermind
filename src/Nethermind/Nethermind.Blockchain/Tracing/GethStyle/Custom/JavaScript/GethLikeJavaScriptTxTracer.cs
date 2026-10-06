@@ -53,18 +53,34 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _db = db;
         _ctx = ctx;
 
-        _tracer = engine.CreateTracer(options.Tracer);
-        _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
-        if (_functions.HasFlag(TracerFunctions.setup))
+        _cts = options.ExecutionCancellation is { } executionCancellation
+            ? CancellationTokenSource.CreateLinkedTokenSource(executionCancellation.Token)
+            : new CancellationTokenSource();
+        try
         {
-            _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
-        }
+            _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            _cts.Token.ThrowIfCancellationRequested();
+            _tracer = engine.CreateTracer(options.Tracer);
+            _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
+            if (_functions.HasFlag(TracerFunctions.setup))
+            {
+                _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
+            }
 
-        TimeSpan timeout = options.Timeout ?? DefaultTimeout;
-        if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
-            throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-        _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            if (options.ExecutionCancellation is null)
+            {
+                TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+                if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
+                    throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
+                _cts.CancelAfter(timeout);
+            }
+        }
+        catch
+        {
+            _ctsRegistration.Dispose();
+            _cts.Dispose();
+            throw;
+        }
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -271,7 +287,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             }
             else if (function <= required)
             {
-                throw new ArgumentException($"trace object must expose required function {name}");
+                throw new ArgumentException($"trace object must expose a function {name}()");
             }
         }
 

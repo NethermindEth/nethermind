@@ -38,6 +38,7 @@ public static class IContainerBuilderExtensions
                 return new RpcModuleInfo(typeof(T), new LazyModulePool<T>(new Lazy<IRpcModulePool<T>>(() =>
                 {
                     return new BoundedModulePool<T>(factory.Value, maxCount, timeout);
-                })));
+                }))
+                { SupportsExclusiveRental = true });
             });
 }

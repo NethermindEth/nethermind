@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
@@ -38,6 +39,8 @@ public record GethTraceOptions
 
     [JsonConverter(typeof(CustomTimeDurationConverter))]
     public TimeSpan? Timeout { get; init; }
+
+    internal GethTraceCancellation? ExecutionCancellation { get; init; }
 
     public string Tracer { get; init; }
 
@@ -88,4 +91,10 @@ public record GethTraceOptions
         public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
             writer.WriteNumberValue(value);
     }
+}
+
+/// <summary>Shares the current transaction cancellation across tracer option clones.</summary>
+internal sealed class GethTraceCancellation
+{
+    internal CancellationToken Token { get; set; }
 }
