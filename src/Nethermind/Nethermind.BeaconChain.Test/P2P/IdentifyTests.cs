@@ -219,7 +219,7 @@ public class IdentifyTests
         Channel channel = new();
         IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings(), new PeerStore());
 
-        Task read = probe.DialAsync(channel, null!, new IdentifyAgentVersionProbe.Attempt()).WaitAsync(bound);
+        Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
         await channel.Reverse.WriteVarintAsync(declared).AsTask().WaitAsync(bound);
         await channel.Reverse.WriteEofAsync().AsTask().WaitAsync(bound);
 
@@ -244,7 +244,7 @@ public class IdentifyTests
         Channel channel = new();
         IdentifyAgentVersionProbe probe = new(null!, new IdentifyProtocolSettings(), new PeerStore());
 
-        Task read = probe.DialAsync(channel, null!, new IdentifyAgentVersionProbe.Attempt()).WaitAsync(bound);
+        Task read = probe.DialAsync(channel, null!, null).WaitAsync(bound);
         await channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(declared)).AsTask().WaitAsync(bound);
         Task<IOResult> sent = channel.Reverse.WriteAsync(new ReadOnlySequence<byte>(body)).AsTask();
 
