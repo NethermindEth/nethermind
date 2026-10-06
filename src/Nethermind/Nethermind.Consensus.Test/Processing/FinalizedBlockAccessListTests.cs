@@ -4,9 +4,12 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Tracing;
@@ -115,41 +118,22 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
     }
 
     [Test]
-    public void Missing_required_receipts_fall_back_without_mutating_state()
+    public void Reconstruction_needs_and_returns_stored_receipts([Values] bool stored)
     {
         using TestEnvironment env = new(useFlatDb);
-        Block block = env.CreateBlock(withTransaction: true);
-        env.Beacon.GetFinalizedHash().Returns(block.Hash);
-        env.ReceiptConfig.StoreReceipts = true;
-        using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
-        env.Processor.ProcessOne(block, ProcessingOptions.StoreReceipts, NullBlockTracer.Instance, Amsterdam.Instance);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(env.Recording.Calls, Is.EqualTo(1));
-            Assert.That(env.State.GetBalance(TestItem.AddressA), Is.EqualTo((UInt256)100));
-        }
-    }
-
-    [Test]
-    public void Downloaded_receipts_are_verified_before_reconstruction([Values] bool validReceipts)
-    {
-        using TestEnvironment env = new(useFlatDb);
-        Block block = env.CreateBlock(withTransaction: true);
         TxReceipt[] receipts = [new TxReceipt { StatusCode = 1, GasUsedTotal = 21000, Bloom = Bloom.Empty, Logs = [] }];
-        block.Header.ReceiptsRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null);
-        block.Header.Hash = block.Header.CalculateHash();
-        env.Tree.Insert(block.Header);
+        Block block = env.CreateBlock(withTransaction: true,
+            receiptsRoot: ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, Amsterdam.Instance, null));
         env.Beacon.GetFinalizedHash().Returns(block.Hash);
         env.ReceiptConfig.StoreReceipts = true;
-        if (!validReceipts) receipts[0].StatusCode = 0;
-        env.Receipts.Insert(block, receipts, ensureCanonical: false);
+        if (stored) env.Receipts.Insert(block, receipts, ensureCanonical: false);
         using IDisposable scope = env.State.BeginScope(env.Genesis.Header);
         (Block _, TxReceipt[] result) = env.Processor.ProcessOne(block, ProcessingOptions.StoreReceipts, NullBlockTracer.Instance, Amsterdam.Instance);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(env.Recording.Calls, Is.EqualTo(validReceipts ? 0 : 1));
-            Assert.That(result, Has.Length.EqualTo(validReceipts ? 1 : 0));
-            Assert.That(env.State.StateRoot, Is.EqualTo(validReceipts ? block.StateRoot : env.Genesis.StateRoot));
+            Assert.That(env.Recording.Calls, Is.EqualTo(stored ? 0 : 1));
+            Assert.That(result, Has.Length.EqualTo(stored ? 1 : 0));
+            Assert.That(env.State.StateRoot, Is.EqualTo(stored ? block.StateRoot : env.Genesis.StateRoot));
         }
         block.DisposeAccountChanges();
     }
@@ -283,7 +267,7 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             Tree.SuggestBlock(Genesis, BlockTreeSuggestOptions.None);
         }
 
-        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null)
+        public Block CreateBlock(bool matchingRoot = true, bool matchingList = true, bool insert = true, bool withTransaction = false, Block? parent = null, UInt256? balance = null, Hash256? receiptsRoot = null)
         {
             parent ??= Genesis;
             UInt256 finalBalance = balance ?? 25;
@@ -301,10 +285,15 @@ public class FinalizedBlockAccessListTests(bool useFlatDb)
             BlockBuilder builder = Build.A.Block.WithParent(parent).WithDifficulty(0).WithStateRoot(matchingRoot ? root : TestItem.KeccakC)
                 .WithBlockAccessListHash(matchingList ? Keccak.Compute(encoded) : TestItem.KeccakD);
             if (withTransaction) builder.WithTransactions(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).TestObject);
+            if (receiptsRoot is not null) builder.WithReceiptsRoot(receiptsRoot);
             Block block = builder.TestObject;
             block.Header.IsPostMerge = true;
-            block.EncodedBlockAccessList = encoded;
             if (insert) Tree.Insert(block.Header);
+            // As in forward sync: the downloaded list is stored, and queued processing attaches it only when it
+            // matches the header's commitment.
+            _container.Resolve<IBlockAccessListStore>().Insert(block.Number, block.Hash!, encoded);
+            _container.Resolve<IEnumerable<IBlockPreprocessorStep>>().OfType<BlockAccessListRecoveryStep>().Single()
+                .RecoverDataForQueuedProcessing(block);
             return block;
         }
 

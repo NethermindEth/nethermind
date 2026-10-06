@@ -7,13 +7,10 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
 
@@ -47,42 +44,24 @@ public sealed class FinalizedBlockAccessListProcessor(
         if ((options & excluded) != 0 || blockTracer != NullBlockTracer.Instance || !policy.CanReconstruct(block.Header))
             return inner.ProcessOne(block, options, blockTracer, spec, token);
 
-        ReadOnlyBlockAccessList? list = block.BlockAccessList;
-        try
-        {
-            if (list is null && block.EncodedBlockAccessList is { } encoded)
-                list = Rlp.Decode<ReadOnlyBlockAccessList>(encoded);
-        }
-        catch (RlpException ex)
-        {
-            return Execute($"undecodable block access list: {ex.Message}");
-        }
-
-        if (list is null) return Execute("no block access list");
-        if ((list.WireHash ?? Keccak.Compute(Rlp.Encode(list).Bytes)) != block.Header.BlockAccessListHash)
-            return Execute("block access list hash mismatch");
+        // Queued processing attaches a stored list only when it matches the header's commitment.
+        if (block.BlockAccessList is not { } list) return Execute("no verified block access list");
 
         TxReceipt[] receipts = [];
         if (block.Transactions.Length > 0)
         {
+            // The downloader stores receipts only after checking them against the receipts root.
             if (!receiptStorage.HasBlock(block.Number, block.Hash!)) return Execute("no receipts");
             receipts = receiptStorage.Get(block);
-            if (receipts.Length != block.Transactions.Length
-                || ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot) != block.ReceiptsRoot)
-                return Execute("receipts root mismatch");
         }
 
         // No transactions run, so background work such as prewarming can stop before the writes are applied.
         _transactionsExecuted?.Invoke();
         token.ThrowIfCancellationRequested();
-        state.Commit(spec);
-        state.ApplyBal(list);
-        state.RecalculateStateRoot();
+        state.ApplyBlockAccessList(list, spec);
         if (state.StateRoot != block.StateRoot)
             throw new BlockProcessor.BlockAccessListSequentialRetryException(block.Header,
                 $"BAL reconstruction mismatched state root for {block}; retrying execution.");
-        block.BlockAccessList = list;
-        // The world state never sees the list's writes, so its own change record would miss them.
         block.AccountChanges = list.GetStateChangedAddresses();
         Metrics.FinalizedBlockAccessListReconstructions++;
         return (block, receipts);
