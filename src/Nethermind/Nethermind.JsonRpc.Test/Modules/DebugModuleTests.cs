@@ -594,6 +594,7 @@ public class DebugModuleTests
     public async Task DebugGetBadBlocks_WhenPartialFileCleanupFails_PreservesWriteError()
     {
         using TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
         string file = Path.Combine(directory.Path, "bad-blocks.json");
         _debugBridge.GetBadBlocks().Returns(FailAfterReplacingFile());
 
