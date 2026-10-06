@@ -130,14 +130,8 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddProtocol<DataColumnSidecarsByRootProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRangeProtocol>()
                 .AddProtocol<ExecutionPayloadEnvelopesByRootProtocol>()
-                .AddProtocol<IdentifyAgentVersionProbe>())
-            // One identify instance: the library's own stack slot and the probe's listen fallback
-            // both resolve to it, so an inbound identify request is answered the same way whichever
-            // of the two same-id protocols multistream picks.
-            .AddSingleton(sp => new IdentifyProtocol(new ProbeHidingStackSettings(sp.GetRequiredService<IProtocolStackSettings>()),
-                sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>(), sp.GetService<ILoggerFactory>()))
-            .AddSingleton(sp => new IdentifyPushProtocol(new ProbeHidingStackSettings(sp.GetRequiredService<IProtocolStackSettings>()),
-                sp.GetRequiredService<IdentifyProtocolSettings>(), sp.GetRequiredService<PeerStore>(), sp.GetService<ILoggerFactory>()))
+                .AddProtocol<IdentifyAgentVersionProbe>(isExposed: false))
+            .AddSingleton<IdentifyProtocol>()
             .AddSingleton<IdentifyAgentVersionProbe>()
             // The library's peer class is internal; this one does the same identify handshake and also
             // records the session direction and agent string (see BeaconLocalPeer).
@@ -391,8 +385,6 @@ public sealed class BeaconP2P : IAsyncDisposable
     internal int SessionCountForTest => _localPeer?.Sessions.Count ?? 0;
     /// <summary>The fixed part of every request's budget; internal so a test need not wait out the production value.</summary>
     internal TimeSpan RequestTimeout { get; init; } = TimeSpan.FromSeconds(15);
-    /// <summary>How long a request's first channel may take to reach its protocol before it is opened again (see <see cref="RetryUnopenedAsync"/>).</summary>
-    internal TimeSpan ChannelOpenBound { get; init; } = TimeSpan.FromSeconds(2);
     /// <summary>Internal so a test can tell a session closed for an unanswered identify from a failure of the code under test.</summary>
     internal int IdentifyTimeoutsForTest => Volatile.Read(ref _identifyTimeouts);
     /// <summary>Whether the pubsub router holds a gossip channel with <paramref name="peerId"/>, opened by either side.</summary>
@@ -645,29 +637,14 @@ public sealed class BeaconP2P : IAsyncDisposable
 
     /// <summary>Runs one exchange under <paramref name="cts"/> (see <see cref="Timeout(ISession, CancellationToken, TimeSpan?)"/>) and names why it failed.</summary>
     /// <remarks>Networking req/resp requesting side distinguishes a local cancellation, a disconnected peer and an unanswered request.</remarks>
-    /// <param name="request">Builds the request for one channel; a second channel gets its own object, so the first cannot report on the second's timing.</param>
+    /// <param name="request">Builds and tracks the request for this exchange.</param>
     private async Task<TResponse> ExchangeAsync<TProtocol, TRequest, TResponse>(ISession session, Func<TRequest> request, CancellationTokenSource cts, CancellationToken token, RequestTiming? timing)
         where TProtocol : ISessionProtocol<TRequest, TResponse>
     {
         long startedAt = Stopwatch.GetTimestamp();
         try
         {
-            TRequest first = request();
-            // Only a tracked request tells whether its channel opened; a protocol the peer does not list is refused, not dropped.
-            if (timing is not { ChannelOpened: not null } tracked || !PeerMayServe<TProtocol>(session))
-            {
-                return await session.DialAsync<TProtocol, TRequest, TResponse>(first, cts.Token);
-            }
-
-            return await RetryUnopenedAsync(
-                attempt => session.DialAsync<TProtocol, TRequest, TResponse>(first, attempt),
-                tracked.TryAbandon,
-                attempt =>
-                {
-                    tracked.Restart();
-                    return session.DialAsync<TProtocol, TRequest, TResponse>(request(), attempt);
-                },
-                ChannelOpenBound, cts.Token);
+            return await session.DialAsync<TProtocol, TRequest, TResponse>(request(), cts.Token);
         }
         catch (Exception e) when (!token.IsCancellationRequested && NameFailure(e, session, cts, timing, Stopwatch.GetElapsedTime(startedAt)) is { } named)
         {
@@ -687,64 +664,6 @@ public sealed class BeaconP2P : IAsyncDisposable
         {
             _ = timing.Settled();
         }
-    }
-
-    /// <summary>False only when the peer's identify answer listed protocols and <typeparamref name="TProtocol"/> is not among them.</summary>
-    private bool PeerMayServe<TProtocol>(ISession session) where TProtocol : IProtocol
-    {
-        if (RemotePeerIdOf(session) is not { } peerId || _serviceProvider.GetService<TProtocol>() is not { } protocol)
-        {
-            return true;
-        }
-
-        string[]? listed = _serviceProvider.GetRequiredService<PeerStore>().GetPeerInfo(peerId).SupportedProtocols;
-        return listed is not { Length: > 0 } || Array.IndexOf(listed, protocol.Id) >= 0;
-    }
-
-    /// <summary>Runs <paramref name="first"/>, and <paramref name="second"/> instead when the first channel has not reached its protocol within <paramref name="openBound"/>.</summary>
-    /// <remarks>Nethermind.Libp2p.Protocols.Yamux 1.0.0 can drop the peer's first frames on a channel this node opens, so its negotiation never completes.
-    /// The first attempt is cancelled before the second starts, and there is one second attempt at most.</remarks>
-    /// <param name="tryAbandonFirst">Gives the first attempt up unless its channel already reached its protocol, which it then can no longer do.</param>
-    internal static async Task<T> RetryUnopenedAsync<T>(Func<CancellationToken, Task<T>> first, Func<bool> tryAbandonFirst, Func<CancellationToken, Task<T>> second,
-        TimeSpan openBound, CancellationToken token)
-    {
-        using CancellationTokenSource firstLifetime = CancellationTokenSource.CreateLinkedTokenSource(token);
-        Task<T> attempt = first(firstLifetime.Token);
-        try
-        {
-            return await attempt.WaitAsync(openBound, firstLifetime.Token);
-        }
-        catch (TimeoutException) when (attempt.IsCompleted || !tryAbandonFirst())
-        {
-            return await attempt;
-        }
-        catch (TimeoutException)
-        {
-            Interlocked.Increment(ref Metrics.ChannelsReopenedCount);
-        }
-        finally
-        {
-            // Whatever ends the wait, an unfinished first attempt is cancelled before its source is disposed or a second opens.
-            if (!attempt.IsCompleted)
-            {
-                await firstLifetime.CancelAsync();
-                _ = attempt.ContinueWith(static failed => _ = failed.Exception, CancellationToken.None, TaskContinuationOptions.OnlyOnFaulted, TaskScheduler.Default);
-            }
-        }
-
-        return await second(token);
-    }
-
-    /// <summary>Dials the session's identify probe, opening its channel again once when the first never reached the probe within <paramref name="openBound"/>.</summary>
-    /// <returns>The peer's <c>agentVersion</c>, or <c>null</c> when its answer carries none.</returns>
-    internal static Task<string?> DialIdentifyAsync(ISession session, TimeSpan openBound, CancellationToken token)
-    {
-        IdentifyAgentVersionProbe.Attempt firstAttempt = new();
-        return RetryUnopenedAsync(
-            attempt => session.DialAsync<IdentifyAgentVersionProbe, IdentifyAgentVersionProbe.Attempt, string?>(firstAttempt, attempt),
-            firstAttempt.TryAbandon,
-            attempt => session.DialAsync<IdentifyAgentVersionProbe, IdentifyAgentVersionProbe.Attempt, string?>(new IdentifyAgentVersionProbe.Attempt(), attempt),
-            openBound, token);
     }
 
     /// <returns>The failure to throw in place of <paramref name="e"/>, or <c>null</c> when <paramref name="e"/> already says what happened.</returns>
@@ -964,7 +883,7 @@ public sealed class BeaconP2P : IAsyncDisposable
             using CancellationTokenSource cts = new(IdentifyAgentVersionProbe.ReadTimeout);
             try
             {
-                agentVersion = await DialIdentifyAsync(session, _owner.ChannelOpenBound, cts.Token);
+                agentVersion = await session.DialAsync<IdentifyAgentVersionProbe, object?, string?>(null, cts.Token);
             }
             catch (Exception e)
             {
@@ -981,42 +900,6 @@ public sealed class BeaconP2P : IAsyncDisposable
             }
 
             slot?.TrySetResult(new SessionInfo(isDialer ? PeerDirection.Outbound : PeerDirection.Inbound, agentVersion));
-        }
-    }
-
-    /// <summary>The stack as identify advertises it: without the probe, whose id duplicates identify's own.</summary>
-    /// <remarks>The pinned identify lists every registered listener protocol and ignores <see cref="ProtocolRef.IsExposed"/>,
-    /// so a view over the live settings is the only way to keep <c>/ipfs/id/1.0.0</c> to one entry.</remarks>
-    private sealed class ProbeHidingStackSettings(IProtocolStackSettings inner) : IProtocolStackSettings
-    {
-        public Dictionary<ProtocolRef, ProtocolRef[]>? Protocols
-        {
-            get
-            {
-                Dictionary<ProtocolRef, ProtocolRef[]>? protocols = inner.Protocols;
-                if (protocols is null)
-                {
-                    return null;
-                }
-
-                Dictionary<ProtocolRef, ProtocolRef[]> advertised = new(protocols.Count);
-                foreach (KeyValuePair<ProtocolRef, ProtocolRef[]> protocol in protocols)
-                {
-                    if (protocol.Key.Protocol is not IdentifyAgentVersionProbe)
-                    {
-                        advertised.Add(protocol.Key, protocol.Value);
-                    }
-                }
-
-                return advertised;
-            }
-            set => inner.Protocols = value;
-        }
-
-        public ProtocolRef[]? TopProtocols
-        {
-            get => inner.TopProtocols;
-            set => inner.TopProtocols = value;
         }
     }
 

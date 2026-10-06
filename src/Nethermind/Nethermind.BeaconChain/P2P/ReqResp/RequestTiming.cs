@@ -80,22 +80,6 @@ public sealed class RequestTiming
         }
     }
 
-    /// <summary>Gives up the current attempt unless its channel already opened; from then on its protocol cannot open (see <see cref="Open"/>).</summary>
-    /// <returns><c>false</c> when the channel had opened, so the attempt goes on.</returns>
-    internal bool TryAbandon()
-    {
-        lock (_lock)
-        {
-            if (Volatile.Read(ref _channelOpenedAt) != 0)
-            {
-                return false;
-            }
-
-            _tracked = null;
-            return true;
-        }
-    }
-
     /// <summary>Starts the timing again for a new attempt at the same request, which must then be tracked again with a new object.</summary>
     /// <remarks>The earlier attempt's object can no longer open (see <see cref="Open"/>), so an abandoned attempt that opens late cannot send or mark the new one opened.</remarks>
     internal void Restart()

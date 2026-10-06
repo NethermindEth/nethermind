@@ -377,7 +377,7 @@ public class ReqRespLimitsTests
 
             await WaitForClosureAsync(requester.Channel!).WaitAsync(token);
             ReadResult afterRejection = await requester.Channel!.ReadAsync(1, ReadBlockingMode.DoNotWait, token);
-            Assert.That(afterRejection.Result, Is.EqualTo(IOResult.Ended), "the requester closed its read side while the responder remained open");
+            Assert.That(afterRejection.Result, Is.EqualTo(IOResult.Aborted), "the requester closed its read side while the responder remained open");
         }
         finally
         {

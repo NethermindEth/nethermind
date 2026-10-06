@@ -661,48 +661,48 @@
   },
   {
     "pname": "Nethermind.Libp2p.Core",
-    "version": "1.0.2",
-    "hash": "sha256-JRHrjNvwcn7MWpGxMMfu1x9GLONqZN0yj4Tuhu7Tk7Q="
+    "version": "1.0.3",
+    "hash": "sha256-agpqixUP8HXDn3d5uGx4A/JqptamZWGGjHW6tKeR/Ao="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Identify",
-    "version": "1.0.2",
-    "hash": "sha256-GY+VMY9CBQRl8bxLZ35q3MJPbdnIx/+eDAhvVW3/bV8="
+    "version": "1.0.3",
+    "hash": "sha256-c2otDex7zPN8SZ9xAx0JUeY9M5lrM+5lDb0LQsoYVo0="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.IpTcp",
-    "version": "1.0.2",
-    "hash": "sha256-SLVpTme7Kkrc7hM5ka8bhz41wzQMss5ikSHBbbDOENk="
+    "version": "1.0.3",
+    "hash": "sha256-TWBK/jpojexougOwcr6C2b0WGE94Fef34OCE5P04bd8="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Multistream",
-    "version": "1.0.2",
-    "hash": "sha256-YCo2QS88m8mmh433DsakthoH9NEVQ5Y4oObFDgkiZJg="
+    "version": "1.0.3",
+    "hash": "sha256-JBNH2txb+938v8iZfQCEK8Qf1jbf1O/XJw4v6vlt/ls="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Noise",
-    "version": "1.0.2",
-    "hash": "sha256-6aUjCqc2khX7RofxRDxPnLiom9QXGEFuO2f4ttrfh4Y="
+    "version": "1.0.3",
+    "hash": "sha256-Wns2TPlRYt701ENWrexu5oXRnJja5zgxOO2hGK7ecqg="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Ping",
-    "version": "1.0.2",
-    "hash": "sha256-ETKIcmU8BGDnLWbOApTvkx9cSq2tatnr2itUAClfjTM="
+    "version": "1.0.3",
+    "hash": "sha256-SPSaxwF3P3vNw8PBJm48yWoRyZMDSMAuw5mer//r2vw="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Pubsub",
-    "version": "1.0.2",
-    "hash": "sha256-vN8JvoYevpWXL435gJR4SmLutqLfBpq1Uk55lQbyGU4="
+    "version": "1.0.3",
+    "hash": "sha256-nw6z/lB25mN+Y8NowN8XMJ1/Ofejd4Ut0f10SVOCM9Q="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.PubsubPeerDiscovery",
-    "version": "1.0.2",
-    "hash": "sha256-3HIJNRQnkrpPpj5VgbFcHzrcd1lDcjFdbvQzTD+zIy8="
+    "version": "1.0.3",
+    "hash": "sha256-wh2lc+KxBjd/3E37q7j+7nBGaHAsSV4EidAZNXIOtds="
   },
   {
     "pname": "Nethermind.Libp2p.Protocols.Yamux",
-    "version": "1.0.2",
-    "hash": "sha256-l82Ncx/2ISZleUd3evuLXbjpieIbARvgji5sVZZSLTg="
+    "version": "1.0.3",
+    "hash": "sha256-lUaRkL+Xi+i6ltg6UGYaAWeoMDRNHfNPUjWiOil+ItI="
   },
   {
     "pname": "Nethermind.MclBindings",
