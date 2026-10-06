@@ -164,12 +164,14 @@ public class ProgressTrackerTests
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
         snapTrieFactory.IsRangePhaseFinished().Returns(true);
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+        TestLogger logger = new();
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)));
 
         progressTracker.LoadProgress();
 
         Assert.That(progressTracker.IsFinished(out SnapSyncBatch? request), Is.True);
         Assert.That(request, Is.Null);
+        Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) is finished."));
     }
 
     // Regression: account ranges must be requested again rather than skipped over a store that was just emptied.
