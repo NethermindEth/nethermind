@@ -7,7 +7,6 @@ using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Test;
 using Nethermind.Facade.Eth;
-using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
@@ -68,14 +67,20 @@ public class BlockTransactionsTests
         }
     }
 
-    [TestCase("""["0x0000000000000000000000000000000000000000000000000000000000000001",{}]""")]
-    [TestCase("""[{"type":"0x2"},"0x0000000000000000000000000000000000000000000000000000000000000001"]""")]
-    [TestCase("""[null]""")]
-    [TestCase("""{}""")]
-    public void Malformed_transactions_are_rejected(string transactions)
+    private const string Hash = "\"0x0000000000000000000000000000000000000000000000000000000000000001\"";
+
+    [TestCase($"[{Hash},{{}}]", "mix hashes and transaction objects")]
+    [TestCase($"[{{\"type\":\"0x2\"}},{Hash}]", "mix hashes and transaction objects")]
+    [TestCase("[null]", "contain null")]
+    [TestCase($"[{Hash},null]", "contain null")]
+    [TestCase("[1]", "Unexpected Number in block transactions")]
+    [TestCase($"[{Hash},true]", "Unexpected True in block transactions")]
+    [TestCase("{}", "Expected an array of transactions")]
+    public void Malformed_transactions_are_rejected(string transactions, string message)
     {
         string json = $$"""{"transactions":{{transactions}}}""";
-        Assert.That(() => TypeInfoJsonSerializer.Deserialize<BlockForRpc>(json, EthereumJsonSerializer.JsonOptions), Throws.InstanceOf<JsonException>());
+        Assert.That(() => TypeInfoJsonSerializer.Deserialize<BlockForRpc>(json, EthereumJsonSerializer.JsonOptions),
+            Throws.InstanceOf<JsonException>().With.Message.Contains(message));
     }
 
     [Test]

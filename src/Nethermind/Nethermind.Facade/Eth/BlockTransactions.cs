@@ -36,7 +36,7 @@ public sealed class BlockTransactions
 
     internal static BlockTransactions Empty => EmptyInstance;
 
-    // A null array maps to a null wrapper, so the field stays omitted as it did when the property held the array.
+    // A null array maps to a null wrapper, so the field is omitted.
     [return: NotNullIfNotNull(nameof(hashes))]
     public static implicit operator BlockTransactions?(Hash256[]? hashes) =>
         hashes is null ? null : hashes.Length == 0 ? EmptyInstance : new(hashes, null);
@@ -57,17 +57,17 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
 
         return reader.TokenType == JsonTokenType.String
             ? ReadAll<Hash256>(ref reader, options, JsonTokenType.String)
-            : ReadAll<TransactionForRpc>(ref reader, options, JsonTokenType.StartObject);
+            : (BlockTransactions)ReadAll<TransactionForRpc>(ref reader, options, JsonTokenType.StartObject);
     }
 
     public override void Write(Utf8JsonWriter writer, BlockTransactions value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        // The former object[] path checked the depth before each element it wrote, null included.
+        // The depth is checked before every element, null included, as STJ's array converter does.
         int maxDepth = GeneratedJsonWriters.GetMaxDepth(options);
         if (value.Full is { } full)
         {
-            // As each element of the former object[]: written as its runtime type, through its generated writer when it has one.
+            // Written as the runtime type, through its generated writer when it has one.
             foreach (TransactionForRpc transaction in full)
             {
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
@@ -91,13 +91,13 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
         writer.WriteEndArray();
     }
 
-    private static BlockTransactions ReadAll<T>(ref Utf8JsonReader reader, JsonSerializerOptions options, JsonTokenType elementToken) where T : class
+    private static T[] ReadAll<T>(ref Utf8JsonReader reader, JsonSerializerOptions options, JsonTokenType elementToken) where T : class
     {
         JsonConverter<T>? converter = TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter as JsonConverter<T>;
         List<T> items = [];
         do
         {
-            if (reader.TokenType != elementToken) throw new JsonException("Block transactions mix hashes and transaction objects");
+            if (reader.TokenType != elementToken) ThrowUnexpectedElement(reader.TokenType, elementToken);
             T? item = converter is not null
                 ? converter.Read(ref reader, typeof(T), options)
                 : TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
@@ -105,11 +105,15 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
         }
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray);
 
-        return items switch
-        {
-            List<Hash256> hashes => hashes.ToArray(),
-            List<TransactionForRpc> transactions => transactions.ToArray(),
-            _ => throw new InvalidOperationException(),
-        };
+        return items.ToArray();
     }
+
+    [DoesNotReturn]
+    private static void ThrowUnexpectedElement(JsonTokenType actual, JsonTokenType expected) =>
+        throw new JsonException(actual switch
+        {
+            JsonTokenType.Null => "Block transactions contain null",
+            JsonTokenType.String or JsonTokenType.StartObject => "Block transactions mix hashes and transaction objects",
+            _ => $"Unexpected {actual} in block transactions, expected {(expected == JsonTokenType.String ? "hashes" : "transaction objects")}",
+        });
 }
