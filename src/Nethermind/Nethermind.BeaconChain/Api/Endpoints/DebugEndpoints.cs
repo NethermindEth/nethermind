@@ -134,18 +134,13 @@ internal static class DebugEndpoints
                 $"The state persisted for '{stateId}' ({resolved.Root}) is not decodable: {e.Message}", c.RequestAborted);
         }
 
-        // beacon-APIs v5.0.0-alpha.2 getStateV2 defines JSON BeaconState types up to Fulu only; SSZ serves every fork.
-        if (state.Electra is not { } electra)
-        {
-            return ApiErrors.Write(c, StatusCodes.Status501NotImplemented,
-                $"The published beacon-APIs define no JSON BeaconState for the {ResponseEnvelope.ForkName(state.Fork)} fork; request application/octet-stream.", c.RequestAborted);
-        }
-
         ResponseEnvelope.ApplyConsensusVersionHeader(c, ctx.Spec, state.Slot);
         return BeaconApiJson.WriteVersionedEnvelopeAsync(c, ResponseEnvelope.ForkName(state.Fork),
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            s => BeaconJsonWriter.WriteBeaconStateAsync(s, electra));
+            s => state.Electra is { } electra
+                ? BeaconJsonWriter.WriteBeaconStateAsync(s, electra)
+                : BeaconJsonWriter.WriteBeaconStateAsync(s, state.Gloas!));
     }
 
     private sealed record CheckpointDto(

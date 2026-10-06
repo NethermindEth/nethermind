@@ -116,6 +116,7 @@ internal static partial class BeaconJsonWriter
     /// <summary>Streams an Electra or Fulu <c>BeaconState</c>, flushing between elements of its large lists.</summary>
     /// <remarks>Only a Fulu state carries <c>proposer_lookahead</c> (EIP-7917).</remarks>
     public static partial Task WriteBeaconStateAsync(BeaconJsonStream s, BeaconStateElectra state);
+    public static partial Task WriteBeaconStateAsync(BeaconJsonStream s, BeaconStateGloas state);
 
     public static Task WritePendingDepositsAsync(BeaconJsonStream s, PendingDeposit[] deposits) => WriteArrayValueAsync(s, deposits, WritePendingDeposit);
     public static Task WritePendingPartialWithdrawalsAsync(BeaconJsonStream s, PendingPartialWithdrawal[] withdrawals) => WriteArrayValueAsync(s, withdrawals, WritePendingPartialWithdrawal);

@@ -95,6 +95,13 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
 
     private static void EmitObject(StringBuilder code, string type, string value, Dictionary<string, Field[]> fields, Dictionary<string, Method> methods, bool async)
     {
+        if (type == "PayloadTimelinessCommittee")
+        {
+            code.Append("w.WriteStartArray();\n");
+            EmitArray(code, "UInt64", value + ".Indices!", fields, methods, ((IArrayTypeSymbol)fields[type][0].Property.Type).ElementType);
+            code.Append("w.WriteEndArray();\n");
+            return;
+        }
         code.Append("w.WriteStartObject();\n");
         foreach (Field field in fields[type])
         {
@@ -116,7 +123,7 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
                 code.Append($"await {helper}(s, \"{field.WireName}\", {expression}");
                 if (helper == "WriteArrayAsync")
                 {
-                    if (methods.TryGetValue(array.ElementType.Name, out Method? itemMethod)) code.Append($", {itemMethod.Name}");
+                    if (methods.TryGetValue(array.ElementType.Name, out Method? itemMethod) && !itemMethod.Array) code.Append($", {itemMethod.Name}");
                     else
                     {
                         code.Append(", static (w, summary) =>\n{\n");
