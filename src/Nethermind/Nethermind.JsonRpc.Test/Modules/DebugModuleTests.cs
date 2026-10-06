@@ -57,10 +57,10 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateModule() => new(
+    private DebugRpcModule CreateModule(IJsonRpcConfig? config = null) => new(
         LimboLogs.Instance,
         _debugBridge,
-        _jsonRpcConfig,
+        config ?? _jsonRpcConfig,
         _specProvider,
         _blockchainBridge,
         new BlocksConfig(),
@@ -445,7 +445,9 @@ public class DebugModuleTests
     public async Task TraceChain_orders_results_skips_empty_intermediate_blocks_and_keeps_terminal([Values] bool tracerError, [Values] bool useTags)
     {
         SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
-        DebugRpcModule module = CreateTraceChainModule(manager);
+        IJsonRpcConfig config = Substitute.For<IJsonRpcConfig>();
+        config.Timeout.Returns(1);
+        DebugRpcModule module = CreateTraceChainModule(manager, config);
         IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
         client.Id.Returns("trace-chain-client");
         using JsonRpcContext context = new(RpcEndpoint.Ws, client);
@@ -474,6 +476,7 @@ public class DebugModuleTests
         Assert.That(notifications, Is.Empty);
         response.TakeActivation().Activate();
         await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        _ = config.DidNotReceive().Timeout;
 
         using (Assert.EnterMultipleScope())
         {
@@ -928,9 +931,9 @@ public class DebugModuleTests
         response.Subscription.Abort();
     }
 
-    private DebugRpcModule CreateTraceChainModule(SubscriptionManager? manager = null)
+    private DebugRpcModule CreateTraceChainModule(SubscriptionManager? manager = null, IJsonRpcConfig? config = null)
     {
-        DebugRpcModule module = CreateModule();
+        DebugRpcModule module = CreateModule(config);
         module.TraceChainSubscriptions = manager ?? new SubscriptionManager(new SubscriptionFactory(), LimboLogs.Instance);
         module.TraceChainReplay = static (block, _, _) => ChainTraces(block);
         return module;

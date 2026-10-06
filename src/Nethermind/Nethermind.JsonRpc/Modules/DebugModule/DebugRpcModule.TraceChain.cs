@@ -4,9 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.JsonRpc.Modules.Subscribe;
 
@@ -68,9 +66,7 @@ public partial class DebugRpcModule
             using ResultWrapper<string>? stateError = CheckTraceBaseState<string>(block.Header);
             if (stateError is not null) throw new InvalidOperationException(stateError.Result.Error);
 
-            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
-            using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(token, timeout.Token);
-            TraceChainTransaction?[] traces = TraceChainReplay!(block, options, linked.Token);
+            TraceChainTransaction?[] traces = TraceChainReplay!(block, options, token);
             try
             {
                 if (traces.Length != 0 || number == last)
