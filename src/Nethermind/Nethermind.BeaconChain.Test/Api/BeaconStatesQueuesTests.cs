@@ -58,8 +58,7 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
     [TestCaseSource(nameof(JsonCases))]
     public async Task Queue_json_is_versioned_and_keeps_state_order(string endpoint, string[] expected)
     {
-        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}", Json);
-        JsonElement root = await ReadVersionedEnvelope(response, expectedFinalized: false);
+        JsonElement root = await ReadFuluEnvelope($"/eth/v1/beacon/states/{StateSlot}/{endpoint}", expectedFinalized: false);
         string[] actual = [.. root.GetProperty("data").EnumerateArray().Select(Flatten)];
         Assert.That(actual, Is.EqualTo(expected));
     }
@@ -67,8 +66,7 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
     [Test]
     public async Task Proposer_lookahead_json_lists_every_slot_as_a_decimal_string()
     {
-        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/proposer_lookahead", Json);
-        JsonElement root = await ReadVersionedEnvelope(response, expectedFinalized: false);
+        JsonElement root = await ReadFuluEnvelope($"/eth/v1/beacon/states/{StateSlot}/proposer_lookahead", expectedFinalized: false);
         string[] actual = [.. root.GetProperty("data").EnumerateArray().Select(e => e.GetString()!)];
         Assert.That(actual, Is.EqualTo(Enumerable.Range(0, 64).Select(i => LookaheadAt(i).ToString()).ToArray()));
     }
@@ -78,8 +76,7 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
         [Values("pending_deposits", "pending_partial_withdrawals", "pending_consolidations", "proposer_lookahead")] string endpoint)
     {
         _host.SetStatus(StateRoot, StateRoot, StateEpoch);
-        using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{StateSlot}/{endpoint}", Json);
-        await ReadVersionedEnvelope(response, expectedFinalized: true);
+        await ReadFuluEnvelope($"/eth/v1/beacon/states/{StateSlot}/{endpoint}", expectedFinalized: true);
     }
 
     public static IEnumerable<TestCaseData> SszCases()
@@ -146,19 +143,6 @@ public class BeaconStatesQueuesTests : BeaconApiFixture
             using HttpResponseMessage response = await _host.GetAsync($"/eth/v1/beacon/states/{slot}/{endpoint}", accept);
             Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.BadRequest), accept);
         }
-    }
-
-    private static async Task<JsonElement> ReadVersionedEnvelope(HttpResponseMessage response, bool expectedFinalized)
-    {
-        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
-        Assert.That(response.Content.Headers.ContentType?.MediaType, Is.EqualTo(Json));
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
-
-        JsonElement root = JsonDocument.Parse(raw).RootElement;
-        Assert.That(root.GetProperty("version").GetString(), Is.EqualTo("fulu"));
-        Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
-        return root;
     }
 
     private static string Flatten(JsonElement item) =>
