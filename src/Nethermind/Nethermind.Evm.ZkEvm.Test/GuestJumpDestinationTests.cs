@@ -61,6 +61,9 @@ public class GuestJumpDestinationTests
         push32Run[396] = JUMPDEST;
         yield return Shape("JUMPDEST after a PUSH32 run longer than the look-back distance", push32Run);
 
+        // Once the first JUMPDEST is marked, the later ones scan from it: one inside the PUSH32's data, one past it.
+        yield return Shape("JUMPDESTs scanned from a marked one", Code(160, (40, JUMPDEST), (70, PUSH32), (100, JUMPDEST), (120, JUMPDEST)));
+
         yield return Shape("every byte a JUMPDEST", Filled(200, JUMPDEST));
         yield return Shape("every byte a PUSH32", Filled(200, PUSH32));
         yield return Shape("no byte in range", Filled(200, (byte)Instruction.STOP));
@@ -92,6 +95,46 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, new byte[] { JUMPDEST }, null);
         Assert.That(stack.IsJumpDestination(0), Is.False);
+    }
+
+    [Test]
+    public void Call_destination_switch_updates_the_guest_bit_test()
+    {
+        byte[] code = [PUSH1, (byte)Instruction.CALLDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+
+        stack.UseCallDestinations();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stack.IsAnalyzedJumpDestination(1), Is.False, "PUSH data");
+            Assert.That(stack.IsAnalyzedJumpDestination(2), Is.True, "CALLDEST");
+        }
+    }
+
+    [TestCase(false, TestName = "Code without a CALLDEST byte keeps the incremental bitmap")]
+    [TestCase(true, TestName = "Code with a CALLDEST byte takes a complete bitmap")]
+    public void Call_destinations_keep_the_incremental_bitmap_only_without_a_calldest_byte(bool hasCallDest)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, hasCallDest ? (byte)Instruction.CALLDEST : (byte)0, JUMPDEST });
+
+        Assert.That(ReferenceEquals(codeInfo.JumpAndCallDestinationBitmap, codeInfo.IncrementalJumpBitmap), Is.EqualTo(!hasCallDest));
+    }
+
+    [Test]
+    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
+    {
+        byte[] code = [PUSH1, 0, JUMPDEST, PUSH1, JUMPDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
+        enabled.UseCallDestinations();
+        Assert.That(enabled.IsJumpDestination(4), Is.False, "PUSH data");
+
+        EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+        Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
     }
 
     /// <remarks>
@@ -248,7 +291,7 @@ public class GuestJumpDestinationTests
         foreach (int i in order)
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
-            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i) || stack.AnalyzeJumpDestination(i);
+            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i);
             Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
             Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
