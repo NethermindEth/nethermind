@@ -12,7 +12,6 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
-using Nethermind.Facade.Eth.RpcTransaction;
 
 namespace Nethermind.Facade.Eth;
 

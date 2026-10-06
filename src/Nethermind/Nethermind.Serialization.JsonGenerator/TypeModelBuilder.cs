@@ -91,9 +91,9 @@ internal static class TypeModelBuilder
             Implements(type, OnSerializing),
             Implements(type, OnSerialized),
             registerWithSerializer,
-            new EquatableArray<PropertyModel>([.. entries.Select(static e => e.Model)]),
+            new EquatableArray<PropertyModel>(GetModels(entries)),
             new EquatableArray<DiagnosticModel>([.. diagnostics]),
-            LocationModel.From(type.Locations.FirstOrDefault()));
+            LocationModel.From(type.Locations.Length > 0 ? type.Locations[0] : null));
     }
 
     /// <summary>Gets the type a hand-written <c>JsonConverter&lt;T&gt;</c> declared by <paramref name="converter"/> converts.</summary>
@@ -230,7 +230,7 @@ internal static class TypeModelBuilder
             return null;
         }
 
-        bool hasParameterlessConstructor = converterType.InstanceConstructors.Any(static c => c.Parameters.Length == 0 && c.DeclaredAccessibility == Accessibility.Public);
+        bool hasParameterlessConstructor = HasPublicParameterlessConstructor(converterType);
         bool isFactory = InheritsFrom(converterType, JsonConverterFactory);
         string? target = GetConverterTarget(converterType);
         string propertyType = property.Type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat);
@@ -327,8 +327,36 @@ internal static class TypeModelBuilder
         return name + "JsonWriter";
     }
 
-    private static bool Implements(INamedTypeSymbol type, string interfaceName) =>
-        type.AllInterfaces.Any(i => i.ToDisplayString() == interfaceName);
+    private static ImmutableArray<PropertyModel> GetModels(List<Entry> entries)
+    {
+        ImmutableArray<PropertyModel>.Builder models = ImmutableArray.CreateBuilder<PropertyModel>(entries.Count);
+        foreach (Entry entry in entries)
+        {
+            models.Add(entry.Model);
+        }
+
+        return models.MoveToImmutable();
+    }
+
+    private static bool Implements(INamedTypeSymbol type, string interfaceName)
+    {
+        foreach (INamedTypeSymbol implemented in type.AllInterfaces)
+        {
+            if (implemented.ToDisplayString() == interfaceName) return true;
+        }
+
+        return false;
+    }
+
+    private static bool HasPublicParameterlessConstructor(INamedTypeSymbol type)
+    {
+        foreach (IMethodSymbol constructor in type.InstanceConstructors)
+        {
+            if (constructor.Parameters.Length == 0 && constructor.DeclaredAccessibility == Accessibility.Public) return true;
+        }
+
+        return false;
+    }
 
     private static bool InheritsFrom(INamedTypeSymbol type, string baseName)
     {

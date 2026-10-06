@@ -15,6 +15,7 @@ public static class JsonFixture
 {
     private static readonly string? CaptureDirectory = Environment.GetEnvironmentVariable("NETHERMIND_JSON_FIXTURE_CAPTURE");
 
+    /// <summary>Asserts that <paramref name="json"/> equals the fixture <paramref name="name"/>, or writes it there when capturing.</summary>
     public static void AssertMatches(Assembly assembly, string name, string json)
     {
         if (CaptureDirectory is not null)
@@ -31,6 +32,7 @@ public static class JsonFixture
         Assert.That(json, Is.EqualTo(reader.ReadToEnd()));
     }
 
+    /// <summary>Reads the fixture <paramref name="name"/> embedded in <paramref name="assembly"/>.</summary>
     public static string Read(Assembly assembly, string name)
     {
         string suffix = "." + name + ".json";

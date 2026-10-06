@@ -377,22 +377,7 @@ public abstract class TransactionForRpc
             return true;
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => WriteAsRuntimeType(_generated, writer, value, options);
-
-        /// <summary>Writes <paramref name="value"/> as its runtime type, through its generated writer in <paramref name="writers"/> when it has one.</summary>
-        /// <param name="writers">The calling converter's own writers, so their state lives as long as the options it serves.</param>
-        internal static void WriteAsRuntimeType(GeneratedJsonDispatch writers, Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
-        {
-            Type type = value.GetType();
-            if (writers.TryGetWriter(type, out IGeneratedJsonWriter? generated))
-            {
-                generated.WriteValue(writer, value, options);
-            }
-            else
-            {
-                TypeInfoJsonSerializer.Serialize(writer, value, type, options);
-            }
-        }
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => writer.WriteAsRuntimeType(value, _generated, options);
 
         public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypesByType[(byte)tx.Type]?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");

@@ -28,26 +28,39 @@ internal interface IGeneratedJsonWriter
     void WriteValue(Utf8JsonWriter writer, object value, JsonSerializerOptions options);
 }
 
-/// <summary>Marks the factory that registers a generated writer with serializer options.</summary>
-internal interface IGeneratedJsonWriterFactory
+/// <summary>Marks the resolver that puts a generated writer in serializer options' metadata.</summary>
+internal interface IGeneratedJsonWriterResolver : IJsonTypeInfoResolver
 {
     /// <summary>The exact type the created writers write.</summary>
     Type WrittenType { get; }
 }
 
-/// <summary>Creates a generated writer for <typeparamref name="T"/> bound to the options STJ creates it for.</summary>
+/// <summary>Resolves <typeparamref name="T"/> to a generated writer bound to the options STJ asks for.</summary>
 /// <remarks>
-/// STJ calls <see cref="CreateConverter"/> once per options caching context and keeps the result in that context's metadata,
-/// so each writer lives exactly as long as the options it serves.
+/// STJ asks once per options caching context and keeps the result, so each writer lives as long as the options it serves.
+/// Options the writers cannot honour, such as a reference handler, get <see langword="null"/>, so the rest of the resolver
+/// chain answers and the whole operation stays on the metadata path; a converter in the options for the type also wins.
 /// </remarks>
-internal sealed class GeneratedJsonWriterFactory<T, TWriter>(Func<JsonSerializerOptions, TWriter> create) : JsonConverterFactory, IGeneratedJsonWriterFactory
+internal sealed class GeneratedJsonWriterResolver<T, TWriter>(Func<JsonSerializerOptions, TWriter> create) : IGeneratedJsonWriterResolver
     where TWriter : JsonConverter<T>, IGeneratedJsonWriter
 {
     public Type WrittenType => typeof(T);
 
-    public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(T);
+    /// <inheritdoc/>
+    public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
+        type == typeof(T) && GeneratedJsonWriters.SupportsOptions(options) && !HasConverterFor(options)
+            ? JsonMetadataServices.CreateValueInfo<T>(options, create(options))
+            : null;
 
-    public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) => create(options);
+    private static bool HasConverterFor(JsonSerializerOptions options)
+    {
+        foreach (JsonConverter converter in options.Converters)
+        {
+            if (converter.CanConvert(typeof(T))) return true;
+        }
+
+        return false;
+    }
 }
 
 /// <summary>How a generated writer treats one entry of the type's metadata contract.</summary>
@@ -212,10 +225,10 @@ internal static class GeneratedJsonWriters
     private static Dictionary<Type, Func<IGeneratedJsonWriter>> _dispatchWriters = [];
 
     /// <summary>Registers the writer for <typeparamref name="T"/> with every options instance <see cref="EthereumJsonSerializer"/> builds.</summary>
-    /// <remarks>Registered through a factory, so each options instance gets a writer of its own.</remarks>
+    /// <remarks>Registered as a resolver ahead of the metadata contexts, so each options instance gets a writer of its own.</remarks>
     public static void Register<T, TWriter>(Func<JsonSerializerOptions, TWriter> create)
         where TWriter : JsonConverter<T>, IGeneratedJsonWriter =>
-        EthereumJsonSerializer.AddConverter(new GeneratedJsonWriterFactory<T, TWriter>(create));
+        EthereumJsonSerializer.AddGeneratedWriterResolver(new GeneratedJsonWriterResolver<T, TWriter>(create));
 
     /// <summary>Makes the writer for <typeparamref name="T"/> available to the hand-written converters that dispatch to the type.</summary>
     /// <remarks>Copy-on-write, so lookups take no lock; registrations happen at module initialization.</remarks>
@@ -241,7 +254,13 @@ internal static class GeneratedJsonWriters
         JsonSerializerOptions copy = new(options);
         for (int i = copy.Converters.Count - 1; i >= 0; i--)
         {
-            if (copy.Converters[i] is IGeneratedJsonWriter or IGeneratedJsonWriterFactory) copy.Converters.RemoveAt(i);
+            if (copy.Converters[i] is IGeneratedJsonWriter) copy.Converters.RemoveAt(i);
+        }
+
+        IList<IJsonTypeInfoResolver> chain = copy.TypeInfoResolverChain;
+        for (int i = chain.Count - 1; i >= 0; i--)
+        {
+            if (chain[i] is IGeneratedJsonWriterResolver) chain.RemoveAt(i);
         }
 
         return copy;

@@ -59,6 +59,7 @@ public class RpcResultSerializationBenchmarks
     private BlockForRpc _hashes = null!;
     private FilterLog[] _logs = null!;
     private IContainer _container = null!;
+    private FeeHistoryOracle _feeHistoryOracle = null!;
     private HeadBlockSignal _headBlockSignal = null!;
     private EthRpcModule _ethModule = null!;
 
@@ -75,7 +76,7 @@ public class RpcResultSerializationBenchmarks
         _metadata = GeneratedJsonWriters.CreateMetadataOptions(_generated);
         foreach (Type type in new[] { typeof(BlockForRpc), typeof(FilterLog) })
         {
-            if (_generated.GetConverter(type) is not IGeneratedJsonWriter writer || !writer.IsActive(_generated))
+            if (_generated.GetTypeInfo(type).Converter is not IGeneratedJsonWriter writer || !writer.IsActive(_generated))
             {
                 throw new InvalidOperationException($"the {type.Name} writer defers to the metadata path");
             }
@@ -98,6 +99,7 @@ public class RpcResultSerializationBenchmarks
     [GlobalCleanup]
     public void Cleanup()
     {
+        _feeHistoryOracle.Dispose();
         _headBlockSignal.Dispose();
         _container.Dispose();
     }
@@ -188,6 +190,7 @@ public class RpcResultSerializationBenchmarks
 
         ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
         _headBlockSignal = new HeadBlockSignal(blockTree);
+        _feeHistoryOracle = new FeeHistoryOracle(blockTree, NullReceiptStorage.Instance, specProvider);
         _ethModule = new EthRpcModule(
             _container.Resolve<IJsonRpcConfig>(),
             _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge(),
@@ -202,7 +205,7 @@ public class RpcResultSerializationBenchmarks
             specProvider,
             _container.Resolve<IGasPriceOracle>(),
             _container.Resolve<IEthSyncingInfo>(),
-            new FeeHistoryOracle(blockTree, NullReceiptStorage.Instance, specProvider),
+            _feeHistoryOracle,
             _container.Resolve<IProtocolsManager>(),
             _container.Resolve<IForkInfo>(),
             new BlocksConfig().SecondsPerSlot,

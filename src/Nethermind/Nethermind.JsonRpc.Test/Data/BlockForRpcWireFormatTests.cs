@@ -24,6 +24,7 @@ namespace Nethermind.JsonRpc.Test.Data;
 /// </summary>
 public class BlockForRpcWireFormatTests
 {
+    /// <summary>The blocks the wire-format fixtures cover, named after their fixture.</summary>
     public static IEnumerable<TestCaseData> Blocks()
     {
         foreach ((string name, Block block) in BlockShapes())
@@ -66,6 +67,7 @@ public class BlockForRpcWireFormatTests
         ];
     }
 
+    /// <summary>Serializes <paramref name="block"/> with the RPC response options.</summary>
     public static string Serialize(BlockForRpc block) =>
         Encoding.UTF8.GetString(TypeInfoJsonSerializer.SerializeToUtf8Bytes(block, block.GetType(), EthereumJsonSerializer.JsonOptions));
 

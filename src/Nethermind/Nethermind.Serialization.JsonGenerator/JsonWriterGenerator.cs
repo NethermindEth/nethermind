@@ -41,6 +41,7 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
         DiagnosticSeverity.Warning,
         isEnabledByDefault: true);
 
+    /// <inheritdoc/>
     public void Initialize(IncrementalGeneratorInitializationContext context)
     {
         IncrementalValuesProvider<TypeModel> types = context.SyntaxProvider.ForAttributeWithMetadataName(
@@ -50,7 +51,7 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
 
         IncrementalValueProvider<ImmutableArray<ConverterTarget>> handWritten = context.SyntaxProvider.CreateSyntaxProvider(
                 // Syntactic prefilter; a converter deriving through another base is still caught by the run-time contract check.
-                static (node, _) => node is ClassDeclarationSyntax { BaseList: { } baseList } && baseList.Types.Any(static t => t.Type.ToString().Contains("JsonConverter")),
+                static (node, _) => node is ClassDeclarationSyntax { BaseList: { } baseList } && NamesJsonConverter(baseList),
                 static (ctx, ct) => ctx.SemanticModel.GetDeclaredSymbol(ctx.Node, ct) is INamedTypeSymbol converter && TypeModelBuilder.GetConverterTarget(converter) is { } target
                     ? new ConverterTarget(target, converter.ToDisplayString())
                     : null)
@@ -80,8 +81,26 @@ public sealed class JsonWriterGenerator : IIncrementalGenerator
         });
     }
 
-    private static bool IsSkipped(TypeModel type, ImmutableArray<ConverterTarget> handWritten) =>
-        type.Diagnostics.Length > 0 || handWritten.Any(t => t.Target == type.FullName);
+    private static bool NamesJsonConverter(BaseListSyntax baseList)
+    {
+        foreach (BaseTypeSyntax baseType in baseList.Types)
+        {
+            if (baseType.Type.ToString().Contains("JsonConverter")) return true;
+        }
+
+        return false;
+    }
+
+    private static bool IsSkipped(TypeModel type, ImmutableArray<ConverterTarget> handWritten)
+    {
+        if (type.Diagnostics.Length > 0) return true;
+        foreach (ConverterTarget target in handWritten)
+        {
+            if (target.Target == type.FullName) return true;
+        }
+
+        return false;
+    }
 
     private static bool Report(SourceProductionContext spc, TypeModel type, ImmutableArray<ConverterTarget> handWritten)
     {

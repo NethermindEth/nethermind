@@ -75,7 +75,7 @@ public class GeneratedJsonWriterTests
             JsonSerializerOptions metadataOptions = GeneratedJsonWriters.CreateMetadataOptions(options);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(GetWriter(value.GetType(), options).IsActive(options), Is.True, "the generated writer deferred to the metadata path");
+                Assert.That(UsesGeneratedWriter(value.GetType(), options), Is.True, "the generated writer deferred to the metadata path");
                 if (value is TransactionForRpc)
                 {
                     // Serializing as the runtime type reaches the metadata path; as TransactionForRpc it dispatches to the writer.
@@ -118,10 +118,9 @@ public class GeneratedJsonWriterTests
         }
     }
 
-    [TestCase("""{"type":"0x2","nonce":"zz"}""")]
-    [TestCase("""{"type":"0x2","gas":[]}""")]
-    [TestCase("""{"type":"0x4","authorizationList":{}}""")]
-    public void Malformed_requests_fail_as_through_the_metadata_path(string json)
+    [Test]
+    public void Malformed_requests_fail_as_through_the_metadata_path(
+        [Values("""{"type":"0x2","nonce":"zz"}""", """{"type":"0x2","gas":[]}""", """{"type":"0x4","authorizationList":{}}""")] string json)
     {
         JsonSerializerOptions options = EthereumJsonSerializer.JsonRpcRequestOptions;
         Exception? expected = Catch(() => TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(json, GeneratedJsonWriters.CreateMetadataOptions(options)));
@@ -143,8 +142,26 @@ public class GeneratedJsonWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetWriter(typeof(EIP1559TransactionForRpc), options).IsActive(options), Is.False);
+            Assert.That(UsesGeneratedWriter(typeof(EIP1559TransactionForRpc), options), Is.False);
             Assert.That(Serialize(value, typeof(TransactionForRpc), options), Is.EqualTo(Serialize(value, value.GetType(), options)));
+        }
+    }
+
+    [Test]
+    public void Preserved_references_keep_the_whole_operation_on_the_metadata_path()
+    {
+        // A writer cannot join the enclosing operation's reference resolver, so a repeated block must still become a $ref.
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions) { ReferenceHandler = System.Text.Json.Serialization.ReferenceHandler.Preserve };
+        BlockForRpc block = new(Blocks().First().Block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
+        object[] value = [block, block];
+
+        byte[] json = Serialize(value, typeof(object[]), options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.GetTypeInfo(typeof(BlockForRpc)).Converter, Is.Not.InstanceOf<IGeneratedJsonWriter>());
+            Assert.That(json, Is.EqualTo(Serialize(value, typeof(object[]), GeneratedJsonWriters.CreateMetadataOptions(options))));
+            Assert.That(System.Text.Encoding.UTF8.GetString(json), Does.Contain("{\"$ref\":\""));
         }
     }
 
@@ -167,7 +184,7 @@ public class GeneratedJsonWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetWriter(typeof(FilterLog), options).IsActive(options), Is.False);
+            Assert.That(UsesGeneratedWriter(typeof(FilterLog), options), Is.False);
             Assert.That(System.Text.Encoding.UTF8.GetString(Serialize(value, typeof(FilterLog), options)), Does.Not.Contain("removed"));
         }
     }
@@ -181,7 +198,7 @@ public class GeneratedJsonWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetWriter(typeof(BlockForRpc), options).IsActive(options), Is.False);
+            Assert.That(UsesGeneratedWriter(typeof(BlockForRpc), options), Is.False);
             Assert.That(System.Text.Encoding.UTF8.GetString(Serialize(value, typeof(BlockForRpc), options)), Does.Contain("\"withdrawals\":\"converted\""));
         }
     }
@@ -259,8 +276,8 @@ public class GeneratedJsonWriterTests
             foreach (JsonSerializerOptions options in all)
             {
                 // STJ keeps one converter per options; a writer it created keeps the state it built for those options.
-                System.Text.Json.Serialization.JsonConverter blockConverter = options.GetConverter(typeof(BlockForRpc));
-                (System.Text.Json.Serialization.JsonConverter, System.Text.Json.Serialization.JsonConverter, object?, byte[]) seen = (blockConverter, options.GetConverter(typeof(TransactionForRpc)),
+                System.Text.Json.Serialization.JsonConverter blockConverter = options.GetTypeInfo(typeof(BlockForRpc)).Converter;
+                (System.Text.Json.Serialization.JsonConverter, System.Text.Json.Serialization.JsonConverter, object?, byte[]) seen = (blockConverter, options.GetTypeInfo(typeof(TransactionForRpc)).Converter,
                     (blockConverter as IGeneratedJsonWriter)?.GetState(options), Serialize(block, typeof(BlockForRpc), options));
                 if (first.TryAdd(options, seen)) continue;
 
@@ -321,7 +338,7 @@ public class GeneratedJsonWriterTests
         TransactionForRpc transaction = block.Transactions!.Full![0];
 
         // The block writer STJ created for the bound options, and dispatch writers that bind to the first read-only options they serve.
-        IGeneratedJsonWriter owned = (IGeneratedJsonWriter)bound.GetConverter(typeof(BlockForRpc));
+        IGeneratedJsonWriter owned = (IGeneratedJsonWriter)bound.GetTypeInfo(typeof(BlockForRpc)).Converter;
         IGeneratedJsonWriter firstMutable = CreateDispatchWriter(transaction.GetType());
         firstMutable.GetState(mutable);
         IGeneratedJsonWriter firstBound = CreateDispatchWriter(transaction.GetType());
@@ -375,7 +392,7 @@ public class GeneratedJsonWriterTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GetWriter(typeof(BlockForRpc), options).IsActive(options), Is.True);
+            Assert.That(UsesGeneratedWriter(typeof(BlockForRpc), options), Is.True);
             Assert.That(Serialize(value, value.GetType(), options), Is.EqualTo(Serialize(value, value.GetType(), GeneratedJsonWriters.CreateMetadataOptions(options))));
         }
     }
@@ -405,8 +422,14 @@ public class GeneratedJsonWriterTests
     }
 
     private static IGeneratedJsonWriter GetWriter(Type type, JsonSerializerOptions options) =>
-        options.GetConverter(type) as IGeneratedJsonWriter
-        ?? CreateDispatchWriter(type);
+        GeneratedJsonWriters.TryCreateDispatchWriter(type, out IGeneratedJsonWriter? dispatch) ? dispatch
+        : options.GetTypeInfo(type).Converter as IGeneratedJsonWriter ?? throw new AssertionException($"{type.Name} does not resolve to a generated writer");
+
+    // Registered writers come from the resolver chain, which skips them for options they cannot honour.
+    private static bool UsesGeneratedWriter(Type type, JsonSerializerOptions options) =>
+        GeneratedJsonWriters.TryCreateDispatchWriter(type, out IGeneratedJsonWriter? dispatch)
+            ? dispatch.IsActive(options)
+            : options.GetTypeInfo(type).Converter is IGeneratedJsonWriter writer && writer.IsActive(options);
 
     private static byte[] WriteDirectly(IGeneratedJsonWriter writer, object value, JsonSerializerOptions options)
     {
@@ -426,7 +449,7 @@ public class GeneratedJsonWriterTests
         {
             foreach (JsonSerializerOptions options in AllOptions)
             {
-                Assert.That(options.Converters.OfType<IGeneratedJsonWriterFactory>().Select(static w => w.WrittenType), Is.EquivalentTo(new[] { typeof(BlockForRpc), typeof(FilterLog) }));
+                Assert.That(options.TypeInfoResolverChain.OfType<IGeneratedJsonWriterResolver>().Select(static w => w.WrittenType), Is.EquivalentTo(new[] { typeof(BlockForRpc), typeof(FilterLog) }));
             }
 
             foreach (Type type in new[] { typeof(LegacyTransactionForRpc), typeof(AccessListTransactionForRpc), typeof(EIP1559TransactionForRpc), typeof(BlobTransactionForRpc), typeof(SetCodeTransactionForRpc), typeof(FrameTransactionForRpc) })

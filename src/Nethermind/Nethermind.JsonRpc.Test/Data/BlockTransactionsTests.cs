@@ -15,13 +15,9 @@ namespace Nethermind.JsonRpc.Test.Data;
 /// <summary>Clients that read a block back need the transactions in the form the server sent, typed rather than as raw JSON.</summary>
 public class BlockTransactionsTests
 {
-    [TestCase("cancun-full")]
-    [TestCase("cancun-hashes")]
-    [TestCase("pre-merge-full")]
-    [TestCase("pre-merge-hashes")]
-    [TestCase("empty-full")]
-    [TestCase("empty-hashes")]
-    public void Block_reads_back_and_writes_the_same_bytes(string fixture)
+    [Test]
+    public void Block_reads_back_and_writes_the_same_bytes(
+        [Values("cancun-full", "cancun-hashes", "pre-merge-full", "pre-merge-hashes", "empty-full", "empty-hashes")] string fixture)
     {
         string json = JsonFixture.Read(typeof(BlockTransactionsTests).Assembly, fixture);
 

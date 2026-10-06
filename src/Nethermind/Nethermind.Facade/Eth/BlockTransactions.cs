@@ -110,11 +110,14 @@ public sealed class BlockTransactions
         return transactions;
     }
 
-    // A null array maps to a null wrapper, so the field is omitted.
+    /// <summary>Wraps transaction hashes.</summary>
+    /// <returns><see langword="null"/> for a <see langword="null"/> array, so the field is omitted; one shared instance for an empty one.</returns>
     [return: NotNullIfNotNull(nameof(hashes))]
     public static implicit operator BlockTransactions?(Hash256[]? hashes) =>
         hashes is null ? null : hashes.Length == 0 ? EmptyInstance : new(hashes, null);
 
+    /// <summary>Wraps full transactions.</summary>
+    /// <returns><see langword="null"/> for a <see langword="null"/> array, so the field is omitted; one shared instance for an empty one.</returns>
     [return: NotNullIfNotNull(nameof(transactions))]
     public static implicit operator BlockTransactions?(TransactionForRpc[]? transactions) =>
         transactions is null ? null : transactions.Length == 0 ? EmptyInstance : new(null, transactions);
@@ -126,6 +129,8 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
 {
     private readonly GeneratedJsonDispatch _generated = new();
 
+    /// <inheritdoc/>
+    /// <exception cref="JsonException">The array mixes hashes and objects, holds a null or another token, or is not an array.</exception>
     public override BlockTransactions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.StartArray || !reader.Read()) throw new JsonException("Expected an array of transactions");
@@ -136,6 +141,7 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
             : (BlockTransactions)ReadAll<TransactionForRpc>(ref reader, options, JsonTokenType.StartObject);
     }
 
+    /// <inheritdoc/>
     public override void Write(Utf8JsonWriter writer, BlockTransactions value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
@@ -152,7 +158,7 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
             {
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
                 if (transaction is null) writer.WriteNullValue();
-                else TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(_generated, writer, transaction, options);
+                else writer.WriteAsRuntimeType(transaction, _generated, options);
             }
         }
         else
@@ -182,7 +188,7 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
 
             TransactionForRpc transaction = value.GetViewTransaction(i, TakeReusable(reused, value, i, out int slot));
             if (slot >= 0) reused[slot] = transaction;
-            TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(_generated, writer, transaction, options);
+            writer.WriteAsRuntimeType(transaction, _generated, options);
         }
     }
 
