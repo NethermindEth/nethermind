@@ -1151,18 +1151,24 @@ public partial class EngineModuleTests
     /// <summary>
     /// A request whose budget ran out before the block reached the tree still queues it once it is suggested, so the
     /// SYNCING it answers is followed by the block being processed rather than by nothing until the CL re-sends.
+    /// That holds also when the tree is not accepting blocks yet and the suggest completes only after the answer.
     /// </summary>
     [Test, NonParallelizable]
-    public async Task newPayloadV1_out_of_budget_still_processes_the_suggested_block()
+    public async Task newPayloadV1_out_of_budget_still_processes_the_suggested_block([Values] bool suggestPending)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(null, new MergeConfig { NewPayloadBlockProcessingTimeout = 0 });
-        Block head = chain.BlockTree.Head!;
+        BlockTree blockTree = (BlockTree)chain.BlockTree;
+        Block head = blockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
-        await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+        if (suggestPending) blockTree.BlockAcceptingNewBlocks();
+        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+        if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+
+        Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
 
         using CancellationTokenSource cts = new(GateTimeout);
-        while (!chain.BlockTree.WasProcessed(block.Number, block.Hash!))
+        while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
         {
             await Task.Delay(10, cts.Token);
         }
