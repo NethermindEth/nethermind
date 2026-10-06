@@ -239,6 +239,44 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void DeleteAccount_WhenRecreatedAndDeletedAgainInOneCommit_RemovesThePreExistingAccount([Values] bool createdOverInFirstTx)
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        WorldState state = (WorldState)ctx.WorldState;
+        BlockHeader baseBlock;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(_address1, 1);
+            state.Set(new StorageCell(_address1, 1), 5);
+            state.Commit(Frontier.Instance);
+            state.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        // Block production commits once per block, so both self-destructs share one journal.
+        state.GetBalance(_address1);
+        // A CREATE2 onto the pre-funded address updates it rather than creating it.
+        if (createdOverInFirstTx) state.IncrementNonce(_address1);
+        state.ClearStorage(_address1);
+        state.DeleteAccount(_address1);
+        state.CreateAccount(_address1, 0);
+        state.ClearStorage(_address1);
+        state.DeleteAccount(_address1);
+        state.Commit(Cancun.Instance);
+        state.RecalculateStateRoot();
+
+        List<AddressAsKey> removed = state._stateProvider.DetachRemovedAccountsWithStorage();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(_address1), Is.False);
+            Assert.That(state.StateRoot, Is.EqualTo(Keccak.EmptyTreeHash));
+            Assert.That(removed, Is.EqualTo(new[] { (AddressAsKey)_address1 }));
+        }
+        state._stateProvider.ReturnRemovedAccounts(removed);
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
