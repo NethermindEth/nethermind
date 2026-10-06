@@ -3,6 +3,7 @@
 
 using System.Text.Json;
 using Autofac;
+using ModelContextProtocol;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Blockchain;
@@ -23,6 +24,42 @@ namespace Nethermind.Mcp.Plugin.Test;
 public class McpResourcesTests
 {
     private static readonly string[] ResourceUris = [McpResources.ChainUri, McpResources.ContractsUri, McpResources.GuideUri];
+
+    [Test]
+    public async Task Unknown_resource_or_prompt_is_a_client_error_without_a_node_error_log()
+    {
+        ErrorCapture errors = new();
+        await using McpTestNode node = await McpTestNode.Create(configureContainer: builder =>
+            builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(errors))));
+        await using McpClient client = await node.CreateClient();
+
+        McpException? error = Assert.CatchAsync<McpException>(() => client.ReadResourceAsync("nethermind://node/status").AsTask());
+        Assert.CatchAsync<McpException>(() => client.GetPromptAsync("no_such_prompt").AsTask());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.Message, Does.Contain("nethermind://node/status"));
+            Assert.That(errors.Lines, Is.Empty, "a client asking for a resource that does not exist is not a node error");
+        }
+    }
+
+    private sealed class ErrorCapture : InterfaceLogger
+    {
+        private readonly List<string> _lines = [];
+
+        public IReadOnlyList<string> Lines { get { lock (_lines) return [.. _lines]; } }
+
+        public void Error(string text, Exception? ex = null) { lock (_lines) _lines.Add(text); }
+        public void Info(string text) { }
+        public void Warn(string text) { }
+        public void Debug(string text) { }
+        public void Trace(string text) { }
+        public bool IsInfo => false;
+        public bool IsWarn => false;
+        public bool IsDebug => false;
+        public bool IsTrace => false;
+        public bool IsError => true;
+    }
 
     [Test]
     public async Task Resources_are_listed_and_readable_over_mcp()

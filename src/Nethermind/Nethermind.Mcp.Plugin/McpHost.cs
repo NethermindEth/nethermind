@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Https;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
+using ModelContextProtocol;
 using ModelContextProtocol.Protocol;
 using Nethermind.Core;
 using Nethermind.Core.ServiceStopper;
@@ -357,8 +358,32 @@ public sealed class McpHost(
     {
         private readonly NethermindLoggerFactory _factory = new(logManager);
 
-        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) => _factory.CreateLogger($"Mcp.{categoryName}");
+        public Microsoft.Extensions.Logging.ILogger CreateLogger(string categoryName) =>
+            new ClientErrorLogger(_factory.CreateLogger($"Mcp.{categoryName}"));
 
         public void Dispose() { }
+    }
+
+    /// <summary>Logs protocol errors caused by the client (an unknown resource or prompt, invalid parameters) at debug level.</summary>
+    /// <remarks>
+    /// The SDK reports them as unhandled handler exceptions at error level, although the client already receives the
+    /// JSON-RPC error; at error level any client could fill the node log.
+    /// </remarks>
+    private sealed class ClientErrorLogger(Microsoft.Extensions.Logging.ILogger inner) : Microsoft.Extensions.Logging.ILogger
+    {
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => inner.BeginScope(state);
+
+        public bool IsEnabled(MsLogLevel logLevel) => inner.IsEnabled(logLevel);
+
+        public void Log<TState>(MsLogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+        {
+            if (exception is McpProtocolException { ErrorCode: McpErrorCode.InvalidParams or McpErrorCode.ResourceNotFound or McpErrorCode.MethodNotFound })
+            {
+                logLevel = MsLogLevel.Debug;
+                if (!inner.IsEnabled(logLevel)) return;
+            }
+
+            inner.Log(logLevel, eventId, state, exception, formatter);
+        }
     }
 }
