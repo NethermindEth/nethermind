@@ -157,7 +157,6 @@ public class SszMiddlewareTests
         Assert.That(missing, Is.Empty);
     }
 
-    // Chainspec-based and decorated specs are not NamedReleaseSpec instances, so the fork must come from their marker EIPs.
     [TestCase(MainnetSpecProvider.ShanghaiBlockTimestamp, "shanghai")]
     [TestCase(MainnetSpecProvider.CancunBlockTimestamp, "cancun")]
     [TestCase(MainnetSpecProvider.PragueBlockTimestamp, "prague")]

@@ -22,7 +22,8 @@ public static class SszRestPaths
     /// </summary>
     /// <remarks>
     /// To add support for a new fork, add it as a <see cref="Forks.NamedReleaseSpec"/> with its
-    /// engine-API version overrides and update the <c>latest</c> argument here.
+    /// engine-API version overrides, update the <c>latest</c> argument here, and add its marker to
+    /// <see cref="MatchForkByMarker"/> so chainspec-based specs resolve to it too.
     /// </remarks>
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
         BuildForkSpecsByUrl(Forks.Bogota.Instance);
