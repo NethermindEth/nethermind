@@ -58,6 +58,14 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
+        public void Heavier_shorter_branch_becoming_best_mid_snapshot_does_not_recalculate_progress() =>
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfAHeavierShorterBranchBecomesBestDuringTheSnapshot()
+                .PeersFromDesirableBranchAreKnown()
+                .WhenFullArchiveSyncIsConfigured()
+                .TheSyncModeShouldBe(SyncMode.WaitingForBlock);
+
+        [Test]
         public void Simple_fast_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
                 .AndGoodPeersAreKnown()

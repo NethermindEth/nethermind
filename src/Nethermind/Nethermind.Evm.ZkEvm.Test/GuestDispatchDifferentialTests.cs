@@ -9,11 +9,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.ZkEvm.Test;
@@ -38,6 +40,7 @@ public class GuestDispatchDifferentialTests
     /// <summary>Forks either side of the gates on the opcodes the guest handlers cover, and the next one.</summary>
     /// <remarks>The guest installs its handlers on every spec, so a fork that gates or reprices one of them has to be here.</remarks>
     private static readonly IReleaseSpec[] Forks = [Byzantium.Instance, Constantinople.Instance, Shanghai.Instance, ReleaseSpec, Amsterdam.Instance];
+    private static readonly IReleaseSpec[] StorageLoadForks = [ReleaseSpec, Amsterdam.Instance];
     private static readonly BlockHeader Header = new(Hash256.Zero, Hash256.Zero, Address.Zero, UInt256.Zero, 1, 30_000_000, 1, []);
 
     public enum Table { Untraced, Cancelable, Traced }
@@ -141,6 +144,197 @@ public class GuestDispatchDifferentialTests
             Assert.That(outcome.Head, Is.EqualTo((nint)1));
             Assert.That(outcome.Stack, Is.EqualTo(pushed.Stack));
         }
+    }
+
+    /// <remarks>
+    /// The operands lean on the limb and sign boundaries the guest's arithmetic splits its cases on; each result is
+    /// stored to memory, and the gas each program leaves tells a charge that differs.
+    /// </remarks>
+    [Test]
+    public void Arithmetic_matches_the_shared_handlers(
+        [Values(Instruction.MUL, Instruction.DIV, Instruction.SDIV, Instruction.MOD, Instruction.SMOD, Instruction.ADDMOD, Instruction.MULMOD,
+            Instruction.SIGNEXTEND, Instruction.NOT, Instruction.BYTE, Instruction.SHL, Instruction.SHR, Instruction.SAR)] Instruction op,
+        [Range(0, 3)] int seed)
+    {
+        List<string> mismatches = [];
+        Random random = new(seed * 7919 + (int)op);
+        for (int i = 0; i < 400 && mismatches.Count < 5; i++)
+        {
+            List<byte> code = [];
+            for (int operand = 0; operand < 3; operand++)
+                code.AddRange([(byte)Instruction.PUSH32, .. EdgeWord(random)]);
+            code.AddRange([(byte)op, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP]);
+            byte[] program = [.. code];
+
+            Outcome untraced = Run(100_000, [], 0, new CodeInfo(program), Table.Untraced);
+            Outcome traced = Run(100_000, [], 0, new CodeInfo(program), Table.Traced);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"code {Convert.ToHexString(program)}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <remarks>
+    /// The second load of a key finds it warm, and every amount of gas up to the program's need puts the end of the
+    /// gas inside each cold and warm charge, up to what the traced table charges for the loads on each fork. The guest
+    /// builds one table for the first fork it prepares, so on EIP-8038 this checks that whichever SLOAD handler the
+    /// table holds charges that fork's costs, not that the guest one stays out.
+    /// </remarks>
+    [Test]
+    public void Storage_loads_match_the_shared_handlers([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec, [Values] bool fromEmptyStack)
+    {
+        byte[] loads =
+        [
+            (byte)Instruction.PUSH1, 5, (byte)Instruction.SLOAD, (byte)Instruction.PUSH1, 6, (byte)Instruction.SLOAD,
+            (byte)Instruction.PUSH1, 5, (byte)Instruction.SLOAD, (byte)Instruction.ADD, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        byte[] code = fromEmptyStack ? [(byte)Instruction.SLOAD] : loads;
+        const ulong ample = 100_000;
+        ulong needed = ample - Run(ample, [], 0, new CodeInfo(loads), Table.Traced, spec, loadsStorage: true).GasLeft;
+        UInt256 expected = StorageValueAt(5) * 2 + StorageValueAt(6);
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, spec, loadsStorage: true);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, spec, loadsStorage: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (fromEmptyStack)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StackUnderflow));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(expected.ToBigEndian())));
+            }
+        }
+    }
+
+    /// <remarks>EIP-8038 SLOAD gas equals EIP-2929's, so only the table itself shows that the guest handler stays out.</remarks>
+    [Test]
+    public void Guest_storage_load_handler_is_installed_until_eip8038([ValueSource(nameof(StorageLoadForks))] IReleaseSpec spec) =>
+        Assert.That(VirtualMachine<EthereumGasPolicy>.LoadsStorageThroughGuestHandlerForTests(spec), Is.EqualTo(!spec.IsEip8038Enabled));
+
+    /// <remarks>
+    /// Every amount of gas up to the program's need puts the end of the gas inside each charge. In a static frame the
+    /// TSTORE faults instead.
+    /// </remarks>
+    [Test]
+    public void Transient_storage_matches_the_shared_handlers([Values] bool isStatic)
+    {
+        byte[] code =
+        [
+            (byte)Instruction.PUSH1, 9, (byte)Instruction.PUSH1, 4, (byte)Instruction.TSTORE,
+            (byte)Instruction.PUSH1, 4, (byte)Instruction.TLOAD, (byte)Instruction.PUSH1, 5, (byte)Instruction.TLOAD, (byte)Instruction.ADD,
+            (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE, (byte)Instruction.STOP
+        ];
+        const ulong needed = 3 + 3 + 100 + 3 + 100 + 3 + 100 + 3 + 3 + 3 + 3;
+
+        List<string> mismatches = [];
+        for (ulong gas = 0; gas <= needed && mismatches.Count < 5; gas++)
+        {
+            Outcome untraced = Run(gas, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
+            Outcome traced = Run(gas, [], 0, new CodeInfo(code), Table.Traced, loadsStorage: true, isStatic: isStatic);
+            if (!Matches(untraced, traced))
+                mismatches.Add($"gas {gas}\n untraced {untraced}\n traced   {traced}");
+        }
+
+        Outcome complete = Run(needed, [], 0, new CodeInfo(code), Table.Untraced, loadsStorage: true, isStatic: isStatic);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mismatches, Is.Empty);
+            if (isStatic)
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.StaticCallViolation));
+            }
+            else
+            {
+                Assert.That(complete.Exception, Is.EqualTo(EvmExceptionType.Stop));
+                Assert.That(complete.GasLeft, Is.Zero);
+                Assert.That(complete.Memory, Is.EqualTo(Convert.ToHexString(((UInt256)9).ToBigEndian())));
+            }
+        }
+    }
+
+    /// <remarks>
+    /// Memory starts empty, holds one word at 0, or holds words up to 0x120, so a copy lands inside the initialized
+    /// memory, past it with a gap, or at the end of the inline backing. Each copy also runs one and three gas short of
+    /// its need, which puts the end of the gas inside its word and expansion charges.
+    /// </remarks>
+    [Test]
+    public void Data_copies_match_the_shared_handlers([Values(Instruction.CALLDATACOPY, Instruction.RETURNDATACOPY)] Instruction op, [Values(0, 1, 2)] int memory)
+    {
+        byte[] data = new byte[40];
+        for (int i = 0; i < data.Length; i++) data[i] = (byte)(i + 1);
+        byte[] prefix = memory switch
+        {
+            0 => [],
+            1 => [(byte)Instruction.PUSH1, 0xaa, (byte)Instruction.PUSH1, 0, (byte)Instruction.MSTORE],
+            _ => [(byte)Instruction.PUSH1, 0xbb, (byte)Instruction.PUSH2, 0x01, 0x00, (byte)Instruction.MSTORE],
+        };
+        UInt256[] destinations = [0, 7, 0x20, 0x40, 0x61, 0x120, 0x3f0, 0x400, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sources = [0, 5, 39, 40, 41, UInt256.One << 32, UInt256.One << 64];
+        UInt256[] sizes = [0, 1, 31, 32, 33, 64, 200, UInt256.One << 32];
+
+        List<string> mismatches = [];
+        foreach (UInt256 destination in destinations)
+            foreach (UInt256 source in sources)
+                foreach (UInt256 size in sizes)
+                {
+                    byte[] code =
+                    [
+                        .. prefix, (byte)Instruction.PUSH32, .. size.ToBigEndian(), (byte)Instruction.PUSH32, .. source.ToBigEndian(),
+                        (byte)Instruction.PUSH32, .. destination.ToBigEndian(), (byte)op, (byte)Instruction.MSIZE, (byte)Instruction.STOP
+                    ];
+                    Outcome fresh = Run(100_000, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
+                    ulong needed = 100_000 - fresh.GasLeft;
+                    foreach (ulong gas in (ulong[])[100_000, needed, needed - 1, needed - 3])
+                    {
+                        Outcome untraced = Run(gas, data, 0, new CodeInfo(code), Table.Untraced, returnData: data);
+                        Outcome traced = Run(gas, data, 0, new CodeInfo(code), Table.Traced, returnData: data);
+                        if (!Matches(untraced, traced) && mismatches.Count < 5)
+                            mismatches.Add($"gas {gas} code {Convert.ToHexString(code)}\n untraced {untraced}\n traced   {traced}");
+                    }
+                }
+
+        Assert.That(mismatches, Is.Empty);
+    }
+
+    /// <summary>A big-endian word drawn mostly from the values arithmetic splits its cases on.</summary>
+    private static byte[] EdgeWord(Random random)
+    {
+        UInt256 word = random.Next(12) switch
+        {
+            0 => UInt256.Zero,
+            1 => UInt256.One,
+            2 => UInt256.MaxValue,
+            3 => UInt256.One << 255,
+            4 => (UInt256.One << 255) - 1,
+            5 => UInt256.One << random.Next(256),
+            6 => (UInt256.One << random.Next(1, 256)) - 1,
+            7 => UInt256.MaxValue - (ulong)random.Next(0, 300),
+            8 => (ulong)random.Next(0, 300),
+            _ => RandomWord(random) >> (64 * random.Next(4)),
+        };
+        return word.ToBigEndian();
+    }
+
+    private static UInt256 RandomWord(Random random)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        random.NextBytes(bytes);
+        return new UInt256(bytes, isBigEndian: true);
     }
 
     private static bool IsFault(EvmExceptionType exception) => exception is not (EvmExceptionType.None or EvmExceptionType.Stop);
@@ -270,12 +464,13 @@ public class GuestDispatchDifferentialTests
 
     /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
     private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
-        EthereumGasPolicy? initial = null)
+        bool loadsStorage = false, byte[]? returnData = null, bool isStatic = false, EthereumGasPolicy? initial = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
+        if (returnData is not null) vm.ReturnDataBuffer = returnData;
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
         using VmState<EthereumGasPolicy> frame = VmState<EthereumGasPolicy>.RentTopLevel(
-            EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default);
+            EthereumGasPolicy.FromULong(gas), ExecutionType.TRANSACTION, env, new StackAccessTracker(), default, isStatic);
         vm.Enter(frame);
 
         // A 32-byte aligned stack, as the dispatch loop hands the chain, filled with words small and large.
@@ -309,7 +504,9 @@ public class GuestDispatchDifferentialTests
             new ReadOnlySpan<nint>(source, handlers.Length).CopyTo(handlers);
         for (int opcode = 0; opcode < handlers.Length; opcode++)
         {
-            if (NeedsWorldStateOrHash((Instruction)opcode))
+            if (NeedsWorldStateOrHash((Instruction)opcode) &&
+                !(loadsStorage && (Instruction)opcode is Instruction.SLOAD or Instruction.TLOAD or Instruction.TSTORE) &&
+                !(returnData is not null && (Instruction)opcode is Instruction.RETURNDATASIZE or Instruction.RETURNDATACOPY))
                 handlers[opcode] = handlers[(int)Instruction.INVALID];
         }
 
@@ -341,6 +538,9 @@ public class GuestDispatchDifferentialTests
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
     }
 
+    /// <summary>The value every test world state holds at <paramref name="key"/>.</summary>
+    private static UInt256 StorageValueAt(UInt256 key) => key * 7 + 3;
+
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
         opcode is Instruction.KECCAK256 or Instruction.SLOAD or Instruction.SSTORE or Instruction.TLOAD or Instruction.TSTORE ||
         (opcode is >= Instruction.ADDRESS and <= (Instruction)0x4f &&
@@ -356,6 +556,14 @@ public class GuestDispatchDifferentialTests
         {
             SetBlockExecutionContext(new BlockExecutionContext(Header, spec));
             _txTracer = new SilentTracer();
+            _worldState = Substitute.For<IWorldState>();
+            _worldState.When(static state => state.Get(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(static call => call[1] = StorageValueAt(((StorageCell)call[0]).Index));
+            Dictionary<StorageCell, UInt256> transient = [];
+            _worldState.When(static state => state.SetTransientState(Arg.Any<StorageCell>(), Arg.Any<UInt256>()))
+                .Do(call => transient[(StorageCell)call[0]] = (UInt256)call[1]);
+            _worldState.When(static state => state.GetTransientState(Arg.Any<StorageCell>(), out Arg.Any<UInt256>()))
+                .Do(call => call[1] = transient.GetValueOrDefault((StorageCell)call[0]));
         }
 
         /// <summary>The tracer the traced table reports to, which records nothing.</summary>
