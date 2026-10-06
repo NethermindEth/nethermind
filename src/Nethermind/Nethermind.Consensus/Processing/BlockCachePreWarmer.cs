@@ -1254,7 +1254,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         return true;
     }
 
-    private static void WarmupSingleTransaction(
+    /// <returns>Whether the scope may warm the next transaction: <c>false</c> once the main thread overtook this one mid-run.</returns>
+    private static bool WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
@@ -1265,7 +1266,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return true;
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1307,10 +1308,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         {
             // The pass ended mid-transaction; the caller disposes the scope without running anything else on it.
         }
+        catch (OperationCanceledException) when (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+        {
+            return false;
+        }
         catch (Exception ex)
         {
             blockState.PreWarmer._logger.DebugError($"Error pre-warming cache {tx.Hash}", ex);
         }
+
+        return true;
+    }
+
+    /// <summary>Stops a warm transaction once the main thread starts it, so the worker moves on to what lies ahead.</summary>
+    private sealed class OvertakenTxTracer(BlockCachePreWarmer preWarmer, CancellationToken token)
+        : CancellationTxTracer(NullTxTracer.Instance, token), ITxTracer
+    {
+        public int TxIndex;
+
+        bool ITxTracer.IsCancelled => IsCancelled || preWarmer.MainThreadTxIndex >= TxIndex;
     }
 
     internal const int MinCalldataWordsForAddressWarm = 8;
@@ -2297,16 +2313,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
 
             CancellationToken token = _queue.Token;
-            // Each job builds and disposes its own scope, so no speculative state crosses jobs.
-            using IReadOnlyTxProcessingScope scope = _env!.BuildAtTarget(blockState.Block.Header);
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
-            scope.TransactionProcessor.SetBlockExecutionContext(context);
-            CancellationTxTracer tracer = _queue.Tracer;
-
-            foreach ((int txIndex, Transaction tx) in transactions)
+            OvertakenTxTracer tracer = new(blockState.PreWarmer, token);
+            // Each job builds and disposes its own scope, so no speculative state crosses jobs.
+            IReadOnlyTxProcessingScope? scope = null;
+            try
             {
-                if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token);
+                foreach ((int txIndex, Transaction tx) in transactions)
+                {
+                    if (token.IsCancellationRequested) return;
+                    if (scope is null)
+                    {
+                        scope = _env!.BuildAtTarget(blockState.Block.Header);
+                        scope.TransactionProcessor.SetBlockExecutionContext(context);
+                    }
+
+                    tracer.TxIndex = txIndex;
+                    if (WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token)) continue;
+                    scope.Dispose();
+                    scope = null;
+                }
+            }
+            finally
+            {
+                scope?.Dispose();
             }
         }
 
