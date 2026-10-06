@@ -65,16 +65,8 @@ public class TransitionTests
             // Only the last block of an invalid vector may be rejected; every earlier one is part of the valid prefix.
             if (!expectSuccess && i == blocksCount - 1)
             {
-                Exception? thrown = null;
-                try
-                {
-                    ForkedStateTransition.Apply(state, block, cache, pubkeys, notifier, spec, verifySignatures: verifySignatures);
-                }
-                catch (Exception ex)
-                {
-                    thrown = ex;
-                }
-
+                Exception? thrown = ForkChoiceStepDriver.Attempt(() =>
+                    ForkedStateTransition.Apply(state, block, cache, pubkeys, notifier, spec, verifySignatures: verifySignatures));
                 FuluDriverSupport.AssertRejected(thrown, $"block {i}");
                 return;
             }
