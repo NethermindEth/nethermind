@@ -39,9 +39,9 @@ public class SanityTests
     public void Every_fork_and_sub_suite_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented()
     {
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<SanityCase>(ConsensusPreset.Mainnet, MinimalBlockCases, MainnetBlockCases), static testCase => testCase.Fork, RunBlocks);
+            FuluDriverSupport.TestedCases<SanityCase>(FuluDriverSupport.CompiledPreset, MinimalBlockCases, MainnetBlockCases), static testCase => testCase.Fork, RunBlocks);
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<SanityCase>(ConsensusPreset.Mainnet, MinimalSlotCases, MainnetSlotCases), static testCase => testCase.Fork, RunSlots);
+            FuluDriverSupport.TestedCases<SanityCase>(FuluDriverSupport.CompiledPreset, MinimalSlotCases, MainnetSlotCases), static testCase => testCase.Fork, RunSlots);
     }
 
     private static void ExecuteBlocks(SanityCase testCase) =>
@@ -49,7 +49,7 @@ public class SanityTests
 
     internal static void RunBlocks(SanityCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         FuluDriverSupport.Dispatch(testCase.Fork, testCase, RunBlocks, RunBlocks);
     }
 
@@ -81,7 +81,7 @@ public class SanityTests
 
     private static void RunSlots(SanityCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         FuluDriverSupport.Dispatch(testCase.Fork, testCase, RunSlots, RunSlots);
     }
 

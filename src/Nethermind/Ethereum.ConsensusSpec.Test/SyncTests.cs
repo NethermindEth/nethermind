@@ -19,14 +19,14 @@ public class SyncTests
     [Test]
     public void Every_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases), static testCase => testCase.VectorName.Split('/')[3], Run);
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases), static testCase => testCase.VectorName.Split('/')[3], Run);
 
     private static void Execute(ForkChoiceCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord("sync", "fulu", testCase.Preset, testCase.VectorName, () => Run(testCase));
 
     private static void Run(ForkChoiceCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         ForkChoiceStepDriver.Run(testCase.CasePath);
     }
 

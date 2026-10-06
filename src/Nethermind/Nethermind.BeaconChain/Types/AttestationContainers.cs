@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
@@ -23,7 +24,7 @@ public partial class AttestationData
 public partial class IndexedAttestation
 {
     /// <remarks>Limit is <c>MAX_VALIDATORS_PER_COMMITTEE * MAX_COMMITTEES_PER_SLOT</c> (EIP-7549).</remarks>
-    [SszList(131_072)]
+    [SszList(Presets.MaxValidatorsPerSlot)]
     public ulong[]? AttestingIndices { get; set; }
     public AttestationData? Data { get; set; }
     public BlsSignature Signature { get; set; }
@@ -33,11 +34,11 @@ public partial class IndexedAttestation
 [SszContainer]
 public partial class Attestation
 {
-    [SszList(131_072)]
+    [SszList(Presets.MaxValidatorsPerSlot)]
     public BitArray? AggregationBits { get; set; }
     public AttestationData? Data { get; set; }
     public BlsSignature Signature { get; set; }
-    [SszVector(64)]
+    [SszVector(Presets.MaxCommitteesPerSlot)]
     public BitArray? CommitteeBits { get; set; }
 }
 

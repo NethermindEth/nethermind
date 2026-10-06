@@ -57,6 +57,7 @@
   </Folder>
   <Project Path="Ethereum.Abi.Test/Ethereum.Abi.Test.csproj" />
   <Project Path="Ethereum.ConsensusSpec.Test/Ethereum.ConsensusSpec.Test.csproj" />
+  <Project Path="Ethereum.ConsensusSpec.Minimal.Test/Ethereum.ConsensusSpec.Minimal.Test.csproj" />
   <Project Path="Ethereum.Basic.Test/Ethereum.Basic.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Block.Test/Ethereum.Blockchain.Block.Test.csproj" />
   <Project Path="Ethereum.Blockchain.Pyspec.Test/Ethereum.Blockchain.Pyspec.Test.csproj" />

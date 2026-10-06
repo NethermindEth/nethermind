@@ -235,7 +235,7 @@ public static partial class BlockProcessing
             throw new BeaconStateException($"Execution payload was rejected by the execution layer ({executionStatus})");
 
         Transaction.MerkleizeList(payload.Transactions ?? [], 1_048_576UL, out UInt256 transactionsRoot);
-        Withdrawal.MerkleizeList(payload.Withdrawals ?? [], 16UL, out UInt256 withdrawalsRoot);
+        Withdrawal.MerkleizeList(payload.Withdrawals ?? [], (ulong)Presets.MaxWithdrawalsPerPayload, out UInt256 withdrawalsRoot);
         state.LatestExecutionPayloadHeader = new ExecutionPayloadHeader
         {
             ParentHash = payload.ParentHash,

@@ -32,7 +32,7 @@ public class MerkleProofTests
     [Test]
     public void Fulu_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            [.. FuluDriverSupport.TestedCases<MerkleProofCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases).Where(static testCase => testCase.Fork == "fulu")],
+            [.. FuluDriverSupport.TestedCases<MerkleProofCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases).Where(static testCase => testCase.Fork == "fulu")],
             static testCase => testCase.Fork,
             Run);
 
@@ -41,7 +41,7 @@ public class MerkleProofTests
 
     private static void Run(MerkleProofCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         string proofName = Path.GetFileName(testCase.CasePath).Split("__")[0];
         if (testCase.Fork != "fulu" || proofName != "blob_kzg_commitments_merkle_proof")
             throw new NotImplementedInDriverException($"{testCase.Fork} {proofName} proves a leaf no code in this node verifies.");

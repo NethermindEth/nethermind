@@ -1242,6 +1242,39 @@ public sealed class ForkChoiceRunner
         return new GloasWeights(this, GetJustifiedBalances(_store.JustifiedCheckpoint)).Of(index, node.PayloadStatus);
     }
 
+    /// <summary>Returns all reachable leaves of the filtered Gloas fork-choice tree, including each payload status.</summary>
+    internal IReadOnlyList<ForkChoiceNode> GetViableHeadNodes()
+    {
+        GetHeadNode();
+        IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
+        bool[] filtered = _protoArray.FilterBlockTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint);
+        int justified = _protoArray.IndexOf(_store.JustifiedCheckpoint.Root)
+            ?? throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} is unknown to fork choice");
+        Stack<(int Index, ForkChoicePayloadStatus Status)> pending = new();
+        pending.Push((justified, ForkChoicePayloadStatus.Pending));
+        List<ForkChoiceNode> leaves = [];
+        while (pending.TryPop(out (int Index, ForkChoicePayloadStatus Status) current))
+        {
+            ProtoNode node = nodes[current.Index];
+            if (current.Status == ForkChoicePayloadStatus.Pending)
+            {
+                pending.Push((current.Index, ForkChoicePayloadStatus.Empty));
+                if (_payloads.Contains(node.Root))
+                    pending.Push((current.Index, ForkChoicePayloadStatus.Full));
+                continue;
+            }
+            bool hasChildren = false;
+            foreach (int child in node.Children)
+            {
+                if (!filtered[child] || nodes[child].ParentPayloadStatus != current.Status) continue;
+                pending.Push((child, ForkChoicePayloadStatus.Pending));
+                hasChildren = true;
+            }
+            if (!hasChildren) leaves.Add(new ForkChoiceNode(node.Root, current.Status));
+        }
+        return leaves;
+    }
+
     private ForkChoiceNode FindGloasHead(JustifiedBalances balances)
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;

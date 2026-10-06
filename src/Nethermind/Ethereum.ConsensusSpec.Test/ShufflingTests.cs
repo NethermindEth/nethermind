@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.Core.Extensions;
 using YamlDotNet.RepresentationModel;
@@ -16,7 +15,7 @@ public class ShufflingTests
     private static readonly IReadOnlyDictionary<ConsensusPreset, int> RoundsByPreset = new Dictionary<ConsensusPreset, int>
     {
         [ConsensusPreset.Minimal] = 10,
-        [ConsensusPreset.Mainnet] = Presets.ShuffleRoundCount,
+        [ConsensusPreset.Mainnet] = 90,
     };
 
     [TestCaseSource(nameof(MinimalCases))]

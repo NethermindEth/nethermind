@@ -4,6 +4,7 @@
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.ForkChoice;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Snappier;
@@ -34,20 +35,24 @@ public class ForkChoiceTests
     [Test]
     public void Every_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases), HandlerOf, Run);
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases), HandlerOf, Run);
 
     private const string FabricationSource = "get_proposer_head/pyspec_tests/basic_is_parent_root";
 
-    private const string AttestingBlock = "block_0x9efbe54f7970373161723e08fb309354c6cfab3cfa15b003c2f9af393f150c43";
-
-    private const ulong TickAtBlockSlot = 33 * 12;
+    private const ulong TickAtBlockSlot = (Presets.SlotsPerEpoch + 1) * Presets.SecondsPerSlot;
 
     /// <summary>Pins optimistic-only body replay for an EL-INVALID refused block (pyspec helpers/fork_choice.py).</summary>
     /// <remarks>Both paths exclude the invalidated block and refuse its child (specs/bellatrix/optimistic-sync.md).</remarks>
     [TestCaseSource(nameof(RefusedBlockCases))]
     public void Refused_block_step_replays_its_body_only_when_refused_optimistically(string refusal, bool executionValid, ulong tick, bool optimistic)
     {
-        byte[] block = ReadFabricationBlock(AttestingBlock);
+        byte[] block = Directory.GetFiles(FabricationSourcePath, "block_*.ssz_snappy")
+            .Select(SszConsensusTestLoader.ReadSszSnappy)
+            .Single(static bytes =>
+            {
+                SignedBeaconBlock.Decode(bytes, out SignedBeaconBlock candidate);
+                return candidate.Message!.Slot == Presets.SlotsPerEpoch + 1;
+            });
         SignedBeaconBlock.Decode(block, out SignedBeaconBlock refused);
         SignedBeaconBlock.Decode(block, out SignedBeaconBlock child);
         child.Message!.ParentRoot = SszRoots.HashTreeRoot(refused.Message!);
@@ -73,7 +78,7 @@ public class ForkChoiceTests
 
     private static IEnumerable<TestCaseData> RefusedBlockCases()
     {
-        if (!ConsensusSpecArchive.MainnetEnabled)
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             yield break;
         yield return new TestCaseData("the execution layer refuses the payload", false, TickAtBlockSlot, false);
         yield return new TestCaseData("fork choice refuses a block from a future slot", true, 0ul, false);
@@ -81,7 +86,7 @@ public class ForkChoiceTests
     }
 
     private static string FabricationSourcePath =>
-        Path.Combine(ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, "fulu", "fork_choice")!, FabricationSource);
+        Path.Combine(ConsensusSpecArchive.SuitePath(FuluDriverSupport.CompiledPreset, "fulu", "fork_choice")!, FabricationSource);
 
     private static byte[] ReadFabricationBlock(string key) =>
         SszConsensusTestLoader.ReadSszSnappy(Path.Combine(FabricationSourcePath, key + ".ssz_snappy"));
@@ -115,14 +120,7 @@ public class ForkChoiceTests
 
     private static void Run(ForkChoiceCase testCase)
     {
-        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-        {
-            throw new NotImplementedInDriverException(
-                "BeaconStateFulu's SSZ shape hard-codes mainnet-preset-scaled vector bounds (see SszStaticTests' " +
-                "BeaconState/Attestation/SyncCommittee entries), so it cannot decode a minimal-preset " +
-                "anchor_state.ssz_snappy at all; this suite only drives fork choice for real against the " +
-                "mainnet preset (opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-        }
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         ForkChoiceStepDriver.Run(testCase.CasePath);
     }

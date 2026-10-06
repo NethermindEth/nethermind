@@ -6,7 +6,6 @@ using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.ForkChoice;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -64,7 +63,8 @@ internal static class ForkChoiceStepDriver
         Hash256 anchorRoot = SszRoots.HashTreeRoot(anchorBlock);
         stateProvider.States[anchorRoot] = anchorState;
 
-        ForkChoiceRunner runner = new(BeaconChainSpec.Mainnet, anchorState, anchorBlock, stateProvider, pubkeys);
+        Nethermind.BeaconChain.Spec.BeaconChainSpec spec = FuluDriverSupport.CaseSpec(casePath);
+        ForkChoiceRunner runner = new(spec, anchorState, anchorBlock, stateProvider, pubkeys);
         bool executionValid = FuluDriverSupport.ReadExecutionValid(casePath);
         Dictionary<Hash256, PayloadInfo> payloadInfos = [];
         blockRejections = [];
@@ -155,7 +155,7 @@ internal static class ForkChoiceStepDriver
             if (stateProvider.States.TryGetValue(block.ParentRoot!, out BeaconStateFulu? parentState))
             {
                 postState = parentState.Clone();
-                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionStatus), BeaconChainSpec.Mainnet, validateResult: true, verifySignatures: true);
+                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionStatus), FuluDriverSupport.CaseSpec(casePath), validateResult: true, verifySignatures: true);
             }
 
             runner.OnBlock(signedBlock, postState ?? stateProvider.Anchor, payloadInfo is null ? ExecutionStatus.Valid : executionStatus, dataColumns);

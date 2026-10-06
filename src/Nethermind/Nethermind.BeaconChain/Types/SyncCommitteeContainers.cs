@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Types;
@@ -10,7 +11,7 @@ namespace Nethermind.BeaconChain.Types;
 [SszContainer]
 public partial class SyncCommittee
 {
-    [SszVector(512)]
+    [SszVector(Presets.SyncCommitteeSize)]
     public BlsPublicKey[]? Pubkeys { get; set; }
     public BlsPublicKey AggregatePubkey { get; set; }
 }
@@ -19,7 +20,7 @@ public partial class SyncCommittee
 [SszContainer]
 public partial class SyncAggregate
 {
-    [SszVector(512)]
+    [SszVector(Presets.SyncCommitteeSize)]
     public BitArray? SyncCommitteeBits { get; set; }
     public BlsSignature SyncCommitteeSignature { get; set; }
 }
