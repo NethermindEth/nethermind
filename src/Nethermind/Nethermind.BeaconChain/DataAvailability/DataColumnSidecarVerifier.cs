@@ -203,7 +203,7 @@ public static class DataColumnSidecarVerifier
     /// <paramref name="branch"/> using <paramref name="index"/>'s bits to pick left/right at each
     /// level, and compares the result to <paramref name="root"/>.
     /// </summary>
-    private static bool IsValidMerkleBranch(ReadOnlySpan<byte> leaf, Hash256[] branch, int depth, int index, ReadOnlySpan<byte> root)
+    internal static bool IsValidMerkleBranch(ReadOnlySpan<byte> leaf, Hash256[] branch, int depth, int index, ReadOnlySpan<byte> root)
     {
         Span<byte> value = stackalloc byte[32];
         leaf.CopyTo(value);
