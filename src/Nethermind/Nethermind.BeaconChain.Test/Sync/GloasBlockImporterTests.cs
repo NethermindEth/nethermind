@@ -969,7 +969,7 @@ public class GloasBlockImporterTests
     {
         ForkChoiceSnapshotHolder snapshots = new();
         DateTime arrival = DateTime.UnixEpoch.AddSeconds(_chain.Spec.GenesisTime + clockSlot * _chain.Spec.SecondsPerSlot).AddMilliseconds(msIntoSlot);
-        SlotClock clock = new(_chain.Spec, new AdvancingTimestamper(arrival, TimeSpan.FromMilliseconds(msPerClockRead)));
+        SlotClock clock = new(_chain.Spec, new IncrementalTimestamper(arrival, TimeSpan.FromMilliseconds(msPerClockRead)));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, clock: clock);
         SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
 
@@ -1570,21 +1570,6 @@ public class GloasBlockImporterTests
         foreach (SignedGloasChain.Block block in blocks)
         {
             Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported), $"fixture: block at slot {block.Signed.Message!.Slot}");
-        }
-    }
-
-    private sealed class AdvancingTimestamper(DateTime start, TimeSpan step) : ITimestamper
-    {
-        private DateTime _now = start;
-
-        public DateTime UtcNow
-        {
-            get
-            {
-                DateTime now = _now;
-                _now += step;
-                return now;
-            }
         }
     }
 }

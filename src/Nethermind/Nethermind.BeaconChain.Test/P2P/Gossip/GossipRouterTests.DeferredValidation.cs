@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.P2P.Gossip;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.Core;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Libp2p.Core;
 using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
@@ -194,29 +195,24 @@ public partial class GossipRouterTests
     [Test]
     public async Task Reservation_of_a_message_never_dispatched_is_released_when_it_expires()
     {
-        SteppedTime time = new(DateTimeOffset.UnixEpoch.AddDays(20_000));
+        ManualTimeProvider time = new();
+        time.JumpUtc(TimeSpan.FromDays(20_000));
         await using DeferredFixture fixture = await DeferredFixture.Create(maxPending: 16, maxPendingBytes: 1 << 20, TimeSpan.FromSeconds(30), time: time);
         string aggregates = GossipTopics.Topic(ForkDigest.Compute(Spec, Spec.GetEpoch(CurrentSlot)), GossipTopics.BeaconAggregateAndProof);
         fixture.Validation.Verify(fixture.Sender, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot)) });
         fixture.Validation.Verify(fixture.Sender, new Message { Topic = aggregates, Data = ByteString.CopyFrom([1]) });
         (int pending, int votes) = (fixture.Validation.Pending, fixture.Validation.PendingVotes);
 
-        time.Now += TimeSpan.FromSeconds(29);
+        time.Advance(TimeSpan.FromSeconds(29));
         fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - 1)) });
         (int pendingBeforeExpiry, int votesBeforeExpiry) = (fixture.Validation.Pending, fixture.Validation.PendingVotes);
-        time.Now += TimeSpan.FromSeconds(3);
+        time.Advance(TimeSpan.FromSeconds(3));
         fixture.Validation.Verify(fixture.Neighbor, new Message { Topic = BlockTopic, Data = ByteString.CopyFrom(BlockMessage(CurrentSlot - 2)) });
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That((pending, votes), Is.EqualTo((1, 1)), "fixture: both messages reserved and never dispatched");
         Assert.That((pendingBeforeExpiry, votesBeforeExpiry), Is.EqualTo((2, 1)), "a reservation lasts as long as the router may still dispatch its message");
         Assert.That((fixture.Validation.Pending, fixture.Validation.PendingVotes), Is.EqualTo((2, 0)), "the expired reservations are released, the later ones kept");
-    }
-
-    private sealed class SteppedTime(DateTimeOffset start) : TimeProvider
-    {
-        public DateTimeOffset Now { get; set; } = start;
-        public override DateTimeOffset GetUtcNow() => Now;
     }
 
     internal static async Task AssertDeferredPeerPenaltyAsync(string name, byte[] payload, Func<GossipVerdict, Task> validate, MessageValidity expected)
