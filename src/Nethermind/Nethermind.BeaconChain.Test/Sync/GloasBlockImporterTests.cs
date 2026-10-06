@@ -143,8 +143,7 @@ public class GloasBlockImporterTests
         ForkChoiceSnapshotHolder snapshots = new();
         SlotClock? clock = clockAtBlock ? new SlotClock(_chain.Spec, new ManualTimestamper(SlotStart(_chain, ForkSlot).AddSeconds(1))) : null;
         BlockImporter importer = _chain.CreateImporter(engine, snapshots: snapshots, clock: clock);
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
 
         HeadView beforeEnvelope = importer.ComputeHead();
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the payload is verified");
@@ -166,8 +165,7 @@ public class GloasBlockImporterTests
     {
         ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
         if (ptcVotedTimely)
         {
@@ -196,8 +194,7 @@ public class GloasBlockImporterTests
     {
         ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         Assert.That(importer.ImportEnvelope(first.Envelope), Is.EqualTo(ExecutionPayloadEnvelopeImportResult.Valid), "fixture: the head's payload is verified");
         PayloadAttestation vote = PtcAttestation(
             first.PostState,
@@ -224,8 +221,7 @@ public class GloasBlockImporterTests
         SlotClock clock = ClockAt(_chain, ForkSlot, millisecondsEarly: 0);
         ForkChoiceSnapshotHolder snapshots = new();
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), snapshots: snapshots, store: store, clock: clock);
-        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, block);
+        SignedGloasChain.Block block = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         SignedGloasChain.Block sibling = _chain.Next(null, ForkSlot, full: false, 0xA2);
         if (!finalizedAncestor)
         {
@@ -433,8 +429,7 @@ public class GloasBlockImporterTests
     public void Head_ptc_is_the_head_states_committee_and_null_where_it_cannot_be_read()
     {
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(importer.GetPtc(first.Root, ForkSlot), Is.EqualTo(first.PostState.GetPtc(ForkSlot, _chain.Spec).Indices));
@@ -447,8 +442,7 @@ public class GloasBlockImporterTests
     {
         ManualTimestamper timestamper = new(SlotStart(_chain, ForkSlot).AddSeconds(1));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, timestamper));
-        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, block);
+        SignedGloasChain.Block block = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         AttesterSlashing slashing = SignedSlashing(_chain, block);
         List<MessageValidity> slashingVerdicts = [];
         GossipVerdict slashingVerdict = new(validity => { slashingVerdicts.Add(validity); return true; }, null);
@@ -485,8 +479,7 @@ public class GloasBlockImporterTests
         SlotClock clock = new(_chain.Spec, timestamper);
         BeaconChainStore store = _chain.CreateStore();
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), store: store, clock: clock);
-        SignedGloasChain.Block block = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, block);
+        SignedGloasChain.Block block = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         timestamper.Set(SlotStart(_chain, ForkSlot + 1));
         GossipRouter router = new(_chain.Spec, clock, LimboLogs.Instance, store);
         string topic;
@@ -1353,8 +1346,7 @@ public class GloasBlockImporterTests
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
         SlotClock? clock = assertion is OnBlockAssertion.CurrentSlot ? ClockAt(_chain, ForkSlot + 1, millisecondsEarly: GossipRouter.MaximumGossipClockDisparityMs + 1) : null;
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)), clock: clock);
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         SignedGloasChain.Block block;
         switch (assertion)
         {
@@ -1414,8 +1406,7 @@ public class GloasBlockImporterTests
         DateTime slotStart = TickFinalityFixture.SlotStart(_chain.Spec, ForkSlot + 1);
         ManualTimestamper time = new(slotStart.AddMilliseconds(-GossipRouter.MaximumGossipClockDisparityMs));
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), clock: new SlotClock(_chain.Spec, time));
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
         SignedGloasChain.Block block = _chain.Next(first, ForkSlot + 1, full: false, 0xA2);
 
         BlockImportResult early = importer.Import(block.Forked, block.Root, verifySignatures: true);
@@ -1509,8 +1500,7 @@ public class GloasBlockImporterTests
     {
         TestLogger logger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
         BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), logManager: new OneLoggerLogManager(new ILogger(logger)));
-        SignedGloasChain.Block first = _chain.Next(null, ForkSlot, full: false, 0xA1);
-        Import(importer, first);
+        SignedGloasChain.Block first = Import(importer, _chain.Next(null, ForkSlot, full: false, 0xA1));
 
         HeadView head = importer.ComputeHead();
 
@@ -1565,11 +1555,12 @@ public class GloasBlockImporterTests
         return blocks;
     }
 
-    private static void Import(BlockImporter importer, params SignedGloasChain.Block[] blocks)
+    private static SignedGloasChain.Block Import(BlockImporter importer, params SignedGloasChain.Block[] blocks)
     {
         foreach (SignedGloasChain.Block block in blocks)
         {
             Assert.That(importer.Import(block.Forked, block.Root, verifySignatures: true), Is.EqualTo(BlockImportResult.Imported), $"fixture: block at slot {block.Signed.Message!.Slot}");
         }
+        return blocks[0];
     }
 }
