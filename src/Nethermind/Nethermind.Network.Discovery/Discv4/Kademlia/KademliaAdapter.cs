@@ -495,6 +495,16 @@ public class KademliaAdapter(
             return;
         }
 
+        bool hasUsableSignedPing = signedPing is
+        {
+            Mdc: not null,
+            FarPublicKey: not null,
+            FarAddress: not null,
+            SourceTcpPort: > 0
+        } ping &&
+            ping.FarPublicKey.Equals(node.Id) &&
+            ping.FarAddress.Equals(discoveryEndpoint);
+
         Node? enrNode = null;
         Node? verifiedEnrNode = null;
         NodeRecord? record = node.Enr;
@@ -509,7 +519,7 @@ public class KademliaAdapter(
             candidate.Id.Equals(node.Id))
         {
             bool endpointMatchesEnr = candidate.HasDiscoveryEndpoint && candidate.DiscoveryAddress.Equals(discoveryEndpoint);
-            if (endpointMatchesEnr || signedPing is not null)
+            if (endpointMatchesEnr || hasUsableSignedPing)
             {
                 candidate.SetVerifiedEnr(record);
                 if (endpointMatchesEnr)
@@ -523,16 +533,7 @@ public class KademliaAdapter(
             }
         }
 
-        bool useSignedPing = signedPing is
-        {
-            Mdc: not null,
-            FarPublicKey: not null,
-            FarAddress: not null,
-            SourceTcpPort: > 0
-        } ping &&
-            ping.FarPublicKey.Equals(node.Id) &&
-            ping.FarAddress.Equals(discoveryEndpoint) &&
-            enrNode is null;
+        bool useSignedPing = hasUsableSignedPing && enrNode is null;
         Node peerCandidate;
         if (useSignedPing)
         {

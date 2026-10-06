@@ -1241,8 +1241,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
             if (Socket.OSSupportsIPv6)
             {
                 Assert.That(RlpxHost.TryCreateAlternateDialNode(peerNode, true, out Node? alternate), Is.True);
-                Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(ipv6Address, 30305)));
-                Assert.That(alternate.DiscoveryAddress, Is.EqualTo(new IPEndPoint(ipv6Address, 30306)));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(alternate!.Address, Is.EqualTo(new IPEndPoint(ipv6Address, 30305)));
+                    Assert.That(alternate.DiscoveryAddress, Is.EqualTo(new IPEndPoint(ipv6Address, 30306)));
+                }
             }
         }
 
