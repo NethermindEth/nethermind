@@ -47,6 +47,10 @@ namespace Nethermind.Init.Modules;
 
 public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
 {
+    /// <summary>The instance count of the debug and trace modules: <paramref name="configured"/>, or the number of
+    /// logical processors capped at 16 when it is unset.</summary>
+    public static int TracingModuleConcurrentInstances(int? configured) => configured ?? Math.Min(Environment.ProcessorCount, 16);
+
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
@@ -112,14 +116,14 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             // Trace
             .AddSingleton<ParallelTraceBudget>()
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
-            // Each instance holds two full block-processing scopes for the life of the process, and they are built on
-            // demand and never released, so the default stays where it was: parallel tracing shares one pool across
-            // instances and does not need more of them. Operators who want more ask for them.
-            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(jsonRpcConfig.TraceModuleConcurrentInstances ?? 2, jsonRpcConfig.Timeout)
+            // Each instance holds two block-processing scopes for the life of the process (about 1.8 MB retained after a
+            // trace on a test chain, against 1.6 MB for a debug instance), and a streamed trace_* response keeps its
+            // instance until it is disposed, so two instances queued every other trace_* call behind the slowest ones.
+            .RegisterBoundedJsonRpcModule<ITraceRpcModule, TraceModuleFactory>(TracingModuleConcurrentInstances(jsonRpcConfig.TraceModuleConcurrentInstances), jsonRpcConfig.Timeout)
                 .AddScoped<ITraceRpcModule, TraceRpcModule>()
 
             // Debug
-            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(jsonRpcConfig.DebugModuleConcurrentInstances ?? Math.Min(Environment.ProcessorCount, 16), jsonRpcConfig.Timeout)
+            .RegisterBoundedJsonRpcModule<IDebugRpcModule, DebugModuleFactory>(TracingModuleConcurrentInstances(jsonRpcConfig.DebugModuleConcurrentInstances), jsonRpcConfig.Timeout)
                 .AddScoped<GethStyleTracer.BlockProcessingComponents>()
                 .AddScoped<IDebugBridge, DebugBridge>()
                 .AddScoped<IDebugRpcModule, DebugRpcModule>()

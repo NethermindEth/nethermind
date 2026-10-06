@@ -144,7 +144,7 @@ public interface IJsonRpcConfig : IConfig
     public int? DebugModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
-        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap return `LimitExceeded`. Each instance holds block-processing environments for the life of the process, so raise it only where the memory is available. Defaults to 2.")]
+        Description = "The number of concurrent instances of the Trace RPC module (`trace_block`, `trace_transaction`, `trace_replay*`, etc.). Calls beyond this cap return `LimitExceeded`. Each instance holds two block-processing environments for the life of the process, so lower it where memory is scarce. Defaults to the number of logical processors capped at 16.")]
     public int? TraceModuleConcurrentInstances { get; set; }
 
     [ConfigItem(
