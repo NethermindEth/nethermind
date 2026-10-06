@@ -32,13 +32,13 @@ internal sealed partial class PersistentStorageProvider
             OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator entries = BlockChange.GetEnumerator();
             while (entries.MoveNext())
             {
-                UInt256 key = entries.CurrentKey;
+                ref readonly UInt256 key = ref entries.CurrentKey.Index;
                 ref StorageChangeTrace change = ref entries.CurrentValue;
                 if (!change.IsPendingWrite)
                 {
                     skipped++;
                 }
-                else if (CommitAndWriteUnlessDelete(key, ref change, storageWriteBatch))
+                else if (CommitAndWriteUnlessDelete(in key, ref change, storageWriteBatch))
                 {
                     writes++;
                 }
