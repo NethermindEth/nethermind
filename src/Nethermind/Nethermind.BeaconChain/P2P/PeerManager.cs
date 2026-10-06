@@ -1336,7 +1336,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return false;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
+        if (_logger.IsDebug) _logger.Debug($"Connected to beacon chain peer {address} ({info.Direction.ToString().ToLowerInvariant()}, head slot {peer.HeadSlot})");
         await RefreshCustodyAsync(peer, token, AdmissionMetadataTimeout);
         // The dial then records a failure: a success would clear the backoff the close of a peer that broke the protocol set (see RecordClosedSession).
         if (peer.RemovedOnClose)
@@ -1860,7 +1860,7 @@ public class PeerManager : IBeaconSyncPeerPool, IPeerDirectory
             return;
         }
 
-        if (_logger.IsInfo) _logger.Info($"Beacon chain peer {peer.Id} disconnected: {SessionClosedDetail}");
+        if (_logger.IsDebug) _logger.Debug($"Beacon chain peer {peer.Id} disconnected: {SessionClosedDetail}");
         Interlocked.Increment(ref Metrics.PeersDroppedCount);
         Metrics.BeaconChainPeersDroppedByReason.Increment(new StringLabel(SessionClosedLabel));
         peer.RecordClose();
