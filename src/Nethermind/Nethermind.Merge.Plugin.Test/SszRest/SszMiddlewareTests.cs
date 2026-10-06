@@ -31,6 +31,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Core;
@@ -131,6 +133,44 @@ public class SszMiddlewareTests
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
         ];
+
+    private static ChainSpecBasedSpecProvider CreateChainSpecProvider() => new(new ChainSpec
+    {
+        ChainId = 12345,
+        Parameters = new ChainParameters
+        {
+            TerminalTotalDifficulty = UInt256.Zero,
+            Eip4895TransitionTimestamp = 1_000,
+            Eip4844TransitionTimestamp = 2_000,
+            Eip6110TransitionTimestamp = 3_000,
+            Eip7594TransitionTimestamp = 4_000,
+            Eip7928TransitionTimestamp = 6_000,
+            Eip7805TransitionTimestamp = 7_000,
+            BlobSchedule =
+            [
+                new BlobScheduleSettings { Timestamp = 4_500, Target = 9, Max = 15 },
+                new BlobScheduleSettings { Timestamp = 5_000, Target = 12, Max = 21 },
+            ],
+        }
+    });
+
+    [TestCase(999UL, "paris")]
+    [TestCase(1_000UL, "shanghai")]
+    [TestCase(1_999UL, "shanghai")]
+    [TestCase(2_000UL, "cancun")]
+    [TestCase(3_000UL, "prague")]
+    [TestCase(4_000UL, "osaka")]
+    [TestCase(4_500UL, "osaka")]
+    [TestCase(5_000UL, "osaka")]
+    [TestCase(6_000UL, "amsterdam")]
+    [TestCase(7_000UL, "bogota")]
+    public void Chain_spec_release_resolves_engine_api_fork(ulong timestamp, string expectedFork)
+    {
+        ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();
+        IReleaseSpec spec = provider.GetSpec(ForkActivation.TimestampOnly(timestamp));
+
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
+    }
 
     // A resource mapped to a method version with no registered handler is advertised and recognised but
     // unservable, and nothing else catches that since the handler set is assembled by hand.
@@ -525,7 +565,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task GetPayloadBodiesByHash_marks_out_of_fork_blocks_unavailable()
+    public async Task GetPayloadBodiesByHash_marks_out_of_fork_blocks_unavailable([Values] bool chainSpecBased)
     {
         Hash256 inFork = TestItem.KeccakA;
         Hash256 outOfFork = TestItem.KeccakB;
@@ -537,8 +577,16 @@ public class SszMiddlewareTests
         BlockHeader cancunHeader = Build.A.BlockHeader.WithNumber(20).WithTimestamp(2_000UL).TestObject;
         _blockFinder.FindHeader(inFork).Returns(shanghaiHeader);
         _blockFinder.FindHeader(outOfFork).Returns(cancunHeader);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(Shanghai.Instance);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(Cancun.Instance);
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(Shanghai.Instance);
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(Cancun.Instance);
+        }
 
         byte[] body = BuildPayloadBodiesByHashRequest([inFork, outOfFork]);
         DefaultHttpContext ctx = MakePostContext("/engine/v1/bodies/hash", body, fork: "shanghai");
@@ -554,6 +602,33 @@ public class SszMiddlewareTests
             Assert.That(decoded.Entries, Has.Length.EqualTo(2));
             Assert.That(decoded.Entries![0].Available, Is.True, "Shanghai block at /shanghai/bodies must stay available");
             Assert.That(decoded.Entries[1].Available, Is.False, "Cancun block at /shanghai/bodies must surface as unavailable");
+        }
+    }
+
+    [Test]
+    public async Task GetPayloadBodiesByRange_marks_out_of_fork_chainspec_blocks_unavailable()
+    {
+        _specProvider = CreateChainSpecProvider();
+        _middleware = BuildMiddleware();
+        _engineModule.engine_getPayloadBodiesByRangeV1(10, 2)
+            .Returns(ResultWrapper<IReadOnlyList<ExecutionPayloadBodyV1Result?>>.Success(
+                [new ExecutionPayloadBodyV1Result([], null), new ExecutionPayloadBodyV1Result([], null)]));
+
+        _blockFinder.FindHeader(10UL).Returns(Build.A.BlockHeader.WithNumber(10).WithTimestamp(1_000UL).TestObject);
+        _blockFinder.FindHeader(11UL).Returns(Build.A.BlockHeader.WithNumber(11).WithTimestamp(2_000UL).TestObject);
+
+        DefaultHttpContext ctx = MakeGetContext("/engine/v1/bodies", fork: "shanghai");
+        ctx.Request.QueryString = new QueryString("?from=10&count=2");
+
+        await _middleware.InvokeAsync(ctx);
+
+        PayloadBodiesV1ResponseWire.Decode(new ReadOnlySequence<byte>(ResponseBytes(ctx)), out PayloadBodiesV1ResponseWire decoded);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+            Assert.That(decoded.Entries, Has.Length.EqualTo(2));
+            Assert.That(decoded.Entries![0].Available, Is.True);
+            Assert.That(decoded.Entries[1].Available, Is.False);
         }
     }
 
@@ -1000,7 +1075,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Forkchoice_unsupported_fork_returns_400()
+    public async Task Forkchoice_unsupported_fork_returns_400([Values] bool chainSpecBased)
     {
         IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
         IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
@@ -1018,6 +1093,12 @@ public class SszMiddlewareTests
         _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == shanghaiTs)).Returns(shanghaiSpec);
         _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == cancunTs)).Returns(cancunSpec);
         _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs)).Returns(shanghaiSpec);
+
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
 
         ForkchoiceUpdatedV3RequestWire request = new()
         {
@@ -1080,7 +1161,7 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Forkchoice_payload_in_BPO_fork_routes_to_parent_url()
+    public async Task Forkchoice_payload_in_BPO_fork_routes_to_parent_url([Values] bool chainSpecBased)
     {
         ForkchoiceUpdatedV1Result fcuResult = new()
         {
@@ -1089,9 +1170,17 @@ public class SszMiddlewareTests
         _engineModule.engine_forkchoiceUpdatedV3(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>())
             .Returns(ResultWrapper<ForkchoiceUpdatedV1Result>.Success(fcuResult));
 
-        const ulong payloadTs = 1_000UL;
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
-            .Returns(BPO1.Instance);
+        const ulong payloadTs = 5_000UL;
+        if (chainSpecBased)
+        {
+            _specProvider = CreateChainSpecProvider();
+            _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
+                .Returns(BPO1.Instance);
+        }
 
         ForkchoiceUpdatedV3RequestWire request = new()
         {

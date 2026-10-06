@@ -168,14 +168,26 @@ public static class SszRestPaths
     }
 
     /// <summary>
-    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface, walking up the
-    /// parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>). Matched
+    /// Returns the fork name that owns <paramref name="spec"/>'s engine API surface. Named forks
+    /// walk up the parent chain so BPO forks resolve to their parent (e.g. <c>bpo1 → osaka</c>);
+    /// chainspec releases use their fork marker EIPs. Matched
     /// case-insensitively against the <c>Eth-Execution-Version</c> value, so it is returned as-is
     /// (no per-call lowercasing).
     /// </summary>
     public static string? GetEngineApiForkName(IReleaseSpec spec)
     {
-        for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
+        if (spec is not Forks.NamedReleaseSpec named)
+        {
+            if (spec.IsBogotaEnabled) return "bogota";
+            if (spec.IsAmsterdamEnabled) return "amsterdam";
+            if (spec.IsOsakaEnabled) return "osaka";
+            if (spec.IsPragueEnabled) return "prague";
+            if (spec.IsCancunEnabled) return "cancun";
+            if (spec.IsShanghaiEnabled) return "shanghai";
+            return "paris";
+        }
+
+        for (Forks.NamedReleaseSpec? n = named; n is not null; n = n.Parent)
         {
             if (n.Name is { } name && _forkSpecByUrl.ContainsKey(name))
                 return name;
