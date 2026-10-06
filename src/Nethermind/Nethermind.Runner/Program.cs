@@ -157,6 +157,7 @@ async Task<int> RunAsync(ParseResult parseResult, PluginLoader pluginLoader, Can
 {
     IConfigProvider configProvider = CreateConfigProvider(parseResult);
     IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
+    SensitiveLogMasking.Enabled = initConfig.MaskSensitiveData;
     IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
     ISnapshotConfig snapshotConfig = configProvider.GetConfig<ISnapshotConfig>();
     IPluginConfig pluginConfig = configProvider.GetConfig<IPluginConfig>();

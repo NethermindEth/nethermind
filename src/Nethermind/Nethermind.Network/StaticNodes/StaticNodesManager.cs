@@ -32,7 +32,7 @@ public class StaticNodesManager(string staticNodesPath, ILogManager logManager) 
     public async Task<bool> AddAsync(NetworkNode networkNode, bool updateFile = true, CancellationToken cancellationToken = default)
     {
         bool added = TryAddNode(networkNode);
-        if (_logger.IsInfo) _logger.Info(added ? $"Static node added: {networkNode}" : $"Static node was already added: {networkNode}");
+        if (_logger.IsInfo) _logger.Info($"Static node {(added ? "added" : "was already added")}: {networkNode:sensitive}");
 
         if (added)
         {

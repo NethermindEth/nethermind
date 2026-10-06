@@ -7,6 +7,72 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Logging;
 
 /// <summary>
+/// Formats informational log messages, masking fields marked with <c>:sensitive</c> when enabled.
+/// </summary>
+[InterpolatedStringHandler]
+public ref struct InfoInterpolatedStringHandler
+{
+    private DefaultInterpolatedStringHandler _inner;
+    private readonly bool _maskSensitiveData;
+
+    public InfoInterpolatedStringHandler(int literalLength, int formattedCount, ILogger logger, out bool shouldAppend)
+    {
+        shouldAppend = logger.IsInfo;
+        _inner = shouldAppend
+            ? new DefaultInterpolatedStringHandler(literalLength, formattedCount)
+            : default;
+        _maskSensitiveData = SensitiveLogMasking.Enabled;
+    }
+
+    public void AppendLiteral(string value) => _inner.AppendLiteral(value);
+    public void AppendFormatted<T>(T value) => _inner.AppendFormatted(value);
+    public void AppendFormatted<T>(T value, int alignment) => _inner.AppendFormatted(value, alignment);
+    public void AppendFormatted(string? value) => _inner.AppendFormatted(value);
+    public void AppendFormatted(ReadOnlySpan<char> value) => _inner.AppendFormatted(value);
+
+    public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string? format = null)
+    {
+        if (format is "sensitive")
+        {
+            if (_maskSensitiveData) _inner.AppendFormatted("[redacted]", alignment);
+            else _inner.AppendFormatted(value, alignment, null);
+        }
+        else
+        {
+            _inner.AppendFormatted(value, alignment, format);
+        }
+    }
+
+    public void AppendFormatted<T>(T value, string? format)
+    {
+        if (format is "sensitive")
+        {
+            if (_maskSensitiveData) _inner.AppendLiteral("[redacted]");
+            else _inner.AppendFormatted(value);
+        }
+        else
+        {
+            _inner.AppendFormatted(value, format);
+        }
+    }
+
+    public void AppendFormatted<T>(T value, int alignment, string? format)
+    {
+        if (format is "sensitive")
+        {
+            if (_maskSensitiveData) _inner.AppendFormatted("[redacted]", alignment);
+            else _inner.AppendFormatted(value, alignment);
+        }
+        else
+        {
+            _inner.AppendFormatted(value, alignment, format);
+        }
+    }
+
+    public string ToStringAndClear() => _inner.ToStringAndClear();
+}
+
+/// <summary>
 /// Interpolated string handler for <see cref="ILogger.DebugError"/> / <see cref="ILogger.DebugWarn"/>.
 /// When <see cref="ILogger.IsDebug"/> is false the compiler skips all AppendLiteral/AppendFormatted
 /// calls entirely, so the interpolation pays no allocation cost. The caller method is responsible

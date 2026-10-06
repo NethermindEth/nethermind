@@ -68,6 +68,15 @@ public struct ILogger : IEquatable<ILogger>
         if (IsInfo) _logger.Info(text);
     }
 
+    /// <summary>
+    /// Logs an interpolated informational message and optionally masks fields marked with <c>:sensitive</c>.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    public readonly void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler)
+    {
+        if (IsInfo) _logger.Info(handler.ToStringAndClear());
+    }
+
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Trace(string text)
     {

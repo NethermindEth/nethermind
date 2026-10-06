@@ -50,6 +50,10 @@ public readonly struct ILogger(InterfaceLogger logger) : IEquatable<ILogger>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Info(string text) { }
 
+    /// <inheritdoc cref="Info(string)"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler) { }
+
     /// <summary>No-op.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void Trace(string text) { }

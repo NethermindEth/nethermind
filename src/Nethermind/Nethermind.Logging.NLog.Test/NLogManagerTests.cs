@@ -23,7 +23,64 @@ namespace Nethermind.Logging.NLog.Test
         /// starts from a freshly loaded copy of the shipped config rather than from whatever its predecessor left.
         /// </remarks>
         [SetUp]
-        public void SetUp() => LogManager.Configuration = ShippedConfiguration();
+        public void SetUp()
+        {
+            SensitiveLogMasking.Enabled = false;
+            LogManager.Configuration = ShippedConfiguration();
+        }
+
+        [TearDown]
+        public void TearDown() => SensitiveLogMasking.Enabled = false;
+
+        [Test]
+        public void Info_masks_only_marked_interpolated_values([Values] bool maskSensitiveData)
+        {
+            MemoryTarget target = new() { Layout = "${message}" };
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Info, target));
+            using NLogManager manager = new("test");
+            ILogger logger = manager.GetLogger("SensitiveLogTests");
+            SensitiveLogMasking.Enabled = maskSensitiveData;
+
+            string endpoint = "192.0.2.42:30303";
+            logger.Info($"Peer {endpoint:sensitive} on port {42:D5}");
+            logger.Info($"Peer {endpoint,24:sensitive}");
+            ReadOnlySpan<char> endpointSpan = endpoint.AsSpan();
+            logger.Info($"Span {endpointSpan:sensitive}");
+            logger.Info($"Aligned span {endpointSpan,24:sensitive}");
+            string alreadyFormatted = $"Already formatted {endpoint}";
+            logger.Info(alreadyFormatted);
+
+            string displayedEndpoint = maskSensitiveData ? "[redacted]" : endpoint;
+            Assert.That(target.Logs, Is.EqualTo(new[]
+            {
+                $"Peer {displayedEndpoint} on port 00042",
+                $"Peer {displayedEndpoint,24}",
+                $"Span {displayedEndpoint}",
+                $"Aligned span {displayedEndpoint,24}",
+                $"Already formatted {endpoint}"
+            }));
+        }
+
+        [Test]
+        public void Info_interpolation_skips_values_when_level_is_disabled()
+        {
+            MemoryTarget target = new() { Layout = "${message}" };
+            LogManager.Configuration = ConfigurationWith(new LoggingRule("*", Level.Warn, target));
+            using NLogManager manager = new("test");
+            ILogger logger = manager.GetLogger("DisabledSensitiveLogTests");
+            int evaluated = 0;
+
+            logger.Info($"Peer {GetEndpoint():sensitive}");
+
+            Assert.That(evaluated, Is.Zero);
+            Assert.That(target.Logs, Is.Empty);
+
+            string GetEndpoint()
+            {
+                evaluated++;
+                return "192.0.2.42:30303";
+            }
+        }
 
         [Test]
         public void Logger_name_is_set_to_full_class_name()
