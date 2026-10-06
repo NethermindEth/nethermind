@@ -119,12 +119,9 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         Assert.That(entry.GetProperty("activation_epoch").GetString(), Is.EqualTo("5"));
     }
 
-    /// <summary>
-    /// getStateV2 JSON is defined up to Fulu: an Electra state omits proposer_lookahead, a Fulu state has it, and a Gloas
-    /// state has no published JSON type, so only its SSZ is served.
-    /// </summary>
     [TestCase("electra", false)]
     [TestCase("fulu", true)]
+    [TestCase("gloas", true)]
     public async Task Debug_state_json_follows_the_fork_layout(string fork, bool hasLookahead)
     {
         JsonElement root = await ReadVersioned($"/eth/v2/debug/beacon/states/{SlotOf(fork)}", fork);
@@ -134,10 +131,24 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
     }
 
     [Test]
-    public async Task Debug_state_of_gloas_is_served_as_ssz_and_refused_as_json()
+    public async Task Debug_state_of_gloas_serves_builder_and_ptc_fields()
     {
-        using HttpResponseMessage json = await _host.GetAsync($"/eth/v2/debug/beacon/states/{SlotOf("gloas")}", Json);
-        Assert.That(json.StatusCode, Is.EqualTo(HttpStatusCode.NotImplemented));
+        JsonElement data = (await ReadVersioned($"/eth/v2/debug/beacon/states/{SlotOf("gloas")}", "gloas")).GetProperty("data");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(data.EnumerateObject().Count(), Is.EqualTo(46));
+            Assert.That(data.TryGetProperty("latest_execution_payload_header", out _), Is.False);
+            Assert.That(data.GetProperty("builders")[0].GetProperty("version").GetString(), Is.EqualTo("255"));
+            Assert.That(data.GetProperty("builders")[0].GetProperty("balance").GetString(), Is.EqualTo(ulong.MaxValue.ToString()));
+            Assert.That(data.GetProperty("builder_pending_payments")[0].GetProperty("withdrawal").GetProperty("amount").GetString(), Is.EqualTo("123"));
+            Assert.That(data.GetProperty("builder_pending_withdrawals")[0].GetProperty("builder_index").GetString(), Is.EqualTo("9"));
+            Assert.That(data.GetProperty("payload_expected_withdrawals")[0].GetProperty("amount").GetString(), Is.EqualTo("456"));
+            Assert.That(data.GetProperty("execution_payload_availability").GetString(), Is.EqualTo("0xfe" + new string('f', 2046)));
+            Assert.That(data.GetProperty("ptc_window").GetArrayLength(), Is.EqualTo(96));
+            Assert.That(data.GetProperty("ptc_window")[0].GetArrayLength(), Is.EqualTo(512));
+            Assert.That(data.GetProperty("ptc_window")[0][0].GetString(), Is.EqualTo(ulong.MaxValue.ToString()));
+            Assert.That(data.GetProperty("current_epoch_participation")[0].GetString(), Is.EqualTo("7"));
+        }
 
         using HttpResponseMessage ssz = await _host.GetAsync($"/eth/v2/debug/beacon/states/{SlotOf("gloas")}", Octet);
         Assert.That(ssz.StatusCode, Is.EqualTo(HttpStatusCode.OK));
@@ -197,11 +208,16 @@ public class BeaconStatesForkLayoutTests : BeaconApiFixture
         state.CurrentSyncCommittee = new SyncCommittee { Pubkeys = members, AggregatePubkey = FilledPubkey(0x47) };
         state.NextSyncCommittee = new SyncCommittee { Pubkeys = members, AggregatePubkey = FilledPubkey(0x48) };
 
-        return fork switch
-        {
-            "electra" => BeaconStateElectra.Encode(state),
-            "fulu" => BeaconStateFulu.Encode(state),
-            _ => BeaconStateGloas.Encode(GloasForkTransition.UpgradeToGloas(state, Spec)),
-        };
+        if (fork == "electra") return BeaconStateElectra.Encode(state);
+        if (fork == "fulu") return BeaconStateFulu.Encode(state);
+        BeaconStateGloas gloas = GloasForkTransition.UpgradeToGloas(state, Spec);
+        gloas.Builders = [new Builder { Pubkey = FilledPubkey(0x49), Version = 255, ExecutionAddress = Nethermind.Core.Address.Zero, Balance = ulong.MaxValue }];
+        gloas.BuilderPendingPayments![0].Withdrawal!.Amount = 123;
+        gloas.BuilderPendingWithdrawals = [new BuilderPendingWithdrawal { FeeRecipient = Nethermind.Core.Address.Zero, BuilderIndex = 9 }];
+        gloas.PayloadExpectedWithdrawals = [new() { Address = Nethermind.Core.Address.Zero, Amount = 456 }];
+        gloas.ExecutionPayloadAvailability![0] = false;
+        gloas.PtcWindow![0].Indices = [ulong.MaxValue, .. new ulong[511]];
+        gloas.CurrentEpochParticipation![0] = 7;
+        return BeaconStateGloas.Encode(gloas);
     }
 }
