@@ -362,7 +362,7 @@ internal sealed class HistoryWalkRun
                         ReplayGroup(group, item, groupFound);
                         frontier.Complete(sequence);
                     };
-                    owned = (group.Overflow || group.Rows.Count >= _minRowsToBorrow) && borrowed.TryStart(replay);
+                    owned = (group.Outcome != ScanOutcome.Fits || group.Rows.Count >= _minRowsToBorrow) && borrowed.TryStart(replay);
                     if (owned) return;
 
                     owned = true;
@@ -386,14 +386,20 @@ internal sealed class HistoryWalkRun
     private void ReplayGroup(StorageGroup group, int item, MismatchSink found)
     {
         using StoragePartitionRows rows = group.Rows;
-        if (group.Overflow)
+        if (group.Outcome == ScanOutcome.Fits)
         {
-            rows.Reset();
-            ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
+            ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item, found);
+            return;
+        }
+
+        rows.Reset();
+        if (group.Outcome == ScanOutcome.Split)
+        {
+            SplitStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
         }
         else
         {
-            ReplayStorageGroup(TreePath.Empty, rows, group.Clears, item, found);
+            ProcessStoragePartition(group.Prefix, TreePath.Empty, group.Clears, identities: null, item, found);
         }
     }
 
@@ -424,6 +430,11 @@ internal sealed class HistoryWalkRun
         }
 
         rows.Reset();
+        SplitStoragePartition(storagePrefix, slotPrefix, clears, identities, item, found);
+    }
+
+    private void SplitStoragePartition(byte[] storagePrefix, in TreePath slotPrefix, List<ClearRecord> clears, HashSet<ValueHash256>? identities, int item, MismatchSink found)
+    {
         HashSet<ValueHash256>[] seenPerChild = new HashSet<ValueHash256>[BranchRlp.ChildCount];
         MismatchSink[] foundPerChild = new MismatchSink[BranchRlp.ChildCount];
         BorrowedWork borrowed = new(_slots);

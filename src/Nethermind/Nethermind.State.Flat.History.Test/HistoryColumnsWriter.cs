@@ -17,11 +17,14 @@ internal static class HistoryColumnsWriter
 {
     public static byte[] ScopeKeyOf(Address address) => address.ToAccountPath.Bytes[..HistoryKeyLayout.ScopeKeyLength].ToArray();
 
-    public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account)
+    public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, Address address, ulong block, Account? account) =>
+        RecordAccount(columns, address.ToAccountPath, block, account);
+
+    public static void RecordAccount(IColumnsDb<FlatHistoryColumns> columns, in ValueHash256 accountPath, ulong block, Account? account)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.AccountHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
-        ReadOnlySpan<byte> flatKey = address.ToAccountPath.Bytes;
+        ReadOnlySpan<byte> flatKey = accountPath.Bytes;
 
         using IColumnsWriteBatch<FlatHistoryColumns> batch = columns.StartWriteBatch();
         IWriteBatch history = batch.GetColumnBatch(FlatHistoryColumns.AccountHistory);
@@ -36,14 +39,17 @@ internal static class HistoryColumnsWriter
         store.RecordChange(block, flatKey, rlp, history);
     }
 
-    public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue)
+    public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, Address address, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue) =>
+        RecordStorage(columns, address.ToAccountPath, slot, block, rawValue);
+
+    public static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, in ValueHash256 accountPath, in UInt256 slot, ulong block, ReadOnlySpan<byte> rawValue)
     {
         HistoryStore store = new(columns.GetColumnDb(FlatHistoryColumns.StorageHistory), LimboLogs.Instance.GetClassLogger<HistoryStore>());
 
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
         ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(
-            stackalloc byte[BaseFlatPersistence.StorageKeyLength], address.ToAccountPath, slotHash);
+            stackalloc byte[BaseFlatPersistence.StorageKeyLength], accountPath, slotHash);
 
         Span<byte> value = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
         int written = rawValue.IsEmpty
