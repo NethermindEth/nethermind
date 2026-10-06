@@ -36,6 +36,21 @@ internal sealed class BlockFootprints(Block block)
         && tx.Nonce != ulong.MaxValue
         && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero);
 
+    /// <summary>How many transactions have a footprint.</summary>
+    public int Count
+    {
+        get
+        {
+            int count = 0;
+            foreach (TransactionFootprint? footprint in _footprints)
+            {
+                if (footprint is not null) count++;
+            }
+
+            return count;
+        }
+    }
+
     public void Store(int index, TransactionFootprint footprint) => Volatile.Write(ref _footprints[index], footprint);
 
     /// <summary>The footprint of <paramref name="tx"/>, at <paramref name="index"/> in the block <paramref name="header"/> heads.</summary>

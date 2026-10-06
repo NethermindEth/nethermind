@@ -87,6 +87,12 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 });
             }
 
+            if (blocksConfig.PreWarmLookAhead > 0 && blocksConfig.PreWarmHandoff)
+            {
+                // The main processor publishes its recovered blocks here and the prewarmer runs them ahead.
+                builder.AddSingleton<ProcessingLookAhead>();
+            }
+
             if (blocksConfig.PreWarming == PreWarmMode.BlockAndMempool)
             {
                 // Shares the scoped IBlockCachePreWarmer / PreBlockCaches with the main processor. Eagerly resolved

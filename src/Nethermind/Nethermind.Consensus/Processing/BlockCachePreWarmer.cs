@@ -30,6 +30,7 @@ using Nethermind.Evm.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
+using Nethermind.State;
 using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Processing;
@@ -60,6 +61,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private readonly bool _parallelExecutionEnabled;
     private readonly bool _handoff;
     private BlockFootprints? _footprints;
+
+    // Runs ahead: the queued blocks they come from, and the footprints they left for blocks not yet processed.
+    private ProcessingLookAhead? _lookAheadSource;
+    private ISpecProvider? _specProvider;
+    private int _lookAheadDepth;
+    private readonly Dictionary<Hash256, (ulong Number, BlockFootprints Footprints)> _aheadFootprints = [];
+    private readonly Lock _aheadLock = new();
+    private readonly GroupingScratch _aheadScratch = new();
+    private int _aheadScratchDisposed;
 
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
@@ -101,7 +111,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        ISenderRecoveryTracker? senderRecovery = null
+        ISenderRecoveryTracker? senderRecovery = null,
+        ProcessingLookAhead? lookAhead = null,
+        ISpecProvider? specProvider = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -117,6 +129,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
+        if (lookAhead is not null && specProvider is not null) EnableLookAhead(lookAhead, specProvider, blocksConfig.PreWarmLookAhead);
+    }
+
+    /// <summary>Runs up to <paramref name="depth"/> blocks queued in <paramref name="lookAhead"/> ahead of the one processed.</summary>
+    internal void EnableLookAhead(ProcessingLookAhead lookAhead, ISpecProvider specProvider, int depth)
+    {
+        if (!_handoff || depth <= 0) return;
+        _lookAheadSource = lookAhead;
+        _specProvider = specProvider;
+        _lookAheadDepth = depth;
     }
 
     internal BlockCachePreWarmer(
@@ -168,6 +190,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
+        BlockFootprints? ahead = TakeAheadFootprints(suggestedBlock);
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
             TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
@@ -180,15 +203,62 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             _nodeStorageCache.ClearCaches();
             // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
-            if (skipReactiveWarming) return null;
+            if (skipReactiveWarming) return InstallAheadOnly(suggestedBlock, spec, ahead);
             _nodeStorageCache.Enabled = true;
         }
 
-        if (skipReactiveWarming) return null;
-        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+        if (skipReactiveWarming) return InstallAheadOnly(suggestedBlock, spec, ahead);
+        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, ahead, cancellationToken);
     }
 
-    private IDisposable? WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
+    /// <summary>A block warmed by no pass of its own still takes the footprints runs ahead left for it.</summary>
+    private IDisposable? InstallAheadOnly(Block block, IReleaseSpec spec, BlockFootprints? ahead)
+    {
+        if (ahead is not null && _handoff && BlockFootprints.AppliesTo(block, spec))
+        {
+            // No pass resets the progress here, and the footprints are found by it.
+            Volatile.Write(ref _mainThreadTxIndex, -1);
+            Volatile.Write(ref _footprints, ahead);
+        }
+
+        return null;
+    }
+
+    private BlockFootprints? TakeAheadFootprints(Block block)
+    {
+        if (_lookAheadDepth == 0 || block.Hash is not Hash256 hash) return null;
+        lock (_aheadLock)
+        {
+            BlockFootprints? footprints = _aheadFootprints.Remove(hash, out (ulong Number, BlockFootprints Footprints) entry) ? entry.Footprints : null;
+            DropAheadFootprintsUpTo(block.Number);
+            if (footprints is not null) Blockchain.Metrics.PrewarmLookAheadReady += footprints.Count;
+            return footprints;
+        }
+    }
+
+    // Under _aheadLock.
+    private void DropAheadFootprintsUpTo(ulong number)
+    {
+        if (_aheadFootprints.Count == 0) return;
+        foreach (KeyValuePair<Hash256, (ulong Number, BlockFootprints Footprints)> entry in _aheadFootprints)
+        {
+            if (entry.Value.Number <= number) _aheadFootprints.Remove(entry.Key);
+        }
+    }
+
+    private BlockFootprints GetOrAddAheadFootprints(Block block)
+    {
+        Hash256 hash = block.Hash!;
+        lock (_aheadLock)
+        {
+            if (_aheadFootprints.TryGetValue(hash, out (ulong Number, BlockFootprints Footprints) entry)) return entry.Footprints;
+            BlockFootprints footprints = new(block);
+            _aheadFootprints[hash] = (block.Number, footprints);
+            return footprints;
+        }
+    }
+
+    private IDisposable? WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, BlockFootprints? ahead, CancellationToken cancellationToken)
     {
         if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return null;
 
@@ -198,7 +268,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             CancellationToken token = session.Token;
-            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
+            // Footprints left by runs ahead are checked again on this block's parent as its own pass reaches them.
+            BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? ahead ?? new BlockFootprints(suggestedBlock) : null;
             // Transactions the mempool pass warmed run again: their footprints are only taken here.
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
                 suggestedBlock, spec, footprints is null ? speculativelyWarmed : null, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
@@ -227,6 +298,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     discoveryWork?.WaitForCompletion();
+                    // What is left of the block's execution goes to the blocks queued behind it.
+                    if (_lookAheadDepth > 0 && suggestedBlock is not BlockToProduce) RunAhead(suggestedBlock, token);
                 }
                 finally
                 {
@@ -949,6 +1022,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         _warmupQueue.Dispose();
+        // Disposal can come twice; the scratch's lists must be returned once.
+        if (Interlocked.Exchange(ref _aheadScratchDisposed, 1) == 0) _aheadScratch.Dispose();
         (_envPool as IDisposable)?.Dispose();
     }
 
@@ -1354,6 +1429,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // A heavy sender's transactions are warmed apart on the parent state; each starts at its own nonce.
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
+        // A run ahead that still holds on the parent is the run this one would record; its replay keeps the scope in step.
+        if (footprints.Find(txIndex, tx, blockState.Block.Header) is { } ahead && ahead.Matches(recorder))
+        {
+            ahead.Replay(recorder, blockState.Spec);
+            Blockchain.Metrics.PrewarmLookAheadKept++;
+            return TransactionResult.Ok;
+        }
+
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
         try
         {
@@ -1375,6 +1458,147 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return result.Error is TransactionResult.ErrorType.InsufficientMaxFeePerGasForSenderBalance or TransactionResult.ErrorType.InsufficientSenderBalance
             ? scope.TransactionProcessor.Warmup(tx, tracer)
             : result;
+    }
+
+    /// <summary>
+    /// Runs the blocks queued behind <paramref name="processing"/> on the state it started from, while it executes, and
+    /// keeps their footprints for when their turn comes.
+    /// </summary>
+    /// <remarks>
+    /// The runs share the session's caches, which describe that state until the block commits; the session is joined
+    /// before then. They miss the processed block's writes, so a footprint is only as good as its preconditions, which
+    /// block processing checks against the real state anyway.
+    /// </remarks>
+    private void RunAhead(Block processing, CancellationToken token)
+    {
+        ProcessingLookAhead source = _lookAheadSource!;
+        Block block = processing;
+        for (int depth = 0; depth < _lookAheadDepth && !token.IsCancellationRequested; depth++)
+        {
+            if (source.FindChild(block) is not Block next) return;
+            block = next;
+            if (block.Transactions.Length == 0 || block.Hash is null) continue;
+            IReleaseSpec spec = _specProvider!.GetSpec(block.Header);
+            if (!BlockFootprints.AppliesTo(block, spec)) continue;
+            BlockFootprints footprints = GetOrAddAheadFootprints(block);
+            try
+            {
+                RunAhead(processing.Header, block, spec, footprints, token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+            catch (Exception ex)
+            {
+                _logger.DebugError($"Error running block {block.Number} ahead", ex);
+                return;
+            }
+        }
+    }
+
+    private void RunAhead(BlockHeader target, Block block, IReleaseSpec spec, BlockFootprints footprints, CancellationToken token)
+    {
+        GroupingScratch scratch = _aheadScratch;
+        GroupTransactionsBySender(block, _concurrencyLevel, null, null, scratch);
+        try
+        {
+            ArrayPoolList<WarmupJob> jobs = scratch.Jobs;
+            if (jobs.Count == 0) return;
+            ParallelOptions options = new() { MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, jobs.Count), CancellationToken = token };
+            ParallelUnbalancedWork.For(0, jobs.Count, options, i => RunJobAhead(jobs[i].Transactions, target, block.Header, spec, footprints, token));
+        }
+        finally
+        {
+            scratch.ReturnJobs();
+        }
+    }
+
+    private void RunJobAhead(ArrayPoolList<(int Index, Transaction Tx)> transactions, BlockHeader target, BlockHeader header, IReleaseSpec spec,
+        BlockFootprints footprints, CancellationToken token)
+    {
+        if (token.IsCancellationRequested) return;
+        IPrewarmerEnv env = _envPool.Get();
+        try
+        {
+            if (env.Recorder is not FootprintRecorder recorder) return;
+            IReadOnlyTxProcessingScope scope;
+            // The scope reads the processed block's parent; its writes are another block's, so none may hint that block's commit.
+            PrewarmerScopeProvider.WithoutCommitHints = true;
+            try
+            {
+                scope = env.BuildAtTarget(target);
+            }
+            finally
+            {
+                PrewarmerScopeProvider.WithoutCommitHints = false;
+            }
+
+            using (scope)
+            {
+                scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+                foreach ((int txIndex, Transaction tx) in transactions.AsSpan())
+                {
+                    if (token.IsCancellationRequested) return;
+                    if (BlockFootprints.IsRecordable(tx)) RunTransactionAhead(scope, recorder, tx, txIndex, header, spec, footprints, token);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception ex)
+        {
+            _logger.DebugError($"Error running block {header.Number} ahead", ex);
+        }
+        finally
+        {
+            _envPool.Return(env);
+        }
+    }
+
+    private static void RunTransactionAhead(IReadOnlyTxProcessingScope scope, FootprintRecorder recorder, Transaction tx, int txIndex, BlockHeader header,
+        IReleaseSpec spec, BlockFootprints footprints, CancellationToken token)
+    {
+        try
+        {
+            Address sender = tx.SenderAddress!;
+            if (!recorder.AccountExists(sender)) recorder.CreateAccountIfNotExists(sender, UInt256.Zero);
+            if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
+            // A run of an earlier pass that still holds on this state is the run this one would record.
+            if (footprints.Find(txIndex, tx, header) is { } earlier && earlier.Matches(recorder))
+            {
+                earlier.Replay(recorder, spec);
+                Blockchain.Metrics.PrewarmLookAheadKept++;
+                return;
+            }
+
+            if (spec.UseTxAccessLists) recorder.WarmUp(tx.AccessList, token);
+            // Nothing overtakes a block that is not processed yet; only the session's end stops the run.
+            recorder.Start(NeverOvertaken.Instance, txIndex, token);
+            try
+            {
+                TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
+                    ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+                Blockchain.Metrics.PrewarmLookAheadRuns++;
+                if (result && recorder.Finish(tx, in result) is { } footprint) footprints.Store(txIndex, footprint);
+            }
+            finally
+            {
+                recorder.Stop();
+            }
+        }
+        catch (Exception ex) when (ex is EvmException or OverflowException)
+        {
+            // Ignore, regular tx processing exceptions
+        }
+    }
+
+    private sealed class NeverOvertaken : IBlockProcessingProgress
+    {
+        public static readonly NeverOvertaken Instance = new();
+
+        public int MainThreadTxIndex => -1;
     }
 
     internal const int MinCalldataWordsForAddressWarm = 8;

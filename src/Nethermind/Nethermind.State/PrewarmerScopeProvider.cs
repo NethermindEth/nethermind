@@ -57,6 +57,14 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+
+    [ThreadStatic] private static bool t_withoutCommitHints;
+
+    /// <summary>
+    /// Set on a thread while it opens populator scopes whose writes are not the consumer block's, such as runs of a later
+    /// block: hinting them would warm trie paths the consumer's commit does not walk.
+    /// </summary>
+    public static bool WithoutCommitHints { get => t_withoutCommitHints; set => t_withoutCommitHints = value; }
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
@@ -134,7 +142,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
-        private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
+        private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer && !t_withoutCommitHints ? preBlockCaches.MainScope : null;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;

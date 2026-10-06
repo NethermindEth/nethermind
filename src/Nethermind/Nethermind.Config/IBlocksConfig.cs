@@ -71,6 +71,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmHandoff { get; set; }
 
+    /// <summary>How many queued blocks past the one being processed the prewarmer runs ahead while it executes.</summary>
+    /// <remarks>
+    /// Only blocks already waiting in the processing queue, as during sync, are run ahead. Their runs read the state the
+    /// processed block started from, and are checked again against the real state when their block's turn comes. Requires
+    /// <see cref="PreWarmHandoff"/>.
+    /// </remarks>
+    [ConfigItem(Description = "How many queued blocks the prewarmer runs ahead of block processing, 0 to disable. Requires PreWarmHandoff.", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmLookAhead { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

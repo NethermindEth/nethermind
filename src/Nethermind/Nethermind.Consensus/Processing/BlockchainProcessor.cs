@@ -56,6 +56,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private readonly Options _options;
     private readonly ProcessingBranchBuilder _branchBuilder;
     private readonly IBlockTree _blockTree;
+    private readonly ProcessingLookAhead? _lookAhead;
     private readonly ILogger _logger;
 
     private readonly Channel<ProcessingWork> _recoveryQueue = Channel.CreateUnbounded<ProcessingWork>(
@@ -111,6 +112,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     /// <param name="processingStats"></param>
     /// <param name="blockTracers">Tracers seeded into the processor's composite tracer at construction.</param>
     /// <param name="mutationLock">The node's shared chain-maintenance lock.</param>
+    /// <param name="lookAhead">Where recovered blocks are published for the prewarmer to run ahead.</param>
     public BlockchainProcessor(
         IBlockTree blockTree,
         IBranchProcessor branchProcessor,
@@ -121,8 +123,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         Options options,
         IProcessingStats processingStats,
         BlockTreeMutationLock mutationLock,
-        IEnumerable<IBlockTracer>? blockTracers = null)
+        IEnumerable<IBlockTracer>? blockTracers = null,
+        ProcessingLookAhead? lookAhead = null)
     {
+        _lookAhead = lookAhead;
         _logger = logManager.GetClassLogger<BlockchainProcessor>();
         _blockTree = blockTree;
         _mutationLock = mutationLock;
@@ -536,6 +540,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Interlocked.Add(ref _currentRecoveryQueueSize, -blockRef.Block!.Transactions.Length);
                 if (_logger.IsTrace) _logger.Trace($"Recovering addresses for block {blockRef.BlockHash}.");
                 using (work.Workers?.Enter()) Preprocess(blockRef.Block);
+                _lookAhead?.Publish(blockRef.Block);
 
                 try
                 {
@@ -645,6 +650,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 }
 
                 Block block = blockRef.Block;
+                _lookAhead?.Withdraw(block);
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();

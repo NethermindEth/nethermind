@@ -73,6 +73,18 @@ public static class Metrics
     [Description("Transactions executed after their pre-warm run failed to apply")]
     public static long PrewarmHandoffFailures { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions of a queued block the prewarmer ran ahead while an earlier block was processed")]
+    public static long PrewarmLookAheadRuns { get; set; }
+
+    [CounterMetric]
+    [Description("Runs ahead that still held on a later state and were kept instead of run again")]
+    public static long PrewarmLookAheadKept { get; set; }
+
+    [CounterMetric]
+    [Description("Footprints a block had from runs ahead when its processing started")]
+    public static long PrewarmLookAheadReady { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
