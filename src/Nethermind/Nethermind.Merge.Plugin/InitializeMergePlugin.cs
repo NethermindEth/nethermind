@@ -95,11 +95,13 @@ public class InitializeMergePlugin(
         bool hasEngineApiConfigured = urlCollection
             .Values
             .Any(static rpcUrl => rpcUrl.EnabledModules.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase));
+        bool hasEngineApiOverIpc = !string.IsNullOrEmpty(jsonRpcConfig.IpcUnixDomainSocketPath)
+            && jsonRpcConfig.IpcEnabledModules?.Contains(ModuleType.Engine, StringComparison.OrdinalIgnoreCase) == true;
 
-        if (!hasEngineApiConfigured)
+        if (!hasEngineApiConfigured && !hasEngineApiOverIpc)
         {
             throw new InvalidConfigurationException(
-                "Engine module wasn't configured on any port. Nethermind can't work without engine port configured. Verify your RPC configuration. You can find examples in our docs: https://docs.nethermind.io/interacting/json-rpc-server/#engine-api",
+                $"Engine module wasn't configured on any port or on the IPC socket. Nethermind can't work without engine port configured. Verify your RPC configuration, or set JsonRpc.{nameof(IJsonRpcConfig.IpcEnabledModules)} with JsonRpc.{nameof(IJsonRpcConfig.IpcUnixDomainSocketPath)} to serve it over IPC. You can find examples in our docs: https://docs.nethermind.io/interacting/json-rpc-server/#engine-api",
                 ExitCodes.NoEngineModule);
         }
     }
