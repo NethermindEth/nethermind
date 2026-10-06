@@ -25,7 +25,6 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
             ushort presence = children.Presence;
             changed = _lastKind == NodeViewKind.Branch ? children.ChangedSince(_lastChildren) : presence;
             if (key is { Scratch: true } branchKey) writer.WriteBranch(branchKey, block, presence, changed, children);
-            _lastChildren.CopyFrom(children);
         }
         else if (key is { Scratch: true } otherKey)
         {
@@ -35,6 +34,12 @@ internal sealed class SeriesPublisher(SeriesScope scope, TreePath path, SeriesKe
 
         if (emitter is not null) scope.Record(emitter, path, view, changed);
 
+        Seed(view);
+    }
+
+    public void Seed(in NodeView view)
+    {
+        if (view.Kind == NodeViewKind.Branch) _lastChildren.CopyFrom(view.Children!);
         _lastKind = view.Kind;
         _lastHash = view.Hash;
         _published = true;

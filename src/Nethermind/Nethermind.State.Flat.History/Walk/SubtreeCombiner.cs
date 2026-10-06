@@ -105,7 +105,8 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
     public void CombineRoot(
         Func<int, int, SeriesKey> grandchildKey,
-        ulong from,
+        ulong anchor,
+        bool anchorFolded,
         ulong to,
         CommitmentEmitter? emitter,
         SeriesWriter writer,
@@ -123,21 +124,29 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             {
                 SeriesKey[] keys = new SeriesKey[BranchRlp.ChildCount];
                 for (int child = 0; child < BranchRlp.ChildCount; child++) keys[child] = grandchildKey(nibble, child);
-                groups[nibble] = new ChildSeries(reader, keys, from, to, RowsPerCursor(RootCursors), token);
+                groups[nibble] = new ChildSeries(reader, keys, anchor, to, RowsPerCursor(RootCursors), token);
                 groupPublishers[nibble] = new SeriesPublisher(SeriesScope.Accounts, TreePath.FromNibble([(byte)nibble]), key: null, writer);
                 groupViews[nibble] = groups[nibble].Combine();
             }
 
             using SeriesPublisher rootPublisher = new(SeriesScope.Accounts, TreePath.Empty, key: null, writer);
             current = NodeViews.Combine(groupViews);
-            emitter?.BeginBlock(from);
-            for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(from, groupViews[nibble], emitter);
-            rootPublisher.Publish(from, current, emitter);
-            emitter?.CompleteBlock();
+            if (anchorFolded)
+            {
+                SeedAnchor(groupPublishers, groupViews, rootPublisher, current, emitter);
+            }
+            else
+            {
+                emitter?.BeginBlock(anchor);
+                for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++) groupPublishers[nibble].Publish(anchor, groupViews[nibble], emitter);
+                rootPublisher.Publish(anchor, current, emitter);
+                emitter?.CompleteBlock();
+            }
 
-            bool observing = root.OnBlock(from, current);
-            ulong observed = from;
-            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(from) + 1);
+            bool observing = anchorFolded || root.OnBlock(anchor, current);
+            ulong observed = anchor;
+            ulong reported = anchor;
+            ulong nextEpochStart = emitter is null ? ulong.MaxValue : emitter.Policy.EpochStart(emitter.Policy.Epoch(anchor) + 1);
             while (true)
             {
                 token.ThrowIfCancellationRequested();
@@ -159,7 +168,12 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
 
                 if (block == ulong.MaxValue) break;
 
-                if ((block & (WalkProgress.BlocksPerUpdate - 1)) < (observed & (WalkProgress.BlocksPerUpdate - 1)) || block - observed >= WalkProgress.BlocksPerUpdate) progress.Folding(block);
+                if (block - reported >= WalkProgress.BlocksPerUpdate)
+                {
+                    progress.Folding(block - reported);
+                    reported = block;
+                }
+
                 for (ulong quiet = observed + 1; quiet < block && observing; quiet++)
                 {
                     if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
@@ -193,6 +207,8 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
                 if ((quiet & (QuietBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
                 observing = root.OnBlock(quiet, current);
             }
+
+            progress.Folding(to - reported);
         }
         finally
         {
@@ -201,7 +217,18 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             foreach (SeriesPublisher? publisher in groupPublishers) publisher?.Dispose();
             foreach (NodeView view in groupViews) view.Release();
         }
+    }
 
+    private static void SeedAnchor(SeriesPublisher[] groupPublishers, NodeView[] groupViews, SeriesPublisher rootPublisher, in NodeView root, CommitmentEmitter? emitter)
+    {
+        for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
+        {
+            groupPublishers[nibble].Seed(groupViews[nibble]);
+            emitter?.SeedAccountNode(TreePath.FromNibble([(byte)nibble]), groupViews[nibble].Rlp);
+        }
+
+        rootPublisher.Seed(root);
+        emitter?.SeedAccountNode(TreePath.Empty, root.Rlp);
     }
 
     private int RowsPerCursor(int cursors) => (int)Math.Clamp(maxRowsPerPartition / cursors, SeriesReader.SeriesCursor.MinRowsBuffered, int.MaxValue);

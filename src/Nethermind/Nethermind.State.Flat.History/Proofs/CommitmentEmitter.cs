@@ -147,6 +147,13 @@ public sealed class CommitmentEmitter : IDisposable
         RecordEmpty(NodePathKey.ForAccount(path));
     }
 
+    internal void SeedAccountNode(in TreePath path, ReadOnlySpan<byte> rlp)
+    {
+        if (_policy.AccountTier(path.Length) != CommitmentTier.PerChange) return;
+
+        _exactBranches.Set(NodePathKey.ForAccount(path), rlp.Length > 0 && BranchRlp.TryReadChildren(rlp, _children));
+    }
+
     public void RecordStorageNode(in ValueHash256 accountPath, in TreePath path, ReadOnlySpan<byte> rlp)
     {
         NoteStorageDepth(accountPath, path.Length);

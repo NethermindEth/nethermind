@@ -957,6 +957,44 @@ public class ArchiveProofTests
         }
     }
 
+    [TestCase(null, TestName = "RootFold_SplitAtAWindowCloseAndAnEpochStart_WritesTheRowsAndVerdictOfOneFold")]
+    [TestCase(100ul, TestName = "RootFold_SplitWithAHeaderDivergingInTheMiddleChunk_StopsComparingWhereOneFoldStops")]
+    public void RootFold_SplitIntoChunks_WritesTheRowsAndVerdictOfOneFold(ulong? divergingBlock)
+    {
+        _policy = EpochPolicy;
+        List<(ulong Anchor, ulong To)> chunks = HistoryWalkRun.RootFoldChunks(0, _chain.Head, workers: 3, EpochPolicy.Interval);
+        Assert.That(chunks, Is.EqualTo(new List<(ulong, ulong)> { (0, 64), (64, 128), (128, Blocks) }),
+            "precondition: three workers split the fold at block 64, a window close inside the first epoch, and at block 128, the second epoch's start");
+
+        HistoryWalkVerdict serial = WalkAndEmit(Headers(divergingBlock), workers: 1, out _);
+        List<string> serialRows = CommitmentRows();
+        RebuildTheChainOnAFreshDatabase();
+        HistoryWalkVerdict chunked = WalkAndEmit(Headers(divergingBlock), workers: 3, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(CommitmentRows(), Is.EqualTo(serialRows),
+                "each chunk opens its series at its anchor and continues the publishers and the emitter from it, so every row, the first after each seam included, is the row one fold writes");
+            Assert.That(chunked.Mismatches, Is.EqualTo(serial.Mismatches), "chunk findings merge in block order and stop where one fold stops comparing");
+            Assert.That(chunked.BlocksCompared, Is.EqualTo(serial.BlocksCompared), "blocks a later chunk compared after the divergence are not counted");
+            Assert.That(chunked.Verified, Is.EqualTo(divergingBlock is null), "only the diverging header fails the walk");
+        }
+    }
+
+    private IHistoryHeaderSource Headers(ulong? divergingBlock) => divergingBlock is { } block ? new DivergingHeaders(_chain, block) : _chain;
+
+    private List<string> CommitmentRows()
+    {
+        List<string> rows = [];
+        foreach (FlatHistoryColumns column in (FlatHistoryColumns[])[FlatHistoryColumns.AccountCommitments, FlatHistoryColumns.StorageCommitments])
+        {
+            IDb db = _historyColumns.GetColumnDb(column);
+            foreach (byte[] key in AllKeys(db)) rows.Add($"{column} {key.ToHexString()} {db.Get(key)!.ToHexString()}");
+        }
+
+        return rows;
+    }
+
     [Test]
     public void A_tip_series_joined_to_the_published_coverage_keeps_extending_it_as_it_advances()
     {
@@ -1996,30 +2034,40 @@ public class ArchiveProofTests
             if (Keccak.Compute(candidate.Bytes).Bytes[0] == range) siblings.Add(candidate);
         }
 
+        RebuildTheChainOnAFreshDatabase(siblings);
+        return [.. siblings];
+    }
+
+    private void RebuildTheChainOnAFreshDatabase(IReadOnlyList<Address>? siblingContracts = null)
+    {
         _chain.Dispose();
         _historyColumns.Dispose();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _chain = new ArchiveProofTestChain(_historyColumns);
-        BuildChain(siblings);
-        return [.. siblings];
+        BuildChain(siblingContracts);
     }
 
     private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
     {
-        ArchiveProofRetrofit retrofit = CreateRetrofit(_policy);
+        HistoryWalkVerdict verdict = WalkAndEmit(_chain, workers: 3, out ArchiveProofRetrofit retrofit, maxRowsPerPartition, minRowsToBorrow);
+
+        Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
+        retrofit.PublishCoverage(0, _chain.Head);
+    }
+
+    private HistoryWalkVerdict WalkAndEmit(IHistoryHeaderSource headers, int workers, out ArchiveProofRetrofit retrofit, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
+    {
+        retrofit = CreateRetrofit(_policy);
         retrofit.Prepare();
 
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
 
         HistoryWalkVerifier verifier = new(
-            _historyColumns, _chain, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
+            _historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance,
             maxRowsPerPartition, retrofit, retrofit.Metadata);
 
-        HistoryWalkVerdict verdict = verifier.VerifyRangeParallel(0, _chain.Head, workers: 3, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: minRowsToBorrow);
-
-        Assert.That(verdict.Mismatches, Is.Empty, "the walk that emits the commitments is also what proves them against the headers");
-        retrofit.PublishCoverage(0, _chain.Head);
+        return verifier.VerifyRangeParallel(0, _chain.Head, workers, AccountSubtreeReplayer.DefaultCheckpointBlocks, onCheckpoint: null, CancellationToken.None, minRowsToBorrow: minRowsToBorrow);
     }
 
     private ArchiveProofRetrofit CreateRetrofit(CommitmentDepthPolicy policy, bool discardMismatchedLayout = false)
@@ -2153,5 +2201,10 @@ public class ArchiveProofTests
         UInt256[] slots = new UInt256[count];
         for (int index = 0; index < count; index++) slots[index] = first + (ulong)index;
         return slots;
+    }
+
+    private sealed class DivergingHeaders(IHistoryHeaderSource inner, ulong divergingBlock) : IHistoryHeaderSource
+    {
+        public ValueHash256? TryGetStateRoot(ulong block) => block == divergingBlock ? Keccak.OfAnEmptyString.ValueHash256 : inner.TryGetStateRoot(block);
     }
 }
