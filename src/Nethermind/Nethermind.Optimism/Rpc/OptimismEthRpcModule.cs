@@ -168,7 +168,7 @@ public class OptimismEthRpcModule(
         {
             try
             {
-                forwarded = JsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
+                forwarded = TypeInfoJsonSerializer.Deserialize<JsonRpcResponse<Hash256>>(response, EthereumJsonSerializer.JsonOptions);
             }
             catch (JsonException e)
             {

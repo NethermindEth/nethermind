@@ -53,7 +53,7 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
         string supportedForksJson;
         if (timestampForkCount == 0)
         {
-            supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered);
+            supportedForksJson = JsonSerializer.Serialize(SszRestPaths.SupportedForksOrdered, SszRestJsonContext.Default.IReadOnlyListString);
         }
         else
         {
@@ -63,7 +63,7 @@ public sealed class CapabilitiesSszHandler(ISpecProvider specProvider) : SszEndp
             {
                 forkSlice.Add(SszRestPaths.SupportedForksOrdered[i]);
             }
-            supportedForksJson = JsonSerializer.Serialize(forkSlice);
+            supportedForksJson = JsonSerializer.Serialize(forkSlice, SszRestJsonContext.Default.ListString);
         }
 
         return Encoding.UTF8.GetBytes(

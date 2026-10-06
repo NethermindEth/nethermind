@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -681,9 +682,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
+            // Walking newest first meets an account's head before its older changes, which commit with the head.
+            int head = TStateTracing.IsActive ? -1 : _intraTxCache[change.Address];
+            Debug.Assert(head <= i || changes[head].Address == change.Address);
             bool alreadyCommitted = TStateTracing.IsActive
                 ? _committedThisRound.Contains(change.Address)
-                : !_committedThisRound.Add(change.Address);
+                : head > i;
             if (alreadyCommitted)
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
@@ -702,7 +706,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            int forAssertion = _intraTxCache[change.Address];
+            int forAssertion = TStateTracing.IsActive ? _intraTxCache[change.Address] : head;
             if (forAssertion != i)
             {
                 ThrowUnexpectedCommitPosition(i, forAssertion);
@@ -949,7 +953,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private Account? GetAndAddToCache(Address address)
     {
-        if (_nullAccountReads.Contains(address)) return null;
+        // Rarely non-empty, and probing an empty set still hashes the key.
+        if (_nullAccountReads.Count != 0 && _nullAccountReads.Contains(address)) return null;
 
         Account? account = GetState(address);
         if (account is not null)
@@ -1043,6 +1048,27 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return addresses;
         }
     }
+
+    /// <summary>
+    /// Drops the block's record of every account <paramref name="bal"/> changes, handing its committed value to
+    /// <paramref name="scope"/> as the one the BAL is applied over.
+    /// </summary>
+    /// <remarks>
+    /// Call after a commit with roots and before the BAL is applied. A hint only fills an empty slot, so a later hint of
+    /// the account's pre-block value (one the caches still hold) cannot override the committed one. Removals with
+    /// storage stay recorded: a removed account's cached slots must go whether or not the BAL recreated it.
+    /// </remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IScope scope)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (accountChanges.HasStateChanges && _blockChanges.Remove(accountChanges.Address, out ChangeTrace change))
+                scope.HintGet(accountChanges.Address, change.After);
+        }
+    }
+
+    /// <summary>Has the write-back drop the cached storage of <paramref name="address"/>, as for an account removed with storage.</summary>
+    internal void ForgetCachedStorage(Address address) => _removedWithStorage.Add(address);
 
     public void Reset(bool resetBlockChanges = true)
     {
