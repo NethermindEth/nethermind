@@ -80,6 +80,15 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "How many queued blocks the prewarmer runs ahead of block processing, 0 to disable. Requires PreWarmHandoff.", DefaultValue = "0", HiddenFromDocs = true)]
     int PreWarmLookAhead { get; set; }
 
+    /// <summary>Whether blocks suggested by sync are processed off the thread that suggests them.</summary>
+    /// <remarks>
+    /// An empty processing queue otherwise resumes processing on the writer's thread, which keeps sync from suggesting
+    /// the next block, and the recovery loop from recovering its senders, until the block is processed. Detached, they
+    /// queue blocks ahead of processing, which <see cref="PreWarmLookAhead"/> needs.
+    /// </remarks>
+    [ConfigItem(Description = "Process blocks suggested by sync off the suggesting thread, so download and sender recovery run ahead of processing.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool DetachSyncProcessing { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

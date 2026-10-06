@@ -77,6 +77,10 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private readonly record struct ProcessingWork(BlockRef Reference, ParallelUnbalancedWork.WorkerGroup? Workers);
 
+    // Set while a writer that must keep its thread (sync's suggestion, the recovery loop) writes to an empty queue,
+    // whose waiting reader would otherwise resume on it.
+    [ThreadStatic] private static bool t_writerKeepsThread;
+
     private bool _recoveryComplete = false;
     private int _queueCount;
     private bool _disposed;
@@ -347,7 +351,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (blockEventArgs.Block is not null)
         {
-            _ = Enqueue(blockEventArgs.Block, options);
+            if (!_options.DetachSuggestedBlocks)
+            {
+                _ = Enqueue(blockEventArgs.Block, options);
+                return;
+            }
+
+            t_writerKeepsThread = true;
+            try
+            {
+                _ = Enqueue(blockEventArgs.Block, options);
+            }
+            finally
+            {
+                t_writerKeepsThread = false;
+            }
         }
     }
 
@@ -544,7 +562,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 try
                 {
-                    await _blockQueue.Writer.WriteAsync(work);
+                    if (!TryWriteKeepingThread(work)) await _blockQueue.Writer.WriteAsync(work);
                 }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
@@ -567,6 +585,21 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (!notified) DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
                 throw;
             }
+        }
+    }
+
+    /// <summary>Writes without lending the recovery loop's thread to processing, when processing is detached.</summary>
+    private bool TryWriteKeepingThread(in ProcessingWork work)
+    {
+        if (!_options.DetachSuggestedBlocks) return _blockQueue.Writer.TryWrite(work);
+        t_writerKeepsThread = true;
+        try
+        {
+            return _blockQueue.Writer.TryWrite(work);
+        }
+        finally
+        {
+            t_writerKeepsThread = false;
         }
     }
 
@@ -601,6 +634,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
         while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
         {
+            // Resumed on a writer that must keep its thread: continue on the pool instead.
+            if (t_writerKeepsThread) await Task.Yield();
             await _pauseGate.WaitWhilePausedAsync(CancellationToken);
 
             using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
@@ -949,5 +984,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary>The logical processors block processing runs on, on an Intel hybrid CPU; see <see cref="PerformanceCores"/>.</summary>
         public ProcessingCores ProcessingCores { get; set; }
+
+        /// <summary>Whether blocks suggested by the block tree, as sync's are, are processed off the suggesting thread.</summary>
+        public bool DetachSuggestedBlocks { get; set; }
     }
 }
