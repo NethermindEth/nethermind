@@ -138,6 +138,52 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [TestCase("debug_traceTransaction", 0)]
+    [TestCase("debug_traceTransaction", 1)]
+    [TestCase("debug_traceTransaction", 2)]
+    [TestCase("debug_traceBlockByHash", 1)]
+    public async Task JavaScript_transaction_context_preserves_the_block_index(string method, int txIndex)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> columns = new();
+        TransactionChangesetIndex index = new(columns, new FlatDbConfig { HistoryTransactionIndexEnabled = true });
+        ChangesetPrefixStateSeedSource seeds = new(index);
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder
+                .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
+                .AddSingleton<IPrefixStateSeedSource>(seeds));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[3];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasLimit(21_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions.Length, Is.EqualTo(transactions.Length));
+        Transaction target = block.Transactions[txIndex];
+        bool traceTransaction = method == "debug_traceTransaction";
+        GethTraceOptions options = new()
+        {
+            Tracer = "{fault:function(){},result:function(ctx){return {txIndex:ctx.txIndex,block:ctx.block}}}",
+            TxHash = traceTransaction ? null : target.Hash
+        };
+        object parameter = traceTransaction ? target.Hash! : block.Hash!;
+        string replayed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
+        IndexThroughTheCapture(chain, index, block, parent);
+        string indexed = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method, parameter, options);
+
+        foreach (string response in new[] { replayed, indexed })
+        {
+            JToken json = JToken.Parse(response);
+            Assert.That(json["error"], Is.Null, response);
+            JToken result = traceTransaction ? json["result"]! : json["result"]![0]!["result"]!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result["txIndex"]!.Value<int>(), Is.EqualTo(txIndex), response);
+                Assert.That(result["block"]!.Value<long>(), Is.EqualTo(block.Number));
+            }
+        }
+    }
+
     public enum ReceiptAvailability { Stored, Missing, Unreproducible }
 
     // Without usable receipts both paths number the logs from the body they replay, as the receipts would.

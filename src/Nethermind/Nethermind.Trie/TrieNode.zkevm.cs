@@ -37,7 +37,7 @@ namespace Nethermind.Trie
         /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
         public bool IsExtension => _nodeData is ExtensionData;
 
-        // The node type, key, child slots and memory size go through INodeData here, as before. The std forms test
+        // The node type, key and memory size go through INodeData here, as before. The std forms test
         // the sealed classes to avoid the JIT's dispatch stubs and cast cache, which the guest's whole-program
         // compilation doesn't have; in the guest the type tests cost more steps than the calls they replace.
         public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
@@ -45,8 +45,17 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte[]? ReadKey() => _nodeData is INodeWithKey node ? node?.Key : null;
 
+        /// <summary>Child slot <paramref name="i"/> of the node data, a branch's reached without <see cref="INodeData"/>.</summary>
+        /// <remarks>ILC devirtualizes the interface indexer behind two type tests but still calls it out of line, once per
+        /// level of every trie write. One test for the branch, the type nearly every slot write goes to, inlines its
+        /// slot; a second for the extension measured slower than leaving the rest to the indexer.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref object? DataItem(int i) => ref _nodeData![i];
+        private ref object? DataItem(int i)
+        {
+            INodeData? nodeData = _nodeData;
+            if (nodeData is BranchData branch) return ref branch[i];
+            return ref nodeData![i];
+        }
 
         public long GetMemorySize(bool recursive)
         {
@@ -184,8 +193,10 @@ namespace Nethermind.Trie
         /// <remarks>
         /// Without the std form's wrapping of a decoding error into a <see cref="TrieNodeException"/>: the guest fails the
         /// block on any exception, and the handler costs every resolve a frame pointer and spilled arguments.
+        /// Inlined into each walk, unlike the std form: nearly every witness node is resolved exactly once, so the
+        /// call and its saved registers were paid per node.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
             ICappedArrayPool? bufferPool) => ResolveUnknownNode(tree, path, readFlags, bufferPool);
 
@@ -212,5 +223,28 @@ namespace Nethermind.Trie
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
+        /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
+        /// sealed check and slot store it makes.</remarks>
+        private const MethodImplOptions SetChildInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="PrepareRlp"/> is inlined: always.</summary>
+        /// <remarks>Entered once per node a root computation encodes, from the key resolution of its parent's encoder,
+        /// where an out-of-line call spills seven registers to test a flag and pick an encoder.</remarks>
+        private const MethodImplOptions PrepareRlpInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
+        /// <remarks>
+        /// An encoder reads the path only for its depth, which tells the root, hashed whatever its length, from a child
+        /// short enough to embed. Its nibbles would only reach the node store, which in the guest is keyed by hash alone
+        /// (see <c>WitnessNodeStorage.zkevm.cs</c>), the reason <see cref="PatriciaTree"/> already leaves them untracked.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnterChildPath(ref TreePath path, int index) => path.AppendDepth();
+
+        /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
     }
 }
