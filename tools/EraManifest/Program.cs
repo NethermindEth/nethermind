@@ -22,7 +22,7 @@ Option<string> outputOption = new("--output", "-o")
 
 Argument<string> directoryArgument = new("directory")
 {
-    Description = "A directory with era1 files, accumulators.txt and checksums.txt."
+    Description = "A directory with era1 files, checksums.txt and optional accumulators.txt."
 };
 
 Option<string> networkOption = new("--network", "-n")

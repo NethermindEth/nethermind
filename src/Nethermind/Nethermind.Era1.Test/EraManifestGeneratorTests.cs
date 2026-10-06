@@ -168,6 +168,7 @@ public class EraManifestGeneratorTests
         ExtraChecksum,
         MissingChecksum,
         MalformedChecksum,
+        MissingAccumulator,
     }
 
     [Test]
@@ -201,10 +202,12 @@ public class EraManifestGeneratorTests
         }
 
         await File.WriteAllLinesAsync(manifestPath, lines);
+        if (edit == ManifestEdit.MissingAccumulator)
+            File.Delete(Path.Combine(directory, EraExporter.AccumulatorFileName));
 
         IReadOnlyList<string> mismatches = await EraManifestGenerator.VerifyAsync(directory, EraTestModule.TestNetwork, FileSystem);
 
-        Assert.That(mismatches, edit == ManifestEdit.None ? Is.Empty : Is.Not.Empty);
+        Assert.That(mismatches, edit is ManifestEdit.None or ManifestEdit.MissingAccumulator ? Is.Empty : Is.Not.Empty);
     }
 
     public enum ManifestFormat

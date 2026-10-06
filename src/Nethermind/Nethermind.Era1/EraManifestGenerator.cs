@@ -51,6 +51,7 @@ public static class EraManifestGenerator
     /// <remarks>
     /// Lines are compared by position because <see cref="EraStore"/> looks up the checksum of an epoch by its offset from the first epoch.
     /// Only the hash column is compared, matching the importer; older exports can contain stale file names or just hashes.
+    /// The accumulator manifest is optional, as it is for import. The checksum manifest is required.
     /// </remarks>
     /// <exception cref="EraException">The era1 files cannot be processed; see <see cref="GenerateAsync"/>.</exception>
     public static async Task<IReadOnlyList<string>> VerifyAsync(string directory, string network, IFileSystem fileSystem, CancellationToken cancellation = default)
@@ -59,7 +60,8 @@ public static class EraManifestGenerator
         (string[] accumulators, string[] checksums) = await CalculateLines(directory, eraFiles, network, cancellation);
 
         List<string> mismatches = [];
-        await CompareLines(EraExporter.AccumulatorFileName, accumulators);
+        if (fileSystem.File.Exists(Path.Combine(directory, EraExporter.AccumulatorFileName)))
+            await CompareLines(EraExporter.AccumulatorFileName, accumulators);
         await CompareLines(EraExporter.ChecksumsFileName, checksums);
         return mismatches;
 
@@ -151,7 +153,7 @@ public static class EraManifestGenerator
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            throw new EraException($"Unable to read {Path.GetFileName(eraFile)}: {e.Message}");
+            throw new EraException($"Unable to read {Path.GetFileName(eraFile)}: {e.Message}", e);
         }
     }
 }
