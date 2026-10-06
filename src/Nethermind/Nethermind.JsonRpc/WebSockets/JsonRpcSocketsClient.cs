@@ -98,6 +98,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         using AutoCancelTokenSource cts = new(CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _sendFailure.Token));
 
         using ArrayPoolList<Task> allTasks = new(_workerTaskCount + 1);
+        bool sendFailedBeforeClose = false;
         allTasks.Add(Task.Run(async () =>
         {
             try
@@ -106,6 +107,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
             finally
             {
+                // A send that failed only after the transport closed is a consequence of the close, not its cause.
+                sendFailedBeforeClose = _sendLock.IsFaulted;
                 _processChannel.Writer.Complete();
             }
         }));
@@ -128,7 +131,7 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         }
 
         // The failed send's cancellation can close the transport before a worker observes it, ending every task cleanly.
-        if (!cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
+        if (sendFailedBeforeClose && !cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
         {
             ExceptionDispatchInfo.Throw(sendFailure);
         }
