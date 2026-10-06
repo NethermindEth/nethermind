@@ -354,6 +354,50 @@ public class HistoryWalkVerifierTests
         }
     }
 
+    private static readonly Address BucketOwner = new("0x000000000000000000000000000000000000ea16");
+    private static readonly Address BucketMate = new("0x0000000000000000000000000000000000010590");
+    private const int BucketOwnerSlots = 64;
+
+    [Test]
+    public void VerifyRange_WhenAccountSharesStoragePrefixWithLargerContract_RequiresItsOwnSlotHistory([Values] bool hasSlotHistory)
+    {
+        // 1. BucketOwner and BucketMate share the 4-byte storage key prefix, so their slot rows interleave by slot hash.
+        // 2. BucketOwner writes 64 slots at block 0; BucketMate's anchor carries a non-empty storage root.
+        // 3. BucketMate's own slot row is either recorded or missing; the state root matches either way.
+        Assert.That(BucketMate.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength].SequenceEqual(BucketOwner.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength]), Is.True,
+            "precondition: both accounts must land in the same storage bucket");
+
+        (UInt256 Slot, byte[] Value)[] ownerSlots = new (UInt256, byte[])[BucketOwnerSlots];
+        for (int i = 0; i < ownerSlots.Length; i++)
+        {
+            ownerSlots[i] = ((UInt256)(i + 1), [(byte)(i + 1)]);
+            HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, ownerSlots[i].Slot, block: 0, ownerSlots[i].Value);
+        }
+
+        Account owner = new(1, 50, StorageRootOf(ownerSlots), Keccak.OfAnEmptyString);
+        Account mate = new(1, 50, StorageRootOf((Slot, [0xAB])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, block: 0, owner);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketMate, block: 0, mate);
+        if (hasSlotHistory) HistoryColumnsWriter.RecordStorage(_historyColumns, BucketMate, Slot, block: 0, [0xAB]);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((BucketOwner, owner), (BucketMate, mate));
+        headers.Roots[1] = headers.Roots[0];
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        if (hasSlotHistory)
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "a bucket mate with its own slot rows must verify next to a larger contract");
+        }
+        else
+        {
+            Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (0UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
+                "the probe must look past every foreign row in the shared bucket before it accepts that the account has slot history");
+        }
+    }
+
     [Test]
     public void A_corrupt_slot_at_the_anchor_of_a_quiet_contract_fails_a_range_that_starts_above_genesis()
     {
