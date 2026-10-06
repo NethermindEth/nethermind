@@ -1,6 +1,11 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
+using Nethermind.Blockchain.Tracing.ParityStyle;
+using Nethermind.Core.Crypto;
+using Nethermind.JsonRpc.Modules.Trace;
+using Nethermind.Serialization.Json;
 using NUnit.Framework;
 
 namespace Nethermind.DocGen.Test;
@@ -41,6 +46,41 @@ public class JsonRpcGeneratorTests
             Assert.That(response, Does.Contain(documented));
             Assert.That(response, Does.Not.Contain(notDocumented));
         }
+    }
+
+    [TestCase("call", null)]
+    [TestCase("create", null)]
+    [TestCase("reward", null)]
+    [TestCase("suicide", null)]
+    [TestCase("call", "execution reverted")]
+    public void Replay_response_documents_properties_written_by_each_converter_branch(string actionType, string? error)
+    {
+        ParityTxTraceFromReplay trace = new()
+        {
+            TransactionHash = Keccak.Zero,
+            Action = new ParityTraceAction
+            {
+                Type = actionType,
+                CallType = actionType,
+                CreationMethod = actionType == "create" ? "create" : null,
+                Error = error
+            }
+        };
+        using JsonDocument wire = JsonDocument.Parse(new EthereumJsonSerializer().Serialize(trace));
+        string response = ReadResponse("trace", "trace_replayTransaction");
+
+        using (Assert.EnterMultipleScope())
+        {
+            AssertDocumentedProperties(wire.RootElement, response);
+            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0], response);
+            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0].GetProperty("action"), response);
+        }
+    }
+
+    private static void AssertDocumentedProperties(JsonElement value, string response)
+    {
+        foreach (JsonProperty property in value.EnumerateObject())
+            Assert.That(response, Does.Contain($"- `{property.Name}`:"), $"serialized property {property.Name} is missing from the response docs");
     }
 
     private string ReadResponse(string ns, string method)
