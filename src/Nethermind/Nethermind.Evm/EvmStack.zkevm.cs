@@ -35,7 +35,8 @@ public ref partial struct EvmStack
     /// <summary>Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, and reports whether it is a jump destination.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool AnalyzeJumpDestination(int destination) =>
-        _codeInfo is not null && _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
+        _codeInfo is not null && ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) &&
+        _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
 
     /// <summary>
     /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
@@ -50,7 +51,8 @@ public ref partial struct EvmStack
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
     {
-        if (_codeInfo is null || !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+        if (_codeInfo is null || !ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) ||
+            !_codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
 
         ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
         segment |= 1L << (int)destination;
@@ -95,6 +97,8 @@ public ref partial struct EvmStack
 
     /// <summary>The first word of <see cref="_jumpDestinations"/>, which the bit test indexes without a null check.</summary>
     private ref long _jumpDestinationBits;
+
+    partial void OnJumpDestinationsReplaced() => _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations!);
 
     // Resolved when the stack is built, as the host form is: resolving on the first jump put a call and a
     // write barrier into every handler that validates a jump. A stack over code without its code info gets
