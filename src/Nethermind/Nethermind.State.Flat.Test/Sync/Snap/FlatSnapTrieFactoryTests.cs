@@ -73,7 +73,7 @@ public class FlatSnapTrieFactoryTests
         RocksDbPersistence persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
         if (hasState)
         {
-            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Nethermind.Core.WriteFlags.DisableWAL);
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, WriteFlags.DisableWAL);
             batch.SetAccountRaw(Keccak.Zero.ValueHash256, new Account(1));
         }
 
@@ -89,6 +89,7 @@ public class FlatSnapTrieFactoryTests
             Assert.That(iterator.MoveNext(), Is.False);
             Assert.That(logger.LogList.Count(static l => l.Contains("cannot resume")), Is.EqualTo(hasState ? 1 : 0));
             Assert.That(logger.LogList.Count(static l => l.StartsWith("Cleared database in")), Is.EqualTo(1));
+            Assert.That(logger.LogList.FindIndex(static l => l == "Clearing database"), Is.EqualTo(0), "the first line must come before the probe");
         }
     }
 
