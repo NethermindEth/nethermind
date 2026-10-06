@@ -41,9 +41,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
     private const int MaxIndexedNumber = 0x100;
 
-    // CodeInfo's static constructor cannot be preinitialized by ILC (its empty analyzer holds a
-    // ReadOnlyMemory), so every CodeInfo.Empty read on the guest pays a class-init check; the hot
-    // readers below use this per-repository copy instead.
     private readonly CodeInfo _emptyCodeInfo = CodeInfo.Empty;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)

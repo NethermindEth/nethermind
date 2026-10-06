@@ -387,7 +387,6 @@ namespace Nethermind.Evm.TransactionProcessing
             CodeInfo? preloadedCodeInfo,
             Address? preloadedDelegationAddress)
         {
-            // Read once: IReleaseSpec is an interface call per read, and this method asks several times per transaction.
             bool eip8037 = spec.IsEip8037Enabled;
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
