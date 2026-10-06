@@ -12,7 +12,7 @@ namespace Nethermind.Core;
 
 /// <summary>Hashes a <see cref="UInt256"/> key through the run-seeded mixer.</summary>
 /// <remarks>
-/// Guest slot-keyed containers use the span mixer directly so that
+/// Guest slot-keyed containers use the slot-index mixer directly so that
 /// <see cref="SpanExtensions.SeedHashes(in UInt256)"/> controls their hashes independently of the
 /// int256 package. Host containers use the package's process-seeded default comparer.
 /// </remarks>
@@ -43,5 +43,12 @@ public sealed class UInt256Comparer : IEqualityComparer<UInt256>
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public int GetHashCode([DisallowNull] UInt256 obj)
-        => MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
+    {
+#if ZK_EVM
+        ulong hash = SpanExtensions.MixSlotIndex(ref Unsafe.As<UInt256, byte>(ref obj));
+        return (int)(hash ^ (hash >> 32));
+#else
+        return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
+#endif
+    }
 }

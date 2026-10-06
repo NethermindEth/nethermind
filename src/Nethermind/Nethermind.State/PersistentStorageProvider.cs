@@ -352,6 +352,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
         bool hasStorageClears = _storageClearJournal.Count != 0;
 
+        // Heads come mostly grouped by contract, so the root set is probed once per run of one.
+        Address? lastRootUpdate = null;
         // SaveChange and backend hints must not re-enter the journal while its heads are enumerated.
         foreach (HeadChange head in _intraBlockCache.Values)
         {
@@ -384,7 +386,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                toUpdateRoots.Add(change.StorageCell.Address);
+                if (!ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
+                {
+                    lastRootUpdate = change.StorageCell.Address;
+                    toUpdateRoots.Add(lastRootUpdate);
+                }
 
                 GetOrCreateStorage(change.StorageCell.Address)
                     .SaveChange(change.StorageCell, change.Value);
