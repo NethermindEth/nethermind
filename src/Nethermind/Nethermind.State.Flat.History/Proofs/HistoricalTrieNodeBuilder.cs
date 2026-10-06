@@ -30,9 +30,16 @@ internal sealed class HistoricalTrieNodeBuilder
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut), CancellationToken = budget.CancellationToken };
     }
 
-    public byte[] LoadRlp(in TreePath path, in ValueHash256 expected)
+    /// <param name="fromCache">True when the node cache served the node; a prefetched or rebuilt node is a miss.</param>
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 expected, out bool fromCache)
     {
-        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
+        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null)
+        {
+            fromCache = true;
+            return cached;
+        }
+
+        fromCache = false;
 
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 

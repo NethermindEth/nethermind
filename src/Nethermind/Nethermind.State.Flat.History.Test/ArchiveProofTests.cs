@@ -646,6 +646,26 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void CollectProof_WhenThePathIsInTheNodeCache_CountsEveryLookupAsACacheHit()
+    {
+        BuildCommitments();
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId head = _chain.StateIdAt(Blocks);
+        VisitingStats cold = new();
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, cold);
+        VisitingStats warm = new();
+
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, warm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cold.CacheHits, Is.LessThan(cold.NodeLookups), "a cold proof rebuilds nodes from rows");
+            Assert.That(warm.NodeLookups, Is.EqualTo(cold.NodeLookups));
+            Assert.That(warm.CacheHits, Is.EqualTo(warm.NodeLookups), "every node of a warm proof is served by the node cache");
+        }
+    }
+
+    [Test]
     public void A_covered_height_is_served_within_a_budget_too_small_for_a_root_rebuild()
     {
         BuildCommitments();
@@ -1508,7 +1528,7 @@ public class ArchiveProofTests
         const ulong block = 10;
 
         ResolutionBudget clean = new(maxScannedRows: 0);
-        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         int child = Keccak.Compute(accounts[0].Bytes).Bytes[1] & 0x0F;
         ulong window = policy.WindowAtOrBelow(block) + 1;
@@ -1535,7 +1555,7 @@ public class ArchiveProofTests
         ChildVector.Return(references);
 
         ResolutionBudget truncated = new(maxScannedRows: 0);
-        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1589,12 +1609,12 @@ public class ArchiveProofTests
         Hash256 expected = parentView.Hash.ToCommitment();
         parentView.Release();
         ResolutionBudget oneRebuild = new(maxScannedRows: 0);
-        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         ResolutionBudget budget = new(maxScannedRows: oneRebuild.ScannedRows + oneRebuild.ScannedRows / 2 + 1);
         HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, budget, fanOut: 1, cache: null);
 
-        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
+        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA, out _), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
             "the checkpoint path already rebuilt this node from rows before the hash check failed; rebuilding it again reads the same rows a second time and turns a real mismatch into a misleading budget refusal");
     }
 

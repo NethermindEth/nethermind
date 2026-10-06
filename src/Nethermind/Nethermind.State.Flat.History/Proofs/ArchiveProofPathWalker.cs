@@ -111,14 +111,14 @@ internal static class ArchiveProofPathWalker
     {
         TreePath path = new(key, CommitmentDepthPolicy.MaxTrieDepth);
         path.TruncateMut(depth);
+        byte[] rlp = builder.LoadRlp(path, hash, out bool fromCache);
         if (diagnostics is not null)
         {
             diagnostics.RecordLookup();
-            diagnostics.RecordCacheMiss();
+            if (!fromCache) diagnostics.RecordCacheMiss();
             diagnostics.ObserveDepth(depth);
         }
 
-        byte[] rlp = builder.LoadRlp(path, hash);
         proof.Add(rlp);
         return rlp;
     }
