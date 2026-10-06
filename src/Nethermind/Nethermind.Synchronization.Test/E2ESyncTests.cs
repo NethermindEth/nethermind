@@ -456,7 +456,8 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         IContainer server,
         int chainLength,
         CancellationToken cancellationToken,
-        string progressLabel)
+        string progressLabel,
+        bool accessListEdgeCases = false)
     {
         SyncTestContext serverCtx = server.Resolve<SyncTestContext>();
         string stage = $"{progressLabel}: starting block processing";
@@ -469,7 +470,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"{progressLabel}: building {chainLength} storage blocks.");
             for (int i = 0; i < chainLength; i++)
             {
-                await serverCtx.BuildBlockWithStorage(i, cancellationToken);
+                await (accessListEdgeCases
+                    ? serverCtx.BuildBlockWithAccessListEdgeCases(i, cancellationToken)
+                    : serverCtx.BuildBlockWithStorage(i, cancellationToken));
 
                 if ((i + 1) % BalSyncBuildProgressInterval == 0 || i == chainLength - 1)
                 {
@@ -724,7 +727,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
                 ConfigureLocalNetwork(cfg, AllocatePort());
                 return Task.CompletedTask;
             }, serverKey);
-            await StartServerAndBuildStorageChain(server, BalCatchUpChainLength, cancellationToken, "BAL catch-up server");
+            await StartServerAndBuildStorageChain(server, BalCatchUpChainLength, cancellationToken, "BAL catch-up server", accessListEdgeCases: true);
 
             long reconstructedBefore = Merge.Plugin.Metrics.FinalizedBlockAccessListReconstructions;
             await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
@@ -747,11 +750,12 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             // Blocks up to the finalized one are applied from their access lists and the rest execute, so matching
             // the executing server on blocks, receipts, transaction lookups, access lists and state shows nothing is lost.
+            // A wrong application only falls back to execution, so every finalized block must also be reconstructed.
             ulong finalized = await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyEverything(server, cancellationToken);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Merge.Plugin.Metrics.FinalizedBlockAccessListReconstructions - reconstructedBefore,
-                    Is.GreaterThanOrEqualTo((long)(finalized * 9 / 10)));
+                Assert.That(Merge.Plugin.Metrics.FinalizedBlockAccessListReconstructions - reconstructedBefore, Is.EqualTo((long)finalized),
+                    "Finalized blocks that fell back to execution.");
                 Assert.That(incompleteReceipts, Is.Empty, "Blocks published to processing subscribers without their receipts.");
                 Assert.That(Enumerable.Range(1, (int)finalized).Where(n => canonicalNotifications.GetValueOrDefault((ulong)n) != 1), Is.Empty,
                     "Finalized blocks whose receipts were not announced as canonical exactly once.");
@@ -1108,6 +1112,60 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
 
             _nonces[nodeKey.Address] = currentNonce;
             await testEnv.BuildBlockWithTxs([tx], cancellation);
+        }
+
+        private readonly List<Address> _clearers = [];
+        private PrivateKey? _delegatedAuthority;
+
+        // Init: slot 0 = 1. Runtime: slot 0 = 0.
+        private byte[]? _clearerInitCode;
+        private byte[] ClearerInitCode => _clearerInitCode ??= Prepare.EvmCode
+            .PushData(1).PushData(0).Op(Instruction.SSTORE)
+            .ForInitOf(Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done)
+            .Done;
+
+        private static readonly byte[] SelfDestructInitCode = Prepare.EvmCode.Op(Instruction.CALLER).Op(Instruction.SELFDESTRUCT).Done;
+
+        /// <summary>Builds a block whose access list covers state transitions a naive post-state writer gets wrong.</summary>
+        /// <remarks>
+        /// Account creation by transfer, a touch of a missing account, a contract created and destroyed in one
+        /// transaction, a slot cleared to zero, an EIP-7702 delegation set and later cleared, and a reverted call.
+        /// </remarks>
+        public async Task BuildBlockWithAccessListEdgeCases(int blockNumber, CancellationToken cancellation)
+        {
+            IReleaseSpec spec = specProvider.GetSpec((blockTree.Head?.Number ?? 0UL) + 1UL, null);
+            _nonces.TryGetValue(nodeKey.Address, out ulong nonce);
+            Address freshAddress(string salt) => new(Keccak.Compute($"{salt}-{blockNumber}").Bytes[..Address.Size]);
+            Transaction Sign(TransactionBuilder<Transaction> builder) =>
+                builder.WithNonce(nonce++).WithChainId(specProvider.ChainId).SignedAndResolved(ecdsa, nodeKey, spec.IsEip155Enabled).TestObject;
+            TransactionBuilder<Transaction> Legacy(ulong gasLimit) => Build.A.Transaction.WithGasLimit(gasLimit).WithGasPrice(10.GWei);
+
+            List<Transaction> txs =
+            [
+                Sign(Legacy(21_000).WithTo(freshAddress("funded")).WithValue(1)),
+                Sign(Legacy(21_000).WithTo(freshAddress("touched")).WithValue(0)),
+                Sign(Legacy(100_000).WithCode(SelfDestructInitCode).WithValue(1)),
+                Sign(Legacy(200_000).WithCode(ClearerInitCode)),
+            ];
+            _clearers.Add(ContractAddress.From(nodeKey.Address, nonce - 1));
+
+            if (_clearers.Count > 1)
+            {
+                Address previousClearer = _clearers[^2];
+                txs.Add(Sign(Legacy(100_000).WithTo(previousClearer)));
+                txs.Add(Sign(Legacy(21_100).WithTo(previousClearer)));
+
+                PrivateKey authority = new(Keccak.Compute($"authority-{blockNumber}").Bytes.ToArray());
+                List<AuthorizationTuple> authorizations = [ecdsa.Sign(authority, specProvider.ChainId, previousClearer, 0)];
+                if (_delegatedAuthority is not null) authorizations.Add(ecdsa.Sign(_delegatedAuthority, specProvider.ChainId, Address.Zero, 1));
+                _delegatedAuthority = authority;
+                txs.Add(Sign(Build.A.Transaction.WithType(TxType.SetCode).WithTo(freshAddress("setcode"))
+                    .WithGasLimit(200_000).WithMaxFeePerGas(10.GWei).WithMaxPriorityFeePerGas(1.GWei)
+                    .WithAuthorizationCode([.. authorizations])));
+            }
+
+            _nonces[nodeKey.Address] = nonce;
+            await testEnv.BuildBlockWithTxs([.. txs], cancellation);
         }
 
         private async Task VerifyHeadWith(IContainer server, CancellationToken cancellationToken)
