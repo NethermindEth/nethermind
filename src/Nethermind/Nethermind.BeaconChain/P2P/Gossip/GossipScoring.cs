@@ -33,6 +33,7 @@ internal static class GossipScoring
         settings.BehaviorPenaltyWeight = 0;
         settings.IPColocationFactorWeight = 0;
         settings.AppSpecificWeight = 0;
+        settings.DecayInterval = settings.HeartbeatInterval;
         TopicScoreParams invalidOnly = new()
         {
             TopicWeight = 1,

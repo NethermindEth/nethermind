@@ -112,7 +112,8 @@ public class BeaconChainPluginTests
         Assert.That((settings.BehaviorPenaltyWeight, settings.IPColocationFactorWeight, settings.AppSpecificWeight), Is.EqualTo((0d, 0d, 0d)));
         Assert.That(settings.PublishThreshold, Is.GreaterThan(GossipScoring.InvalidMessageDeliveriesWeight));
         Assert.That(settings.GraylistThreshold, Is.LessThanOrEqualTo(GossipScoring.InvalidMessageDeliveriesWeight).And.GreaterThan(4 * GossipScoring.InvalidMessageDeliveriesWeight));
-        Assert.That(Math.Pow(decay, 768), Is.EqualTo(0.01).Within(1e-9));
+        Assert.That(settings.DecayInterval, Is.EqualTo(settings.HeartbeatInterval));
+        Assert.That(Math.Pow(decay, 768_000d / settings.DecayInterval), Is.EqualTo(0.01).Within(1e-9));
     }
 
     [Test]
