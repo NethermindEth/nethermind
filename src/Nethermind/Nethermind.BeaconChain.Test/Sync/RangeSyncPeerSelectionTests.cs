@@ -221,7 +221,6 @@ public class RangeSyncPeerSelectionTests
         Assert.That(lines, Has.None.Null);
     }
 
-
     [Test]
     [CancelAfter(30_000)]
     public async Task Blocks_by_range_keep_using_a_fallback_peer_after_failures_shrink_the_batch(CancellationToken token)

@@ -249,7 +249,6 @@ public class BlockSignatureBatchProcessingTests
         Assert.That(() => GloasBlockProcessing.ProcessBlock(fixture.Pre.Clone(), block, new EpochCache(), fixture.Pubkeys, new AcceptingNotifier(), UpgradeEpochSpec(), verifySignatures: false), Throws.Nothing);
     }
 
-
     private const ulong FuluBlockSlot = 1;
 
     private static readonly SignedPart[] FuluParts =
@@ -459,7 +458,6 @@ public class BlockSignatureBatchProcessingTests
             Assert.That(() => BlockSignatureBatch.Run(batch => process(batch)), Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
         }
     }
-
 
     private static SignedBeaconBlockGloas SignedByProposer(BeaconBlockGloas block)
     {

@@ -125,7 +125,6 @@ public class GloasBlockProcessingTests
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.Contains("blob commitments"));
     }
 
-
     [Test]
     public void VerifyExecutionPayloadEnvelope_checks_the_committed_bid_without_applying_the_payload([Values] bool matching)
     {
@@ -153,7 +152,6 @@ public class GloasBlockProcessingTests
             Assert.That(ex.Message, Does.Contain("does not match the committed bid"));
         }
     }
-
 
     // A self-consistent envelope for a nonexistent post-state passes field checks; binding to its block root must refuse it.
     [Test]
@@ -235,7 +233,6 @@ public class GloasBlockProcessingTests
         Assert.DoesNotThrow(() => GloasBlockProcessing.VerifyExecutionPayloadEnvelope(cache, envelope, new AcceptingNotifier(), new PubkeyCache()));
     }
 
-
     [Test]
     public void The_two_step_apply_settles_and_pays_the_builder_exactly_one_block_after_the_bid_was_committed()
     {
@@ -285,7 +282,6 @@ public class GloasBlockProcessingTests
         Assert.That(rootAfterBlock2, Is.Not.EqualTo(rootAfterBlock1First), "settling and paying out the builder must actually change the state root");
     }
 
-
     [Test]
     public void ProcessWithdrawals_pays_a_fully_withdrawable_validator_computed_entirely_from_state()
     {
@@ -310,8 +306,6 @@ public class GloasBlockProcessingTests
         Assert.That(withdrawal.Amount, Is.EqualTo(startingBalance));
         Assert.That(withdrawal.Address, Is.EqualTo(new Address(validator.WithdrawalCredentials.Bytes[12..])));
     }
-
-
 
     [Test]
     public void ProcessOperations_rejects_an_operation_list_over_its_spec_bound_before_processing_any_of_it()

@@ -181,7 +181,6 @@ public class EngineTests
         });
     }
 
-
     [Test]
     public void Payload_converter_maps_a_gloas_payload_onto_v4_and_encodes_builder_requests()
     {

@@ -18,7 +18,6 @@ public class GloasEpochProcessingTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
-
     [Test]
     public void A_bid_at_the_same_slot_in_epoch_as_an_unsettled_payment_from_the_previous_epoch_lands_beside_it_not_on_top_of_it()
     {
@@ -47,7 +46,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingPayments[32].Withdrawal!.Amount, Is.EqualTo(secondBidValue));
         Assert.That(state.BuilderPendingPayments[0].Withdrawal!.Amount, Is.EqualTo(firstBidValue), "the second payment must not destroy the first");
     }
-
 
     [Test]
     public void A_payload_committed_in_the_previous_epoch_is_settled_through_the_rotated_lower_half_and_paid()
@@ -99,7 +97,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingWithdrawals, Is.Empty);
     }
 
-
     [Test]
     public void Builder_payment_quorum_is_sixty_percent_of_a_slots_share_of_the_active_balance()
     {
@@ -134,7 +131,6 @@ public class GloasEpochProcessingTests
         Assert.That(state.BuilderPendingPayments, Has.Length.EqualTo((int)Presets.BuilderPendingPaymentsLength));
     }
 
-
     [Test]
     public void ProcessPtcWindow_shifts_one_epoch_and_fills_the_last_with_the_committees_the_fork_transition_would_compute()
     {
@@ -163,7 +159,6 @@ public class GloasEpochProcessingTests
             "a real committee draws from many validators; an all-equal committee means the seed or candidate list is wrong");
     }
 
-
     [Test]
     public void GetBeaconProposerIndices_never_selects_a_slashed_validator()
     {
@@ -176,7 +171,6 @@ public class GloasEpochProcessingTests
 
         Assert.That(proposerIndices, Has.All.EqualTo(0ul), "validator 0 is the only unslashed candidate, so every slot must land on it");
     }
-
 
     private static readonly BlsPublicKey[] SyncCommitteeKeys = [.. Enumerable.Range(0, 4).Select(i => new BlsPublicKey(new Bls.P1(ValidatorKey(i)).Compress()))];
 
@@ -251,7 +245,6 @@ public class GloasEpochProcessingTests
         return state.NextSyncCommittee!;
     }
 
-
     [Test]
     public void Crossing_an_epoch_boundary_produces_the_same_validator_balance_and_lookahead_updates_as_the_fulu_pipeline()
     {
@@ -303,7 +296,6 @@ public class GloasEpochProcessingTests
         Assert.That(availability[34], Is.False, "process_slot at slot 33 unsets slot 34");
         Assert.That(availability[32], Is.True, "the slot already processed under Fulu keeps its upgrade-time value");
     }
-
 
     [TestCase(3ul, 1ul, 2ul, new[] { true, true, false, false }, false, 2ul, 0xA2, 1ul, 0xB1, new[] { false, true, true, false },
         TestName = "bits_1_and_2_finalize_the_old_previous_justified_two_epochs_back")]
@@ -359,7 +351,6 @@ public class GloasEpochProcessingTests
         Assert.That(CheckpointRef.From(state.FinalizedCheckpoint!), Is.EqualTo(CheckpointRef.From(computed.FinalizedCheckpoint)));
         Assert.That(state.JustificationBits!.Cast<bool>(), Is.EqualTo(expectedBits).AsCollection);
     }
-
 
     [TestCase(2048, 32UL, 128UL, 128UL)] // 65,536 ETH / 2^15 is under the 128 ETH floor
     [TestCase(8192, 1001UL, 250UL, 250UL)] // 8,200,192 ETH / 2^15 = 250.25 ETH, floored to a whole increment
