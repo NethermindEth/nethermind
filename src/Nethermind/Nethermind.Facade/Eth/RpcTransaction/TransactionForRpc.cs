@@ -155,6 +155,7 @@ public abstract class TransactionForRpc
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
+        private readonly GeneratedJsonDispatch _generated = new();
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
@@ -346,13 +347,14 @@ public abstract class TransactionForRpc
             return true;
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => WriteAsRuntimeType(writer, value, options);
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => WriteAsRuntimeType(_generated, writer, value, options);
 
-        /// <summary>Writes <paramref name="value"/> as its runtime type, through its generated writer when it has one.</summary>
-        internal static void WriteAsRuntimeType(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
+        /// <summary>Writes <paramref name="value"/> as its runtime type, through its generated writer in <paramref name="writers"/> when it has one.</summary>
+        /// <param name="writers">The calling converter's own writers, so their state lives as long as the options it serves.</param>
+        internal static void WriteAsRuntimeType(GeneratedJsonDispatch writers, Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options)
         {
             Type type = value.GetType();
-            if (GeneratedJsonWriters.TryGetDispatchWriter(type, out IGeneratedJsonWriter? generated))
+            if (writers.TryGetWriter(type, out IGeneratedJsonWriter? generated))
             {
                 generated.WriteValue(writer, value, options);
             }

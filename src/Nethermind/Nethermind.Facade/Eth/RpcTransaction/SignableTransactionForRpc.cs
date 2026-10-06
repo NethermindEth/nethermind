@@ -31,6 +31,8 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
 
     public sealed class SignableTransactionJsonConverter : JsonConverter<SignableTransactionForRpc>
     {
+        private readonly GeneratedJsonDispatch _generated = new();
+
         public override SignableTransactionForRpc? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
             // The base converter matches only TransactionForRpc, so its concrete-type deserialization never re-enters this one.
             TypeInfoJsonSerializer.Deserialize<TransactionForRpc>(ref reader, options) switch
@@ -41,6 +43,6 @@ public abstract class SignableTransactionForRpc : TransactionForRpc
             };
 
         public override void Write(Utf8JsonWriter writer, SignableTransactionForRpc value, JsonSerializerOptions options) =>
-            TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, value, options);
+            TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(_generated, writer, value, options);
     }
 }

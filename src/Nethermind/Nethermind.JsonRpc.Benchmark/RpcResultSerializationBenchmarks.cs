@@ -72,13 +72,16 @@ public class RpcResultSerializationBenchmarks
 
         // Read after Facade's module initializer registered the writers, which rebuilds the options.
         _generated = EthereumJsonSerializer.JsonOptions;
-        _metadata = GeneratedJsonWriters.GetMetadataOptions(_generated);
-        foreach (IGeneratedJsonWriter writer in _generated.Converters.OfType<IGeneratedJsonWriter>())
+        _metadata = GeneratedJsonWriters.CreateMetadataOptions(_generated);
+        foreach (Type type in new[] { typeof(BlockForRpc), typeof(FilterLog) })
         {
-            if (!writer.IsActive(_generated)) throw new InvalidOperationException($"{writer.GetType().Name} defers to the metadata path");
+            if (_generated.GetConverter(type) is not IGeneratedJsonWriter writer || !writer.IsActive(_generated))
+            {
+                throw new InvalidOperationException($"the {type.Name} writer defers to the metadata path");
+            }
         }
 
-        if (!GeneratedJsonWriters.TryGetDispatchWriter(typeof(Facade.Eth.RpcTransaction.EIP1559TransactionForRpc), out IGeneratedJsonWriter? txWriter) || !txWriter.IsActive(_generated))
+        if (!GeneratedJsonWriters.TryCreateDispatchWriter(typeof(Facade.Eth.RpcTransaction.EIP1559TransactionForRpc), out IGeneratedJsonWriter? txWriter) || !txWriter.IsActive(_generated))
         {
             throw new InvalidOperationException("the EIP-1559 transaction writer is not reached through the dispatch");
         }

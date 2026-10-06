@@ -18,7 +18,7 @@ internal sealed class GenerateJsonWriterAttribute : Attribute
 {
     /// <summary>
     /// Whether the writer is registered with <see cref="EthereumJsonSerializer"/>, which then reads the type through the metadata
-    /// path; otherwise it is only reachable through <see cref="GeneratedJsonWriters.TryGetDispatchWriter"/>.
+    /// path; otherwise it is only reachable through <see cref="GeneratedJsonWriters.TryCreateDispatchWriter"/>.
     /// </summary>
     /// <remarks>Set it to <see langword="false"/> for types a hand-written converter already dispatches to, so their reads stay untouched.</remarks>
     public bool RegisterWithSerializer { get; init; } = true;

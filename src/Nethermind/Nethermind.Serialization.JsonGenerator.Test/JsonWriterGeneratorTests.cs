@@ -205,7 +205,7 @@ public class JsonWriterGeneratorTests
         foreach (JsonIgnoreCondition defaultIgnore in new[] { JsonIgnoreCondition.Never, JsonIgnoreCondition.WhenWritingNull, JsonIgnoreCondition.WhenWritingDefault })
         {
             // Creating the writer ran the module initializer, which registered generated writers globally; drop them here.
-            JsonSerializerOptions metadataOptions = new(GeneratedJsonWriters.GetMetadataOptions(EthereumJsonSerializer.JsonOptions)) { DefaultIgnoreCondition = defaultIgnore };
+            JsonSerializerOptions metadataOptions = new(GeneratedJsonWriters.CreateMetadataOptions(EthereumJsonSerializer.JsonOptions)) { DefaultIgnoreCondition = defaultIgnore };
             metadataOptions.TypeInfoResolverChain.Insert(0, context);
             JsonSerializerOptions options = new(metadataOptions);
             options.Converters.Insert(0, writer);
@@ -242,13 +242,12 @@ public class JsonWriterGeneratorTests
         Assert.That(compilation.GetDiagnostics().Where(static d => d.Severity == DiagnosticSeverity.Error), Is.Empty);
 
         string registration = result.GeneratedTrees.Single(static t => Path.GetFileName(t.FilePath) == "GeneratedJsonWriterRegistration.g.cs").GetText().ToString();
-        string withSerializer = registration[..registration.IndexOf("RegisterForDispatch(", StringComparison.Ordinal)];
-        string forDispatch = registration[registration.IndexOf("RegisterForDispatch(", StringComparison.Ordinal)..];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(withSerializer, Does.Contain("new global::A.OneJsonWriter()"));
-            Assert.That(forDispatch, Does.Contain("new global::B.TwoJsonWriter()"));
-            Assert.That(forDispatch, Does.Not.Contain("OneJsonWriter"), "a dispatch-only writer must not reach the serializer options");
+            Assert.That(registration, Does.Contain("Register<global::A.One, global::A.OneJsonWriter>(static options => new global::A.OneJsonWriter(options));"));
+            Assert.That(registration, Does.Contain("RegisterForDispatch<global::B.Two>(static () => new global::B.TwoJsonWriter());"));
+            Assert.That(registration, Does.Not.Contain("Register<global::B.Two,"), "a dispatch-only writer must not reach the serializer options");
+            Assert.That(registration, Does.Not.Contain("RegisterForDispatch<global::A.One>"));
         }
     }
 

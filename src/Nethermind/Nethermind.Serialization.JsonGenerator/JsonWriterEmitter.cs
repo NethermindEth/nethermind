@@ -27,6 +27,10 @@ internal static class JsonWriterEmitter
         sb.AppendLine("[global::System.CodeDom.Compiler.GeneratedCode(\"Nethermind.Serialization.JsonGenerator\", \"1.0.0\")]");
         sb.Append("internal sealed class ").Append(writer).Append(" : ").Append(Runtime).Append(".GeneratedJsonWriter<").Append(type.FullName).Append(", ").Append(writer).AppendLine(".State>");
         sb.AppendLine("{");
+        sb.Append("    public ").Append(writer).AppendLine("() { }");
+        sb.AppendLine();
+        sb.Append("    public ").Append(writer).Append("(").Append(Stj).AppendLine(".JsonSerializerOptions options) : base(options) { }");
+        sb.AppendLine();
 
         EmitContract(sb, type);
         EmitCreateState(sb, type);
@@ -52,23 +56,23 @@ internal static class JsonWriterEmitter
         sb.AppendLine("    [global::System.Diagnostics.CodeAnalysis.SuppressMessage(\"Usage\", \"CA2255\", Justification = \"Registers the writers before any code in this assembly serializes.\")]");
         sb.AppendLine("    internal static void Register()");
         sb.AppendLine("    {");
-        EmitRegistrationCall(sb, "Register", types.Where(static t => t.RegisterWithSerializer).ToList());
-        EmitRegistrationCall(sb, "RegisterForDispatch", types.Where(static t => !t.RegisterWithSerializer).ToList());
+        foreach (TypeModel type in types)
+        {
+            string writer = type.Namespace is null ? "global::" + type.WriterName : "global::" + type.Namespace + "." + type.WriterName;
+            sb.Append("        ").Append(Runtime).Append(".GeneratedJsonWriters.");
+            if (type.RegisterWithSerializer)
+            {
+                sb.Append("Register<").Append(type.FullName).Append(", ").Append(writer).Append(">(static options => new ").Append(writer).AppendLine("(options));");
+            }
+            else
+            {
+                sb.Append("RegisterForDispatch<").Append(type.FullName).Append(">(static () => new ").Append(writer).AppendLine("());");
+            }
+        }
+
         sb.AppendLine("    }");
         sb.AppendLine("}");
         return sb.ToString();
-    }
-
-    private static void EmitRegistrationCall(StringBuilder sb, string method, List<TypeModel> types)
-    {
-        if (types.Count == 0) return;
-        sb.Append("        ").Append(Runtime).Append(".GeneratedJsonWriters.").Append(method).AppendLine("(");
-        for (int i = 0; i < types.Count; i++)
-        {
-            TypeModel type = types[i];
-            string name = type.Namespace is null ? "global::" + type.WriterName : "global::" + type.Namespace + "." + type.WriterName;
-            sb.Append("            new ").Append(name).Append("()").AppendLine(i == types.Count - 1 ? ");" : ",");
-        }
     }
 
     private static void EmitContract(StringBuilder sb, TypeModel type)
@@ -90,11 +94,11 @@ internal static class JsonWriterEmitter
 
     private static void EmitCreateState(StringBuilder sb, TypeModel type)
     {
-        sb.Append("    protected override State CreateState(").Append(Stj).AppendLine(".JsonSerializerOptions options)");
+        sb.Append("    protected override State CreateState(").Append(Stj).Append(".JsonSerializerOptions options, ").Append(Stj).AppendLine(".JsonSerializerOptions metadataOptions)");
         sb.AppendLine("    {");
         sb.Append("        if (!").Append(Runtime).AppendLine(".GeneratedJsonWriters.SupportsOptions(options)) return null;");
         sb.Append("        ").Append(Stj).Append(".JsonEncodedText[] names = ").Append(Runtime).Append(".GeneratedJsonWriters.GetPropertyNames<").Append(type.FullName)
-            .Append(">(options, Contract, ").Append(Bool(type.HasOnSerializing)).Append(", ").Append(Bool(type.HasOnSerialized)).Append(", out ")
+            .Append(">(options, metadataOptions, Contract, ").Append(Bool(type.HasOnSerializing)).Append(", ").Append(Bool(type.HasOnSerialized)).Append(", out ")
             .Append(Stj).AppendLine(".Serialization.JsonConverter[] propertyConverters);");
         sb.AppendLine("        if (names is null) return null;");
         sb.Append("        ").Append(Stj).Append(".Serialization.JsonConverter[] converters = new ").Append(Stj).Append(".Serialization.JsonConverter[").Append(type.Contract.Length).AppendLine("];");

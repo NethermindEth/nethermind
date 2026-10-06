@@ -31,7 +31,7 @@ public class JsonContextEquivalenceTests
         // Contexts in the EthereumJsonSerializer chain serve its options; the rest are used with their own.
         // Generated writers would hide the metadata they defer to, so compare it without them.
         JsonSerializerOptions options = EthereumJsonSerializer.JsonOptions.TypeInfoResolverChain.Contains(context)
-            ? GeneratedJsonWriters.GetMetadataOptions(EthereumJsonSerializer.JsonOptions)
+            ? GeneratedJsonWriters.CreateMetadataOptions(EthereumJsonSerializer.JsonOptions)
             : context.Options;
 
         List<string> differences = [];

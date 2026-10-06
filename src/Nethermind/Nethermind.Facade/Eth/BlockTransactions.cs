@@ -50,6 +50,8 @@ public sealed class BlockTransactions
 /// <remarks>Public because source-generated contexts in other assemblies instantiate the converter <see cref="BlockTransactions"/> names.</remarks>
 public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions>
 {
+    private readonly GeneratedJsonDispatch _generated = new();
+
     public override BlockTransactions Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         if (reader.TokenType != JsonTokenType.StartArray || !reader.Read()) throw new JsonException("Expected an array of transactions");
@@ -72,7 +74,7 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
             {
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
                 if (transaction is null) writer.WriteNullValue();
-                else TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, transaction, options);
+                else TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(_generated, writer, transaction, options);
             }
         }
         else

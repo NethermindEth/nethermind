@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -21,8 +20,34 @@ internal interface IGeneratedJsonWriter
     /// <summary>Whether writes with <paramref name="options"/> use the generated code rather than the metadata path.</summary>
     bool IsActive(JsonSerializerOptions options);
 
+    /// <summary>Gets the state writes with <paramref name="options"/> use, or <see langword="null"/> when they use the metadata path.</summary>
+    /// <remarks>The same instance for every call with the options the writer is bound to; a new one for any other options.</remarks>
+    object? GetState(JsonSerializerOptions options);
+
     /// <summary>Writes <paramref name="value"/>, an instance of exactly <see cref="WrittenType"/>.</summary>
     void WriteValue(Utf8JsonWriter writer, object value, JsonSerializerOptions options);
+}
+
+/// <summary>Marks the factory that registers a generated writer with serializer options.</summary>
+internal interface IGeneratedJsonWriterFactory
+{
+    /// <summary>The exact type the created writers write.</summary>
+    Type WrittenType { get; }
+}
+
+/// <summary>Creates a generated writer for <typeparamref name="T"/> bound to the options STJ creates it for.</summary>
+/// <remarks>
+/// STJ calls <see cref="CreateConverter"/> once per options caching context and keeps the result in that context's metadata,
+/// so each writer lives exactly as long as the options it serves.
+/// </remarks>
+internal sealed class GeneratedJsonWriterFactory<T, TWriter>(Func<JsonSerializerOptions, TWriter> create) : JsonConverterFactory, IGeneratedJsonWriterFactory
+    where TWriter : JsonConverter<T>, IGeneratedJsonWriter
+{
+    public Type WrittenType => typeof(T);
+
+    public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(T);
+
+    public override JsonConverter CreateConverter(Type typeToConvert, JsonSerializerOptions options) => create(options);
 }
 
 /// <summary>How a generated writer treats one entry of the type's metadata contract.</summary>
@@ -59,20 +84,26 @@ internal readonly struct GeneratedJsonProperty(string memberName, string? explic
 /// <para>
 /// Writes go through the generated code only for options it can honour and whose metadata contract for
 /// <typeparamref name="T"/> matches the one it was generated for; otherwise, and for every read, the converter defers to
-/// the metadata path through <see cref="GeneratedJsonWriters.GetMetadataOptions"/>, options that lack the generated writers.
-/// A writer used only through <see cref="GeneratedJsonWriters.TryGetDispatchWriter"/> is never registered with options, so
-/// STJ never reads through it.
+/// the metadata path through a copy of the options without the generated writers.
+/// A writer used only through a dispatching converter is never registered with options, so STJ never reads through it.
 /// </para>
-/// <para>The per-options state is cached in two entries, so request and response options do not evict each other.</para>
+/// <para>
+/// A writer keeps the state and the metadata copy for one read-only options instance: the one it was created for, or else
+/// the first one it serves. STJ creates one writer per options caching context and passes that context's options to every
+/// write it drives, so only a direct call with other options builds the state again, and that state is not kept.
+/// </para>
 /// </remarks>
 internal abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGeneratedJsonWriter
     where T : class
     where TState : class
 {
-    private readonly Lock _replaceLock = new();
-    private Entry? _first;
-    private Entry? _second;
-    private bool _replaceSecond;
+    private readonly JsonSerializerOptions? _owner;
+    private Binding? _binding;
+
+    protected GeneratedJsonWriter() { }
+
+    /// <param name="owner">The options STJ creates the writer for; it then keeps state for no other instance.</param>
+    protected GeneratedJsonWriter(JsonSerializerOptions owner) => _owner = owner;
 
     public sealed override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(T);
 
@@ -80,66 +111,95 @@ internal abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGene
     public sealed override bool HandleNull => true;
 
     public sealed override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
-        TypeInfoJsonSerializer.Deserialize<T>(ref reader, GeneratedJsonWriters.GetMetadataOptions(options));
+        TypeInfoJsonSerializer.Deserialize<T>(ref reader, GetBinding(options).MetadataOptions);
 
     public sealed override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
     {
-        if (value is not null && GetState(options) is { } state)
+        Binding binding = GetBinding(options);
+        if (value is not null && binding.State is { } state)
         {
             Write(writer, value, state, options);
         }
         else
         {
-            TypeInfoJsonSerializer.Serialize(writer, value, GeneratedJsonWriters.GetMetadataOptions(options));
+            TypeInfoJsonSerializer.Serialize(writer, value, binding.MetadataOptions);
         }
     }
 
     public Type WrittenType => typeof(T);
 
-    /// <summary>Whether writes with <paramref name="options"/> use the generated code rather than the metadata path.</summary>
-    public bool IsActive(JsonSerializerOptions options) => GetState(options) is not null;
+    public bool IsActive(JsonSerializerOptions options) => GetBinding(options).State is not null;
+
+    public object? GetState(JsonSerializerOptions options) => GetBinding(options).State;
 
     public void WriteValue(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => Write(writer, (T)value, options);
 
     /// <summary>Builds the state for <paramref name="options"/>, or returns <see langword="null"/> to defer to the metadata path.</summary>
-    protected abstract TState? CreateState(JsonSerializerOptions options);
+    /// <param name="metadataOptions">The copy of <paramref name="options"/> without the generated writers.</param>
+    protected abstract TState? CreateState(JsonSerializerOptions options, JsonSerializerOptions metadataOptions);
 
     /// <summary>Writes a non-null <paramref name="value"/> with the state built for <paramref name="options"/>.</summary>
     protected abstract void Write(Utf8JsonWriter writer, T value, TState state, JsonSerializerOptions options);
 
-    private TState? GetState(JsonSerializerOptions options)
+    private Binding GetBinding(JsonSerializerOptions options)
     {
-        Entry? entry = Volatile.Read(ref _first);
-        if (entry is not null && ReferenceEquals(entry.Options, options)) return entry.State;
-
-        entry = Volatile.Read(ref _second);
-        if (entry is not null && ReferenceEquals(entry.Options, options)) return entry.State;
-
-        return AddState(options);
+        Binding? binding = Volatile.Read(ref _binding);
+        return binding is not null && ReferenceEquals(binding.Options, options) ? binding : Bind(options, binding);
     }
 
-    private TState? AddState(JsonSerializerOptions options)
+    private Binding Bind(JsonSerializerOptions options, Binding? current)
     {
-        lock (_replaceLock)
+        // Read before building: options that were mutable when copied could have changed since, so their state is never kept.
+        bool keep = current is null && options.IsReadOnly && (_owner is null || ReferenceEquals(_owner, options));
+        JsonSerializerOptions metadataOptions = GeneratedJsonWriters.CreateMetadataOptions(options);
+        Binding created = new(options, CreateState(options, metadataOptions), metadataOptions);
+
+        if (keep)
         {
-            Entry? entry = _first;
-            if (entry is not null && ReferenceEquals(entry.Options, options)) return entry.State;
-
-            entry = _second;
-            if (entry is not null && ReferenceEquals(entry.Options, options)) return entry.State;
-
-            Entry created = new(options, CreateState(options));
-            if (_replaceSecond) Volatile.Write(ref _second, created);
-            else Volatile.Write(ref _first, created);
-            _replaceSecond = !_replaceSecond;
-            return created.State;
+            // Threads that race here build equal state; one publication wins and the others use their own once.
+            Interlocked.CompareExchange(ref _binding, created, null);
         }
+
+        return created;
     }
 
-    private sealed class Entry(JsonSerializerOptions options, TState? state)
+    private sealed class Binding(JsonSerializerOptions options, TState? state, JsonSerializerOptions metadataOptions)
     {
         public readonly JsonSerializerOptions Options = options;
         public readonly TState? State = state;
+        public readonly JsonSerializerOptions MetadataOptions = metadataOptions;
+    }
+}
+
+/// <summary>The dispatch writers one hand-written converter instance uses, created on first use of each type.</summary>
+/// <remarks>
+/// STJ creates a converter named by a type-level <c>[JsonConverter]</c> once per options caching context, so a converter that
+/// owns this set gives each options instance writers, and so writer state, of its own.
+/// </remarks>
+internal sealed class GeneratedJsonDispatch
+{
+    private readonly Lock _addLock = new();
+    private Dictionary<Type, IGeneratedJsonWriter?> _writers = [];
+
+    /// <summary>Gets the writer for exactly <paramref name="type"/>, or <see langword="false"/> when none is registered.</summary>
+    /// <remarks>Copy-on-write, so lookups take no lock and readers never see a partly built table.</remarks>
+    public bool TryGetWriter(Type type, [NotNullWhen(true)] out IGeneratedJsonWriter? writer)
+    {
+        if (!Volatile.Read(ref _writers).TryGetValue(type, out writer)) writer = Add(type);
+        return writer is not null;
+    }
+
+    private IGeneratedJsonWriter? Add(Type type)
+    {
+        lock (_addLock)
+        {
+            if (_writers.TryGetValue(type, out IGeneratedJsonWriter? writer)) return writer;
+
+            // A type that has no writer now never gets one: its assembly registers it before any instance can exist.
+            GeneratedJsonWriters.TryCreateDispatchWriter(type, out writer);
+            Volatile.Write(ref _writers, new Dictionary<Type, IGeneratedJsonWriter?>(_writers) { [type] = writer });
+            return writer;
+        }
     }
 }
 
@@ -148,49 +208,43 @@ internal static class GeneratedJsonWriters
 {
     private const int DefaultMaxDepth = 64;
 
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, JsonSerializerOptions> MetadataOptions = [];
     private static readonly Lock DispatchLock = new();
-    private static MetadataOptionsEntry? _lastMetadataOptions;
-    private static Dictionary<Type, IGeneratedJsonWriter> _dispatchWriters = [];
+    private static Dictionary<Type, Func<IGeneratedJsonWriter>> _dispatchWriters = [];
 
-    /// <summary>Registers generated writers with every options instance <see cref="EthereumJsonSerializer"/> builds.</summary>
-    public static void Register(params JsonConverter[] writers)
-    {
-        foreach (JsonConverter writer in writers)
-        {
-            EthereumJsonSerializer.AddConverter(writer);
-        }
-    }
+    /// <summary>Registers the writer for <typeparamref name="T"/> with every options instance <see cref="EthereumJsonSerializer"/> builds.</summary>
+    /// <remarks>Registered through a factory, so each options instance gets a writer of its own.</remarks>
+    public static void Register<T, TWriter>(Func<JsonSerializerOptions, TWriter> create)
+        where TWriter : JsonConverter<T>, IGeneratedJsonWriter =>
+        EthereumJsonSerializer.AddConverter(new GeneratedJsonWriterFactory<T, TWriter>(create));
 
-    /// <summary>Makes generated writers available to the hand-written converters that dispatch to their types.</summary>
+    /// <summary>Makes the writer for <typeparamref name="T"/> available to the hand-written converters that dispatch to the type.</summary>
     /// <remarks>Copy-on-write, so lookups take no lock; registrations happen at module initialization.</remarks>
-    public static void RegisterForDispatch(params IGeneratedJsonWriter[] writers)
+    public static void RegisterForDispatch<T>(Func<IGeneratedJsonWriter> create)
     {
         lock (DispatchLock)
         {
-            Dictionary<Type, IGeneratedJsonWriter> updated = new(_dispatchWriters);
-            foreach (IGeneratedJsonWriter writer in writers)
-            {
-                updated[writer.WrittenType] = writer;
-            }
-
-            Volatile.Write(ref _dispatchWriters, updated);
+            Volatile.Write(ref _dispatchWriters, new Dictionary<Type, Func<IGeneratedJsonWriter>>(_dispatchWriters) { [typeof(T)] = create });
         }
     }
 
-    /// <summary>Gets the dispatch writer registered for exactly <paramref name="type"/>.</summary>
-    public static bool TryGetDispatchWriter(Type type, [NotNullWhen(true)] out IGeneratedJsonWriter? writer) =>
-        Volatile.Read(ref _dispatchWriters).TryGetValue(type, out writer);
-
-    /// <summary>Gets a copy of <paramref name="options"/> without generated writers, so types resolve through their metadata.</summary>
-    public static JsonSerializerOptions GetMetadataOptions(JsonSerializerOptions options)
+    /// <summary>Creates a writer for exactly <paramref name="type"/> when one is registered for dispatch.</summary>
+    /// <remarks>A dispatching converter keeps the writers it creates, so they live as long as its options do.</remarks>
+    public static bool TryCreateDispatchWriter(Type type, [NotNullWhen(true)] out IGeneratedJsonWriter? writer)
     {
-        MetadataOptionsEntry? last = Volatile.Read(ref _lastMetadataOptions);
-        if (last is not null && ReferenceEquals(last.Options, options)) return last.MetadataOptions;
+        writer = Volatile.Read(ref _dispatchWriters).TryGetValue(type, out Func<IGeneratedJsonWriter>? create) ? create() : null;
+        return writer is not null;
+    }
 
-        JsonSerializerOptions metadataOptions = MetadataOptions.GetValue(options, static o => CreateMetadataOptions(o));
-        Volatile.Write(ref _lastMetadataOptions, new MetadataOptionsEntry(options, metadataOptions));
-        return metadataOptions;
+    /// <summary>Creates a copy of <paramref name="options"/> without generated writers, so types resolve through their metadata.</summary>
+    public static JsonSerializerOptions CreateMetadataOptions(JsonSerializerOptions options)
+    {
+        JsonSerializerOptions copy = new(options);
+        for (int i = copy.Converters.Count - 1; i >= 0; i--)
+        {
+            if (copy.Converters[i] is IGeneratedJsonWriter or IGeneratedJsonWriterFactory) copy.Converters.RemoveAt(i);
+        }
+
+        return copy;
     }
 
     /// <summary>Whether generated writers can honour every write-side setting of <paramref name="options"/>.</summary>
@@ -210,11 +264,11 @@ internal static class GeneratedJsonWriters
     /// generated for and returns the encoded property names, or <see langword="null"/> when they differ.
     /// </summary>
     /// <param name="propertyConverters">The property-level converter instances the metadata path uses, by contract index.</param>
-    public static JsonEncodedText[]? GetPropertyNames<T>(JsonSerializerOptions options, GeneratedJsonProperty[] contract, bool hasOnSerializing, bool hasOnSerialized,
-        out JsonConverter?[] propertyConverters)
+    /// <param name="metadataOptions">The copy of <paramref name="options"/> without the generated writers.</param>
+    public static JsonEncodedText[]? GetPropertyNames<T>(JsonSerializerOptions options, JsonSerializerOptions metadataOptions, GeneratedJsonProperty[] contract,
+        bool hasOnSerializing, bool hasOnSerialized, out JsonConverter?[] propertyConverters)
     {
         propertyConverters = new JsonConverter?[contract.Length];
-        JsonSerializerOptions metadataOptions = GetMetadataOptions(options);
         if (!IsContractUncustomized(typeof(T), metadataOptions)) return null;
 
         JsonTypeInfo info = TypeInfoJsonSerializer.GetTypeInfo<T>(metadataOptions);
@@ -314,21 +368,4 @@ internal static class GeneratedJsonWriters
     [DoesNotReturn]
     public static void ThrowMaxDepthExceeded(int maxDepth) =>
         throw new JsonException($"A possible object cycle was detected. This can either be due to a cycle or if the object depth is larger than the maximum allowed depth of {maxDepth}. Consider using ReferenceHandler.IgnoreCycles on JsonSerializerOptions to support cycles.");
-
-    private static JsonSerializerOptions CreateMetadataOptions(JsonSerializerOptions options)
-    {
-        JsonSerializerOptions copy = new(options);
-        for (int i = copy.Converters.Count - 1; i >= 0; i--)
-        {
-            if (copy.Converters[i] is IGeneratedJsonWriter) copy.Converters.RemoveAt(i);
-        }
-
-        return copy;
-    }
-
-    private sealed class MetadataOptionsEntry(JsonSerializerOptions options, JsonSerializerOptions metadataOptions)
-    {
-        public readonly JsonSerializerOptions Options = options;
-        public readonly JsonSerializerOptions MetadataOptions = metadataOptions;
-    }
 }
