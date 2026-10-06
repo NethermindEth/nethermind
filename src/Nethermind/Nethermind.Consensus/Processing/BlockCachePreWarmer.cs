@@ -206,16 +206,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             _nodeStorageCache.ClearCaches();
             // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
-            if (skipReactiveWarming) return InstallAheadOnly(suggestedBlock, spec, ahead);
+            if (skipReactiveWarming) return WarmAheadOnly(suggestedBlock, parent, spec, ahead, cancellationToken);
             _nodeStorageCache.Enabled = true;
         }
 
-        if (skipReactiveWarming) return InstallAheadOnly(suggestedBlock, spec, ahead);
+        if (skipReactiveWarming) return WarmAheadOnly(suggestedBlock, parent, spec, ahead, cancellationToken);
         return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, ahead, cancellationToken);
     }
 
-    /// <summary>A block warmed by no pass of its own still takes the footprints runs ahead left for it.</summary>
-    private IDisposable? InstallAheadOnly(Block block, IReleaseSpec spec, BlockFootprints? ahead)
+    /// <summary>
+    /// A block warmed by no pass of its own still takes the footprints runs ahead left for it, and the blocks queued
+    /// behind it are still run ahead while it executes.
+    /// </summary>
+    private IDisposable? WarmAheadOnly(Block block, BlockHeader? parent, IReleaseSpec spec, BlockFootprints? ahead, CancellationToken cancellationToken)
     {
         if (ahead is not null && _handoff && BlockFootprints.AppliesTo(block, spec))
         {
@@ -224,7 +227,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             Volatile.Write(ref _footprints, ahead);
         }
 
-        return null;
+        if (_lookAheadDepth == 0 || parent is null || _concurrencyLevel <= 1 || block is BlockToProduce
+            || cancellationToken.IsCancellationRequested || _lookAheadSource!.FindChild(block) is null)
+        {
+            return null;
+        }
+
+        PrewarmingSession session = new(cancellationToken, _logger);
+        CancellationToken token = session.Token;
+        session.Start(() =>
+        {
+            using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
+            RunAhead(block, token);
+        }, NoResources.Instance);
+        return session;
+    }
+
+    private sealed class NoResources : IDisposable
+    {
+        public static readonly NoResources Instance = new();
+
+        public void Dispose() { }
     }
 
     private BlockFootprints? TakeAheadFootprints(Block block)
