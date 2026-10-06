@@ -408,6 +408,49 @@ public class HistoryRowScannerTests
     }
 
     [Test]
+    public void ScratchVerification_WhenASlotHasNoLiveAccount_RefusesUnlessTheSlotIsDead(
+        [Values] bool rlpWrapped,
+        [Values] bool orphanSortsFirst,
+        [Values] SlotOwner owner)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
+        HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+        byte[] liveBytes = Keccak.Compute("scratch account").BytesToArray();
+        liveBytes[0] = 0x80;
+        byte[] orphanBytes = (byte[])liveBytes.Clone();
+        orphanBytes[0] = orphanSortsFirst ? (byte)0x00 : (byte)0xFF;
+        ValueHash256 live = new(liveBytes);
+        ValueHash256 orphan = new(orphanBytes);
+        ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
+        using MemDb storageDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
+        storageTree.UpdateRootHash();
+        byte[] accountRow = AccountDecoder.Slim.EncodeAsBytes(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, live.Bytes, 5, accountRow);
+        RecordScanSlot(source, live, slot, 5, new UInt256(128), rlpWrapped);
+        RecordScanSlot(source, orphan, slot, 3, owner == SlotOwner.NoneWithZeroedSlot ? UInt256.Zero : new UInt256(7), rlpWrapped);
+        if (owner is SlotOwner.DeletedAccount or SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, orphan.Bytes, 4, []);
+        if (owner == SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, orphan.Bytes, 4, []);
+        using MemDb accountsDb = new();
+        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        AccountRowRlp.Set(accountsTree, live, accountRow);
+        accountsTree.UpdateRootHash();
+        BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(state.ImportPage(Store(source, column), format, column, 10, CancellationToken.None).Complete, Is.True);
+
+        if (owner is SlotOwner.None or SlotOwner.DeletedAccount)
+            Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
+                "a replay reads a slot without its account, so a re-created account would start from the stale value");
+        else
+            Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+    }
+
+    [Test]
     public void SortedStateRoot_WhenKeysSharePrefixes_MatchesPatriciaTree(
         [Values(0, 1, 2, 17, 1024)] int count,
         [Values(0, 16, 30)] int sharedBytes)
@@ -791,6 +834,15 @@ public class HistoryRowScannerTests
         else source.PutSpan(rowKey, value);
     }
 
+    private static void RecordScanSlot(IColumnsDb<FlatHistoryColumns> source, in ValueHash256 address, in ValueHash256 slot, ulong block, in UInt256 value, bool rlpWrapped)
+    {
+        Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+        BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKey, address, slot);
+        Span<byte> encoded = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int length = value.IsZero ? 0 : BaseFlatPersistence.EncodeSlotValue(value, rlpWrapped, encoded);
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageHistory), FlatHistoryColumns.StorageHistory, storageKey, block, encoded[..length]);
+    }
+
     private static ISortedKeyValueStore Store(IColumnsDb<FlatHistoryColumns> columns, FlatHistoryColumns column) => (ISortedKeyValueStore)columns.GetColumnDb(column);
 
     private static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, in ValueHash256 identity, in ValueHash256 slot, ulong block, ReadOnlySpan<byte> rawValue)
@@ -813,5 +865,13 @@ public class HistoryRowScannerTests
             if (IsWalFailureEnabled) throw new IOException("WAL sync failed");
             SuccessfulSyncs++;
         }
+    }
+
+    public enum SlotOwner
+    {
+        None,
+        NoneWithZeroedSlot,
+        DeletedAccount,
+        DeletedAccountClearedAfterSlot
     }
 }
