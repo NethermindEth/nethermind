@@ -8,6 +8,7 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -30,7 +31,7 @@ namespace Nethermind.BeaconChain.Engine;
 /// worker); only the last-status properties are meant to be read concurrently. A forkchoice
 /// update still running past its deadline fails every later call until it finishes.
 /// </remarks>
-public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody) : IEngineDriver
+public sealed class EngineDriver(ExternalClDetector detector, ILogManager logManager, SlotClock clock, BeaconChainSpec spec, INodeColumnCustodySource custody, IBlockTree? blockTree = null) : IEngineDriver
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
     private volatile bool _isAvailable = true;
@@ -79,7 +80,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
-        }, body.Graffiti);
+        }, body.Graffiti, payload.BlockNumber);
     }
 
     /// <summary>
@@ -95,7 +96,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-        CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{headExecHash.ToShortString()}, Safe: {safeExecHash.ToShortString()}, Finalized: {finalizedExecHash.ToShortString()}" : null, async () =>
+        CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{FormatExecutionBlock(headExecHash)}, Safe: {FormatExecutionBlock(safeExecHash)}, Finalized: {FormatExecutionBlock(finalizedExecHash)}" : null, async () =>
         {
             Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
@@ -105,7 +106,12 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             return LastForkchoiceStatus = await pending.WaitAsync(ForkchoiceTimeout);
-        });
+        }, blockNumber: _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null);
+
+    private string FormatExecutionBlock(Hash256 hash) =>
+        blockTree?.FindHeader(hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } header
+            ? $"{header.Number} ({hash.ToShortString()})"
+            : hash.ToShortString();
 
     private async Task<PayloadStatusV1> SendForkchoiceUpdatedAsync(ForkchoiceStateV1 state)
     {
@@ -177,7 +183,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
             Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
-        });
+        }, blockNumber: converted.BlockNumber);
     }
 
     /// <inheritdoc/>
@@ -221,7 +227,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
     /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>
     /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
-    private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<PayloadStatusV1>> call, Hash256? graffiti = null)
+    private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<PayloadStatusV1>> call, Hash256? graffiti = null, ulong? blockNumber = null)
     {
         try
         {
@@ -230,12 +236,12 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             string operation = method.StartsWith("newPayload", StringComparison.Ordinal) ? "New Block" : "ForkChoice";
             if (_logger.IsInfo)
             {
-                string graffitiText = graffiti is null ? "" : $" | Graffiti: {graffiti.Bytes.ToCleanUtf8String()}";
-                _logger.Info($"Beacon sending {operation}: {details}{graffitiText}");
+                string graffitiText = graffiti is null ? "" : $"{string.Empty,31}| Graffiti:   {graffiti.Bytes.ToCleanUtf8String()}";
+                _logger.Info($"Beacon {operation}:{(operation == "New Block" ? "    " : "   ")}{details}{graffitiText}");
             }
             long started = Stopwatch.GetTimestamp();
             PayloadStatusV1 status = await call();
-            if (_logger.IsInfo) _logger.Info($"Beacon received {operation} result: {status.Status} | {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
+            if (_logger.IsInfo) _logger.Info($"Beacon Received:   {blockNumber?.ToString() ?? "?",10}         | {Stopwatch.GetElapsedTime(started).TotalMilliseconds,10:N1} ms  | {operation,-10} {status.Status}");
             _isAvailable = true;
             return status;
         }
