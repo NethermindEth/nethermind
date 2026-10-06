@@ -48,7 +48,8 @@ public partial class StatelessBlockProcessingEnv(
     private readonly ICodeCache _codeCache = CreateCodeCache();
 
     // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
-    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    // ~0.4 MB zeroed per block (LOH on the host). On the host overflow only costs a re-read; the guest's
+    // map takes this as its initial size and grows past it.
     private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();

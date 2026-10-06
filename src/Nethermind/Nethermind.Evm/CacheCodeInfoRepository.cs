@@ -27,7 +27,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
 
     /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
     /// <remarks>
-    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// A single reference is self-validating: a storing <see cref="ICodeCache"/> assigns <c>CodeHash</c> when it
     /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
     /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
     /// body. Anything that changes an account's code — including a reverted deployment — produces a
