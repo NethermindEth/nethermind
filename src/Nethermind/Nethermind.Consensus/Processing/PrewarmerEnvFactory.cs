@@ -5,20 +5,34 @@ using System;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
 using Nethermind.Blockchain;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
+public class PrewarmerEnvFactory(
+    IWorldStateManager worldStateManager,
+    ILogManager logManager,
+    ILifetimeScope parentLifetime,
+    IBlocksConfig? blocksConfig = null,
+    ITransactionProcessor? transactionProcessor = null)
 {
     /// <summary>The most memory warming lets the block's code retain, so warming cannot spend execution's budget.</summary>
     private static readonly long WarmingCodeMaxBytes = 256.MiB;
+
+    /// <summary>Whether the envs record the footprints block processing takes over.</summary>
+    /// <remarks>
+    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only on the Ethereum transaction
+    /// processor: other chains' processors charge and validate differently.
+    /// </remarks>
+    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && transactionProcessor is EthereumTransactionProcessor;
 
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
@@ -30,6 +44,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             logManager
         );
 
+        FootprintRecorder? recorder = null;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
@@ -37,14 +52,17 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
             if (warmingCodeCache is not null) builder.AddSingleton<ICodeCache>(warmingCodeCache);
+            if (RecordsFootprints)
+            {
+                // At scope level, so the transaction processor and the code repository both read through it.
+                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner));
+            }
         });
 
         try
         {
-            return new PrewarmerEnv(
-                childScope,
-                childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
-                childScope.Resolve<IHasAccessList[]>());
+            AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv env = childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            return new PrewarmerEnv(childScope, env, childScope.Resolve<IHasAccessList[]>(), recorder);
         }
         catch
         {
@@ -55,9 +73,11 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
         }
     }
 
-    private sealed class PrewarmerEnv(ILifetimeScope scope, IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IPrewarmerEnv
+    private sealed class PrewarmerEnv(ILifetimeScope scope, IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists, FootprintRecorder? recorder) : IPrewarmerEnv
     {
         public ReadOnlySpan<IHasAccessList> SystemAccessLists => systemAccessLists;
+
+        FootprintRecorder? IPrewarmerEnv.Recorder => recorder;
 
         public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
@@ -81,4 +101,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
 public interface IPrewarmerEnv : IReadOnlyTxProcessorSource
 {
     ReadOnlySpan<IHasAccessList> SystemAccessLists { get; }
+
+    /// <summary>The world state decorator recording this env's runs; <see langword="null"/> when it records none.</summary>
+    internal FootprintRecorder? Recorder => null;
 }

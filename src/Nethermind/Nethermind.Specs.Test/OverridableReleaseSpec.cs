@@ -136,6 +136,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip3298Enabled { get; set; } = spec.IsEip3298Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
 
