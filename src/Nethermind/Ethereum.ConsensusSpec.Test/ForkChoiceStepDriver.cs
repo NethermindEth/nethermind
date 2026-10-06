@@ -172,22 +172,14 @@ internal static class ForkChoiceStepDriver
 
         // The fork_choice and sync test formats treat an on_block step as implying on_attestation(is_from_block)
         // for every body attestation and on_attester_slashing for every body slashing.
-        Attestation[] bodyAttestations = block.Body!.Attestations!;
-        for (int i = 0; i < bodyAttestations.Length; i++)
-        {
-            try { runner.OnBodyAttestation(bodyAttestations[i], blockRoot); }
-            catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attestation {i} of block {blockKey} rejected: {ex.Message}"); }
-        }
+        ReplayBodyOperands(block.Body!.Attestations!, operand => runner.OnBodyAttestation(operand, blockRoot),
+            i => $"step {stepIndex}: body attestation {i} of block {blockKey} rejected");
 
         // A vote waiting for a build would reach the store only on a later tick, after the vector's checks of this step.
         Assert.That(runner.DeferredBodyVoteCount, Is.Zero, $"step {stepIndex}: block {blockKey} left body attestations waiting for a target state build");
 
-        AttesterSlashing[] bodySlashings = block.Body!.AttesterSlashings!;
-        for (int i = 0; i < bodySlashings.Length; i++)
-        {
-            try { runner.OnAttesterSlashing(bodySlashings[i], verifySignatures: false); }
-            catch (Exception ex) { Assert.Fail($"step {stepIndex}: body attester slashing {i} of block {blockKey} rejected: {ex.Message}"); }
-        }
+        ReplayBodyOperands(block.Body!.AttesterSlashings!, operand => runner.OnAttesterSlashing(operand, verifySignatures: false),
+            i => $"step {stepIndex}: body attester slashing {i} of block {blockKey} rejected");
 
         return rejection;
     }
@@ -211,6 +203,16 @@ internal static class ForkChoiceStepDriver
         }
 
         return sidecars;
+    }
+
+    internal static void ReplayBodyOperands<T>(T[] operands, Action<T> apply, Func<int, string> rejectionSubject)
+    {
+        for (int i = 0; i < operands.Length; i++)
+        {
+            T operand = operands[i];
+            if (Attempt(() => apply(operand)) is { } ex)
+                Assert.Fail($"{rejectionSubject(i)}: {ex.Message}");
+        }
     }
 
     internal static void RunOperandStep<T>(string subject, bool expectedValid, byte[] ssz, Action<T> apply) where T : ISszCodec<T>
