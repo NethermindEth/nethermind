@@ -10,6 +10,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 using EvmMetrics = Nethermind.Evm.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -19,10 +20,15 @@ namespace Nethermind.Consensus.Processing;
 /// and takes over a transaction's warm run when its footprint matches the state.
 /// The <see cref="IPrewarmerState.IsPrewarmer"/> guard ensures only the main execution reports, not the prewarmer's own scope.
 /// </summary>
-public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockCachePreWarmer preWarmer, IPrewarmerState prewarmerState, IWorldState worldState) : ITransactionProcessorAdapter
+/// <remarks>Registered for main block processing only, so footprints are never taken by block building or tracing.</remarks>
+public class PrewarmerTxAdapter(
+    ITransactionProcessorAdapter baseAdapter,
+    BlockCachePreWarmer preWarmer,
+    IPrewarmerState prewarmerState,
+    IWorldState worldState,
+    ILogManager logManager) : ITransactionProcessorAdapter
 {
-    // Footprints are taken by execution that commits each transaction, not by block building or tracing.
-    private readonly bool _replays = baseAdapter is ExecuteTransactionProcessorAdapter;
+    private readonly ILogger _logger = logManager.GetClassLogger<PrewarmerTxAdapter>();
     private BlockExecutionContext _blockExecutionContext;
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
@@ -32,8 +38,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
-            if (_replays
-                && preWarmer.TryFindFootprint(transaction, out TransactionFootprint? footprint)
+            if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
                 && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
                 return result;
@@ -55,6 +60,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         if (footprint is null)
         {
             Tally = Tally with { Missing = Tally.Missing + 1 };
+            Blockchain.Metrics.PrewarmHandoffsMissing++;
             return false;
         }
 
@@ -69,6 +75,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         if (!footprint.Matches(worldState))
         {
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
+            Blockchain.Metrics.PrewarmHandoffsRejected++;
             return false;
         }
 
@@ -77,9 +84,11 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         {
             footprint.Replay(worldState, spec);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             worldState.Restore(snapshot);
+            Blockchain.Metrics.PrewarmHandoffFailures++;
+            if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
             return false;
         }
 
@@ -102,6 +111,7 @@ public class PrewarmerTxAdapter(ITransactionProcessorAdapter baseAdapter, BlockC
         }
 
         Tally = Tally with { Replayed = Tally.Replayed + 1 };
+        Blockchain.Metrics.PrewarmHandoffs++;
         result = footprint.Result;
         return true;
     }

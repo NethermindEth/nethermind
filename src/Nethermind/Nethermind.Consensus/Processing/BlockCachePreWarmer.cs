@@ -924,10 +924,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <returns>Whether the transaction can have one at all.</returns>
-    internal bool TryFindFootprint(Transaction tx, out TransactionFootprint? footprint)
+    internal bool TryFindFootprint(Transaction tx, BlockHeader header, out TransactionFootprint? footprint)
     {
         BlockFootprints? footprints = Volatile.Read(ref _footprints);
-        footprint = footprints?.Find(_mainThreadTxIndex, tx);
+        footprint = footprints?.Find(_mainThreadTxIndex, tx, header);
         return footprints is not null && BlockFootprints.IsRecordable(tx);
     }
 
@@ -1285,6 +1285,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Transaction tx,
         int txIndex,
         BlockState blockState,
+        FootprintRecorder? recorder,
         CancellationTxTracer tracer,
         CancellationToken cancellationToken)
     {
@@ -1316,7 +1317,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             TransactionResult result;
             try
             {
-                result = blockState.Footprints is { } footprints && scope.WorldState is FootprintRecorder recorder && BlockFootprints.IsRecordable(tx)
+                result = blockState.Footprints is { } footprints && recorder is not null && BlockFootprints.IsRecordable(tx)
                     ? WarmupWithFootprint(scope, tx, txIndex, blockState, footprints, recorder, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
             }
@@ -2369,11 +2370,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             BlockExecutionContext context = new(blockState.Block.Header, blockState.Spec);
             scope.TransactionProcessor.SetBlockExecutionContext(context);
             CancellationTxTracer tracer = _queue.Tracer;
+            FootprintRecorder? recorder = _env.Recorder;
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, tracer, token);
+                WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
             }
         }
 

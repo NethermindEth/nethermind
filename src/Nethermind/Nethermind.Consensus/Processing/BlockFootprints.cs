@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Processing;
@@ -10,6 +11,7 @@ namespace Nethermind.Consensus.Processing;
 /// <summary>The footprints of one block's warm runs, by transaction index.</summary>
 internal sealed class BlockFootprints(Block block)
 {
+    private readonly Hash256? _blockHash = block.Hash;
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
 
     /// <remarks>
@@ -29,17 +31,18 @@ internal sealed class BlockFootprints(Block block)
     /// </remarks>
     public static bool IsRecordable(Transaction tx) =>
         tx.SenderAddress is not null
-        && tx.Type != TxType.FrameTx
+        && !tx.SupportsFrames
         && !tx.IsSystem()
         && tx.Nonce != ulong.MaxValue
         && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero);
 
     public void Store(int index, TransactionFootprint footprint) => Volatile.Write(ref _footprints[index], footprint);
 
-    public TransactionFootprint? Find(int index, Transaction tx)
+    /// <summary>The footprint of <paramref name="tx"/>, at <paramref name="index"/> in the block <paramref name="header"/> heads.</summary>
+    public TransactionFootprint? Find(int index, Transaction tx, BlockHeader header)
     {
         TransactionFootprint?[] footprints = _footprints;
-        if ((uint)index >= (uint)footprints.Length) return null;
+        if ((uint)index >= (uint)footprints.Length || _blockHash is null || header.Hash != _blockHash) return null;
         TransactionFootprint? footprint = Volatile.Read(ref footprints[index]);
         return footprint is not null && ReferenceEquals(footprint.Transaction, tx) ? footprint : null;
     }

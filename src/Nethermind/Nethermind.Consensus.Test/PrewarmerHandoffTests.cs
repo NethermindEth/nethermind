@@ -5,14 +5,20 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Threading;
 using Autofac;
+using Microsoft.Extensions.ObjectPool;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +30,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie;
@@ -48,7 +55,7 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
             Call(TestItem.PrivateKeyA, 2, Reverter),
             Call(TestItem.PrivateKeyB, 2, Logger),
             Create(TestItem.PrivateKeyC, 0, DeployCode),
-            Call(TestItem.PrivateKeyD, 0, BalanceReader)));
+            Call(TestItem.PrivateKeyD, 0, BalanceReader))).Tally;
 
         using (Assert.EnterMultipleScope())
         {
@@ -64,7 +71,7 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
             Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
             Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 2.Wei),
             Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 3.Wei),
-            Call(TestItem.PrivateKeyA, 1, BalanceReader)));
+            Call(TestItem.PrivateKeyA, 1, BalanceReader))).Tally;
 
         using (Assert.EnterMultipleScope())
         {
@@ -79,7 +86,7 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         (int replayed, int rejected, _) = Handoff(BuildBlock(
             Call(TestItem.PrivateKeyA, 0, Counter),
             Call(TestItem.PrivateKeyB, 0, Counter),
-            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressC, 1.Wei)));
+            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressC, 1.Wei))).Tally;
 
         using (Assert.EnterMultipleScope())
         {
@@ -94,7 +101,7 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         (int replayed, _, _) = Handoff(BuildBlock(
             Transfer(TestItem.PrivateKeyC, 0, TestItem.AddressA, 1.Wei, gasLimit: 2_000_000),
             Transfer(TestItem.PrivateKeyC, 1, TestItem.AddressB, 1.Wei, gasLimit: 2_000_000),
-            Transfer(TestItem.PrivateKeyC, 2, TestItem.AddressD, 1.Wei, gasLimit: 2_000_000)));
+            Transfer(TestItem.PrivateKeyC, 2, TestItem.AddressD, 1.Wei, gasLimit: 2_000_000))).Tally;
 
         Assert.That(replayed, Is.EqualTo(3));
     }
@@ -105,7 +112,7 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         (int replayed, _, _) = Handoff(BuildBlock(
             Call(TestItem.PrivateKeyA, 0, Payer),
             Call(TestItem.PrivateKeyB, 0, Payer),
-            Call(TestItem.PrivateKeyD, 0, Payer)));
+            Call(TestItem.PrivateKeyD, 0, Payer))).Tally;
 
         Assert.That(replayed, Is.EqualTo(3));
     }
@@ -117,19 +124,18 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         (_, _, int missing) = Handoff(BuildBlock(
             Transfer(TestItem.PrivateKeyA, 0, unfunded.Address, 1.Ether),
             Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
-            Transfer(unfunded, 0, TestItem.AddressD, 1.Wei)));
+            Transfer(unfunded, 0, TestItem.AddressD, 1.Wei))).Tally;
 
         Assert.That(missing, Is.GreaterThan(0));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void A_destroyed_contract_with_storage_ends_in_the_state_of_executing_it(bool redeployed)
+    [Test]
+    public void A_destroyed_contract_with_storage_ends_in_the_state_of_executing_it([Values] bool redeployed)
     {
         (int replayed, _, _) = Handoff(BuildBlock(
             Call(TestItem.PrivateKeyA, 0, Child),
             redeployed ? Call(TestItem.PrivateKeyB, 0, Factory, gasLimit: 300_000) : Call(TestItem.PrivateKeyB, 0, Counter),
-            Call(TestItem.PrivateKeyD, 0, Child, data: [1])));
+            Call(TestItem.PrivateKeyD, 0, Child, data: [1]))).Tally;
 
         Assert.That(replayed, Is.EqualTo(Spec.IsEip6780Enabled ? 3 : redeployed ? 1 : 2));
     }
@@ -151,10 +157,65 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         (int replayed, _, _) = Handoff(BuildBlock(
             Call(TestItem.PrivateKeyA, 0, FreshFactory, gasLimit: 300_000, data: [1]),
             Call(TestItem.PrivateKeyB, 0, FreshFactory, gasLimit: 300_000, data: [1]),
-            Call(TestItem.PrivateKeyD, 0, FreshFactory, gasLimit: 300_000)));
+            Call(TestItem.PrivateKeyD, 0, FreshFactory, gasLimit: 300_000))).Tally;
 
         // The later deployments read the factory's nonce, which the first one increments.
         Assert.That(replayed, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void Transactions_of_every_kind_the_fork_has_replay_into_the_state_and_receipts_of_executing_them()
+    {
+        List<Transaction> transactions =
+        [
+            AccessListCall(TestItem.PrivateKeyA, 0, Counter),
+            LegacyCall(TestItem.PrivateKeyB, 0, Logger),
+            LegacyCall(TestItem.PrivateKeyB, 1, Reverter),
+        ];
+        if (Spec.IsEip1153Enabled) transactions.Add(Call(TestItem.PrivateKeyC, 0, Transient));
+        if (Spec.IsEip4844Enabled) transactions.Add(BlobCall(TestItem.PrivateKeyD, 0, Logger));
+        if (Spec.IsEip7702Enabled) transactions.Add(SetCodeCall(TestItem.PrivateKeyD, 1, TestItem.PrivateKeyE, Counter));
+
+        (int replayed, _, _) = Handoff(BuildBlock([.. transactions])).Tally;
+
+        Assert.That(replayed, Is.EqualTo(transactions.Count));
+    }
+
+    [Test]
+    public void A_value_transfer_to_a_precompile_replays_until_the_block_creates_its_account()
+    {
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyB, 0, Ripemd, 1.Wei, gasLimit: 50_000),
+            Transfer(TestItem.PrivateKeyC, 0, Ripemd, 1.Wei, gasLimit: 50_000),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei))).Tally;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.EqualTo(2));
+            Assert.That(rejected, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void An_invalid_transaction_is_executed_rather_than_replayed([Values] bool senderHasCode)
+    {
+        Block block = senderHasCode
+            ? BuildBlock(
+                Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+                Transfer(CodeOwner, 0, TestItem.AddressD, 1.Wei),
+                Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei))
+            : BuildBlock(Parent, 0x9c9a,
+                Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+                Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei),
+                Transfer(TestItem.PrivateKeyC, 0, TestItem.AddressD, 1.Wei));
+
+        Run run = Handoff(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)run.Results[1], Is.False);
+            Assert.That(run.Tally.Replayed, Is.EqualTo(senderHasCode ? 2 : 1));
+        }
     }
 
     private Hash256 DestroyThenRedeploy(bool handoff)
@@ -166,22 +227,20 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         Hash256 root;
         if (handoff)
         {
-            using BlockCachePreWarmer preWarmer = CreatePreWarmer();
-            RunPreWarmCaches(preWarmer, destroy);
-            (root, _, (int replayed, _, _)) = Process(destroy, preWarmer);
-            Assert.That(replayed, Is.EqualTo(3));
+            RunPreWarmCaches(PreWarmer, destroy);
+            Run run = Process(destroy, ProductionAdapter);
+            Assert.That(run.Tally.Replayed, Is.EqualTo(3));
+            root = run.StateRoot;
         }
         else
         {
-            (root, _, _) = Process(destroy, prewarmer: null);
+            root = Process(destroy, adapter: null).StateRoot;
         }
 
         BlockHeader first = Processed(destroy, root);
         Block redeploy = BuildBlock(first, Call(TestItem.PrivateKeyB, 1, Factory, gasLimit: 300_000));
-        (root, _, _) = Process(redeploy, prewarmer: null, first);
-        BlockHeader second = Processed(redeploy, root);
-        (root, _, _) = Process(BuildBlock(second, Call(TestItem.PrivateKeyD, 1, Child, data: [1])), prewarmer: null, second);
-        return root;
+        BlockHeader second = Processed(redeploy, Process(redeploy, adapter: null, first).StateRoot);
+        return Process(BuildBlock(second, Call(TestItem.PrivateKeyD, 1, Child, data: [1])), adapter: null, second).StateRoot;
     }
 }
 
@@ -189,22 +248,54 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
 public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.Instance)
 {
     [Test]
-    public void Footprints_of_another_blocks_transactions_are_not_replayed()
+    public void Footprints_recorded_for_another_block_are_not_replayed([Values] bool sameTransactions)
     {
-        Block block = BuildBlock(
-            Call(TestItem.PrivateKeyA, 0, Counter),
-            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
-            Transfer(TestItem.PrivateKeyC, 0, TestItem.AddressD, 1.Wei));
-        Block other = BuildBlock(
-            Call(TestItem.PrivateKeyA, 0, Counter),
-            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
-            Transfer(TestItem.PrivateKeyC, 0, TestItem.AddressD, 1.Wei));
+        Block other = ThreeIndependentTransactions();
+        Block block = sameTransactions ? BuildBlock(Parent, 30_020_045, other.Transactions) : ThreeIndependentTransactions();
 
-        using BlockCachePreWarmer preWarmer = CreatePreWarmer();
-        RunPreWarmCaches(preWarmer, other);
-        (_, _, (int replayed, _, _)) = Process(block, preWarmer);
+        RunPreWarmCaches(PreWarmer, other);
 
-        Assert.That(replayed, Is.Zero);
+        Assert.That(Process(block, ProductionAdapter).Tally.Replayed, Is.Zero);
+    }
+
+    [Test]
+    public void A_block_traced_beyond_its_receipts_is_executed()
+    {
+        Run run = Handoff(ThreeIndependentTransactions(), new GethLikeBlockMemoryTracer(GethTraceOptions.Default));
+
+        Assert.That(run.Tally.Replayed, Is.Zero);
+    }
+
+    [Test]
+    public void Switched_off_it_leaves_every_transaction_to_execution()
+    {
+        TearDown();
+        Initialize(handoff: false);
+
+        Assert.That(Handoff(ThreeIndependentTransactions()).Tally, Is.EqualTo((0, 0, 0)));
+    }
+
+    [Test]
+    public void A_world_state_decorated_outside_the_recorder_still_hands_off()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true);
+        PrewarmerTxAdapter adapter = new(
+            new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
+            preWarmer,
+            new PrewarmerState(caches, isPrewarmer: false),
+            ProcessingScope.Resolve<IWorldState>(),
+            LimboLogs.Instance);
+
+        Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
     }
 
     [Test]
@@ -241,9 +332,53 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    private Block ThreeIndependentTransactions() => BuildBlock(
+        Call(TestItem.PrivateKeyA, 0, Counter),
+        Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+        Call(TestItem.PrivateKeyD, 0, Logger));
+
     private sealed class Progress : IBlockProcessingProgress
     {
         public int MainThreadTxIndex { get; set; }
+    }
+
+    /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
+    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>
+    {
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches));
+
+        public bool Return(IPrewarmerEnv obj) => true;
+
+        private sealed class Env(IPrewarmerEnv inner) : IPrewarmerEnv
+        {
+            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
+
+            FootprintRecorder? IPrewarmerEnv.Recorder => inner.Recorder;
+
+            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                return scope is not null;
+            }
+
+            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
+            {
+                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                return scope is not null;
+            }
+
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class Scope(IReadOnlyTxProcessingScope inner) : IReadOnlyTxProcessingScope
+        {
+            public ITransactionProcessor TransactionProcessor => inner.TransactionProcessor;
+            public IWorldState WorldState { get; } = new Forwarding(inner.WorldState);
+            public void Reset() => inner.Reset();
+            public void Dispose() => inner.Dispose();
+        }
+
+        private sealed class Forwarding(IWorldState state) : WorldStateDecorator(state);
     }
 }
 
@@ -271,6 +406,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     private static readonly byte[] FactoryCode =
         [0x60, 0x2C, 0x60, 0x1D, 0x5F, 0x39, 0x61, 0x4E, 0x4D, 0x60, 0x2C, 0x5F, 0x5F, 0xF5, 0x36, 0x60, 0x13, 0x57, 0x00,
          0x5B, 0x5F, 0x5F, 0x5F, 0x5F, 0x5F, 0x85, 0x5A, 0xF1, 0x00, .. ChildInitCode];
+    // TSTORE(0, TLOAD(0) + 0x4e4d); SSTORE(CALLER, TLOAD(0) + 0x4e4d); STOP
+    private static readonly byte[] TransientCode = [0x5F, 0x5C, 0x61, 0x4E, 0x4D, 0x01, 0x80, 0x5F, 0x5D, 0x33, 0x55, 0x00];
 
     private static readonly byte[] Salt = [.. new byte[30], 0x4E, 0x4D];
     private static readonly UInt256 ChildSlot = new(0x746865726d696e64UL, 0x4e65UL, 0, 0);
@@ -282,7 +419,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Payer = new("0x00000000000000000000000000000000004e4d04");
     protected static readonly Address Factory = new("0x00000000000000000000000000000000004e4d05");
     protected static readonly Address FreshFactory = new("0x00000000000000000000000000000000004e4d06");
+    protected static readonly Address Transient = new("0x00000000000000000000000000000000004e4d07");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
+    protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
+    protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
 
     private IContainer _container = null!;
     private readonly List<BlockHeader> _headers = [];
@@ -290,11 +430,23 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected ILifetimeScope ProcessingScope { get; private set; } = null!;
     protected BlockHeader Parent { get; private set; } = null!;
 
+    protected BlockCachePreWarmer PreWarmer => (BlockCachePreWarmer)ProcessingScope.Resolve<IBlockCachePreWarmer>();
+    protected PrewarmerTxAdapter ProductionAdapter => (PrewarmerTxAdapter)ProcessingScope.Resolve<ITransactionProcessorAdapter>();
+
     [SetUp]
-    public void Setup()
+    public void Setup() => Initialize(handoff: true);
+
+    protected void Initialize(bool handoff)
     {
         _container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(Spec))
+            .AddModule(new TestNethermindModule(new BlocksConfig
+            {
+                PreWarming = PreWarmMode.Block,
+                PreWarmStateConcurrency = 3,
+                ProcessingCores = ProcessingCores.All,
+                PreWarmHandoff = handoff
+            }))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers))
             .Build();
 
@@ -316,6 +468,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             worldState.CreateAccount(TestItem.AddressB, 1_000.Ether);
             worldState.CreateAccount(TestItem.AddressC, 1_000.Ether);
             worldState.CreateAccount(TestItem.AddressD, 1_000.Ether);
+            Deploy(worldState, CodeOwner.Address, RevertCode, 1_000.Ether);
             Deploy(worldState, Counter, CounterCode, 0);
             Deploy(worldState, Reverter, RevertCode, 0);
             Deploy(worldState, Logger, LogCode, 0);
@@ -324,6 +477,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, BalanceReader, [0x73, .. TestItem.AddressC.Bytes, 0x31, 0x5F, 0x55, 0x00], 0);
             Deploy(worldState, Factory, FactoryCode, 0);
             Deploy(worldState, FreshFactory, FactoryCode, 0);
+            Deploy(worldState, Transient, TransientCode, 0);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
@@ -356,33 +510,25 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         _container?.Dispose();
     }
 
-    /// <summary>Processes the block by execution, then warmed and handed off, and requires the same root and receipts.</summary>
-    protected (int Replayed, int Rejected, int Missing) Handoff(Block block)
+    protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
+
+    /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
+
+    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
     {
-        (Hash256 executedRoot, TxReceipt[] executed, _) = Process(block, prewarmer: null);
-        using BlockCachePreWarmer preWarmer = CreatePreWarmer();
+        Run executed = Process(block, adapter: null);
         RunPreWarmCaches(preWarmer, block);
-        (Hash256 root, TxReceipt[] receipts, (int Replayed, int Rejected, int Missing) tally) = Process(block, preWarmer);
+        Run run = Process(block, adapter, otherTracer: otherTracer);
 
-        Assert.That(root, Is.EqualTo(executedRoot));
-        AssertSameReceipts(receipts, executed);
-        return tally;
-    }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(run.Results, Is.EqualTo(executed.Results));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+        }
 
-    protected BlockCachePreWarmer CreatePreWarmer()
-    {
-        PrewarmerEnvFactory envFactory = ProcessingScope.Resolve<PrewarmerEnvFactory>();
-        Assert.That(envFactory.RecordsFootprints, Is.True);
-        PreBlockCaches preBlockCaches = ProcessingScope.Resolve<PreBlockCaches>();
-        return new BlockCachePreWarmer(
-            new BlockCachePreWarmer.ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
-            minPoolSize: 4,
-            concurrency: 3,
-            parallelExecutionBatchRead: true,
-            ProcessingScope.Resolve<NodeStorageCache>(),
-            preBlockCaches,
-            LimboLogs.Instance,
-            handoff: true);
+        AssertSameReceipts(run.Receipts, executed.Receipts);
+        return run;
     }
 
     // Sync on purpose: the scope is closed on the thread that opened it.
@@ -396,65 +542,72 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         }
     }
 
-    protected (Hash256 StateRoot, TxReceipt[] Receipts, (int Replayed, int Rejected, int Missing) Tally) Process(Block block, BlockCachePreWarmer? prewarmer, BlockHeader? parent = null)
+    /// <param name="adapter">The adapter that hands off; without one the block is executed.</param>
+    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        ITransactionProcessor processor = ProcessingScope.Resolve<ITransactionProcessor>();
         Block processing = new(block.Header.CloneForProcessing(), block.Body);
+        (int Replayed, int Rejected, int Missing) before = adapter?.Tally ?? default;
         using (worldState.BeginScope(parent ?? Parent))
         {
-            ITransactionProcessorAdapter executor = new ExecuteTransactionProcessorAdapter(processor);
-            PrewarmerTxAdapter? adapter = prewarmer is null ? null
-                : new PrewarmerTxAdapter(executor, prewarmer, new PrewarmerState(ProcessingScope.Resolve<PreBlockCaches>(), isPrewarmer: false), worldState);
-            ITransactionProcessorAdapter transactions = adapter ?? executor;
+            ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
             BlockReceiptsTracer tracer = new();
-            tracer.SetOtherTracer(NullBlockTracer.Instance);
+            tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(processing);
             transactions.SetBlockExecutionContext(new BlockExecutionContext(processing.Header, Spec));
+            List<TransactionResult> results = [];
             foreach (Transaction tx in processing.Transactions)
             {
                 using ITxTracer txTracer = tracer.StartNewTxTrace(tx);
-                TransactionResult result = transactions.Execute(tx, tracer);
+                results.Add(transactions.Execute(tx, tracer));
                 tracer.EndTxTrace();
-                Assert.That((bool)result, Is.True, $"transaction {tx.Hash} must be valid: {result}");
             }
 
             worldState.Commit(Spec);
             worldState.CommitTree(block.Number);
-            return (worldState.StateRoot, [.. tracer.TxReceipts], adapter?.Tally ?? default);
+            (int Replayed, int Rejected, int Missing) after = adapter?.Tally ?? default;
+            return new Run(worldState.StateRoot, [.. tracer.TxReceipts], [.. results],
+                (after.Replayed - before.Replayed, after.Rejected - before.Rejected, after.Missing - before.Missing));
         }
     }
 
     private static void AssertSameReceipts(TxReceipt[] actual, TxReceipt[] expected)
     {
-        Assert.That(actual.Length, Is.EqualTo(expected.Length));
+        Assert.That(actual, Has.Length.EqualTo(expected.Length));
         for (int i = 0; i < expected.Length; i++)
         {
-            Assert.That(actual[i].StatusCode, Is.EqualTo(expected[i].StatusCode), $"status of {i}");
-            Assert.That(actual[i].GasUsed, Is.EqualTo(expected[i].GasUsed), $"gas of {i}");
-            Assert.That(actual[i].GasUsedTotal, Is.EqualTo(expected[i].GasUsedTotal), $"cumulative gas of {i}");
-            Assert.That(actual[i].ContractAddress, Is.EqualTo(expected[i].ContractAddress), $"contract address of {i}");
-            Assert.That(actual[i].Recipient, Is.EqualTo(expected[i].Recipient), $"recipient of {i}");
-            Assert.That(actual[i].Logs!.Length, Is.EqualTo(expected[i].Logs!.Length), $"log count of {i}");
-            for (int j = 0; j < expected[i].Logs!.Length; j++)
+            Assert.That(actual[i].Logs, Has.Length.EqualTo(expected[i].Logs!.Length), $"log count of {i}");
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(actual[i].Logs![j].Address, Is.EqualTo(expected[i].Logs![j].Address), $"log {j} address of {i}");
-                Assert.That(actual[i].Logs![j].Data, Is.EqualTo(expected[i].Logs![j].Data), $"log {j} data of {i}");
-                Assert.That(actual[i].Logs![j].Topics, Is.EqualTo(expected[i].Logs![j].Topics), $"log {j} topics of {i}");
+                Assert.That(actual[i].StatusCode, Is.EqualTo(expected[i].StatusCode), $"status of {i}");
+                Assert.That(actual[i].GasUsed, Is.EqualTo(expected[i].GasUsed), $"gas of {i}");
+                Assert.That(actual[i].GasUsedTotal, Is.EqualTo(expected[i].GasUsedTotal), $"cumulative gas of {i}");
+                Assert.That(actual[i].ContractAddress, Is.EqualTo(expected[i].ContractAddress), $"contract address of {i}");
+                Assert.That(actual[i].Recipient, Is.EqualTo(expected[i].Recipient), $"recipient of {i}");
+                for (int j = 0; j < expected[i].Logs!.Length; j++)
+                {
+                    Assert.That(actual[i].Logs![j].Address, Is.EqualTo(expected[i].Logs![j].Address), $"log {j} address of {i}");
+                    Assert.That(actual[i].Logs![j].Data, Is.EqualTo(expected[i].Logs![j].Data), $"log {j} data of {i}");
+                    Assert.That(actual[i].Logs![j].Topics, Is.EqualTo(expected[i].Logs![j].Topics), $"log {j} topics of {i}");
+                }
             }
         }
     }
 
     protected Block BuildBlock(params Transaction[] transactions) => BuildBlock(Parent, transactions);
 
-    protected static Block BuildBlock(BlockHeader parent, params Transaction[] transactions) =>
+    protected Block BuildBlock(BlockHeader parent, params Transaction[] transactions) => BuildBlock(parent, 30_000_000, transactions);
+
+    protected Block BuildBlock(BlockHeader parent, ulong gasLimit, params Transaction[] transactions) =>
         Build.A.Block.WithNumber(parent.Number + 1)
             .WithParent(parent)
             .WithBeneficiary(TestItem.AddressF)
             .WithBaseFeePerGas(1.GWei)
             .WithTimestamp(parent.Timestamp + 12)
             .WithTransactions(transactions)
-            .WithGasLimit(30_000_000)
+            .WithGasLimit(gasLimit)
+            .WithExcessBlobGas(Spec.IsEip4844Enabled ? 0 : null)
+            .WithBlobGasUsed(Spec.IsEip4844Enabled ? 0 : null)
             .TestObject;
 
     /// <summary>The header of <paramref name="block"/> processed into <paramref name="stateRoot"/>.</summary>
@@ -480,6 +633,27 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static Transaction Create(PrivateKey sender, ulong nonce, byte[] initCode) =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithNonce(nonce).WithCode(initCode).WithGasLimit(200_000)
             .WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(sender).TestObject;
+
+    protected static Transaction LegacyCall(PrivateKey sender, ulong nonce, Address to) =>
+        Build.A.Transaction.WithType(TxType.Legacy).WithNonce(nonce).WithTo(to).WithGasLimit(100_000).WithGasPrice(2.GWei)
+            .SignedAndResolved(sender).TestObject;
+
+    protected static Transaction AccessListCall(PrivateKey sender, ulong nonce, Address to) =>
+        Build.A.Transaction.WithType(TxType.AccessList).WithNonce(nonce).WithTo(to).WithGasLimit(100_000).WithGasPrice(2.GWei)
+            .WithAccessList(new AccessList.Builder().AddAddress(to).AddStorage(0).Build())
+            .SignedAndResolved(sender).TestObject;
+
+    protected static Transaction BlobCall(PrivateKey sender, ulong nonce, Address to) =>
+        Build.A.Transaction.WithShardBlobTxTypeAndFields(1, isMempoolTx: false).WithMaxFeePerBlobGas(0x4e4d)
+            .WithNonce(nonce).WithTo(to).WithGasLimit(100_000).WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .SignedAndResolved(sender).TestObject;
+
+    /// <summary>A set-code transaction delegating <paramref name="authority"/> to <paramref name="code"/> and calling it.</summary>
+    protected static Transaction SetCodeCall(PrivateKey sender, ulong nonce, PrivateKey authority, Address code) =>
+        Build.A.Transaction.WithType(TxType.SetCode).WithNonce(nonce).WithTo(authority.Address).WithGasLimit(150_000)
+            .WithMaxFeePerGas(2.GWei).WithMaxPriorityFeePerGas(1.GWei)
+            .WithAuthorizationCode(new EthereumEcdsa(0).Sign(authority, 0, code, 0))
             .SignedAndResolved(sender).TestObject;
 
     private sealed class Parents(List<BlockHeader> headers) : IStateHeaderProvider

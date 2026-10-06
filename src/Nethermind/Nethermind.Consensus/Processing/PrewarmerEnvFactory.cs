@@ -16,6 +16,8 @@ namespace Nethermind.Consensus.Processing;
 
 public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime, IBlocksConfig? blocksConfig = null)
 {
+    /// <summary>Whether the envs record the footprints block processing takes over.</summary>
+    /// <remarks>Set by <see cref="IBlocksConfig.PreWarmHandoff"/>; off without a blocks config.</remarks>
     public bool RecordsFootprints { get; } = blocksConfig?.PreWarmHandoff ?? false;
 
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
@@ -27,6 +29,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             logManager
         );
 
+        FootprintRecorder? recorder = null;
         ILifetimeScope childScope = parentLifetime.BeginLifetimeScope((builder) =>
         {
             builder
@@ -36,16 +39,14 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
             if (RecordsFootprints)
             {
                 // At scope level, so the transaction processor and the code repository both read through it.
-                builder.AddDecorator<IWorldState>(static (_, inner) => new FootprintRecorder(inner));
+                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner));
             }
         });
 
         try
         {
-            return new PrewarmerEnv(
-                childScope,
-                childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>(),
-                childScope.Resolve<IHasAccessList[]>());
+            AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv env = childScope.Resolve<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            return new PrewarmerEnv(childScope, env, childScope.Resolve<IHasAccessList[]>(), recorder);
         }
         catch
         {
@@ -56,9 +57,11 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
         }
     }
 
-    private sealed class PrewarmerEnv(ILifetimeScope scope, IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists) : IPrewarmerEnv
+    private sealed class PrewarmerEnv(ILifetimeScope scope, IReadOnlyTxProcessorSource inner, IHasAccessList[] systemAccessLists, FootprintRecorder? recorder) : IPrewarmerEnv
     {
         public ReadOnlySpan<IHasAccessList> SystemAccessLists => systemAccessLists;
+
+        FootprintRecorder? IPrewarmerEnv.Recorder => recorder;
 
         public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope) => inner.TryBuild(baseBlock, out scope);
 
@@ -82,4 +85,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
 public interface IPrewarmerEnv : IReadOnlyTxProcessorSource
 {
     ReadOnlySpan<IHasAccessList> SystemAccessLists { get; }
+
+    /// <summary>The world state decorator recording this env's runs; <see langword="null"/> when it records none.</summary>
+    internal FootprintRecorder? Recorder => null;
 }

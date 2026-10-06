@@ -3202,7 +3202,8 @@ public class BlockCachePreWarmerTests
                 new NoopTxProcessorAdapter(),
                 preWarmer,
                 new PrewarmerState(preBlockCaches, isPrewarmer),
-                _processingScope.Resolve<IWorldState>());
+                _processingScope.Resolve<IWorldState>(),
+                LimboLogs.Instance);
 
             adapter.Execute(Build.A.Transaction.TestObject, NullTxTracer.Instance);
 
