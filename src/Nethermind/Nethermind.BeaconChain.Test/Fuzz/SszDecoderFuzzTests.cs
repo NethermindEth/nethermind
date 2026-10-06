@@ -40,6 +40,7 @@ public class SszDecoderFuzzTests
         ITarget[] targets =
         [
             new Container<SignedBeaconBlock>(150),
+            new Container<ExecutionPayload>(150),
             new Container<SignedBeaconBlockGloas>(150),
             new Container<SignedAggregateAndProof>(300),
             new Container<SignedAggregateAndProofGloas>(300),
