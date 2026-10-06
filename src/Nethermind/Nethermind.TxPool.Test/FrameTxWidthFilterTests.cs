@@ -361,6 +361,24 @@ public class FrameTxWidthFilterTests
     }
 
     [Test]
+    public void Sponsored_ByATargetWithoutCode_SpendsNoPaymasterWidth()
+    {
+        SponsoredAdmission admission = new(paymasterHasCode: false);
+        Transaction additional = SponsoredTx(nonce: 1);
+        UInt256 earned = ChargeOf(additional);
+        admission.PaymasterWidth.Earn(Paymaster, earned);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0)), Is.EqualTo(AcceptTxResult.Accepted));
+
+        AcceptTxResult result = admission.Submit(additional);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(earned));
+        }
+    }
+
+    [Test]
     public void Sponsored_SpentPaymasterWidthIsNotReturned_AndTheBaselineIsNotInherited()
     {
         SponsoredAdmission admission = new();
@@ -529,7 +547,7 @@ public class FrameTxWidthFilterTests
     private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8141Prototype.Instance, SafetyFactorPermille);
 
     /// <summary>The paymaster filter and the width filter as the pool chains them, over the pending set they admitted.</summary>
-    private sealed class SponsoredAdmission(bool enabled = true, uint nextBaseFee = 0)
+    private sealed class SponsoredAdmission(bool enabled = true, uint nextBaseFee = 0, bool paymasterHasCode = true)
     {
         private readonly TxPoolConfig _config = new() { FrameTxWidthEnabled = enabled };
         private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
@@ -545,7 +563,7 @@ public class FrameTxWidthFilterTests
         public AcceptTxResult Submit(Transaction tx, Action? afterThePaymasterFilter = null)
         {
             TestReadOnlyStateProvider chain = new();
-            chain.InsertCode([0x60, 0x00], Paymaster);
+            if (paymasterHasCode) chain.InsertCode([0x60, 0x00], Paymaster);
             TxDistinctSortedPool pool = FrameTxFilterTestPools.Pool(false, [.. _pending]);
             TxDistinctSortedPool blobPool = FrameTxFilterTestPools.Pool(true);
             ILogger logger = LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>();

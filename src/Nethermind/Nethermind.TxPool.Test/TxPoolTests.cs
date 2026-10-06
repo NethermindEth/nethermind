@@ -5530,6 +5530,20 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public async Task Revalidation_of_a_transaction_sponsored_by_a_target_without_code_spends_no_paymaster_width()
+        {
+            IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+            SimulatesAs(simulator, FrameTxSimulationResult.Accept(TestItem.AddressE));
+            EnsureSenderBalance(TestItem.AddressE, UInt256.MaxValue);
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyE), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(_txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyE), TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            await RaiseBlockAddedToMainAndWaitForNewHead(Build.A.Block.WithNumber(1).TestObject);
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(2));
+        }
+
+        [Test]
         public async Task Paymaster_baseline_that_left_the_pool_is_charged_like_any_other_when_it_returns()
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);

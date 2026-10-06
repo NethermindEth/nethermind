@@ -88,8 +88,6 @@ internal sealed class FrameTxPaymasterFilter(
         UInt256 charge = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
         if (paymasterWidth.GetWidth(paymaster) < charge)
         {
-            paymasters.Decrement(paymaster);
-            state.PaymasterReserved = false;
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
             if (logger.IsTrace)
                 logger.Trace($"Skipped adding frame transaction {tx.Hash}, paymaster {paymaster} holds {paymasterWidth.GetWidth(paymaster)} width against a cost of {charge} with {held - 1} pending.");
