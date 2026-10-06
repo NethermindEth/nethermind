@@ -33,6 +33,8 @@ namespace Nethermind.Benchmarks.State;
 /// delegation designators per block, where each read waits on latency rather than bandwidth.
 /// <see cref="Workload.Repeat"/> is the warm-CALL block: each of <see cref="Threads"/> transactions calls a bank of
 /// 4,096 distinct 48 KiB contracts five times round, three transactions to each of four banks, 245,760 loads in all.
+/// <see cref="Workload.FillThenRepeat"/> is that block at a higher gas limit, where earlier transactions first load
+/// 20,000 other 48 KiB contracts once each, more than <see cref="BlockCodeCache"/> retains, and finish.
 /// <see cref="Workload.Hot"/> loads 20k contracts of 0.5-16.5 KiB drawn Zipf-skewed from a 50k pool, a proxy for
 /// ordinary blocks where the code cache hits; <see cref="Workload.HotAfterAttack"/> first fills the code cache with
 /// 58k fresh 64 KiB contracts, as an attack block would, untimed. Each load then reads the first byte of the execution
@@ -46,13 +48,16 @@ namespace Nethermind.Benchmarks.State;
 [MemoryDiagnoser]
 public class CodeLoadBenchmarks
 {
-    public enum Workload { Attack, FreshAttack, FreshSmall, Hot, HotAfterAttack, Repeat }
+    public enum Workload { Attack, FreshAttack, FreshSmall, Hot, HotAfterAttack, Repeat, FillThenRepeat }
 
     /// <summary>
     /// The code cache: one tier as before, tiers by code size as <see cref="StaticCodeCache.Instance"/>, or those tiers
-    /// with the block's loads kept in a <see cref="BlockCodeCache"/>, emptied for each block.
+    /// with the block's loads kept in a <see cref="BlockCodeCache"/>, emptied for each block. <see cref="CacheMode.Block"/>
+    /// runs each transaction in a <see cref="BlockCodeCache.BeginTransaction"/> scope, as block processing does, so past
+    /// the cap finished transactions' code gives way; <see cref="CacheMode.BlockUnscoped"/> does not, so past the cap
+    /// code is not taken in.
     /// </summary>
-    public enum CacheMode { Single, Tiered, Block }
+    public enum CacheMode { Single, Tiered, Block, BlockUnscoped }
 
     /// <summary>How the block's code is read ahead of execution, as a block access list allows.</summary>
     public enum PrefetchMode
@@ -76,6 +81,7 @@ public class CodeLoadBenchmarks
     private const int RepeatBankSize = 4_096;
     private const int RepeatRounds = 5;
     private const int RepeatCodeSize = 48 * 1024;
+    private const int FillLoads = 20_000;
 
     [Params(12)]
     public int Threads { get; set; }
@@ -96,6 +102,7 @@ public class CodeLoadBenchmarks
     private DbOnTheRocks _db = null!;
     private CountingCodeDb _codeDb = null!;
     private ICodeCache _codeCache = null!;
+    private BlockCodeCache _scopedCache;
     private ValueHash256[] _pool = null!;
     private double[] _cumulativeWeight = null!;
     private ValueHash256[] _block = null!;
@@ -117,6 +124,7 @@ public class CodeLoadBenchmarks
             Workload.FreshAttack => (FreshBlocks * AttackLoads, AttackLoads),
             Workload.FreshSmall => (FreshBlocks * SmallLoads, SmallLoads),
             Workload.Repeat => (RepeatBanks * RepeatBankSize, 0),
+            Workload.FillThenRepeat => (RepeatBanks * RepeatBankSize + FillLoads, 0),
             _ => (50_000, 20_000),
         };
         string basePath = Path.Combine(
@@ -165,9 +173,10 @@ public class CodeLoadBenchmarks
         _codeCache = Cache switch
         {
             CacheMode.Tiered => tiered,
-            CacheMode.Block => new BlockCodeCache(tiered),
+            CacheMode.Block or CacheMode.BlockUnscoped => new BlockCodeCache(tiered),
             _ => new StaticCodeCache(MemoryAllowance.CodeCacheSize),
         };
+        _scopedCache = Cache == CacheMode.Block ? (BlockCodeCache)_codeCache : null;
         _block = new ValueHash256[loadsPerBlock];
         _accessListOrder = new int[loadsPerBlock];
         for (int i = 0; i < loadsPerBlock; i++) _accessListOrder[i] = i;
@@ -188,7 +197,7 @@ public class CodeLoadBenchmarks
                 int length = _hot ? 512 + contents.Next(16_384) : Load switch
                 {
                     Workload.FreshSmall => DesignatorLength,
-                    Workload.Repeat => RepeatCodeSize,
+                    Workload.Repeat or Workload.FillThenRepeat => RepeatCodeSize,
                     _ => code.Length,
                 };
                 Span<byte> body = code.AsSpan(0, length);
@@ -217,7 +226,7 @@ public class CodeLoadBenchmarks
                 _random.Shuffle(_pool);
                 _pool.AsSpan(0, _block.Length).CopyTo(_block);
                 break;
-            case Workload.Repeat:
+            case Workload.Repeat or Workload.FillThenRepeat:
                 break;
             case Workload.FreshAttack or Workload.FreshSmall:
                 _pool.AsSpan(_blockNumber++ % FreshBlocks * _block.Length, _block.Length).CopyTo(_block);
@@ -283,6 +292,7 @@ public class CodeLoadBenchmarks
     public int ResolveBlock()
     {
         if (Load == Workload.Repeat) return ResolveRepeatBlock();
+        if (Load == Workload.FillThenRepeat) return ResolveFillBlock() + ResolveRepeatBlock();
 
         CodePrefetcher prefetcher = Prefetch == PrefetchMode.None ? null : new CodePrefetcher(_codeDb, _codeCache);
         Task prefetching = Prefetch switch
@@ -297,6 +307,7 @@ public class CodeLoadBenchmarks
         int executed = 0;
         Parallel.For(0, Threads, new ParallelOptions { MaxDegreeOfParallelism = Threads }, worker =>
         {
+            using TransactionScope _ = new(_scopedCache);
             int end = Math.Min((worker + 1) * chunk, loads);
             int local = 0;
             for (int i = worker * chunk; i < end; i++)
@@ -318,6 +329,7 @@ public class CodeLoadBenchmarks
         int executed = 0;
         Parallel.For(0, Threads, new ParallelOptions { MaxDegreeOfParallelism = Threads }, transaction =>
         {
+            using TransactionScope _ = new(_scopedCache);
             int bank = transaction * RepeatBanks / Threads * RepeatBankSize;
             int local = 0;
             for (int round = 0; round < RepeatRounds; round++)
@@ -332,6 +344,35 @@ public class CodeLoadBenchmarks
         });
 
         return executed;
+    }
+
+    private int ResolveFillBlock()
+    {
+        int first = RepeatBanks * RepeatBankSize;
+        int chunk = (FillLoads + Threads - 1) / Threads;
+        int executed = 0;
+        Parallel.For(0, Threads, new ParallelOptions { MaxDegreeOfParallelism = Threads }, transaction =>
+        {
+            using TransactionScope _ = new(_scopedCache);
+            int end = first + Math.Min((transaction + 1) * chunk, FillLoads);
+            int local = 0;
+            for (int i = first + transaction * chunk; i < end; i++)
+            {
+                local += Resolve(in _pool[i], null).ExecutionCodeSpan[0];
+            }
+
+            Interlocked.Add(ref executed, local);
+        });
+
+        return executed;
+    }
+
+    /// <summary>A block transaction's scope in <see cref="CacheMode.Block"/>, nothing otherwise.</summary>
+    private readonly struct TransactionScope(BlockCodeCache cache) : IDisposable
+    {
+        private readonly BlockCodeCache.TransactionScope? _scope = cache?.BeginTransaction();
+
+        public void Dispose() => _scope?.Dispose();
     }
 
     private void QueueBlock(CodePrefetcher prefetcher)
