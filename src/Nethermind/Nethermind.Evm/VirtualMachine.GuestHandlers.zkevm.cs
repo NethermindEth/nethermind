@@ -347,8 +347,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             SetWord(ref Unsafe.Add(ref taken, LimbsPerWord), analyzed);
             head += 2 - TCondition.Inputs;
             ip = ref Unsafe.Add(ref ip, skipped);
-            nint analyze = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteJumpToUnanalyzedDestination<OnFlag>;
+            nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
         }
 
@@ -870,8 +869,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                                     head += 2;
                                     gas -= 3 * VeryLowGasCost.GasCost;
                                     ip = ref Unsafe.Add(ref ip, 10);
-                                    nint analyze = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                                        &ExecuteJumpToUnanalyzedDestination<OnFlag>;
+                                    nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
                                     return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
                                 }
 
@@ -1231,6 +1229,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte opcode = ref ip;
             nuint value = ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref opcode, 1)));
             byte following = Unsafe.Add(ref opcode, 3);
+            nint analyze;
             if (following == (byte)Instruction.JUMP)
             {
                 if (value < (nuint)stack.CodeLength)
@@ -1240,7 +1239,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         goto Refund;
 
                     if (!stack.IsAnalyzedJumpDestination(value))
-                        goto AnalyzeJump;
+                    {
+                        analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
+                        goto Analyze;
+                    }
 
                     gas -= fusedGas;
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
@@ -1273,7 +1275,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         goto Refund;
 
                     if (!stack.IsAnalyzedJumpDestination(value))
-                        goto AnalyzeJumpI;
+                    {
+                        analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
+                        goto Analyze;
+                    }
 
                     head--;
                     gas -= takenGas;
@@ -1292,22 +1297,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint target = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, target);
 
-        AnalyzeJump:
+        Analyze:
             // Straight to the analysis, which the jump handler would only reach after repeating the tests passed here.
             SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), value);
             ip = ref Unsafe.Add(ref ip, 3);
             head++;
-            nint analyzeJump = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteJumpToUnanalyzedDestination<OffFlag>;
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyzeJump);
-
-        AnalyzeJumpI:
-            SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), value);
-            ip = ref Unsafe.Add(ref ip, 3);
-            head++;
-            nint analyzeJumpI = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecuteJumpToUnanalyzedDestination<OnFlag>;
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyzeJumpI);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
 
         Refund:
             gas += pushGas;

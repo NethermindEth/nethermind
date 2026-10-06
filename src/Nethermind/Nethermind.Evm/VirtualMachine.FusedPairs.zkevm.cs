@@ -491,8 +491,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         head += TFirst.Growth;
                         gas += JumpGasCost.GasCost + JumpDestGasCost.GasCost;
                         ip = ref Unsafe.Add(ref ip, 1);
-                        nint analyze = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                            &ExecuteJumpToUnanalyzedDestination<OffFlag>;
+                        nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
                         return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
                     }
 
