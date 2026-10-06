@@ -43,7 +43,7 @@ public static class PayloadConverter
             BaseFeePerGas = payload.BaseFeePerGas,
             BlockHash = payload.BlockHash!,
             Transactions = encodedTransactions,
-            Withdrawals = ToCoreWithdrawals(payload.Withdrawals),
+            Withdrawals = payload.Withdrawals.ToDomain(),
             BlobGasUsed = payload.BlobGasUsed,
             ExcessBlobGas = payload.ExcessBlobGas,
         };
@@ -79,30 +79,12 @@ public static class PayloadConverter
             BaseFeePerGas = payload.BaseFeePerGas,
             BlockHash = payload.BlockHash!,
             Transactions = encodedTransactions,
-            Withdrawals = ToCoreWithdrawals(payload.Withdrawals),
+            Withdrawals = payload.Withdrawals.ToDomain(),
             BlobGasUsed = payload.BlobGasUsed,
             ExcessBlobGas = payload.ExcessBlobGas,
             BlockAccessList = payload.BlockAccessList ?? [],
             SlotNumber = payload.SlotNumber,
         };
-    }
-
-    private static Core.Withdrawal[] ToCoreWithdrawals(SszWithdrawal[]? withdrawals)
-    {
-        withdrawals ??= [];
-        Core.Withdrawal[] coreWithdrawals = new Core.Withdrawal[withdrawals.Length];
-        for (int i = 0; i < withdrawals.Length; i++)
-        {
-            SszWithdrawal withdrawal = withdrawals[i];
-            coreWithdrawals[i] = new Core.Withdrawal
-            {
-                Index = withdrawal.Index,
-                ValidatorIndex = withdrawal.ValidatorIndex,
-                Address = withdrawal.Address!,
-                AmountInGwei = withdrawal.Amount,
-            };
-        }
-        return coreWithdrawals;
     }
 
     /// <summary>The EIP-4844 <c>kzg_to_versioned_hash</c> over each commitment: SHA-256 with the first byte replaced by the version <c>0x01</c>.</summary>
