@@ -4,12 +4,10 @@
 using System.Buffers.Binary;
 using System.IO;
 using Ethereum.Ssz.Test;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <remarks>Production exposes the combined process_rewards_and_penalties, not individual delta functions.</remarks>
 [TestFixture]
 public class RewardsTests
 {
@@ -36,7 +34,7 @@ public class RewardsTests
     }
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
-        FuluDriverSupport.AssertEveryKeyRunsSomeVector(
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
             FuluDriverSupport.TestedCases<RewardsCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => $"{testCase.Fork}/{testCase.Handler}",
             Run);
@@ -60,22 +58,18 @@ public class RewardsTests
     {
         FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         FuluDriverSupport.Dispatch(testCase.Fork, testCase,
-            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), EpochProcessing.ProcessRewardsAndPenalties),
-            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), GloasEpochProcessing.ProcessRewardsAndPenalties));
+            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, EpochProcessing.ApplyRewardDeltas),
+            static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, GloasEpochProcessing.ApplyRewardDeltas));
     }
 
-    private static void Run<TState>(RewardsCase testCase, ForkDriver<TState> driver, Func<TState, ulong[]> balancesOf, Func<TState, ulong> epochOf, Action<TState, EpochCache> processRewardsAndPenalties)
+    private static void Run<TState>(RewardsCase testCase, ForkDriver<TState> driver, Func<TState, ulong[]> balancesOf, Action<TState, EpochCache> applyRewardDeltas)
         where TState : class
     {
         TState state = driver.DecodePre(Path.Combine(testCase.CasePath, "pre.ssz_snappy"));
-        // process_rewards_and_penalties returns before applying any delta in the genesis epoch.
-        if (epochOf(state) == Presets.GenesisEpoch)
-            throw new NotImplementedInDriverException("the pre-state is in the genesis epoch, where process_rewards_and_penalties applies no delta, so the vector's deltas are unobservable here.");
-
         (ulong[] Rewards, ulong[] Penalties)[] deltas = [.. DeltasFiles.Select(file => DecodeDeltas(Path.Combine(testCase.CasePath, file + ".ssz_snappy")))];
         ulong[] expected = ExpectedBalances([.. balancesOf(state)], deltas);
 
-        processRewardsAndPenalties(state, driver.NewCache());
+        applyRewardDeltas(state, driver.NewCache());
 
         Assert.That(balancesOf(state), Is.EqualTo(expected));
     }

@@ -32,6 +32,11 @@ public static partial class EpochProcessing
         if (state.GetCurrentEpoch() == Presets.GenesisEpoch)
             return;
 
+        ApplyRewardDeltas(state, cache);
+    }
+
+    internal static partial void ApplyRewardDeltas(ForkState state, EpochCache cache)
+    {
         ulong previousEpoch = state.GetPreviousEpoch();
         ulong totalActiveBalance = state.GetTotalActiveBalance(cache);
         ulong baseRewardPerIncrement = state.GetBaseRewardPerIncrement(cache);
