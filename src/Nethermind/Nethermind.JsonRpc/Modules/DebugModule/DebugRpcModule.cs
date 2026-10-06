@@ -717,7 +717,7 @@ public class DebugRpcModule(
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
             ? TraceCallManyWithOverrides(bundles, options, header)
-            : TraceCallMany(bundles, blockParameter, options, header);
+            : TraceCallMany(bundles, new BlockParameter(header.Hash!), options, header);
     }
 
     private ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> TraceCallMany(TransactionBundle[] bundles, BlockParameter blockParameter, GethTraceOptions? options, BlockHeader header)
@@ -824,8 +824,6 @@ public class DebugRpcModule(
             lastBlockTime = time;
         }
 
-        BlockParameter concreteBlockParameter = new(header.Number);
-
         using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult<GethLikeTxTrace>>> simulationResult =
@@ -836,7 +834,7 @@ public class DebugRpcModule(
                 specProvider,
                 new GethStyleSimulateBlockTracerFactory(options: options ?? GethTraceOptions.Default),
                 _secondsPerSlot
-            ).Execute(simulatePayload, concreteBlockParameter);
+            ).Execute(simulatePayload, null, searchResult: new(header));
 
         if (simulationResult.ErrorCode != 0)
         {
