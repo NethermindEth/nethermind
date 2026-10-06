@@ -33,6 +33,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethStyleTracer(
     [KeyFilter(IReceiptFinder.RegenerableKey)] IReceiptFinder receiptFinder,
     IBlockTree blockTree,
@@ -306,7 +307,7 @@ public class GethStyleTracer(
 
     private static bool WantsLogIndex(GethTraceOptions options) =>
         options.Tracer == NativeCallTracer.CallTracer
-        && options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions)?.WithLog == true;
+        && TypeInfoJsonSerializer.Deserialize<NativeCallTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions)?.WithLog == true;
 
     private static List<GethLikeTxTrace> KeepTrace(IReadOnlyCollection<GethLikeTxTrace> traces, Hash256 txHash)
     {
