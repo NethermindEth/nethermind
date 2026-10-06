@@ -3,7 +3,6 @@
 
 using CkzgLib;
 using Nethermind.Core.Collections;
-using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 

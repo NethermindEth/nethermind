@@ -409,7 +409,7 @@ public class GossipMessageValidatorTests
             Payload = new ExecutionPayloadGloas
             {
                 SlotNumber = slot ?? WallSlot,
-                Withdrawals = [.. Enumerable.Range(0, withdrawals).Select(static i => new Nethermind.BeaconChain.Types.Withdrawal { Index = (ulong)i, Address = Address.Zero })],
+                Withdrawals = [.. Enumerable.Range(0, withdrawals).Select(static i => new Nethermind.Merge.Plugin.SszRest.SszWithdrawal { Index = (ulong)i, Address = Address.Zero })],
             },
             ExecutionRequests = requests ?? new ExecutionRequestsGloas(),
             BeaconBlockRoot = Hash256.Zero,

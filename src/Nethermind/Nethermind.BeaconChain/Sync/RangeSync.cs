@@ -12,7 +12,6 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.SszRest;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.BeaconChain.Sync;

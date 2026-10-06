@@ -14,7 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Merge.Plugin.SszRest;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.Test.StateTransition;
 

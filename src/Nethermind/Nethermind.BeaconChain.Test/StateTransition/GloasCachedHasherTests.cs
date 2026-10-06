@@ -11,8 +11,10 @@ using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
 
@@ -133,6 +135,8 @@ public class GloasCachedHasherTests
             return !(bool)value!;
         if (type == typeof(byte))
             return (byte)((byte)value! ^ salt);
+        if (value is SszWithdrawal withdrawal)
+            return withdrawal with { Index = withdrawal.Index + salt * 0x1_0001UL, Address = withdrawal.Address ?? Address.Zero };
         if (type == typeof(Hash256))
         {
             byte[] bytes = (value as Hash256)?.Bytes.ToArray() ?? new byte[Hash256.Size];

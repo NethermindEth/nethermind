@@ -4,9 +4,9 @@
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.ExecutionRequest;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Engine;
@@ -20,11 +20,11 @@ public static class PayloadConverter
     /// <summary>Maps the beacon <see cref="Types.ExecutionPayload"/> field-by-field onto the engine API <see cref="ExecutionPayloadV3"/>.</summary>
     public static ExecutionPayloadV3 ToExecutionPayloadV3(Types.ExecutionPayload payload)
     {
-        Types.Transaction[] transactions = payload.Transactions ?? [];
+        SszTransaction[] transactions = payload.Transactions ?? [];
         byte[][] encodedTransactions = new byte[transactions.Length][];
         for (int i = 0; i < transactions.Length; i++)
         {
-            encodedTransactions[i] = transactions[i].Bytes ?? [];
+            encodedTransactions[i] = transactions[i].Bytes.AsArray();
         }
 
         return new ExecutionPayloadV3
@@ -87,13 +87,13 @@ public static class PayloadConverter
         };
     }
 
-    private static Core.Withdrawal[] ToCoreWithdrawals(Types.Withdrawal[]? withdrawals)
+    private static Core.Withdrawal[] ToCoreWithdrawals(SszWithdrawal[]? withdrawals)
     {
         withdrawals ??= [];
         Core.Withdrawal[] coreWithdrawals = new Core.Withdrawal[withdrawals.Length];
         for (int i = 0; i < withdrawals.Length; i++)
         {
-            Types.Withdrawal withdrawal = withdrawals[i];
+            SszWithdrawal withdrawal = withdrawals[i];
             coreWithdrawals[i] = new Core.Withdrawal
             {
                 Index = withdrawal.Index,

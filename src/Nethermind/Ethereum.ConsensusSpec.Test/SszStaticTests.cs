@@ -95,7 +95,7 @@ public class SszStaticTests
         Map<HistoricalSummary>("HistoricalSummary", CapellaPlus);
         Map<BlsToExecutionChange>("BLSToExecutionChange", CapellaPlus);
         Map<SignedBlsToExecutionChange>("SignedBLSToExecutionChange", CapellaPlus);
-        Map<Withdrawal>("Withdrawal", CapellaPlus);
+        Map<Nethermind.Merge.Plugin.SszRest.SszWithdrawal>("Withdrawal", CapellaPlus);
 
         // Header roots avoid preset-sized lists; full payloads embed them.
         Map<ExecutionPayloadHeader>("ExecutionPayloadHeader", DenebElectraFulu);

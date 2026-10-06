@@ -217,7 +217,7 @@ public partial class BeaconStateGloas
     /// <remarks>[New in Gloas:EIP7732]. <c>Withdrawals</c>: <c>ProgressiveList[Withdrawal]</c> (EIP-7688).</remarks>
     [SszField(44)]
     [SszProgressiveList]
-    public Withdrawal[]? PayloadExpectedWithdrawals { get; set; }
+    public SszWithdrawal[]? PayloadExpectedWithdrawals { get; set; }
     /// <remarks>
     /// [New in Gloas:EIP7732]. <c>Vector[PayloadTimelinessCommittee, (MIN_SEED_LOOKAHEAD + 2) * SLOTS_PER_EPOCH]</c>
     /// (96 entries on mainnet). A fixed vector of composite items: like <see cref="BuilderPendingPayments"/>,

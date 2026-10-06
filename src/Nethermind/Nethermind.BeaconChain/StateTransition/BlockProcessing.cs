@@ -8,10 +8,11 @@ using Nethermind.BeaconChain.ForkChoice;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Transaction = Nethermind.BeaconChain.Types.Transaction;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Transaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
@@ -112,7 +113,8 @@ public static partial class BlockProcessing
     /// </summary>
     public static void ProcessWithdrawals(BeaconStateFulu state, ExecutionPayload payload)
     {
-        (List<Withdrawal> expected, int processedPartialWithdrawalsCount) = GetExpectedWithdrawals(state);
+        RefList16<Withdrawal> expected = new();
+        int processedPartialWithdrawalsCount = GetExpectedWithdrawals(state, ref expected);
 
         Withdrawal[] actual = payload.Withdrawals ?? [];
         if (actual.Length != expected.Count)
@@ -123,7 +125,7 @@ public static partial class BlockProcessing
                 throw new BeaconStateException($"Payload withdrawal {i} does not match the expected withdrawal");
         }
 
-        foreach (Withdrawal withdrawal in expected)
+        foreach (Withdrawal withdrawal in expected.AsSpan())
         {
             state.DecreaseBalance((int)withdrawal.ValidatorIndex, withdrawal.Amount);
         }
@@ -139,13 +141,12 @@ public static partial class BlockProcessing
             : (state.NextWithdrawalValidatorIndex + (ulong)Presets.MaxValidatorsPerWithdrawalsSweep) % validatorCount;
     }
 
-    /// <summary>Spec <c>get_expected_withdrawals</c> (Electra), also returning the number of consumed pending partial withdrawals.</summary>
-    private static (List<Withdrawal> Withdrawals, int ProcessedPartialWithdrawalsCount) GetExpectedWithdrawals(BeaconStateFulu state)
+    /// <summary>Spec <c>get_expected_withdrawals</c> (Electra), returning the number of consumed pending partial withdrawals.</summary>
+    private static int GetExpectedWithdrawals(BeaconStateFulu state, ref RefList16<Withdrawal> withdrawals)
     {
         ulong epoch = state.GetCurrentEpoch();
         ulong withdrawalIndex = state.NextWithdrawalIndex;
         ulong validatorIndex = state.NextWithdrawalValidatorIndex;
-        List<Withdrawal> withdrawals = [];
         int processedPartialWithdrawalsCount = 0;
 
         // [New in Electra:EIP7251] Consume pending partial withdrawals.
@@ -156,7 +157,7 @@ public static partial class BlockProcessing
 
             Validator validator = state.Validators![(int)pending.ValidatorIndex];
             bool hasSufficientEffectiveBalance = validator.EffectiveBalance >= Presets.MinActivationBalance;
-            ulong balance = state.Balances![(int)pending.ValidatorIndex] - TotalWithdrawn(withdrawals, pending.ValidatorIndex);
+            ulong balance = state.Balances![(int)pending.ValidatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), pending.ValidatorIndex);
             if (validator.ExitEpoch == Presets.FarFutureEpoch && hasSufficientEffectiveBalance && balance > Presets.MinActivationBalance)
             {
                 withdrawals.Add(new Withdrawal
@@ -174,7 +175,7 @@ public static partial class BlockProcessing
         for (int i = 0; i < bound; i++)
         {
             Validator validator = state.Validators[(int)validatorIndex];
-            ulong balance = state.Balances![(int)validatorIndex] - TotalWithdrawn(withdrawals, validatorIndex);
+            ulong balance = state.Balances![(int)validatorIndex] - TotalWithdrawn(withdrawals.AsSpan(), validatorIndex);
             if (validator.IsFullyWithdrawableValidator(balance, epoch))
             {
                 withdrawals.Add(new Withdrawal
@@ -200,10 +201,10 @@ public static partial class BlockProcessing
             validatorIndex = (validatorIndex + 1) % (ulong)state.Validators.Length;
         }
 
-        return (withdrawals, processedPartialWithdrawalsCount);
+        return processedPartialWithdrawalsCount;
     }
 
-    private static partial ulong TotalWithdrawn(List<Withdrawal> withdrawals, ulong validatorIndex);
+    private static partial ulong TotalWithdrawn(ReadOnlySpan<Withdrawal> withdrawals, ulong validatorIndex);
 
     private static bool WithdrawalEquals(Withdrawal a, Withdrawal b) =>
         a.Index == b.Index && a.ValidatorIndex == b.ValidatorIndex && a.Address == b.Address && a.Amount == b.Amount;
