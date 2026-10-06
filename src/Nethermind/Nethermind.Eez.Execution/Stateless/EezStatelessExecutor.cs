@@ -29,7 +29,10 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
     private readonly EezTransactionProcessorFactory _transactionProcessorFactory = new();
 
     /// <param name="window">The blocks, oldest first.</param>
-    /// <param name="lastBlockCheckpoints">Strictly increasing transaction indices of the last block to checkpoint.</param>
+    /// <param name="lastBlockCheckpoints">
+    /// Strictly increasing transaction indices of the last block to checkpoint, led by
+    /// <see cref="EezTransactionCheckpoint.PreExecution"/> for its empty prefix.
+    /// </param>
     /// <exception cref="EezStatelessException">The window is invalid, or the checkpoints are impossible.</exception>
     public EezStatelessBlockResult[] Execute(IReadOnlyList<EezStatelessBlock> window, ReadOnlySpan<int> lastBlockCheckpoints)
     {
@@ -59,7 +62,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
         AssignSenders(block);
 
         TransactionCheckpointRecorder? recorder = checkpoints.Length > 0 ? new TransactionCheckpointRecorder(specProvider, checkpoints) : null;
-        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder);
+        StatelessBlockProcessingEnv env = CreateEnvironment(input.Witness, recorder, recorder is not null ? recorder.Wrap : null);
         if (recorder is not null)
         {
             recorder.WorldState = env.WorldState;
@@ -79,7 +82,8 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
 
     /// <summary>An environment that executes blocks under the EEZ rules over <paramref name="witness"/>.</summary>
     public StatelessBlockProcessingEnv CreateEnvironment(Witness witness,
-        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null) =>
+        BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? transactionProcessed = null,
+        Func<IBlockProcessor.IBlockTransactionsExecutor, IBlockProcessor.IBlockTransactionsExecutor>? transactionsExecutorDecorator = null) =>
         new(witness, specProvider, Always.Valid, logManager)
         {
             TransactionProcessorFactory = _transactionProcessorFactory,
@@ -88,6 +92,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
                 new EezBlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager),
             ExecutionRequestsOptions = EezExecutionRequests.Options,
             TransactionProcessedEventHandler = transactionProcessed,
+            TransactionsExecutorDecorator = transactionsExecutorDecorator,
         };
 
     private static Block Decode(byte[] rlp)
@@ -109,10 +114,11 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
     {
         for (int i = 0; i < checkpoints.Length; i++)
         {
-            if (checkpoints[i] < 0 || checkpoints[i] >= block.Transactions.Length || (i > 0 && checkpoints[i] <= checkpoints[i - 1]))
+            bool preExecution = i == 0 && checkpoints[i] == EezTransactionCheckpoint.PreExecution;
+            if (!preExecution && (checkpoints[i] < 0 || checkpoints[i] >= block.Transactions.Length || (i > 0 && checkpoints[i] <= checkpoints[i - 1])))
             {
                 throw new EezStatelessException(EezStatelessFailure.InternalInvariant,
-                    $"Checkpoints must be strictly increasing transaction indices of block {block.Number}.");
+                    $"Checkpoints must be the empty prefix, if any, then strictly increasing transaction indices of block {block.Number}.");
             }
         }
     }
@@ -163,7 +169,8 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
     }
 
     /// <summary>
-    /// A candidate block commits to the transaction prefix; every other field is copied from the executed block.
+    /// A candidate block commits to the transaction prefix; every other field is copied from the executed block. The
+    /// empty prefix has empty transaction and receipt tries, an empty bloom and no gas used.
     /// </summary>
     private static Hash256 CandidateBlockHash(Block block, TxReceipt[] receipts, int lastIndex, Hash256 stateRoot, IReleaseSpec spec)
     {
@@ -178,7 +185,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
             candidate.Bloom.Accumulate(receipts[i].Bloom);
         }
 
-        candidate.GasUsed = receipts[lastIndex].GasUsedTotal;
+        candidate.GasUsed = count == 0 ? 0 : receipts[lastIndex].GasUsedTotal;
         return candidate.CalculateHash();
     }
 

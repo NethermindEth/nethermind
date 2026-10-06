@@ -82,7 +82,7 @@ public class EezSettlementEffectsFixtureTests
     {
         EezStatelessBlock[] window = Enumerable.Range(From, To - From + 1)
             .Select(static n => StatelessFixtures.ReadBlock(Window, $"block-{n}.rlp.hex", $"witness-{n}.json")).ToArray();
-        int[] checkpoints = SettlingBlock.EffectTransactionsOf(Rlp.Decode<Block>(window[^1].Rlp)!);
+        int[] checkpoints = SettlingBlock.CheckpointsOf(Rlp.Decode<Block>(window[^1].Rlp)!);
         return new EezStatelessExecutor(Spec.Value, LimboLogs.Instance).Execute(window, checkpoints);
     }
 

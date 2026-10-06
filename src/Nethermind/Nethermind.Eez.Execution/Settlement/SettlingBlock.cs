@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Eez.Execution.Stateless;
 using Nethermind.Evm;
 
 namespace Nethermind.Eez.Execution.Settlement;
@@ -90,10 +91,17 @@ public sealed class SettlingBlock
     }
 
     /// <summary>
-    /// The transactions to checkpoint when re-executing <paramref name="block"/> as a settling block: every user
+    /// The transactions of <paramref name="block"/>, as a settling block, that each end an effect: every user
     /// transaction, and every system transaction that no user transaction follows.
     /// </summary>
     public static int[] EffectTransactionsOf(Block block) => EffectTransactionsOf(SystemTransactionsOf(block));
+
+    /// <summary>
+    /// The positions to checkpoint when re-executing <paramref name="block"/> as a settling block: its empty prefix, the
+    /// anchor's claim, when it has transactions, then each effect transaction.
+    /// </summary>
+    public static int[] CheckpointsOf(Block block) =>
+        block.Transactions.Length == 0 ? [] : [EezTransactionCheckpoint.PreExecution, .. EffectTransactionsOf(block)];
 
     private static int[] EffectTransactionsOf(bool[] system)
     {

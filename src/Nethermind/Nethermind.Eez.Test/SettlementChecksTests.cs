@@ -30,7 +30,7 @@ public class SettlementChecksTests
 
         PostBatchProfile.Validate(batch, RollupId, new Address(oracle.GetProperty("proof_system").GetString()!));
         StateUpdate[] updates = StateUpdateChain.Verify(batch, RollupId, pre, post);
-        BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, post, [], [], []);
+        BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, [], [], []);
 
         Assert.That(EntryShapes.Classify(batch.Entries[0], updates[0], RollupId), Is.EqualTo(EntryShape.Anchor), "the recorded entry is the canonical anchor");
         Assert.That(effects, Is.Empty, "a window without cross-chain calls binds no effects");
@@ -153,7 +153,7 @@ public class SettlementChecksTests
     {
         (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
-        BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, Word(2), checkpoints, [1, 3], [true, false, true, true]);
+        BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, checkpoints, [1, 3], [true, false, true, true]);
 
         Assert.That(effects, Is.EqualTo(new[]
         {
@@ -164,12 +164,12 @@ public class SettlementChecksTests
 
     [TestCaseSource(nameof(BadBindings))]
     public void Bind_ClaimsThatDoNotMatchTheSettlingBlock_Throw(Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
-        int[] effectTransactions, bool[] systemTransactions, ulong preSettling, string rule)
+        int[] effectTransactions, bool[] systemTransactions, string rule)
     {
         (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = mutate(EffectBatch());
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
-            EffectBinding.Bind(batch, updates, RollupId, Word(preSettling), checkpoints, effectTransactions, systemTransactions))!.Message, Does.Contain(rule));
+            EffectBinding.Bind(batch, updates, RollupId, checkpoints, effectTransactions, systemTransactions))!.Message, Does.Contain(rule));
     }
 
     [Test]
@@ -178,7 +178,7 @@ public class SettlementChecksTests
         (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
-            EffectBinding.Bind(batch, updates, RollupId, Word(2), [checkpoints[0], checkpoints[1] with { TransactionIndex = 2 }], [1, 3], [true, false, true, true]))!.Failure,
+            EffectBinding.Bind(batch, updates, RollupId, [checkpoints[0], checkpoints[1], checkpoints[2] with { TransactionIndex = 2 }], [1, 3], [true, false, true, true]))!.Failure,
             Is.EqualTo(EezSettlementFailure.InternalInvariant));
     }
 
@@ -188,7 +188,7 @@ public class SettlementChecksTests
         (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
-            EffectBinding.Bind(batch, updates, RollupId, Word(2), checkpoints[..1], [1, 3], [true, false, true, true]))!.Failure,
+            EffectBinding.Bind(batch, updates, RollupId, checkpoints[..2], [1, 3], [true, false, true, true]))!.Failure,
             Is.EqualTo(EezSettlementFailure.InternalInvariant));
     }
 
@@ -198,7 +198,9 @@ public class SettlementChecksTests
         PostBatch batch = RecordedBatch();
         StateUpdate[] updates = [batch.Entries[0].StateUpdates[0]];
 
-        Assert.Throws<EezSettlementException>(() => EffectBinding.Bind(batch, updates, RollupId, default, [new EezTransactionCheckpoint(0, Keccak.Zero, Keccak.Zero)], [], []));
+        Assert.That(Assert.Throws<EezSettlementException>(() =>
+            EffectBinding.Bind(batch, updates, RollupId, [new EezTransactionCheckpoint(EezTransactionCheckpoint.PreExecution, Keccak.Zero, Keccak.Zero)], [], []))!.Message,
+            Does.Contain("without transactions"), "a batch without effects claims the whole settling block, so it may hold none");
     }
 
     private static TestCaseData[] OutOfProfileBatches() =>
@@ -306,23 +308,26 @@ public class SettlementChecksTests
 
     private static TestCaseData[] BadBindings() =>
     [
-        Binding(static s => s, [1], [true, false, true, true], 2, "claims 2 effects", "FewerEffectTransactions"),
-        Binding(static s => s, [1, 3, 4], [true, false, true, true, false], 2, "claims 2 effects", "MoreEffectTransactions"),
-        Binding(static s => s, [1, 3], [true, true, true, true], 2, "is Outbound, but transaction 1 is Inbound", "OutboundEntryAtSystemTransaction"),
-        Binding(static s => s, [1, 3], [true, false, true, false], 2, "is Inbound, but transaction 3 is Outbound", "InboundEntryAtUserTransaction"),
-        Binding(static s => s, [1, 3], [true, false, true, true], 9, "settling block's parent", "AnchorDoesNotEndAtTheParent"),
-        Binding(static s => (s.Item1, s.Item2, s.Item3[..1]), [1, 3], [true, false, true, true], 2, "needs 2 transaction checkpoints", "MissingCheckpoint"),
-        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { TransactionIndex = 2 }]), [1, 3], [true, false, true, true], 2,
+        Binding(static s => s, [1], [true, false, true, true], "claims 2 effects", "FewerEffectTransactions"),
+        Binding(static s => s, [1, 3, 4], [true, false, true, true, false], "claims 2 effects", "MoreEffectTransactions"),
+        Binding(static s => s, [1, 3], [true, true, true, true], "is Outbound, but transaction 1 is Inbound", "OutboundEntryAtSystemTransaction"),
+        Binding(static s => s, [1, 3], [true, false, true, false], "is Inbound, but transaction 3 is Outbound", "InboundEntryAtUserTransaction"),
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0] with { BlockHash = new Hash256(Word(9)) }, s.Item3[1], s.Item3[2]]), [1, 3], [true, false, true, true],
+            "settling block's empty prefix", "AnchorDoesNotEndAtTheEmptyPrefix"),
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0] with { TransactionIndex = 0 }, s.Item3[1], s.Item3[2]]), [1, 3], [true, false, true, true],
+            "not at the empty prefix", "AnchorCheckpointAfterATransaction"),
+        Binding(static s => (s.Item1, s.Item2, s.Item3[..2]), [1, 3], [true, false, true, true], "needs 3 transaction checkpoints", "MissingCheckpoint"),
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1], s.Item3[2] with { TransactionIndex = 2 }]), [1, 3], [true, false, true, true],
             "is at transaction 2", "CheckpointAtOtherTransaction"),
-        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1] with { BlockHash = Keccak.Zero }]), [1, 3], [true, false, true, true], 2,
+        Binding(static s => (s.Item1, s.Item2, [s.Item3[0], s.Item3[1], s.Item3[2] with { BlockHash = Keccak.Zero }]), [1, 3], [true, false, true, true],
             "claims block", "ClaimsOtherCandidateBlock"),
-        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[1], s.Item1.Entries[1], s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2,
+        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[1], s.Item1.Entries[1], s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true],
             "leading entry", "LeadingEntryNotAnchor"),
-        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], Anchor(s.Item2[1]), s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true], 2,
+        Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], Anchor(s.Item2[1]), s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3], [true, false, true, true],
             "second anchor", "SecondAnchor"),
         Binding(static s => (s.Item1 with { Entries = [s.Item1.Entries[0], s.Item1.Entries[1] with { Success = false }, s.Item1.Entries[2]] }, s.Item2, s.Item3), [1, 3],
-            [true, false, true, true], 2, "not a valid effect", "InvalidEffect"),
-        Binding(static s => (s.Item1, [s.Item2[0] with { EtherDelta = Int256.Int256.One }, s.Item2[1], s.Item2[2]], s.Item3), [1, 3], [true, false, true, true], 2,
+            [true, false, true, true], "not a valid effect", "InvalidEffect"),
+        Binding(static s => (s.Item1, [s.Item2[0] with { EtherDelta = Int256.Int256.One }, s.Item2[1], s.Item2[2]], s.Item3), [1, 3], [true, false, true, true],
             "moves", "AnchorMovesEther"),
     ];
 
@@ -333,7 +338,12 @@ public class SettlementChecksTests
         ExecutionEntry outbound = new([updates[1]], default, [new CrossChainCall(0, false, 0, L2Contract, RollupId, L1Sender, 0, [])], [], Word(5), RollupId, true, []);
         ExecutionEntry inbound = new([updates[2]], Word(6), [], [], Word(7), RollupId, true, []);
         PostBatch batch = RecordedBatch() with { Entries = [anchor, outbound, inbound] };
-        return (batch, updates, [new EezTransactionCheckpoint(1, Keccak.Zero, new Hash256(Word(3))), new EezTransactionCheckpoint(3, Keccak.Zero, new Hash256(Word(4)))]);
+        return (batch, updates,
+        [
+            new EezTransactionCheckpoint(EezTransactionCheckpoint.PreExecution, Keccak.Zero, new Hash256(Word(2))),
+            new EezTransactionCheckpoint(1, Keccak.Zero, new Hash256(Word(3))),
+            new EezTransactionCheckpoint(3, Keccak.Zero, new Hash256(Word(4))),
+        ]);
     }
 
     private static (IncomingCrossChainCall Call, ValueHash256 CallHash) Delivery(UInt256 value, byte[] returnData)
@@ -392,8 +402,8 @@ public class SettlementChecksTests
 
     private static TestCaseData Binding(
         Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
-        int[] effectTransactions, bool[] systemTransactions, ulong preSettling, string rule, string name) =>
-        new(mutate, effectTransactions, systemTransactions, preSettling, rule) { TestName = name };
+        int[] effectTransactions, bool[] systemTransactions, string rule, string name) =>
+        new(mutate, effectTransactions, systemTransactions, rule) { TestName = name };
 
     private static ExecutionEntry Anchor(StateUpdate update) => new([update], default, [], [], RollingHash.SeedL1(update, default), RollupId, true, []);
 

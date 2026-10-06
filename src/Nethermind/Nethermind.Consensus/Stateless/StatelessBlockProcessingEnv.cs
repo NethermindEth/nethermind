@@ -65,6 +65,11 @@ public partial class StatelessBlockProcessingEnv(
     /// <summary>Notified after each transaction, while the world state holds exactly its prefix of the block.</summary>
     public BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler? TransactionProcessedEventHandler { get; init; }
 
+    /// <summary>
+    /// Wraps the executor of a block's transactions, which starts once the pre-execution system calls are committed.
+    /// </summary>
+    public Func<IBlockProcessor.IBlockTransactionsExecutor, IBlockProcessor.IBlockTransactionsExecutor>? TransactionsExecutorDecorator { get; init; }
+
     public IBlockValidator BlockValidator => _blockValidator ??= CreateBlockValidator();
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
@@ -183,7 +188,7 @@ public partial class StatelessBlockProcessingEnv(
             specProvider,
             BlockValidator,
             NoBlockRewards.Instance,
-            txExecutor,
+            TransactionsExecutorDecorator?.Invoke(txExecutor) ?? txExecutor,
             WorldState,
             NullReceiptStorage.Instance,
             new BeaconBlockRootHandler(txProcessor, WorldState),

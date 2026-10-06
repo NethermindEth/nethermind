@@ -19,7 +19,7 @@ public static class EezSettlementVerifier
     /// <param name="postBatchCalldata">The <c>postAndVerifyBatch</c> calldata the composer submitted.</param>
     /// <param name="window">
     /// The re-executed window, oldest first. The settling block, the last, must be checkpointed at
-    /// <see cref="SettlingBlock.EffectTransactionsOf(Block)"/>.
+    /// <see cref="SettlingBlock.CheckpointsOf"/>.
     /// </param>
     /// <returns>The public inputs hash to sign.</returns>
     /// <exception cref="EezSettlementException">The batch claims something the window does not show.</exception>
@@ -51,8 +51,8 @@ public static class EezSettlementVerifier
             DerivedHeader.Ensure(window[i].Block, window[i].Parent, specProvider.GetSpec(window[i].Block.Header), context);
         }
 
-        BoundEffect[] effects = EffectBinding.Bind(batch, updates, context.RollupId, settling.Block.Header.ParentHash!.ValueHash256,
-            settling.Checkpoints, observations.EffectTransactions, observations.SystemTransactions);
+        BoundEffect[] effects = EffectBinding.Bind(batch, updates, context.RollupId, settling.Checkpoints, observations.EffectTransactions,
+            observations.SystemTransactions);
         AuthorizedInbound[] inbound = InboundDelivery.AuthorizeAll(effects, observations.InboundCandidates, context.RollupId);
         AuthorizedOutbound[] outbound = OutboundCall.AuthorizeAll(effects, observations.OutboundEvents, observations.SystemTransactions, context.RollupId);
         DaVerification.Verify(batch.CallData, blocks, outbound, inbound, context.ChainId, context.RollupId);

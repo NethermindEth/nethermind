@@ -22,7 +22,7 @@ public sealed class SettlementCheck(ISpecProvider specProvider, EezSettlementCon
 
     public EezSettlementContext Context => context;
 
-    /// <summary>Re-executes the window, checkpointing the settling block at each of its effect transactions.</summary>
+    /// <summary>Re-executes the window, checkpointing the settling block at <see cref="SettlingBlock.CheckpointsOf"/>.</summary>
     /// <param name="claims">The hash and parent hash the composer sealed for each block, from <paramref name="fromBlock"/> up.</param>
     /// <exception cref="EezStatelessException">The window does not execute, or is not the window the composer claims.</exception>
     /// <exception cref="EezSettlementException">The batch claims more or fewer effects than the settling block holds.</exception>
@@ -34,8 +34,9 @@ public sealed class SettlementCheck(ISpecProvider specProvider, EezSettlementCon
             throw new EezStatelessException(EezStatelessFailure.Rejected, $"The window has {blocks.Count} blocks for {claims.Count} claims.");
         }
 
-        int[] checkpoints = SettlingBlock.EffectTransactionsOf(DecodeSettling(blocks[^1]));
-        EnsureEffectCountCanMatch(postBatchCalldata, checkpoints.Length);
+        Block settling = DecodeSettling(blocks[^1]);
+        EnsureEffectCountCanMatch(postBatchCalldata, SettlingBlock.EffectTransactionsOf(settling).Length);
+        int[] checkpoints = SettlingBlock.CheckpointsOf(settling);
         EezStatelessBlockResult[] executed = _executor.Execute(blocks, checkpoints);
         for (int i = 0; i < executed.Length; i++)
         {
