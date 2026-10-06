@@ -2044,7 +2044,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
 
-        public static readonly TransactionResult Ok = new();
+        // A property rather than a static field: a struct holding a string cannot be preinitialized by ILC, so a
+        // field would make every hot success return pay a class-constructor check in the zkVM guest.
+        public static TransactionResult Ok => new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
         public static readonly TransactionResult GasLimitBelowFloorGas = new(ErrorType.GasLimitBelowFloorGas, errorDescription: "gas below floor data cost");
