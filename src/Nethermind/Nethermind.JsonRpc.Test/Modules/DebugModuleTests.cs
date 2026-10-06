@@ -434,13 +434,14 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
+    public async Task DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;
         BlockTree blockTree = BuildBlockTree(b => b.WithBadBlockStore(badBlocksStore = new BadBlockStore(b.BadBlocksDb, 100)));
 
         Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
-        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+        Transaction transaction = Build.A.Transaction.SignedAndResolved().TestObject;
+        Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).WithTransactions(transaction).TestObject;
         Block block2 = Build.A.Block.WithNumber(2).WithDifficulty(3).WithParent(block1).TestObject;
         Block block3 = Build.A.Block.WithNumber(2).WithDifficulty(4).WithParent(block2).TestObject;
 
@@ -459,13 +460,35 @@ public class DebugModuleTests
         AddBlockResult result = blockTree.SuggestBlock(block1);
         Assert.That(result, Is.EqualTo(AddBlockResult.InvalidBlock));
 
-        ResultWrapper<IEnumerable<BadBlock>> blocks = CreateModule().debug_getBadBlocks();
-        Assert.That(blocks.Data.Count(), Is.EqualTo(1));
+        using JsonRpcResponse response = await Request(nameof(IDebugRpcModule.debug_getBadBlocks));
+        RpcTest.AssertSuccess(response);
+        using JsonDocument document = JsonDocument.Parse(RpcTest.SerializeResponse(response));
+        JsonElement blocks = document.RootElement.GetProperty("result");
+        Assert.That(blocks.GetArrayLength(), Is.EqualTo(1));
+        JsonElement badBlock = blocks[0];
+        JsonElement blockForRpc = badBlock.GetProperty("block");
+        JsonElement transactions = blockForRpc.GetProperty("transactions");
+        Assert.That(transactions.GetArrayLength(), Is.EqualTo(1));
+        Assert.That(transactions[0].ValueKind, Is.EqualTo(JsonValueKind.Object));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(blocks.Data.ElementAt(0).Hash, Is.EqualTo(block1.Hash));
-            Assert.That(blocks.Data.ElementAt(0).Block.Difficulty, Is.EqualTo(new UInt256(2)));
+            Assert.That(badBlock.GetProperty("hash").GetString(), Is.EqualTo(block1.Hash!.ToString()));
+            Assert.That(badBlock.GetProperty("rlp").GetString(), Is.EqualTo(decoder.Encode(block1).Bytes.ToHexString(true)));
+            Assert.That(blockForRpc.GetProperty("hash").GetString(), Is.EqualTo(block1.Hash.ToString()));
+            Assert.That(blockForRpc.GetProperty("number").GetString(), Is.EqualTo("0x1"));
+            Assert.That(blockForRpc.GetProperty("difficulty").GetString(), Is.EqualTo("0x2"));
+            Assert.That(transactions[0].GetProperty("hash").GetString(), Is.EqualTo(transaction.Hash!.ToString()));
         }
+    }
+
+    [Test]
+    public async Task DebugGetBadBlocks_WhenNoBadBlocks_ReturnsEmptyArray()
+    {
+        _debugBridge.GetBadBlocks().Returns([]);
+
+        string serialized = await SerializedRequest(nameof(IDebugRpcModule.debug_getBadBlocks));
+
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":[],\"id\":67}"));
     }
 
     [Test]
