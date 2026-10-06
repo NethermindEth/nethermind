@@ -747,6 +747,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         };
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
         Volatile.Write(ref _mainThreadTxIndex, -1);
+        if (WarmRace.On) WarmRace.WarmBlock(block.Transactions.Length);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, warmCalldataAddresses, this, bal);
         return (blockState, parallelOptions, addressWarmer);
@@ -904,7 +905,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+        if (WarmRace.On) WarmRace.MainTx(_mainThreadTxIndex);
+    }
 
     public CacheType ClearCaches()
     {
@@ -1288,6 +1293,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (watched) ColdReadWatch.Arm(ColdReadsBeforeDiscovery, blockState, txIndex, tx);
 
             TransactionResult result;
+            if (WarmRace.On) WarmRace.WarmTxStart(txIndex);
             try
             {
                 result = scope.TransactionProcessor.Warmup(tx, tracer);
@@ -1295,6 +1301,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             finally
             {
                 if (watched) ColdReadWatch.Disarm();
+                if (WarmRace.On) WarmRace.WarmTxDone(txIndex);
             }
 
             if (blockState.PreWarmer._logger.IsTrace) blockState.PreWarmer._logger.Trace($"Finished pre-warming cache for tx[{txIndex}] {tx.Hash} with {result}");
