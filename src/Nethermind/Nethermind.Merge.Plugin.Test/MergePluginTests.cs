@@ -242,14 +242,9 @@ public class MergePluginTests
 
         using IContainer container = BuildContainer(new ConfigProvider(_mergeConfig, jsonRpcConfig, new InitConfig { WebSocketsEnabled = webSocketsEnabled }));
         InitializeMergePlugin step = container.Resolve<InitializeMergePlugin>();
-        if (webSocketsEnabled)
-        {
-            Assert.That(async () => await step.Execute(default), Throws.TypeOf<InvalidConfigurationException>());
-        }
-        else
-        {
-            Assert.That(async () => await step.Execute(default), Throws.Nothing);
-        }
+        Assert.That(async () => await step.Execute(default), webSocketsEnabled
+            ? Throws.TypeOf<InvalidConfigurationException>().With.Property(nameof(InvalidConfigurationException.ExitCode)).EqualTo(ExitCodes.NoEngineModule)
+            : Throws.Nothing);
     }
 
     [Test]
