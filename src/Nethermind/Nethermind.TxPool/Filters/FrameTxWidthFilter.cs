@@ -90,8 +90,6 @@ internal sealed class FrameTxWidthFilter(
         UInt256 cost = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
         Address? paymaster = beyondPaymasterBaseline ? PendingPaymasterCache.KeyFor(tx) : null;
 
-        // Read again before the sender pays: the paymaster's width was last read ahead of the prefix simulation,
-        // and a paymaster drained since then must not cost the sender width for an admission that fails anyway.
         if (paymaster is not null && paymasterWidth.GetWidth(paymaster) < cost)
         {
             return PaymasterWidthUnmet(tx, paymaster, cost);
