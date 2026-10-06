@@ -21,24 +21,18 @@ public class IndexProofEngineTests
 
         IndexEntryProof proof = IndexProofEngine.GenerateProof(entries, 0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(proof.Entry.Length, Is.EqualTo(42));
             Assert.That(proof.LeafIndex, Is.EqualTo(0));
             Assert.That(proof.ListLength, Is.EqualTo(1));
             // A single-entry table merkleizes at depth 0, so the length chunk is the only sibling.
             Assert.That(proof.Proof.Length, Is.EqualTo(1));
-        });
+        }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(8)]
-    [TestCase(17)]
-    public void GenerateProof_verifies_against_table_root(int entryCount)
+    [Test]
+    public void GenerateProof_verifies_against_table_root([Values(1, 2, 3, 4, 5, 8, 17)] int entryCount)
     {
         List<IndexEntry> entries = BuildEntries(entryCount);
         UInt256 expectedRoot = IndexTableRootCalculator.ComputeRoot(entries);
@@ -62,13 +56,13 @@ public class IndexProofEngineTests
         for (int i = 0; i < leafIndices.Length; i++)
         {
             IndexEntryProof single = IndexProofEngine.GenerateProof(entries, leafIndices[i]);
-            Assert.Multiple(() =>
+            using (Assert.EnterMultipleScope())
             {
                 Assert.That(batch[i].Entry, Is.EqualTo(single.Entry));
                 Assert.That(batch[i].LeafIndex, Is.EqualTo(single.LeafIndex));
                 Assert.That(batch[i].Proof, Is.EqualTo(single.Proof));
                 Assert.That(batch[i].ListLength, Is.EqualTo(single.ListLength));
-            });
+            }
         }
     }
 

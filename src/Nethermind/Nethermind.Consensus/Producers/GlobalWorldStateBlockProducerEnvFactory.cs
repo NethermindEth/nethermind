@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -52,7 +53,13 @@ namespace Nethermind.Consensus.Producers
         private ILifetimeScope BeginScope(out IBlockProducerEnv blockProducerEnv)
         {
             IWorldStateScopeProvider worldState = CreateWorldState();
-            ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder => ConfigureBuilder(builder).AddScoped(worldState));
+            ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
+            {
+                ConfigureBuilder(builder).AddScoped(worldState);
+                // Blocks built on the main state are not processed again, so they publish the node's index tables themselves.
+                if (worldState == worldStateManager.GlobalWorldState)
+                    builder.Bind<IIndexTableHandlerFactory, IndexTableHandlerFactory>();
+            });
             blockProducerEnv = scope.Resolve<IBlockProducerEnv>();
             return scope;
         }

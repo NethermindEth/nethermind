@@ -32,7 +32,6 @@ public static class IndexTableMerger
         if (totalCount == 0)
             return [];
 
-        // For 4-way merge (typical case), a simple index-tracking approach is efficient
         List<IndexEntry> result = new(totalCount);
         int[] indices = new int[sources.Count];
 

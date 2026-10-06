@@ -37,7 +37,6 @@ public static class IndexTableRootCalculator
     {
         if (entries.Count == 0)
         {
-            // Empty list: merkleize zero chunks with length mix-in of 0
             UInt256 emptyRoot = UInt256.Zero;
             Merkle.MixIn(ref emptyRoot, 0);
             return emptyRoot;
@@ -54,10 +53,8 @@ public static class IndexTableRootCalculator
             leafHashes[i] = new UInt256(hashBuffer);
         }
 
-        // Merkleize as List[Hash32, entry_count]: limit = entry count
         Merkle.Merkleize(out UInt256 root, leafHashes.AsSpan(), (ulong)entries.Count);
 
-        // Mix in the length (SSZ list semantics)
         Merkle.MixIn(ref root, entries.Count);
 
         return root;

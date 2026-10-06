@@ -56,13 +56,13 @@ public class IndexTableStoreTests
         IReadOnlyList<IndexEntry> level0 = store.Get(0, 0);
         IReadOnlyList<IndexEntry> level1 = store.Get(1, 0);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             Assert.That(level0, Is.Not.Null);
             Assert.That(level1, Is.Not.Null);
             // They should be different entries
             Assert.That(level0, Is.Not.SameAs(level1));
-        });
+        }
     }
 
     [Test]
@@ -75,7 +75,7 @@ public class IndexTableStoreTests
         store.Store(0, 100, branchA, TestItem.KeccakC);
         store.Store(0, 100, branchB, TestItem.KeccakD);
 
-        Assert.Multiple(() =>
+        using (Assert.EnterMultipleScope())
         {
             IReadOnlyList<IndexEntry> retrievedA = store.Get(0, 100, TestItem.KeccakC);
             IReadOnlyList<IndexEntry> retrievedB = store.Get(0, 100, TestItem.KeccakD);
@@ -89,7 +89,7 @@ public class IndexTableStoreTests
 
             Assert.That(latest, Is.Not.Null);
             Assert.That(latest[0].CompareTo(branchB[0]), Is.EqualTo(0));
-        });
+        }
     }
 
     [Test]

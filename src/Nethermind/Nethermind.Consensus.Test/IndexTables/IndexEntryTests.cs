@@ -194,10 +194,8 @@ public class IndexEntryTests
         }
     }
 
-    [TestCase(-1)]
-    [TestCase(4)]
-    [TestCase(5)]
-    public void CreateLogTopic_rejects_invalid_topic_index(int topicIndex) =>
+    [Test]
+    public void CreateLogTopic_rejects_invalid_topic_index([Values(-1, 4, 5)] int topicIndex) =>
         Assert.Throws<ArgumentOutOfRangeException>(
             () => IndexEntry.CreateLogTopic(topicIndex, TestItem.KeccakA, 1, 0, 0));
 

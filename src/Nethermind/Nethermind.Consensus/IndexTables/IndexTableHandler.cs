@@ -6,10 +6,14 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -38,13 +42,13 @@ public class IndexTableHandler(
     ITransactionProcessor processor,
     IIndexTableStore store,
     ISpecProvider specProvider,
-    IWorldState? worldState = null,
+    IWorldState worldState,
     IBlockTree? blockTree = null,
     IReceiptStorage? receiptStorage = null,
     ILogManager? logManager = null) : IIndexTableHandler
 {
     private Hash256? _lastCommittedBlockHash;
-    private long _lastCommittedBlockNumber;
+    private Block? _lastCommittedBlock;
     private List<IndexEntry>? _lastCommittedEntries;
     private readonly List<(int Level, long FirstBlock, List<IndexEntry> Merged)> _lastCommittedHigherTables = [];
     private readonly ILogger _logger = logManager?.GetClassLogger<IndexTableHandler>() ?? NullLogger.Instance;
@@ -60,8 +64,8 @@ public class IndexTableHandler(
                 "EIP-8304 is enabled but no contract address is configured. " +
                 "Set the eip8304ContractAddress in the chain spec.");
 
+        _lastCommittedBlock = block;
         _lastCommittedBlockHash = block.Hash;
-        _lastCommittedBlockNumber = (long)block.Number;
         _lastCommittedHigherTables.Clear();
 
         List<IndexEntry> entries = [];
@@ -99,21 +103,21 @@ public class IndexTableHandler(
     /// <inheritdoc />
     public void UpdateFinalBlockHash(Block block)
     {
-        if (_lastCommittedEntries is null || (long)block.Number != _lastCommittedBlockNumber)
+        if (_lastCommittedEntries is null || !ReferenceEquals(block, _lastCommittedBlock))
             return;
 
         if (block.Hash is not null && block.Hash != _lastCommittedBlockHash)
         {
             if (_lastCommittedBlockHash is not null)
             {
-                store.Remove(0, _lastCommittedBlockNumber, _lastCommittedBlockHash);
+                store.Remove(0, (long)block.Number, _lastCommittedBlockHash);
                 foreach ((int level, long firstBlock, _) in _lastCommittedHigherTables)
                 {
                     store.Remove(level, firstBlock, _lastCommittedBlockHash);
                 }
             }
 
-            store.Store(0, _lastCommittedBlockNumber, _lastCommittedEntries, block.Hash);
+            store.Store(0, (long)block.Number, _lastCommittedEntries, block.Hash);
             foreach ((int level, long firstBlock, List<IndexEntry> merged) in _lastCommittedHigherTables)
             {
                 store.Store(level, firstBlock, merged, block.Hash);
@@ -126,24 +130,17 @@ public class IndexTableHandler(
     /// <inheritdoc />
     public void RollbackBlock(Block block)
     {
-        if (_lastCommittedEntries is null || (long)block.Number != _lastCommittedBlockNumber)
+        // The handler outlives each attempt, so the tables of an earlier valid block at the same height must survive a failed sibling.
+        if (_lastCommittedEntries is null || !ReferenceEquals(block, _lastCommittedBlock))
             return;
 
-        store.Remove(0, (long)block.Number, block.Hash);
-        if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash)
-        {
-            store.Remove(0, (long)block.Number, _lastCommittedBlockHash);
-        }
-
+        store.Remove(0, (long)block.Number, _lastCommittedBlockHash);
         foreach ((int level, long firstBlock, _) in _lastCommittedHigherTables)
         {
-            store.Remove(level, firstBlock, block.Hash);
-            if (_lastCommittedBlockHash is not null && _lastCommittedBlockHash != block.Hash)
-            {
-                store.Remove(level, firstBlock, _lastCommittedBlockHash);
-            }
+            store.Remove(level, firstBlock, _lastCommittedBlockHash);
         }
 
+        _lastCommittedBlock = null;
         _lastCommittedEntries = null;
         _lastCommittedBlockHash = null;
         _lastCommittedHigherTables.Clear();
@@ -311,7 +308,7 @@ public class IndexTableHandler(
         if (contractAddress is null)
             return;
 
-        if (worldState is not null && !worldState.IsContract(contractAddress))
+        if (!worldState.IsContract(contractAddress))
             return;
 
         byte[] calldata = new byte[Eip8304Constants.CalldataLength];
@@ -336,6 +333,10 @@ public class IndexTableHandler(
 
         transaction.Hash = transaction.CalculateHash();
 
-        processor.Execute(transaction, tracer);
+        CallOutputTracer statusTracer = new();
+        processor.Execute(transaction, tracer is NullTxTracer ? statusTracer : new CompositeTxTracer(tracer, statusTracer));
+
+        if (statusTracer.StatusCode == StatusCode.Failure)
+            throw new InvalidBlockException(block, BlockErrorMessages.IndexContractFailed);
     }
 }

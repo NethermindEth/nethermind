@@ -57,7 +57,6 @@ public static class IndexTableMergeScheduler
             // → firstBlock = blockNumber - tableSize + 1 - delay
             long candidateFirst = blockNumber - tableSize + 1 - delay;
 
-            // firstBlock must be non-negative and aligned to tableSize
             if (candidateFirst < 0)
                 continue;
 

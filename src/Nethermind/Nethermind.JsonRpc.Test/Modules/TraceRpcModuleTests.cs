@@ -14,6 +14,7 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.IndexTables;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -1818,6 +1819,38 @@ public class TraceRpcModuleTests
         );
 
         AssertBalanceChange(traces.Data.StateChanges?.GetValueOrDefault(address), balance, balance - send);
+    }
+
+    [Test]
+    public async Task Trace_call_leaves_canonical_index_table_unchanged()
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip8304Enabled = true, Eip8304ContractAddress = TestItem.AddressF };
+        Context context = new();
+        await context.Build(new TestSpecProvider(spec) { AllowTestChainOverride = false });
+        TestRpcBlockchain blockchain = context.Blockchain;
+
+        await blockchain.AddBlock();
+        BlockHeader head = blockchain.BlockTree.Head!.Header;
+        IIndexTableStore store = blockchain.Container.Resolve<IIndexTableStore>();
+        IReadOnlyList<IndexEntry> canonicalTable = store.Get(0, (long)head.Number, head.Hash)!;
+
+        Transaction transaction = Build.A.Transaction
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .WithTo(TestItem.AddressC)
+            .WithMaxFeePerGas(0)
+            .WithMaxPriorityFeePerGas(0)
+            .WithValue(1)
+            .TestObject;
+
+        ResultWrapper<ParityTxTraceFromReplay> traces = context.TraceRpcModule.trace_call(
+            TransactionForRpc.FromTransaction(transaction), ["trace"], new(head.Hash!));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces.Data.Action!.To, Is.EqualTo(TestItem.AddressC));
+            Assert.That(canonicalTable, Has.Count.EqualTo(1));
+            Assert.That(store.Get(0, (long)head.Number, head.Hash), Is.SameAs(canonicalTable));
+        }
     }
 
     [Test]

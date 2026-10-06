@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -13,12 +14,17 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Messages;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
+using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Crypto;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -29,17 +35,25 @@ namespace Nethermind.Consensus.Test.IndexTables;
 [Parallelizable(ParallelScope.All)]
 public class IndexTableIntegrationTests
 {
+    private static readonly Address IndexContract = TestItem.AddressF;
+
     private static async Task<BasicTestBlockchain> CreateChain(bool enableBal = false, ISpecProvider? specProvider = null)
     {
         specProvider ??= new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance)
         {
             IsEip8304Enabled = true,
-            Eip8304ContractAddress = TestItem.AddressA,
+            Eip8304ContractAddress = IndexContract,
             IsEip7928Enabled = enableBal
         });
 
-        return await BasicTestBlockchain.Create(builder =>
-            builder.AddSingleton<ISpecProvider>(specProvider));
+        return await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider)
+            .AddScoped<IGenesisPostProcessor, IWorldState>(worldState => new FunctionalGenesisPostProcessor(_ =>
+            {
+                worldState.CreateAccount(IndexContract, 0);
+                worldState.InsertCode(IndexContract, new[] { (byte)Instruction.STOP }, specProvider.GenesisSpec);
+                worldState.RecalculateStateRoot();
+            })));
     }
 
     [Test]
@@ -64,7 +78,7 @@ public class IndexTableIntegrationTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.Get(0, (long)processed.Number, processed.Hash), Is.Not.Null);
-            Assert.That(processed.GeneratedBlockAccessList!.HasAccount(TestItem.AddressA), Is.True, "BAL should record the access to Eip8304ContractAddress");
+            Assert.That(processed.GeneratedBlockAccessList!.HasAccount(IndexContract), Is.True, "BAL should record the access to Eip8304ContractAddress");
         }
     }
 
@@ -88,6 +102,71 @@ public class IndexTableIntegrationTests
             NullBlockTracer.Instance));
 
         Assert.That(store.Get(0, (long)failingBlock.Number, failingBlock.Hash), Is.Null);
+    }
+
+    [Test]
+    public async Task BlockProcessing_failed_sibling_keeps_tables_of_processed_block([Values] bool enableBal)
+    {
+        using BasicTestBlockchain chain = await CreateChain(enableBal);
+
+        IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
+        Block parent = chain.BlockTree.Head!;
+
+        Block processed = chain.BranchProcessor.Process(
+            parent.Header,
+            [Build.A.Block.WithParent(parent).TestObject],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance)[0];
+        IReadOnlyList<IndexEntry>? table = store.Get(0, (long)processed.Number, processed.Hash);
+
+        // The nonce is invalid, so the sibling fails before its own tables are committed.
+        Block failingSibling = Build.A.Block
+            .WithParent(parent)
+            .WithExtraData([1])
+            .WithTransactions(Build.A.Transaction.WithNonce(1000).SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .TestObject;
+
+        Assert.Throws<InvalidTransactionException>(() => chain.BranchProcessor.Process(
+            parent.Header,
+            [failingSibling],
+            ProcessingOptions.None,
+            NullBlockTracer.Instance));
+
+        Assert.That(store.Get(0, (long)processed.Number, processed.Hash), Is.Not.Null.And.SameAs(table));
+    }
+
+    [Test]
+    public async Task BlockProcessing_rejects_block_when_deployed_index_contract_fails([Values] bool enableBal)
+    {
+        PrivateKey deployer = TestItem.PrivateKeyD;
+        Address contract = ContractAddress.From(deployer.Address, 0);
+        using BasicTestBlockchain chain = await CreateChain(specProvider: new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance)
+        {
+            IsEip8304Enabled = true,
+            Eip8304ContractAddress = contract,
+            IsEip7928Enabled = enableBal
+        }));
+
+        await chain.AddFunds(deployer.Address, 1.Ether);
+        Block parent = chain.BlockTree.Head!;
+        // The block deploying the contract already ends with the failing system call.
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithTransactions(Build.A.Transaction
+                .WithCode(Prepare.EvmCode.ForInitOf([(byte)Instruction.INVALID]).Done)
+                .WithGasLimit(1_000_000)
+                .WithGasPrice(parent.BaseFeePerGas)
+                .SignedAndResolved(deployer)
+                .TestObject)
+            .TestObject;
+
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() => chain.BranchProcessor.Process(
+            parent.Header,
+            [block],
+            ProcessingOptions.NoValidation,
+            NullBlockTracer.Instance))!;
+
+        Assert.That(exception.Message, Does.Contain(BlockErrorMessages.IndexContractFailed));
     }
 
     [Test]
@@ -201,7 +280,7 @@ public class IndexTableIntegrationTests
         OverridableReleaseSpec postSpec = new(Amsterdam.Instance)
         {
             IsEip8304Enabled = true,
-            Eip8304ContractAddress = TestItem.AddressA
+            Eip8304ContractAddress = IndexContract
         };
 
         ulong activationTimestamp = ulong.MaxValue;

@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State.OverridableEnv;
 
@@ -62,7 +63,7 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
 
         public IIndexTableStore Store { get; } = new IndexTableStore();
 
-        public IIndexTableHandler Create(ITransactionProcessor transactionProcessor) => NullIndexTableHandler.Instance;
+        public IIndexTableHandler Create(ITransactionProcessor transactionProcessor, IWorldState worldState) => NullIndexTableHandler.Instance;
     }
 
     private sealed class DisposableOverridableEnv(

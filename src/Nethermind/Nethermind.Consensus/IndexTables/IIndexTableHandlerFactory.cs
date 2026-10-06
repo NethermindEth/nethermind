@@ -18,18 +18,11 @@ public interface IIndexTableHandlerFactory
     IIndexTableStore Store { get; }
 
     /// <summary>
-    /// Creates a new <see cref="IIndexTableHandler"/> configured with the given transaction processor.
-    /// </summary>
-    /// <param name="transactionProcessor">The transaction processor to use for system contract execution.</param>
-    /// <returns>A new <see cref="IIndexTableHandler"/> instance.</returns>
-    IIndexTableHandler Create(ITransactionProcessor transactionProcessor);
-
-    /// <summary>
     /// Creates a new <see cref="IIndexTableHandler"/> configured with the given transaction processor and world state.
     /// </summary>
     /// <param name="transactionProcessor">The transaction processor to use for system contract execution.</param>
     /// <param name="worldState">The world state to check for contract deployment.</param>
     /// <returns>A new <see cref="IIndexTableHandler"/> instance.</returns>
-    IIndexTableHandler Create(ITransactionProcessor transactionProcessor, IWorldState? worldState) => Create(transactionProcessor);
+    IIndexTableHandler Create(ITransactionProcessor transactionProcessor, IWorldState worldState);
 }
 

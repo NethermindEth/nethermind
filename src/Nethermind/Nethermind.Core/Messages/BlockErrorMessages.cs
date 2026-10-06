@@ -156,6 +156,9 @@ public static class BlockErrorMessages
     public const string BuilderExitsContractFailed =
         "BuilderExitsFailed: Contract execution failed.";
 
+    public const string IndexContractFailed =
+        "IndexContractFailed: Contract execution failed.";
+
     public static string InvalidDepositEventLayout(string error) =>
         $"DepositsInvalid: Invalid deposit event layout: {error}";
 

@@ -141,7 +141,6 @@ public class IndexTableStore : IIndexTableStore
             dict.TryRemove((level, firstBlock, blockHash), out _);
             if (_latestByBlock[level].TryGetValue((level, firstBlock), out Hash256? latest) && latest == blockHash)
             {
-                // Find another remaining variant to promote as latest
                 Hash256? replacement = null;
                 foreach (KeyValuePair<(int Level, long FirstBlock, Hash256? BlockHash), IReadOnlyList<IndexEntry>> kvp in dict)
                 {

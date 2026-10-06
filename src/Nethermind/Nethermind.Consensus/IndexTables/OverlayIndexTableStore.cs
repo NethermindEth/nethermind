@@ -17,12 +17,15 @@ public class OverlayIndexTableStore(IIndexTableStore? baseStore) : IIndexTableSt
 {
     private IndexTableStore _localStore = new();
 
+    /// <inheritdoc />
     public void Store(int level, long firstBlock, IReadOnlyList<IndexEntry> sortedEntries, Hash256? blockHash = null) =>
         _localStore.Store(level, firstBlock, sortedEntries, blockHash);
 
+    /// <inheritdoc />
     public IReadOnlyList<IndexEntry>? Get(int level, long firstBlock, Hash256? blockHash = null) =>
         _localStore.Get(level, firstBlock, blockHash) ?? baseStore?.Get(level, firstBlock, blockHash);
 
+    /// <inheritdoc />
     public void Remove(int level, long firstBlock, Hash256? blockHash = null) =>
         _localStore.Remove(level, firstBlock, blockHash);
 

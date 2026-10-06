@@ -108,9 +108,9 @@ public class IndexTableHandlerTests
         // Fork activates at block 100
         CustomSpecProvider specProvider = new(((ForkActivation)0, BuildSpec(enabled: false)), ((ForkActivation)100, activeSpec));
 
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        ITransactionProcessor processor = SucceedingProcessor();
         BlockTree blockTree = BuildChain(104);
-        IndexTableHandler handler = new(processor, store, specProvider, blockTree: blockTree);
+        IndexTableHandler handler = new(processor, store, specProvider, DeployedContractState(), blockTree: blockTree);
 
         // Block 100: candidate level-1 table covers 96-99 (firstBlock = 96), which was pre-activation
         Block block100 = blockTree.FindBlock(100, BlockTreeLookupOptions.None)!;
@@ -144,8 +144,8 @@ public class IndexTableHandlerTests
         // Historical blocks 0 to 19 are in the block tree; none has transactions, so no receipts are stored.
         BlockTree blockTree = Build.A.BlockTree().OfChainLength((int)Level2PublicationBlock + 1).TestObject;
 
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
+        ITransactionProcessor processor = SucceedingProcessor();
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), DeployedContractState(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
 
         handler.CommitIndexTableRoots(blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!, [], BuildSpec(), NullTxTracer.Instance);
 
@@ -176,8 +176,8 @@ public class IndexTableHandlerTests
             parent = branchHeader;
         }
 
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
+        ITransactionProcessor processor = SucceedingProcessor();
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), DeployedContractState(), blockTree: blockTree, receiptStorage: new InMemoryReceiptStorage());
 
         // Block 4 publishes the level-1 table covering blocks 0-3 of its own branch.
         Block block4 = Build.A.Block.WithNumber(4).WithParent(parent).TestObject;
@@ -201,6 +201,22 @@ public class IndexTableHandlerTests
         handler.RollbackBlock(block);
 
         Assert.That(store.Get(0, 1, block.Hash), Is.Null);
+    }
+
+    [Test]
+    public void RollbackBlock_of_sibling_that_failed_before_committing_keeps_processed_block_tables()
+    {
+        IndexTableStore store = new();
+        (IndexTableHandler handler, _) = BuildHandler(store);
+
+        Block processed = BuildBlock(1);
+        handler.CommitIndexTableRoots(processed, [], BuildSpec(), NullTxTracer.Instance);
+        handler.UpdateFinalBlockHash(processed);
+        IReadOnlyList<IndexEntry>? table = store.Get(0, 1, processed.Hash);
+
+        handler.RollbackBlock(Build.A.Block.WithNumber(1).WithParentHash(TestItem.KeccakB).TestObject);
+
+        Assert.That(store.Get(0, 1, processed.Hash), Is.Not.Null.And.SameAs(table));
     }
 
     [Test]
@@ -230,9 +246,9 @@ public class IndexTableHandlerTests
 
         Block block8 = Build.A.Block.WithNumber(8).WithParent(blockTree.Head!).TestObject;
 
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        ITransactionProcessor processor = SucceedingProcessor();
         ISpecProvider specProvider = BuildSpecProvider();
-        IndexTableHandler handler = new(processor, store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+        IndexTableHandler handler = new(processor, store, specProvider, DeployedContractState(), blockTree: blockTree, receiptStorage: receiptStorage);
 
         handler.CommitIndexTableRoots(block8, [], BuildSpec(), NullTxTracer.Instance);
 
@@ -258,7 +274,7 @@ public class IndexTableHandlerTests
         }
 
         Block siblingBlock4 = new(siblingHeader4);
-        IndexTableHandler siblingHandler = new(processor, store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+        IndexTableHandler siblingHandler = new(processor, store, specProvider, DeployedContractState(), blockTree: blockTree, receiptStorage: receiptStorage);
         siblingHandler.CommitIndexTableRoots(siblingBlock4, [], BuildSpec(), NullTxTracer.Instance);
         siblingHandler.RollbackBlock(siblingBlock4);
 
@@ -282,7 +298,7 @@ public class IndexTableHandlerTests
 
         IReleaseSpec framesSpec = BuildSpec(frames: true);
         CustomSpecProvider specProvider = new(((ForkActivation)0, BuildSpec()), ((ForkActivation)5, framesSpec));
-        IndexTableHandler handler = new(Substitute.For<ITransactionProcessor>(), store, specProvider, blockTree: blockTree, receiptStorage: receiptStorage);
+        IndexTableHandler handler = new(SucceedingProcessor(), store, specProvider, DeployedContractState(), blockTree: blockTree, receiptStorage: receiptStorage);
 
         Block block8 = Build.A.Block.WithNumber(8).WithParent(blockTree.Head!).TestObject;
         handler.CommitIndexTableRoots(block8, [], framesSpec, NullTxTracer.Instance);
@@ -301,8 +317,26 @@ public class IndexTableHandlerTests
 
     private static (IndexTableHandler, ITransactionProcessor) BuildHandler(IIndexTableStore store, IBlockTree? blockTree = null)
     {
+        ITransactionProcessor processor = SucceedingProcessor();
+        return (new IndexTableHandler(processor, store, BuildSpecProvider(), DeployedContractState(), blockTree: blockTree), processor);
+    }
+
+    private static IWorldState DeployedContractState()
+    {
+        IWorldState worldState = Substitute.For<IWorldState>();
+        worldState.IsContract(Arg.Any<Address>()).Returns(true);
+        return worldState;
+    }
+
+    private static ITransactionProcessor SucceedingProcessor()
+    {
         ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        return (new IndexTableHandler(processor, store, BuildSpecProvider(), blockTree: blockTree), processor);
+        processor.Execute(Arg.Any<Transaction>(), Arg.Any<ITxTracer>()).Returns(static call =>
+        {
+            call.Arg<ITxTracer>().MarkAsSuccess(Address.Zero, default, [], []);
+            return TransactionResult.Ok;
+        });
+        return processor;
     }
 
     private static BlockTree BuildChain(ulong headNumber) => Build.A.BlockTree().OfChainLength((int)headNumber + 1).TestObject;
@@ -362,8 +396,8 @@ public class IndexTableHandlerTests
         }
 
         // Level-0 tables are absent from store, and without receipt storage they cannot be recovered.
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
-        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), blockTree: blockTree);
+        ITransactionProcessor processor = SucceedingProcessor();
+        IndexTableHandler handler = new(processor, store, BuildSpecProvider(), DeployedContractState(), blockTree: blockTree);
 
         Block block19 = blockTree.FindBlock(Level2PublicationBlock, BlockTreeLookupOptions.None)!;
 
@@ -394,7 +428,7 @@ public class IndexTableHandlerTests
     public void ExecuteSystemCall_skips_when_no_contract_code_at_address()
     {
         IndexTableStore store = new();
-        ITransactionProcessor processor = Substitute.For<ITransactionProcessor>();
+        ITransactionProcessor processor = SucceedingProcessor();
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable scope = worldState.BeginScope(IWorldState.PreGenesis);
 

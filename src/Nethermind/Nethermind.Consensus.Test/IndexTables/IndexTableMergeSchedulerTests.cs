@@ -64,8 +64,11 @@ public class IndexTableMergeSchedulerTests
             }
         });
 
-        Assert.That(level2Count, Is.EqualTo(1));
-        Assert.That(publishCount, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(level2Count, Is.EqualTo(1));
+            Assert.That(publishCount, Is.EqualTo(1));
+        }
     }
 
     [Test]
@@ -77,11 +80,11 @@ public class IndexTableMergeSchedulerTests
         {
             if (level == 4)
             {
-                Assert.Multiple(() =>
+                using (Assert.EnterMultipleScope())
                 {
                     Assert.That(firstBlock, Is.EqualTo(0));
                     Assert.That(tableSize, Is.EqualTo(256));
-                });
+                }
                 foundLevel4 = true;
             }
         });

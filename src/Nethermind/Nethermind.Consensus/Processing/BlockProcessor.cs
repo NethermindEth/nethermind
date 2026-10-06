@@ -99,7 +99,6 @@ public partial class BlockProcessor(
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {
             _systemContractHandler.RollbackBlock(block);
-            _systemContractHandler.RollbackBlock(suggestedBlock);
             throw new BlockAccessListSequentialRetryException(ex);
         }
         catch (BlockAccessListManager.ParallelExecutionException ex) when (
@@ -107,13 +106,11 @@ public partial class BlockProcessor(
             ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
         {
             _systemContractHandler.RollbackBlock(block);
-            _systemContractHandler.RollbackBlock(suggestedBlock);
             throw new BlockAccessListSequentialRetryException(blockAccessListException);
         }
         catch
         {
             _systemContractHandler.RollbackBlock(block);
-            _systemContractHandler.RollbackBlock(suggestedBlock);
             throw;
         }
         finally
