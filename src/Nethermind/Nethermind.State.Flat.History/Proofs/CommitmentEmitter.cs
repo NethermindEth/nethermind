@@ -4,7 +4,6 @@
 using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Walk;
@@ -18,6 +17,7 @@ public sealed class CommitmentEmitter : IDisposable
     public const int WalkMaxOpenWindowNodes = 50_000;
     private const int TipExactBranchEntries = 1 << 18;
     private const int WalkExactBranchEntriesCeiling = 1 << 14;
+    private const int InitialExactBranchEntries = 1 << 10;
     private const int ShallowStorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
@@ -42,7 +42,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
-    private readonly ClockCache<NodePathKey, bool> _exactBranches;
+    private readonly HashSet<NodePathKey> _exactBranches;
+    private readonly int _maxExactBranches;
     private readonly Dictionary<NodePathKey, WindowState> _windows = [];
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
@@ -62,7 +63,8 @@ public sealed class CommitmentEmitter : IDisposable
     private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors, bool deepStorageSnapshots)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
-        _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
+        _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
+        _maxExactBranches = exactBranchEntries;
         _respectFloors = respectFloors;
         _maxSpareWindows = Math.Min(maxOpenWindowNodes, MaxSpareWindowsCeiling);
         _history = history;
@@ -281,27 +283,33 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void WriteExact(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)
     {
-        bool isBranch = false;
         if (isEmpty)
         {
             int length = ParentRowCodec.EncodeEmpty(_block, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
+            _exactBranches.Remove(key);
         }
         else if (BranchRlp.TryReadChildren(rlp, _children))
         {
-            isBranch = true;
             ushort presence = _children.Presence;
-            bool wasBranch = _exactBranches.TryGet(key, out bool previous) && previous;
+            bool wasBranch = _exactBranches.Contains(key);
             ushort changed = _policy.IsFullVectorBlock(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             int length = ParentRowCodec.EncodeBranch(_block, presence, changed, _children, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
+            if (!wasBranch) RememberExactBranch(key);
         }
         else
         {
             WriteWhole(key, exact: true, _block, rlp);
+            _exactBranches.Remove(key);
         }
+    }
 
-        _exactBranches.Set(key, isBranch);
+    private void RememberExactBranch(in NodePathKey key)
+    {
+        // Forgetting only makes the next row of a forgotten node a full vector, so a whole clear is always safe.
+        if (_exactBranches.Count >= _maxExactBranches) _exactBranches.Clear();
+        _exactBranches.Add(key);
     }
 
     private void Accumulate(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)
