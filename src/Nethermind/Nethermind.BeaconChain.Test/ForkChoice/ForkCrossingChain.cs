@@ -7,6 +7,7 @@ using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Test.P2P;
+using Nethermind.BeaconChain.Test.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -120,14 +121,7 @@ internal sealed class ForkCrossingChain : IForkChoiceStateProvider, IGloasBlockS
         state.NextSyncCommittee = new SyncCommittee { Pubkeys = syncCommittee, AggregatePubkey = aggregatePubkey };
 
         anchorBlock = TestChain.CreateBlock(0, Hash256.Zero).Message!;
-        state.LatestBlockHeader = new BeaconBlockHeader
-        {
-            Slot = 0,
-            ProposerIndex = anchorBlock.ProposerIndex,
-            ParentRoot = anchorBlock.ParentRoot,
-            StateRoot = Hash256.Zero,
-            BodyRoot = SszRoots.HashTreeRoot(anchorBlock.Body!),
-        };
+        state.LatestBlockHeader = ImportableBlobBlock.HeaderFor(anchorBlock).Message!;
         anchorBlock.StateRoot = SszRoots.HashTreeRoot(state);
         return state;
     }
