@@ -181,6 +181,49 @@ public class Eip7778Tests : VirtualMachineTestsBase
     }
 
     [Test]
+    public void Eip8037_block_gas_uses_post_refund_gas_until_eip7778_activates([Values] bool eip7778Enabled)
+    {
+        OverridableReleaseSpec spec = new(Amsterdam.Instance) { IsEip7778Enabled = eip7778Enabled };
+        TestSpecProvider provider = new(spec);
+
+        TestState.CreateAccount(TestItem.AddressA, 1.Ether);
+        TestState.CreateAccount(Recipient, 1.Ether);
+        TestState.Set(new StorageCell(Recipient, 0), UInt256.One);
+        TestState.InsertCode(Recipient, Prepare.EvmCode
+            .PushData(0)
+            .PushData(0)
+            .Op(Instruction.SSTORE)
+            .Done, spec);
+        TestState.Commit(spec);
+
+        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, provider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
+        Transaction transaction = Build.A.Transaction
+            .WithGasLimit(100_000)
+            .WithGasPrice(1)
+            .WithNonce(TestState.GetNonce(TestItem.AddressA))
+            .To(Recipient)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithTransactions(transaction)
+            .WithGasLimit(1_000_000)
+            .TestObject;
+
+        TestAllTracerWithOutput tracer = CreateTracer();
+        processor.Execute(transaction, new BlockExecutionContext(block.Header, spec), tracer);
+
+        GasConsumed gas = tracer.GasConsumedResult;
+        ulong expectedBlockGas = eip7778Enabled ? gas.OperationGas + gas.GasRefund : gas.OperationGas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gas.GasRefund, Is.GreaterThan(0), "the storage clear must produce a refund");
+            Assert.That(gas.BlockStateGas, Is.Zero, "state gas must not mask the selected execution gas");
+            Assert.That(gas.SpentGas, Is.EqualTo(gas.OperationGas), "the calldata floor must not mask the refund");
+            Assert.That(gas.BlockGas, Is.EqualTo(expectedBlockGas));
+        }
+    }
+
+    [Test]
     public void Receipt_gas_equals_block_gas_when_eip7778_disabled()
     {
         TestState.CreateAccount(Recipient, 1.Ether);
