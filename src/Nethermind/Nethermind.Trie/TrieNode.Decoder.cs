@@ -173,6 +173,11 @@ namespace Nethermind.Trie
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
 
+                if (TryEncodeLeafWithStoredKey(node, pool, out CappedArray<byte> reencoded))
+                {
+                    return reencoded;
+                }
+
                 if (node.Key is null)
                 {
                     ThrowNullKey(node);
@@ -939,7 +944,7 @@ namespace Nethermind.Trie
                         }
                         if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported)
                             return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
-                        path.AppendMut(i);
+                        EnterChildPath(ref path, i);
                         // Once the walk is batching, defer any dirty child: the length decides which
                         // kernel serves it, and a leaf fits the same single block a small branch does.
                         if (TBatch.IsActive)
@@ -950,7 +955,7 @@ namespace Nethermind.Trie
                                 candidates |= (ushort)(1 << i);
                                 positions[i] = (ushort)position;
                                 position += Rlp.LengthOfKeccakRlp;
-                                path.TruncateOne();
+                                LeaveChildPath(ref path);
                                 continue;
                             }
                             childNode.ResolvePreparedKey(in rlp);
@@ -959,7 +964,7 @@ namespace Nethermind.Trie
                         {
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                         }
-                        path.TruncateOne();
+                        LeaveChildPath(ref path);
 
                         Hash256? childHash = childNode.Keccak;
                         if (childHash is null)
@@ -1034,11 +1039,11 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            path.AppendMut(ChildIndex(ref child, ref end));
+                            EnterChildPath(ref path, ChildIndex(ref child, ref end));
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
 
                             Hash256? childHash = childNode.Keccak;
                             if (childHash is null)
@@ -1106,9 +1111,9 @@ namespace Nethermind.Trie
                         hash = childNode.Keccak;
                         if (hash is null)
                         {
-                            path.AppendMut(i);
+                            EnterChildPath(ref path, i);
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
                             hash = childNode.Keccak;
                             if (hash is null) return false;
                         }

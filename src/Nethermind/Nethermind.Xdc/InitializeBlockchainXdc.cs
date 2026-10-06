@@ -45,6 +45,7 @@ internal class InitializeBlockchainXdc(
                 _specChangeTxValidator,
                 _api.LogManager,
                 CreateTxPoolTxComparer(),
+                _api.Context.Resolve<FrameTxWidthLedger>(),
                 _txGossipPolicy,
                 [
                     new SignTransactionFilter(snapshotManager, _api.BlockTree, XdcSpecProvider),

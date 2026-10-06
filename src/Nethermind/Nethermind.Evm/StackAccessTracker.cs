@@ -18,7 +18,7 @@ public struct StackAccessTracker(bool keepAccessSetsOnRestore) : IDisposable
 {
     public StackAccessTracker() : this(false) { }
 
-    public readonly JournalSet<Address> AccessedAddresses => _trackingState.AccessedAddresses;
+    public readonly JournalSet<AddressAsKey> AccessedAddresses => _trackingState.AccessedAddresses;
     public readonly JournalSet<StorageCell> AccessedStorageCells => _trackingState.AccessedStorageCells;
     public readonly JournalCollection<LogEntry> Logs => _trackingState.Logs;
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
@@ -106,7 +106,8 @@ public struct StackAccessTracker(bool keepAccessSetsOnRestore) : IDisposable
             _trackerPool.Enqueue(state);
         }
 
-        public JournalSet<Address> AccessedAddresses { get; } = new(Address.EqualityComparer);
+        // Keyed by the struct so the set calls the address hash directly rather than through a shared-generic comparer.
+        public JournalSet<AddressAsKey> AccessedAddresses { get; } = new(AddressAsKey.EqualityComparer);
         public JournalSet<StorageCell> AccessedStorageCells { get; } = new(StorageCell.EqualityComparer);
         public JournalCollection<LogEntry> Logs { get; } = [];
         public JournalSet<Address> DestroyList { get; } = new(Address.EqualityComparer);
