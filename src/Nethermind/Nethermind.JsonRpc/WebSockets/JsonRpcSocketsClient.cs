@@ -126,6 +126,12 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             // would hide a client reset from disconnect filters.
             ExceptionDispatchInfo.Throw(failure);
         }
+
+        // The failed send's cancellation can close the transport before a worker observes it, ending every task cleanly.
+        if (!cancellationToken.IsCancellationRequested && _sendLock.Failure is { } sendFailure)
+        {
+            ExceptionDispatchInfo.Throw(sendFailure);
+        }
     }
 
     private async Task WorkerLoop(CancellationToken cancellationToken)
