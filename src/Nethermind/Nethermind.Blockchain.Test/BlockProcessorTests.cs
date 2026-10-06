@@ -1959,7 +1959,7 @@ public partial class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Rejects_recent_root_activation_block_when_the_predeploy_address_has_storage()
+    public void Rejects_recent_root_activation_block_when_the_predeploy_address_is_not_empty([Values] bool foreignCode)
     {
         IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
         (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: new TestSingleReleaseSpecProvider(spec));
@@ -1967,7 +1967,14 @@ public partial class BlockProcessorTests
         using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
         InstallExecutionRequestPredeploys(stateProvider, spec);
         stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, 0, 1);
-        stateProvider.Set(new StorageCell(Eip8272Constants.RecentRootAddress, 1), 1);
+        if (foreignCode)
+        {
+            stateProvider.InsertCode(Eip8272Constants.RecentRootAddress, new byte[] { 0x5f, 0x5f, 0xfd }, spec);
+        }
+        else
+        {
+            stateProvider.Set(new StorageCell(Eip8272Constants.RecentRootAddress, 1), 1);
+        }
         stateProvider.Commit(spec);
         stateProvider.CommitTree(0);
 

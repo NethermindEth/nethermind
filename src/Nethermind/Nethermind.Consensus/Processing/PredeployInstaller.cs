@@ -15,8 +15,8 @@ namespace Nethermind.Consensus.Processing;
 public static class PredeployInstaller
 {
     /// <param name="InitializesOnce">EIP-8272: the predeploy is initialised only over an account with empty code and
-    /// storage, and never again. An account already holding code is treated as initialised, as the parent spec is not
-    /// available here to tell the first active block apart.</param>
+    /// storage, and never again. An account holding the canonical code is treated as initialised; any other code or
+    /// storage at the address makes the block invalid.</param>
     private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false, bool InitializesOnce = false);
 
     private static readonly Predeploy[] Predeploys =
@@ -46,8 +46,8 @@ public static class PredeployInstaller
     /// block produces no BAL entry; on the non-BAL path the same world state is passed for both.</param>
     /// <param name="writeState">State the code and nonce change is applied to (BAL-traced on the BAL path).</param>
     /// <param name="spec">The release spec in effect for the block being processed.</param>
-    /// <returns><see langword="false"/> when a predeploy that initialises once finds storage without code, which makes
-    /// the block invalid.</returns>
+    /// <returns><see langword="false"/> when a predeploy that initialises once finds foreign code, or storage without
+    /// code, which makes the block invalid.</returns>
     public static bool Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec)
     {
         foreach (Predeploy predeploy in Predeploys)
@@ -64,6 +64,11 @@ public static class PredeployInstaller
             {
                 if (!existingCode.IsEmpty)
                 {
+                    if (!existingCode.SequenceEqual(code.Span))
+                    {
+                        return false;
+                    }
+
                     continue;
                 }
 
