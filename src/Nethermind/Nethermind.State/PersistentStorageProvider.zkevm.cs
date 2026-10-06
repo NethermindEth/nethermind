@@ -26,6 +26,7 @@ internal sealed partial class PersistentStorageProvider
             int writes = 0;
             int skipped = 0;
 
+            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
             using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
 
             OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator entries = BlockChange.GetEnumerator();
@@ -33,25 +34,17 @@ internal sealed partial class PersistentStorageProvider
             {
                 UInt256 key = entries.CurrentKey;
                 ref StorageChangeTrace change = ref entries.CurrentValue;
-                UInt256 after = change.After;
-                if (change.Before != after || change.IsInitialValue)
+                if (!change.IsPendingWrite)
                 {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        change.Set(after, after, isInitialValue: false);
-                        storageWriteBatch.Set(key, in after);
-
-                        writes++;
-                    }
+                    skipped++;
+                }
+                else if (CommitAndWriteUnlessDelete(key, ref change, storageWriteBatch))
+                {
+                    writes++;
                 }
                 else
                 {
-                    skipped++;
+                    deferredDeletes.Add(key);
                 }
             }
 

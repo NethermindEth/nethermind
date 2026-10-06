@@ -173,6 +173,11 @@ namespace Nethermind.Trie
             {
                 Metrics.IncrementTreeNodeRlpEncodings();
 
+                if (TryEncodeLeafWithStoredKey(node, pool, out CappedArray<byte> reencoded))
+                {
+                    return reencoded;
+                }
+
                 if (node.Key is null)
                 {
                     ThrowNullKey(node);
@@ -939,7 +944,7 @@ namespace Nethermind.Trie
                         }
                         if (!TBatch.IsActive && Avx2.IsSupported && !Avx512F.VL.IsSupported)
                             return WriteChildrenRlpBranchNonRlp<OnFlag>(tree, ref path, item, destination, bufferPool, canBeParallel, i, position);
-                        path.AppendMut(i);
+                        EnterChildPath(ref path, i);
                         // Once the walk is batching, defer any dirty child: the length decides which
                         // kernel serves it, and a leaf fits the same single block a small branch does.
                         if (TBatch.IsActive)
@@ -950,7 +955,7 @@ namespace Nethermind.Trie
                                 candidates |= (ushort)(1 << i);
                                 positions[i] = (ushort)position;
                                 position += Rlp.LengthOfKeccakRlp;
-                                path.TruncateOne();
+                                LeaveChildPath(ref path);
                                 continue;
                             }
                             childNode.ResolvePreparedKey(in rlp);
@@ -959,7 +964,7 @@ namespace Nethermind.Trie
                         {
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
                         }
-                        path.TruncateOne();
+                        LeaveChildPath(ref path);
 
                         Hash256? childHash = childNode.Keccak;
                         if (childHash is null)
@@ -1000,7 +1005,15 @@ namespace Nethermind.Trie
                 int runStart = cursor;
                 ref object? child = ref FirstBranchChild(item);
                 ref object? end = ref Unsafe.Add(ref child, BranchesCount);
-                for (; Unsafe.IsAddressLessThan(ref child, ref end); child = ref Unsafe.Add(ref child, 1))
+                // The unchanged children after the last changed one go out in the tail run, so they are only
+                // walked to find where the value starts.
+                ref object? last = ref end;
+                while (Unsafe.IsAddressGreaterThan(ref last, ref child) && Unsafe.Add(ref last, -1) is null)
+                {
+                    last = ref Unsafe.Add(ref last, -1);
+                }
+
+                for (; Unsafe.IsAddressLessThan(ref child, ref last); child = ref Unsafe.Add(ref child, 1))
                 {
                     object? data = child;
                     if (data is null)
@@ -1026,11 +1039,11 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            path.AppendMut(ChildIndex(ref child, ref end));
+                            EnterChildPath(ref path, ChildIndex(ref child, ref end));
                             Debug.Assert(data is TrieNode, "Data is not TrieNode");
                             TrieNode childNode = Unsafe.As<TrieNode>(data);
                             childNode!.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
 
                             Hash256? childHash = childNode.Keccak;
                             if (childHash is null)
@@ -1049,6 +1062,23 @@ namespace Nethermind.Trie
                         runStart = cursor;
                     }
                 }
+
+                // Every item takes at least a byte, so once the bytes left match the items left, each child is
+                // one byte and the value is the last byte. That ends the walk early on a run of empty trailing
+                // slots, without trusting the last byte, which a value such as 0x80 (81 80) also ends in.
+                int valuePosition = nodeRlp.Data.Length - 1;
+                for (int remaining = BranchesCount - ChildIndex(ref last, ref end); remaining != 0; remaining--)
+                {
+                    if (valuePosition - cursor == remaining)
+                    {
+                        cursor = valuePosition;
+                        break;
+                    }
+
+                    cursor += nodeRlp.PeekNextRlpLength(cursor);
+                }
+
+                Debug.Assert(item.SeekChildPosition(nodeRlp, BranchesCount) == cursor, "The tail does not end at the branch value");
 
                 int tailLength = cursor - runStart;
                 if (tailLength != 0)
@@ -1081,9 +1111,9 @@ namespace Nethermind.Trie
                         hash = childNode.Keccak;
                         if (hash is null)
                         {
-                            path.AppendMut(i);
+                            EnterChildPath(ref path, i);
                             childNode.ResolveKey(tree, ref path, bufferPool: bufferPool, canBeParallel: canBeParallel);
-                            path.TruncateOne();
+                            LeaveChildPath(ref path);
                             hash = childNode.Keccak;
                             if (hash is null) return false;
                         }

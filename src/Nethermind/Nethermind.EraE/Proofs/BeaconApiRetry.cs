@@ -1,12 +1,13 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Polly;
 using Polly.Retry;
 
 namespace Nethermind.EraE.Proofs;
 
-internal sealed class BeaconApiRetry<T>
+internal sealed class BeaconApiRetry<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] T>
 {
     private readonly ResiliencePipeline<T> _pipeline;
 

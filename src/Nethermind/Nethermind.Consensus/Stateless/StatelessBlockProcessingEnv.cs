@@ -56,6 +56,7 @@ public partial class StatelessBlockProcessingEnv(
     public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
         new WorldState(
             new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
                 new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
             ),
             logManager
@@ -81,7 +82,8 @@ public partial class StatelessBlockProcessingEnv(
             },
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
-                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache))
+                codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(

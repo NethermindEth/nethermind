@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -655,7 +654,15 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             using StackAccessTracker accessTracker = new(isTracingAccess: true);
             WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
-            tracer.ReportAccess(accessTracker.AccessedAddresses.Select(static key => key.Value), accessTracker.AccessedStorageCells);
+            tracer.ReportAccess(EnumerateAccessedAddresses(accessTracker.AccessedAddresses), accessTracker.AccessedStorageCells);
+        }
+
+        private static IEnumerable<Address> EnumerateAccessedAddresses(JournalSet<AddressAsKey> addresses)
+        {
+            foreach (AddressAsKey address in addresses)
+            {
+                yield return address.Value;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1486,7 +1493,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_tracerFlags.IsTracingAccess)
                 {
-                    tracer.ReportAccess(accessedItems.AccessedAddresses.Select(static key => key.Value), accessedItems.AccessedStorageCells);
+                    tracer.ReportAccess(EnumerateAccessedAddresses(accessedItems.AccessedAddresses), accessedItems.AccessedStorageCells);
                 }
 
                 if (substate.ShouldRevert || substate.IsError)
@@ -1577,7 +1584,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
             if (_tracerFlags.IsTracingAccess)
             {
-                tracer.ReportAccess(accessedItems.AccessedAddresses.Select(static key => key.Value), accessedItems.AccessedStorageCells);
+                tracer.ReportAccess(EnumerateAccessedAddresses(accessedItems.AccessedAddresses), accessedItems.AccessedStorageCells);
             }
         Complete:
             return statusCode;
