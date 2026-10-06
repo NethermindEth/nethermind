@@ -19,7 +19,7 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase(ILogManager logManager)
     {
-        protected readonly Dictionary<StorageCell, HeadChange> _intraBlockCache = [];
+        protected readonly OptimizedDictionary<StorageCell, HeadChange> _intraBlockCache = [];
         protected readonly ILogger _logger = logManager.GetClassLogger<PartialStorageProviderBase>();
         protected readonly List<Change> _changes = new(Resettable.StartCapacity);
         private int _protectedPosition = Resettable.EmptyPosition;
@@ -92,7 +92,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, change.StorageCell);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(change.StorageCell);
                 if (Unsafe.IsNullRef(ref head))
                 {
                     throw new InvalidOperationException($"Missing head entry for {change.StorageCell} at position {position}");
@@ -173,7 +173,7 @@ namespace Nethermind.State
             // skip hashing the 52-byte cell.
             if (_intraBlockCache.Count != 0)
             {
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
                 if (!Unsafe.IsNullRef(ref head))
                 {
                     value = head.Value;
@@ -201,7 +201,7 @@ namespace Nethermind.State
         {
             // Overwrites the head in place, never removes+re-adds — ClearStorage relies on this
             // to legally clear slots while enumerating _intraBlockCache.
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
             PushUpdate(in cell, value, ref head, exists);
         }
 
@@ -252,7 +252,7 @@ namespace Nethermind.State
             {
                 if (cell.Address == address)
                 {
-                    ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, cell);
+                    ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(cell);
                     ClearSlot(in cell, ref head, exists: true);
                 }
             }
