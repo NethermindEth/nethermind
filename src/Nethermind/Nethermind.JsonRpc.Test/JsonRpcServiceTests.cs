@@ -1241,7 +1241,8 @@ public class JsonRpcServiceTests
     [TestCase(ModuleResolution.Disabled, true)]
     [TestCase(ModuleResolution.EndpointDisabled, true)]
     [TestCase(ModuleResolution.NotAuthenticated, false)]
-    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable)
+    public async Task Disabled_namespace_stays_operator_actionable(ModuleResolution resolution, bool expectedOperatorActionable,
+        [Values(RpcEndpoint.Http, RpcEndpoint.IPC)] RpcEndpoint endpoint)
     {
         IRpcModuleProvider moduleProvider = Substitute.For<IRpcModuleProvider>();
         moduleProvider.Check(Arg.Any<string>(), Arg.Any<JsonRpcContext>(), out Arg.Any<string?>(), out Arg.Any<RpcModuleProvider.ResolvedMethodInfo?>())
@@ -1254,11 +1255,14 @@ public class JsonRpcServiceTests
 
         JsonRpcService service = new(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>(), _gcKeeper);
         JsonRpcRequest request = RpcTest.BuildJsonRequest("debug_traceCall");
-        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, _context);
+        using JsonRpcContext context = new(endpoint);
+        using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, context);
 
         Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
         Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
         Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
+        if (resolution == ModuleResolution.Disabled)
+            Assert.That(response.Error.Message, Does.Contain(endpoint == RpcEndpoint.IPC ? "JsonRpc.IpcEnabledModules" : "JsonRpc.AdditionalRpcUrls"));
     }
 
     [Test]
