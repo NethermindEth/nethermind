@@ -5,13 +5,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Threading;
 using Autofac;
-using Microsoft.Extensions.ObjectPool;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Config;
@@ -31,11 +28,9 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -302,26 +297,15 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void A_world_state_decorated_outside_the_recorder_still_hands_off()
+    public void Decorating_block_processing_components_leaves_the_handoff_on([Values] bool worldState)
     {
-        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
-        using BlockCachePreWarmer preWarmer = new(
-            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches),
-            minPoolSize: 4,
-            concurrency: 3,
-            parallelExecutionBatchRead: true,
-            ProcessingScope.Resolve<NodeStorageCache>(),
-            caches,
-            LimboLogs.Instance,
-            handoff: true);
-        PrewarmerTxAdapter adapter = new(
-            new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>()),
-            preWarmer,
-            new PrewarmerState(caches, isPrewarmer: false),
-            ProcessingScope.Resolve<IWorldState>(),
-            LimboLogs.Instance);
+        Action<ContainerBuilder> decorate = worldState
+            ? static builder => builder.AddDecorator<IWorldState, ForwardingWorldState>()
+            : static builder => builder.AddDecorator<ITransactionProcessor, ForwardingProcessor>();
+        TearDown();
+        Initialize(handoff: true, decorate);
 
-        Assert.That(Handoff(ThreeIndependentTransactions(), preWarmer, adapter).Tally.Replayed, Is.EqualTo(3));
+        Assert.That(Handoff(ThreeIndependentTransactions()).Tally.Replayed, Is.EqualTo(3));
     }
 
     [Test]
@@ -407,16 +391,12 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void Only_envs_on_the_ethereum_transaction_processor_record()
+    public void Envs_record_only_under_the_marked_transaction_processor_registration([Values] bool replaced)
     {
-        PrewarmerEnvFactory Factory(ITransactionProcessor processor) =>
-            new(ProcessingScope.Resolve<IWorldStateManager>(), LimboLogs.Instance, ProcessingScope, new BlocksConfig(), processor);
+        TearDown();
+        Initialize(handoff: true, replaced ? static builder => builder.AddSingleton(Substitute.For<ITransactionProcessor>()) : null);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(Factory(ProcessingScope.Resolve<ITransactionProcessor>()).RecordsFootprints, Is.True);
-            Assert.That(Factory(Substitute.For<ITransactionProcessor>()).RecordsFootprints, Is.False);
-        }
+        Assert.That(ProcessingScope.Resolve<PrewarmerEnvFactory>().RecordsFootprints, Is.EqualTo(!replaced));
     }
 
     [Test]
@@ -463,43 +443,17 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         public int MainThreadTxIndex { get; set; }
     }
 
-    /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
-    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>
+    private sealed class ForwardingWorldState(IWorldState state) : WorldStateDecorator(state);
+
+    private sealed class ForwardingProcessor(ITransactionProcessor processor) : ITransactionProcessor
     {
-        public IPrewarmerEnv Create() => new Env(factory.Create(caches));
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options) =>
+            processor.Process(transaction, txTracer, options);
 
-        public bool Return(IPrewarmerEnv obj) => true;
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => processor.SetBlockExecutionContext(blockHeader);
 
-        private sealed class Env(IPrewarmerEnv inner) : IPrewarmerEnv
-        {
-            public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
-
-            FootprintRecorder? IPrewarmerEnv.Recorder => inner.Recorder;
-
-            public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
-            {
-                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
-                return scope is not null;
-            }
-
-            public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
-            {
-                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
-                return scope is not null;
-            }
-
-            public void Dispose() => inner.Dispose();
-        }
-
-        private sealed class Scope(IReadOnlyTxProcessingScope inner) : IReadOnlyTxProcessingScope
-        {
-            public ITransactionProcessor TransactionProcessor => inner.TransactionProcessor;
-            public IWorldState WorldState { get; } = new Forwarding(inner.WorldState);
-            public void Reset() => inner.Reset();
-            public void Dispose() => inner.Dispose();
-        }
-
-        private sealed class Forwarding(IWorldState state) : WorldStateDecorator(state);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) =>
+            processor.SetBlockExecutionContext(in blockExecutionContext);
     }
 }
 
@@ -564,9 +518,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     [SetUp]
     public void Setup() => Initialize(handoff: true);
 
-    protected void Initialize(bool handoff)
+    /// <param name="configure">Registrations made after the production ones, as a plugin's would be.</param>
+    protected void Initialize(bool handoff, Action<ContainerBuilder>? configure = null)
     {
-        _container = new ContainerBuilder()
+        ContainerBuilder builder = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new BlocksConfig
             {
                 PreWarming = PreWarmMode.Block,
@@ -575,8 +530,9 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
                 PreWarmHandoff = handoff
             }))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
-            .AddSingleton<IStateHeaderProvider>(new Parents(_headers))
-            .Build();
+            .AddSingleton<IStateHeaderProvider>(new Parents(_headers));
+        configure?.Invoke(builder);
+        _container = builder.Build();
 
         IMainProcessingModule[] mainModules = _container.Resolve<IMainProcessingModule[]>();
         IWorldStateManager worldStateManager = _container.Resolve<IWorldStateManager>();
@@ -647,13 +603,11 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
 
     /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
-    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
-
-    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null)
     {
         Run executed = Process(block, adapter: null);
-        RunPreWarmCaches(preWarmer, block);
-        Run run = Process(block, adapter, otherTracer: otherTracer);
+        RunPreWarmCaches(PreWarmer, block);
+        Run run = Process(block, ProductionAdapter, otherTracer: otherTracer);
 
         using (Assert.EnterMultipleScope())
         {

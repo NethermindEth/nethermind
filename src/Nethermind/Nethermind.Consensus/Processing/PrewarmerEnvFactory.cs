@@ -4,6 +4,7 @@
 using System;
 using System.Diagnostics.CodeAnalysis;
 using Autofac;
+using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -19,15 +20,22 @@ public class PrewarmerEnvFactory(
     IWorldStateManager worldStateManager,
     ILogManager logManager,
     ILifetimeScope parentLifetime,
-    IBlocksConfig? blocksConfig = null,
-    ITransactionProcessor? transactionProcessor = null)
+    IBlocksConfig? blocksConfig = null)
 {
+    /// <summary>Metadata of an <see cref="ITransactionProcessor"/> registration whose execution the handoff mirrors.</summary>
+    public const string HandoffMetadata = "PrewarmHandoff";
+
     /// <summary>Whether the envs record the footprints block processing takes over.</summary>
     /// <remarks>
-    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only on the Ethereum transaction
-    /// processor: other chains' processors charge and validate differently.
+    /// Set by <see cref="IBlocksConfig.PreWarmHandoff"/>, off without a blocks config. Only where the transaction
+    /// processor registration carries <see cref="HandoffMetadata"/>, as the Ethereum one does: other chains' processors
+    /// charge and validate differently. Decorating the processor keeps the registration, and with it the mark.
     /// </remarks>
-    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && transactionProcessor is EthereumTransactionProcessor;
+    public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && IsMarkedForHandoff(parentLifetime);
+
+    private static bool IsMarkedForHandoff(ILifetimeScope scope) =>
+        scope.ComponentRegistry.TryGetServiceRegistration(new TypedService(typeof(ITransactionProcessor)), out ServiceRegistration registration)
+        && registration.Registration.Metadata.ContainsKey(HandoffMetadata);
 
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
