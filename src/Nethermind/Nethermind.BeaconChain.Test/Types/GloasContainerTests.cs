@@ -112,13 +112,8 @@ public class GloasContainerTests
             ExecutionRequestsRoot = Hash(0x07),
         };
 
-        byte[] encoded = ExecutionPayloadBid.Encode(bid);
-        ExecutionPayloadBid.Decode(encoded, out ExecutionPayloadBid decoded);
-        Assert.That(ExecutionPayloadBid.Encode(decoded), Is.EqualTo(encoded));
-        ExecutionPayloadBid.Merkleize(bid, out UInt256 root);
-        ExecutionPayloadBid.Merkleize(decoded, out UInt256 decodedRoot);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(decodedRoot, Is.EqualTo(root));
+        (ExecutionPayloadBid decoded, UInt256 root) = AssertRoundTrips(bid);
         Assert.That(root, Is.Not.EqualTo(UInt256.Zero));
         Assert.That(decoded.BlobKzgCommitments, Has.Length.EqualTo(1));
     }
