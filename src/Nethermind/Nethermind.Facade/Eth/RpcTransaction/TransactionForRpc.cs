@@ -185,21 +185,25 @@ public abstract class TransactionForRpc
         /// <summary>Gets the RPC type registered for <paramref name="txType"/>, or <see langword="null"/> when none is.</summary>
         internal static Type? GetRegisteredType(TxType txType) => _txTypesByType[(byte)txType]?.Type;
 
+        // Only these types override Populate for every property they have; a slot is the index, so the count cannot drift.
+        private static readonly Type[] RepopulatableTypes =
+        [
+            typeof(LegacyTransactionForRpc),
+            typeof(AccessListTransactionForRpc),
+            typeof(EIP1559TransactionForRpc),
+            typeof(BlobTransactionForRpc),
+            typeof(SetCodeTransactionForRpc),
+            typeof(FrameTransactionForRpc),
+        ];
+
         /// <summary>The number of distinct slots <see cref="GetRepopulatableSlot"/> returns.</summary>
-        internal const int RepopulatableSlotCount = 6;
+        internal static int RepopulatableSlotCount => RepopulatableTypes.Length;
 
         /// <summary>
         /// Gets a slot for instances of exactly <paramref name="type"/> that can be refilled with <see cref="Populate"/> for
         /// another transaction, or -1 when they cannot.
         /// </summary>
-        /// <remarks>Only the types declared here override <see cref="Populate"/> for every property they have.</remarks>
-        internal static int GetRepopulatableSlot(Type type) =>
-            type == typeof(LegacyTransactionForRpc) ? 0 :
-            type == typeof(AccessListTransactionForRpc) ? 1 :
-            type == typeof(EIP1559TransactionForRpc) ? 2 :
-            type == typeof(BlobTransactionForRpc) ? 3 :
-            type == typeof(SetCodeTransactionForRpc) ? 4 :
-            type == typeof(FrameTransactionForRpc) ? 5 : -1;
+        internal static int GetRepopulatableSlot(Type type) => Array.IndexOf(RepopulatableTypes, type);
 
         internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
