@@ -169,21 +169,11 @@ public class BlockSignatureBatchVectorTests
         return new Outcome(null, null, driver.StateRoot(state));
     }
 
-    private static IEnumerable<TestCaseData> SanityBlockCases()
-    {
-        if (!ConsensusSpecArchive.MainnetEnabled)
-            yield break;
-
-        foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
-        {
-            string? sanityRoot = ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, "sanity");
-            foreach (string caseDir in ConsensusSpecArchive.LeafDirs(sanityRoot is null ? null : Path.Combine(sanityRoot, "blocks"), "meta.yaml"))
-            {
-                string vectorName = $"{ConsensusPreset.Mainnet}/{fork}/sanity/blocks/{Path.GetFileName(caseDir)}";
-                yield return new TestCaseData(new SanityCase(nameof(ConsensusPreset.Mainnet), fork, caseDir, vectorName)).SetName(vectorName);
-            }
-        }
-    }
+    private static IEnumerable<TestCaseData> SanityBlockCases() =>
+        ConsensusSpecArchive.MainnetEnabled
+            ? FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, ConsensusSpecArchive.StateTransitionForks, "sanity", "meta.yaml",
+                static (preset, fork, _, path, name) => new SanityCase(preset.ToString(), fork, path, name), ["blocks"])
+            : [];
 
     private static IEnumerable<TestCaseData> OperationCases()
     {
