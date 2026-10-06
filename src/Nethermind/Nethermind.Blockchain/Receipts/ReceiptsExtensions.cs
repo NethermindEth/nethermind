@@ -39,5 +39,14 @@ namespace Nethermind.Blockchain.Receipts
                 receipt.GasUsedTotal = receipt.GasUsed;
             }
         }
+
+        /// <summary>Sets every receipt's bloom to the zero-length <see cref="Bloom.ZeroLength"/> that EIP-7668 requires.</summary>
+        public static void SetZeroLengthBlooms(this TxReceipt[] receipts)
+        {
+            foreach (TxReceipt receipt in receipts)
+            {
+                receipt.Bloom = Bloom.ZeroLength;
+            }
+        }
     }
 }

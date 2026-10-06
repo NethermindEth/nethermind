@@ -7,7 +7,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -130,7 +129,7 @@ public class TrieStoreScopeProvider(
 
         public Account? Get(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_loadedAccounts, address, out bool exists);
+            ref Account? account = ref _loadedAccounts.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 account = _backingStateTree.Get(address);
@@ -263,8 +262,8 @@ public class TrieStoreScopeProvider(
         public IWorldStateScopeProvider.ICodeDb CodeDb => _codeDb1;
 
         internal StateTree _backingStateTree = backingStateTree;
-        private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
-        private readonly Dictionary<AddressAsKey, Account?> _loadedAccounts = [];
+        private readonly OptimizedDictionary<AddressAsKey, StorageTree> _storages = [];
+        private readonly OptimizedDictionary<AddressAsKey, Account?> _loadedAccounts = [];
         private readonly TrieStoreScopeProvider _scopeProvider = scopeProvider;
         private readonly IWorldStateScopeProvider.ICodeDb _codeDb1 = codeDb;
         private readonly IDisposable _trieStoreCloser = trieStoreCloser;
@@ -360,6 +359,9 @@ public class TrieStoreScopeProvider(
 
             OnAccountUpdated = null;
 
+#if ZK_EVM
+            SetEachAccount(scope._backingStateTree, _dirtyAccounts);
+#else
             if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
             {
                 scope._backingStateTree.SetAccounts(_dirtyAccounts);
@@ -372,6 +374,7 @@ public class TrieStoreScopeProvider(
                     stateSetter.Set(kv.Key, kv.Value);
                 }
             }
+#endif
 
             scope.ClearLoadedAccounts();
 
@@ -379,6 +382,27 @@ public class TrieStoreScopeProvider(
             void Trace(Address address, Hash256 storageRoot, Account? account)
                 => logger.Trace($"Update {address} S {account?.StorageRoot} -> {storageRoot}");
         }
+
+#if ZK_EVM
+        /// <summary>Writes the changed accounts into <paramref name="stateTree"/> one at a time, deletions last.</summary>
+        /// <remarks>
+        /// The guest's counterpart of the bulk set: on its one core, sorting the entries and recursing over them
+        /// costs more than the shared descent saves. Deletions go last, as storage writes do in
+        /// <c>ProcessStorageChanges</c>, so a branch is only collapsed once every insert has landed.
+        /// </remarks>
+        private static void SetEachAccount(StateTree stateTree, Dictionary<AddressAsKey, Account?> accounts)
+        {
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
+            {
+                if (kv.Value is not null) stateTree.Set(kv.Key.Value, kv.Value);
+            }
+
+            foreach (KeyValuePair<AddressAsKey, Account?> kv in accounts)
+            {
+                if (kv.Value is null) stateTree.Set(kv.Key.Value, null);
+            }
+        }
+#endif
     }
 
     public class StorageTreeBulkWriteBatch(
@@ -395,12 +419,21 @@ public class TrieStoreScopeProvider(
         /// <summary>Writes above which a batch that only hashes its tree hashes it in parallel.</summary>
         private const int MinWritesToHashInParallel = 64;
 
+        /// <summary>Estimated entries above which the writes are applied together through <see cref="PatriciaTree.BulkSet"/>.</summary>
+        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there. The guest's
+        /// <c>PatriciaTree.IsUnchangedPendingLevel</c> relies on its writes going one at a time.</remarks>
+#if ZK_EVM
+        private const int BulkWriteThreshold = int.MaxValue;
+#else
+        private const int BulkWriteThreshold = MIN_ENTRIES_TO_BATCH;
+#endif
+
         private bool _hasSelfDestruct;
         private bool _wasSetCalled = false;
         private int _writes;
 
         private ArrayPoolList<PatriciaTree.BulkSetEntry>? _bulkWrite =
-            estimatedEntries > MIN_ENTRIES_TO_BATCH
+            estimatedEntries > BulkWriteThreshold
                 ? new(estimatedEntries)
                 : null;
 

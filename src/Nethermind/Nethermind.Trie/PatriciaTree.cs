@@ -615,12 +615,9 @@ namespace Nethermind.Trie
                             traverseStack.Clear();
                             return originalNode;
                         }
-                        else if (node.IsSealed)
-                        {
-                            node = node.CloneWithChangedValue(value);
-                        }
                         else
                         {
+                            if (node.IsSealed) node = node.Unseal();
                             node.Value = value;
                             node.Keccak = null; // For parent node usually done in SetChild.
                         }
@@ -691,6 +688,13 @@ namespace Nethermind.Trie
                 TrieNode? child = node;
                 node = cStack.Node;
 
+                if (IsUnchangedPendingLevel(node, cStack.ChildIdx, cStack.OriginalChild, child))
+                {
+                    path.TruncateMut(originalPathLength);
+                    traverseStack.Clear();
+                    return originalNode;
+                }
+
                 if (node.IsExtension)
                 {
                     if (TracksPath) path.TruncateMut(path.Length - node.Key!.Length);
@@ -745,6 +749,7 @@ namespace Nethermind.Trie
             return node;
         }
 
+        [MethodImpl(ShouldUpdateChildInlining)]
         internal bool ShouldUpdateChild(TrieNode? parent, TrieNode? oldChild, TrieNode? newChild)
         {
             if (parent is null) return true;
@@ -761,7 +766,7 @@ namespace Nethermind.Trie
         /// <param name="path"></param>
         /// <param name="node"></param>
         /// <returns></returns>
-        internal TrieNode? MaybeCombineNode(ref TreePath path, in TrieNode node, TrieNode? originalNode)
+        internal TrieNode? MaybeCombineNode(ref TreePath path, TrieNode node, TrieNode? originalNode)
         {
             Debug.Assert(node.IsBranch, "MaybeCombineNode requires a branch node.");
 
@@ -870,6 +875,7 @@ namespace Nethermind.Trie
             private Inline64 _entries;
             private int _count;
 
+            [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public void Push(TraverseStackFrame frame) => _entries[_count++] = frame;
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -877,7 +883,7 @@ namespace Nethermind.Trie
             {
                 if (_count == 0) { frame = default; return false; }
                 frame = _entries[--_count];
-                _entries[_count] = default; // release references
+                if (ReleasesPoppedFrames) _entries[_count] = default; // release references
                 return true;
             }
 

@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
@@ -37,7 +38,7 @@ namespace Nethermind.Trie
         /// <remarks><inheritdoc cref="IsLeaf" path="/remarks"/></remarks>
         public bool IsExtension => _nodeData is ExtensionData;
 
-        // The node type, key, child slots and memory size go through INodeData here, as before. The std forms test
+        // The node type, key and memory size go through INodeData here, as before. The std forms test
         // the sealed classes to avoid the JIT's dispatch stubs and cast cache, which the guest's whole-program
         // compilation doesn't have; in the guest the type tests cost more steps than the calls they replace.
         public NodeType NodeType => ReadNodeData()?.NodeType ?? NodeType.Unknown;
@@ -45,8 +46,23 @@ namespace Nethermind.Trie
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private byte[]? ReadKey() => _nodeData is INodeWithKey node ? node?.Key : null;
 
+        /// <summary>Child slot <paramref name="i"/> of the node data, a branch's reached without <see cref="INodeData"/>.</summary>
+        /// <remarks>ILC devirtualizes the interface indexer behind two type tests but still calls it out of line, once per
+        /// level of every trie write. One test for the branch, the type nearly every slot write goes to, inlines its
+        /// slot; a second for the extension measured slower than leaving the rest to the indexer.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private ref object? DataItem(int i) => ref _nodeData![i];
+        private ref object? DataItem(int i)
+        {
+            INodeData? nodeData = _nodeData;
+            if (nodeData is BranchData branch) return ref branch[i];
+            return ref nodeData![i];
+        }
+
+        /// <summary>Whether this node awaits its hash, dirty, with <paramref name="child"/>, also unhashed, in slot <paramref name="i"/>.</summary>
+        /// <remarks>Such a node gains nothing from <see cref="SetChild"/> with that child: the slot and hash stay as they are.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        internal bool IsPendingWith(int i, TrieNode child) =>
+            Keccak is null && child.Keccak is null && IsDirty && ReferenceEquals(DataItem(i), child);
 
         public long GetMemorySize(bool recursive)
         {
@@ -184,8 +200,10 @@ namespace Nethermind.Trie
         /// <remarks>
         /// Without the std form's wrapping of a decoding error into a <see cref="TrieNodeException"/>: the guest fails the
         /// block on any exception, and the handler costs every resolve a frame pointer and spilled arguments.
+        /// Inlined into each walk, unlike the std form: nearly every witness node is resolved exactly once, so the
+        /// call and its saved registers were paid per node.
         /// </remarks>
-        [MethodImpl(MethodImplOptions.NoInlining)]
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void ResolveUnknownNodeWithContext(ITrieNodeResolver tree, in TreePath path, ReadFlags readFlags,
             ICappedArrayPool? bufferPool) => ResolveUnknownNode(tree, path, readFlags, bufferPool);
 
@@ -212,5 +230,72 @@ namespace Nethermind.Trie
         /// <remarks><see cref="PatriciaTree"/>'s set walk outgrows the inliner's budget and
         /// would otherwise call it out of line per level, a frame and five saved registers for a slot load and a type test.</remarks>
         private const MethodImplOptions GetChildWithChildPathInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="SetChild"/> is inlined: always.</summary>
+        /// <remarks>Called per level as a trie write climbs back to the root, where an out-of-line call costs more than the
+        /// sealed check and slot store it makes.</remarks>
+        private const MethodImplOptions SetChildInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>How <see cref="PrepareRlp"/> is inlined: always.</summary>
+        /// <remarks>Entered once per node a root computation encodes, from the key resolution of its parent's encoder,
+        /// where an out-of-line call spills seven registers to test a flag and pick an encoder.</remarks>
+        private const MethodImplOptions PrepareRlpInlining = MethodImplOptions.AggressiveInlining;
+
+        /// <summary>Drops a leaf's RLP once its key has been replaced, so the RLP left on a leaf always carries the leaf's key.</summary>
+        /// <remarks>
+        /// What <see cref="TryEncodeLeafWithStoredKey"/> relies on. A leaf holds its value in its data, so nothing else reads
+        /// its RLP; an extension keeps it, as its child may still have to be resolved from it.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private void OnKeyChanged()
+        {
+            if (_nodeData is LeafData) _rlpArray = null;
+        }
+
+        /// <summary>Encodes <paramref name="node"/>, a leaf, by reusing the key item of its previous RLP.</summary>
+        /// <remarks>
+        /// A leaf re-encoded in a commit has nearly always kept its key and changed only its value, and packing the key's
+        /// nibbles back into its hex prefix is most of what encoding it costs. <see cref="OnKeyChanged"/> drops the RLP
+        /// of a leaf whose key changes, so any RLP still present carries the current key.
+        /// </remarks>
+        /// <returns>Whether the leaf had an RLP to reuse; when not, <paramref name="rlp"/> is not set.</returns>
+        private static bool TryEncodeLeafWithStoredKey(TrieNode node, ICappedArrayPool? pool, out CappedArray<byte> rlp)
+        {
+            CappedArray<byte> previous = node.ReadRlp();
+            ReadOnlySpan<byte> previousRlp = previous.AsSpan();
+            if (previousRlp.IsEmpty)
+            {
+                rlp = default;
+                return false;
+            }
+
+            int keyStart = previousRlp[0] < 0xf8 ? 1 : 1 + previousRlp[0] - 0xf7;
+            // A hex-prefix key is one to thirty-three bytes: a single byte below 0x80, or a short string.
+            int keyPrefix = previousRlp[keyStart];
+            int keyItemLength = keyPrefix < 0x80 ? 1 : 1 + keyPrefix - 0x80;
+            ReadOnlySpan<byte> keyItem = previousRlp.Slice(keyStart, keyItemLength);
+            ReadOnlySpan<byte> value = node.Value.AsSpan();
+
+            int contentLength = keyItemLength + Rlp.LengthOf(value);
+            rlp = pool.SafeRent(Rlp.LengthOfSequence(contentLength));
+            Span<byte> destination = rlp.AsSpan();
+            int position = Rlp.StartSequence(destination, 0, contentLength);
+            keyItem.CopyTo(destination[position..]);
+            Rlp.Encode(destination, position + keyItemLength, value);
+            return true;
+        }
+
+        /// <summary>Deepens <paramref name="path"/> by one level for a child of the node being encoded, leaving its nibbles alone.</summary>
+        /// <remarks>
+        /// An encoder reads the path only for its depth, which tells the root, hashed whatever its length, from a child
+        /// short enough to embed. Its nibbles would only reach the node store, which in the guest is keyed by hash alone
+        /// (see <c>WitnessNodeStorage.zkevm.cs</c>), the reason <see cref="PatriciaTree"/> already leaves them untracked.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void EnterChildPath(ref TreePath path, int index) => path.AppendDepth();
+
+        /// <summary>Undoes <see cref="EnterChildPath"/>.</summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static void LeaveChildPath(ref TreePath path) => path.TruncateDepth();
     }
 }
