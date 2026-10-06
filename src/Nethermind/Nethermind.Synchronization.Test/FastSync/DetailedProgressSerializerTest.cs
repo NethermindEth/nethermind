@@ -5,7 +5,6 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using MathNet.Numerics.Random;
-using Nethermind.Core.Test;
 using Nethermind.Synchronization.FastSync;
 using NUnit.Framework;
 
