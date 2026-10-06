@@ -165,6 +165,8 @@ public partial class BlockProcessor(
 
         _balManager.Setup(block);
 
+        // EIP-8253: the fork-block nonce bump precedes every pre-execution system call.
+        _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
         if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
