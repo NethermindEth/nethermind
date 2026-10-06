@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.Sync;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -72,13 +73,13 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
         Hash256?[] versionedHashes = PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments);
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests);
-        return await CallEngineAsync("newPayloadV4", async () =>
+        return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
             detector.ThrowIfStoodDown();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
             Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
             return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
-        });
+        }, body.Graffiti);
     }
 
     /// <summary>
@@ -94,7 +95,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
     public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-        CallEngineAsync("forkchoiceUpdated", async () =>
+        CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{headExecHash.ToShortString()}, Safe: {safeExecHash.ToShortString()}, Finalized: {finalizedExecHash.ToShortString()}" : null, async () =>
         {
             Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
@@ -170,7 +171,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         long started = Stopwatch.GetTimestamp();
         ExecutionPayloadV4 converted = PayloadConverter.ToExecutionPayloadV4(payload);
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
-        return await CallEngineAsync("newPayloadV5", async () =>
+        return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
             detector.ThrowIfStoodDown();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
@@ -220,13 +221,21 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
     /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>
     /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
-    private async Task<PayloadStatusV1> CallEngineAsync(string method, Func<Task<PayloadStatusV1>> call)
+    private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<PayloadStatusV1>> call, Hash256? graffiti = null)
     {
         try
         {
             if (_pendingForkchoice is { IsCompleted: false })
                 throw new EngineUnavailableException(method, "the previous forkchoiceUpdated call is still running");
+            string operation = method.StartsWith("newPayload", StringComparison.Ordinal) ? "New Block" : "ForkChoice";
+            if (_logger.IsInfo)
+            {
+                string graffitiText = graffiti is null ? "" : $" | Graffiti: {graffiti.Bytes.ToCleanUtf8String()}";
+                _logger.Info($"Beacon sending {operation}: {details}{graffitiText}");
+            }
+            long started = Stopwatch.GetTimestamp();
             PayloadStatusV1 status = await call();
+            if (_logger.IsInfo) _logger.Info($"Beacon received {operation} result: {status.Status} | {details} | {Stopwatch.GetElapsedTime(started).TotalMilliseconds:F1} ms");
             _isAvailable = true;
             return status;
         }
