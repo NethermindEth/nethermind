@@ -65,6 +65,9 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "Whether to set the IPC socket UNIX file permissions to owner-only (600).", DefaultValue = "true")]
     bool RestrictIpcSocketPermissions { get; set; }
 
+    [ConfigItem(Description = "An array of JSON-RPC namespaces to enable over the IPC socket, for instance `[engine,eth]`. If not set, the IPC socket uses `JsonRpc.EnabledModules`.")]
+    string[]? IpcEnabledModules { get; set; }
+
     [ConfigItem(
         Description = """
             An array of JSON-RPC namespaces to enable. For instance, `[debug,eth]`.
