@@ -166,7 +166,8 @@ jobs:
               -c lodestar:chainsafe/lodestar:latest -e nethermind:nethermind:pr-local \
               --map-all --no-mev-boost --no-validator --network hoodi "${args[@]}" \
               --checkpoint-sync-url=https://checkpoint-sync.hoodi.ethpandaops.io
-            # Sedge run pulls images, including the locally built PR image.
+            # Use docker compose directly instead of `sedge run` because sedge run
+            # does `docker compose pull` which fails for the locally-built image.
             docker compose up -d
           fi
 

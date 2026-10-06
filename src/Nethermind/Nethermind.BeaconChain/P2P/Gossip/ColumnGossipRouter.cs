@@ -1030,7 +1030,9 @@ public sealed class ColumnGossipRouter(
         MessageValidity? validity = ValidateGloas(subnetId, sidecar);
         if (validity is { } settled) return settled;
         MessageValidity parked = Park(sidecar, ValidateNotFromFuture(sidecar.Slot) ?? ColumnGossipDropReason.UnknownBlock, subnetId, verdict, source);
-        RetryPendingGloas();
+        PendingGloasVerdict? entry;
+        lock (_pendingGloasLock) _pendingGloasVerdicts.TryGetValue(sidecar, out entry);
+        if (entry is not null) RetryPendingGloas(sidecar, entry);
         return parked;
     }
 
@@ -1189,49 +1191,56 @@ public sealed class ColumnGossipRouter(
     internal void RetryPendingGloas()
     {
         KeyValuePair<DataColumnSidecarGloas, PendingGloasVerdict>[] pending;
-        lock (_pendingGloasLock) pending = [.. _pendingGloasVerdicts];
-        foreach ((DataColumnSidecarGloas sidecar, PendingGloasVerdict entry) in pending)
+        lock (_pendingGloasLock)
         {
-            if (Interlocked.Exchange(ref entry.Validating, 1) != 0) continue;
+            if (_pendingGloasVerdicts.Count == 0) return;
+            pending = [.. _pendingGloasVerdicts];
+        }
+        foreach ((DataColumnSidecarGloas sidecar, PendingGloasVerdict entry) in pending)
+            RetryPendingGloas(sidecar, entry);
+    }
+
+    private void RetryPendingGloas(DataColumnSidecarGloas sidecar, PendingGloasVerdict entry)
+    {
+        if (Interlocked.Exchange(ref entry.Validating, 1) != 0) return;
+        try
+        {
+            if (entry.Verdict.IsCompleted)
+            {
+                RemovePendingGloas(sidecar);
+                return;
+            }
+
+            MessageValidity? validity;
             try
             {
-                if (entry.Verdict.IsCompleted)
-                {
-                    RemovePendingGloas(sidecar);
-                    continue;
-                }
-
-                MessageValidity? validity;
-                try
-                {
-                    validity = !IsSubscribed(entry.Subnet) || sidecar.Slot < slotClock.CurrentSlot && slotClock.CurrentSlot - sidecar.Slot > 1
-                        ? MessageValidity.Ignored : ValidateGloas(entry.Subnet, sidecar, consume: false);
-                }
-                catch (Exception e) when (e is not OutOfMemoryException)
-                {
-                    if (_logger.IsError) _logger.Error("Deferred Gloas column validation failed", e);
-                    entry.Verdict.Complete(MessageValidity.Throttled);
-                    continue;
-                }
-                if (validity == MessageValidity.Accepted)
-                {
-                    (Hash256, ulong) key = (sidecar.BeaconBlockRoot!, sidecar.Index);
-                    if (!_seenGloasSidecars.Set(key))
-                        entry.Verdict.Complete(MessageValidity.Ignored);
-                    else if (entry.Verdict.Complete(MessageValidity.Accepted))
-                    {
-                        pool?.AddGloas(sidecar);
-                        Accept(MessageValidity.Accepted);
-                    }
-                    else
-                        _seenGloasSidecars.Delete(key);
-                }
-                else if (validity is { } settled) entry.Verdict.Complete(settled);
+                validity = !IsSubscribed(entry.Subnet) || sidecar.Slot < slotClock.CurrentSlot && slotClock.CurrentSlot - sidecar.Slot > 1
+                    ? MessageValidity.Ignored : ValidateGloas(entry.Subnet, sidecar, consume: false);
             }
-            finally
+            catch (Exception e) when (e is not OutOfMemoryException)
             {
-                Volatile.Write(ref entry.Validating, 0);
+                if (_logger.IsError) _logger.Error("Deferred Gloas column validation failed", e);
+                entry.Verdict.Complete(MessageValidity.Throttled);
+                return;
             }
+            if (validity == MessageValidity.Accepted)
+            {
+                (Hash256, ulong) key = (sidecar.BeaconBlockRoot!, sidecar.Index);
+                if (!_seenGloasSidecars.Set(key))
+                    entry.Verdict.Complete(MessageValidity.Ignored);
+                else if (entry.Verdict.Complete(MessageValidity.Accepted))
+                {
+                    pool?.AddGloas(sidecar);
+                    Accept(MessageValidity.Accepted);
+                }
+                else
+                    _seenGloasSidecars.Delete(key);
+            }
+            else if (validity is { } settled) entry.Verdict.Complete(settled);
+        }
+        finally
+        {
+            Volatile.Write(ref entry.Validating, 0);
         }
     }
 
@@ -1398,8 +1407,9 @@ public sealed class ColumnGossipRouter(
 
     /// <summary>Publishes reconstructed sidecars on their own fork digest, including unsubscribed subnets.</summary>
     /// <remarks>
-    /// fulu/das-core.md "Reconstruction and cross-seeding": subscribed columns reach mesh neighbors,
-    /// and other columns use pubsub fanout without subscribing. Publication requires
+    /// Subscribed columns reach mesh neighbors; other columns use pubsub fanout without subscribing.
+    /// This implementation publishes full sidecars, beyond the IHAVE exposure recommended by
+    /// fulu/das-core.md "Reconstruction and cross-seeding". Publication requires
     /// a header that passed every check: reconstruction copies signatures, and sync or unverified pooled
     /// columns may carry forgeries. Failed sends release the (slot, proposer_index, index) tuple for later gossip.
     /// </remarks>

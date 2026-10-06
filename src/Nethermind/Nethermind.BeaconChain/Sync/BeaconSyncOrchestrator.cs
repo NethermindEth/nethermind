@@ -1055,7 +1055,7 @@ public sealed class BeaconSyncOrchestrator(
         }
 
         SettleBlockVerdict(block, result, rejectGossip);
-        columnRouter?.RetryPendingGloas();
+        if (block is ForkedSignedBeaconBlock.OfGloas) columnRouter?.RetryPendingGloas();
 
         PendingRetry? promoted = null;
         if (result == BlockImportResult.Imported)
@@ -1897,7 +1897,6 @@ public sealed class BeaconSyncOrchestrator(
 
     private async Task OnImportedAsync(Hash256 root, ulong slot, CancellationToken token, TipUpdate tipUpdate)
     {
-        columnRouter?.RetryPendingGloas();
         if (slot > _syncTip.Slot)
         {
             if (tipUpdate != TipUpdate.FollowHead)

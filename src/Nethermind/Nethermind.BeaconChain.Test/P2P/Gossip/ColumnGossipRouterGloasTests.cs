@@ -796,6 +796,26 @@ public class ColumnGossipRouterGloasTests
     }
 
     [Test]
+    public void Parking_rechecks_only_the_new_column_and_closes_the_import_race([Values] bool importDuringParking)
+    {
+        BeaconChainStore? store = null;
+        (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create(populate: (_, value) => store = value);
+        void Import() => store!.PutForkedBlock(UnknownRoot, new ForkedSignedBeaconBlock.OfGloas(Block));
+        if (importDuringParking) Assert.That(pool.TryWatch(UnknownRoot, [Column], gloas: true, Import), Is.True);
+        GossipVerdict first = new(static _ => true, null);
+        router.Handle(Column, true, Encode(Sidecar(root: UnknownRoot)), first, DeliveringPeer);
+        if (!importDuringParking)
+        {
+            Import();
+            GossipVerdict second = new(static _ => true, null);
+            router.Handle(Column, true, Encode(Sidecar(root: Hash256.Zero)), second, DeliveringPeer);
+        }
+        Assert.That(first.IsCompleted, Is.EqualTo(importDuringParking));
+        router.RetryPendingGloas();
+        Assert.That(pool.TryGetGloas(UnknownRoot, Column, out _), Is.True);
+    }
+
+    [Test]
     public void Gloas_verdict_completed_during_pool_insertion_does_not_resurrect_the_candidate()
     {
         (ColumnGossipRouter router, DataColumnSidecarPool pool) = Create();
