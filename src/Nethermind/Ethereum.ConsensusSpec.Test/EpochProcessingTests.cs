@@ -92,13 +92,7 @@ public class EpochProcessingTests
 
     private static void Run(EpochProcessingCase testCase)
     {
-        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-        {
-            throw new NotImplementedInDriverException(
-                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
-                "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
-                "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-        }
+        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
 
         FuluDriverSupport.Dispatch(testCase.Fork, testCase,
             static (testCase, driver) => Run(testCase, driver, Handlers),
