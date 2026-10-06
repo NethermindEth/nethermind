@@ -72,6 +72,31 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         return false;
     }
 
+    /// <summary>
+    /// Gives back <paramref name="amount"/> that <see cref="TrySpend"/> took for an admission that did not go through.
+    /// </summary>
+    /// <remarks>Ignores the cap, since the amount was already held, and never evicts: eviction belongs to the
+    /// finalization thread, so a full cache briefly holds one extra entry per refund in flight.</remarks>
+    public void Refund(AddressAsKey sender, in UInt256 amount)
+    {
+        if (amount.IsZero) return;
+
+        while (true)
+        {
+            if (_width.TryGetValue(sender, out UInt256 existing))
+            {
+                if (UInt256.AddOverflow(existing, amount, out UInt256 updated)) updated = UInt256.MaxValue;
+                if (_width.TryUpdate(sender, updated, existing)) return;
+            }
+            else if (_width.TryAdd(sender, amount))
+            {
+                Interlocked.Increment(ref _count);
+                Interlocked.Increment(ref HoldersWithWidth);
+                return;
+            }
+        }
+    }
+
     /// <summary>Drops every balance when the owning pool is torn down.</summary>
     /// <remarks>Nothing stops a submission already in flight from spending after this, so it bounds the leak rather than closing it.</remarks>
     public void Clear()

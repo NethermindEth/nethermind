@@ -23,8 +23,10 @@ namespace Nethermind.TxPool.Filters;
 /// transaction beyond it is admitted when the paymaster holds the width to pay for it. The baseline is the
 /// transaction admitted while the paymaster sponsored none, and a replacement of it stays the baseline; once it
 /// leaves, no other pending transaction takes its place until the paymaster sponsors none again. This filter runs
-/// before the prefix simulation, so it only refuses a paymaster whose width cannot cover the charge and leaves the
-/// spend to <see cref="FrameTxWidthFilter"/>, which runs after it.</remarks>
+/// before the prefix simulation and takes the charge from the paymaster's width there, so the width bounds how many
+/// of its sponsored submissions are simulated at once, as the cap does with the flag off.
+/// <see cref="FrameTxWidthFilter"/> settles the charge once the sender has paid; the pool refunds it on any
+/// earlier exit.</remarks>
 internal sealed class FrameTxPaymasterFilter(
     IReadOnlyStateProvider stateProvider,
     TxDistinctSortedPool standardPool,
@@ -86,7 +88,7 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         UInt256 charge = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
-        if (paymasterWidth.GetWidth(paymaster) < charge)
+        if (!paymasterWidth.TrySpend(paymaster, charge))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
             if (logger.IsTrace)
@@ -95,6 +97,7 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         state.BeyondPaymasterBaseline = true;
+        state.PaymasterWidthHeld = charge;
         return AcceptTxResult.Accepted;
     }
 

@@ -19,9 +19,9 @@ namespace Nethermind.TxPool.Filters;
 /// </summary>
 /// <remarks>
 /// The sender pays whether or not a paymaster sponsors the transaction, and the charge scales
-/// with the transaction's admission gas. A transaction <see cref="FrameTxPaymasterFilter"/> marked as beyond its
-/// paymaster's baseline spends the same charge from the paymaster's width, keyed nonce or not. The sender is
-/// charged first, so a sender without width cannot spend a paymaster's. The baseline is the transaction admitted while the sender had none pending, and a
+/// with the transaction's admission gas. For a transaction beyond its paymaster's baseline,
+/// <see cref="FrameTxPaymasterFilter"/> has already taken the same charge from the paymaster's width, keyed nonce or
+/// not; this filter settles it once the sender has paid, so a sender without width costs the paymaster nothing. The baseline is the transaction admitted while the sender had none pending, and a
 /// replacement of it stays the baseline; replacing any other pending transaction spends width. Once the baseline leaves, no
 /// other pending transaction takes its place until the sender's pending set empties. Spent width is never returned, which is what bounds repeated mass invalidation, so a fee
 /// bump beyond the baseline spends width like any admission: its rerun is real work. A replacement the pool would refuse is
@@ -39,7 +39,6 @@ internal sealed class FrameTxWidthFilter(
     TxDistinctSortedPool blobPool,
     SenderWidthCache senderWidth,
     ConcurrentDictionary<AddressAsKey, ValueHash256> senderBaselines,
-    SenderWidthCache paymasterWidth,
     ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
@@ -88,13 +87,6 @@ internal sealed class FrameTxWidthFilter(
         }
 
         UInt256 cost = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
-        Address? paymaster = beyondPaymasterBaseline ? PendingPaymasterCache.KeyFor(tx) : null;
-
-        if (paymaster is not null && paymasterWidth.GetWidth(paymaster) < cost)
-        {
-            return PaymasterWidthUnmet(tx, paymaster, cost);
-        }
-
         if (beyondSenderBaseline && !senderWidth.TrySpend(sender, cost))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
@@ -103,20 +95,8 @@ internal sealed class FrameTxWidthFilter(
             return AcceptTxResult.WidthUnmet;
         }
 
-        if (paymaster is not null && !paymasterWidth.TrySpend(paymaster, cost))
-        {
-            return PaymasterWidthUnmet(tx, paymaster, cost);
-        }
-
+        state.PaymasterWidthHeld = UInt256.Zero;
         return AcceptTxResult.Accepted;
-    }
-
-    private AcceptTxResult PaymasterWidthUnmet(Transaction tx, Address paymaster, in UInt256 cost)
-    {
-        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
-        if (logger.IsTrace)
-            logger.Trace($"Skipped adding frame transaction {tx.Hash}, paymaster {paymaster} holds {paymasterWidth.GetWidth(paymaster)} width against a cost of {cost}.");
-        return AcceptTxResult.PaymasterWidthUnmet;
     }
 
     private int PendingKeyedFrameTxs(Address sender)

@@ -451,7 +451,7 @@ public class FrameTxWidthFilterTests
     }
 
     [Test]
-    public void Sponsored_BeyondBothBaselines_SpendsSenderWidthFirst()
+    public void Sponsored_BeyondBothBaselines_SpendsThePaymasterOnlyWhenTheSenderPays()
     {
         SponsoredAdmission admission = new();
         Transaction additional = SponsoredTx(nonce: 1, nonceKeys: [NonceKey]);
@@ -475,7 +475,7 @@ public class FrameTxWidthFilterTests
     }
 
     [Test]
-    public void Sponsored_PaymasterDrainedDuringThePrefixSimulation_SpendsNoSenderWidth()
+    public void Sponsored_PaymasterWidthIsHeldAcrossThePrefixSimulation()
     {
         SponsoredAdmission admission = new();
         Transaction additional = SponsoredTx(nonce: 1, nonceKeys: [NonceKey]);
@@ -483,14 +483,16 @@ public class FrameTxWidthFilterTests
         admission.PaymasterWidth.Earn(Paymaster, cost);
         admission.SenderWidth.Earn(Sender, cost);
         Assert.That(admission.Submit(SponsoredTx(nonce: 0, nonceKeys: [NonceKey])), Is.EqualTo(AcceptTxResult.Accepted));
+        bool drainedDuringTheSimulation = true;
 
-        AcceptTxResult result = admission.Submit(additional, afterThePaymasterFilter: () => admission.PaymasterWidth.TrySpend(Paymaster, 1));
+        AcceptTxResult result = admission.Submit(additional, afterThePaymasterFilter: () => drainedDuringTheSimulation = admission.PaymasterWidth.TrySpend(Paymaster, 1));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.EqualTo(AcceptTxResult.PaymasterWidthUnmet));
-            Assert.That(admission.SenderWidth.GetWidth(Sender), Is.EqualTo(cost));
-            Assert.That(admission.Paymasters.GetPendingCount(Paymaster), Is.EqualTo(1));
+            Assert.That(drainedDuringTheSimulation, Is.False);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.SenderWidth.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(UInt256.Zero));
         }
     }
 
@@ -499,7 +501,7 @@ public class FrameTxWidthFilterTests
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
         ConcurrentDictionary<AddressAsKey, ValueHash256> baselines = new();
         if (baseline is not null) baselines[Sender] = baseline.Hash!.ValueHash256;
-        FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, FrameTxFilterTestPools.Pool(false), cache, baselines, new SenderWidthCache(holdsPaymasters: true), LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
+        FrameTxWidthFilter filter = new(config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pending, FrameTxFilterTestPools.Pool(false), cache, baselines, LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>());
         TxFilteringState filteringState = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
         return filter.Accept(tx, ref filteringState, TxHandlingOptions.None);
     }
@@ -568,7 +570,7 @@ public class FrameTxWidthFilterTests
             TxDistinctSortedPool blobPool = FrameTxFilterTestPools.Pool(true);
             ILogger logger = LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>();
             FrameTxPaymasterFilter paymasterFilter = new(chain, pool, blobPool, Paymasters, _config, PaymasterWidth, _paymasterBaselines, logger);
-            FrameTxWidthFilter widthFilter = new(_config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pool, blobPool, SenderWidth, _senderBaselines, PaymasterWidth, logger);
+            FrameTxWidthFilter widthFilter = new(_config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pool, blobPool, SenderWidth, _senderBaselines, logger);
             TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
             AcceptTxResult result = paymasterFilter.Accept(tx, ref state, TxHandlingOptions.None);
@@ -581,6 +583,7 @@ public class FrameTxWidthFilterTests
             if (!result)
             {
                 if (state.PaymasterReserved) Paymasters.Decrement(Paymaster);
+                PaymasterWidth.Refund(Paymaster, state.PaymasterWidthHeld);
                 return result;
             }
 

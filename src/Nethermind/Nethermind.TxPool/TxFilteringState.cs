@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -42,6 +43,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
 
     /// <summary>Set when this submission is beyond its paymaster's free MATCHA baseline, so the width filter charges the paymaster for it.</summary>
     internal bool BeyondPaymasterBaseline;
+
+    /// <summary>Paymaster width taken ahead of the prefix simulation and not yet settled.</summary>
+    /// <remarks>The width filter settles it once the sender has paid; on any earlier exit the pool refunds it.</remarks>
+    internal UInt256 PaymasterWidthHeld;
 
     /// <summary>
     /// The chain head specification the whole submission is judged against.
