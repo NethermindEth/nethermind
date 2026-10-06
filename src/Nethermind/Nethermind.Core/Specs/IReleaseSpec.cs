@@ -337,6 +337,11 @@ namespace Nethermind.Core.Specs
         bool IsEip8272Enabled { get; }
 
         /// <summary>
+        /// EIP-7999: a single aggregate <c>max_fee</c> budget in place of the per-gas fee caps of EIP-8141 frame transactions.
+        /// </summary>
+        bool IsEip7999Enabled { get; }
+
+        /// <summary>
         /// EIP-7906: transaction outcome assertions.
         /// </summary>
         bool IsEip7906Enabled { get; }

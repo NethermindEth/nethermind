@@ -14,6 +14,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
@@ -66,6 +67,33 @@ public class FrameTxPayerExposureFilterTests
         {
             Assert.That(atBound, Is.EqualTo(AcceptTxResult.Accepted));
             Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)(TestCost + blobTerm)), "the gas leg and the whole blob term are reserved");
+            Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+        }
+    }
+
+    // EIP-7999: max_cost depends on the including block's base fees, so the reservation is max_fee, its bound at
+    // any of them; the per-gas legs, which would price TestCost here, play no part.
+    [Test]
+    public void Accept_MaxFeeShape_ReservesTheMaxFee([Values] bool blobs)
+    {
+        const int maxFee = 3 * TestCost;
+        IReleaseSpec spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
+        Transaction MaxFeeTx()
+        {
+            Transaction tx = blobs ? BlobFrameTx(blobCount: 1, maxFeePerBlobGas: 1_000) : FrameTxCostingExactly(TestCost);
+            tx.MaxFee = maxFee;
+            tx.MaxFeePerBlobGas = null;
+            return tx;
+        }
+
+        PayerExposureCache cache = new();
+        AcceptTxResult atBound = Accept(StateWithPayerBalance(maxFee), cache, MaxFeeTx(), spec: spec);
+        AcceptTxResult oneWeiShort = Accept(StateWithPayerBalance(maxFee - 1), new PayerExposureCache(), MaxFeeTx(), spec: spec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(atBound, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(cache.GetReserved(Payer), Is.EqualTo((UInt256)maxFee));
             Assert.That(oneWeiShort, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
         }
     }
@@ -787,7 +815,7 @@ public class FrameTxPayerExposureFilterTests
     };
 
     private static AcceptTxResult Accept(TestReadOnlyStateProvider state, PayerExposureCache cache, Transaction tx, IAccountStateProvider? senderAccounts = null, TxDistinctSortedPool? pending = null,
-        TxHandlingOptions handlingOptions = TxHandlingOptions.None)
+        TxHandlingOptions handlingOptions = TxHandlingOptions.None, IReleaseSpec? spec = null)
     {
         // The displaced tx sits in whichever pool matches its shape, so both are wired as TxPool does.
         (TxDistinctSortedPool standard, TxDistinctSortedPool blob) = tx.CarriesBlobs
@@ -795,7 +823,7 @@ public class FrameTxPayerExposureFilterTests
             : (pending ?? Pool(blobs: false), Pool(blobs: true));
         // The filter takes no spec provider, so the spec below is the only one it can price against.
         FrameTxPayerExposureFilter filter = new(state, standard, blob, cache, LimboLogs.Instance.GetClassLogger<FrameTxPayerExposureFilterTests>());
-        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), Spec);
+        TxFilteringState filteringState = new(tx, senderAccounts ?? Substitute.For<IAccountStateProvider>(), spec ?? Spec);
         return filter.Accept(tx, ref filteringState, handlingOptions);
     }
 }
