@@ -78,7 +78,7 @@ public interface IMcpConfig : IConfig
     long MaxIndexedLogBlockRange { get; set; }
 
     /// <summary>Gets or sets whether the tools that replay transactions with the call tracer are enabled.</summary>
-    [ConfigItem(Description = "Whether `trace_transaction` and the call-trace parts of `explain_transaction` (internal transfers, the failing call frame) are enabled. They replay transactions through the debug module in-process, regardless of `JsonRpc.EnabledModules`. When disabled, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether `trace_transaction` and the call-trace parts of `explain_transaction` (internal transfers, the failing call frame) are enabled. They replay transactions through the debug module in-process and are offered only when `debug` or `trace` is also in `JsonRpc.EnabledModules`. When disabled, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note.", DefaultValue = "true")]
     bool EnableTracing { get; set; }
 
     /// <summary>Gets or sets the maximum number of call frames a trace tool returns.</summary>

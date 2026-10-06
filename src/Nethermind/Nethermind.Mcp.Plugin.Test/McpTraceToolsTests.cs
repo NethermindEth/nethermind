@@ -6,6 +6,8 @@ using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.JsonRpc;
+using Nethermind.Mcp.Plugin.Tools;
 using NUnit.Framework;
 
 namespace Nethermind.Mcp.Plugin.Test;
@@ -127,6 +129,21 @@ public class McpTraceToolsTests
             Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.LessThan(result.GetProperty("totalFrames").GetInt32()));
             Assert.That(result.GetProperty("returnedFrames").GetInt32(), Is.GreaterThanOrEqualTo(1));
         }
+    }
+
+    [TestCase(true, new[] { "eth", "trace" }, null)]
+    [TestCase(true, new[] { "Eth", "Debug" }, null)]
+    [TestCase(true, new[] { "eth", "net", "web3" }, "JsonRpc.EnabledModules")]
+    [TestCase(false, new[] { "eth", "debug", "trace" }, "Mcp.EnableTracing=false")]
+    public void Tracing_follows_the_replay_modules_the_operator_exposes(bool enableTracing, string[] modules, string? reason)
+    {
+        McpConfig config = new() { EnableTracing = enableTracing };
+        JsonRpcConfig rpcConfig = new() { EnabledModules = modules };
+
+        string? disabled = McpTraceTools.TracingDisabledReason(config, rpcConfig);
+
+        if (reason is null) Assert.That(disabled, Is.Null);
+        else Assert.That(disabled, Does.Contain(reason));
     }
 
     [Test]

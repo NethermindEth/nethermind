@@ -164,7 +164,7 @@ public static class McpEns
         for (int i = 0; i < label.Length; i++)
         {
             char c = label[i];
-            bool valid = char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-' || (c == '_' && label[..i].All(static p => p == '_'));
+            bool valid = char.IsAsciiLetterLower(c) || char.IsAsciiDigit(c) || c == '-' || (c == '_' && !label.AsSpan(0, i).ContainsAnyExcept('_'));
             if (!valid)
             {
                 error = c == '_'

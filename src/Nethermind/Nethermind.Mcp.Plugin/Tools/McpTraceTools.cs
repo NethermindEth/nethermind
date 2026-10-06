@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Mcp.Plugin.Tools.Abi;
@@ -21,15 +22,16 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// <remarks>
 /// Uses the debug module's native <c>callTracer</c> rather than the parity-style <c>trace_transaction</c>: it returns a
 /// nested tree with revert reasons and errors per frame in one non-streaming call, and the debug module has a larger
-/// instance pool than the trace module (two instances by default). Rental works whether or not <c>debug</c> is listed
-/// in <c>JsonRpc.EnabledModules</c>, since that setting only gates the JSON-RPC endpoint.
+/// instance pool than the trace module (two instances by default). Replay is offered only while the operator also exposes
+/// <c>debug</c> or <c>trace</c> in <c>JsonRpc.EnabledModules</c>; see <see cref="TracingDisabledReason"/>.
 /// </remarks>
 /// <param name="executor">Runs tool bodies against rented modules under the MCP limits.</param>
 /// <param name="config">The MCP limits; <see cref="IMcpConfig.MaxTraceCalls"/> caps the frames returned.</param>
+/// <param name="rpcConfig">The JSON-RPC modules the operator exposes, which gate transaction replay.</param>
 /// <param name="profile">The chain profile, for the native currency symbol.</param>
 /// <param name="capabilities">Reports whether the state needed to replay a block is still available.</param>
 [McpServerToolType]
-internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config, McpChainProfile profile, McpNodeCapabilities capabilities) : IMcpToolSet
+internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config, IJsonRpcConfig rpcConfig, McpChainProfile profile, McpNodeCapabilities capabilities) : IMcpToolSet
 {
     /// <summary>The deepest call level returned; deeper frames are counted in <c>omittedCalls</c> so the JSON stays within parser nesting limits.</summary>
     public const int MaxTreeDepth = 24;
@@ -66,7 +68,24 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
         """;
 
     private readonly int _maxFrames = Math.Max(1, config.MaxTraceCalls);
-    private readonly bool _tracingEnabled = config.EnableTracing;
+    private readonly string? _tracingDisabled = TracingDisabledReason(config, rpcConfig);
+
+    /// <summary>Why transaction replay is off, or <see langword="null"/> when MCP may trace.</summary>
+    /// <remarks>
+    /// Replay costs as much as the JSON-RPC trace methods, so MCP offers it only when the operator has exposed one of the
+    /// replay modules there as well; <see cref="IMcpConfig.EnableTracing"/> can still turn it off for MCP alone.
+    /// </remarks>
+    internal static string? TracingDisabledReason(IMcpConfig config, IJsonRpcConfig rpcConfig)
+    {
+        if (!config.EnableTracing) return "Mcp.EnableTracing=false";
+        foreach (string module in rpcConfig.EnabledModules)
+        {
+            if (string.Equals(module, ModuleType.Debug, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(module, ModuleType.Trace, StringComparison.OrdinalIgnoreCase))
+                return null;
+        }
+        return "neither debug nor trace is in JsonRpc.EnabledModules";
+    }
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
 
@@ -109,10 +128,10 @@ internal sealed class McpTraceTools(McpToolExecutor executor, IMcpConfig config,
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, $"'maxFrames' must be between 1 and {_maxFrames}."));
         }
 
-        if (!_tracingEnabled)
+        if (_tracingDisabled is not null)
         {
             return Task.FromResult(McpToolExecutor.Error(McpToolErrorCodes.Unavailable,
-                "Transaction tracing is disabled on this node (Mcp.EnableTracing=false); use explain_transaction or get_transaction_receipt instead."));
+                $"Transaction tracing is disabled on this node ({_tracingDisabled}); use explain_transaction or get_transaction_receipt instead."));
         }
 
         int depthLimit = maxDepth ?? MaxTreeDepth;

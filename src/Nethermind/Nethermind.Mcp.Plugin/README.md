@@ -827,9 +827,17 @@ Use a recent block (for example "latest"), or query an archive node.`
   clean range, so the server checks each request against the node's actual state instead of rejecting based on the
   range alone.
 - **Trace and debug.** `trace_transaction` and the call trace in `explain_transaction` use the node's `debug` module
-  in-process (`debug_traceTransaction` with the native call tracer). This works whether or not `debug` or `trace`
-  is listed in `JsonRpc.EnabledModules`, which only gates the public JSON-RPC endpoint. Set `Mcp.EnableTracing=false`
-  to turn it off. `node_status.features` reports whether both are available.
+  in-process (`debug_traceTransaction` with the native call tracer). Replay costs as much as the JSON-RPC trace
+  methods, so MCP offers it only when `debug` or `trace` is listed in `JsonRpc.EnabledModules` (`trace` is in the
+  default list). Set `Mcp.EnableTracing=false` to turn it off for MCP alone. `node_status.features` reports whether
+  both modules are available.
+- **Shared resources.** MCP tools run inside the node: they rent the same RPC module pools, and use the same CPU,
+  memory and database reads as JSON-RPC. Expensive calls (traces, wide log scans, simulations) can delay ordinary
+  RPC requests and compete with block processing. `Mcp.MaxConcurrentToolCalls`, `Mcp.ToolTimeout` and the per-tool
+  limits bound this; keep them low on validators and other nodes where block processing comes first.
+- **Shutdown.** Node shutdown waits for running tool calls before it closes the databases, for up to the larger of
+  `JsonRpc.Timeout` and `Mcp.ToolTimeout` plus 5 seconds, because a call blocked inside an RPC method only returns
+  when that method's own timeout fires.
 
 ## Configuration reference
 
@@ -856,7 +864,7 @@ variables). Arrays are comma-separated on the command line. All numeric limits m
 | `MaxCallGas` | `50000000` | Gas cap for `call`, `call_function`, `estimate_gas` and the aggregate gas of a `simulate_transaction` sequence. Must not exceed `JsonRpc.GasCap` (default 100000000); the effective cap is the smaller of the two. |
 | `MaxCallDataSize` | `131072` | Maximum call data, in bytes, for the call-style tools. |
 | `MaxTraceCalls` | `2000` | Maximum call frames returned by `trace_transaction`: the upper bound of `maxFrames` (whose default is 300). Larger trees are truncated and flagged. |
-| `EnableTracing` | `true` | Allows `trace_transaction` and the call-trace parts of `explain_transaction`, which use the debug module in-process regardless of `JsonRpc.EnabledModules`. When `false`, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note. |
+| `EnableTracing` | `true` | Allows `trace_transaction` and the call-trace parts of `explain_transaction`, which use the debug module in-process and are offered only when `debug` or `trace` is also in `JsonRpc.EnabledModules`. When `false`, `trace_transaction` fails with `unavailable` and `explain_transaction` skips the trace with a note. |
 
 Fixed limits that aren't configurable: 32 `get_logs` addresses, 4 topic positions and 32 hashes per position; 50
 tokens in `token_balances`; 256 logs and 32 signatures in `decode_logs`; 64 proof keys; 8 simulated calls and 8

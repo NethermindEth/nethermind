@@ -175,7 +175,7 @@ internal sealed class McpTransactionTools(
 
     private readonly ulong _maxCallGas = Math.Min((ulong)Math.Max(1, config.MaxCallGas), rpcConfig.GasCap.EffectiveGasCap());
     private readonly int _maxCallDataSize = Math.Max(0, config.MaxCallDataSize);
-    private readonly bool _tracingEnabled = config.EnableTracing;
+    private readonly string? _tracingDisabled = McpTraceTools.TracingDisabledReason(config, rpcConfig);
     private readonly int _maxResultSize = Math.Max(1, config.MaxResultSize);
     private readonly TimeSpan _timeout = TimeSpan.FromMilliseconds(Math.Max(1, config.ToolTimeout));
 
@@ -666,9 +666,9 @@ internal sealed class McpTransactionTools(
 
     private async Task<TraceFacts?> TraceAsync(ExplainContext context, ulong blockNumber, CancellationToken token)
     {
-        if (!_tracingEnabled)
+        if (_tracingDisabled is not null)
         {
-            context.Notes.Add("Call trace skipped: tracing is disabled on this node (Mcp.EnableTracing=false). Internal transfers and the failing call frame are unknown.");
+            context.Notes.Add($"Call trace skipped: tracing is disabled on this node ({_tracingDisabled}). Internal transfers and the failing call frame are unknown.");
             return null;
         }
 
@@ -1126,7 +1126,9 @@ internal sealed class McpTransactionTools(
         }
 
         ulong availableGas = Math.Min(_maxCallGas, header.GasLimit);
-        if (!TryAssignSimulationGas(inputs.Select(static input => input.Gas).ToArray(), availableGas,
+        ulong?[] requestedGas = new ulong?[inputs.Count];
+        for (int i = 0; i < requestedGas.Length; i++) requestedGas[i] = inputs[i].Gas;
+        if (!TryAssignSimulationGas(requestedGas, availableGas,
             out ulong[] assignedGas, out string? gasError))
         {
             return McpToolExecutor.Error(McpToolErrorCodes.InvalidInput, gasError!);

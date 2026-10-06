@@ -168,9 +168,7 @@ internal sealed partial class McpEthTools
                     : $"Blocks {state.RequestedFrom}..{retainedFrom - 1} are older than this node's receipt history and were skipped. ";
             }
 
-            ulong frontier = descending
-                ? state.Positions.Where(static p => !p.Done).Select(static p => p.Block).DefaultIfEmpty(state.ScanTo).Max()
-                : state.Positions.Where(static p => !p.Done).Select(static p => p.Block).DefaultIfEmpty(state.ScanFrom).Min();
+            ulong frontier = ActivityFrontier(state, descending);
             ulong startBlock = descending ? state.ScanFrom : frontier;
             ulong scanTo = descending ? frontier : state.ScanTo;
             ulong? coveredTo = null;
@@ -200,7 +198,8 @@ internal sealed partial class McpEthTools
                     }
 
                     int previousCount = page.Count;
-                    streams = filters.Select((filter, i) => new ActivityStream(filter, state.Positions[i])).ToArray();
+                    streams = new ActivityStream[filters.Count];
+                    for (int i = 0; i < streams.Length; i++) streams[i] = new ActivityStream(filters[i], state.Positions[i]);
                     while (page.Count < limit)
                     {
                         foreach (ActivityStream stream in streams)
@@ -212,7 +211,7 @@ internal sealed partial class McpEthTools
                             }
                             if (scanFailure is not null) break;
                         }
-                        if (scanFailure is not null || streams.Any(static stream => !stream.Position.Ready && !stream.Position.Done)) break;
+                        if (scanFailure is not null || AnyPending(streams)) break;
                         ActivityStream? first = null;
                         foreach (ActivityStream stream in streams)
                             if (!stream.Position.Done && (first is null || CompareActivity(stream.Position, first.Position, descending) < 0)) first = stream;
@@ -225,7 +224,7 @@ internal sealed partial class McpEthTools
                             if (first.Logs.Count == 0) continue;
                         }
                         FilterLog next = first.Logs.Peek();
-                        checkpoints.Add((state.Snapshot(streams.Select(static stream => stream.Position).ToArray()), coveredTo));
+                        checkpoints.Add((state.Snapshot(PositionsOf(streams)), coveredTo));
                         page.Add(next);
                         coveredTo = next.BlockNumber;
                         foreach (ActivityStream stream in streams)
@@ -242,9 +241,9 @@ internal sealed partial class McpEthTools
                             }
                         }
                     }
-                    state.Positions = streams.Select(static stream => stream.Position).ToArray();
+                    state.Positions = PositionsOf(streams);
                     streams = null;
-                    if (scanFailure is not null || !state.Positions.All(static position => position.Done)) break;
+                    if (scanFailure is not null || !AllDone(state.Positions)) break;
                     coveredTo = descending ? state.ScanFrom : state.ScanTo;
                     if (descending ? state.ScanFrom == state.From : state.ScanTo == state.To)
                     {
@@ -258,7 +257,7 @@ internal sealed partial class McpEthTools
             }
             catch (OperationCanceledException) { throw; }
             catch (Exception exception) { scanFailure = _executor.MapException("address_activity", exception); }
-            if (streams is not null) state.Positions = streams.Select(static stream => stream.Position).ToArray();
+            if (streams is not null) state.Positions = PositionsOf(streams);
             if (scanFailure is not null && page.Count == 0 && coveredTo is null) return scanFailure;
             JsonArray movementsJson = [];
             List<(McpTokenMovement Movement, FilterLog Log)> movements = [];
@@ -655,6 +654,41 @@ internal sealed partial class McpEthTools
             ? new ActivityPosition(block, 0, span, Done: true)
             : new ActivityPosition(descending ? block - 1 : block + 1, descending ? long.MaxValue : 0,
                 Math.Min(state.ScanTo - state.ScanFrom + 1, McpEthHelpers.SaturatingAdd(span, span)));
+
+    // The block the next window resumes from: the furthest-behind unfinished stream, or the window edge when all are done.
+    private static ulong ActivityFrontier(McpActivityCursor state, bool descending)
+    {
+        ulong frontier = descending ? state.ScanTo : state.ScanFrom;
+        bool any = false;
+        foreach (ActivityPosition position in state.Positions)
+        {
+            if (position.Done) continue;
+            frontier = !any ? position.Block : descending ? Math.Max(frontier, position.Block) : Math.Min(frontier, position.Block);
+            any = true;
+        }
+        return frontier;
+    }
+
+    private static ActivityPosition[] PositionsOf(ActivityStream[] streams)
+    {
+        ActivityPosition[] positions = new ActivityPosition[streams.Length];
+        for (int i = 0; i < positions.Length; i++) positions[i] = streams[i].Position;
+        return positions;
+    }
+
+    private static bool AnyPending(ActivityStream[] streams)
+    {
+        foreach (ActivityStream stream in streams)
+            if (!stream.Position.Ready && !stream.Position.Done) return true;
+        return false;
+    }
+
+    private static bool AllDone(ActivityPosition[] positions)
+    {
+        foreach (ActivityPosition position in positions)
+            if (!position.Done) return false;
+        return true;
+    }
 
     private static int CompareActivity(ActivityPosition a, ActivityPosition b, bool descending)
     {

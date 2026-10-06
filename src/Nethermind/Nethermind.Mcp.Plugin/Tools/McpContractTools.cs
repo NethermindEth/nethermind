@@ -417,8 +417,10 @@ internal sealed class McpContractTools(
             if (processed < tokenList.Count) output["omitted"] = tokenList.Count - processed;
             if (includeUsd)
             {
+                string[] assets = new string[valuations.Count];
+                for (int i = 0; i < assets.Length; i++) assets[i] = valuations[i].Asset;
                 Dictionary<string, McpPriceResult> prices = await priceReader.ReadOptionalBatchAsync(executor,
-                    valuations.Select(static item => item.Asset), pinned,
+                    assets, pinned,
                     McpPriceReader.OptionalBudget(config.ToolTimeout, stopwatch, executor.RemainingTime), cancellation,
                     pinnedHead: blockParameter.Type == BlockParameterType.Latest);
                 foreach ((JsonObject target, string asset, UInt256 amount, int decimals) in valuations)
