@@ -18,10 +18,10 @@ namespace Nethermind.TxPool.Filters;
 /// The simulation re-verifies the frame signatures unless <see cref="FrameTxSignatureFilter"/> already has.
 /// Admitting an opaque transaction with no verdict leaves no payer, so <see cref="FrameTxPayerExposureFilter"/>
 /// reserves nothing against it: the exposure bound lapses while this node's own simulator is faulting.
-/// A gossiped transaction's simulation yields to block processing and is deferred.</remarks>
+/// A gossiped transaction's simulation yields to block processing and to this node's block building, and is deferred.</remarks>
 internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator, ILogger logger, IChainHeadInfoProvider? headInfo = null) : IIncomingTxFilter
 {
-    private readonly Func<bool>? _isProcessingBlock = headInfo is null ? null : () => headInfo.IsProcessingBlock;
+    private readonly Func<bool>? _blockWorkInProgress = headInfo is null ? null : () => headInfo.IsProcessingBlock || headInfo.IsBuildingBlock;
 
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
     {
@@ -42,7 +42,7 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
             local: local,
-            preempt: local ? null : _isProcessingBlock);
+            preempt: local ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:

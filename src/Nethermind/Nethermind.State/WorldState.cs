@@ -369,6 +369,18 @@ namespace Nethermind.State
             return _currentScope.HintBal(bal);
         }
 
+        /// <inheritdoc/>
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            GuardInScope();
+            // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
+            // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
+            _stateProvider.ForgetBlockChanges(bal, _currentScope);
+            _currentScope.ApplyBal(bal);
+            Reset(resetBlockChanges: false);
+            _persistentStorageProvider.ForgetBlockChanges(bal);
+        }
+
         public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
@@ -386,12 +398,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
-        }
-
-        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCode(in codeHash);
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)

@@ -23,7 +23,7 @@ public class GethLikeCustomTraceConverter : JsonConverter<GethLikeCustomTrace>
         ForcedNumberConversion.Value = NumberConversion.Raw;
         try
         {
-            JsonSerializer.Serialize(writer, value.Value, options);
+            TypeInfoJsonSerializer.Serialize(writer, value.Value, options);
         }
         finally
         {

@@ -42,7 +42,8 @@ public class GuestDispatchDifferentialTests
 
     public enum Table { Untraced, Cancelable, Traced }
 
-    private readonly record struct Outcome(EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize);
+    private readonly record struct Outcome(
+        EvmExceptionType Exception, ulong GasLeft, nint Pc, nint Head, string Stack, string Memory, ulong MemorySize, EthereumGasPolicy Policy);
 
     [Test]
     public void Random_programs_match_the_shared_handlers([ValueSource(nameof(Forks))] IReleaseSpec spec, [Range(0, 7)] int seed)
@@ -86,25 +87,34 @@ public class GuestDispatchDifferentialTests
     [Test]
     public void Gas_observes_the_charges_of_preceding_opcodes([Values] Table table)
     {
-        // Checked and fixed-cost bodies charge gas that dispatch carries by value between handlers.
+        // Checked, fixed-cost and full-policy (MSTORE) bodies charge gas that dispatch carries by value between handlers,
+        // and the execution gas is all they may change in the frame's policy.
         byte[] code =
         [
             (byte)Instruction.PUSH1, 1, (byte)Instruction.PUSH1, 2, (byte)Instruction.ADD,
             (byte)Instruction.PUSH1, 11, (byte)Instruction.JUMPI, (byte)Instruction.INVALID, (byte)Instruction.INVALID, (byte)Instruction.INVALID,
             (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH2, 0, 16, (byte)Instruction.JUMP,
-            (byte)Instruction.JUMPDEST, (byte)Instruction.GAS
+            (byte)Instruction.JUMPDEST, (byte)Instruction.PUSH0, (byte)Instruction.PUSH0, (byte)Instruction.MSTORE, (byte)Instruction.GAS
         ];
         const ulong gas = 100_000;
-        const ulong charged = 5 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + GasCostOf.Base;
+        const ulong charged = 6 * GasCostOf.VeryLow + GasCostOf.High + GasCostOf.Mid + 2 * GasCostOf.JumpDest + 3 * GasCostOf.Base + GasCostOf.Memory;
+        EthereumGasPolicy initial = EthereumGasPolicy.FromULong(gas) with
+        {
+            StateReservoir = 13,
+            StateGasUsed = 23,
+            StateGasSpill = 31,
+            StateGasSpillRefunded = 7,
+            IndependentStatePool = true,
+        };
 
-        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), table);
+        Outcome outcome = Run(gas, [], 0, new CodeInfo(code), table, initial: initial);
         byte[] pushLeft = [(byte)Instruction.PUSH8, .. ((UInt256)(gas - charged)).ToBigEndian()[^8..]];
         Outcome pushed = Run(gas, [], 0, new CodeInfo(pushLeft), table);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(outcome.Exception, Is.EqualTo(EvmExceptionType.Stop));
-            Assert.That(outcome.GasLeft, Is.EqualTo(gas - charged));
+            Assert.That(outcome.Policy, Is.EqualTo(initial with { Value = gas - charged }));
             Assert.That(outcome.Head, Is.EqualTo((nint)1));
             Assert.That(outcome.Stack, Is.EqualTo(pushed.Stack));
         }
@@ -152,7 +162,7 @@ public class GuestDispatchDifferentialTests
         int snippets = random.Next(10, 90);
         for (int s = 0; s < snippets; s++)
         {
-            int pick = random.Next(100);
+            int pick = random.Next(105);
             switch (pick)
             {
                 case < 8: code.Add((byte)Instruction.JUMPDEST); break;
@@ -200,7 +210,15 @@ public class GuestDispatchDifferentialTests
                 case < 88:
                     {
                         // A comparison and the branch on it, sometimes inverted.
-                        code.Add(random.Next(4) switch { 0 => (byte)Instruction.LT, 1 => (byte)Instruction.GT, 2 => (byte)Instruction.EQ, _ => (byte)Instruction.ISZERO });
+                        code.Add(random.Next(6) switch
+                        {
+                            0 => (byte)Instruction.LT,
+                            1 => (byte)Instruction.GT,
+                            2 => (byte)Instruction.SLT,
+                            3 => (byte)Instruction.SGT,
+                            4 => (byte)Instruction.EQ,
+                            _ => (byte)Instruction.ISZERO
+                        });
                         if (random.Next(2) == 0) code.Add((byte)Instruction.ISZERO);
                         destinationImmediates.Add(code.Count + 1);
                         code.AddRange([(byte)Instruction.PUSH2, 0, 0, (byte)Instruction.JUMPI]);
@@ -214,6 +232,11 @@ public class GuestDispatchDifferentialTests
                 case < 96: code.AddRange([(byte)Instruction.PUSH2, (byte)random.Next(0, 5), (byte)random.Next(256), (byte)Instruction.MLOAD]); break;
                 case < 98: code.AddRange([(byte)Instruction.PUSH1, (byte)random.Next(0, 100), (byte)Instruction.CALLDATALOAD]); break;
                 case < 99: code.Add((byte)Instruction.STOP); break;
+                case < 100: code.Add((byte)Instruction.MUL); break;
+                case < 101: code.Add((byte)Instruction.DIV); break;
+                case < 102: code.Add((byte)Instruction.SLT); break;
+                case < 103: code.Add((byte)Instruction.SGT); break;
+                case < 104: code.Add((byte)Instruction.CALLDATASIZE); break;
                 default: code.Add((byte)random.Next(256)); break;
             }
         }
@@ -245,7 +268,9 @@ public class GuestDispatchDifferentialTests
         _ => (byte)random.Next(256),
     };
 
-    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null)
+    /// <param name="initial">The frame's full policy, whose execution gas must be <paramref name="gas"/>; by default one holding only it.</param>
+    private static unsafe Outcome Run(ulong gas, byte[] inputData, int head, CodeInfo codeInfo, Table table, IReleaseSpec? spec = null,
+        EthereumGasPolicy? initial = null)
     {
         DispatchingVirtualMachine vm = new(spec ?? ReleaseSpec);
         using ExecutionEnvironment env = ExecutionEnvironment.Rent(codeInfo, Address.Zero, Address.Zero, null, 0, UInt256.Zero, inputData);
@@ -289,7 +314,7 @@ public class GuestDispatchDifferentialTests
         }
 
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
-        EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
+        EthereumGasPolicy[] gasPolicy = [initial ?? EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
         nint pc;
         nint finalHead;
@@ -297,9 +322,9 @@ public class GuestDispatchDifferentialTests
         {
             EvmStack stack = new(head, vm.Tracer, ref stackBytes[start], codeInfo.ExecutionCodeSpan, codeInfo);
             stack.HoistInputData(inputData);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)
-                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, 0, stack.Head, entries, ref stack.Code, stack.CodeLength);
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = entries, Vm = vm, Memory = ref frame.Memory };
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
+                entries[codeInfo.CodeSpan[0]])(ref stack, gas, ref state, ref stack.Code, stack.Head, entries, ref stack.Code, ref stack.Bottom);
             pc = state.FinalProgramCounter;
             finalHead = state.Head;
         }
@@ -313,7 +338,7 @@ public class GuestDispatchDifferentialTests
             memoryHex = Convert.ToHexString(memory);
         }
 
-        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size);
+        return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), pc, finalHead, stackHex, memoryHex, size, gasPolicy[0]);
     }
 
     private static bool NeedsWorldStateOrHash(Instruction opcode) =>
