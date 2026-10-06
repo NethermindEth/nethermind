@@ -8,7 +8,7 @@ using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class StoragePresenceProbe(ISortedKeyValueStore storageHistory, ILogger logger, CancellationToken token)
+internal readonly struct StoragePresenceProbe(ISortedKeyValueStore storageHistory, ILogger logger, CancellationToken token)
 {
     private const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
     private const int PrefixLength = BasePersistence.StoragePrefixPortion;

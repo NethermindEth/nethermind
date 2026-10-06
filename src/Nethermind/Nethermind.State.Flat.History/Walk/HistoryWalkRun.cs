@@ -272,7 +272,7 @@ internal sealed class HistoryWalkRun
         }
     }
 
-    private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found, StoragePresenceProbe probe)
+    private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found, in StoragePresenceProbe probe)
     {
         using AccountPartitionRows rows = new();
         while (true)
