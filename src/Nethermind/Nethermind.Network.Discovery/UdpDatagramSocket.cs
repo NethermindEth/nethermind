@@ -11,9 +11,6 @@ namespace Nethermind.Network.Discovery;
 /// </summary>
 internal sealed class UdpDatagramSocket(Socket socket) : IDatagramSocket
 {
-    private readonly EndPoint _anyRemoteEndpoint = new IPEndPoint(
-        socket.AddressFamily == AddressFamily.InterNetworkV6 ? IPAddress.IPv6Any : IPAddress.Any, 0);
-
     public IPEndPoint? LocalEndpoint { get; private set; }
 
     public void Bind(IPEndPoint localEndpoint)
@@ -25,8 +22,8 @@ internal sealed class UdpDatagramSocket(Socket socket) : IDatagramSocket
     public async ValueTask SendToAsync(ReadOnlyMemory<byte> datagram, IPEndPoint remoteEndpoint, CancellationToken cancellationToken = default)
         => await socket.SendToAsync(datagram, SocketFlags.None, remoteEndpoint, cancellationToken);
 
-    public ValueTask<SocketReceiveFromResult> ReceiveFromAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
-        => socket.ReceiveFromAsync(buffer, SocketFlags.None, _anyRemoteEndpoint, cancellationToken);
+    public ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default)
+        => socket.ReceiveFromAsync(buffer, SocketFlags.None, receivedAddress, cancellationToken);
 
     public void Dispose() => socket.Dispose();
 }

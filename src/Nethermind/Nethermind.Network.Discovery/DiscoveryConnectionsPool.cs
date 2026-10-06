@@ -23,6 +23,9 @@ internal sealed class DiscoveryConnectionsPool(
     // Must exceed MaxPacketSize so that oversized datagrams are detected instead of being truncated to a valid size.
     private const int ReceiveBufferSize = 2048 * 2;
 
+    // Bounds the sender cache's memory when senders do not repeat, such as under spoofed traffic.
+    private const int MaxCachedSenders = 4096;
+
     private readonly ILogger _logger = logger;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
     private readonly NetworkListenerState _listenerState = listenerState;
@@ -97,14 +100,16 @@ internal sealed class DiscoveryConnectionsPool(
     private async Task ReceiveAsync(IDatagramSocket socket, Action<PooledUdpReceiveResult> onReceive)
     {
         byte[] buffer = new byte[ReceiveBufferSize];
+        SocketAddress senderAddress = new(socket.LocalEndpoint!.AddressFamily);
+        SenderEndpointCache senders = new(MaxCachedSenders);
         try
         {
             while (true)
             {
-                SocketReceiveFromResult result;
+                int receivedBytes;
                 try
                 {
-                    result = await socket.ReceiveFromAsync(buffer);
+                    receivedBytes = await socket.ReceiveFromAsync(buffer, senderAddress);
                 }
                 // Windows reports ICMP errors caused by earlier sends on the next receive, and fails receives of datagrams
                 // larger than the buffer; neither affects later datagrams.
@@ -114,18 +119,18 @@ internal sealed class DiscoveryConnectionsPool(
                     continue;
                 }
 
-                Interlocked.Add(ref Metrics.DiscoveryBytesReceived, result.ReceivedBytes);
-                if (result.ReceivedBytes is 0 or > MaxPacketSize)
+                Interlocked.Add(ref Metrics.DiscoveryBytesReceived, receivedBytes);
+                if (receivedBytes is 0 or > MaxPacketSize)
                 {
                     // Potential cases where this can happen:
                     // - Neighbors response containing 16+ nodes in a single packet
-                    if (_logger.IsDebug) _logger.Debug($"Skipping discovery packet of invalid size: {result.ReceivedBytes}");
+                    if (_logger.IsDebug) _logger.Debug($"Skipping discovery packet of invalid size: {receivedBytes}");
                     continue;
                 }
 
                 try
                 {
-                    onReceive(PooledUdpReceiveResult.Copy(buffer.AsSpan(0, result.ReceivedBytes), NormalizeEndpoint((IPEndPoint)result.RemoteEndPoint)));
+                    onReceive(PooledUdpReceiveResult.Copy(buffer.AsSpan(0, receivedBytes), senders.GetOrAdd(senderAddress)));
                 }
                 catch (Exception e)
                 {
@@ -148,15 +153,6 @@ internal sealed class DiscoveryConnectionsPool(
         {
             socket.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Reduces an IPv4-mapped IPv6 sender address (<c>::ffff:a.b.c.d</c>, reported by dual-stack sockets) to its plain IPv4 form.
-    /// </summary>
-    private static IPEndPoint NormalizeEndpoint(IPEndPoint endpoint)
-    {
-        IPAddress address = endpoint.Address.NormalizeMappedIPv4();
-        return ReferenceEquals(address, endpoint.Address) ? endpoint : new IPEndPoint(address, endpoint.Port);
     }
 
     public async Task StopAsync()

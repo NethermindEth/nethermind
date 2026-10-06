@@ -127,7 +127,7 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
             return ValueTask.CompletedTask;
         }
 
-        public async ValueTask<SocketReceiveFromResult> ReceiveFromAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        public async ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default)
         {
             (byte[] datagram, IPEndPoint sender) = await ReadAsync(cancellationToken);
             if (datagram.Length > buffer.Length)
@@ -135,9 +135,28 @@ public class LocalChannelFactory(string networkGroup, INetworkConfig networkConf
                 throw new SocketException((int)SocketError.MessageSize);
             }
 
+            SocketAddress senderAddress = ToReceiverFamily(sender).Serialize();
+            receivedAddress.Size = senderAddress.Size;
+            senderAddress.Buffer.Span[..senderAddress.Size].CopyTo(receivedAddress.Buffer.Span);
             datagram.CopyTo(buffer);
-            return new SocketReceiveFromResult { ReceivedBytes = datagram.Length, RemoteEndPoint = sender };
+            return datagram.Length;
         }
+
+        /// <summary>
+        /// Reports <paramref name="sender"/> as a socket bound to <see cref="LocalEndpoint"/> would see it.
+        /// </summary>
+        /// <remarks>
+        /// An IPv6 socket is treated as dual-stack, so it sees IPv4 senders as IPv4-mapped addresses. An IPv4 socket
+        /// cannot receive from an IPv6 sender, so such a test topology is rejected.
+        /// </remarks>
+        private IPEndPoint ToReceiverFamily(IPEndPoint sender) =>
+            (LocalEndpoint?.AddressFamily, sender.AddressFamily) switch
+            {
+                (AddressFamily.InterNetworkV6, AddressFamily.InterNetwork) => new IPEndPoint(sender.Address.MapToIPv6(), sender.Port),
+                (AddressFamily.InterNetwork, AddressFamily.InterNetworkV6) => throw new InvalidOperationException(
+                    $"An IPv4 socket bound to {LocalEndpoint} cannot receive from IPv6 sender {sender}."),
+                _ => sender
+            };
 
         private async ValueTask<(byte[], IPEndPoint)> ReadAsync(CancellationToken cancellationToken)
         {

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Net;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -27,7 +26,7 @@ internal sealed class RecordingDatagramSocket : IDatagramSocket
         return ValueTask.CompletedTask;
     }
 
-    public ValueTask<SocketReceiveFromResult> ReceiveFromAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+    public ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default)
         => throw new NotSupportedException();
 
     public void Dispose()

@@ -450,18 +450,20 @@ public class CompositeDiscoveryAppTests
         byte[] second = [4, 5, 6];
 
         List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
-            IPEndPoint.Parse("127.0.0.2:10000"), 2, invalid, first, invalid, second);
+            IPEndPoint.Parse("127.0.0.2:10000"), 2, [invalid, first, invalid, second]);
 
         Assert.That(received[0].Data, Is.EqualTo(first));
         Assert.That(received[1].Data, Is.EqualTo(second));
     }
 
-    [TestCase("::ffff:127.0.0.2", "127.0.0.2")]
-    [TestCase("2001:db8::2", "2001:db8::2")]
-    public async Task Receive_ReportsSenderInCanonicalForm(string senderAddress, string expectedAddress)
+    [TestCase("::1", "127.0.0.2", "127.0.0.2", Description = "IPv4 sender on a dual-stack listener")]
+    [TestCase("::1", "::ffff:127.0.0.2", "127.0.0.2")]
+    [TestCase("::1", "2001:db8::2", "2001:db8::2")]
+    [TestCase("127.0.0.1", "127.0.0.2", "127.0.0.2")]
+    public async Task Receive_ReportsSenderInCanonicalForm(string listenerAddress, string senderAddress, string expectedAddress)
     {
         List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
-            new IPEndPoint(IPAddress.Parse(senderAddress), 10000), 1, [1, 2, 3]);
+            new IPEndPoint(IPAddress.Parse(senderAddress), 10000), 1, [[1, 2, 3]], IPAddress.Parse(listenerAddress));
 
         Assert.That(received[0].Sender, Is.EqualTo(new IPEndPoint(IPAddress.Parse(expectedAddress), 10000)));
     }
@@ -473,7 +475,7 @@ public class CompositeDiscoveryAppTests
         byte[] data = new byte[100];
         long bytesReceivedBefore = Interlocked.Read(ref Metrics.DiscoveryBytesReceived);
 
-        await ReceiveThroughPoolAsync(IPEndPoint.Parse("127.0.0.2:10000"), 1, data);
+        await ReceiveThroughPoolAsync(IPEndPoint.Parse("127.0.0.2:10000"), 1, [data]);
 
         Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
     }
@@ -514,13 +516,16 @@ public class CompositeDiscoveryAppTests
     /// Sends <paramref name="datagrams"/> from <paramref name="sender"/> to a pool listening on an in-memory socket
     /// and returns the first <paramref name="expectedCount"/> datagrams the pool delivers.
     /// </summary>
+    /// <param name="listenerAddress">The pool's bind address; IPv4 loopback when <c>null</c>.</param>
     private static async Task<List<(byte[] Data, IPEndPoint Sender)>> ReceiveThroughPoolAsync(
         IPEndPoint sender,
         int expectedCount,
-        params byte[][] datagrams)
+        byte[][] datagrams,
+        IPAddress? listenerAddress = null)
     {
         LocalChannelFactory channelFactory = new(TestContext.CurrentContext.Test.ID, new NetworkConfig());
-        DiscoveryConnectionsPool pool = CreatePool(new NetworkListenerState(IPAddress.Loopback, IPAddress.Loopback, LimboLogs.Instance));
+        IPAddress bindAddress = listenerAddress ?? IPAddress.Loopback;
+        DiscoveryConnectionsPool pool = CreatePool(new NetworkListenerState(bindAddress, bindAddress, LimboLogs.Instance));
         Channel<(byte[] Data, IPEndPoint Sender)> received = Channel.CreateUnbounded<(byte[] Data, IPEndPoint Sender)>();
         try
         {

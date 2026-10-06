@@ -360,20 +360,22 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         [TestCase("2001:db8::2", "2001:db8::2")]
         public async Task DualStackSender_IsAcceptedInCanonicalForm(string senderAddress, string expectedAddress)
         {
-            IKademliaAdapter adapter = _kademliaAdaptersMocks[0];
+            IKademliaAdapter adapter = Substitute.For<IKademliaAdapter>();
             TaskCompletionSource<DiscoveryMsg> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
             adapter.OnIncomingMsg(Arg.Any<DiscoveryMsg>()).Returns(callInfo =>
             {
                 received.TrySetResult(callInfo.Arg<DiscoveryMsg>());
                 return Task.CompletedTask;
             });
+            IPEndPoint listener = new(IPAddress.IPv6Loopback, 10004);
+            StartUdpChannel(listener.Address.ToString(), listener.Port, adapter, Build.A.SerializationService().WithDiscovery(_privateKey).TestObject);
 
             IPEndPoint sender = new(IPAddress.Parse(senderAddress), _address2.Port);
             byte[] data = SerializePing(Build.A.SerializationService().WithDiscovery(_privateKey2).TestObject);
             using IDatagramSocket senderSocket = _channelFactory.CreateDatagramSocket();
             senderSocket.Bind(sender);
 
-            await senderSocket.SendToAsync(data, _address);
+            await senderSocket.SendToAsync(data, listener);
 
             DiscoveryMsg message = await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await adapter.Received(1).OnIncomingMsg(Arg.Any<DiscoveryMsg>());

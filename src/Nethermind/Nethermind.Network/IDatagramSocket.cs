@@ -27,5 +27,14 @@ public interface IDatagramSocket : IDisposable
 
     ValueTask SendToAsync(ReadOnlyMemory<byte> datagram, IPEndPoint remoteEndpoint, CancellationToken cancellationToken = default);
 
-    ValueTask<SocketReceiveFromResult> ReceiveFromAsync(Memory<byte> buffer, CancellationToken cancellationToken = default);
+    /// <summary>
+    /// Receives a datagram into <paramref name="buffer"/> and writes its sender into <paramref name="receivedAddress"/>.
+    /// </summary>
+    /// <param name="buffer">The buffer the datagram is copied into.</param>
+    /// <param name="receivedAddress">
+    /// The sender's address, reused across calls; its family must match the bound endpoint's.
+    /// </param>
+    /// <param name="cancellationToken">A token that cancels the receive.</param>
+    /// <returns>The number of bytes received.</returns>
+    ValueTask<int> ReceiveFromAsync(Memory<byte> buffer, SocketAddress receivedAddress, CancellationToken cancellationToken = default);
 }
