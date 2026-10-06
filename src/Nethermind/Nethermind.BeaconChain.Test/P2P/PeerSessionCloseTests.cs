@@ -110,6 +110,26 @@ public class PeerSessionCloseTests
         Assert.That(DroppedAsSessionClosed(), Is.EqualTo(droppedAsClosed + 1), "the per-reason series sum to the dropped total");
     }
 
+    [Test]
+    public async Task A_redial_replaces_a_closed_session_before_its_removal_callback_runs([Values] bool sameAddress, CancellationToken token)
+    {
+        Node local = Create();
+        Node remote = Create();
+        local.Config.TargetPeerCount = 1;
+        await using PeerHostScope hosts = new(local.P2P, remote.P2P);
+        await hosts.StartAsync(token, local.P2P, remote.P2P);
+        PeerManager manager = local.CreatePeerManager();
+        string address = LoopbackAddressText(remote.P2P);
+        LocalPeer.Session session = RequestFailureCauseTests.AddWedgedSession(local.P2P);
+        IBeaconSyncPeer old = manager.AddPeerForTest(session, sameAddress ? address : $"/ip4/127.0.0.1/tcp/1/p2p/{remote.P2P.LocalPeerId}", Status, removeWhenSessionCloses: false);
+        await session.DisconnectAsync();
+
+        Assert.That(local.P2P.SessionClosedToken(session).IsCancellationRequested, Is.True);
+        Assert.That(manager.PeerCount, Is.EqualTo(1), "fixture: the closed session has not been removed");
+        Assert.That(await manager.TryAddPeerAsync(address, token), Is.True);
+        Assert.That(manager.GetBestPeers(0).Single(), Is.Not.SameAs(old), "success means a newly admitted session, not the stale entry");
+    }
+
     public enum Violation
     {
         RequestBeforeClose,
