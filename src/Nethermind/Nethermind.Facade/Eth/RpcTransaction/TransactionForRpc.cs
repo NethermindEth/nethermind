@@ -61,13 +61,24 @@ public abstract class TransactionForRpc
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+    // ReSharper disable once VirtualMemberCallInConstructor
+    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData) => Populate(transaction, extraData);
+
+    /// <summary>Sets every property from <paramref name="transaction"/>, so one instance can be reused for each transaction of a block.</summary>
+    /// <remarks>
+    /// The constructor runs it, so construction and reuse share one implementation. Overrides call the base first and then
+    /// assign every property they declare, including back to null or default, because a reused instance carries the previous
+    /// transaction's values. Types in other assemblies cannot override it and are never reused.
+    /// </remarks>
+    internal virtual void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
         Hash = transaction.Hash;
         TransactionIndex = extraData.TxIndex;
         BlockHash = extraData.BlockHash;
         BlockNumber = extraData.BlockNumber;
         BlockTimestamp = extraData.BlockTimestamp;
+        Gas = null;
+        IsTypeDefaulted = false;
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -170,6 +181,25 @@ public abstract class TransactionForRpc
             RegisterTransactionType<SetCodeTransactionForRpc>();
             RegisterTransactionType<FrameTransactionForRpc>();
         }
+
+        /// <summary>Gets the RPC type registered for <paramref name="txType"/>, or <see langword="null"/> when none is.</summary>
+        internal static Type? GetRegisteredType(TxType txType) => _txTypesByType[(byte)txType]?.Type;
+
+        /// <summary>The number of distinct slots <see cref="GetRepopulatableSlot"/> returns.</summary>
+        internal const int RepopulatableSlotCount = 6;
+
+        /// <summary>
+        /// Gets a slot for instances of exactly <paramref name="type"/> that can be refilled with <see cref="Populate"/> for
+        /// another transaction, or -1 when they cannot.
+        /// </summary>
+        /// <remarks>Only the types declared here override <see cref="Populate"/> for every property they have.</remarks>
+        internal static int GetRepopulatableSlot(Type type) =>
+            type == typeof(LegacyTransactionForRpc) ? 0 :
+            type == typeof(AccessListTransactionForRpc) ? 1 :
+            type == typeof(EIP1559TransactionForRpc) ? 2 :
+            type == typeof(BlobTransactionForRpc) ? 3 :
+            type == typeof(SetCodeTransactionForRpc) ? 4 :
+            type == typeof(FrameTransactionForRpc) ? 5 : -1;
 
         internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {

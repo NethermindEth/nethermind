@@ -184,26 +184,7 @@ public class BlockForRpc
         return hashes;
     }
 
-    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId)
-    {
-        Transaction[] transactions = block.Transactions;
-        if (transactions.Length == 0) return BlockTransactions.Empty;
-
-        TransactionForRpc[] txs = new TransactionForRpc[transactions.Length];
-        for (int i = 0; i < transactions.Length; i++)
-        {
-            TransactionForRpcContext extraData = new(
-                chainId: chainId,
-                blockHash: block.Hash,
-                blockNumber: block.Number,
-                txIndex: i,
-                blockTimestamp: block.Timestamp,
-                baseFee: block.BaseFeePerGas,
-                receipt: null);
-            txs[i] = TransactionForRpc.FromTransaction(transactions[i], extraData);
-        }
-        return txs;
-    }
+    private static BlockTransactions GetTransactionsForRpc(Block block, ulong chainId) => BlockTransactions.FromBlock(block, chainId);
 
     private static Hash256[] GetUnclesHashes(BlockHeader[] headers)
     {

@@ -30,8 +30,11 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     public AccessListTransactionForRpc() { }
 
     public AccessListTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
         ChainId = transaction.ChainId ?? extraData.ChainId ?? BlockchainIds.Mainnet;

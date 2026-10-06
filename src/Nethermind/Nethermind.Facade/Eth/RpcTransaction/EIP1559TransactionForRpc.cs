@@ -29,11 +29,13 @@ public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransa
     public EIP1559TransactionForRpc() { }
 
     public EIP1559TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         MaxFeePerGas = transaction.MaxFeePerGas;
         MaxPriorityFeePerGas = transaction.MaxPriorityFeePerGas;
-        // ReSharper disable once VirtualMemberCallInConstructor
         GasPrice = extraData.BaseFee is not null
             ? transaction.CalculateEffectiveGasPrice(eip1559Enabled: true, extraData.BaseFee.Value)
             : transaction.MaxFeePerGas;

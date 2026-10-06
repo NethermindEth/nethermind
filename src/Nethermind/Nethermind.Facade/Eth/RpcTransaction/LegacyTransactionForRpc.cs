@@ -63,7 +63,9 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     /// </remarks>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     [JsonConverter(typeof(StrictHexByteArrayConverter))]
-    public byte[]? Input { get; set => field = value ?? field; }
+    public byte[]? Input { get => _input; set => _input = value ?? _input; }
+
+    private byte[]? _input;
 
     void IJsonOnDeserializing.OnDeserializing() => _isDeserializing = true;
 
@@ -99,14 +101,20 @@ public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFro
     public LegacyTransactionForRpc() { }
 
     public LegacyTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
+        _data = null;
+        _isDeserializing = false;
         Nonce = transaction.Nonce;
         To = transaction.To;
         From = transaction.SenderAddress;
         Gas = transaction.GasLimit;
         Value = transaction.Value;
-        Input = transaction.Data.AsArray();
+        // Directly, since the setter keeps the previous value for null.
+        _input = transaction.Data.AsArray();
         GasPrice = transaction.GasPrice;
 
         Signature? signature = transaction.Signature;

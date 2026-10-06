@@ -22,7 +22,13 @@ public class SetCodeTransactionForRpc : EIP1559TransactionForRpc, IFromTransacti
     public SetCodeTransactionForRpc() { }
 
     public SetCodeTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData) => AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
+    {
+        base.Populate(transaction, extraData);
+        AuthorizationList = AuthorizationListForRpc.FromAuthorizationList(transaction.AuthorizationList);
+    }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
