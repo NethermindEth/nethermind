@@ -317,74 +317,59 @@ public class BeaconApiGloasBlockTests : BeaconApiFixture
         IndexedAttestationGloas Indexed(ulong[] indices, byte signature) =>
             new() { AttestingIndices = indices, Data = fuluAttestation.Data, Signature = FilledSignature(signature) };
 
-        return new SignedBeaconBlockGloas
-        {
-            Message = new BeaconBlockGloas
+        SignedBeaconBlockGloas block = Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders.CreateMinimalGloasBlock(slot, parent);
+        BeaconBlockBodyGloas body = block.Message!.Body!;
+        SignedExecutionPayloadBid signedBid = body.SignedExecutionPayloadBid!;
+        ExecutionPayloadBid bid = signedBid.Message!;
+        body.RandaoReveal = fulu.RandaoReveal;
+        body.Eth1Data = fulu.Eth1Data;
+        body.Graffiti = fulu.Graffiti;
+        body.ProposerSlashings = fulu.ProposerSlashings;
+        body.AttesterSlashings = [new AttesterSlashingGloas { Attestation1 = Indexed([1, 4, 5], 0x41), Attestation2 = Indexed([4, 5], 0x42) }];
+        body.Attestations =
+        [
+            new AttestationGloas
             {
-                Slot = slot,
-                ProposerIndex = 78,
-                ParentRoot = parent,
-                StateRoot = FilledHash(0x01),
-                Body = new BeaconBlockBodyGloas
-                {
-                    RandaoReveal = fulu.RandaoReveal,
-                    Eth1Data = fulu.Eth1Data,
-                    Graffiti = fulu.Graffiti,
-                    ProposerSlashings = fulu.ProposerSlashings,
-                    AttesterSlashings = [new AttesterSlashingGloas { Attestation1 = Indexed([1, 4, 5], 0x41), Attestation2 = Indexed([4, 5], 0x42) }],
-                    Attestations =
-                    [
-                        new AttestationGloas
-                        {
-                            AggregationBits = fuluAttestation.AggregationBits,
-                            Data = fuluAttestation.Data,
-                            Signature = fuluAttestation.Signature,
-                            CommitteeBits = fuluAttestation.CommitteeBits,
-                        },
-                    ],
-                    Deposits = fulu.Deposits,
-                    VoluntaryExits = fulu.VoluntaryExits,
-                    SyncAggregate = fulu.SyncAggregate,
-                    BlsToExecutionChanges = fulu.BlsToExecutionChanges,
-                    SignedExecutionPayloadBid = new SignedExecutionPayloadBid
-                    {
-                        Message = new ExecutionPayloadBid
-                        {
-                            ParentBlockHash = FilledHash(0x81),
-                            ParentBlockRoot = parent,
-                            BlockHash = FilledHash(0x87),
-                            PrevRandao = FilledHash(0x86),
-                            FeeRecipient = new Address(Hex(20, 0x82)),
-                            GasLimit = 30_000_000,
-                            BuilderIndex = 12,
-                            Slot = slot,
-                            Value = 1000,
-                            ExecutionPayment = 2000,
-                            BlobKzgCommitments = [fulu.BlobKzgCommitments![0]],
-                            ExecutionRequestsRoot = FilledHash(0x89),
-                        },
-                        Signature = FilledSignature(0x8a),
-                    },
-                    PayloadAttestations =
-                    [
-                        new PayloadAttestation
-                        {
-                            AggregationBits = ptcBits,
-                            Data = new PayloadAttestationData { BeaconBlockRoot = FilledHash(0x8c), Slot = slot - 1, PayloadPresent = true, BlobDataAvailable = false },
-                            Signature = FilledSignature(0x8b),
-                        },
-                    ],
-                    ParentExecutionRequests = new ExecutionRequestsGloas
-                    {
-                        Deposits = fulu.ExecutionRequests!.Deposits,
-                        Withdrawals = fulu.ExecutionRequests.Withdrawals,
-                        Consolidations = fulu.ExecutionRequests.Consolidations,
-                        BuilderDeposits = [new BuilderDepositRequest { Pubkey = FilledPubkey(0xe1), WithdrawalCredentials = FilledHash(0xe2), Amount = 3, Signature = FilledSignature(0xe3) }],
-                        BuilderExits = [new BuilderExitRequest { SourceAddress = new Address(Hex(20, 0xf1)), Pubkey = FilledPubkey(0xf2) }],
-                    },
-                },
+                AggregationBits = fuluAttestation.AggregationBits,
+                Data = fuluAttestation.Data,
+                Signature = fuluAttestation.Signature,
+                CommitteeBits = fuluAttestation.CommitteeBits,
             },
-            Signature = FilledSignature(0x06),
+        ];
+        body.Deposits = fulu.Deposits;
+        body.VoluntaryExits = fulu.VoluntaryExits;
+        body.SyncAggregate = fulu.SyncAggregate;
+        body.BlsToExecutionChanges = fulu.BlsToExecutionChanges;
+        bid.ParentBlockHash = FilledHash(0x81);
+        bid.BlockHash = FilledHash(0x87);
+        bid.PrevRandao = FilledHash(0x86);
+        bid.FeeRecipient = new Address(Hex(20, 0x82));
+        bid.BuilderIndex = 12;
+        bid.Value = 1000;
+        bid.ExecutionPayment = 2000;
+        bid.BlobKzgCommitments = [fulu.BlobKzgCommitments![0]];
+        bid.ExecutionRequestsRoot = FilledHash(0x89);
+        signedBid.Signature = FilledSignature(0x8a);
+        body.PayloadAttestations =
+        [
+            new PayloadAttestation
+            {
+                AggregationBits = ptcBits,
+                Data = new PayloadAttestationData { BeaconBlockRoot = FilledHash(0x8c), Slot = slot - 1, PayloadPresent = true, BlobDataAvailable = false },
+                Signature = FilledSignature(0x8b),
+            },
+        ];
+        body.ParentExecutionRequests = new ExecutionRequestsGloas
+        {
+            Deposits = fulu.ExecutionRequests!.Deposits,
+            Withdrawals = fulu.ExecutionRequests.Withdrawals,
+            Consolidations = fulu.ExecutionRequests.Consolidations,
+            BuilderDeposits = [new BuilderDepositRequest { Pubkey = FilledPubkey(0xe1), WithdrawalCredentials = FilledHash(0xe2), Amount = 3, Signature = FilledSignature(0xe3) }],
+            BuilderExits = [new BuilderExitRequest { SourceAddress = new Address(Hex(20, 0xf1)), Pubkey = FilledPubkey(0xf2) }],
         };
+        block.Message.ProposerIndex = 78;
+        block.Message.StateRoot = FilledHash(0x01);
+        block.Signature = FilledSignature(0x06);
+        return block;
     }
 }
