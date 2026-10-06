@@ -39,6 +39,7 @@ public class NullBlockAccessListManager : IBlockAccessListManager
     public void StoreBeaconRoot(Block block, IReleaseSpec spec) { }
     public void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec) { }
     public bool InstallPredeploys(IReleaseSpec spec) => true;
+    public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec) { }
     public void ProcessWithdrawals(Block block, IReleaseSpec spec) { }
     public void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec) { }
 }

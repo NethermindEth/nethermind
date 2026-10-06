@@ -73,6 +73,8 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
+        public UInt256 NextBaseFee { get; private set; }
+
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
         public ProofVersion CurrentProofVersion { get; private set; }
@@ -113,6 +115,8 @@ namespace Nethermind.Blockchain
             IReleaseSpec spec = SpecProvider.GetSpec(header);
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
+            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
+            NextBaseFee = childSpec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(header, childSpec) : UInt256.Zero;
             CurrentFeePerBlobGas =
                 BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
