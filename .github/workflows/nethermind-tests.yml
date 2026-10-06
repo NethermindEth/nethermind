@@ -15,6 +15,10 @@ on:
         description: Collect coverage
         required: false
         type: boolean
+      consensus-mainnet:
+        default: false
+        description: Run the full mainnet consensus-spec suite
+        type: boolean
 
 env:
   COLLECT_COVERAGE: ${{ github.event_name == 'push' && github.ref == 'refs/heads/master' || github.event.inputs.coverage }}
@@ -473,8 +477,8 @@ jobs:
           - Ethereum.ConsensusSpec.Test
     env:
       # The mainnet preset is ~900 MB compressed and several GB extracted. Pull requests run minimal
-      # plus the required named mainnet operation cases; pushes enumerate both full suites.
-      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ github.event_name == 'push' && '1' || '' }}
+      # plus required mainnet cases; pushes and opted-in manual runs enumerate both full suites.
+      NETHERMIND_CONSENSUS_SPEC_MAINNET: ${{ (github.event_name == 'push' || inputs.consensus-mainnet) && '1' || '' }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
