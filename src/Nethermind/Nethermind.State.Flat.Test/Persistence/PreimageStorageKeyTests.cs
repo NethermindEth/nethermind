@@ -135,6 +135,8 @@ public class PreimageStorageKeyTests
         {
             public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
 
+            public bool SeekTo(ReadOnlySpan<byte> key) => inner.SeekTo(key);
+
             public bool MoveNext()
             {
                 if (!inner.MoveNext()) return false;

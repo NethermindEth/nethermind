@@ -598,13 +598,16 @@ namespace Nethermind.Db
                 }
             }
 
-            public bool MoveNext()
+            public bool MoveNext() => MoveToFirstFrom(_currentKey is not null
+                ? (_currentKey, int.MaxValue, null)
+                : (_firstKey, 0, null));
+
+            public bool SeekTo(ReadOnlySpan<byte> key) => MoveToFirstFrom((key.ToArray(), 0, null));
+
+            private bool MoveToFirstFrom((byte[], int, byte[]?) lower)
             {
                 lock (_db._versionLock)
                 {
-                    (byte[], int, byte[]?) lower = _currentKey is not null
-                        ? (_currentKey, int.MaxValue, null)
-                        : (_firstKey, 0, null);
                     (byte[] _lastKey, int, byte[]?) upper = (_lastKey, 0, null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)

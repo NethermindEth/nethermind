@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -20,6 +21,11 @@ public class HistoryWindowPrunerTests
 {
     private static readonly Address Address = TestItem.AddressA;
     private static readonly UInt256 Slot = 1;
+    private static readonly Address SlicedAddress = TestItem.AddressB;
+    private static readonly ulong[] LongTailDeadBlocks = [10, 20, 30];
+    private static readonly ulong[] SlicedRowsBelowGeneralFloor = [40, 50];
+    private const ulong LongTailWatermark = 100;
+    private const ulong LongTailGeneralFloor = 60;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _db = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -407,6 +413,112 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    [Test]
+    public void RunOnePass_KeysWithLongLiveTails_DeletesExactlyTheDeadRowsAndSeeksPastEachLiveTail()
+    {
+        // 1. A plain and a sliced address each hold dead rows below their floor and 40 live rows above it.
+        // 2. One full pass with an unlimited budget that counts the account rows it visits.
+        // 3. Exactly the dead rows go, and each key is read only up to the live-row threshold.
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
+        List<CountingBudget> budgets = [];
+
+        bool completed = pruner.RunOnePass(CancellationToken.None, () =>
+        {
+            CountingBudget budget = new();
+            budgets.Add(budget);
+            return budget;
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "an unlimited budget finishes the cycle in one pass");
+            AssertOnlyLiveTailRowsSurvive();
+            Assert.That(budgets[0].Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + HistoryWindowPruner.LiveRowsBeforeSkip)),
+                "the account sweep must read each key's dead rows plus the live-row threshold and seek past the rest of the live tail, not read every live row");
+        }
+    }
+
+    [Test]
+    public void RunOnePass_YieldingInsideALiveTail_ResumesAndDeletesExactlyTheDeadRows()
+    {
+        // 1. Same rows as above; the first pass yields after 10 account rows, inside the first key's live tail.
+        // 2. The next pass resumes from the cursor written there and finishes the sweep.
+        // 3. Exactly the dead rows of both keys are gone and every live row is intact.
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner();
+
+        bool yieldedPass = pruner.RunOnePass(CancellationToken.None, () => new CountdownBudget(rowsBeforeExhaustion: 10));
+        bool resumedPass = pruner.RunOnePass(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(yieldedPass, Is.False, "precondition: the first pass yields with the account column mid-scan");
+            Assert.That(resumedPass, Is.True, "the resumed pass finishes the cycle");
+            AssertOnlyLiveTailRowsSurvive();
+        }
+    }
+
+    private void SeedLongLiveTails()
+    {
+        foreach (Address address in new[] { Address, SlicedAddress })
+        {
+            foreach (ulong block in LongTailDeadBlocks)
+            {
+                HistoryColumnsWriter.RecordAccountV3(_historyColumns, address, block, new Account(block, block));
+            }
+
+            for (ulong block = LongTailGeneralFloor + 1; block <= LongTailWatermark; block++)
+            {
+                HistoryColumnsWriter.RecordAccountV3(_historyColumns, address, block, new Account(block, block));
+            }
+        }
+
+        foreach (ulong block in SlicedRowsBelowGeneralFloor)
+        {
+            HistoryColumnsWriter.RecordAccountV3(_historyColumns, SlicedAddress, block, new Account(block, block));
+        }
+
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, LongTailWatermark);
+    }
+
+    // General floor 100 - 40 = 60; the slice keeps 70 blocks, so its own floor is 30.
+    private HistoryWindowPruner CreateLongLiveTailPruner()
+    {
+        HistoryWindowPruner pruner = CreatePruner(retentionBlocks: LongTailWatermark - LongTailGeneralFloor,
+            configure: config => config.HistorySliceAddresses = $"{SlicedAddress}:70");
+        pruner.ReconcileSliceScopes();
+        return pruner;
+    }
+
+    private void AssertOnlyLiveTailRowsSurvive()
+    {
+        List<ulong> expectedPlain = [];
+        for (ulong block = LongTailGeneralFloor + 1; block <= LongTailWatermark; block++) expectedPlain.Add(block);
+        List<ulong> expectedSliced = [.. SlicedRowsBelowGeneralFloor, .. expectedPlain];
+
+        Assert.That(SurvivingAccountBlocks(Address), Is.EqualTo(expectedPlain),
+            "the plain address keeps exactly its rows above the general floor");
+        Assert.That(SurvivingAccountBlocks(SlicedAddress), Is.EqualTo(expectedSliced),
+            "the sliced address keeps its rows above its own deeper floor, including those below the general floor");
+    }
+
+    private List<ulong> SurvivingAccountBlocks(Address address)
+    {
+        byte[] flatKey = address.ToAccountPath.Bytes.ToArray();
+        List<ulong> blocks = [];
+        foreach (KeyValuePair<byte[], byte[]> row in _historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory).GetAll())
+        {
+            if (row.Key.Length == flatKey.Length + sizeof(ulong) && row.Key.AsSpan(0, flatKey.Length).SequenceEqual(flatKey))
+            {
+                blocks.Add(BinaryPrimitives.ReadUInt64BigEndian(row.Key.AsSpan(flatKey.Length)));
+            }
+        }
+
+        blocks.Sort();
+        return blocks;
+    }
+
     private void RecordClear(StorageClearStore clears, byte[] accountKey, ulong block)
     {
         using IColumnsWriteBatch<FlatHistoryColumns> batch = _historyColumns.StartWriteBatch();
@@ -445,6 +557,20 @@ public class HistoryWindowPrunerTests
             {
                 if (_remaining <= 0) return true;
                 _remaining--;
+                return false;
+            }
+        }
+    }
+
+    private sealed class CountingBudget : IPruneBudget
+    {
+        public int Checks { get; private set; }
+
+        public bool Exhausted
+        {
+            get
+            {
+                Checks++;
                 return false;
             }
         }

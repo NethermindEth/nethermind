@@ -43,6 +43,13 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
         return _iterator.Valid();
     }
 
+    public bool SeekTo(ReadOnlySpan<byte> key)
+    {
+        _iterator.Seek(key);
+        _started = true;
+        return _iterator.Valid();
+    }
+
     public ReadOnlySpan<byte> CurrentKey => _iterator.GetKeySpan();
     public ReadOnlySpan<byte> CurrentValue => _iterator.GetValueSpan();
 }

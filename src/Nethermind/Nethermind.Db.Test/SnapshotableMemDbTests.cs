@@ -274,6 +274,26 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void SeekTo_MidIteration_LandsOnTheFirstLiveKeyAtOrAfterTheTargetWithinTheUpperBound()
+        {
+            SnapshotableMemDb memDb = new();
+            foreach (byte b in new byte[] { 1, 2, 3, 4, 5, 7 })
+            {
+                memDb.Set([b], [b]);
+            }
+
+            memDb.Remove([4]);
+
+            using ISortedView view = memDb.GetViewBetween([1], [7]);
+
+            Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
+            Assert.That(view.SeekTo([4]), Is.True, "a live key at or after 4 remains below the upper bound");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }), "4 was removed, so the seek lands on the next live key");
+            Assert.That(view.MoveNext(), Is.False, "7 is the exclusive upper bound, so 5 is the last key of the view");
+            Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
+        }
+
+        [Test]
         public void Snapshot_GetViewBetween_sees_correct_version()
         {
             SnapshotableMemDb memDb = new();

@@ -154,6 +154,17 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
             return true;
         }
 
+        public bool SeekTo(ReadOnlySpan<byte> key)
+        {
+            idx = 0;
+            while (idx < list.Count && Bytes.BytesComparer.Compare(list[idx].Item1, key) < 0)
+            {
+                idx++;
+            }
+
+            return idx < list.Count;
+        }
+
         public bool MoveNext()
         {
             idx++;
