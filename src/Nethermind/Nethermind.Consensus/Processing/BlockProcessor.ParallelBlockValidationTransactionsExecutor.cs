@@ -199,7 +199,9 @@ public partial class BlockProcessor
                                     if (state.isBlockProcessingThread) state.block.AccountChanges = bal.GetStateChangedAddresses();
                                     // Pre-block writes on the shared state (e.g. AuRa's system accounts) are only committed to
                                     // the journal; flush them to the scope before the BAL's values are laid over them.
-                                    state.stateProvider.ApplyBlockAccessList(bal, state.specProvider.GetSpec(state.block.Header));
+                                    state.stateProvider.Commit(state.specProvider.GetSpec(state.block.Header));
+                                    state.stateProvider.ApplyBal(bal);
+                                    state.stateProvider.RecalculateStateRoot();
                                     return state;
                                 }
 

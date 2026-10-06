@@ -729,7 +729,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             }, serverKey);
             await StartServerAndBuildStorageChain(server, BalCatchUpChainLength, cancellationToken, "BAL catch-up server", accessListEdgeCases: true);
 
-            long reconstructedBefore = Merge.Plugin.Metrics.FinalizedBlockAccessListReconstructions;
+            long reconstructedBefore = Merge.Plugin.Metrics.BalCatchUpBlocks;
             await using IContainer client = await CreateNode(TestItem.PrivateKeyF, (cfg, spec) =>
             {
                 EnableBlockAccessListsFromGenesis(spec);
@@ -754,7 +754,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             ulong finalized = await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyEverything(server, cancellationToken);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(Merge.Plugin.Metrics.FinalizedBlockAccessListReconstructions - reconstructedBefore, Is.EqualTo((long)finalized),
+                Assert.That(Merge.Plugin.Metrics.BalCatchUpBlocks - reconstructedBefore, Is.EqualTo((long)finalized),
                     "Finalized blocks that fell back to execution.");
                 Assert.That(incompleteReceipts, Is.Empty, "Blocks published to processing subscribers without their receipts.");
                 Assert.That(Enumerable.Range(1, (int)finalized).Where(n => canonicalNotifications.GetValueOrDefault((ulong)n) != 1), Is.Empty,

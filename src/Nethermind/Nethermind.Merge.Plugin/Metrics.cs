@@ -23,7 +23,7 @@ namespace Nethermind.Merge.Plugin
 
         [CounterMetric]
         [Description("Number of finalized blocks caught up by applying their block access list instead of executing them")]
-        public static long FinalizedBlockAccessListReconstructions { get; set; }
+        public static long BalCatchUpBlocks { get; set; }
 
         [GaugeMetric]
         [Description("Number of Transactions included in the Last GetPayload Request")]

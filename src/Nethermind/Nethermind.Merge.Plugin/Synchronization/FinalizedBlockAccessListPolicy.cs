@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -25,7 +26,7 @@ public sealed class FinalizedBlockAccessListPolicy(
     ISpecProvider specProvider,
     IReceiptConfig receiptConfig)
 {
-    private readonly object _lock = new();
+    private readonly Lock _lock = new();
     private readonly Dictionary<ulong, Hash256> _ancestors = [];
     private Hash256? _checkpoint;
     private BlockHeader? _oldestAncestor;
