@@ -420,7 +420,8 @@ public class TrieStoreScopeProvider(
         private const int MinWritesToHashInParallel = 64;
 
         /// <summary>Estimated entries above which the writes are applied together through <see cref="PatriciaTree.BulkSet"/>.</summary>
-        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there.</remarks>
+        /// <remarks>Never in the guest: see <c>SetEachAccount</c> for why one set at a time is cheaper there. The guest's
+        /// <c>PatriciaTree.IsUnchangedPendingLevel</c> relies on its writes going one at a time.</remarks>
 #if ZK_EVM
         private const int BulkWriteThreshold = int.MaxValue;
 #else
