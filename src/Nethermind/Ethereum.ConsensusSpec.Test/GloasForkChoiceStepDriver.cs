@@ -120,24 +120,14 @@ internal static class GloasForkChoiceStepDriver
 
         context.States.States[blockRoot] = postState ?? throw new InvalidOperationException($"{subject} was accepted without a parent state");
 
-        AttestationGloas[] attestations = block.Body!.Attestations!;
-        for (int i = 0; i < attestations.Length; i++)
-        {
-            AttestationGloas attestation = attestations[i];
-            if (Attempt(() => context.Runner.OnBodyAttestation(attestation, blockRoot)) is { } ex)
-                Assert.Fail($"{subject}: body attestation {i} rejected: {ex.Message}");
-        }
+        ReplayBodyOperands(block.Body!.Attestations!, operand => context.Runner.OnBodyAttestation(operand, blockRoot),
+            i => $"{subject}: body attestation {i} rejected");
 
         // A vote waiting for a build would reach the store only on a later tick, after the vector's checks of this step.
         Assert.That(context.Runner.DeferredBodyVoteCount, Is.Zero, $"{subject} left body attestations waiting for a target state build");
 
-        AttesterSlashingGloas[] slashings = block.Body!.AttesterSlashings!;
-        for (int i = 0; i < slashings.Length; i++)
-        {
-            AttesterSlashingGloas slashing = slashings[i];
-            if (Attempt(() => context.Runner.OnAttesterSlashing(slashing, verifySignatures: false)) is { } ex)
-                Assert.Fail($"{subject}: body attester slashing {i} rejected: {ex.Message}");
-        }
+        ReplayBodyOperands(block.Body!.AttesterSlashings!, operand => context.Runner.OnAttesterSlashing(operand, verifySignatures: false),
+            i => $"{subject}: body attester slashing {i} rejected");
     }
 
     /// <summary>Verifies an envelope against its block's post-state and records its payload; without sidecars only a no-blob bid is available.</summary>
