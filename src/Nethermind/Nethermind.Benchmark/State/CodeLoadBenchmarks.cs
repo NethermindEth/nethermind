@@ -31,6 +31,8 @@ namespace Nethermind.Benchmarks.State;
 /// <see cref="Workload.FreshAttack"/> loads 58k contracts no block touched in the previous seven, from a ~30 GB pool;
 /// where that exceeds the page cache, reads go to storage. <see cref="Workload.FreshSmall"/> loads 20k fresh 23-byte
 /// delegation designators per block, where each read waits on latency rather than bandwidth.
+/// <see cref="Workload.Repeat"/> is the warm-CALL block: each of <see cref="Threads"/> transactions calls a bank of
+/// 4,096 distinct 48 KiB contracts five times round, three transactions to each of four banks, 245,760 loads in all.
 /// <see cref="Workload.Hot"/> loads 20k contracts of 0.5-16.5 KiB drawn Zipf-skewed from a 50k pool, a proxy for
 /// ordinary blocks where the code cache hits; <see cref="Workload.HotAfterAttack"/> first fills the code cache with
 /// 58k fresh 64 KiB contracts, as an attack block would, untimed. Each load then reads the first byte of the execution
@@ -44,10 +46,13 @@ namespace Nethermind.Benchmarks.State;
 [MemoryDiagnoser]
 public class CodeLoadBenchmarks
 {
-    public enum Workload { Attack, FreshAttack, FreshSmall, Hot, HotAfterAttack }
+    public enum Workload { Attack, FreshAttack, FreshSmall, Hot, HotAfterAttack, Repeat }
 
-    /// <summary>The code cache: one tier as before, or tiers by code size as <see cref="StaticCodeCache.Instance"/>.</summary>
-    public enum CacheMode { Single, Tiered }
+    /// <summary>
+    /// The code cache: one tier as before, tiers by code size as <see cref="StaticCodeCache.Instance"/>, or those tiers
+    /// with the block's loads kept in a <see cref="BlockCodeCache"/>, emptied for each block.
+    /// </summary>
+    public enum CacheMode { Single, Tiered, Block }
 
     /// <summary>How the block's code is read ahead of execution, as a block access list allows.</summary>
     public enum PrefetchMode
@@ -67,6 +72,10 @@ public class CodeLoadBenchmarks
     private const int SmallLoads = 20_000;
     private const int FreshBlocks = 8;
     private const int DesignatorLength = 23;
+    private const int RepeatBanks = 4;
+    private const int RepeatBankSize = 4_096;
+    private const int RepeatRounds = 5;
+    private const int RepeatCodeSize = 48 * 1024;
 
     [Params(12)]
     public int Threads { get; set; }
@@ -86,7 +95,7 @@ public class CodeLoadBenchmarks
 
     private DbOnTheRocks _db = null!;
     private CountingCodeDb _codeDb = null!;
-    private StaticCodeCache _codeCache = null!;
+    private ICodeCache _codeCache = null!;
     private ValueHash256[] _pool = null!;
     private double[] _cumulativeWeight = null!;
     private ValueHash256[] _block = null!;
@@ -107,6 +116,7 @@ public class CodeLoadBenchmarks
             Workload.Attack => (60_000, AttackLoads),
             Workload.FreshAttack => (FreshBlocks * AttackLoads, AttackLoads),
             Workload.FreshSmall => (FreshBlocks * SmallLoads, SmallLoads),
+            Workload.Repeat => (RepeatBanks * RepeatBankSize, 0),
             _ => (50_000, 20_000),
         };
         string basePath = Path.Combine(
@@ -151,9 +161,13 @@ public class CodeLoadBenchmarks
             _cumulativeWeight[i] = total;
         }
 
-        _codeCache = Cache == CacheMode.Tiered
-            ? new StaticCodeCache(MemoryAllowance.SmallCodeCacheSize, MemoryAllowance.MediumCodeCacheSize, MemoryAllowance.LargeCodeCacheSize)
-            : new StaticCodeCache(MemoryAllowance.CodeCacheSize);
+        StaticCodeCache tiered = new(MemoryAllowance.SmallCodeCacheSize, MemoryAllowance.MediumCodeCacheSize, MemoryAllowance.LargeCodeCacheSize);
+        _codeCache = Cache switch
+        {
+            CacheMode.Tiered => tiered,
+            CacheMode.Block => new BlockCodeCache(tiered),
+            _ => new StaticCodeCache(MemoryAllowance.CodeCacheSize),
+        };
         _block = new ValueHash256[loadsPerBlock];
         _accessListOrder = new int[loadsPerBlock];
         for (int i = 0; i < loadsPerBlock; i++) _accessListOrder[i] = i;
@@ -171,7 +185,12 @@ public class CodeLoadBenchmarks
             IWriteBatch batch = _db.StartWriteBatch();
             for (int i = 0; i < count; i++)
             {
-                int length = _hot ? 512 + contents.Next(16_384) : Load == Workload.FreshSmall ? DesignatorLength : code.Length;
+                int length = _hot ? 512 + contents.Next(16_384) : Load switch
+                {
+                    Workload.FreshSmall => DesignatorLength,
+                    Workload.Repeat => RepeatCodeSize,
+                    _ => code.Length,
+                };
                 Span<byte> body = code.AsSpan(0, length);
                 contents.NextBytes(body);
                 batch.PutSpan(_pool[i].Bytes, body);
@@ -192,11 +211,14 @@ public class CodeLoadBenchmarks
     [IterationSetup]
     public void PickBlock()
     {
+        (_codeCache as BlockCodeCache)?.ClearBlock();
         switch (Load)
         {
             case Workload.Attack:
                 _random.Shuffle(_pool);
                 _pool.AsSpan(0, _block.Length).CopyTo(_block);
+                break;
+            case Workload.Repeat:
                 break;
             case Workload.FreshAttack or Workload.FreshSmall:
                 _pool.AsSpan(_blockNumber++ % FreshBlocks * _block.Length, _block.Length).CopyTo(_block);
@@ -259,6 +281,8 @@ public class CodeLoadBenchmarks
     [Benchmark]
     public int ResolveBlock()
     {
+        if (Load == Workload.Repeat) return ResolveRepeatBlock();
+
         CodePrefetcher prefetcher = Prefetch == PrefetchMode.None ? null : new CodePrefetcher(_codeDb, _codeCache);
         Task prefetching = Prefetch switch
         {
@@ -285,6 +309,27 @@ public class CodeLoadBenchmarks
 
         prefetching.GetAwaiter().GetResult();
         prefetcher?.Stop();
+        return executed;
+    }
+
+    private int ResolveRepeatBlock()
+    {
+        int executed = 0;
+        Parallel.For(0, Threads, new ParallelOptions { MaxDegreeOfParallelism = Threads }, transaction =>
+        {
+            int bank = transaction * RepeatBanks / Threads * RepeatBankSize;
+            int local = 0;
+            for (int round = 0; round < RepeatRounds; round++)
+            {
+                for (int i = 0; i < RepeatBankSize; i++)
+                {
+                    local += Resolve(in _pool[bank + i], null).ExecutionCodeSpan[0];
+                }
+            }
+
+            Interlocked.Add(ref executed, local);
+        });
+
         return executed;
     }
 

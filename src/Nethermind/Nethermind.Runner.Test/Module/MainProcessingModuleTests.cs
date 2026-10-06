@@ -6,8 +6,10 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Init.Modules;
 using NUnit.Framework;
 
@@ -29,5 +31,31 @@ public class MainProcessingModuleTests
             .Resolve<ICodeInfoRepository>();
 
         Assert.That(repository is PrecompileCachedCodeInfoRepository, Is.EqualTo(expectDecorated), $"resolved {repository.GetType().Name}");
+    }
+
+    [Test]
+    public void MainProcessingContext_ShouldKeepBlockCode_UntilThePreWarmerClearsCaches()
+    {
+        using IContainer ctx = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new BlocksConfig()))
+            .Build();
+
+        ILifetimeScope mainScope = (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext).LifetimeScope;
+        BlockCodeCache blockCodeCache = mainScope.Resolve<BlockCodeCache>();
+        ValueHash256 codeHash = ValueKeccak.Compute([1]);
+        CodeInfo code = new(new byte[] { 1 });
+        blockCodeCache.Set(in codeHash, code);
+        // Leaves the block's copy as the only one.
+        StaticCodeCache.Instance.Clear();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(mainScope.Resolve<ICodeCache>(), Is.SameAs(blockCodeCache));
+            Assert.That(ctx.Resolve<ICodeCache>(), Is.SameAs(StaticCodeCache.Instance), "outside block processing");
+            Assert.That(blockCodeCache.Get(in codeHash), Is.SameAs(code));
+        }
+
+        mainScope.Resolve<IBlockCachePreWarmer>().ClearCaches();
+        Assert.That(blockCodeCache.Get(in codeHash), Is.Null);
     }
 }

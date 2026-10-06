@@ -73,7 +73,11 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         blocksConfig.PrefetchBlockAccessListCode
                     );
                 })
-                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
+                .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
+
+                // Envs that must send every lookup to the world state, as witness generation does, register their own.
+                .AddSingleton<BlockCodeCache>(static _ => new BlockCodeCache(StaticCodeCache.Instance))
+                .Bind<ICodeCache, BlockCodeCache>();
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
             {

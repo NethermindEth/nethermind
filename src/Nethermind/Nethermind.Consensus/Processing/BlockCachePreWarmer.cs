@@ -58,6 +58,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
     private readonly PreBlockCaches _preBlockCaches;
     private readonly NodeStorageCache _nodeStorageCache;
     private readonly bool _parallelExecutionEnabled;
+    private readonly BlockCodeCache? _blockCodeCache;
 
     private const int MaxDiscoveryCandidates = 16;
     private const int MaxDiscoveryRounds = 6;
@@ -98,7 +99,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         NodeStorageCache nodeStorageCache,
         PreBlockCaches preBlockCaches,
         ILogManager logManager,
-        ISenderRecoveryTracker? senderRecovery = null
+        ISenderRecoveryTracker? senderRecovery = null,
+        BlockCodeCache? blockCodeCache = null
     ) : this(
         new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory, preBlockCaches),
         Environment.ProcessorCount * 2,
@@ -111,6 +113,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         senderRecovery)
     {
         _parallelExecutionEnabled = blocksConfig.ParallelExecution;
+        _blockCodeCache = blockCodeCache;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
     }
@@ -914,6 +917,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         // The account and storage caches carry over: the block's commit writes its final values into them, and PrepareFor
         // keeps or clears them before the next use.
         _preBlockCaches?.ClearPrecompileCache();
+        _blockCodeCache?.ClearBlock();
         CacheType cachesCleared = _nodeStorageCache.ClearCaches() ? CacheType.Rlp : CacheType.None;
         if (_logger.IsDebug) _logger.Debug($"Cleared caches: {cachesCleared}");
         return cachesCleared;
