@@ -26,7 +26,7 @@ public class EnsureDiskSpaceTests
             LowStorageSpaceWarningThreshold = 5
         };
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
-        FreeDiskSpaceChecker freeDiskSpaceChecker = new(
+        await using FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
             DiskSpaceTestHelper.GetDriveInfos(1.5f), // below the required threshold
             TimerFactory.Default,
@@ -54,7 +54,7 @@ public class EnsureDiskSpaceTests
         ITimer timer = Substitute.For<ITimer>();
         ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
         timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
-        FreeDiskSpaceChecker freeDiskSpaceChecker = new(
+        await using FreeDiskSpaceChecker freeDiskSpaceChecker = new(
             hcConfig,
             DiskSpaceTestHelper.GetDriveInfos(50f),
             timerFactory,
