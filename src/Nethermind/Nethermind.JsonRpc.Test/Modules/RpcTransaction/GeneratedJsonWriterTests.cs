@@ -211,10 +211,22 @@ public class GeneratedJsonWriterTests
     [Test]
     public void Block_transactions_keep_the_serializer_depth_limit()
     {
-        BlockForRpc block = new(Blocks().First().Block, includeFullTransactionData: false, MainnetSpecProvider.Instance);
+        // Only the transactions array nests to depth 2, so the limit can only be hit inside it.
+        Block source = Build.A.Block.WithNumber(3).WithTransactions(Transactions().First().Tx).TestObject;
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 2 };
 
-        Assert.That(() => Serialize(block, typeof(BlockForRpc), options), Throws.InstanceOf<JsonException>());
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (bool full in new[] { false, true })
+            {
+                BlockForRpc block = new(source, full, MainnetSpecProvider.Instance);
+                Assert.That(() => Serialize(block, typeof(BlockForRpc), options), Throws.InstanceOf<JsonException>(), full ? "full" : "hashes");
+            }
+
+            Assert.That(() => Serialize(new BlockForRpc { Transactions = new Hash256[] { null! } }, typeof(BlockForRpc), options), Throws.InstanceOf<JsonException>(), "null element");
+            Assert.That(() => Serialize(new BlockForRpc { Transactions = Array.Empty<Hash256>() }, typeof(BlockForRpc), new JsonSerializerOptions(EthereumJsonSerializer.JsonOptions) { MaxDepth = 2 }),
+                Throws.Nothing, "nothing nested");
+        }
     }
 
     // STJ adapts a converter for a wider type by casting; a generated writer cannot call it as JsonConverter<Withdrawal[]>.

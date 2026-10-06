@@ -63,21 +63,16 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
     public override void Write(Utf8JsonWriter writer, BlockTransactions value, JsonSerializerOptions options)
     {
         writer.WriteStartArray();
-        // The former object[] path checked the depth before each element it wrote.
+        // The former object[] path checked the depth before each element it wrote, null included.
         int maxDepth = GeneratedJsonWriters.GetMaxDepth(options);
         if (value.Full is { } full)
         {
             // As each element of the former object[]: written as its runtime type, through its generated writer when it has one.
             foreach (TransactionForRpc transaction in full)
             {
-                if (transaction is null)
-                {
-                    writer.WriteNullValue();
-                    continue;
-                }
-
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
-                TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, transaction, options);
+                if (transaction is null) writer.WriteNullValue();
+                else TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, transaction, options);
             }
         }
         else
@@ -85,14 +80,9 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
             JsonConverter<Hash256>? converter = TypeInfoJsonSerializer.GetTypeInfo<Hash256>(options).Converter as JsonConverter<Hash256>;
             foreach (Hash256 hash in value.Hashes!)
             {
-                if (hash is null)
-                {
-                    writer.WriteNullValue();
-                    continue;
-                }
-
                 if (writer.CurrentDepth >= maxDepth) GeneratedJsonWriters.ThrowMaxDepthExceeded(maxDepth);
-                if (converter is not null) converter.Write(writer, hash, options);
+                if (hash is null) writer.WriteNullValue();
+                else if (converter is not null) converter.Write(writer, hash, options);
                 // A converter STJ adapts by casting is only reachable through the serializer.
                 else TypeInfoJsonSerializer.Serialize(writer, hash, options);
             }
