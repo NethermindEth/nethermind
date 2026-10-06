@@ -103,6 +103,29 @@ public class GuestOpcodeHandlerTests
         const ulong countdownGas = 3 + 2 * (countdownIteration + 3 + 8) + countdownIteration + 1;
         yield return Succeeds("JUMP back to an analyzed destination", countdown, countdownGas);
 
+        // An internal function called twice returns with SWAP1 JUMP or POP JUMP, the second time to an analyzed destination.
+        yield return Succeeds("SWAP1 JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 21, JUMP, JUMPDEST, POP, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, SWAP1, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 3 + 8 + 1 + 2 + 3 + 3 + 3 + 3 + 3 + 10));
+        yield return Succeeds("POP JUMP returns to an analyzed destination",
+            Code(PUSH1, 2, JUMPDEST, PUSH1, 10, PUSH1, 7, PUSH1, 20, JUMP, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 2, JUMPI, STOP,
+                JUMPDEST, POP, JUMP),
+            3 + 2 * (1 + 3 + 3 + 3 + 8 + 1 + 2 + 8 + 1 + 3 + 3 + 3 + 3 + 3 + 10));
+
+        // ADD, DUP2 and DUP1 dispatched from a handler that reads the opcode after them, so each runs fused with the memory
+        // opcode it computes the offset for.
+        byte[] wordAt32 = [.. new byte[32], .. Word(0x2a)];
+        yield return Succeeds("ADD MSTORE", Code(PUSH1, 0x2a, PUSH1, 0x10, PUSH1, 0x10, JUMPDEST, ADD, MSTORE, STOP), 5 * 3 + 1 + MemoryCost(2), wordAt32);
+        yield return Succeeds("DUP2 MSTORE", Code(PUSH1, 0x20, PUSH1, 0x2a, DUP2, MSTORE, STOP), 4 * 3 + MemoryCost(2), wordAt32);
+        byte[] storedTwice = [.. Word(0x2a), .. Word(0x2a)];
+        yield return Succeeds("ADD MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x10, PUSH1, 0x10, ADD, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP2 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, PUSH1, 0, DUP2, MLOAD, PUSH1, 0, MSTORE, STOP), 9 * 3 + MemoryCost(2), storedTwice);
+        yield return Succeeds("DUP1 MLOAD",
+            Code(PUSH1, 0x2a, PUSH1, 0x20, MSTORE, PUSH1, 0x20, JUMPDEST, DUP1, MLOAD, PUSH1, 0, MSTORE, STOP), 8 * 3 + 1 + MemoryCost(2), storedTwice);
+
         // The same loop with PUSH2 destinations: the first jump to each destination runs unfused, the later ones fuse.
         byte[] fusedCountdown = Code(
             PUSH1, 3,
@@ -655,15 +678,14 @@ public class GuestOpcodeHandlerTests
         // On the heap, so the state that refers to it can be handed to a function pointer, whose parameters cannot be scoped.
         EthereumGasPolicy[] gasPolicy = [EthereumGasPolicy.FromULong(gas)];
         EvmExceptionType exception;
-        // The table's declared entry type is the host's signature; its entries take the guest's.
-        fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+        fixed (nint* entries = PairedHandlers(vm))
         {
-            nint* table = (nint*)entries;
+            nint* table = entries + VirtualMachine<EthereumGasPolicy>.FollowerHandlersLength;
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
             VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[Unsafe.ReadUnaligned<ushort>(ref stack.Code)])(
                 ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
@@ -671,6 +693,21 @@ public class GuestOpcodeHandlerTests
         Assert.That(frame.Memory.TryLoadSpan(UInt256.Zero, size, out Span<byte> memory), Is.True);
         return new Outcome(exception, EthereumGasPolicy.GetRemainingGas(in gasPolicy[0]), memory.ToArray());
     }
+
+    /// <summary>The table the guest dispatches through, paired from the machine's untraced table once for all tests.</summary>
+    private static unsafe nint[] PairedHandlers(VirtualMachine<EthereumGasPolicy> vm)
+    {
+        if (_pairedHandlers is null)
+        {
+            // The table's declared entry type is the host's signature; its entries take the guest's.
+            fixed (void* entries = vm.GetOpcodeHandlers<OffFlag, OffFlag>())
+                _pairedHandlers = VirtualMachine<EthereumGasPolicy>.PairHandlers(new ReadOnlySpan<nint>(entries, 256));
+        }
+
+        return _pairedHandlers;
+    }
+
+    private static nint[]? _pairedHandlers;
 
     /// <summary>The Yellow Paper memory cost of <paramref name="words"/> active words.</summary>
     private static ulong MemoryCost(ulong words) => words * GasCostOf.Memory + words * words / 512;
