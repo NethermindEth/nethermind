@@ -1256,12 +1256,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            if (opts.HasFlag(ExecutionOptions.StrictWarmup)) WorldState.NoteMinimumBalance(sender, in balanceCheck);
+
             if (balance < balanceCheck)
             {
                 // A warm sender may be funded earlier in the block by another sender's
                 // transaction, which per-sender warm groups cannot see; charge best-effort
                 // instead of losing that sender's warming entirely.
-                if (opts.HasFlag(ExecutionOptions.Warmup))
+                if (opts.HasFlag(ExecutionOptions.Warmup) && !opts.HasFlag(ExecutionOptions.StrictWarmup))
                 {
                     UInt256 warmCharge = UInt256.Min(senderReservedGasPayment, balance);
                     if (!warmCharge.IsZero) WorldState.SubtractFromBalance(sender, warmCharge, spec);
@@ -1790,7 +1792,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // Same best-effort rule as BuyGas: a warm sender funded earlier in the block has no
             // parent-state balance to move, and failing here would abort its warming.
-            if (opts.HasFlag(ExecutionOptions.Warmup))
+            if (opts.HasFlag(ExecutionOptions.Warmup) && !opts.HasFlag(ExecutionOptions.StrictWarmup))
             {
                 UInt256 charge = UInt256.Min(tx.Value, WorldState.GetBalance(tx.SenderAddress!));
                 if (!charge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in charge, spec);
