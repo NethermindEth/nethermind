@@ -37,8 +37,10 @@ public class MainProcessingModuleTests
     [Test]
     public void MainProcessingContext_ShouldKeepBlockCode_UntilThePreWarmerClearsCaches()
     {
+        StaticCodeCache rootCodeCache = new(MemoryAllowance.CodeCacheSize);
         using IContainer ctx = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new BlocksConfig()))
+            .AddSingleton<ICodeCache>(rootCodeCache)
             .Build();
 
         ILifetimeScope mainScope = (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext).LifetimeScope;
@@ -47,15 +49,16 @@ public class MainProcessingModuleTests
         ValueHash256 codeHash = ValueKeccak.Compute(bytecode);
         CodeInfo code = new(bytecode);
         blockCodeCache.Set(in codeHash, code);
-        // Leaves the block's copy as the only one.
-        StaticCodeCache.Instance.Clear();
-
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(rootCodeCache.Get(in codeHash), Is.SameAs(code), "wraps the root's cache");
             Assert.That(mainScope.Resolve<ICodeCache>(), Is.SameAs(blockCodeCache));
-            Assert.That(ctx.Resolve<ICodeCache>(), Is.SameAs(StaticCodeCache.Instance), "outside block processing");
-            Assert.That(blockCodeCache.Get(in codeHash), Is.SameAs(code));
+            Assert.That(ctx.Resolve<ICodeCache>(), Is.SameAs(rootCodeCache), "outside block processing");
         }
+
+        // Leaves the block's copy as the only one.
+        rootCodeCache.Clear();
+        Assert.That(blockCodeCache.Get(in codeHash), Is.SameAs(code));
 
         mainScope.Resolve<IBlockCachePreWarmer>().ClearCaches();
         Assert.That(blockCodeCache.Get(in codeHash), Is.Null);

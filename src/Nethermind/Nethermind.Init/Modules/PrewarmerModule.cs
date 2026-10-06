@@ -42,7 +42,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
         }
     }
 
-    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig) : Module, IMainProcessingModule
+    public class PrewarmerMainProcessingModule(IBlocksConfig blocksConfig, ICodeCache codeCache) : Module, IMainProcessingModule
     {
         protected override void Load(ContainerBuilder builder)
         {
@@ -76,7 +76,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
 
                 // Envs that must send every lookup to the world state, as witness generation does, register their own.
-                .AddSingleton<BlockCodeCache>(static _ => new BlockCodeCache(StaticCodeCache.Instance))
+                .AddSingleton<BlockCodeCache>(_ => new BlockCodeCache(codeCache))
                 .Bind<ICodeCache, BlockCodeCache>();
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
