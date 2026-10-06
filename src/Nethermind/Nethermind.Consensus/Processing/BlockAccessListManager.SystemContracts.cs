@@ -65,6 +65,15 @@ public partial class BlockAccessListManager
         PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
     }
 
+    public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip8253Enabled) return;
+
+        ZeroNonceStorageAccountsTransition transition = zeroNonceStorageAccountsTransition
+            ?? throw new InvalidOperationException($"EIP-8253 is enabled but no {nameof(ZeroNonceStorageAccountsTransition)} was provided.");
+        transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
+    }
+
     public void ApplyIdentityPrecompileTransition(BlockHeader header, IReleaseSpec spec)
     {
         if (!spec.IsEip7666Enabled) return;

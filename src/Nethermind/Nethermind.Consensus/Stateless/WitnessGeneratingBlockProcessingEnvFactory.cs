@@ -100,6 +100,7 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
                     ctx.Resolve<BalTxProcessorFactory>(),
+                    zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>(),
                     identityPrecompileTransition: ctx.Resolve<IdentityPrecompileTransition>()));
             if (recordsTransactionDiffs)
             {

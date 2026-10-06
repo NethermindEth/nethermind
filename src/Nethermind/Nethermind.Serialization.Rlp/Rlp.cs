@@ -481,14 +481,14 @@ namespace Nethermind.Serialization.Rlp
             if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 output[0] = (byte)(0x80 + length);
-                input.CopyTo(output[1..]);
+                Core.Extensions.Bytes.Copy(input, output[1..]);
                 return 1 + length;
             }
 
             int lengthOfLength = LengthOfLength(length);
             output[0] = (byte)(0xb7 + lengthOfLength);
             SerializeLength(length, output.Slice(1, lengthOfLength));
-            input.CopyTo(output[(1 + lengthOfLength)..]);
+            Core.Extensions.Bytes.Copy(input, output[(1 + lengthOfLength)..]);
             return 1 + lengthOfLength + length;
         }
 
@@ -778,7 +778,7 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(Address? item) => item is null ? 1 : 21;
 
-        public static int LengthOf(Bloom? bloom) => bloom is null ? 1 : 259;
+        public static int LengthOf(Bloom? bloom) => bloom is null || bloom.IsZeroLength ? 1 : 259;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static int LengthOfSequence(int contentLength)
@@ -891,7 +891,16 @@ namespace Nethermind.Serialization.Rlp
             // First test rejects either bound being negative.
             if ((bytesLeft | l.Limit) < 0 || (uint)count > (uint)bytesLeft || (uint)count > (uint)l.Limit)
             {
-                ThrowCountOverLimit((uint)count, bytesLeft, l);
+                // A limit handed to the throw is a struct holding references, so every inlined guard would keep a
+                // stack copy that the caller's prologue zeroes; the default limit is rebuilt behind the call instead.
+                if (limit is null)
+                {
+                    ThrowCountOverDefaultLimit((uint)count, bytesLeft);
+                }
+                else
+                {
+                    ThrowCountOverLimit((uint)count, bytesLeft, l);
+                }
             }
         }
 
@@ -905,6 +914,12 @@ namespace Nethermind.Serialization.Rlp
                 ThrowUnexpectedCount(actual, expected);
             }
         }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void ThrowCountOverDefaultLimit(uint count, int bytesLeft) =>
+            ThrowCountOverLimit(count, bytesLeft, new RlpLimit());
 
         [DoesNotReturn]
         [StackTraceHidden]

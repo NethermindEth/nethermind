@@ -45,6 +45,7 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
+    ZeroNonceStorageAccountsTransition? zeroNonceStorageAccountsTransition = null,
     IdentityPrecompileTransition? identityPrecompileTransition = null)
     : IBlockAccessListManager, IDisposable
 {

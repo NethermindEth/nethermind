@@ -158,12 +158,19 @@ public partial class BlockProcessor(
         BlockBody body = block.Body;
         BlockHeader header = block.Header;
 
+        // EIP-7668: set before tracing so receipts are built with the zero-length bloom instead of computing one.
+        // Genesis keeps the bloom it was declared with.
+        if (spec.IsEip7668Enabled && !block.IsGenesis) header.Bloom = Bloom.ZeroLength;
+
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _blockTransactionsExecutor.SetBlockExecutionContext(CreateBlockExecutionContext(block.Header, spec));
 
         _balManager.Setup(block);
+
+        // EIP-8253: the fork-block nonce bump precedes every pre-execution system call.
+        _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
 
         // EIP-7666: the fork-block code install precedes every pre-execution system call.
         if (spec.IsEip7666Enabled)
@@ -203,12 +210,16 @@ public partial class BlockProcessor(
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
         (Bloom BlockBloom, Hash256 ReceiptsRoot) receiptResults = default;
+        // EIP-7668: ProcessBlock set the zero-length header bloom and the receipts were built with it, so no blooms are computed.
+        bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
+        bool inBackground = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts);
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
-        using ParallelUnbalancedWork.BackgroundWork? bloomWork = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts)
-            ? StartBloomComputation(receipts)
-            : null;
-        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork?.ContinueWith(() => receiptResults =
-            (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)));
+        using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved ? StartBloomComputation(receipts) : null;
+        using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork is not null
+            ? bloomWork.ContinueWith(() => receiptResults = (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)))
+            : inBackground
+                ? ParallelUnbalancedWork.BackgroundFor(0, 1, SmallBloomOptions, _ => receiptResults = (Bloom.ZeroLength, CalculateReceiptsRoot(receipts, spec, block)))
+                : null;
 
         CommitState(spec);
 
@@ -219,7 +230,11 @@ public partial class BlockProcessor(
 
         if (receiptWork is null && TComputesCommitments.IsActive)
         {
-            CalculateBlooms(receipts);
+            if (!bloomsRemoved)
+            {
+                CalculateBlooms(receipts);
+            }
+
             header.ReceiptsRoot = CalculateReceiptsRoot(receipts, spec, block);
         }
 
@@ -232,7 +247,7 @@ public partial class BlockProcessor(
 
         _systemContractHandler.ProcessExecutionRequests(block, _stateProvider, receipts, spec);
 
-        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive);
+        ReceiptsTracer.EndBlockTrace(accumulateBlockBloom: receiptWork is null && TComputesCommitments.IsActive && !bloomsRemoved);
 
         if (TComputesCommitments.IsActive)
         {
