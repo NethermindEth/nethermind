@@ -434,6 +434,39 @@ public class DebugModuleTests
     }
 
     [Test]
+    public void DebugTraceBlockByNumber_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithExtraData([0x01]).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockFinder.FindBlock(selector).Returns(replacement);
+        _blockFinder.FindBlock(validated.Hash!).Returns(validated);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(_ =>
+        {
+            _blockFinder.Head.Returns(replacement);
+            return true;
+        });
+        _debugBridge.GetBlockTrace(Arg.Any<BlockParameter>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(Array.Empty<GethLikeTxTrace>());
+
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> actual = CreateModule().debug_traceBlockByNumber(selector);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            _blockFinder.Received(1).FindBlock(validated.Hash!);
+        }
+        else
+        {
+            _debugBridge.Received(1).GetBlockTrace(Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+                Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
+    }
+
+    [Test]
     public void DebugGetBadBlocks_WhenBadBlockStored_ReturnsBadBlock()
     {
         BadBlockStore badBlocksStore = null!;

@@ -413,7 +413,7 @@ public class DebugRpcModule(
 
         if (CanStreamStructLogs(options))
         {
-            Block? resolvedBlock = blockFinder.FindBlock(blockNumber);
+            Block? resolvedBlock = blockFinder.FindBlock(header.Hash!);
             if (resolvedBlock is null)
             {
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Block body not found for {blockNumber}", ErrorCodes.ResourceNotFound);
@@ -430,7 +430,7 @@ public class DebugRpcModule(
 
         try
         {
-            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(blockNumber, cancellationToken, options);
+            IReadOnlyCollection<GethLikeTxTrace>? blockTrace = debugBridge.GetBlockTrace(new BlockParameter(header.Hash!), cancellationToken, options);
 
             if (blockTrace is null)
                 return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail($"Trace is null for block {blockNumber}", ErrorCodes.ResourceNotFound);
