@@ -96,20 +96,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         if ((nuint)programCounter >= (nuint)stack.CodeLength)
             return EvmExceptionType.None;
 
-        delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] handlers = _opcodeHandlers;
+        nint[] handlers = GetPairedHandlers<TTracingInst>(_opcodeHandlers);
 
-        // Safety: the 256-entry opcode table remains pinned for the complete tail-call chain. Every bytecode read
-        // lands in the code or in the padding that follows CodeInfo.ExecutionCodeSpan, and a byte is a valid
-        // table index.
-        fixed (delegate*<ref EvmStack, ref TGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>* opcodeHandlers = &handlers[0])
+        // Safety: the paired table remains pinned for the complete tail-call chain. Every bytecode read lands in the
+        // code or in the padding that follows CodeInfo.ExecutionCodeSpan, and any two bytes are a valid table index.
+        fixed (nint* entries = handlers)
         {
-            nint* table = (nint*)opcodeHandlers;
+            nint* table = entries + FollowerHandlersLength;
             // Unscoped because a function pointer cannot declare its parameters scoped; the chain ends before this call does.
             DispatchState state = new() { Gas = ref Unsafe.AsRef(in gas), OpcodeHandlers = table, Vm = this, Memory = ref VmState.Memory };
 
-            byte opcode = Unsafe.Add(ref stack.Code, programCounter);
+            ushort opcodes = Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref stack.Code, programCounter));
             EvmExceptionType exceptionType =
-                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcode])(
+                ((delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[opcodes])(
                     ref stack, GetExecutionGas(ref gas), ref state, ref Unsafe.Add(ref stack.Code, programCounter), stack.Head, table, ref stack.Code, ref stack.Bottom);
             stack.Head = state.Head;
             programCounter = state.FinalProgramCounter;
@@ -239,7 +238,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             // Padded code reads STOP past its end, so wherever a successful opcode leaves the counter it resolves to a
             // handler. A failed one can leave it anywhere, so this read waits for the status.
             ip = ref Unsafe.Add(ref code, pc);
-            nint next = handlers[ip];
+            nint next = handlers[PairAt(ref ip)];
 
             Debug.Assert(state.Vm.ReturnData is null,
                 "A handler that stages ReturnData must report a non-None status, or dispatch will continue past the halt");

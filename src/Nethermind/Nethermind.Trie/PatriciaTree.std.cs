@@ -14,4 +14,12 @@ public partial class PatriciaTree
 
     /// <summary>How <see cref="ShouldUpdateChild"/> is inlined: left to the JIT.</summary>
     private const MethodImplOptions ShouldUpdateChildInlining = default;
+
+    /// <summary>Whether a popped write-walk frame is cleared, so the pooled stack keeps no node alive.</summary>
+    private static bool ReleasesPoppedFrames => true;
+
+    /// <summary>Whether a trie write may stop climbing at this level, the rest of the climb changing nothing: never.</summary>
+    /// <remarks>A node can be shared with the trie store's caches here, so a dirty parent says nothing about its ancestors.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool IsUnchangedPendingLevel(TrieNode parent, int childIndex, TrieNode? originalChild, TrieNode? child) => false;
 }

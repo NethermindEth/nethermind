@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Text;
 using Nethermind.Evm.CodeAnalysis;
@@ -95,6 +96,51 @@ public class GuestJumpDestinationTests
         byte stackMemory = 0;
         EvmStack stack = new(0, ref stackMemory, new byte[] { JUMPDEST }, null);
         Assert.That(stack.IsJumpDestination(0), Is.False);
+    }
+
+    [Test]
+    public void Call_destination_switch_updates_the_guest_bit_test()
+    {
+        byte[] code = [PUSH1, (byte)Instruction.CALLDEST, (byte)Instruction.CALLDEST];
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+
+        stack.UseCallDestinations();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stack.IsAnalyzedJumpDestination(1), Is.False, "PUSH data");
+            Assert.That(stack.IsAnalyzedJumpDestination(2), Is.True, "CALLDEST");
+        }
+    }
+
+    [TestCase(false, TestName = "Code without a CALLDEST byte keeps the incremental bitmap")]
+    [TestCase(true, TestName = "Code with a CALLDEST byte takes a complete bitmap")]
+    public void Call_destinations_keep_the_incremental_bitmap_only_without_a_calldest_byte(bool hasCallDest)
+    {
+        CodeInfo codeInfo = new(new byte[] { PUSH1, hasCallDest ? (byte)Instruction.CALLDEST : (byte)0, JUMPDEST });
+
+        Assert.That(ReferenceEquals(codeInfo.JumpAndCallDestinationBitmap, codeInfo.IncrementalJumpBitmap), Is.EqualTo(!hasCallDest));
+    }
+
+    [Test]
+    public void Complete_bitmap_misses_do_not_advance_the_incremental_cursor()
+    {
+        // The PUSH32 data JUMPDEST lies too far past the real one for it to anchor a scan, so a scan resumes at the cursor.
+        const int dataJumpDest = 100;
+        byte[] code = [PUSH1, 0, JUMPDEST, .. Enumerable.Repeat((byte)Instruction.PUSH32, dataJumpDest), (byte)Instruction.CALLDEST];
+        code[dataJumpDest] = JUMPDEST;
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack enabled = new(0, ref stackMemory, code, codeInfo);
+        enabled.UseCallDestinations();
+        Assert.That(enabled.IsJumpDestination(dataJumpDest), Is.False, "PUSH data");
+        Assert.That(enabled.AnalyzeJumpDestination(dataJumpDest, ref code[0]), Is.False, "PUSH data, jump handler");
+
+        EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+        Assert.That(disabled.IsKnownJumpDestination(2), Is.False, "the misses left the plain bitmap unanalyzed");
+        Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
     }
 
     /// <remarks>
@@ -231,7 +277,27 @@ public class GuestJumpDestinationTests
         AssertQueriesMatch(code, expected, "backward", backward);
         AssertQueriesMatch(code, expected, "shuffled", Shuffled(code.Length));
         AssertQueriesMatch(code, expected, "forward then backward", [.. forward, .. backward]);
-        if (code[0] != (byte)Instruction.STOP) AssertFullyAnalyzedQueriesMatch(code, expected, Shuffled(code.Length));
+        if (code[0] != (byte)Instruction.STOP)
+        {
+            AssertJumpHandlerQueriesMatch(code, expected, backward);
+            AssertJumpHandlerQueriesMatch(code, expected, Shuffled(code.Length));
+            AssertFullyAnalyzedQueriesMatch(code, expected, Shuffled(code.Length));
+        }
+    }
+
+    /// <summary>Queries <paramref name="order"/> the way the guest jump handlers do, analyzing only what the bit test misses.</summary>
+    private static void AssertJumpHandlerQueriesMatch(byte[] code, long[] expected, int[] order)
+    {
+        CodeInfo codeInfo = new(code);
+        byte stackMemory = 0;
+        EvmStack stack = new(0, ref stackMemory, code, codeInfo);
+        foreach (int i in order)
+        {
+            bool isJumpDestination = stack.IsKnownJumpDestination(i) ||
+                stack.TryMarkJumpDestination(i, ref code[0]) ||
+                stack.AnalyzeJumpDestination(i, ref code[0]);
+            Assert.That(isJumpDestination, Is.EqualTo(JumpDestinationAnalyzer.IsJumpDestination(expected, i)), $"jump handler {i}");
+        }
     }
 
     /// <summary>
@@ -251,7 +317,7 @@ public class GuestJumpDestinationTests
         foreach (int i in order)
         {
             bool isJumpDestination = JumpDestinationAnalyzer.IsJumpDestination(expected, i);
-            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i);
+            bool jumpHandler = stack.IsKnownJumpDestination(i) || stack.TryMarkJumpDestination(i, ref code[0]) || stack.AnalyzeJumpDestination(i, ref code[0]);
             Assert.That(jumpHandler, Is.EqualTo(isJumpDestination), $"jump handler {i}");
             Assert.That(stack.IsJumpDestination(i), Is.EqualTo(isJumpDestination), $"stack {i}");
             Assert.That(codeInfo.AnalyzeJump(i, bitmap, code), Is.EqualTo(isJumpDestination), $"analyze {i}");
