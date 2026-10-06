@@ -16,9 +16,11 @@ namespace Nethermind.State.Flat.History.Changesets;
 internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anchor)
 {
     /// <summary>Reconstructs every live storage root and the account root before allowing a scratch replay base.
-    /// Every disagreement is a <see cref="ScratchStateUnusableException"/>: the imported rows are wrong and stay wrong.
-    /// That includes a live slot with no live account to hold it: the replay reads slots without their account, so a
-    /// re-created account would start from it.</summary>
+    /// Every disagreement is a <see cref="ScratchStateUnusableException"/>: the imported rows are wrong and stay wrong.</summary>
+    /// <remarks>That includes a live slot with no live account to hold it: the replay reads slots without their account,
+    /// so a re-created account would start from it. A clear marker always comes with an account row, because flat state
+    /// records one only when an account is deleted or created, so a slot under a prefix with no account row is checked
+    /// without one.</remarks>
     public void VerifyAnchor(Hash256 expectedRoot, bool rlpWrappedSlots, CancellationToken token)
     {
         foreach (Columns column in new[] { Columns.Accounts, Columns.Storage, Columns.Clears })
@@ -95,7 +97,7 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             ReadOnlySpan<byte> key = slots.CurrentKey;
             if (key.Length != BaseFlatPersistence.StorageKeyLength) throw new ScratchStateUnusableException("Invalid scratch storage key.");
             if (key[..addressLength].SequenceCompareTo(prefix) >= 0) return true;
-            if (!ReadLiveSlot(slots.CurrentValue, 0, rlpWrapped).IsEmpty)
+            if (!ReadLiveSlot(key, slots.CurrentValue, 0, rlpWrapped).IsEmpty)
                 throw new ScratchStateUnusableException($"Scratch holds a live slot under {Convert.ToHexString(key[..addressLength])} with no account at {anchor}.");
             hasSlot = slots.MoveNext();
         }
@@ -117,7 +119,7 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             ReadOnlySpan<byte> key = slots.CurrentKey;
             if (key.Length != BaseFlatPersistence.StorageKeyLength) throw new ScratchStateUnusableException("Invalid scratch storage key.");
             if (!key[..addressLength].SequenceEqual(account.Bytes[..addressLength])) break;
-            ReadOnlySpan<byte> value = ReadLiveSlot(slots.CurrentValue, clearedAt, rlpWrapped);
+            ReadOnlySpan<byte> value = ReadLiveSlot(key, slots.CurrentValue, clearedAt, rlpWrapped);
             if (value.IsEmpty) continue;
             Rlp.Encode(encoded, 0, value);
             storage.Add(new ValueHash256(key[addressLength..]), encoded[..Rlp.LengthOf(value)]);
@@ -126,12 +128,12 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
         return hasSlot;
     }
 
-    private ReadOnlySpan<byte> ReadLiveSlot(ReadOnlySpan<byte> record, ulong clearedAt, bool rlpWrapped)
+    private ReadOnlySpan<byte> ReadLiveSlot(ReadOnlySpan<byte> key, ReadOnlySpan<byte> record, ulong clearedAt, bool rlpWrapped)
     {
         if (record.Length < sizeof(ulong) || record.Length > sizeof(ulong) + BaseFlatPersistence.RlpSlotValueBufferSize)
-            throw new ScratchStateUnusableException("Invalid scratch storage value.");
+            throw new ScratchStateUnusableException($"Invalid scratch storage value at {Convert.ToHexString(key)}.");
         ulong writtenAt = BinaryPrimitives.ReadUInt64BigEndian(record);
-        if (writtenAt > anchor) throw new ScratchStateUnusableException("Scratch slot is newer than its anchor.");
+        if (writtenAt > anchor) throw new ScratchStateUnusableException($"Scratch slot {Convert.ToHexString(key)} is newer than its anchor.");
         if (writtenAt < clearedAt) return [];
         ReadOnlySpan<byte> value = record[sizeof(ulong)..];
         if (value.IsEmpty) return [];
@@ -141,14 +143,14 @@ internal sealed class BulkFillScratchVerifier(IColumnsDb<Columns> db, ulong anch
             {
                 RlpReader decoder = new(value);
                 value = decoder.DecodeByteArraySpan();
-                if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException("Trailing bytes in a scratch slot.");
+                if (decoder.Position != decoder.Length) throw new ScratchStateUnusableException($"Trailing bytes in the scratch slot {Convert.ToHexString(key)}.");
             }
             catch (RlpException exception)
             {
-                throw new ScratchStateUnusableException("Invalid scratch slot value.", exception);
+                throw new ScratchStateUnusableException($"Invalid scratch slot value at {Convert.ToHexString(key)}.", exception);
             }
         }
-        if (value.Length > Hash256.Size) throw new ScratchStateUnusableException("Scratch slot exceeds 256 bits.");
+        if (value.Length > Hash256.Size) throw new ScratchStateUnusableException($"Scratch slot {Convert.ToHexString(key)} exceeds 256 bits.");
         return value.TrimStart((byte)0);
     }
 }

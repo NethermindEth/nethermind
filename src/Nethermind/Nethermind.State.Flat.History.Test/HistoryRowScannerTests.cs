@@ -447,7 +447,12 @@ public class HistoryRowScannerTests
             Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
                 "a replay reads a slot without its account, so a re-created account would start from the stale value");
         else
+        {
             Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+            UInt256 value = UInt256.MaxValue;
+            new BulkFillStateReader(scratch, new StateId(10, accountsTree.RootHash), rlpWrapped).TryGetStorageRaw(orphan, slot, ref value);
+            Assert.That(value, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
