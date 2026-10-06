@@ -35,7 +35,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
 {
     private readonly ILogger _logger = logManager.GetClassLogger<EngineDriver>();
     private volatile bool _isAvailable = true;
-    private Task<PayloadStatusV1>? _pendingForkchoice;
+    private Task? _pendingForkchoice;
 
     /// <summary>Whether the most recent engine call returned a verdict.</summary>
     public bool IsAvailable => _isAvailable;
@@ -70,16 +70,17 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
         ExecutionPayloadV3 payload = PayloadConverter.ToExecutionPayloadV3(body.ExecutionPayload!);
 
         Interlocked.Increment(ref Metrics.NewPayloadCallsCount);
-        long started = Stopwatch.GetTimestamp();
         // EIP-4788: the payload's parent_beacon_block_root is the parent root of the beacon block carrying it.
         Hash256?[] versionedHashes = PayloadConverter.ToBlobVersionedHashes(body.BlobKzgCommitments);
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(body.ExecutionRequests);
         return await CallEngineAsync("newPayloadV4", _logger.IsInfo ? $"{payload.BlockNumber} ({payload.BlockHash?.ToShortString()})" : null, async () =>
         {
             detector.ThrowIfStoodDown();
+            long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV4(payload, versionedHashes, message.ParentRoot, requests);
-            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            return UnwrapNewPayload(result.Result, result.Data, "newPayloadV4");
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)elapsed.TotalMilliseconds);
+            return (UnwrapNewPayload(result.Result, result.Data, "newPayloadV4"), elapsed);
         }, body.Graffiti, payload.BlockNumber);
     }
 
@@ -101,11 +102,12 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
             // execution-apis paris.md engine_forkchoiceUpdatedV1 "timeout: 8s"; Task.Run keeps synchronous EL work inside the deadline.
-            Task<PayloadStatusV1> pending = Task.Run(() => SendForkchoiceUpdatedAsync(state));
+            Task<(PayloadStatusV1 Status, TimeSpan Elapsed)> pending = Task.Run(() => SendForkchoiceUpdatedAsync(state));
             _pendingForkchoice = pending;
             _ = pending.ContinueWith(static task => _ = task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
-            return LastForkchoiceStatus = await pending.WaitAsync(ForkchoiceTimeout);
+            (PayloadStatusV1 status, TimeSpan elapsed) = await pending.WaitAsync(ForkchoiceTimeout);
+            return (LastForkchoiceStatus = status, elapsed);
         }, blockNumber: _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null);
 
     private string FormatExecutionBlock(Hash256 hash) =>
@@ -113,21 +115,25 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
             ? $"{header.Number} ({hash.ToShortString()})"
             : hash.ToShortString();
 
-    private async Task<PayloadStatusV1> SendForkchoiceUpdatedAsync(ForkchoiceStateV1 state)
+    private async Task<(PayloadStatusV1 Status, TimeSpan Elapsed)> SendForkchoiceUpdatedAsync(ForkchoiceStateV1 state)
     {
         // V3 stays valid after Amsterdam only without payload attributes: execution-apis amsterdam.md "Osaka API" bounds only the payload timestamp.
         if (clock.CurrentEpoch < spec.GloasForkEpoch)
         {
             detector.ThrowIfStoodDown();
+            long startedV3 = Stopwatch.GetTimestamp();
             ResultWrapper<ForkchoiceUpdatedV1Result> v3 = await detector.InnerEngine.engine_forkchoiceUpdatedV3(state);
-            return Unwrap(v3.Result, v3.Data?.PayloadStatus, "forkchoiceUpdatedV3");
+            TimeSpan elapsedV3 = Stopwatch.GetElapsedTime(startedV3);
+            return (Unwrap(v3.Result, v3.Data?.PayloadStatus, "forkchoiceUpdatedV3"), elapsedV3);
         }
 
         // specs/gloas/fork-choice.md notify_forkchoice_updated: custody_columns is the node's custody set.
         BitArray? columns = ToCustodyColumnBits(custody.Current);
         detector.ThrowIfStoodDown();
+        long startedV4 = Stopwatch.GetTimestamp();
         ResultWrapper<ForkchoiceUpdatedV1Result> v4 = await detector.InnerEngine.engine_forkchoiceUpdatedV4(state, null, columns);
-        return Unwrap(v4.Result, v4.Data?.PayloadStatus, "forkchoiceUpdatedV4");
+        TimeSpan elapsedV4 = Stopwatch.GetElapsedTime(startedV4);
+        return (Unwrap(v4.Result, v4.Data?.PayloadStatus, "forkchoiceUpdatedV4"), elapsedV4);
     }
 
     /// <summary>The <c>CustodyColumnBits</c> wire form: bit <c>i</c> set when column <c>i</c> is custodied.</summary>
@@ -174,15 +180,16 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     public async Task<PayloadStatusV1> NewPayload(ExecutionPayloadGloas payload, Hash256?[] versionedHashes, Hash256 parentBeaconBlockRoot, ExecutionRequestsGloas executionRequests)
     {
         Interlocked.Increment(ref Metrics.NewPayloadCallsCount);
-        long started = Stopwatch.GetTimestamp();
         ExecutionPayloadV4 converted = PayloadConverter.ToExecutionPayloadV4(payload);
         byte[][] requests = PayloadConverter.ToExecutionRequestsList(executionRequests);
         return await CallEngineAsync("newPayloadV5", _logger.IsInfo ? $"{converted.BlockNumber} ({converted.BlockHash?.ToShortString()})" : null, async () =>
         {
             detector.ThrowIfStoodDown();
+            long started = Stopwatch.GetTimestamp();
             ResultWrapper<PayloadStatusV1> result = await detector.InnerEngine.engine_newPayloadV5(converted, versionedHashes, parentBeaconBlockRoot, requests);
-            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            return UnwrapNewPayload(result.Result, result.Data, "newPayloadV5");
+            TimeSpan elapsed = Stopwatch.GetElapsedTime(started);
+            Interlocked.Add(ref Metrics.NewPayloadMillisecondsCount, (ulong)elapsed.TotalMilliseconds);
+            return (UnwrapNewPayload(result.Result, result.Data, "newPayloadV5"), elapsed);
         }, blockNumber: converted.BlockNumber);
     }
 
@@ -227,7 +234,7 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// <summary>Runs one engine call and records whether it returned a verdict.</summary>
     /// <exception cref="EngineUnavailableException">The call produced no verdict, threw, or a timed-out forkchoice update is still running.</exception>
     /// <exception cref="OperationCanceledException">An external consensus client took over the engine API.</exception>
-    private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<PayloadStatusV1>> call, Hash256? graffiti = null, ulong? blockNumber = null)
+    private async Task<PayloadStatusV1> CallEngineAsync(string method, string? details, Func<Task<(PayloadStatusV1 Status, TimeSpan Elapsed)>> call, Hash256? graffiti = null, ulong? blockNumber = null)
     {
         try
         {
@@ -239,9 +246,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
                 string graffitiText = graffiti is null ? "" : $"{string.Empty,31}| Graffiti:   {graffiti.Bytes.ToCleanUtf8String()}";
                 _logger.Info($"Beacon {operation}:{(operation == "New Block" ? "    " : "   ")}{details}{graffitiText}");
             }
-            long started = Stopwatch.GetTimestamp();
-            PayloadStatusV1 status = await call();
-            if (_logger.IsInfo) _logger.Info($"Beacon Received:   {blockNumber?.ToString() ?? "?",10}         | {Stopwatch.GetElapsedTime(started).TotalMilliseconds,10:N1} ms  | {operation,-10} {status.Status}");
+            (PayloadStatusV1 status, TimeSpan elapsed) = await call();
+            if (_logger.IsInfo) _logger.Info($"Beacon Received:   {blockNumber?.ToString() ?? "?",10}         | {elapsed.TotalMilliseconds,10:N1} ms  | {operation,-10} {status.Status}");
             _isAvailable = true;
             return status;
         }
