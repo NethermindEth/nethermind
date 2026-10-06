@@ -140,7 +140,7 @@ public class JsonWriterGeneratorTests
             {
                 public int Plain { get; init; } = 1;
                 [JsonPropertyName("line\nbreak \"quoted\" \\ back")] public string Escaped { get; init; } = "e";
-                [JsonPropertyName("café <tag>")] public string NonAscii { get; init; } = "n";
+                [JsonPropertyName("caf\u00e9 <tag>")] public string NonAscii { get; init; } = "n";
             }
             """);
         yield return Case("converters, nested objects and object-typed values", """
