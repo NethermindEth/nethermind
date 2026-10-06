@@ -57,6 +57,22 @@ public static class Metrics
     [Description("Total number of failed block seals")]
     public static long FailedBlockSeals { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions block processing took over from their pre-warm run")]
+    public static long PrewarmHandoffs { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed because state their pre-warm run read had changed")]
+    public static long PrewarmHandoffsRejected { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed for lack of a usable pre-warm run")]
+    public static long PrewarmHandoffsMissing { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed after their pre-warm run failed to apply")]
+    public static long PrewarmHandoffFailures { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
