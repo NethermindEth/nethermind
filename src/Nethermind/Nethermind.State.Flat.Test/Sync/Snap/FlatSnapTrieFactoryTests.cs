@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
@@ -62,6 +65,31 @@ public class FlatSnapTrieFactoryTests
         factory.EnsureInitialize();
 
         persistence.Received(1).Clear();
+    }
+
+    [Test]
+    public void EnsureInitialize_WarnsOnlyWhenDiscardingState_AndLogsWipeDuration([Values] bool hasState)
+    {
+        RocksDbPersistence persistence = new(new SnapshotableMemColumnsDb<FlatDbColumns>(), LimboLogs.Instance);
+        if (hasState)
+        {
+            using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.Sync, StateId.Sync, Nethermind.Core.WriteFlags.DisableWAL);
+            batch.SetAccountRaw(Keccak.Zero.ValueHash256, new Account(1));
+        }
+
+        TestLogger logger = new();
+        FlatSnapTrieFactory factory = new(persistence, Substitute.For<ISyncConfig>(), new OneLoggerLogManager(new ILogger(logger)));
+
+        factory.EnsureInitialize();
+
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IFlatIterator iterator = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(iterator.MoveNext(), Is.False);
+            Assert.That(logger.LogList.Count(static l => l.Contains("cannot resume")), Is.EqualTo(hasState ? 1 : 0));
+            Assert.That(logger.LogList.Count(static l => l.StartsWith("Cleared database in")), Is.EqualTo(1));
+        }
     }
 
     [Test]

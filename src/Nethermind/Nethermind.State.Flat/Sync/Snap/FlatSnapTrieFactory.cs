@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,8 +26,20 @@ public class FlatSnapTrieFactory(IPersistence persistence, ISyncConfig syncConfi
 
     public void EnsureInitialize()
     {
+        if (_logger.IsWarn && HasAccounts())
+            _logger.Warn("Flat snap sync cannot resume a previous run: discarding the state already in the database and restarting from scratch. Clearing a large database can take several minutes.");
+
         if (_logger.IsInfo) _logger.Info("Clearing database");
+        long startTime = Stopwatch.GetTimestamp();
         persistence.Clear();
+        if (_logger.IsInfo) _logger.Info($"Cleared database in {Stopwatch.GetElapsedTime(startTime).TotalSeconds:N1}s");
+    }
+
+    private bool HasAccounts()
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        using IPersistence.IFlatIterator accounts = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
+        return accounts.MoveNext();
     }
 
     public void FinalizeSync() => persistence.Flush();
