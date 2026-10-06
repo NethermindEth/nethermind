@@ -47,6 +47,7 @@ public static class EraManifestGenerator
     /// <returns>A description of each missing, extra or mismatched manifest line; empty when the manifests match.</returns>
     /// <remarks>
     /// Lines are compared by position because <see cref="EraStore"/> looks up the checksum of an epoch by its offset from the first epoch.
+    /// Only the hash column is compared, matching the importer; older exports can contain stale file names or just hashes.
     /// </remarks>
     /// <exception cref="EraException">The era1 files cannot be processed; see <see cref="GenerateAsync"/>.</exception>
     public static async Task<IReadOnlyList<string>> VerifyAsync(string directory, string network, IFileSystem fileSystem, CancellationToken cancellation = default)
@@ -74,11 +75,25 @@ public static class EraManifestGenerator
             {
                 string? expected = i < expectedLines.Length ? expectedLines[i] : null;
                 string? actual = i < actualLines.Length ? actualLines[i] : null;
-                if (!string.Equals(expected, actual, StringComparison.OrdinalIgnoreCase))
+                if (!HasSameHash(expected, actual))
                 {
                     mismatches.Add($"{manifestFileName} line {i + 1}: expected \"{expected ?? "<none>"}\", found \"{actual ?? "<none>"}\"");
                 }
             }
+        }
+    }
+
+    private static bool HasSameHash(string? expected, string? actual)
+    {
+        if (expected is null || actual is null) return false;
+        try
+        {
+            return EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(expected)
+                == EraPathUtils.ExtractHashFromAccumulatorAndCheckSumEntry(actual);
+        }
+        catch (Exception e) when (e is FormatException or ArgumentException)
+        {
+            return false;
         }
     }
 

@@ -167,6 +167,7 @@ public class EraManifestGeneratorTests
         DuplicatedChecksum,
         ExtraChecksum,
         MissingChecksum,
+        MalformedChecksum,
     }
 
     [Test]
@@ -194,6 +195,9 @@ public class EraManifestGeneratorTests
             case ManifestEdit.MissingChecksum:
                 lines.RemoveAt(lines.Count - 1);
                 break;
+            case ManifestEdit.MalformedChecksum:
+                lines[2] = "not-a-hash";
+                break;
         }
 
         await File.WriteAllLinesAsync(manifestPath, lines);
@@ -201,5 +205,38 @@ public class EraManifestGeneratorTests
         IReadOnlyList<string> mismatches = await EraManifestGenerator.VerifyAsync(directory, EraTestModule.TestNetwork, FileSystem);
 
         Assert.That(mismatches, edit == ManifestEdit.None ? Is.Empty : Is.Not.Empty);
+    }
+
+    public enum ManifestFormat
+    {
+        LegacyFileNames,
+        HashOnly,
+        HashWithoutPrefix,
+    }
+
+    [Test]
+    public async Task VerifyAsync_ImporterCompatibleManifest_AcceptsHashes([Values] ManifestFormat format)
+    {
+        await using IContainer container = await EraTestModule.CreateExportedEraEnv(64);
+        string directory = container.ResolveTempDirPath();
+        foreach (string manifestFile in new[] { EraExporter.AccumulatorFileName, EraExporter.ChecksumsFileName })
+        {
+            string path = Path.Combine(directory, manifestFile);
+            string[] lines = await File.ReadAllLinesAsync(path);
+            for (int i = 0; i < lines.Length; i++)
+            {
+                string hash = lines[i].Split(' ')[0];
+                lines[i] = format switch
+                {
+                    ManifestFormat.LegacyFileNames => $"{hash} {EraTestModule.TestNetwork}-{i:D5}-00000000.era1",
+                    ManifestFormat.HashOnly => hash,
+                    ManifestFormat.HashWithoutPrefix => hash[2..],
+                    _ => throw new ArgumentOutOfRangeException(nameof(format)),
+                };
+            }
+            await File.WriteAllLinesAsync(path, lines);
+        }
+
+        Assert.That(await EraManifestGenerator.VerifyAsync(directory, EraTestModule.TestNetwork, FileSystem), Is.Empty);
     }
 }
