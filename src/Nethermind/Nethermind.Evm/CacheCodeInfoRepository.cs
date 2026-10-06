@@ -12,7 +12,7 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CacheCodeInfoRepository : ICodeInfoRepository
+public partial class CacheCodeInfoRepository : ICodeInfoRepository
 {
     private readonly IWorldState _worldState;
     private readonly ICodeCache _codeCache;
@@ -37,16 +37,6 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     /// </remarks>
     private CodeInfo? _lastResolved;
 
-    /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
-    /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
-    /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
-    /// re-read and re-analysis on the next miss.</remarks>
-#if ZK_EVM
-    // The guest's per-block GuestCodeCache never evicts, so a memo hit has no ticker to refresh.
-    private const int MemoHitsPerTickerRefresh = int.MaxValue;
-#else
-    private const int MemoHitsPerTickerRefresh = 64;
-#endif
     private int _memoHits;
 
     private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)
