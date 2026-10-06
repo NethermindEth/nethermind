@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.SnapSync
                 bool rangePhaseFinished = IsSnapGetRangesFinished();
                 if (rangePhaseFinished)
                 {
-                    _logger.Info("Snap - State Ranges (Phase 1) finished.");
+                    _logger.Info("Snap - State Ranges (Phase 1 of 2) finished.");
                     _snapTrieFactory.MarkRangePhaseFinished();
                 }
 
@@ -519,7 +519,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             if (!_snapTrieFactory.IsRangePhaseFinished()) return;
 
-            _logger.Info($"Snap - State Ranges (Phase 1) is finished.");
+            _logger.Info($"Snap - State Ranges (Phase 1 of 2) is finished.");
             foreach (KeyValuePair<ValueHash256, AccountRangePartition> partition in AccountRangePartitions)
             {
                 partition.Value.MoreAccountsToRight = false;
@@ -550,7 +550,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (_logger.IsInfo)
                 {
-                    string stateRangesReport = $"Snap         State Ranges (Phase 1): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
+                    string stateRangesReport = $"Snap         State Ranges (Phase 1 of 2): ({progress,8:P2}) {Progress.GetMeter(progress, 1)}";
                     if (progress >= 0.995)
                     {
                         long queuedStorage = StoragesToRetrieve.Count;

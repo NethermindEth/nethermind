@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -139,7 +140,8 @@ public class ProgressTrackerTests
     public void Will_mark_range_phase_finished_when_ranges_drain()
     {
         ISnapTrieFactory snapTrieFactory = Substitute.For<ISnapTrieFactory>();
-        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory);
+        TestLogger logger = new();
+        using ProgressTracker progressTracker = CreateProgressTracker(snapTrieFactory: snapTrieFactory, logManager: new OneLoggerLogManager(new ILogger(logger)));
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         Assert.That(request!.AccountRangeRequest, Is.Not.Null);
@@ -150,6 +152,11 @@ public class ProgressTrackerTests
         Assert.That(finished, Is.True);
 
         snapTrieFactory.Received(1).MarkRangePhaseFinished();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Has.Some.StartsWith("Snap         State Ranges (Phase 1 of 2): ("));
+            Assert.That(logger.LogList, Has.Some.EqualTo("Snap - State Ranges (Phase 1 of 2) finished."));
+        }
     }
 
     [Test]
@@ -339,10 +346,10 @@ public class ProgressTrackerTests
         }
     }
 
-    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null)
+    private ProgressTracker CreateProgressTracker(int accountRangePartition = 1, bool enableStorageSplits = false, ISnapTrieFactory? snapTrieFactory = null, ILogManager? logManager = null)
     {
         BlockTree blockTree = Build.A.BlockTree().WithStateRoot(Keccak.EmptyTreeHash).OfChainLength(2).TestObject;
         SyncConfig syncConfig = new TestSyncConfig() { SnapSyncAccountRangePartitionCount = accountRangePartition, EnableSnapSyncStorageRangeSplit = enableStorageSplits };
-        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), LimboLogs.Instance);
+        return new(snapTrieFactory ?? Substitute.For<ISnapTrieFactory>(), syncConfig, new StateSyncPivot(blockTree, syncConfig, LimboLogs.Instance), logManager ?? LimboLogs.Instance);
     }
 }

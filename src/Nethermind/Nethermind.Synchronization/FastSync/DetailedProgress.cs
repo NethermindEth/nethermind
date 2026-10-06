@@ -47,10 +47,18 @@ namespace Nethermind.Synchronization.FastSync
         internal (DateTime small, DateTime full) LastReportTime = (DateTime.MinValue, DateTime.MinValue);
 
         private readonly IChainEstimations _chainEstimations;
+        private readonly bool _isSnapHealing;
 
-        public DetailedProgress(ulong chainId, byte[]? serializedInitialState)
+        /// <param name="chainId">The chain whose estimated state size is used for the full state percentage.</param>
+        /// <param name="serializedInitialState">Progress persisted by a previous run, or <c>null</c>.</param>
+        /// <param name="isSnapHealing">
+        /// Whether this state sync heals a snap-synced state. Most of the state then arrives through snap ranges,
+        /// so the bytes counted here are not comparable to the full state size and no percentage is reported.
+        /// </param>
+        public DetailedProgress(ulong chainId, byte[]? serializedInitialState, bool isSnapHealing = false)
         {
             _chainEstimations = ChainSizes.CreateChainSizeInfo(chainId);
+            _isSnapHealing = isSnapHealing;
 
             LoadFromSerialized(serializedInitialState);
         }
@@ -72,7 +80,7 @@ namespace Nethermind.Synchronization.FastSync
 
                 Metrics.StateSynced = DataSize;
                 string dataSizeInfo = $"{(decimal)DataSize / 1000 / 1000,9:F2} MB";
-                if (_chainEstimations.StateSize is not null)
+                if (!_isSnapHealing && _chainEstimations.StateSize is not null)
                 {
                     float percentage = Math.Min(1, (float)DataSize / _chainEstimations.StateSize.Value);
                     dataSizeInfo = string.Concat(dataSizeInfo,
@@ -82,9 +90,10 @@ namespace Nethermind.Synchronization.FastSync
 
                 if (logger.IsInfo)
                 {
+                    string label = _isSnapHealing ? "State Sync (Phase 2 of 2, healing)" : "State Sync ";
                     string stateSyncReport = logger.IsDebug ?
-                        $"State Sync  {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
-                        $"State Sync  {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
+                        $"{label} {dataSizeInfo} branches: {branchProgress.Progress:P2} | kB/s: {savedKBytesPerSecond,5:F0} | accounts {SavedAccounts} | nodes {SavedNodesCount} | pending: {pendingRequestsCount,3}" :
+                        $"{label} {dataSizeInfo} branch {branchProgress.Progress:P2} | acc {SavedAccounts} | nodes {SavedNodesCount}";
                     if (_lastStateSyncReport != stateSyncReport)
                     {
                         _lastStateSyncReport = stateSyncReport;

@@ -1,8 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
+using Nethermind.Core.Test;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Synchronization.FastSync;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.FastSync
@@ -91,6 +97,27 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             progress.ReportSynced(0, -1, -1, NodeDataType.State, NodeProgressState.Saved);
             Assert.That(progress.LastProgress, Is.EqualTo((decimal)256 / 256), "6");
+        }
+
+        [Test]
+        public void State_sync_report_labels_snap_healing_without_full_state_percentage([Values] bool snapSync)
+        {
+            IBlockTree blockTree = Substitute.For<IBlockTree>();
+            blockTree.NetworkId.Returns(BlockchainIds.Mainnet);
+            TreeSync treeSync = new(new MemDb(), Substitute.For<ITreeSyncStore>(), blockTree, Substitute.For<IStateSyncPivot>(), new SyncConfig { SnapSync = snapSync }, LimboLogs.Instance);
+            DetailedProgress data = treeSync.GetDetailedProgress();
+            data.DataSize = 5_000_000;
+            TestLogger logger = new() { IsDebug = false, IsTrace = false };
+
+            data.DisplayProgressReport(0, new BranchProgress(7, LimboTraceLogger.Instance), new ILogger(logger));
+
+            string report = logger.LogList[^1];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(report, snapSync ? Does.StartWith("State Sync (Phase 2 of 2, healing) ") : Does.StartWith("State Sync  "));
+                Assert.That(report, snapSync ? Does.Not.Contain(" MB (") : Does.Contain(" MB ("));
+                Assert.That(report, Does.Contain("5.00 MB"));
+            }
         }
     }
 }
