@@ -510,7 +510,7 @@ public partial class GossipRouterTests
                 break;
             case EnvelopeCase.TooManyWithdrawals or EnvelopeCase.MaxWithdrawals:
                 int withdrawals = Presets.MaxWithdrawalsPerPayload + (testCase == EnvelopeCase.TooManyWithdrawals ? 1 : 0);
-                message.Payload!.Withdrawals = [.. Enumerable.Range(0, withdrawals).Select(static i => new Nethermind.BeaconChain.Types.Withdrawal { Index = (ulong)i, Address = Address.Zero })];
+                message.Payload!.Withdrawals = [.. Enumerable.Range(0, withdrawals).Select(static i => new Nethermind.Merge.Plugin.SszRest.SszWithdrawal { Index = (ulong)i, Address = Address.Zero })];
                 break;
         }
 

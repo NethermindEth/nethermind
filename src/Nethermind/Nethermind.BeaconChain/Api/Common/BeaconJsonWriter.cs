@@ -9,7 +9,6 @@ using System.Text.Json;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.Api.Common;
 
@@ -93,7 +92,7 @@ internal static partial class BeaconJsonWriter
     /// <summary>The Deneb payload fields plus Gloas <c>block_access_list</c> (EIP-7928) and <c>slot_number</c> (EIP-7843).</summary>
     private static partial void WriteExecutionPayload(Utf8JsonWriter w, ExecutionPayloadGloas payload);
 
-    private static partial void WriteWithdrawals(Utf8JsonWriter w, Types.Withdrawal[] withdrawals);
+    private static partial void WriteWithdrawals(Utf8JsonWriter w, SszWithdrawal[] withdrawals);
 
     private static partial void WriteExecutionPayloadHeader(Utf8JsonWriter w, ExecutionPayloadHeader header);
 

@@ -9,8 +9,8 @@ using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.SszRest;
 using static Nethermind.BeaconChain.Test.StateTransition.GloasTestFixtures;
-using Transaction = Nethermind.BeaconChain.Types.Transaction;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Transaction = Nethermind.Merge.Plugin.SszRest.SszTransaction;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.Test.Types;
 

@@ -13,7 +13,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.P2P;
 

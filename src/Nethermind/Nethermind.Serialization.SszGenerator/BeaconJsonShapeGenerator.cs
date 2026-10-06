@@ -50,6 +50,7 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
                 continue;
             }
             INamedTypeSymbol symbol = compilation.GetTypeByMetadataName("Nethermind.BeaconChain.Types." + parts[0])
+                ?? compilation.GetTypeByMetadataName("Nethermind.Merge.Plugin.SszRest." + parts[0])
                 ?? throw new InvalidOperationException("Unknown type " + parts[0]);
             IPropertySymbol[] properties = SszType.GetOrderedPublicProperties(symbol).ToArray();
             if (parts.Length != properties.Length + 1) throw new InvalidOperationException("Field count does not match SSZ schema: " + symbol.Name);
@@ -74,7 +75,7 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
             {
                 if (method.Prefix == "-") code.Append("w.WriteStartArray();\n");
                 EmitArray(code, method.Type, method.Parameter, fields, methods,
-                    compilation.GetTypeByMetadataName((method.Type == "SszKzgCommitment" ? "Nethermind.Merge.Plugin.SszRest." : "Nethermind.BeaconChain.Types.") + method.Type));
+                    compilation.GetTypeByMetadataName((method.Type is "SszKzgCommitment" or "SszWithdrawal" ? "Nethermind.Merge.Plugin.SszRest." : "Nethermind.BeaconChain.Types.") + method.Type));
                 code.Append("w.WriteEndArray();\n");
             }
             else
@@ -182,7 +183,6 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
         if (value.Split('.')[0].TrimEnd('!') == item) item += "Item";
         string spelling = type switch
         {
-            "Transaction" or "Withdrawal" => "Types." + type,
             "UInt64" => "ulong",
             _ => type,
         };
@@ -221,7 +221,8 @@ public sealed class BeaconJsonShapeGenerator : IIncrementalGenerator
             string bytes = type.Name switch
             {
                 "SszKzgCommitment" => value + ".AsSpan()",
-                "Transaction" or "TransactionGloas" => value + ".Bytes!",
+                "SszTransaction" => value + ".Bytes.Span",
+                "TransactionGloas" => value + ".Bytes!",
                 _ when type is IArrayTypeSymbol => value,
                 _ => value + ".Bytes",
             };

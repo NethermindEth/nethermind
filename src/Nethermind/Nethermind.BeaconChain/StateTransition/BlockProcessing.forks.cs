@@ -5,21 +5,20 @@ using System;
 #if !GLOAS
 using System.Collections;
 #endif
-using System.Collections.Generic;
 using System.Security.Cryptography;
 using Nethermind.BeaconChain.Crypto;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Withdrawal = Nethermind.BeaconChain.Types.Withdrawal;
+using Withdrawal = Nethermind.Merge.Plugin.SszRest.SszWithdrawal;
 
 namespace Nethermind.BeaconChain.StateTransition;
 
 public static partial class BlockProcessing
 {
 
-    private static partial ulong TotalWithdrawn(List<Withdrawal> withdrawals, ulong validatorIndex)
+    private static partial ulong TotalWithdrawn(ReadOnlySpan<Withdrawal> withdrawals, ulong validatorIndex)
     {
         ulong total = 0;
         foreach (Withdrawal withdrawal in withdrawals)

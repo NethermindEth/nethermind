@@ -4,7 +4,6 @@
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Merge.Plugin.SszRest;
 
 namespace Nethermind.BeaconChain.DataAvailability;
 
