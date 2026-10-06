@@ -5544,6 +5544,39 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void SubmitTx_RemovedBeforeItsPaymasterBaselineIsRecorded_LeavesNoBaseline()
+        {
+            CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA);
+            Transaction sponsored = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            Thread remover = new(() => _txPool.RemoveTransaction(sponsored.Hash));
+            bool removerQueuedOnThePoolLock = false;
+            PendingPool().Inserted += (_, _) =>
+            {
+                remover.Start();
+                removerQueuedOnThePoolLock = SpinWait.SpinUntil(() => remover.ThreadState.HasFlag(ThreadState.WaitSleepJoin), TimeSpan.FromSeconds(30));
+            };
+
+            AcceptTxResult result = _txPool.SubmitTx(sponsored, TxHandlingOptions.None);
+            remover.Join();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(removerQueuedOnThePoolLock, Is.True);
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+                Assert.That(RecordedPaymasterBaselines(), Is.Zero, "a transaction removed ahead of the record must not stay the baseline");
+            }
+        }
+
+        private Nethermind.TxPool.Collections.TxDistinctSortedPool PendingPool() => (Nethermind.TxPool.Collections.TxDistinctSortedPool)typeof(TxPool)
+            .GetField("_transactions", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(_txPool)!;
+
+        private int RecordedPaymasterBaselines() => ((System.Collections.ICollection)typeof(TxPool)
+            .GetField("_paymasterBaselines", BindingFlags.Instance | BindingFlags.NonPublic)!
+            .GetValue(_txPool)!).Count;
+
+        [Test]
         public async Task Paymaster_baseline_that_left_the_pool_is_charged_like_any_other_when_it_returns()
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithPaymasterWidth(new TestSpecProvider(Eip8141Prototype.Instance), TestItem.PrivateKeyA, TestItem.PrivateKeyB);
