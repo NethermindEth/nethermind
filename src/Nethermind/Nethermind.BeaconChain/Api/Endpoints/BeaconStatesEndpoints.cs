@@ -88,10 +88,7 @@ internal static class BeaconStatesEndpoints
             return ApiErrors.Write(c, StatusCodes.Status400BadRequest, e.Message, c.RequestAborted);
         }
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, new RandaoDto(mix.ToString()),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, new RandaoDto(mix.ToString()));
     }
 
     /// <summary>
@@ -165,10 +162,7 @@ internal static class BeaconStatesEndpoints
             aggregates[subnet] = validators[(subnet * subcommitteeSize)..((subnet + 1) * subcommitteeSize)];
         }
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, new SyncCommitteeDto(validators, aggregates),
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, new SyncCommitteeDto(validators, aggregates));
     }
 
     /// <summary>Reads the optional <c>epoch</c> query parameter; <c>false</c> only when it is present and not a uint64.</summary>
@@ -241,10 +235,7 @@ internal static class BeaconStatesEndpoints
             fork.CurrentVersion!.ToHexString(withZeroX: true),
             fork.Epoch.ToString());
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, dto,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, dto);
     }
 
     private static Task Root(HttpContext c, string stateId, BeaconApiContext ctx)
@@ -275,11 +266,14 @@ internal static class BeaconStatesEndpoints
             ToCheckpointDto(resolved.State.CurrentJustifiedCheckpoint!),
             ToCheckpointDto(resolved.State.FinalizedCheckpoint!));
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, dto,
+        return WriteStateEnvelope(c, ctx, resolved, dto);
+    }
+
+    private static Task WriteStateEnvelope<T>(HttpContext c, BeaconApiContext ctx, ResolvedState resolved, T data) =>
+        BeaconApiJson.WriteEnvelopeAsync(c, data,
             ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
             ResponseEnvelope.IsFinalized(ctx, resolved.State, resolved.Root),
             c.RequestAborted);
-    }
 
     private static CheckpointDto ToCheckpointDto(Checkpoint checkpoint) =>
         new(checkpoint.Epoch.ToString(), checkpoint.Root!.ToString());
@@ -334,8 +328,7 @@ internal static class BeaconStatesEndpoints
             ValidatorIdStatus lookup = TryResolveValidatorIndex(state, id, ref pubkeyIndex, out int index);
             if (lookup == ValidatorIdStatus.Invalid)
             {
-                return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                    $"Invalid validator id '{id}': expected an index or a 0x-prefixed 48-byte pubkey.", c.RequestAborted);
+                return WriteInvalidValidatorId(c, id);
             }
 
             indexFilter ??= [];
@@ -355,10 +348,7 @@ internal static class BeaconStatesEndpoints
             entries.Add(ToValidatorEntry(i, validators[i], balances[i], status));
         }
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, entries);
     }
 
     private static Task ValidatorById(HttpContext c, string stateId, string validatorId, BeaconApiContext ctx)
@@ -377,8 +367,7 @@ internal static class BeaconStatesEndpoints
         ValidatorIdStatus lookup = TryResolveValidatorIndex(state, validatorId, out int index);
         if (lookup == ValidatorIdStatus.Invalid)
         {
-            return ApiErrors.Write(c, StatusCodes.Status400BadRequest,
-                $"Invalid validator id '{validatorId}': expected an index or a 0x-prefixed 48-byte pubkey.", c.RequestAborted);
+            return WriteInvalidValidatorId(c, validatorId);
         }
 
         if (lookup == ValidatorIdStatus.NotFound)
@@ -391,10 +380,7 @@ internal static class BeaconStatesEndpoints
         Validator validator = state.Validators![index];
         ValidatorEntryDto entry = ToValidatorEntry(index, validator, state.Balances![index], ValidatorStatus.Classify(validator, epoch));
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, entry,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, entry);
     }
 
     private static Task ValidatorBalances(HttpContext c, string stateId, BeaconApiContext ctx)
@@ -445,10 +431,7 @@ internal static class BeaconStatesEndpoints
             }
         }
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, entries);
     }
 
     /// <summary>
@@ -510,10 +493,7 @@ internal static class BeaconStatesEndpoints
             entries[i] = new ValidatorIdentityDto(index.ToString(), validators[index].Pubkey.ToString(), validators[index].ActivationEpoch.ToString());
         }
 
-        await BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        await WriteStateEnvelope(c, ctx, resolved, entries);
     }
 
     /// <summary>Resolves request ids to distinct registry indices in first-seen order, dropping well-formed ids that name no validator.</summary>
@@ -667,10 +647,7 @@ internal static class BeaconStatesEndpoints
             }
         }
 
-        return BeaconApiJson.WriteEnvelopeAsync(c, entries,
-            ResponseEnvelope.ExecutionOptimistic(ctx, resolved.Root),
-            ResponseEnvelope.IsFinalized(ctx, state, resolved.Root),
-            c.RequestAborted);
+        return WriteStateEnvelope(c, ctx, resolved, entries);
     }
 
     private enum ValidatorIdStatus { Ok, NotFound, Invalid }
