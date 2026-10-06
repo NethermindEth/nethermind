@@ -102,78 +102,51 @@ public class SszRoundTripTests
             syncBits.Set(i, true);
         }
 
-        ExecutionPayload payload = new()
-        {
-            ParentHash = Hash(0x40),
-            FeeRecipient = new Address(Filled(Address.Size, 0x41)),
-            StateRoot = Hash(0x42),
-            ReceiptsRoot = Hash(0x43),
-            LogsBloom = new Bloom(Filled(Bloom.ByteLength, 0x44)),
-            PrevRandao = Hash(0x45),
-            BlockNumber = 9_000_001,
-            GasLimit = 30_000_000,
-            GasUsed = 21_000,
-            Timestamp = 1_750_000_000,
-            ExtraData = Bytes.FromHexString("0xc0ffee"),
-            BaseFeePerGas = 7,
-            BlockHash = Hash(0x46),
-            Transactions =
-            [
-                new Transaction { Bytes = Bytes.FromHexString("0x02f87001020304") },
-                new Transaction { Bytes = Bytes.FromHexString("0xdeadbeef") },
-            ],
-            Withdrawals =
-            [
-                new Withdrawal { Index = 5, ValidatorIndex = 9, Address = new Address(Filled(Address.Size, 0x47)), Amount = 1_000_000 },
-            ],
-            BlobGasUsed = 131_072,
-            ExcessBlobGas = 0,
-        };
+        SignedBeaconBlock block = SignedBeaconBlockBuilders.CreateMinimalBlock(123_456);
+        BeaconBlockBody body = block.Message!.Body!;
+        ExecutionPayload payload = body.ExecutionPayload!;
+        payload.ParentHash = Hash(0x40);
+        payload.FeeRecipient = new Address(Filled(Address.Size, 0x41));
+        payload.StateRoot = Hash(0x42);
+        payload.ReceiptsRoot = Hash(0x43);
+        payload.LogsBloom = new Bloom(Filled(Bloom.ByteLength, 0x44));
+        payload.PrevRandao = Hash(0x45);
+        payload.BlockNumber = 9_000_001;
+        payload.BlockHash = Hash(0x46);
+        payload.Transactions =
+        [
+            new Transaction { Bytes = Bytes.FromHexString("0x02f87001020304") },
+            new Transaction { Bytes = Bytes.FromHexString("0xdeadbeef") },
+        ];
+        payload.Withdrawals =
+        [
+            new Withdrawal { Index = 5, ValidatorIndex = 9, Address = new Address(Filled(Address.Size, 0x47)), Amount = 1_000_000 },
+        ];
+        payload.BlobGasUsed = 131_072;
 
-        BeaconBlockBody body = new()
-        {
-            RandaoReveal = Signature(0x50),
-            Eth1Data = new Eth1Data { DepositRoot = Hash(0x51), DepositCount = 42, BlockHash = Hash(0x52) },
-            Graffiti = Hash(0x53),
-            ProposerSlashings = [],
-            AttesterSlashings = [],
-            Attestations = [attestation],
-            Deposits = [deposit],
-            VoluntaryExits = [],
-            SyncAggregate = new SyncAggregate { SyncCommitteeBits = syncBits, SyncCommitteeSignature = Signature(0x54) },
-            ExecutionPayload = payload,
-            BlsToExecutionChanges = [],
-            BlobKzgCommitments = [SszKzgCommitment.FromSpan(Filled(SszKzgCommitment.KzgCommitmentLength, 0x55))],
-            ExecutionRequests = new ExecutionRequests
+        body.RandaoReveal = Signature(0x50);
+        body.Eth1Data = new Eth1Data { DepositRoot = Hash(0x51), DepositCount = 42, BlockHash = Hash(0x52) };
+        body.Graffiti = Hash(0x53);
+        body.Attestations = [attestation];
+        body.Deposits = [deposit];
+        body.SyncAggregate = new SyncAggregate { SyncCommitteeBits = syncBits, SyncCommitteeSignature = Signature(0x54) };
+        body.BlobKzgCommitments = [SszKzgCommitment.FromSpan(Filled(SszKzgCommitment.KzgCommitmentLength, 0x55))];
+        body.ExecutionRequests!.Deposits =
+        [
+            new DepositRequest
             {
-                Deposits =
-                [
-                    new DepositRequest
-                    {
-                        Pubkey = Pubkey(0x60),
-                        WithdrawalCredentials = Hash(0x61),
-                        Amount = 1_000_000_000,
-                        Signature = Signature(0x62),
-                        Index = 7,
-                    },
-                ],
-                Withdrawals = [],
-                Consolidations = [],
+                Pubkey = Pubkey(0x60),
+                WithdrawalCredentials = Hash(0x61),
+                Amount = 1_000_000_000,
+                Signature = Signature(0x62),
+                Index = 7,
             },
-        };
+        ];
 
-        return new SignedBeaconBlock
-        {
-            Message = new BeaconBlock
-            {
-                Slot = 123_456,
-                ProposerIndex = 21,
-                ParentRoot = Hash(0x70),
-                StateRoot = Hash(0x71),
-                Body = body,
-            },
-            Signature = Signature(0x72),
-        };
+        block.Message.ParentRoot = Hash(0x70);
+        block.Message.StateRoot = Hash(0x71);
+        block.Signature = Signature(0x72);
+        return block;
     }
 
     private static T CreateSyntheticState<T>() where T : BeaconStateElectra, new()
