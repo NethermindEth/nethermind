@@ -154,16 +154,21 @@ public class SszMiddlewareTests
         }
     });
 
-    [TestCase(999UL, "paris")]
-    [TestCase(1_000UL, "shanghai")]
-    [TestCase(1_999UL, "shanghai")]
-    [TestCase(2_000UL, "cancun")]
-    [TestCase(3_000UL, "prague")]
-    [TestCase(4_000UL, "osaka")]
-    [TestCase(4_500UL, "osaka")]
-    [TestCase(5_000UL, "osaka")]
-    [TestCase(6_000UL, "amsterdam")]
-    [TestCase(7_000UL, "bogota")]
+    private static readonly TestCaseData[] ChainSpecReleaseEngineApiForkCases =
+    [
+        new TestCaseData(999UL, "paris"),
+        new TestCaseData(1_000UL, "shanghai"),
+        new TestCaseData(1_999UL, "shanghai"),
+        new TestCaseData(2_000UL, "cancun"),
+        new TestCaseData(3_000UL, "prague"),
+        new TestCaseData(4_000UL, "osaka"),
+        new TestCaseData(4_500UL, "osaka"),
+        new TestCaseData(5_000UL, "osaka"),
+        new TestCaseData(6_000UL, "amsterdam"),
+        new TestCaseData(7_000UL, "bogota"),
+    ];
+
+    [TestCaseSource(nameof(ChainSpecReleaseEngineApiForkCases))]
     public void Chain_spec_release_resolves_engine_api_fork(ulong timestamp, string expectedFork)
     {
         ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();

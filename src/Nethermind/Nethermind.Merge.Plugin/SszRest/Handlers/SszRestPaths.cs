@@ -28,6 +28,14 @@ public static class SszRestPaths
     private static readonly Dictionary<string, Forks.NamedReleaseSpec> _forkSpecByUrl =
         BuildForkSpecsByUrl(Forks.Bogota.Instance);
 
+    private static readonly string _parisForkName = nameof(Forks.Paris).ToLowerInvariant();
+    private static readonly string _shanghaiForkName = nameof(Forks.Shanghai).ToLowerInvariant();
+    private static readonly string _cancunForkName = nameof(Forks.Cancun).ToLowerInvariant();
+    private static readonly string _pragueForkName = nameof(Forks.Prague).ToLowerInvariant();
+    private static readonly string _osakaForkName = nameof(Forks.Osaka).ToLowerInvariant();
+    private static readonly string _amsterdamForkName = nameof(Forks.Amsterdam).ToLowerInvariant();
+    private static readonly string _bogotaForkName = nameof(Forks.Bogota).ToLowerInvariant();
+
     private static Dictionary<string, Forks.NamedReleaseSpec> BuildForkSpecsByUrl(Forks.NamedReleaseSpec latest)
     {
         // Stack reverses parent-chain order (Amsterdam → … → Paris becomes Paris → … → Amsterdam),
@@ -180,12 +188,12 @@ public static class SszRestPaths
     /// </remarks>
     public static string GetEngineApiForkName(IReleaseSpec spec) => spec switch
     {
-        { IsBogotaEnabled: true } => "bogota",
-        { IsAmsterdamEnabled: true } => "amsterdam",
-        { IsOsakaEnabled: true } => "osaka",
-        { IsPragueEnabled: true } => "prague",
-        { IsCancunEnabled: true } => "cancun",
-        { IsShanghaiEnabled: true } => "shanghai",
-        _ => "paris"
+        { IsBogotaEnabled: true } => _bogotaForkName,
+        { IsAmsterdamEnabled: true } => _amsterdamForkName,
+        { IsOsakaEnabled: true } => _osakaForkName,
+        { IsPragueEnabled: true } => _pragueForkName,
+        { IsCancunEnabled: true } => _cancunForkName,
+        { IsShanghaiEnabled: true } => _shanghaiForkName,
+        _ => _parisForkName
     };
 }
