@@ -104,8 +104,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         {
             if (handlers[(int)Instruction.PUSH1] == Push1Step.Handler)
             {
-                nint byFollower = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                    &ExecutePush1ByFollower;
+                nint byFollower = Entry(&ExecutePush1ByFollower);
                 for (int immediate = 0; immediate <= byte.MaxValue; immediate++)
                     paired[FollowerHandlersLength + ((int)Instruction.PUSH1 | immediate << 8)] = byFollower;
 
@@ -138,29 +137,29 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 FuseAfterPush1<SwapStep<EvmInstructions.Op4>>(handlers, paired, Instruction.SWAP4);
                 FuseAfterPush1<SwapStep<EvmInstructions.Op5>>(handlers, paired, Instruction.SWAP5);
                 FuseAfterPush1<SwapStep<EvmInstructions.Op6>>(handlers, paired, Instruction.SWAP6);
-                if (handlers[(int)Instruction.MLOAD] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory)
-                    paired[(int)Instruction.MLOAD] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePush1MLoad;
-                if (handlers[(int)Instruction.MSTORE] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking)
-                    paired[(int)Instruction.MSTORE] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePush1MStore;
+                if (handlers[(int)Instruction.MLOAD] == Entry(&ExecuteMLoadFromActiveMemory))
+                    paired[(int)Instruction.MLOAD] = Entry(&ExecutePush1MLoad);
+                if (handlers[(int)Instruction.MSTORE] == Entry(&ExecuteMStoreInsideBacking))
+                    paired[(int)Instruction.MSTORE] = Entry(&ExecutePush1MStore);
             }
 
-            if (handlers[(int)Instruction.JUMP] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteJumpToAnalyzedDestination)
+            if (handlers[(int)Instruction.JUMP] == Entry(&ExecuteJumpToAnalyzedDestination))
             {
                 FuseBeforeJump<SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.SWAP1);
                 FuseBeforeJump<PopStep>(handlers, paired, Instruction.POP);
             }
 
-            if (handlers[(int)Instruction.MSTORE] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking)
+            if (handlers[(int)Instruction.MSTORE] == Entry(&ExecuteMStoreInsideBacking))
             {
-                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MSTORE, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreAfter<BinaryStep<AddOperation>>);
-                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MSTORE, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreAfter<DupStep<EvmInstructions.Op2>>);
+                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MSTORE, Entry(&ExecuteMStoreAfter<BinaryStep<AddOperation>>));
+                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MSTORE, Entry(&ExecuteMStoreAfter<DupStep<EvmInstructions.Op2>>));
             }
 
-            if (handlers[(int)Instruction.MLOAD] == (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory)
+            if (handlers[(int)Instruction.MLOAD] == Entry(&ExecuteMLoadFromActiveMemory))
             {
-                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<BinaryStep<AddOperation>>);
-                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<DupStep<EvmInstructions.Op2>>);
-                FuseBeforeMemory<DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP1, Instruction.MLOAD, (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadAfter<DupStep<EvmInstructions.Op1>>);
+                FuseBeforeMemory<BinaryStep<AddOperation>>(handlers, paired, Instruction.ADD, Instruction.MLOAD, Entry(&ExecuteMLoadAfter<BinaryStep<AddOperation>>));
+                FuseBeforeMemory<DupStep<EvmInstructions.Op2>>(handlers, paired, Instruction.DUP2, Instruction.MLOAD, Entry(&ExecuteMLoadAfter<DupStep<EvmInstructions.Op2>>));
+                FuseBeforeMemory<DupStep<EvmInstructions.Op1>>(handlers, paired, Instruction.DUP1, Instruction.MLOAD, Entry(&ExecuteMLoadAfter<DupStep<EvmInstructions.Op1>>));
             }
 
             Fuse<BinaryStep<AddOperation>, SwapStep<EvmInstructions.Op1>>(handlers, paired, Instruction.ADD, Instruction.SWAP1);
@@ -433,9 +432,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TSecond : struct, IStackStep
         {
             if (handlers[(int)first] == TFirst.Handler && handlers[(int)second] == TSecond.Handler)
-                paired[FollowerHandlersLength + ((int)first | (int)second << 8)] =
-                    (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                    &ExecutePair<TFirst, TSecond>;
+                paired[FollowerHandlersLength + ((int)first | (int)second << 8)] = Entry(&ExecutePair<TFirst, TSecond>);
         }
 
         /// <summary>Installs <see cref="ExecutePair{TFirst, TSecond}"/> for a PUSH1 followed by <paramref name="second"/>.</summary>
@@ -443,9 +440,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TSecond : struct, IStackStep
         {
             if (handlers[(int)second] == TSecond.Handler)
-                paired[(int)second] =
-                    (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                    &ExecutePair<Push1Step, TSecond>;
+                paired[(int)second] = Entry(&ExecutePair<Push1Step, TSecond>);
         }
 
         /// <summary>Installs <see cref="ExecuteJumpAfter{TFirst}"/> for <paramref name="first"/> followed by JUMP.</summary>
@@ -453,7 +448,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             where TFirst : struct, IStackStep
         {
             if (handlers[(int)first] == TFirst.Handler)
-                paired[FollowerHandlersLength + ((int)first | (int)Instruction.JUMP << 8)] = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteJumpAfter<TFirst>;
+                paired[FollowerHandlersLength + ((int)first | (int)Instruction.JUMP << 8)] = Entry(&ExecuteJumpAfter<TFirst>);
         }
 
         /// <summary>
@@ -559,7 +554,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     gas += VeryLowGasCost.GasCost;
                 }
 
-                nint store = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMStoreInsideBacking;
+                nint store = Entry(&ExecuteMStoreInsideBacking);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, store);
             }
 
@@ -607,7 +602,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     gas += VeryLowGasCost.GasCost;
                 }
 
-                nint load = (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteMLoadFromActiveMemory;
+                nint load = Entry(&ExecuteMLoadFromActiveMemory);
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, load);
             }
 
@@ -854,8 +849,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             {
                 [MethodImpl(MethodImplOptions.AggressiveInlining)]
                 get => typeof(TOpCount) == typeof(EvmInstructions.Op1)
-                    ? (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteDup1
-                    : (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteDup<TOpCount>;
+                    ? Entry(&ExecuteDup1)
+                    : Entry(&ExecuteDup<TOpCount>);
             }
 
             /// <remarks>The source is addressed off the copy itself, so each access folds its constant into its own offset.</remarks>
@@ -879,8 +874,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong GasCost => VeryLowGasCost.GasCost;
             public static int SwapDepth => TOpCount.Count;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteSwap<TOpCount>;
+            public static nint Handler => Entry(&ExecuteSwap<TOpCount>);
 
             public static bool TakesPushedByte => true;
 
@@ -913,8 +907,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Growth => -1;
             public static ulong GasCost => BaseGasCost.GasCost;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePop;
+            public static nint Handler => Entry(&ExecutePop);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) { }
@@ -928,8 +921,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static ulong GasCost => VeryLowGasCost.GasCost;
             public static int Length => 2;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecutePush1;
+            public static nint Handler => Entry(&ExecutePush1);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) => SetWord(ref end, Unsafe.Add(ref opcode, 1));
@@ -942,8 +934,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Growth => 0;
             public static ulong GasCost => VeryLowGasCost.GasCost;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteNot;
+            public static nint Handler => Entry(&ExecuteNot);
 
             public static bool TakesPushedByte => true;
 
@@ -975,9 +966,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Growth => 1;
             public static ulong GasCost => BaseGasCost.GasCost;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)
-                &ExecutePushValue<ZeroValue>;
+            public static nint Handler => Entry(&ExecutePushValue<ZeroValue>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) => SetWord(ref end, 0);
@@ -995,8 +984,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftLeft(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteShl;
+            public static nint Handler => Entry(&ExecuteShl);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode)
@@ -1023,8 +1011,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void ApplyToPushedByte(ref ulong end, ulong pushed) => ShiftRight(ref Unsafe.Subtract(ref end, LimbsPerWord), (int)pushed);
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteShr;
+            public static nint Handler => Entry(&ExecuteShr);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode)
@@ -1047,8 +1034,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             public static int Growth => -1;
             public static ulong GasCost => TOperation.GasCost;
 
-            public static nint Handler =>
-                (nint)(delegate*<ref EvmStack, ulong, ref DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)&ExecuteBinary<TOperation>;
+            public static nint Handler => Entry(&ExecuteBinary<TOperation>);
 
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             public static void Apply(ref ulong end, ref byte opcode) => TOperation.Apply(ref end);
