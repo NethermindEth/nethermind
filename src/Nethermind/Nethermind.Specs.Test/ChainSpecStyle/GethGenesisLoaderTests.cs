@@ -47,6 +47,7 @@ public class GethGenesisLoaderTests
         "Eip150Block",        // alias for TangerineWhistleBlock
         "Eip155Block",        // alias for SpuriousDragonBlock
         "Eip158Block",        // alias for SpuriousDragonBlock
+        "BinaryTrieTime",     // EIP-8347 transition, not a fork class
     ];
 
     // Fork classes that are not real Geth fork names and therefore have no genesis config property
@@ -138,6 +139,31 @@ public class GethGenesisLoaderTests
         string allocJson = "{}",
         ulong? timestamp = null) =>
         LoadFromString(BuildStandardGethGenesisJson(chainId, configExtra, allocJson, timestamp));
+
+    [Test]
+    public void Binary_trie_time_activates_only_eip8347(
+        [Values(null, 0ul, 15ul)] ulong? activationTimestamp,
+        [Values(0ul, 14ul, 15ul, 16ul, ulong.MaxValue)] ulong timestamp)
+    {
+        string configExtra = activationTimestamp is null ? "" : $"\"binaryTrieTime\": {activationTimestamp}";
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: configExtra);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, LimboLogs.Instance);
+        IReleaseSpec spec = provider.GetSpec(ForkActivation.TimestampOnly(timestamp));
+        ChainSpecBasedSpecProvider baselineProvider = new(LoadStandardGethGenesis(), LimboLogs.Instance);
+        IReleaseSpec baseline = baselineProvider.GetSpec(ForkActivation.TimestampOnly(timestamp));
+        bool enabled = activationTimestamp <= timestamp;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8347TransitionTimestamp, Is.EqualTo(activationTimestamp));
+            Assert.That(spec.IsEip8347Enabled, Is.EqualTo(enabled));
+            Assert.That(new ReleaseSpecDecorator(spec).IsEip8347Enabled, Is.EqualTo(enabled));
+            Assert.That(new OverridableReleaseSpec(spec).IsEip8347Enabled, Is.EqualTo(enabled));
+            Assert.That(spec.Name, Is.EqualTo(baseline.Name));
+            Assert.That(spec.IsEip7928Enabled, Is.EqualTo(baseline.IsEip7928Enabled));
+            Assert.That(spec.IsEip8037Enabled, Is.EqualTo(baseline.IsEip8037Enabled));
+        }
+    }
 
     private static void AssertAmsterdamEipsEnabled(IReleaseSpec spec, bool expected)
     {

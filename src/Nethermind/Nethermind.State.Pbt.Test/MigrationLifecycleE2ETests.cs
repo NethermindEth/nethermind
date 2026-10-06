@@ -1,0 +1,241 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.Text.Json;
+using System.Threading;
+using System.Threading.Tasks;
+using Autofac;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Tracing;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Consensus.Processing;
+using Nethermind.Consensus.Producers;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.IO;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Db;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State;
+using Nethermind.Int256;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt.Migration;
+using Nethermind.State.Pbt.ScopeProvider;
+using NUnit.Framework;
+
+namespace Nethermind.State.Pbt.Test;
+
+[TestFixture]
+public class MigrationLifecycleE2ETests
+{
+    [Test]
+    public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable, [Values] FlatLayout layout)
+    {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, layout,
+            fixtureDirectory: Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"));
+        IContainer container = harness.Container;
+        Dictionary<string, Block> blocks = harness.Blocks;
+        Dictionary<string, JsonElement> expected = harness.Expected;
+        IBlockTree tree = harness.Tree;
+        IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+        IMigrationTelemetry telemetry = harness.Telemetry;
+        Assert.That(telemetry.GetShadowRoot(blocks["anchor"].Hash!), Is.EqualTo(harness.PbtRoot("anchor")));
+        IMainProcessingContext processing = container.Resolve<IMainProcessingContext>();
+        IBlockAccessListStore bals = container.Resolve<IBlockAccessListStore>();
+        foreach ((string name, Block block) in blocks)
+        {
+            if (name == "anchor") continue;
+            byte[] balBytes = Bytes.FromHexString(expected[name].GetProperty("balRlp").GetString()!);
+            bals.Insert(block.Number, block.Hash!, balBytes);
+            RlpReader balReader = new(balBytes);
+            block.BlockAccessList = BlockAccessListDecoder.Instance.Decode(ref balReader);
+            block.Header.IsPostMerge = true;
+            foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
+            tree.SuggestBlock(block);
+        }
+        Stopwatch elapsed = Stopwatch.StartNew();
+        List<int> branchSizes = [];
+        processing.BranchProcessor.BlocksProcessing += (_, args) => branchSizes.Add(args.Blocks.Count);
+        ProcessingOptions options = ProcessingOptions.MarkAsProcessed | ProcessingOptions.DoNotUpdateHead | ProcessingOptions.StoreReceipts;
+        ReplayIntoPbt("a3");
+        Assert.That(processing.BlockchainProcessor.Process(blocks["a5"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["a5"].Hash));
+        Assert.That(branchSizes, Is.EqualTo(new[] { 5 }), "one processing request must span activation");
+        foreach (string name in new[] { "a1", "a2", "a3", "a4", "a5" }) AssertRoot(name);
+        await using (ScopedBlockProducerEnv producer = container.Resolve<IBlockProducerEnvFactory>().CreateTransient())
+        {
+            Block candidateInput = Rlp.Decode<Block>(new Rlp(Bytes.FromHexString(expected["a4"].GetProperty("blockRlp").GetString()!)))!;
+            candidateInput.Header.IsPostMerge = true;
+            candidateInput.Header.TotalDifficulty = 0;
+            foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(candidateInput);
+            Block? candidate = producer.ChainProcessor.Process(candidateInput,
+                ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain, NullBlockTracer.Instance);
+            Assert.That(candidate, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(candidate!.StateRoot, Is.EqualTo(blocks["a4"].StateRoot), "private producer computes independent first-PBT-child root");
+                Assert.That(candidate.Transactions.Length, Is.EqualTo(blocks["a4"].Transactions.Length));
+            }
+        }
+        AssertRoot("a3");
+        AssertRoot("a5");
+        Select("a5", Hash256.Zero);
+        Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
+        AssertTransition("a3", "a4", "a5");
+        Select("a1", Hash256.Zero);
+        ReplayIntoPbt("b3");
+        Assert.That(processing.BlockchainProcessor.Process(blocks["b6"], options, NullBlockTracer.Instance)?.Hash, Is.EqualTo(blocks["b6"].Hash));
+        Assert.That(branchSizes, Is.EqualTo(new[] { 5, 5 }));
+        foreach (string name in new[] { "b2", "b3", "b4", "b5", "b6" }) AssertRoot(name);
+        Select("b6", blocks["a1"].Hash!);
+        Assert.That(telemetry.GetProgress().Phase, Is.EqualTo("running"));
+        AssertTransition("b3", "b4", "b5", "b6");
+        Select("b6", blocks["b4"].Hash!);
+        Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("done", null, null)));
+        TestContext.Out.WriteLine($"Executed 10 independent geth blocks in {elapsed.Elapsed.TotalSeconds:F3}s; source={(portable ? "portable" : "preimage genesis")}; geth=e31a37fb88c2b75c0897c033bd3f4279dee42268");
+        IPersistence flatPersistence = container.Resolve<IPersistence>();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(layout));
+            // Flat gets no commits after activation; finalizing the activation persists it up to the activation parent.
+            Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new Flat.StateId(blocks["b3"].Header)).After(10_000, 50));
+        }
+
+        // A request spanning activation needs PBT at the activation parent before main processing reaches it; the branch
+        // follower replays that non-canonical, not yet processed branch from its stored BALs.
+        void ReplayIntoPbt(string activationParent)
+        {
+            container.Resolve<PbtBranchFollower>().Add(blocks[activationParent].Header);
+            harness.WaitForPbt(blocks[activationParent].Header);
+        }
+
+        void Select(string name, Hash256 finalized)
+        {
+            Assert.That(tree.TryUpdateMainChain(blocks[name].Header, true, true, [blocks[name]]), Is.True);
+            tree.ForkChoiceUpdated(finalized, Hash256.Zero);
+        }
+
+        // The Merkle shadow is replayed asynchronously once the branch is canonical, so it is asserted after the selection.
+        void AssertTransition(string activationParent, params string[] window)
+        {
+            foreach (string name in window)
+                Assert.That(() => telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(harness.ExpectedShadowRoot(name)).After(10_000, 50), name);
+            MigrationProgressForRpc progress = telemetry.GetProgress();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(progress.Binary, Is.EqualTo(new MigrationDirectionForRpc("parked", blocks[activationParent].Number, blocks[activationParent].Hash!,
+                    harness.PbtRoot(activationParent), "")));
+                Assert.That(progress.Merkle, Is.EqualTo(new MigrationDirectionForRpc("synced", blocks[window[^1]].Number, blocks[window[^1]].Hash!,
+                    harness.ExpectedShadowRoot(window[^1]), "")));
+            }
+        }
+
+        void AssertRoot(string name)
+        {
+            if (!expected[name].GetProperty("binary").GetBoolean())
+                Assert.That(telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(harness.ExpectedShadowRoot(name)), name);
+            Assert.That(harness.Reader.HasStateForBlock(blocks[name].Header), Is.True, name);
+            harness.AssertAllocation(name);
+            using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(harness.FixtureDirectory, "states", name + ".alloc.json")));
+            IStateReader reader = manager.GlobalStateReader;
+            // Probe keys on the losing branch even when their zero values are omitted from the reference allocation.
+            Address writer = new("0x1000000000000000000000000000000000000001");
+            foreach (UInt256 slot in new UInt256[] { 0, 63, 64, 255, 256 })
+            {
+                UInt256 expectedValue = 0;
+                if (allocation.RootElement.TryGetProperty(writer.ToString(), out JsonElement account) && account.TryGetProperty("storage", out JsonElement storage))
+                    foreach (JsonProperty entry in storage.EnumerateObject()) if (MigrationLifecycleHarness.ParseQuantity(entry.Name) == slot) expectedValue = MigrationLifecycleHarness.ParseQuantity(entry.Value.GetString()!);
+                Assert.That(reader.GetStorage(blocks[name].Header, writer, slot), Is.EqualTo(expectedValue), $"{name} restored slot {slot}");
+            }
+        }
+    }
+
+    [Test]
+    public async Task Created_and_selfdestructed_account_is_absent_from_both_commitments([Values] bool afterActivation)
+    {
+        using TempPath scratch = TempPath.GetTempDirectory();
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat,
+            fixtureDirectory: Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"));
+        await harness.Scheduler.DisposeAsync();
+        IMainProcessingContext processing = harness.Container.Resolve<IMainProcessingContext>();
+        Block parent = harness.Anchor;
+        if (afterActivation)
+        {
+            for (int number = 1; number <= 4; number++)
+            {
+                Block block = harness.Blocks[$"a{number}"];
+                Prepare(block);
+                // The activation block needs its parent in PBT, which the background BAL replay provides.
+                if (number == 4) harness.WaitForPbt(parent.Header);
+                Assert.That(processing.BlockchainProcessor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
+                    NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
+                parent = block;
+            }
+        }
+        using PrivateKey sender = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
+        IStateReader reader = harness.Container.Resolve<IWorldStateManager>().GlobalStateReader;
+        ulong nonce = reader.GetNonce(parent.Header, sender.Address);
+        Address destroyed = ContractAddress.From(sender.Address, nonce);
+        byte[] initCode = Bytes.FromHexString("0x73" + sender.Address.ToString()[2..] + "ff");
+        Transaction transaction = Build.A.Transaction.WithChainId(1337).WithNonce(nonce).WithTo(null)
+            .WithGasLimit(1_000_000).WithGasPrice(2_000_000_000).WithData(initCode).SignedAndResolved(sender).TestObject;
+        BlockHeader template = harness.Blocks[afterActivation ? "a5" : "a1"].Header.Clone();
+        template.IsPostMerge = true;
+        template.TotalDifficulty = 0;
+        Block proposed = new(template, [transaction], [], []);
+        Block produced;
+        await using (ScopedBlockProducerEnv producer = harness.Container.Resolve<IBlockProducerEnvFactory>().CreateTransient())
+        {
+            produced = producer.ChainProcessor.Process(proposed, ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain,
+                NullBlockTracer.Instance)!;
+            Assert.That(produced, Is.Not.Null);
+            Assert.That(produced.Transactions, Has.Length.EqualTo(1));
+        }
+        Prepare(produced);
+        Assert.That(processing.BlockchainProcessor.Process(produced, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
+            NullBlockTracer.Instance)?.Hash, Is.EqualTo(produced.Hash));
+        TxReceipt[] receipts = harness.Container.Resolve<IReceiptStorage>().Get(produced);
+        Assert.That(receipts, Has.Length.EqualTo(1));
+        Assert.That(receipts[0].StatusCode, Is.EqualTo(StatusCode.Success), "absence must follow successful SELFDESTRUCT, not failed creation");
+        harness.Tree.TryUpdateMainChain(produced.Header, true, true, [produced]);
+        Assert.That(await harness.Container.Resolve<PbtBalFollower>().Follow(produced.Header, CancellationToken.None), Is.True);
+        List<IStateReader> commitments = [harness.Container.Resolve<PbtStateReader>()];
+        if (!afterActivation) commitments.Add(harness.Container.Resolve<FlatStateReader>());
+        foreach (IStateReader commitment in commitments)
+        {
+            Assert.That(commitment.HasStateForBlock(produced.Header), Is.True, commitment.GetType().Name);
+            Assert.That(commitment.TryGetAccount(produced.Header, destroyed, out _), Is.False, $"{commitment.GetType().Name}: destroyed creation must not survive block commit");
+        }
+
+        void Prepare(Block block)
+        {
+            block.Header.IsPostMerge = true;
+            if (block.EncodedBlockAccessList is null && block.GeneratedBlockAccessList is null)
+                block.EncodedBlockAccessList = Bytes.FromHexString(harness.Expected[$"a{block.Number}"].GetProperty("balRlp").GetString()!);
+            if (block.EncodedBlockAccessList is { } encoded)
+                block.BlockAccessList = Rlp.Decode<Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList>(encoded);
+            foreach (IBlockPreprocessorStep preprocessor in harness.Container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
+            harness.Tree.SuggestBlock(block);
+            harness.Container.Resolve<IBlockAccessListStore>().InsertFromBlock(block);
+        }
+    }
+
+    private static Flat.StateId FlatState(IPersistence persistence)
+    {
+        using IPersistence.IPersistenceReader reader = persistence.CreateReader();
+        return reader.CurrentState;
+    }
+}

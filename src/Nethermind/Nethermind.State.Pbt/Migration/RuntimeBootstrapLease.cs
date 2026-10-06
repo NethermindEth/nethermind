@@ -1,0 +1,77 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Image;
+
+namespace Nethermind.State.Pbt.Migration;
+
+/// <summary>Keeps the bootstrap inputs alive through publication.</summary>
+internal sealed class RuntimeBootstrapLease : PbtBootstrapLease
+{
+    private readonly List<IDisposable> _owned = [];
+    private readonly Func<bool> _isCurrent;
+    private Stream? _snapshot;
+    private Stream? _preimages;
+    private IPersistence.IPersistenceReader? _source;
+    private IReadOnlyKeyValueStore? _code;
+
+    private RuntimeBootstrapLease(PbtImageAnchor anchor, string scratchDirectory, Func<bool> isCurrent)
+    {
+        Anchor = anchor;
+        ScratchDirectory = scratchDirectory;
+        _isCurrent = isCurrent;
+    }
+
+    public static RuntimeBootstrapLease Create(PbtImageAnchor anchor,
+        string scratchDirectory, Func<bool> isCurrent, IPbtConfig configuration,
+        MigrationGenesisSource? genesisSource, IPersistence localFlat, IReadOnlyKeyValueStore code)
+    {
+        RuntimeBootstrapLease lease = new(anchor, scratchDirectory, isCurrent);
+        try
+        {
+            if (configuration.MigrationSnapshotPath is { } snapshot)
+            {
+                lease._snapshot = File.Open(snapshot, FileMode.Open, FileAccess.Read, FileShare.Read);
+                lease._owned.Add(lease._snapshot);
+                if (configuration.MigrationPreimagesPath is { } verifyingPreimages)
+                {
+                    lease._preimages = File.Open(verifyingPreimages, FileMode.Open, FileAccess.Read, FileShare.Read);
+                    lease._owned.Add(lease._preimages);
+                }
+            }
+            else if (configuration.MigrationPreimagesPath is { } preimages)
+            {
+                lease._preimages = File.Open(preimages, FileMode.Open, FileAccess.Read, FileShare.Read);
+                lease._owned.Add(lease._preimages);
+                lease._source = localFlat.CreateReader();
+                lease._owned.Add(lease._source);
+                lease._code = code;
+            }
+            else if (configuration.MigrationGenesisBootstrap)
+            {
+                lease._source = (genesisSource ?? throw new InvalidOperationException("Genesis bootstrap source is not registered.")).Persistence.CreateReader();
+                lease._owned.Add(lease._source);
+                lease._code = code;
+            }
+            return lease;
+        }
+        catch { lease.Dispose(); throw; }
+    }
+
+    public override PbtImageAnchor Anchor { get; }
+    public override string ScratchDirectory { get; }
+    public override Stream? Snapshot => _snapshot;
+    public override Stream? Preimages => _preimages;
+    public override IPersistence.IPersistenceReader? OfflineSource => _source;
+    public override IReadOnlyKeyValueStore? OfflineCode => _code;
+
+    public override bool IsAnchorCurrent() => _isCurrent();
+
+    public override void Dispose()
+    {
+        for (int i = _owned.Count - 1; i >= 0; i--) _owned[i].Dispose();
+        _owned.Clear();
+    }
+}

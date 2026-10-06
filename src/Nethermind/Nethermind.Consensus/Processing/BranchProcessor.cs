@@ -123,8 +123,18 @@ public class BranchProcessor(
                 using ParallelUnbalancedWork.WorkerScope workers = workerGroup.Enter();
                 if (i > 0)
                 {
+                    bool wasEip8347Enabled = spec.IsEip8347Enabled;
                     // Refresh spec
                     spec = specProvider.GetSpec(suggestedBlock.Header);
+
+                    // EIP-8347: the state backend is selected from the target block, so a scope opened for a block
+                    // on one side of the activation cannot execute the first block on the other side. Safe here: the
+                    // previous iteration cancelled and drained the prewarmer and WaitForCacheClear() joined the cache clear.
+                    if (worldStateCloser is not null && spec.IsEip8347Enabled != wasEip8347Enabled)
+                    {
+                        worldStateCloser.Dispose();
+                        worldStateCloser = BeginTargetScope(suggestedBlock);
+                    }
                 }
                 // The first block prepared its caches at method entry, even if no warming was needed.
                 backgroundCancellation ??= new CancellationTokenSource();

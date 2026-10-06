@@ -1,0 +1,47 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Diagnostics;
+using Nethermind.Core;
+using Nethermind.Db;
+using Nethermind.Logging;
+using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
+
+namespace Nethermind.State.Pbt.Image;
+
+/// <summary>Produces an EIP-8347 bundle without publishing native PBT or migration state.</summary>
+/// <remarks>The source must be a preimage-flat reader pinned at the anchor for the whole call: the caller
+/// stops the state advancing before exporting, and <paramref name="isAnchorCurrent"/> re-checks that the
+/// anchor is still the one the chain agrees on, since the export takes long enough for a reorg to land.</remarks>
+internal static class PbtOfflineExport
+{
+    /// <param name="includePreimages">Whether to write preimages.bin beside snapshot.pbt.</param>
+    /// <param name="sortBufferBytes">Sort budget per scan worker, split between the leaf and preimage spools.</param>
+    /// <param name="workerCount">Scan workers; zero uses the processor count.</param>
+    public static void Export(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore code, PbtImageAnchor anchor,
+        string outputPath, string scratchDirectory, Func<bool> isAnchorCurrent, bool includePreimages, int sortBufferBytes, int workerCount,
+        ILogManager logManager, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineExport));
+        Stopwatch exporting = Stopwatch.StartNew();
+        string output = Path.GetFullPath(outputPath);
+        if (Directory.Exists(output) || File.Exists(output)) throw new IOException("Export destination already exists.");
+        Directory.CreateDirectory(output);
+        if (logger.IsInfo) logger.Info($"Exporting the EIP-8347 anchor {anchor.Header.ToString(BlockHeader.Format.Short)} to {output}.");
+        using (FileStream snapshot = new(Path.Combine(output, "snapshot.pbt"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+        using (FileStream? preimages = includePreimages ? new(Path.Combine(output, "preimages.bin"), FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None) : null)
+        {
+            if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor is no longer current.");
+            PbtArtifactWriter.PbtArtifactDigests digests = PbtOfflineSource.WriteArtifacts(source, code, anchor,
+                scratchDirectory, snapshot, preimages, logManager, sortBufferBytes, workerCount, cancellationToken);
+            snapshot.Flush(flushToDisk: true);
+            preimages?.Flush(flushToDisk: true);
+            cancellationToken.ThrowIfCancellationRequested();
+            if (!isAnchorCurrent()) throw new InvalidOperationException("Export anchor changed during the export.");
+            if (logger.IsInfo)
+                logger.Info($"EIP-8347 anchor {anchor.Header.Number} digests: snapshot {digests.Snapshot}, preimages {digests.Preimages?.ToString() ?? "skipped"}.");
+        }
+        if (logger.IsInfo) logger.Info($"Exported the EIP-8347 artifacts to {output} in {exporting.Elapsed:hh\\:mm\\:ss}.");
+    }
+}

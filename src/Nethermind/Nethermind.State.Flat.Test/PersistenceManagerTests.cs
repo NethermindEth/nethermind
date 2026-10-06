@@ -75,7 +75,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
     }
 
     [TearDown]
@@ -399,6 +400,49 @@ public class PersistenceManagerTests
         }
     }
 
+    /// <remarks>An export pins persistence to one block so it can read that exact state. Batched persistence
+    /// only lands on CompactSize boundaries, so the target has to pull it off the grid, and once reached
+    /// nothing may move underneath the reader — not the boundary trigger, and not the force-persist backstop.</remarks>
+    [Test]
+    public void DetermineSnapshotAction_WithAPersistTarget_StepsOntoItThenFreezes(
+        [Values("batches-while-far", "steps-when-near", "never-overshoots", "freezes-when-reached", "freezes-past-the-backstop")] string phase)
+    {
+        ulong target = phase switch { "batches-while-far" => 80UL, "steps-when-near" => 5UL, "never-overshoots" => 8UL, _ => 0UL };
+        ulong stepDistance = phase == "never-overshoots" ? 0UL : 16UL;
+        StateId latest = CreateStateId(phase == "freezes-past-the-backstop" ? 90_001UL : 100UL);
+        StateId step = CreateStateId(1);
+        StateId boundary = CreateStateId(16);
+        _finalizedStateProvider.SetFinalizedBlockNumber(phase == "freezes-past-the-backstop" ? 0UL : 16UL);
+        _finalizedStateProvider.SetFinalizedStateRootAt(1, new Hash256(step.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(boundary.StateRoot.Bytes));
+        using Snapshot stepSnapshot = CreateSnapshot(Block0, step);
+        using Snapshot boundarySnapshot = CreateSnapshot(Block0, boundary, compacted: true);
+
+        using PersistenceManager manager = new(
+            _config,
+            _tier.Resolve<ICompactionSchedule>(),
+            _finalizedStateProvider,
+            _persistence,
+            _snapshotRepository,
+            NullStatePersistenceBarrier.Instance,
+            LimboLogs.Instance,
+            _persistedSnapshotCompactor,
+            _tier.Loader,
+            Substitute.For<IProcessExitSource>(),
+            new TestPersistTarget { TargetBlock = target, StepDistance = stepDistance });
+
+        (PersistedSnapshot? persistedToPersist, Snapshot? toPersist, PersistenceManager.ConversionCandidate? toConvert) = manager.DetermineSnapshotAction(latest);
+
+        StateId? expected = phase switch { "batches-while-far" => boundary, "steps-when-near" => step, _ => null };
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(persistedToPersist, Is.Null);
+            Assert.That(toConvert, Is.Null, "a pinned target also stops conversion moving the state under the reader");
+            Assert.That(toPersist?.To, Is.EqualTo(expected));
+        }
+        toPersist?.Dispose();
+    }
+
     [Test]
     public void DetermineSnapshotAction_InsufficientInMemoryDepth_ReturnsNull()
     {
@@ -466,7 +510,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
 
         // Depth 101 is past MinReorgDepth + CompactSize (80) but far below the force-persist backstop
         // (90000), so only the finalized branch can produce a snapshot here.
@@ -521,7 +566,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
 
         StateId persisted = Block0;
         StateId latest = CreateStateId(300);
@@ -597,7 +643,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
 
         // Finalized below the next boundary so only the backstop (not the finalized trigger) can fire;
         // a registered base at tierTip gives FindSnapshotToPersist a candidate.
@@ -775,7 +822,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
 
         // Finalized at/above the next boundary so the finalized branch IS entered, but leave
         // GetFinalizedHeader(16) unset so its seed resolves to null. Depth (90017) exceeds the
@@ -1211,7 +1259,8 @@ public class PersistenceManagerTests
             LimboLogs.Instance,
             _persistedSnapshotCompactor,
             _tier.Loader,
-            Substitute.For<IProcessExitSource>());
+            Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
 
         // Latest snapshot (50) is below the persisted block (100); finalized far behind so the buggy
         // underflow path would take the backstop branch. Stage a head-ancestor snapshot it would return.
@@ -1399,6 +1448,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget(),
             hook);
 
         StateId from = Block0;
@@ -1510,7 +1560,8 @@ public class PersistenceManagerTests
         logManager.GetClassLogger<PersistenceManager>().Returns(wrappedLogger);
         using PersistenceManager manager = new(config, _tier.Resolve<ICompactionSchedule>(), _finalizedStateProvider,
             _persistence, _snapshotRepository, NullStatePersistenceBarrier.Instance, logManager,
-            _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>());
+            _persistedSnapshotCompactor, _tier.Loader, Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget());
         StateId head = CreateStateId(64);
         CreateSnapshot(Block0, head);
         _snapshotRepository.SetLastCommittedStateId(head);
@@ -1551,6 +1602,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget(),
             hook);
 
         StateId to = CreateStateId(16);
@@ -1583,6 +1635,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget(),
             new FlakyCaptureHook(failures: 1));
 
         StateId to = CreateStateId(16);
@@ -1614,6 +1667,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget(),
             hook);
 
         StateId from = Block0;
@@ -1656,6 +1710,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             Substitute.For<IProcessExitSource>(),
+            new UnconstrainedPersistTarget(),
             hook);
         using PersistenceManager managerScope = manager;
 
@@ -1740,6 +1795,7 @@ public class PersistenceManagerTests
             _persistedSnapshotCompactor,
             _tier.Loader,
             processExitSource,
+            new UnconstrainedPersistTarget(),
             captureHook);
 
         StateId state16 = CreateStateId(16);
@@ -1958,6 +2014,12 @@ public class PersistenceManagerTests
             "ConvertCompactedRange",
             System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
         method.Invoke(_persistenceManager, [compacted]);
+    }
+
+    private sealed class TestPersistTarget : IPersistTarget
+    {
+        public ulong? TargetBlock { get; init; }
+        public ulong StepDistance { get; init; }
     }
 
     private class TestFinalizedStateProvider : IStateHeaderProvider

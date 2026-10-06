@@ -36,5 +36,12 @@ public class ConcurrencyControllerTests
 
         Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(true));
         Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(false));
+
+        limiter.TakeConcurrencyQuota();
+        limiter.ReturnConcurrencyQuota();
+
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(false));
+        limiter.ReturnConcurrencyQuota();
+        Assert.That(limiter.TryRequestConcurrencyQuota(), Is.EqualTo(true));
     }
 }

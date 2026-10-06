@@ -56,4 +56,8 @@ public class ConcurrencyController(int concurrency)
     }
 
     public void ReturnConcurrencyQuota() => Interlocked.Increment(ref _slots);
+
+    /// <summary>Takes quota even when none is free, for a worker that is already running and cannot be refused.</summary>
+    /// <remarks>The budget goes negative until <see cref="ReturnConcurrencyQuota"/> balances it, so later requests fail meanwhile.</remarks>
+    public void TakeConcurrencyQuota() => Interlocked.Decrement(ref _slots);
 }

@@ -5,8 +5,6 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.RocksDbBindings;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
 
@@ -48,11 +46,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
 
     Span<byte> IReadOnlyKeyValueStore.GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags) => _reader.GetSpan(key, flags);
 
-    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags)
-    {
-        Span<byte> span = ((IReadOnlyKeyValueStore)this).GetSpan(key, flags);
-        return span.IsNullOrEmpty() ? null : new DbSpanMemoryManager(this, span);
-    }
+    MemoryManager<byte>? IReadOnlyKeyValueStore.GetOwnedMemory(ReadOnlySpan<byte> key, ReadFlags flags) =>
+        _reader.GetOwnedMemory(key, flags);
 
 
     int IReadOnlyKeyValueStore.Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags) => _reader.Get(key, output, flags);
@@ -146,6 +141,8 @@ public class ColumnDb : IDb, ISortedKeyValueStore, IMergeableKeyValueStore, IKey
         _mainDb.ReclaimRange(firstKeyInclusive, lastKeyExclusive, _columnFamily);
 
     public void Flush(bool onlyWal) => _mainDb.FlushWithColumnFamily(_columnFamily);
+
+    public void FlushOrThrow() => _mainDb.FlushWithColumnFamilyOrThrow(_columnFamily);
 
     public void Compact() => _mainDb.CompactOpenRange(_columnFamily, forceBottommost: false);
 
