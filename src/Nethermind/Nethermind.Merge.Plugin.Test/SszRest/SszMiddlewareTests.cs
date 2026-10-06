@@ -128,7 +128,7 @@ public class SszMiddlewareTests
             new GetPayloadBodiesByRangeSszHandler<PayloadBodiesByRangeDescriptorV2, ExecutionPayloadBodyV2Result>(_engineModule, _blockFinder, _specProvider),
 
             new ClientVersionSszHandler(_engineModule, LimboLogs.Instance),
-            new CapabilitiesSszHandler(_specProvider),
+            new CapabilitiesSszHandler(),
 
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV5, NewPayloadV5RequestWire>(_engineModule),
             new NewPayloadWithWitnessSszHandler<NewPayloadWithWitnessDescriptorV6, NewPayloadV6RequestWire>(_engineModule),
@@ -681,50 +681,32 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Capabilities_returns_intersection_of_supported_methods()
+    public async Task Capabilities_advertises_supported_forks_when_osaka_is_active_at_genesis()
     {
-        _specProvider.TransitionActivations.Returns([]);
-
+        _specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
+        {
+            ChainId = 12345,
+            Parameters = new ChainParameters
+            {
+                TerminalTotalDifficulty = UInt256.Zero,
+                Eip4895TransitionTimestamp = 0,
+                Eip4844TransitionTimestamp = 0,
+                Eip6110TransitionTimestamp = 0,
+                Eip7594TransitionTimestamp = 0,
+                Eip7928TransitionTimestamp = 10_000,
+            }
+        });
+        Assert.That(SszRestPaths.GetEngineApiForkName(_specProvider.GenesisSpec), Is.EqualTo("osaka"));
+        Assert.That(_specProvider.TransitionActivations.Any(static activation => activation.Timestamp == 10_000), Is.True);
+        _middleware = BuildMiddleware();
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
-
         await _middleware.InvokeAsync(ctx);
 
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        Assert.That(ctx.Response.ContentType, Does.Contain("application/json"));
-    }
-
-    [Test]
-    public async Task Capabilities_supported_forks_are_gated_by_spec_provider()
-    {
-        // Two distinct spec objects for Shanghai and Cancun, identified purely by reference
-        // equality — no Name property is involved.
-        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
-        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
-
-        ForkActivation[] transitions =
-        [
-            ForkActivation.TimestampOnly(1_000UL),
-            ForkActivation.TimestampOnly(2_000UL),
-        ];
-        _specProvider.TransitionActivations.Returns(transitions);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 1_000UL)).Returns(shanghaiSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == 2_000UL)).Returns(cancunSpec);
-
-        // Rebuild middleware so it picks up the now-configured spec provider.
-        SszMiddleware mw = BuildMiddleware();
-        DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
-        await mw.InvokeAsync(ctx);
-
-        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
-        string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
-
-        Assert.That(body, Does.Contain("\"paris\""));
-        Assert.That(body, Does.Contain("\"shanghai\""));
-        Assert.That(body, Does.Contain("\"cancun\""));
-
-        Assert.That(body, Does.Not.Contain("\"prague\""));
-        Assert.That(body, Does.Not.Contain("\"osaka\""));
-        Assert.That(body, Does.Not.Contain("\"amsterdam\""));
+        using System.Text.Json.JsonDocument response = System.Text.Json.JsonDocument.Parse(ResponseBytes(ctx));
+        string[] forks = response.RootElement.GetProperty("supported_forks").EnumerateArray()
+            .Select(static fork => fork.GetString()!).ToArray();
+        Assert.That(forks, Is.EqualTo(SszRestPaths.SupportedForksOrdered));
     }
 
     [Test]
