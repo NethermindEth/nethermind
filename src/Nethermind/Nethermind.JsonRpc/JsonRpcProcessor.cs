@@ -544,7 +544,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
                         break;
                     }
 
-                    if (_logger.IsDebug) DebugRequest(request);
+                    if (_logger.IsDebug) DebugRequest(request, context);
 
                     JsonRpcResult.Entry singleResponse = await HandleSingleRequest(request, context);
                     await WriteSingleEntryAsync(singleResponse, sink, cancellationToken);
@@ -573,7 +573,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     {
         try
         {
-            if (_logger.IsDebug) DebugRequest(request);
+            if (_logger.IsDebug) DebugRequest(request, context);
 
             JsonRpcResult.Entry response = await HandleSingleRequest(request, context);
             await WriteSingleEntryAsync(response, sink, cancellationToken);
@@ -585,8 +585,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private void DebugRequest(JsonRpcRequest request) =>
-        _logger.Debug($"JSON RPC request {request.Method}");
+    private void DebugRequest(JsonRpcRequest request, JsonRpcContext context) =>
+        _logger.Debug($"JSON RPC request {request.Method}{DescribeRemoteAddress(context)}");
 
     /// <summary>Runs one JSON-RPC batch: size limit, then decode-dispatch-write per item, then close the array.</summary>
     /// <remarks>
@@ -609,7 +609,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             return;
         }
 
-        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests");
+        if (_logger.IsDebug) _logger.Debug($"{requestCount} JSON RPC requests{DescribeRemoteAddress(context)}");
 
         long startTime = Stopwatch.GetTimestamp();
         int requestIndex = 0;
@@ -796,6 +796,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
         if (_logger.IsDebug)
         {
+            error = $"{error}{DescribeRemoteAddress(context)}";
             const int sliceSize = 1000;
             if (Encoding.UTF8.TryGetStringSlice(in buffer, sliceSize, out bool isFullString, out string data))
             {
@@ -845,6 +846,12 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
     private static string DescribeErrorResponse(JsonRpcRequest request, Error responseError) =>
         $"Error response handling JsonRpc Id:{request.Id} Method:{request.Method} | Code: {responseError.Code} Message: {responseError.Message}";
 
+    /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
+    private static string DescribeRemoteAddress(JsonRpcContext context) =>
+        context.ForwardedFor is { } forwardedFor ? $" from {context.RemoteAddress} (X-Forwarded-For: {forwardedFor})"
+        : context.RemoteAddress is { } remoteAddress ? $" from {remoteAddress}"
+        : string.Empty;
+
     /// <summary>
     /// Whether this error response describes a fault in the request rather than a condition of the node, and so must
     /// not be able to dictate the operator's WARN volume (#13156). Demoted lines stay available at Debug.
@@ -883,7 +890,7 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
             {
                 if (IsDemotableRequestError(responseError, context))
                 {
-                    if (_logger.IsDebug) _logger.Debug(DescribeErrorResponse(request, responseError));
+                    if (_logger.IsDebug) _logger.Debug($"{DescribeErrorResponse(request, responseError)}{DescribeRemoteAddress(context)}");
                 }
                 else
                 {

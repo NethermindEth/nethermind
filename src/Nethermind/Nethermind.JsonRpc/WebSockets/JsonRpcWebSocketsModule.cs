@@ -62,7 +62,9 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            _processingConcurrency);
+            _processingConcurrency,
+            context.Connection.RemoteIpAddress,
+            context.Request.Headers["X-Forwarded-For"] is { Count: > 0 } forwardedFor ? forwardedFor.ToString() : null);
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 

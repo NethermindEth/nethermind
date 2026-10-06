@@ -7,10 +7,12 @@ using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -166,6 +168,37 @@ public class JsonRpcProcessorTests
                 $"WARN/ERROR lines: {string.Join(" | ", warnLogger.LogList)}");
             Assert.That(debugLogger.LogList.Where(l => l.Contains(fragment)), Is.Not.Empty,
                 "the detail must stay recoverable at Debug");
+        }
+    }
+
+    [TestCase("203.0.113.7", null, " from 203.0.113.7")]
+    [TestCase("203.0.113.7", "198.51.100.1, 192.0.2.4", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1, 192.0.2.4)")]
+    [TestCase(null, null, "", TestName = "No remote address keeps the existing format")]
+    public async Task Debug_logs_include_remote_address(string? remoteAddress, string? forwardedFor, string expectedSuffix)
+    {
+        IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse
+        {
+            Id = request.Id,
+            Error = new Error { Code = ErrorCodes.MethodNotFound, Message = "test message" }
+        });
+        TestLogger logger = new();
+        JsonRpcProcessor processor = CreateProcessorWithLogger(service, logger);
+        using (JsonRpcContext context = new(RpcEndpoint.Http) { RemoteAddress = remoteAddress is null ? null : IPAddress.Parse(remoteAddress), ForwardedFor = forwardedFor })
+        {
+            await ProcessAsync(processor, CreateRequest("1", "eth_chainId"), context);
+            await ProcessAsync(processor, "{", context);
+            await ProcessAsync(processor, $"[{CreateRequest("2", "eth_chainId")}]", context);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(logger.LogList, Is.SupersetOf(new[]
+            {
+                $"JSON RPC request eth_chainId{expectedSuffix}",
+                $"Error response handling JsonRpc Id:1 Method:eth_chainId | Code: {ErrorCodes.MethodNotFound} Message: test message{expectedSuffix}",
+                $"1 JSON RPC requests{expectedSuffix}"
+            }), string.Join(" | ", logger.LogList));
+            Assert.That(logger.LogList, Has.Some.Match($@"^DEBUG/ERROR: Error during parsing/validation[^\n]*\.{Regex.Escape(expectedSuffix)} Data"));
         }
     }
 

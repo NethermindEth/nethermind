@@ -483,7 +483,11 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
-            using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
+            using JsonRpcContext jsonRpcContext = new(RpcEndpoint.Http, url: jsonRpcUrl)
+            {
+                RemoteAddress = ctx.Connection.RemoteIpAddress,
+                ForwardedFor = ctx.Request.Headers["X-Forwarded-For"] is { Count: > 0 } forwardedFor ? forwardedFor.ToString() : null
+            };
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
             await _jsonRpcProcessor.ProcessAsync(

@@ -3,10 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO.Abstractions;
 using System.IO.Pipelines;
+using System.Linq;
+using System.Net;
 using System.Net.WebSockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
+using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -37,6 +43,7 @@ public class WebSocketExtensionsTests
         {
             // Had to use Array.Fill as it is more performant
             Array.Fill(buffer.Array, (byte)0, buffer.Offset, buffer.Count);
+            Payload?.CopyTo(buffer.Array, buffer.Offset);
 
             if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
             {
@@ -67,6 +74,7 @@ public class WebSocketExtensionsTests
         public override WebSocketState State { get; } = WebSocketState.Open;
         public override string SubProtocol { get; }
         public bool ReturnTaskWithFaultOnEmptyQueue { get; set; }
+        public byte[] Payload { get; init; }
     }
 
     [SetUp]
@@ -150,7 +158,9 @@ public class WebSocketExtensionsTests
             new EthereumJsonSerializer(),
             null,
             30.MB,
-            1);
+            1,
+            null,
+            null);
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await webSocketsClient.ReceiveLoopAsync(cts.Token);
@@ -164,6 +174,44 @@ public class WebSocketExtensionsTests
         localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method != "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
         localStats.Received(1).ReportCall(Arg.Is<RpcReport>(static report => report.Method == "# collection serialization #"), Arg.Any<long>(), Arg.Is<long>(static size => size > 0));
         localStats.Received(3).ReportCall(Arg.Any<RpcReport>());
+    }
+
+    [TestCase(null, " from 203.0.113.7 Data")]
+    [TestCase("198.51.100.1", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1) Data")]
+    public async Task Created_client_logs_caller_address(string forwardedFor, string expectedFragment)
+    {
+        const string request = "{";
+        Queue<WebSocketReceiveResult> receiveResult = new();
+        receiveResult.Enqueue(new WebSocketReceiveResult(request.Length, WebSocketMessageType.Text, true));
+        receiveResult.Enqueue(new WebSocketReceiveResult(0, WebSocketMessageType.Close, true));
+        WebSocketMock mock = new(receiveResult) { Payload = Encoding.UTF8.GetBytes(request) };
+
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsDebug.Returns(true);
+        IJsonRpcService service = Substitute.For<IJsonRpcService>();
+        service.GetErrorResponse(Arg.Any<int>(), Arg.Any<string>(), Arg.Any<string>()).Returns(new JsonRpcErrorResponse { Error = new Error() });
+        JsonRpcConfig config = new() { Enabled = true };
+        JsonRpcWebSocketsModule module = new(
+            new JsonRpcProcessor(service, config, Substitute.For<IFileSystem>(), new OneLoggerLogManager(new ILogger(logger))),
+            service,
+            Substitute.For<IJsonRpcLocalStats>(),
+            LimboLogs.Instance,
+            new EthereumJsonSerializer(),
+            new JsonRpcUrlCollection(LimboLogs.Instance, config, true),
+            Substitute.For<IRpcAuthentication>(),
+            null,
+            1);
+
+        DefaultHttpContext context = new();
+        context.Connection.LocalPort = config.Port;
+        context.Connection.RemoteIpAddress = IPAddress.Parse("203.0.113.7");
+        if (forwardedFor is not null) context.Request.Headers["X-Forwarded-For"] = forwardedFor;
+
+        ISocketsClient client = await module.CreateClient(mock, "TestClient", context);
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await client.ReceiveLoopAsync(cts.Token);
+
+        Assert.That(logger.ReceivedCalls().SelectMany(static call => call.GetArguments()).OfType<string>(), Has.Some.Contains(expectedFragment));
     }
 
     [Test]

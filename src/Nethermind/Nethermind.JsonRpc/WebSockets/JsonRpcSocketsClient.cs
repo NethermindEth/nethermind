@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.IO;
 using System.IO.Pipelines;
+using System.Net;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Channels;
@@ -53,13 +54,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null,
-        int concurrency = 1)
+        int concurrency = 1,
+        IPAddress? remoteAddress = null,
+        string? forwardedFor = null)
         : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
-        _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
+        _jsonRpcContext = new JsonRpcContext(endpointType, this, url) { RemoteAddress = remoteAddress, ForwardedFor = forwardedFor };
         _processChannel = Channel.CreateBounded<ProcessRequest>(new BoundedChannelOptions(concurrency)
         {
             SingleWriter = true
