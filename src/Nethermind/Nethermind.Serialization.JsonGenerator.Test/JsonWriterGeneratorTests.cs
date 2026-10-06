@@ -120,6 +120,15 @@ public class JsonWriterGeneratorTests
                 public int DefaultZero { get; set; }
             }
             """);
+        yield return Case("getter side effects of a property skipped on write", """
+            [GenerateJsonWriter]
+            public class Target
+            {
+                private int _counter;
+                [JsonIgnore(Condition = JsonIgnoreCondition.WhenWriting)] public int Hidden => ++_counter;
+                public int Visible => _counter;
+            }
+            """);
         yield return Case("names, order and accessors", """
             [GenerateJsonWriter]
             public class Target

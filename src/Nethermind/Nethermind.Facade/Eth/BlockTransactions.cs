@@ -65,12 +65,23 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
         writer.WriteStartArray();
         if (value.Full is { } full)
         {
-            // Through the TransactionForRpc dispatch, which writes each transaction as its runtime type.
-            WriteAll(writer, full, options);
+            // As each element of the former object[]: written as its runtime type, through its generated writer when it has one.
+            foreach (TransactionForRpc transaction in full)
+            {
+                if (transaction is null) writer.WriteNullValue();
+                else TransactionForRpc.TransactionJsonConverter.WriteAsRuntimeType(writer, transaction, options);
+            }
         }
         else
         {
-            WriteAll(writer, value.Hashes!, options);
+            JsonConverter<Hash256>? converter = TypeInfoJsonSerializer.GetTypeInfo<Hash256>(options).Converter as JsonConverter<Hash256>;
+            foreach (Hash256 hash in value.Hashes!)
+            {
+                if (hash is null) writer.WriteNullValue();
+                else if (converter is not null) converter.Write(writer, hash, options);
+                // A converter STJ adapts by casting is only reachable through the serializer.
+                else TypeInfoJsonSerializer.Serialize(writer, hash, options);
+            }
         }
 
         writer.WriteEndArray();
@@ -78,12 +89,15 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
 
     private static BlockTransactions ReadAll<T>(ref Utf8JsonReader reader, JsonSerializerOptions options, JsonTokenType elementToken) where T : class
     {
-        JsonConverter<T> converter = (JsonConverter<T>)TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter;
+        JsonConverter<T>? converter = TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter as JsonConverter<T>;
         List<T> items = [];
         do
         {
             if (reader.TokenType != elementToken) throw new JsonException("Block transactions mix hashes and transaction objects");
-            items.Add(converter.Read(ref reader, typeof(T), options) ?? throw new JsonException("Block transactions contain null"));
+            T? item = converter is not null
+                ? converter.Read(ref reader, typeof(T), options)
+                : TypeInfoJsonSerializer.Deserialize<T>(ref reader, options);
+            items.Add(item ?? throw new JsonException("Block transactions contain null"));
         }
         while (reader.Read() && reader.TokenType != JsonTokenType.EndArray);
 
@@ -93,15 +107,5 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
             List<TransactionForRpc> transactions => transactions.ToArray(),
             _ => throw new InvalidOperationException(),
         };
-    }
-
-    private static void WriteAll<T>(Utf8JsonWriter writer, T[] items, JsonSerializerOptions options) where T : class
-    {
-        JsonConverter<T> converter = (JsonConverter<T>)TypeInfoJsonSerializer.GetTypeInfo<T>(options).Converter;
-        foreach (T item in items)
-        {
-            if (item is null) writer.WriteNullValue();
-            else converter.Write(writer, item, options);
-        }
     }
 }

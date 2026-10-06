@@ -123,8 +123,15 @@ internal static class JsonWriterEmitter
         for (int i = 0; i < type.Contract.Length; i++)
         {
             PropertyModel p = type.Contract[i];
-            if (!p.Emit) continue;
-            EmitProperty(sb, p, i);
+            if (p.Emit)
+            {
+                EmitProperty(sb, p, i);
+            }
+            else if (p.Kind == ContractKind.Written)
+            {
+                // The metadata path still calls the getter of a property it skips with WhenWriting, so its side effects happen here too.
+                sb.Append("        _ = ((").Append(p.DeclaringTypeName).Append(")value).@").Append(p.MemberName).AppendLine(";");
+            }
         }
 
         sb.AppendLine("        writer.WriteEndObject();");

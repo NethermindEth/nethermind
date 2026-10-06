@@ -78,6 +78,27 @@ public class BlockTransactionsTests
         Assert.That(() => TypeInfoJsonSerializer.Deserialize<BlockForRpc>(json, EthereumJsonSerializer.JsonOptions), Throws.InstanceOf<JsonException>());
     }
 
+    [Test]
+    public void Hashes_honour_a_converter_STJ_adapts_by_casting()
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Insert(0, new HashAsObjectConverter());
+        BlockForRpc block = Read("cancun-hashes");
+
+        string json = System.Text.Encoding.UTF8.GetString(TypeInfoJsonSerializer.SerializeToUtf8Bytes(block, typeof(BlockForRpc), options));
+
+        Assert.That(json, Does.Contain($"\"transactions\":[{string.Join(",", block.Transactions!.Hashes!.Select(static _ => "\"hash\""))}]"));
+    }
+
+    private sealed class HashAsObjectConverter : System.Text.Json.Serialization.JsonConverter<object>
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(Nethermind.Core.Crypto.Hash256);
+
+        public override object Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => writer.WriteStringValue("hash");
+    }
+
     private static BlockForRpc Read(string fixture) =>
         TypeInfoJsonSerializer.Deserialize<BlockForRpc>(JsonFixture.Read(typeof(BlockTransactionsTests).Assembly, fixture), EthereumJsonSerializer.JsonOptions)
         ?? throw new InvalidOperationException();
