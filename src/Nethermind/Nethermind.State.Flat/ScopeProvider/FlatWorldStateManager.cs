@@ -50,8 +50,6 @@ public class FlatWorldStateManager(
 
     public IWorldStateScopeProvider CreateResettableWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: false);
 
-    // Block processing, the prewarmer, block production and witness generation come through
-    // CreateResettableWorldState and keep the plain loop; only the query path reads through the filter.
     public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: true);
 
     private FlatScopeProvider CreateReadOnlyScopeProvider(bool filterInMemorySlotReads) =>

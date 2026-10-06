@@ -56,8 +56,8 @@ public class ShareableTxProcessingSourceTests
         }
     }
 
-    // Only the shareable source serves eth_call, eth_estimateGas and eth_createAccessList; block processing helpers,
-    // the prewarmer, block production and the BAL parent readers keep creating their envs from the plain factory.
+    // Only the shareable source serves read-only queries; block processing helpers, the prewarmer, block production
+    // and the BAL parent readers keep creating their envs from the plain factory.
     [TestCase(true, TestName = "Build_ShareableSource_UsesReadOnlyQueryWorldState")]
     [TestCase(false, TestName = "Create_ReadOnlyTxProcessingEnvFactory_UsesResettableWorldState")]
     public void Build_WorldStateFollowsTheSource(bool shareable)
