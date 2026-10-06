@@ -173,9 +173,9 @@ internal static class TypeModelBuilder
         if (!canUseGetter && !canUseSetter) return null;
         if (property.Type.IsRefLikeType) return null;
 
-        if (property.Type.TypeKind == TypeKind.Dynamic)
+        if (property.Type.TypeKind is TypeKind.Dynamic or TypeKind.Pointer or TypeKind.FunctionPointer)
         {
-            diagnostics.Add(new DiagnosticModel("NJW003", $"property '{property.Name}' is dynamic"));
+            diagnostics.Add(new DiagnosticModel("NJW003", $"property '{property.Name}' has a type the writer cannot name ({property.Type.TypeKind})"));
             return null;
         }
 

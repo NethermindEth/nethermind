@@ -71,6 +71,7 @@ public class JsonWriterGeneratorTests
         yield return Case("NJW003", "factory converter on a nullable value type",
             "[GenerateJsonWriter] public class Target { [JsonConverter(typeof(JsonStringEnumConverter))] public DayOfWeek? Day { get; set; } }");
         yield return Case("NJW003", "dynamic property", "[GenerateJsonWriter] public class Target { public dynamic A { get; set; } }");
+        yield return Case("NJW003", "pointer property", "[GenerateJsonWriter] public unsafe class Target { public int* A { get; set; } }");
         yield return Case("NJW003", "name conflict", "[GenerateJsonWriter] public class Target { public int A { get; set; } [JsonPropertyName(\"A\")] public int B { get; set; } }");
 
         static TestCaseData Case(string id, string name, string source) => new TestCaseData(id, source).SetArgDisplayNames(name);

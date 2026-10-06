@@ -186,6 +186,37 @@ public class GeneratedJsonWriterTests
         }
     }
 
+    [Test]
+    public void Null_reaches_a_converter_registered_after_the_generated_writer()
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Add(new NullHandlingBlockConverter());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(System.Text.Encoding.UTF8.GetString(Serialize(null, typeof(BlockForRpc), options)), Is.EqualTo("\"custom-null\""));
+            Assert.That(TypeInfoJsonSerializer.Deserialize<BlockForRpc>("null", options), Is.Not.Null);
+        }
+    }
+
+    private sealed class NullHandlingBlockConverter : System.Text.Json.Serialization.JsonConverter<BlockForRpc>
+    {
+        public override bool HandleNull => true;
+
+        public override BlockForRpc Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => new();
+
+        public override void Write(Utf8JsonWriter writer, BlockForRpc value, JsonSerializerOptions options) => writer.WriteStringValue("custom-null");
+    }
+
+    [Test]
+    public void Block_transactions_keep_the_serializer_depth_limit()
+    {
+        BlockForRpc block = new(Blocks().First().Block, includeFullTransactionData: false, MainnetSpecProvider.Instance);
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions) { MaxDepth = 2 };
+
+        Assert.That(() => Serialize(block, typeof(BlockForRpc), options), Throws.InstanceOf<JsonException>());
+    }
+
     // STJ adapts a converter for a wider type by casting; a generated writer cannot call it as JsonConverter<Withdrawal[]>.
     private sealed class WithdrawalsAsObjectConverter : System.Text.Json.Serialization.JsonConverter<object>
     {

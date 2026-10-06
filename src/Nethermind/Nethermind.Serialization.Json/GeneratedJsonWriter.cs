@@ -76,12 +76,15 @@ internal abstract class GeneratedJsonWriter<T, TState> : JsonConverter<T>, IGene
 
     public sealed override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(T);
 
+    // Null also goes to the metadata path, so a converter registered after this one still sees it.
+    public sealed override bool HandleNull => true;
+
     public sealed override T? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) =>
         TypeInfoJsonSerializer.Deserialize<T>(ref reader, GeneratedJsonWriters.GetMetadataOptions(options));
 
     public sealed override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)
     {
-        if (GetState(options) is { } state)
+        if (value is not null && GetState(options) is { } state)
         {
             Write(writer, value, state, options);
         }
