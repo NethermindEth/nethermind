@@ -11,7 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
+using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -104,25 +104,7 @@ public class CliqueBlockProducerTests
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether);
-                if (finalSpec.WithdrawalsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip7002Constants.WithdrawalRequestPredeployAddress, 0, Eip7002TestConstants.Nonce);
-                    stateProvider.InsertCode(Eip7002Constants.WithdrawalRequestPredeployAddress, Eip7002TestConstants.CodeHash, Eip7002TestConstants.Code, testnetSpecProvider.GenesisSpec);
-                }
-
-                if (finalSpec.ConsolidationRequestsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip7251Constants.ConsolidationRequestPredeployAddress, 0, Eip7251TestConstants.Nonce);
-                    stateProvider.InsertCode(Eip7251Constants.ConsolidationRequestPredeployAddress, Eip7251TestConstants.CodeHash, Eip7251TestConstants.Code, testnetSpecProvider.GenesisSpec);
-                }
-
-                if (finalSpec.BuilderRequestsEnabled)
-                {
-                    stateProvider.CreateAccount(Eip8282Constants.BuilderDepositRequestPredeployAddress, 0, Eip8282TestConstants.BuilderDeposit.Nonce);
-                    stateProvider.InsertCode(Eip8282Constants.BuilderDepositRequestPredeployAddress, Eip8282TestConstants.BuilderDeposit.CodeHash, Eip8282TestConstants.BuilderDeposit.Code, testnetSpecProvider.GenesisSpec);
-                    stateProvider.CreateAccount(Eip8282Constants.BuilderExitRequestPredeployAddress, 0, Eip8282TestConstants.BuilderExit.Nonce);
-                    stateProvider.InsertCode(Eip8282Constants.BuilderExitRequestPredeployAddress, Eip8282TestConstants.BuilderExit.CodeHash, Eip8282TestConstants.BuilderExit.Code, testnetSpecProvider.GenesisSpec);
-                }
+                TestBlockchain.DeployRequestPredeploys(stateProvider, finalSpec, testnetSpecProvider.GenesisSpec);
 
                 stateProvider.Commit(testnetSpecProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
@@ -215,7 +197,6 @@ public class CliqueBlockProducerTests
             BlockHeader header = new(parentHash, unclesHash, beneficiary, difficulty, number, gasLimit, timestamp, extraData);
             Block genesis = new(header);
             genesis.Header.Hash = genesis.Header.CalculateHash();
-            genesis.Header.StateRoot = new Hash256("0x171741a26553c15f57aeb1080ad239c7536787d8c14b95e6cfb741e1172d3998");
             genesis.Header.TxRoot = Keccak.EmptyTreeHash;
             genesis.Header.ReceiptsRoot = Keccak.EmptyTreeHash;
             genesis.Header.Bloom = Bloom.Empty;
@@ -301,9 +282,13 @@ public class CliqueBlockProducerTests
 
         public On ProcessBadGenesis(PrivateKey nodeKey)
         {
-            Wait(10); // wait a moment so the timestamp changes
             if (_logger.IsInfo) _logger.Info($"SUGGESTING BAD GENESIS ON {nodeKey.Address}");
-            _blockTrees[nodeKey].SuggestBlock(GetGenesis());
+            Block badGenesis = GetGenesis();
+            // Same state as the good genesis, but its own hash.
+            badGenesis.Header.Timestamp = _genesis.Header.Timestamp - 1;
+            badGenesis.Header.StateRoot = _genesis.Header.StateRoot;
+            badGenesis.Header.Hash = badGenesis.Header.CalculateHash();
+            _blockTrees[nodeKey].SuggestBlock(badGenesis);
             _blockEvents[nodeKey].WaitOne(_timeout);
             return this;
         }
