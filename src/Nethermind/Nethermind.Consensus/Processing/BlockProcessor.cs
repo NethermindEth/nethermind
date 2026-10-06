@@ -92,6 +92,8 @@ public partial class BlockProcessor(
         bool apical = probe && ApicalProbe.Enabled;
         if (apical) ApicalProbe.BeginBlock();
         if (probe) IdleProbe.BeginBlock();
+        bool race = probe && WarmRace.On;
+        if (race) WarmRace.BeginBlock();
         try
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
@@ -100,6 +102,7 @@ public partial class BlockProcessor(
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
             if (probe) IdleProbe.EndBlock(block.Number, block.Transactions.Length, (long)block.GasUsed);
             if (apical) ApicalProbe.EndBlock();
+            if (race) WarmRace.EndBlock(block.Number);
         }
         catch (BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException ex) when (_balManager.ParallelExecutionEnabled)
         {

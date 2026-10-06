@@ -302,7 +302,9 @@ public class PrewarmerScopeProvider(
             }
             else
             {
+                long raceStart = !isPrewarmer && WarmRace.On ? Stopwatch.GetTimestamp() : 0;
                 account = GetFromBaseTree(in addressAsKey);
+                if (raceStart != 0) WarmRace.MainAccountMiss(Stopwatch.GetTimestamp() - raceStart);
                 // Backfill so other readers reuse this resolve; SeqlockCache.Set is safe under concurrent writers.
                 preBlockCache.Set(in addressAsKey, account);
                 if (!isPrewarmer) _metrics.IncrementPreBlockAccountMisses();
@@ -526,6 +528,7 @@ public class PrewarmerScopeProvider(
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in storageCell, out value))
             {
+                if (isPrewarmer && WarmRace.On) WarmRace.WarmTouch(in storageCell);
                 if (_measureMetric) _metricObserver.Observe(Stopwatch.GetTimestamp() - sw, _labels.SlotGetHit);
                 _metrics.IncrementStorageTreeCache();
                 if (!isPrewarmer) _metrics.IncrementPreBlockStorageHits();
@@ -555,15 +558,21 @@ public class PrewarmerScopeProvider(
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
             else ColdReadWatch.Read();
 
+            bool race = WarmRace.On;
             if (isPrewarmer)
             {
+                if (race) WarmRace.WarmLoadStart(in storageCell);
                 baseStorageTree.Get(storageCell.Index, out value);
+                if (race) WarmRace.WarmLoadDone(in storageCell);
                 return;
             }
             long probeStart = Stopwatch.GetTimestamp();
+            if (race) WarmRace.MainMissBegin(in storageCell, probeStart);
             baseStorageTree.Get(storageCell.Index, out value);
-            IdleProbe.ColdTicks += Stopwatch.GetTimestamp() - probeStart;
+            long probeTicks = Stopwatch.GetTimestamp() - probeStart;
+            IdleProbe.ColdTicks += probeTicks;
             IdleProbe.ColdCount++;
+            if (race) WarmRace.MainMiss(in storageCell, probeStart, probeTicks);
         }
     }
 
@@ -584,6 +593,7 @@ public class PrewarmerScopeProvider(
                 return;
             }
 
+            if (WarmRace.On) WarmRace.WarmTouch(in storageCell);
             storageReadCapture.Record(in storageCell);
             // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
             value = storageReadCapture.Placeholder;

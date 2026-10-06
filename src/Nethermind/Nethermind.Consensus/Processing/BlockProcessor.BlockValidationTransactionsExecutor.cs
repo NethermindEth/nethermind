@@ -50,6 +50,7 @@ public partial class BlockProcessor
             {
                 Transaction currentTx = block.Transactions[i];
 
+                if (probe && WarmRace.On) WarmRace.BeginTx();
                 if (probeRecipes) IdleProbe.BeginTx(currentTx.Data, currentTx.SenderAddress, currentTx.To);
                 try
                 {
