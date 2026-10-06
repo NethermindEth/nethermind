@@ -15,6 +15,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool;
@@ -73,7 +74,8 @@ namespace Nethermind.Consensus.Producers
                 pendingTransactions,
                 comparer,
                 pendingTxFilter,
-                gasLimit);
+                gasLimit,
+                spec);
             if (_logger.IsTrace) _logger.Trace($"Collecting pending transactions at block gas limit {gasLimit}.");
 
             int checkedTransactions = 0;
@@ -88,7 +90,8 @@ namespace Nethermind.Consensus.Producers
                     pendingBlobTransactionsEquivalences,
                     comparer,
                     BlobFilter,
-                    maxBlobCount);
+                    maxBlobCount,
+                    spec);
                 fullBlobTxs = SelectBlobTransactions(blobTransactions, parent, spec, baseFee, selectedBlobTxs, maxBlobCount, !isRevalidatedForTarget);
             }
 
@@ -480,36 +483,43 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            Order(pendingTransactions, comparer, filter, gasLimit);
+        protected virtual IEnumerable<Transaction> GetOrderedTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
+            Order(pendingTransactions, comparer, filter, gasLimit, spec);
 
-        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs = 0ul) =>
-            OrderCore<(Transaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs);
+        private static IEnumerable<(Transaction tx, ulong blobChain)> GetOrderedBlobTransactions(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong maxBlobs, IReleaseSpec spec) =>
+            OrderCore<(Transaction tx, ulong resource), BlobOrdering>(pendingTransactions, comparer, filter, maxBlobs, spec);
 
         protected virtual IComparer<Transaction> GetComparer(BlockHeader parent, BlockPreparationContext blockPreparationContext)
             => _transactionComparerProvider.GetDefaultProducerComparer(blockPreparationContext);
 
-        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit) =>
-            OrderCore<Transaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit);
+        internal static IEnumerable<Transaction> Order(IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions, IComparer<Transaction> comparer, Func<Transaction, bool> filter, ulong gasLimit, IReleaseSpec spec) =>
+            OrderCore<Transaction, TransactionOrdering>(pendingTransactions, comparer, filter, gasLimit, spec);
 
         private interface IOrdering<TResult>
         {
             static abstract TResult Select(Transaction transaction, ulong resource);
-            static abstract ulong GetResource(Transaction transaction);
+            static abstract ulong GetResource(Transaction transaction, IReleaseSpec spec);
             static abstract bool EnforceSequentialNonces { get; }
         }
 
         private readonly struct TransactionOrdering : IOrdering<Transaction>
         {
             public static Transaction Select(Transaction transaction, ulong resource) => transaction;
-            public static ulong GetResource(Transaction transaction) => transaction.BlockGasUsed;
+            /// <remarks>
+            /// Under EIP-8037 a transaction's gas limit also covers state gas, which has its own block budget,
+            /// so only the execution reservation counts against the gas limit here.
+            /// </remarks>
+            public static ulong GetResource(Transaction transaction, IReleaseSpec spec) =>
+                spec.IsEip8037Enabled && Eip8037BlockGasInclusionCheck.TryGetBlockGasReservations(transaction, spec, out ulong executionReservation, out _)
+                    ? Math.Min(transaction.BlockGasUsed, executionReservation)
+                    : transaction.BlockGasUsed;
             public static bool EnforceSequentialNonces => false;
         }
 
         private readonly struct BlobOrdering : IOrdering<(Transaction, ulong)>
         {
             public static (Transaction, ulong) Select(Transaction transaction, ulong resource) => (transaction, resource);
-            public static ulong GetResource(Transaction transaction) => (ulong)transaction.GetBlobCount();
+            public static ulong GetResource(Transaction transaction, IReleaseSpec spec) => (ulong)transaction.GetBlobCount();
             public static bool EnforceSequentialNonces => true;
         }
 
@@ -517,7 +527,8 @@ namespace Nethermind.Consensus.Producers
             IReadOnlyDictionary<AddressAsKey, Transaction[]> pendingTransactions,
             IComparer<Transaction> comparer,
             Func<Transaction, bool> filter,
-            ulong resourceLimit)
+            ulong resourceLimit,
+            IReleaseSpec spec)
             where TOrdering : struct, IOrdering<TResult>
         {
             using ArrayPoolList<(Transaction[] bucket, int index, int heapIndex, ulong resource)> entries = new(pendingTransactions.Count);
@@ -534,7 +545,7 @@ namespace Nethermind.Consensus.Producers
                 int entryIndex = entries[0].heapIndex;
                 (Transaction[] bucket, int index, _, ulong resource) = entries[entryIndex];
                 Transaction candidateTx = bucket[index];
-                ulong totalResource = resource + TOrdering.GetResource(candidateTx);
+                ulong totalResource = resource + TOrdering.GetResource(candidateTx, spec);
                 bool accepted = totalResource <= resourceLimit && filter(candidateTx);
                 int nextIndex = index + 1;
                 if (accepted && nextIndex < bucket.Length
