@@ -34,7 +34,7 @@ public static class FuluDriverSupport
     }
 
     internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
-        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false)
+        Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false, bool relativeNames = false)
     {
         foreach (string fork in forks)
         {
@@ -47,7 +47,8 @@ public static class FuluDriverSupport
                 string handler = Path.GetFileName(handlerDir);
                 foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerDir, marker))
                 {
-                    string name = $"{preset}/{fork}/{suite}/{handler}/{Path.GetFileName(caseDir)}";
+                    string caseName = relativeNames ? Path.GetRelativePath(handlerDir, caseDir).Replace('\\', '/') : Path.GetFileName(caseDir);
+                    string name = $"{preset}/{fork}/{suite}/{handler}/{caseName}";
                     yield return new TestCaseData(createCase(preset, fork, handler, caseDir, name)).SetName(name);
                 }
             }
