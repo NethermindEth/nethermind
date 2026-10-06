@@ -78,6 +78,9 @@ namespace Nethermind.TxPool.Collections
 
         protected virtual bool AllowSameKeyReplacement => false;
 
+        /// <summary>Whether <paramref name="value"/> may displace the pending <paramref name="existing"/> it competes with.</summary>
+        internal bool CanReplace(TValue value, TValue existing) => _comparer.Compare(value, existing) <= 0;
+
         protected override bool CanInsert(TKey key, TValue value)
         {
             // either there is no distinct value or it would go before (or at same place) as old value
@@ -87,7 +90,7 @@ namespace Nethermind.TxPool.Collections
                 bool isDuplicate = _distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp);
                 if (isDuplicate)
                 {
-                    bool isHigher = _comparer.Compare(value, oldKvp.Value) <= 0;
+                    bool isHigher = CanReplace(value, oldKvp.Value);
 
                     if (_logger.IsTrace && !isHigher)
                     {
