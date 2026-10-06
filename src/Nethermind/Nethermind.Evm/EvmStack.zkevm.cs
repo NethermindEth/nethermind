@@ -53,7 +53,6 @@ public ref partial struct EvmStack
     {
         CodeInfo? codeInfo = _codeInfo;
         return codeInfo is not null && ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) &&
-            Unsafe.Add(ref code, destination) == (byte)Instruction.JUMPDEST &&
             codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
     }
 
@@ -86,9 +85,9 @@ public ref partial struct EvmStack
     /// <summary>Reports whether <paramref name="destination"/> is a jump destination already analyzed.</summary>
     /// <remarks>
     /// A bit test and nothing else, so a false answer may only mean "not analyzed yet". The fused PUSH2+JUMP
-    /// fuses only on a true answer and otherwise runs the two unfused, leaving the scan to the jump handler:
-    /// carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on every
-    /// execution, though almost none of them scan.
+    /// fuses only on a true answer and otherwise pushes and leaves the scan to the guest's unanalyzed-destination
+    /// jump handler: carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on
+    /// every execution, though almost none of them scan.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsKnownJumpDestination(int destination) =>

@@ -139,6 +139,7 @@ public class GuestJumpDestinationTests
         Assert.That(enabled.AnalyzeJumpDestination(dataJumpDest, ref code[0]), Is.False, "PUSH data, jump handler");
 
         EvmStack disabled = new(0, ref stackMemory, code, codeInfo);
+        Assert.That(disabled.IsKnownJumpDestination(2), Is.False, "the misses left the plain bitmap unanalyzed");
         Assert.That(disabled.IsJumpDestination(2), Is.True, "the plain bitmap still analyzes its own prefix");
     }
 
