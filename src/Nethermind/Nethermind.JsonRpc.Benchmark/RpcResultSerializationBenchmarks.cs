@@ -144,14 +144,6 @@ public class RpcResultSerializationBenchmarks
         return _buffer.WrittenCount;
     }
 
-    /// <summary>The block the RPC module serves.</summary>
-    internal Block Block => _block;
-
-    /// <summary>The bytes the last serialization wrote.</summary>
-    internal ReadOnlySpan<byte> Written => _buffer.WrittenSpan;
-
-    internal int RpcWith(bool fullTransactions, JsonSerializerOptions options) => Rpc(fullTransactions, options);
-
     private int Rpc(bool fullTransactions, JsonSerializerOptions options)
     {
         ResultWrapper<BlockForRpc> result = _ethModule.eth_getBlockByNumber(new BlockParameter((ulong)_block.Number), fullTransactions);
