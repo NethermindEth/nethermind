@@ -47,7 +47,8 @@ public static class FrameTxFeeBudget
     /// <summary>Splits the <paramref name="maxCost"/> collected on approval once <paramref name="gasUsed"/> is final.</summary>
     /// <param name="baseFeePaid"><c>gas_used * base_fee_per_gas</c>, burned.</param>
     /// <param name="blobFeePaid">The blob gas at the blob base fee, burned.</param>
-    /// <param name="priorityFeePaid"><c>min(max_priority_fee_per_gas * gas_used, max_cost - base_fee_paid)</c>, to the coinbase.</param>
+    /// <param name="priorityFeePaid"><c>min(max_priority_fee_per_gas * gas_used, max_cost - base_fee_paid)</c>, to the coinbase,
+    /// where the spec's <c>base_fee_paid</c> is <paramref name="baseFeePaid"/> plus <paramref name="blobFeePaid"/>.</param>
     /// <returns>The payer's refund, <c>max_cost - base_fee_paid - priority_fee_paid</c>.</returns>
     /// <remarks>Each leg saturates at what remains of <paramref name="maxCost"/>. A valid transaction never reaches
     /// the bound, as <c>gas_used &lt;= max_gas</c>; it only applies where validation was skipped.</remarks>

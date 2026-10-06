@@ -326,14 +326,20 @@ public class FrameTransactionForRpcTests
 
     // A call priced per gas still runs once EIP-7999 admits only budgets: it buys what that price would.
     [Test]
-    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCallUnderEip7999([Values] bool eip7999)
+    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCallUnderEip7999([Values] bool eip7999, [Values] bool blobs)
     {
         FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMinimalFrameTx());
         rpc.MaxFeePerGas = 3;
+        if (blobs)
+        {
+            rpc.MaxFeePerBlobGas = 5;
+            rpc.BlobVersionedHashes = [new byte[32]];
+        }
 
         Transaction tx = rpc.ToTransaction(spec: eip7999 ? BogotaWithMaxFee : Bogota.Instance).Data!;
 
-        Assert.That(tx.MaxFee, Is.EqualTo(eip7999 ? (UInt256?)(3 * tx.GasLimit) : null));
+        UInt256 expected = (UInt256)(3 * tx.GasLimit) + (blobs ? (UInt256)(5 * Eip4844Constants.GasPerBlob) : UInt256.Zero);
+        Assert.That(tx.MaxFee, Is.EqualTo(eip7999 ? expected : null));
     }
 
     [Test]

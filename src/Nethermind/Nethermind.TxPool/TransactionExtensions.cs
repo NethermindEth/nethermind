@@ -134,7 +134,9 @@ namespace Nethermind.TxPool
 
         public static bool CanPayBaseFee(this Transaction tx, UInt256 currentBaseFee) => (UInt256)tx.MaxFeePerGas >= currentBaseFee;
 
-        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) => !tx.CarriesBlobs || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
+        /// <remarks>An EIP-7999 <c>max_fee</c> has no per-blob-gas cap: execution judges the blob fee against the whole budget.</remarks>
+        public static bool CanPayForBlobGas(this Transaction tx, UInt256 currentPricePerBlobGas) =>
+            !tx.CarriesBlobs || tx.MaxFee is not null || tx.MaxFeePerBlobGas >= currentPricePerBlobGas;
 
         public static bool CanBeBroadcast(this Transaction tx) => !tx.CarriesBlobs && tx.GetLength() <= MaxSizeOfTxForBroadcast;
 

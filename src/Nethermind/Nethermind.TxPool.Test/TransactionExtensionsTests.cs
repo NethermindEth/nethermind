@@ -295,5 +295,21 @@ namespace Nethermind.TxPool.Test
                 };
             }
         }
+
+        // EIP-7999 frame transactions carry no max_fee_per_blob_gas, so a per-blob cap must not gate them.
+        [TestCase(true, ExpectedResult = true, TestName = "CanPayForBlobGas_MaxFeeShape_HasNoPerBlobCap")]
+        [TestCase(false, ExpectedResult = false, TestName = "CanPayForBlobGas_PerGasShape_BelowBlobBaseFee")]
+        public bool CanPayForBlobGas_FrameTxFeeShape(bool maxFeeShape)
+        {
+            Transaction tx = new()
+            {
+                Type = TxType.FrameTx,
+                BlobVersionedHashes = [new byte[32]],
+                MaxFee = maxFeeShape ? 1_000 : null,
+                MaxFeePerBlobGas = maxFeeShape ? null : 1,
+            };
+
+            return tx.CanPayForBlobGas(currentPricePerBlobGas: 2);
+        }
     }
 }
