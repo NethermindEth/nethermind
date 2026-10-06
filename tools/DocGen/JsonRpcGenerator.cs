@@ -9,6 +9,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Facade.Eth;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
@@ -84,12 +85,32 @@ internal static class JsonRpcGenerator
         [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
     };
 
-    // Stand-ins documenting the wire shape a hand-written converter writes in place of the CLR shape,
-    // keyed by the converted type or, where the type keeps its CLR shape elsewhere, by the member converter
-    private static readonly Dictionary<Type, Type> _wireShapes = new()
+    // Members written by hand-rolled object converters, which expose no serializer contract to read them from
+    private static readonly Dictionary<Type, (string Name, Type Type, Type? Converter)[]> _knownConverterMembers = new()
     {
-        [typeof(ParityTraceActionConverter)] = typeof(ParityTraceActionShape),
-        [typeof(ParityTxTraceFromReplay)] = typeof(ParityTxTraceFromReplayShape),
+        // A call or create action; a reward writes author, rewardType and value instead,
+        // and a self-destruct writes address, balance and refundAddress
+        [typeof(ParityTraceActionConverter)] =
+        [
+            ("address", typeof(Address), null), ("author", typeof(Address), null), ("balance", typeof(UInt256), null),
+            ("callType", typeof(string), null), ("creationMethod", typeof(string), null), ("from", typeof(Address), null),
+            ("gas", typeof(ulong), null), ("init", typeof(byte[]), null), ("input", typeof(byte[]), null),
+            ("refundAddress", typeof(Address), null), ("rewardType", typeof(string), null), ("to", typeof(Address), null),
+            ("value", typeof(UInt256), null),
+        ],
+        // Writes the action and each of its subtraces as one flat list of entries
+        [typeof(ParityTraceActionFromReplayJsonConverter)] =
+        [
+            ("action", typeof(ParityTraceAction), typeof(ParityTraceActionConverter)), ("error", typeof(string), null),
+            ("result", typeof(ParityTraceResult), null), ("subtraces", typeof(int), null),
+            ("traceAddress", typeof(int[]), null), ("type", typeof(string), null),
+        ],
+        [typeof(ParityTxTraceFromReplayJsonConverter)] =
+        [
+            ("output", typeof(byte[]), null), ("stateDiff", typeof(Dictionary<Address, ParityAccountStateChange>), null),
+            ("trace", typeof(ParityTraceAction[]), typeof(ParityTraceActionFromReplayJsonConverter)),
+            ("transactionHash", typeof(Hash256), null), ("vmTrace", typeof(ParityVmTrace), null),
+        ],
     };
 
     internal static void Generate(string path)
@@ -327,14 +348,18 @@ internal static class JsonRpcGenerator
             """);
     }
 
-    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null)
+    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null, Type? converterType = null)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
-        type = _wireShapes.GetValueOrDefault(type, type);
 
         parentTypes ??= new List<string>();
 
-        if (parentTypes.Any(a => type.FullName?.Equals(a, StringComparison.Ordinal) ?? false))
+        // A converter with its own members writes a different object than the type's, so it is its own node
+        string? nodeName = converterType is not null && _knownConverterMembers.ContainsKey(converterType)
+            ? converterType.FullName
+            : type.FullName;
+
+        if (parentTypes.Any(a => nodeName?.Equals(a, StringComparison.Ordinal) ?? false))
         {
             file.WriteLine($"{Indent(indentation + 2)}<!--[circular ref]-->");
 
@@ -363,20 +388,18 @@ internal static class JsonRpcGenerator
         if (IsOpaqueJson(type))
             return;
 
-        foreach ((string name, Type clrMemberType, Type? memberConverter) in GetSerializedMembers(type))
+        foreach ((string name, Type memberType, Type? memberConverter) in GetSerializedMembers(type, converterType))
         {
-            Type memberType = memberConverter is not null && _wireShapes.TryGetValue(memberConverter, out Type? shape)
-                ? shape
-                : clrMemberType;
             string memberJsonType = GetJsonTypeName(memberType, memberConverter);
 
             file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
 
             if (memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
-                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(type.FullName));
+                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
             else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
                 TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
-                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(type.FullName));
+                // A converter on a collection of objects writes its items
+                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
         }
     }
 
@@ -533,13 +556,17 @@ internal static class JsonRpcGenerator
         }
     }
 
-    private static IEnumerable<(string Name, Type Type, Type? Converter)> GetSerializedMembers(Type type)
+    private static IEnumerable<(string Name, Type Type, Type? Converter)> GetSerializedMembers(Type type, Type? converterType)
     {
         JsonTypeInfo? contract = GetContract(type);
 
+        if ((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
+            _knownConverterMembers.TryGetValue(shapeConverter, out (string, Type, Type?)[]? members))
+            return members;
+
         if (contract?.Kind is JsonTypeInfoKind.Object)
             return contract.Properties
-                .Where(p => p.Get is not null)
+                .Where(p => p.Get is not null && !IsNullForSpecialization(type, p))
                 .Select(p => (Name: p.Name, Type: p.PropertyType, Converter: MemberConverter(p.AttributeProvider)))
                 .OrderBy(m => m.Name, StringComparer.Ordinal);
 
@@ -555,6 +582,14 @@ internal static class JsonRpcGenerator
             .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type, Converter: MemberConverter(m.Member)))
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
+
+    // SimulateBlockResult<TTrace> returns null from one of these by its type argument, so the serializer never writes it
+    private static bool IsNullForSpecialization(Type type, JsonPropertyInfo property) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SimulateBlockResult<>) &&
+        property.AttributeProvider is MemberInfo { Name: { } name } &&
+        name == (type.GetGenericArguments()[0] == typeof(SimulateCallResult)
+            ? nameof(SimulateBlockResult<>.Traces)
+            : nameof(SimulateBlockResult<>.Calls));
 
     // The member's [JsonConverter], if any: lets two fields of the same type document different wire forms
     private static Type? MemberConverter(ICustomAttributeProvider? member) =>
@@ -578,44 +613,5 @@ internal static class JsonRpcGenerator
             : null;
 
         return itemType is not null;
-    }
-
-    /// <summary>The object <see cref="ParityTraceActionConverter"/> writes for call, create, reward and self-destruct actions.</summary>
-    private sealed class ParityTraceActionShape
-    {
-        public Address? Address { get; init; }
-        public Address? Author { get; init; }
-        public UInt256 Balance { get; init; }
-        public string? CallType { get; init; }
-        public string? CreationMethod { get; init; }
-        public Address? From { get; init; }
-        public ulong Gas { get; init; }
-        public byte[]? Init { get; init; }
-        public byte[]? Input { get; init; }
-        public Address? RefundAddress { get; init; }
-        public string? RewardType { get; init; }
-        public Address? To { get; init; }
-        public UInt256 Value { get; init; }
-    }
-
-    /// <summary>A trace entry <see cref="ParityTraceActionFromReplayJsonConverter"/> writes, one per action with its subtraces flattened after it.</summary>
-    private sealed class ParityReplayTraceEntryShape
-    {
-        public ParityTraceActionShape? Action { get; init; }
-        public string? Error { get; init; }
-        public ParityTraceResult? Result { get; init; }
-        public int Subtraces { get; init; }
-        public int[]? TraceAddress { get; init; }
-        public string? Type { get; init; }
-    }
-
-    /// <summary>The object <see cref="ParityTxTraceFromReplayJsonConverter"/> writes.</summary>
-    private sealed class ParityTxTraceFromReplayShape
-    {
-        public byte[]? Output { get; init; }
-        public Dictionary<Address, ParityAccountStateChange>? StateDiff { get; init; }
-        public ParityReplayTraceEntryShape[]? Trace { get; init; }
-        public Hash256? TransactionHash { get; init; }
-        public ParityVmTrace? VmTrace { get; init; }
     }
 }
