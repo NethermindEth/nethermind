@@ -27,7 +27,7 @@ internal sealed record DependencyIdentity(string Path, string Role, string Sha25
 
 internal sealed record SourcePin(string Path, string Role, string Sha256);
 
-internal sealed record CompilerReferencePin(string Path, string AssemblyName, string Sha256);
+internal sealed record CompilerReferencePin(string Path, string AssemblyName, string Sha256, string Mvid, bool Selected);
 
 internal sealed record CompilerReferenceInventory(
     int SchemaVersion,

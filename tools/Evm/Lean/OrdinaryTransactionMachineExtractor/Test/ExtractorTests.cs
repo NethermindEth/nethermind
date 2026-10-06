@@ -209,7 +209,7 @@ public sealed class ExtractorTests
             Assert.That(source, Does.Contain("semantic operation"));
             Assert.That(source, Does.Contain("fieldwise seam"));
             Assert.That(source, Does.Contain("TransactionResult.Equals"));
-            Assert.That(pins, Does.Contain("\"count\": 329"));
+            Assert.That(pins, Does.Contain("\"count\": 434"));
             Assert.That(pins, Does.Contain("aggregateSha256"));
         }
     }

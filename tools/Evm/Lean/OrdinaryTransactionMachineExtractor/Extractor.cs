@@ -45,24 +45,24 @@ internal static class Extractor
         "ordinary standard-mainnet exact-Commit simple-transfer success machine";
     private const string AcceptanceState = "bounded-source-extraction-and-refinement-only";
     private const string MachinePinsSha256 =
-        "a39efd211fd169dc84587256bc43c5b6f7df3ef7c3a49fdeecfaa3cc489ed159";
+        "a087185bcfe7588daaf79f0a67632ce6c06a1c39bac43514a8ad5ff297fbc7cf";
     private const string ReceiptCompilerInventoryPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json";
     private const string ReceiptCompilerInventorySha256 =
-        "adb89ed740f688689cb18edc26d4dc22824eeef2907ed1da91fff420bcff342b";
-    private const int ReceiptCompilerInventoryCount = 329;
+        "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3";
+    private const int ReceiptCompilerInventoryCount = 434;
     private const string ReceiptCompilerInventoryAggregateSha256 =
-        "6185996666fdad205d2bf17895ed7b570948deea9ba9ea3d80b28bafb9717ca7";
+        "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553";
     private const string ReceiptSourcePinsPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json";
     private const string ReceiptSourcePinsSha256 =
-        "3e6c23b10b2c8de17346944d8e187ced0e5ad61703f856dec2bc42cbd55a8fcf";
+        "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f";
     private const string ReceiptSourceManifestPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json";
     private const string ReceiptSourceManifestSha256 =
-        "0d9c46495da46d06c112adf10cca8b3b1bac00a8a55d40d65ab29a98f8e9c512";
-    private const int ReceiptSourceManifestSchemaVersion = 7;
-    private const string ReceiptSourceManifestExtractorVersion = "1.7.0";
+        "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c";
+    private const int ReceiptSourceManifestSchemaVersion = 9;
+    private const string ReceiptSourceManifestExtractorVersion = "1.9.2";
     private const string ReceiptSourceManifestCompilerVersion = "5.6.0.0";
     private const string ReceiptSourceManifestLanguageVersion = "14.0";
     private const string ReceiptSourceManifestKernel =
@@ -72,7 +72,7 @@ internal static class Extractor
     private const string ReceiptIrPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json";
     private const string ReceiptIrSha256 =
-        "bc9d568fc89b0ac3d4af6c197a9acac331a60b735985d03e319e5ad545291a97";
+        "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a";
     private const string ReceiptRefinementPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Refinement/ReceiptTerminalFold.lean";
     private const string ReceiptAccountingSourcePath =
@@ -88,7 +88,7 @@ internal static class Extractor
     private const string ReceiptAccountingManifestPath =
         "tools/Evm/Lean/Extractor/Generated/BlockReceiptGasAccountingKernel.source-manifest.json";
     private const string ReceiptKernelSha256 =
-        "055177970967f1d6de0b3f54ca5c9b89a7e46358d5b95d793872a60c359e7f55";
+        "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180";
     private const string ReceiptRefinementSha256 =
         "bd4a3556a98ec40875960ff2180523d16221b05cd6cf9a0b6ce1fc46a8cb3e93";
     private const string ReceiptAccountingKernelSha256 =
@@ -123,6 +123,8 @@ internal static class Extractor
         "src/Nethermind/Nethermind.Core/Container/IBlockValidationModule.cs";
     private const string TransactionAdapterFactorySourcePath =
         "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorAdapterFactory.cs";
+    // The exact base receipt tracer source hash (BlockReceiptsTracer.cs itself),
+    // distinct from ReceiptSourcePinsSha256 which pins the SOURCE_PINS.json file.
     private const string ReceiptSourceSha256 =
         "d4504f54b50dd43e2ab5bc7172ce2cf9e48453fcede990e5e667e743146262ff";
 
@@ -510,7 +512,7 @@ internal static class Extractor
         new("tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean", "settled receipt-terminal generated kernel identity"),
         new("tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json", "settled receipt-terminal manifest identity"),
         new(ReceiptSourcePinsPath, "settled receipt-terminal source pins"),
-        new(ReceiptCompilerInventoryPath, "settled compiler/reference inventory"),
+        new(ReceiptCompilerInventoryPath, "authoritative compiler/reference closure identity"),
     ];
 
     private static readonly string[] FieldwiseSeamIds =
@@ -846,7 +848,7 @@ internal static class Extractor
                 throw new ExtractionException($"Pinned source changed: {expected.Path}; expected {pin.Sha256}, got {sha}.");
             }
 
-            SourceText text = SourceText.From(bytes, Encoding.UTF8, canBeEmbedded: false, checksumAlgorithm: SourceHashAlgorithm.Sha256);
+            SourceText text = SourceText.From(new MemoryStream(bytes), Encoding.UTF8, canBeEmbedded: false, checksumAlgorithm: SourceHashAlgorithm.Sha256);
             SyntaxTree tree = CSharpSyntaxTree.ParseText(text, ParseOptions, expected.Path);
             CompilationUnitSyntax syntaxRoot = tree.GetCompilationUnitRoot();
             if (syntaxRoot.ContainsDiagnostics && syntaxRoot.GetDiagnostics().Any(diagnostic => diagnostic.Severity == DiagnosticSeverity.Error))
@@ -912,7 +914,7 @@ internal static class Extractor
             using JsonDocument sourcePinsDocument = ParseReceiptJson(sourcePinsBytes, ReceiptSourcePinsPath);
             JsonElement sourcePins = sourcePinsDocument.RootElement;
             if (!sourcePins.TryGetProperty("schemaVersion", out JsonElement schema) ||
-                schema.ValueKind != JsonValueKind.Number || schema.GetInt32() != 2 ||
+                schema.ValueKind != JsonValueKind.Number || schema.GetInt32() != 3 ||
                 !sourcePins.TryGetProperty("root", out JsonElement sourceRoot) ||
                 sourceRoot.ValueKind != JsonValueKind.String ||
                 sourceRoot.GetString() !=
@@ -928,7 +930,7 @@ internal static class Extractor
             ValidateReceiptSourceFiles(root, bindingSources);
             SourcePin tracerPin = sources.SingleOrDefault(pin => pin.Path == ReceiptTracerSourcePath)
                 ?? throw new ExtractionException("The settled receipt-terminal source pins lack the exact base tracer.");
-            if (!string.Equals(tracerPin.Sha256, ReceiptTracerSourceSha256, StringComparison.Ordinal))
+            if (!string.Equals(tracerPin.Sha256, ReceiptSourceSha256, StringComparison.Ordinal))
             {
                 throw new ExtractionException("The settled receipt-terminal source pins no longer bind the exact base tracer source.");
             }
@@ -948,6 +950,7 @@ internal static class Extractor
 
             ValidateReceiptManifestCompilerReferences(root, manifest);
             ValidateReceiptManifestArtifacts(root, manifest);
+            ValidateReceiptDelegatedKernel(root, sourcePins, "source pins");
             return new(
                 ReceiptSourcePinsPath,
                 ReceiptSourcePinsSha256,
@@ -1129,7 +1132,7 @@ internal static class Extractor
         using JsonDocument inventoryDocument = ParseReceiptJson(inventoryBytes, ReceiptCompilerInventoryPath);
         JsonElement inventory = inventoryDocument.RootElement;
         if (!inventory.TryGetProperty("schemaVersion", out JsonElement schema) ||
-            schema.ValueKind != JsonValueKind.Number || schema.GetInt32() != 1 ||
+            schema.ValueKind != JsonValueKind.Number || schema.GetInt32() != 2 ||
             !inventory.TryGetProperty("count", out JsonElement count) ||
             count.ValueKind != JsonValueKind.Number || count.GetInt32() != ReceiptCompilerInventoryCount ||
             !inventory.TryGetProperty("aggregateSha256", out JsonElement aggregate) ||
@@ -1149,7 +1152,7 @@ internal static class Extractor
         }
 
         HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> assemblies = new(StringComparer.OrdinalIgnoreCase);
+        Dictionary<string, string> assemblyBytes = new(StringComparer.OrdinalIgnoreCase);
         JsonElement[] expected = inventoryReferences.EnumerateArray().ToArray();
         JsonElement[] actual = manifestReferences.EnumerateArray().ToArray();
         for (int index = 0; index < expected.Length; index++)
@@ -1162,11 +1165,81 @@ internal static class Extractor
             string actualPath = RequiredString(actualReference, "path", "receipt source manifest compiler closure");
             string actualAssembly = RequiredString(actualReference, "assemblyName", "receipt source manifest compiler closure");
             string actualSha = RequiredString(actualReference, "sha256", "receipt source manifest compiler closure");
-            if (actualPath != expectedPath || actualAssembly != expectedAssembly || actualSha != expectedSha ||
-                !IsSha256(actualSha) || !paths.Add(actualPath) || !assemblies.Add(actualAssembly))
+            string actualMvid = RequiredString(actualReference, "mvid", "receipt source manifest compiler closure");
+            string expectedMvid = RequiredString(expectedReference, "mvid", "compiler inventory");
+            if (!actualReference.TryGetProperty("selected", out JsonElement selected) ||
+                (selected.ValueKind != JsonValueKind.True && selected.ValueKind != JsonValueKind.False) ||
+                !expectedReference.TryGetProperty("selected", out JsonElement expectedSelectedElement) ||
+                (expectedSelectedElement.ValueKind != JsonValueKind.True && expectedSelectedElement.ValueKind != JsonValueKind.False))
             {
                 throw new ExtractionException("The settled receipt source manifest compiler closure changed or is ambiguous.");
             }
+
+            bool actualSelected = selected.ValueKind == JsonValueKind.True;
+            bool expectedSelected = expectedSelectedElement.ValueKind == JsonValueKind.True;
+            if (actualPath != expectedPath || actualAssembly != expectedAssembly || actualSha != expectedSha ||
+                actualMvid != expectedMvid || actualSelected != expectedSelected ||
+                !IsSha256(actualSha) || !paths.Add(actualPath) || AmbiguousAssemblyBytes(assemblyBytes, actualAssembly, actualSha))
+            {
+                throw new ExtractionException("The settled receipt source manifest compiler closure changed or is ambiguous.");
+            }
+        }
+    }
+
+    // The multi-project closure lists byte-identical assembly copies under several
+    // output paths, so only a repeated assembly name with divergent bytes is ambiguous.
+    private static bool AmbiguousAssemblyBytes(Dictionary<string, string> seen, string assembly, string sha)
+    {
+        if (seen.TryGetValue(assembly, out string? known)) return known != sha;
+        seen[assembly] = sha;
+        return false;
+    }
+
+    private static void ValidateReceiptDelegatedKernel(string root, JsonElement pins, string description)
+    {
+        if (!pins.TryGetProperty("delegatedKernel", out JsonElement delegated) ||
+            delegated.ValueKind != JsonValueKind.Object)
+        {
+            throw new ExtractionException($"The settled receipt {description} delegated kernel changed.");
+        }
+
+        if (RequiredString(delegated, "generatedLean", "delegated kernel") != ReceiptAccountingLeanPath ||
+            RequiredString(delegated, "generatedLeanSha256", "delegated kernel") != ReceiptAccountingKernelSha256 ||
+            RequiredString(delegated, "refinement", "delegated kernel") != ReceiptAccountingRefinementPath ||
+            RequiredString(delegated, "refinementSha256", "delegated kernel") != ReceiptAccountingRefinementSha256 ||
+            RequiredString(delegated, "ir", "delegated kernel") != ReceiptAccountingIrPath ||
+            RequiredString(delegated, "irSha256", "delegated kernel") != ReceiptAccountingIrSha256 ||
+            RequiredString(delegated, "manifest", "delegated kernel") != ReceiptAccountingManifestPath ||
+            RequiredString(delegated, "manifestSha256", "delegated kernel") != ReceiptAccountingManifestSha256 ||
+            RequiredString(delegated, "sourceSha256", "delegated kernel") != ReceiptAccountingSourceSha256)
+        {
+            throw new ExtractionException($"The settled receipt {description} delegated kernel changed.");
+        }
+
+        ValidateReceiptLeanDependencies(root, delegated, "delegated kernel");
+    }
+
+    private static void ValidateReceiptLeanDependencies(string root, JsonElement parent, string description)
+    {
+        if (!parent.TryGetProperty("leanDependencies", out JsonElement dependencies) ||
+            dependencies.ValueKind != JsonValueKind.Array)
+        {
+            throw new ExtractionException($"The settled receipt {description} lean dependencies changed.");
+        }
+
+        foreach (JsonElement dependency in dependencies.EnumerateArray())
+        {
+            string path = RequiredString(dependency, "path", "lean dependency");
+            string sha256 = RequiredString(dependency, "sha256", "lean dependency");
+            string normalized = Normalize(path);
+            if (!string.Equals(path, normalized, StringComparison.Ordinal) ||
+                normalized.Contains("../", StringComparison.Ordinal) || normalized.Contains("/..", StringComparison.Ordinal) ||
+                !normalized.EndsWith(".lean", StringComparison.Ordinal) || !IsSha256(sha256))
+            {
+                throw new ExtractionException($"The settled receipt lean dependency is not canonical: {path}.");
+            }
+
+            ValidateReceiptArtifact(root, path, sha256, "receipt lean dependency");
         }
     }
 
@@ -1208,6 +1281,7 @@ internal static class Extractor
         ValidateReceiptArtifact(root, ReceiptAccountingLeanPath, ReceiptAccountingKernelSha256, "receipt accounting generated Lean");
         ValidateReceiptArtifact(root, ReceiptAccountingRefinementPath, ReceiptAccountingRefinementSha256, "receipt accounting refinement");
         ValidateReceiptArtifact(root, ReceiptAccountingManifestPath, ReceiptAccountingManifestSha256, "receipt accounting source manifest");
+        ValidateReceiptLeanDependencies(root, accountingKernel, "accounting kernel");
     }
 
     private static void ValidateReceiptArtifact(string root, string relativePath, string expectedSha256, string description)
@@ -1304,7 +1378,7 @@ internal static class Extractor
         }
 
         CompilerReferenceInventory inventory = Deserialize<CompilerReferenceInventory>(bytes, "compiler/reference inventory");
-        if (inventory.SchemaVersion != 1 || inventory.Count != ReceiptCompilerInventoryCount ||
+        if (inventory.SchemaVersion != 2 || inventory.Count != ReceiptCompilerInventoryCount ||
             inventory.References is null || inventory.References.Length != inventory.Count ||
             !string.Equals(inventory.AggregateSha256, ReceiptCompilerInventoryAggregateSha256, StringComparison.Ordinal))
         {
@@ -1312,18 +1386,23 @@ internal static class Extractor
         }
 
         HashSet<string> paths = new(StringComparer.OrdinalIgnoreCase);
-        HashSet<string> assemblyNames = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selectedNames = new(StringComparer.OrdinalIgnoreCase);
         List<MetadataReference> references = new(inventory.References.Length);
         List<CompilerReferenceIdentity> identities = new(inventory.References.Length);
         foreach (CompilerReferencePin pin in inventory.References)
         {
             if (pin is null || string.IsNullOrWhiteSpace(pin.Path) || !paths.Add(pin.Path) ||
-                string.IsNullOrWhiteSpace(pin.AssemblyName) || !assemblyNames.Add(pin.AssemblyName) ||
+                string.IsNullOrWhiteSpace(pin.AssemblyName) ||
+                !Guid.TryParseExact(pin.Mvid, "D", out Guid pinMvid) || pinMvid == Guid.Empty ||
+                pin.Mvid != pinMvid.ToString("D") ||
+                (pin.Selected && !selectedNames.Add(pin.AssemblyName)) ||
                 !IsSha256(pin.Sha256) || !string.Equals(pin.AssemblyName, Path.GetFileNameWithoutExtension(pin.Path), StringComparison.OrdinalIgnoreCase))
             {
                 throw new ExtractionException("The compiler/reference inventory contains a duplicate or malformed identity.");
             }
 
+            names.Add(pin.AssemblyName);
             string normalized = Normalize(pin.Path);
             if (!string.Equals(pin.Path, normalized, StringComparison.Ordinal) ||
                 normalized.Contains("../", StringComparison.Ordinal) || normalized.Contains("/..", StringComparison.Ordinal) ||
@@ -1342,21 +1421,30 @@ internal static class Extractor
 
             (string assemblyName, string mvid, string[] dependencies) = ReadCompilerMetadata(fullPath, pin.Path);
 
-            if (!string.Equals(assemblyName, pin.AssemblyName, StringComparison.Ordinal))
+            if (!string.Equals(assemblyName, pin.AssemblyName, StringComparison.Ordinal) ||
+                !string.Equals(mvid, pin.Mvid, StringComparison.Ordinal))
             {
-                throw new ExtractionException($"Compiler/reference assembly mismatch for {pin.Path}: {assemblyName}.");
+                throw new ExtractionException($"Compiler/reference assembly mismatch for {pin.Path}: {assemblyName}/{mvid}.");
             }
 
-            try
+            if (pin.Selected)
             {
-                references.Add(MetadataReference.CreateFromFile(fullPath));
-            }
-            catch (Exception exception)
-            {
-                throw new ExtractionException($"Compiler/reference cannot be loaded for {pin.Path}: {exception.Message}");
+                try
+                {
+                    references.Add(MetadataReference.CreateFromFile(fullPath));
+                }
+                catch (Exception exception)
+                {
+                    throw new ExtractionException($"Compiler/reference cannot be loaded for {pin.Path}: {exception.Message}");
+                }
             }
 
-            identities.Add(new CompilerReferenceIdentity(pin.Path, pin.AssemblyName, pin.Sha256, mvid, true, dependencies));
+            identities.Add(new CompilerReferenceIdentity(pin.Path, pin.AssemblyName, pin.Sha256, pin.Mvid, pin.Selected, dependencies));
+        }
+
+        if (!names.SetEquals(selectedNames))
+        {
+            throw new ExtractionException("The compiler/reference inventory must select exactly one path for every assembly.");
         }
 
         CompilerReferenceIdentity[] ordered = identities
@@ -1944,7 +2032,7 @@ internal static class Extractor
             Warmup: 8,
             BuildUp: 16,
             ExactTarget: "ExecutionOptions.Commit (raw = 1; no Restore/Warmup/BuildUp)",
-            Binding: BindEnumMember(options, "Commit", "options.commit", expectedValue: 1));
+            Binding: new Anchor("options.commit", "options.commit", BindEnumMember(options, "Commit", "options.commit", expectedValue: 1), [], [], "enum-member-identity"));
 
         NormalReturnPremise Boundary(string id, Anchor anchor, string condition) =>
             new(
@@ -2005,8 +2093,8 @@ internal static class Extractor
             Boundary("receipt.index", txIndexIncrement, "EndTxTrace increments the receipt index after forwarding"),
         ];
 
-        anchors.Add(new Anchor("options.commit", "options.commit", optionShape.Binding, [], [], "enum-member-identity"));
-        allBindings.Add(optionShape.Binding);
+        anchors.Add(optionShape.Binding);
+        allBindings.Add(optionShape.Binding.Binding);
 
         Anchor AnchorFor(string id) => anchors.Single(anchor => anchor.Id == id);
 
@@ -2714,7 +2802,7 @@ internal static class Extractor
         if (!SymbolEqualityComparer.Default.Equals(symbol.ContainingType, expectedOwner) ||
             !SymbolEqualityComparer.Default.Equals(OriginalDefinition(symbol.Type), expectedParameterType) ||
             !string.Equals(Canonical(parameter), identity.CanonicalSyntax, StringComparison.Ordinal) ||
-            !string.Equals(Canonical(parameter.Type), CanonicalText(expectedType), StringComparison.Ordinal))
+            !string.Equals(Canonical(parameter.Type ?? throw new ExtractionException($"No type syntax for primary-constructor parameter {id}.")), CanonicalText(expectedType), StringComparison.Ordinal))
         {
             throw new ExtractionException(
                 $"Primary-constructor parameter {parameterName} on {metadataTypeName} no longer has exact symbol/type {expectedType}.");
@@ -2751,7 +2839,7 @@ internal static class Extractor
         }
 
         VariableDeclaratorSyntax variable = variables[0];
-        IFieldSymbol symbol = unit.Model.GetDeclaredSymbol(variable)
+        IFieldSymbol symbol = unit.Model.GetDeclaredSymbol(variable) as IFieldSymbol
             ?? throw new ExtractionException($"No declared field symbol for {id}.");
         RejectSymbol(symbol, $"binding {id}");
         IFieldSymbol[] exactFields = expectedOwner.GetMembers(fieldName).OfType<IFieldSymbol>()
@@ -3341,7 +3429,7 @@ internal static class Extractor
                 _ => string.Empty,
             };
         FileLinePositionSpan span = unit.Source.Tree.GetLineSpan(node.Span);
-        string[] ReadNames(IEnumerable<ISymbol> values) => values
+        static string[] ReadNames(IEnumerable<ISymbol> values) => values
             .Select(static value => value.Name)
             .Distinct(StringComparer.Ordinal)
             .OrderBy(static value => value, StringComparer.Ordinal)
@@ -3554,7 +3642,7 @@ internal static class Extractor
                     .ToArray();
                 HashSet<int> next = incoming.Length == 0
                     ? [ordinal]
-                    : new HashSet<int>(incoming[0]);
+                    : [.. incoming[0]];
                 foreach (HashSet<int> incomingSet in incoming.Skip(1)) next.IntersectWith(incomingSet);
                 next.Add(ordinal);
                 if (!sets[ordinal].SetEquals(next))
@@ -3589,7 +3677,7 @@ internal static class Extractor
                     .ToArray();
                 HashSet<int> next = outgoing.Length == 0
                     ? [ordinal]
-                    : new HashSet<int>(outgoing[0]);
+                    : [.. outgoing[0]];
                 foreach (HashSet<int> outgoingSet in outgoing.Skip(1)) next.IntersectWith(outgoingSet);
                 next.Add(ordinal);
                 if (!sets[ordinal].SetEquals(next))
@@ -3845,7 +3933,7 @@ internal static class Extractor
         foreach (NormalReturnPremise premise in document.Machine.NormalReturnPremises)
         {
             if (premise is null || string.IsNullOrWhiteSpace(premise.Id) || !premiseIds.Add(premise.Id) ||
-                string.IsNullOrWhiteSpace(premise.AnchorId) || !premiseAnchors.TryGetValue(premise.AnchorId, out Anchor premiseAnchor) ||
+                string.IsNullOrWhiteSpace(premise.AnchorId) || !premiseAnchors.TryGetValue(premise.AnchorId, out Anchor? premiseAnchor) ||
                 string.IsNullOrWhiteSpace(premise.Path) || string.IsNullOrWhiteSpace(premise.Owner) ||
                 string.IsNullOrWhiteSpace(premise.Member) || premise.OutcomeType != "normal-return" ||
                 string.IsNullOrWhiteSpace(premise.Condition) ||
@@ -3860,7 +3948,7 @@ internal static class Extractor
         foreach (SemanticOperation operation in document.Machine.SemanticOperations)
         {
             if (operation is null || string.IsNullOrWhiteSpace(operation.Id) || !semanticOperationIds.Add(operation.Id) ||
-                string.IsNullOrWhiteSpace(operation.AnchorId) || !premiseAnchors.TryGetValue(operation.AnchorId, out Anchor operationAnchor) ||
+                string.IsNullOrWhiteSpace(operation.AnchorId) || !premiseAnchors.TryGetValue(operation.AnchorId, out Anchor? operationAnchor) ||
                 string.IsNullOrWhiteSpace(operation.Path) || string.IsNullOrWhiteSpace(operation.Owner) ||
                 string.IsNullOrWhiteSpace(operation.Member) || string.IsNullOrWhiteSpace(operation.OperationKind) ||
                 string.IsNullOrWhiteSpace(operation.OperationType) || operation.CanonicalSyntax is null ||
@@ -3885,7 +3973,7 @@ internal static class Extractor
         foreach (FieldwiseHandoff seam in document.Machine.FieldwiseSeams)
         {
             if (seam is null || string.IsNullOrWhiteSpace(seam.Id) || !seamIds.Add(seam.Id) ||
-                string.IsNullOrWhiteSpace(seam.AnchorId) || !premiseAnchors.TryGetValue(seam.AnchorId, out Anchor seamAnchor) ||
+                string.IsNullOrWhiteSpace(seam.AnchorId) || !premiseAnchors.TryGetValue(seam.AnchorId, out Anchor? seamAnchor) ||
                 string.IsNullOrWhiteSpace(seam.SourceMember) || string.IsNullOrWhiteSpace(seam.SourceField) ||
                 string.IsNullOrWhiteSpace(seam.ModelType) || string.IsNullOrWhiteSpace(seam.ModelField) ||
                 string.IsNullOrWhiteSpace(seam.Projection) || seam.SourceMember != seamAnchor.Binding.Member ||
@@ -3979,7 +4067,7 @@ internal static class Extractor
             if (Sha256(bytes) != identity.Sha256)
                 throw new ExtractionException($"The checked-in machine source does not match its manifest: {identity.Path}.");
 
-            SourceText text = SourceText.From(bytes, Encoding.UTF8, canBeEmbedded: false, checksumAlgorithm: SourceHashAlgorithm.Sha256);
+            SourceText text = SourceText.From(new MemoryStream(bytes), Encoding.UTF8, canBeEmbedded: false, checksumAlgorithm: SourceHashAlgorithm.Sha256);
             SyntaxTree tree = CSharpSyntaxTree.ParseText(text, ParseOptions, identity.Path);
             CompilationUnitSyntax syntaxRoot = tree.GetCompilationUnitRoot();
             string syntaxSha = Sha256(Encoding.UTF8.GetBytes(CanonicalTokens(syntaxRoot)));
@@ -4052,15 +4140,21 @@ internal static class Extractor
         string[] sorted = paths.OrderBy(static path => path, StringComparer.OrdinalIgnoreCase).ThenBy(static path => path, StringComparer.Ordinal).ToArray();
         if (!paths.SequenceEqual(sorted, StringComparer.Ordinal)) throw new ExtractionException("The machine compiler/reference path order changed.");
         HashSet<string> seen = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
+        HashSet<string> selectedNames = new(StringComparer.OrdinalIgnoreCase);
         foreach (CompilerReferenceIdentity identity in identities)
         {
             if (identity is null || string.IsNullOrWhiteSpace(identity.Path) || !seen.Add(identity.Path) ||
                 string.IsNullOrWhiteSpace(identity.AssemblyName) || !IsSha256(identity.Sha256) ||
-                !Guid.TryParseExact(identity.Mvid, "D", out _) || !identity.Selected || identity.Dependencies is null ||
+                !Guid.TryParseExact(identity.Mvid, "D", out Guid mvid) || mvid == Guid.Empty ||
+                identity.Mvid != mvid.ToString("D") ||
+                (identity.Selected && !selectedNames.Add(identity.AssemblyName)) || identity.Dependencies is null ||
                 !string.Equals(identity.AssemblyName, Path.GetFileNameWithoutExtension(identity.Path), StringComparison.OrdinalIgnoreCase))
             {
                 throw new ExtractionException("The machine compiler/reference identity is incomplete.");
             }
+
+            names.Add(identity.AssemblyName);
 
             string normalized = Normalize(identity.Path);
             if (!string.Equals(identity.Path, normalized, StringComparison.Ordinal) ||
@@ -4079,13 +4173,18 @@ internal static class Extractor
             }
         }
 
+        if (!names.SetEquals(selectedNames))
+        {
+            throw new ExtractionException("The machine compiler/reference closure must select exactly one path for every assembly.");
+        }
+
         if (!string.Equals(CompilerAggregateHash(identities), ReceiptCompilerInventoryAggregateSha256, StringComparison.Ordinal))
             throw new ExtractionException("The machine compiler/reference aggregate changed.");
     }
 
     private static string CompilerAggregateHash(IEnumerable<CompilerReferenceIdentity> identities) =>
         Sha256(Encoding.UTF8.GetBytes(string.Join('\n', identities.Select(identity =>
-            $"{identity.Path}\0{identity.AssemblyName}\0{identity.Sha256}")) + "\n"));
+            $"{identity.Path}\0{identity.AssemblyName}\0{identity.Sha256}\0{identity.Mvid}\0{identity.Selected}")) + "\n"));
 
     private static string CombinedSourceHash(IEnumerable<SourceIdentity> identities) =>
         Sha256(Encoding.UTF8.GetBytes(string.Join('\n', identities.Select(identity =>

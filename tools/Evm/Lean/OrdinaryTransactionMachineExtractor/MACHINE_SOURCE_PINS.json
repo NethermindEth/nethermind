@@ -55,28 +55,28 @@
     { "path": "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorAdapterFactory.cs", "role": "transaction adapter factory type identity", "sha256": "1912fa7722b5d0dcd8f5a081b4b6b68fbe86d594838d7d2093fa8a38430e8bc2" }
   ],
   "dependencies": [
-    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.ir.json", "role": "settled static-admission identity", "sha256": "20fab69cc1421f2499444d4ae49a0ffa541077458159790f12caaf6d38e119d8" },
-    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.lean", "role": "settled static-admission generated kernel identity", "sha256": "b28d38544dbbacf217478dca14e390269469905ca0bf22e90ccbc09d6c1b77e9" },
-    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.source-manifest.json", "role": "settled static-admission manifest identity", "sha256": "cb4dd8a5d6f6b42d0e8e7f8fc59720754b5f4dc978fa5cdc6fc78fd3fc9c48c4" },
-    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.ir.json", "role": "settled stateful-admission identity", "sha256": "0bb936eeaf3acf05cc013d9ed6da1cf52238ae31bb28a20ee5d85d70a143f55c" },
-    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.lean", "role": "settled stateful-admission generated kernel identity", "sha256": "4cbdcbf89e4dab87e8330711fd2b0798e5d2e4fc9d93b14e0d9c8aa3b7ba2af0" },
-    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.source-manifest.json", "role": "settled stateful-admission manifest identity", "sha256": "eefda0284259fd06a1fb52925eab972aadf02f60229b7165a1ebb9e21f161512" },
+    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.ir.json", "role": "settled static-admission identity", "sha256": "040af374782293b5fd6d952443e5b094d129a8806dc16d98f965c4e3bae023c3" },
+    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.lean", "role": "settled static-admission generated kernel identity", "sha256": "90231c628bb1a7ee9df2486b6754ee53719cdca47c0fdea83258d65202c06e14" },
+    { "path": "tools/Evm/Lean/OrdinaryStaticAdmissionExtractor/Generated/OrdinaryStaticAdmissionKernel.source-manifest.json", "role": "settled static-admission manifest identity", "sha256": "d50eca3e641791e20bca44b5aaf96af38812d000ddacab78c3a325b3a1440812" },
+    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.ir.json", "role": "settled stateful-admission identity", "sha256": "7345825d56805be9b092e825bb43c79eac16433e730a1e7bec96a65f367d7fd1" },
+    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.lean", "role": "settled stateful-admission generated kernel identity", "sha256": "52126602fc36539573b9b53ddf4623b80611fec72c7c1849d12749ef11ed93f9" },
+    { "path": "tools/Evm/Lean/OrdinaryStatefulAdmissionPrefixExtractor/Generated/OrdinaryStatefulAdmissionPrefix.source-manifest.json", "role": "settled stateful-admission manifest identity", "sha256": "5a95863000799d536abc3484916e590442ded2ba4a560823d536610b480befba" },
     { "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.ir.json", "role": "settled post-nonce handoff identity", "sha256": "850ca2852786e8978f046d7b7b3999d8624108cf3e8aee04cab7baaee274432d" },
     { "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.lean", "role": "settled post-nonce generated kernel identity", "sha256": "645ee68e4edf2e4d81d3e27da202a588d57b9f8ffdc883f035e3c55a0c1f475c" },
     { "path": "tools/Evm/Lean/OrdinaryPostNonceDispatchExtractor/Generated/OrdinaryPostNonceDispatch.source-manifest.json", "role": "settled post-nonce manifest identity", "sha256": "df941ccbc98cbf479f1b8accfff2f2ad67fd0076f98975e0042e4bb8e1f505f3" },
     { "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/Generated/SimpleTransferCompletion.ir.json", "role": "settled simple-transfer identity", "sha256": "a77d0d6322e26a13094fcfedcbd55d4317b24961472620f1e5dc2c0cb046ab31" },
-    { "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/Generated/SimpleTransferCompletion.lean", "role": "settled simple-transfer generated kernel identity", "sha256": "d2a82cd6e4704f066c32296e8a6b453b87849cded6adc84cf84574cbffc94844" },
+    { "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/Generated/SimpleTransferCompletion.lean", "role": "settled simple-transfer generated kernel identity", "sha256": "b00512a0bf8e8db75170917367b222547924564592e9ecf92c29a1756caa0250" },
     { "path": "tools/Evm/Lean/SimpleTransferCompletionExtractor/Generated/SimpleTransferCompletion.source-manifest.json", "role": "settled simple-transfer manifest identity", "sha256": "99c279cdfb1c0885920ea412e60b27c325b633fe1f71ae6deab28e2b0aee5461" },
-    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json", "role": "settled receipt-terminal identity", "sha256": "bc9d568fc89b0ac3d4af6c197a9acac331a60b735985d03e319e5ad545291a97" },
-    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean", "role": "settled receipt-terminal generated kernel identity", "sha256": "055177970967f1d6de0b3f54ca5c9b89a7e46358d5b95d793872a60c359e7f55" },
-    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json", "role": "settled receipt-terminal manifest identity", "sha256": "0d9c46495da46d06c112adf10cca8b3b1bac00a8a55d40d65ab29a98f8e9c512" },
-    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json", "role": "settled receipt-terminal source pins", "sha256": "3e6c23b10b2c8de17346944d8e187ced0e5ad61703f856dec2bc42cbd55a8fcf" },
-    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json", "role": "authoritative compiler/reference closure identity", "sha256": "adb89ed740f688689cb18edc26d4dc22824eeef2907ed1da91fff420bcff342b" }
+    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.ir.json", "role": "settled receipt-terminal identity", "sha256": "0bf061d43d54e3eb9bdc7ccff4d0541d6dee189ac1ccea7f139095d3e1b7945a" },
+    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.lean", "role": "settled receipt-terminal generated kernel identity", "sha256": "028d11a14e031aaedce27c71b26e2c69cf16e759ff3ac870373ead10f6971180" },
+    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json", "role": "settled receipt-terminal manifest identity", "sha256": "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c" },
+    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json", "role": "settled receipt-terminal source pins", "sha256": "0223aadf196cc74051d632260693eeb607fde202fa612caee59d3ddaca886c6f" },
+    { "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json", "role": "authoritative compiler/reference closure identity", "sha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3" }
   ],
   "compilerReferenceInventory": {
     "path": "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json",
-    "sha256": "adb89ed740f688689cb18edc26d4dc22824eeef2907ed1da91fff420bcff342b",
-    "count": 329,
-    "aggregateSha256": "6185996666fdad205d2bf17895ed7b570948deea9ba9ea3d80b28bafb9717ca7"
+    "sha256": "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3",
+    "count": 434,
+    "aggregateSha256": "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553"
   }
 }
