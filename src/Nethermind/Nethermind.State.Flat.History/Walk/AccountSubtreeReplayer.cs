@@ -167,7 +167,7 @@ internal sealed class AccountSubtreeReplayer(ISortedKeyValueStore accountHistory
     private static void Recompute(PatriciaTree tree, TrieChangeCollector? changes, CommitmentEmitter? emitter, int minRecordedDepth)
     {
         changes?.Collect(tree.RootRef, emitter!.AccountRecordDepth);
-        tree.UpdateRootHash();
+        tree.UpdateRootHash(canBeParallel: false);
         if (changes is not null) changes.RecordAccounts(emitter!, minRecordedDepth);
     }
 

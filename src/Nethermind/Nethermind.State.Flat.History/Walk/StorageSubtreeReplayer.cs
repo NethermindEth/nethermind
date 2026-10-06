@@ -205,7 +205,7 @@ internal sealed class StorageSubtreeReplayer(
         public void Recompute()
         {
             if (_emitter is not null) _changes.Collect(Tree!.RootRef, _emitter.StorageRecordDepth);
-            Tree!.UpdateRootHash();
+            Tree!.UpdateRootHash(canBeParallel: false);
             if (_emitter is not null) _changes.RecordStorage(_emitter, Identity, slotPrefix.Length);
         }
 
