@@ -104,6 +104,50 @@ public class FrameTxWidthConcurrencyTests
     }
 
     [Test]
+    public void FullLedger_HolderWithReservedWidth_IsNotEvictedAndGetsItsRefund([Values(Cost - 1, Cost)] ulong reserved)
+    {
+        Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        SenderWidthCache cache = new(maxSenders: 2);
+        cache.Earn(Sender, Cost);
+        cache.Earn(other, Cost);
+        cache.TryReserve(Sender, reserved);
+        cache.Earn(newcomer, Cost);
+
+        cache.Release(Sender, reserved);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(other), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(newcomer), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void FullLedger_HolderWhoseReservationSettled_GivesWayToARicherNewcomer([Values(Cost - 1, Cost)] ulong reserved)
+    {
+        Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        Address newcomer = new(new byte[20] { 0xa3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });
+        SenderWidthCache cache = new(maxSenders: 2);
+        cache.Earn(Sender, Cost);
+        cache.Earn(other, Cost);
+        cache.TryReserve(Sender, reserved);
+
+        cache.Release(Sender, UInt256.Zero);
+        cache.Earn(newcomer, Cost);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Count, Is.EqualTo(2));
+            Assert.That(cache.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(cache.GetWidth(other), Is.EqualTo((UInt256)Cost));
+            Assert.That(cache.GetWidth(newcomer), Is.EqualTo((UInt256)Cost));
+        }
+    }
+
+    [Test]
     public void FullLedger_RefusesANewcomerNoRicherThanTheSmallestBalance([Values(1ul, Cost)] ulong newcomerGas)
     {
         Address other = new(new byte[20] { 0xa2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 });

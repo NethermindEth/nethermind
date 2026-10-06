@@ -88,7 +88,7 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         UInt256 charge = FrameTxWidthCharge.For(tx, state.HeadSpec, txPoolConfig.FrameTxWidthSafetyFactorPermille);
-        if (!paymasterWidth.TrySpend(paymaster, charge))
+        if (!paymasterWidth.TryReserve(paymaster, charge))
         {
             Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
             if (logger.IsTrace)
@@ -97,6 +97,7 @@ internal sealed class FrameTxPaymasterFilter(
         }
 
         state.BeyondPaymasterBaseline = true;
+        state.PaymasterWidthReserved = true;
         state.PaymasterWidthHeld = charge;
         return AcceptTxResult.Accepted;
     }

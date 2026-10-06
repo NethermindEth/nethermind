@@ -1429,21 +1429,27 @@ namespace Nethermind.TxPool
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
                         return false;
                     }
-                    if (chargedPaymaster is not null && !_paymasterWidth.TrySpend(chargedPaymaster, paymasterCharge))
+                    if (chargedPaymaster is not null && !_paymasterWidth.TryReserve(chargedPaymaster, paymasterCharge))
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
                         return false;
                     }
                     // Signature validation is state-independent; admission's verdict still holds.
-                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
-                    if (simulated.NodeBound || !_senderWidth.TrySpend(tx.SenderAddress!, widthCharge))
+                    FrameTxSimulationResult simulated;
+                    bool senderPaid = false;
+                    try
                     {
-                        if (chargedPaymaster is not null) _paymasterWidth.Refund(chargedPaymaster, paymasterCharge);
-                        if (!simulated.NodeBound)
-                        {
-                            Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
-                            return false;
-                        }
+                        simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                        senderPaid = !simulated.NodeBound && _senderWidth.TrySpend(tx.SenderAddress!, widthCharge);
+                    }
+                    finally
+                    {
+                        if (chargedPaymaster is not null) _paymasterWidth.Release(chargedPaymaster, senderPaid ? UInt256.Zero : paymasterCharge);
+                    }
+                    if (!senderPaid && !simulated.NodeBound)
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
+                        return false;
                     }
                     if (simulated.Outcome != FrameTxSimulationOutcome.Accepted)
                     {
@@ -1653,9 +1659,9 @@ namespace Nethermind.TxPool
                     _payerExposure.Subtract(tx.Hash!);
                 }
 
-                if (!state.PaymasterWidthHeld.IsZero && PendingPaymasterCache.KeyFor(tx) is Address sponsor)
+                if (state.PaymasterWidthReserved && PendingPaymasterCache.KeyFor(tx) is Address sponsor)
                 {
-                    _paymasterWidth.Refund(sponsor, state.PaymasterWidthHeld);
+                    _paymasterWidth.Release(sponsor, state.PaymasterWidthHeld);
                 }
 
                 state.SenderAdmissionGate?.Exit();

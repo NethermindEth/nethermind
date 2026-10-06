@@ -44,6 +44,9 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// <summary>Set when this submission is beyond its paymaster's free MATCHA baseline, so the width filter charges the paymaster for it.</summary>
     internal bool BeyondPaymasterBaseline;
 
+    /// <summary>Set when the paymaster filter reserved paymaster width for this submission; the pool releases the reservation when the submission ends.</summary>
+    internal bool PaymasterWidthReserved;
+
     /// <summary>Paymaster width taken ahead of the prefix simulation and not yet settled.</summary>
     /// <remarks>The width filter settles it once the sender has paid; on any earlier exit the pool refunds it.</remarks>
     internal UInt256 PaymasterWidthHeld;

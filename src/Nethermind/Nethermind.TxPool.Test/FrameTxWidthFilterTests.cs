@@ -595,10 +595,10 @@ public class FrameTxWidthFilterTests
                 result = widthFilter.Accept(tx, ref state, TxHandlingOptions.None);
             }
 
+            if (state.PaymasterWidthReserved) PaymasterWidth.Release(Paymaster, state.PaymasterWidthHeld);
             if (!result)
             {
                 if (state.PaymasterReserved) Paymasters.Decrement(Paymaster);
-                PaymasterWidth.Refund(Paymaster, state.PaymasterWidthHeld);
                 return result;
             }
 

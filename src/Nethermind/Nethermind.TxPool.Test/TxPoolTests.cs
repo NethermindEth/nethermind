@@ -5451,6 +5451,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(withWidth, Is.EqualTo(AcceptTxResult.Accepted));
                 Assert.That(afterRemoval, Is.EqualTo(AcceptTxResult.PaymasterWidthUnmet), "removal returns no width");
                 Assert.That(_frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD), Is.EqualTo(UInt256.Zero));
+                Assert.That(_frameTxWidthLedger.PaymasterWidth.Count, Is.Zero, "a settled reservation releases the drained paymaster");
             }
         }
 
@@ -5468,6 +5469,7 @@ namespace Nethermind.TxPool.Test
             await RaiseBlockAddedToMainAndWaitForNewHead(first);
             int pendingWhileWidthLasts = _txPool.GetPendingTransactionsCount();
             UInt256 widthAfterOneRevalidation = _frameTxWidthLedger.PaymasterWidth.GetWidth(TestItem.AddressD);
+            int paymastersHeldAfterOneRevalidation = _frameTxWidthLedger.PaymasterWidth.Count;
             simulator.ClearReceivedCalls();
             Block second = Build.A.Block.WithNumber(2).WithParent(first).TestObject;
             second.AccountChanges = new ArrayPoolList<AddressAsKey>(1) { TestItem.AddressD };
@@ -5477,6 +5479,7 @@ namespace Nethermind.TxPool.Test
             {
                 Assert.That(pendingWhileWidthLasts, Is.EqualTo(2), "width, not the pending cap, decides");
                 Assert.That(widthAfterOneRevalidation, Is.EqualTo(UInt256.Zero), "the rerun prefix spent the paymaster's charge");
+                Assert.That(paymastersHeldAfterOneRevalidation, Is.Zero, "a settled reservation releases the drained paymaster");
                 Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { baseline.Hash }), "the baseline survives without width");
                 Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
             }

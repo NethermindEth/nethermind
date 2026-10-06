@@ -25,21 +25,24 @@ namespace Nethermind.TxPool;
 /// the only user of the rotating window. New earnings stop at the caller's cap and otherwise saturate at
 /// <see cref="UInt256.MaxValue"/> rather than wrapping; a cap lowered later never shrinks a balance already earned.
 /// A second instance holds the width of EIP-8141 paymasters under the same rules, reported on its own gauge.
+/// Width an admission holds through <see cref="TryReserve"/> keeps its holder in the ledger, even at a zero balance,
+/// and out of eviction until <see cref="Release"/>, so a refund always finds the entry it was taken from and never
+/// adds one.
 /// </remarks>
 internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders, bool holdsPaymasters = false)
 {
     public const int DefaultMaxSenders = 1 << 16;
     private const int EvictionSample = 32;
 
-    private readonly ConcurrentDictionary<AddressAsKey, UInt256> _width = new();
+    private readonly ConcurrentDictionary<AddressAsKey, Holding> _width = new();
     private int _count;
-    private IEnumerator<KeyValuePair<AddressAsKey, UInt256>>? _evictionWindow;
+    private IEnumerator<KeyValuePair<AddressAsKey, Holding>>? _evictionWindow;
 
     public int Count => Volatile.Read(ref _count);
 
     private ref long HoldersWithWidth => ref holdsPaymasters ? ref Metrics.FrameTxPaymastersWithWidth : ref Metrics.FrameTxSendersWithWidth;
 
-    public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out UInt256 width) ? width : UInt256.Zero;
+    public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out Holding holding) ? holding.Width : UInt256.Zero;
 
     /// <summary>
     /// Credits <paramref name="sender"/> with the width that <paramref name="finalizedGas"/> earns, up to
@@ -55,45 +58,44 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
     {
         if (cost.IsZero) return true;
 
-        while (_width.TryGetValue(sender, out UInt256 existing))
+        while (_width.TryGetValue(sender, out Holding existing))
         {
-            if (existing < cost) return false;
-
-            UInt256 updated = existing - cost;
-            if (!updated.IsZero)
-            {
-                if (_width.TryUpdate(sender, updated, existing)) return true;
-                continue;
-            }
-
-            if (RemoveTracked(sender, existing)) return true;
+            if (existing.Width < cost) return false;
+            if (Replace(sender, existing, existing with { Width = existing.Width - cost })) return true;
         }
 
         return false;
     }
 
     /// <summary>
-    /// Gives back <paramref name="amount"/> that <see cref="TrySpend"/> took for an admission that did not go through.
+    /// Atomically takes <paramref name="cost"/> from <paramref name="holder"/>'s width for an admission still in
+    /// flight, or leaves it untouched and returns <c>false</c> when the width does not cover the cost.
     /// </summary>
-    /// <remarks>Ignores the cap, since the amount was already held, and never evicts: eviction belongs to the
-    /// finalization thread, so a full cache briefly holds one extra entry per refund in flight.</remarks>
-    public void Refund(AddressAsKey sender, in UInt256 amount)
+    /// <remarks>Every successful call with a non-zero cost must be paired with one <see cref="Release"/>.</remarks>
+    public bool TryReserve(AddressAsKey holder, in UInt256 cost)
     {
-        if (amount.IsZero) return;
+        if (cost.IsZero) return true;
 
-        while (true)
+        while (_width.TryGetValue(holder, out Holding existing))
         {
-            if (_width.TryGetValue(sender, out UInt256 existing))
-            {
-                if (UInt256.AddOverflow(existing, amount, out UInt256 updated)) updated = UInt256.MaxValue;
-                if (_width.TryUpdate(sender, updated, existing)) return;
-            }
-            else if (_width.TryAdd(sender, amount))
-            {
-                Interlocked.Increment(ref _count);
-                Interlocked.Increment(ref HoldersWithWidth);
-                return;
-            }
+            if (existing.Width < cost) return false;
+            if (_width.TryUpdate(holder, new Holding(existing.Width - cost, existing.Reservations + 1), existing)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Ends one reservation taken by <see cref="TryReserve"/>, giving <paramref name="refund"/> of it back to
+    /// <paramref name="holder"/>: nothing when the admission went through, the whole cost when it did not.
+    /// </summary>
+    /// <remarks>The refund ignores the cap, since the amount was already held.</remarks>
+    public void Release(AddressAsKey holder, in UInt256 refund)
+    {
+        while (_width.TryGetValue(holder, out Holding existing) && existing.Reservations > 0)
+        {
+            if (UInt256.AddOverflow(existing.Width, refund, out UInt256 width)) width = UInt256.MaxValue;
+            if (Replace(holder, existing, new Holding(width, existing.Reservations - 1))) return;
         }
     }
 
@@ -101,7 +103,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
     /// <remarks>Nothing stops a submission already in flight from spending after this, so it bounds the leak rather than closing it.</remarks>
     public void Clear()
     {
-        foreach (KeyValuePair<AddressAsKey, UInt256> entry in _width)
+        foreach (KeyValuePair<AddressAsKey, Holding> entry in _width)
         {
             if (_width.TryRemove(entry.Key, out _))
             {
@@ -121,18 +123,18 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
 
         while (true)
         {
-            if (_width.TryGetValue(sender, out UInt256 existing))
+            if (_width.TryGetValue(sender, out Holding existing))
             {
-                if (capped && existing >= widthCap) return;
-                if (UInt256.AddOverflow(existing, amount, out UInt256 updated)) updated = UInt256.MaxValue;
+                if (capped && existing.Width >= widthCap) return;
+                if (UInt256.AddOverflow(existing.Width, amount, out UInt256 updated)) updated = UInt256.MaxValue;
                 if (capped && updated > widthCap) updated = widthCap;
-                if (_width.TryUpdate(sender, updated, existing)) return;
+                if (_width.TryUpdate(sender, existing with { Width = updated }, existing)) return;
             }
             else
             {
                 UInt256 seeded = capped && amount > widthCap ? widthCap : amount;
                 if (Count >= maxSenders && !TryEvictFor(seeded)) return;
-                if (_width.TryAdd(sender, seeded))
+                if (_width.TryAdd(sender, new Holding(seeded, 0)))
                 {
                     Interlocked.Increment(ref _count);
                     Interlocked.Increment(ref HoldersWithWidth);
@@ -144,7 +146,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
 
     private bool TryEvictFor(in UInt256 newcomer)
     {
-        KeyValuePair<AddressAsKey, UInt256> victim = default;
+        KeyValuePair<AddressAsKey, Holding> victim = default;
         bool found = false;
         bool restarted = false;
         int sampled = 0;
@@ -160,8 +162,8 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
                 continue;
             }
 
-            KeyValuePair<AddressAsKey, UInt256> entry = _evictionWindow.Current;
-            if (!found || entry.Value < victim.Value)
+            KeyValuePair<AddressAsKey, Holding> entry = _evictionWindow.Current;
+            if (entry.Value.Reservations == 0 && (!found || entry.Value.Width < victim.Value.Width))
             {
                 victim = entry;
                 found = true;
@@ -170,8 +172,8 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
             sampled++;
         }
 
-        if (!found) return true;
-        if (newcomer <= victim.Value) return false;
+        if (sampled == 0) return true;
+        if (!found || newcomer <= victim.Value.Width) return false;
         return RemoveTracked(victim.Key, victim.Value) || Count < maxSenders;
     }
 
@@ -181,11 +183,17 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         Interlocked.Decrement(ref HoldersWithWidth);
     }
 
-    /// <summary>Removes <paramref name="sender"/> only while its width is still <paramref name="expected"/>, so a racing credit is never dropped.</summary>
-    private bool RemoveTracked(AddressAsKey sender, in UInt256 expected)
+    /// <summary>Swaps <paramref name="expected"/> for <paramref name="updated"/>, dropping the entry once it holds neither width nor a reservation.</summary>
+    private bool Replace(AddressAsKey sender, in Holding expected, in Holding updated) =>
+        updated.Width.IsZero && updated.Reservations == 0
+            ? RemoveTracked(sender, expected)
+            : _width.TryUpdate(sender, updated, expected);
+
+    /// <summary>Removes <paramref name="sender"/> only while its holding is still <paramref name="expected"/>, so a racing credit or reservation is never dropped.</summary>
+    private bool RemoveTracked(AddressAsKey sender, in Holding expected)
     {
-        if (!((ICollection<KeyValuePair<AddressAsKey, UInt256>>)_width).Remove(
-                new KeyValuePair<AddressAsKey, UInt256>(sender, expected)))
+        if (!((ICollection<KeyValuePair<AddressAsKey, Holding>>)_width).Remove(
+                new KeyValuePair<AddressAsKey, Holding>(sender, expected)))
         {
             return false;
         }
@@ -193,4 +201,6 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
         Untrack();
         return true;
     }
+
+    private readonly record struct Holding(UInt256 Width, int Reservations);
 }
