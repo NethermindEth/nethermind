@@ -122,6 +122,7 @@ public static partial class EpochProcessing
     }
 
     public static partial void ProcessRewardsAndPenalties(BeaconStateFulu state, EpochCache cache);
+    internal static partial void ApplyRewardDeltas(BeaconStateFulu state, EpochCache cache);
 
     /// <summary>Electra <c>process_registry_updates</c> (EIP-7251): eligibility sweep, ejections, and finality-gated activations.</summary>
     public static partial void ProcessRegistryUpdates(BeaconStateFulu state, EpochCache cache);
