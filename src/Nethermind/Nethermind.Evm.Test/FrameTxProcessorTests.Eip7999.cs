@@ -248,6 +248,27 @@ public partial class FrameTxProcessorTests
         }
     }
 
+    // The conversion must not measure what the processor's structural checks have not yet bounded.
+    [Test]
+    public void Execute_PerGasRpcCallWithOversizedNonceKeys_IsRejectedAsMalformed()
+    {
+        UseBogotaFrames(eip7999: true);
+        _spec.IsEip8250Enabled = true;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(FrameTx(nonce: 0, SelfVerifyFrame()));
+        rpc.MaxFeePerGas = BudgetBaseFee;
+        UInt256[] keys = new UInt256[Eip8250Constants.MaxNonceKeys + 1];
+        // Full-width keys, so the set overruns the nonce_calldata bound the measurement enforces.
+        for (int i = 0; i < keys.Length; i++) keys[i] = UInt256.MaxValue - (UInt256)i;
+        rpc.NonceKeys = keys;
+
+        Transaction tx = rpc.ToTransaction(spec: Spec).Data!;
+        tx.SenderAddress = Sender;
+        TransactionResult result = Process(tx, baseFeePerGas: BudgetBaseFee);
+
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction), result.ErrorDescription);
+    }
+
     [Test]
     public void Execute_MaxFee_GasSearchProbeDefersTheBudgetCheck([Values] bool probe)
     {

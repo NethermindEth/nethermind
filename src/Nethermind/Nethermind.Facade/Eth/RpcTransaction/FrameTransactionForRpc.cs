@@ -5,6 +5,7 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.TxDecoders;
@@ -129,6 +130,14 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
 
     private static UInt256 BudgetFor(Transaction tx, in UInt256 maxFeePerGas, IReleaseSpec spec)
     {
+        // The measurements below assume the processor's structural checks; a transaction failing them is left for the
+        // processor to reject with its own error, and any budget will do.
+        if (!FrameTxValidation.IsWellFormed(tx, spec.IsEip7906Enabled, out _)
+            || (tx.NonceKeys is { } nonceKeys && !KeyedNonceManager.AreNonceKeysWellFormed(nonceKeys)))
+        {
+            return UInt256.MaxValue;
+        }
+
         // Measured as the processor does before pricing, so max_gas here is the one the budget is checked against.
         tx.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(tx.RecentRootReferences);
         if (tx.NonceKeys is not null) tx.FrameCalldataStats = FrameTxNonceCalldata.Measure(tx);
