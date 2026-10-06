@@ -219,13 +219,50 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(statusHolder.CurrentStatus.EarliestAvailableSlot, Is.EqualTo(ServeRangeStart + 10), "the orchestrator must read the pool the column protocols serve from");
     }
 
-    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null)
+    [Test]
+    public async Task Polar_bear_banner_marks_the_head_crossing_into_gloas_once()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Sepolia;
+        ulong gloasSlot = spec.GloasForkEpoch * spec.SlotsPerEpoch;
+        ulong anchorSlot = gloasSlot - 2 * spec.SlotsPerEpoch;
+        ScriptedImporter importer = ImporterWithHead(anchorSlot, spec.SlotsPerEpoch);
+        TestLogRecorder logs = new();
+        (BeaconSyncOrchestrator orchestrator, _, _) = CreateStatusHarness(new DataColumnSidecarPool(), anchorSlot, gloasSlot, forkSpec: spec, scriptedImporter: importer, logManager: logs);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+        importer.Head = importer.Head with { HeadSlot = gloasSlot };
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+        importer.Head = importer.Head with { HeadSlot = gloasSlot + 1 };
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        string[] banners = [.. logs.Messages.Where(static message => message.Contains("crossed into Gloas"))];
+        Assert.That(banners, Has.Length.EqualTo(1), "only the step that moves the head from a Fulu slot to a Gloas slot shows it");
+        Assert.That(banners[0], Does.Contain($"slot {gloasSlot} (epoch {spec.GloasForkEpoch})"));
+        Assert.That(banners[0].Split('\n'), Has.Length.LessThanOrEqualTo(GloasForkBanner.MaxLines), "the banner must fit a terminal");
+        Assert.That(banners[0].All(char.IsAscii), Is.True, "log sinks may not render non-ASCII art");
+    }
+
+    [Test]
+    public async Task Polar_bear_banner_is_not_shown_when_the_first_head_is_already_gloas()
+    {
+        BeaconChainSpec spec = BeaconChainSpec.Sepolia;
+        ulong gloasSlot = spec.GloasForkEpoch * spec.SlotsPerEpoch;
+        TestLogRecorder logs = new();
+        (BeaconSyncOrchestrator orchestrator, _, _) = CreateStatusHarness(new DataColumnSidecarPool(), gloasSlot + 10, gloasSlot + 20, headOffset: 1, forkSpec: spec, logManager: logs);
+
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+        await orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(logs.Messages, Has.None.Contains("crossed into Gloas"), "a restart past the fork has no crossing to mark");
+    }
+
+    private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null, ScriptedImporter? scriptedImporter = null, ILogManager? logManager = null)
     {
         BeaconChainSpec spec = forkSpec ?? Spec;
         ManualTimestamper timestamper = new(WallTime(wallSlot));
         SlotClock slotClock = new(spec, timestamper);
         StubPool peers = new([]);
-        ScriptedImporter importer = ImporterWithHead(anchorSlot, headOffset, headFull, finalized);
+        ScriptedImporter importer = scriptedImporter ?? ImporterWithHead(anchorSlot, headOffset, headFull, finalized);
         BeaconChainStatusHolder statusHolder = new(spec, timestamper);
         BeaconChainStore store = new(new MemColumnsDb<BeaconChainDbColumns>());
         RangeSync rangeSync = new(peers, LimboLogs.Instance, pool, spec, RangeSyncTests.ClockAtGenesis(spec));
@@ -243,7 +280,7 @@ public partial class BeaconSyncOrchestratorTests
             slotClock,
             new GossipRouter(spec, slotClock, LimboLogs.Instance),
             statusHolder,
-            LimboLogs.Instance,
+            logManager ?? LimboLogs.Instance,
             columnPool: pool,
             columnBackfill: columnBackfill);
         Initialize(orchestrator, importer, anchorSlot);
