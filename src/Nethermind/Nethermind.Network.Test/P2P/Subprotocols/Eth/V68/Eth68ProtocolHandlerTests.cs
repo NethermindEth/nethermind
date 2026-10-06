@@ -3,7 +3,9 @@
 
 using System.Linq;
 using Nethermind.Consensus;
+using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1023,9 +1025,8 @@ public class Eth68ProtocolHandlerTests
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 
     private Eth68ProtocolHandler CreateHandler(ITxPoolConfig txPoolConfig, IChainHeadSpecProvider? specProvider = null) =>
@@ -1083,9 +1084,8 @@ public class Eth68ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, byte messageCode) where T : MessageBase
     {
-        using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
-        getBlockHeadersPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = messageCode });
+        using PooledBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(getBlockHeadersPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = messageCode });
     }
 
     private void RecreateHandlerWithBlobSupport()

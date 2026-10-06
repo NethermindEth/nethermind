@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using CkzgLib;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -13,7 +12,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage72>
+public class CellsMessageSerializer72 : IZeroMessageSerializer<CellsMessage72>
 {
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<CellsMessage72>(Eth72ProtocolHandler.MaxCellsResponseHashes, nameof(CellsMessage72.Hashes));
     private readonly int _maxBlobsPerTransaction;
@@ -35,12 +34,11 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         _cellsPerTransactionRlpLimit = RlpLimit.For<CellsMessage72>(maxCellsPerTransaction, nameof(CellsMessage72.Cells));
     }
 
-    public void Serialize(IByteBuffer byteBuffer, CellsMessage72 message)
+    public void Serialize(Span<byte> buffer, CellsMessage72 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
+        GetLength(message, out int contentLength);
 
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(buffer);
         writer.StartSequence(contentLength);
         writer.Encode(message.RequestId);
 
@@ -66,7 +64,13 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         writer.Encode(message.CellMask);
     }
 
-    public CellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+    public CellsMessage72 Deserialize(ReadOnlySpan<byte> data, out int consumed)
+    {
+        RlpReader ctx = new(data);
+        CellsMessage72 msg = Deserialize(ref ctx);
+        consumed = ctx.Position;
+        return msg;
+    }
 
     private CellsMessage72 Deserialize(ref RlpReader ctx)
     {
@@ -134,7 +138,7 @@ public class CellsMessageSerializer72 : IZeroInnerMessageSerializer<CellsMessage
         return contentLength;
     }
 
-    private static void EncodeCellGroup(ref ByteBufferRlpWriter writer, byte[][] blobMajorCells, int cellIndexCount)
+    private static void EncodeCellGroup(ref RlpWriter writer, byte[][] blobMajorCells, int cellIndexCount)
     {
         int contentLength = 0;
         for (int i = 0; i < blobMajorCells.Length; i++)

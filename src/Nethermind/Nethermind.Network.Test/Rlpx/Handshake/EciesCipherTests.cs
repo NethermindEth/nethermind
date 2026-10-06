@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -85,9 +86,9 @@ public class EciesCipherTests
         Assert.That(authMessage.IsTokenUsed, Is.EqualTo(false));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-        Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+        Assert.That(data.ReadOnlySpan.ToArray(), Is.EqualTo(deciphered), "serialization");
     }
 
     [Test]
@@ -118,9 +119,9 @@ public class EciesCipherTests
         Assert.That(authMessage.Version, Is.EqualTo(4));
         Assert.That(authMessage.Signature, Is.Not.Null);
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(authMessage).AsDisposable();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(authMessage);
 
-        Assert.That(data.Slice(0, 169).ReadAllBytesAsArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
+        Assert.That(data.ReadOnlySpan.Slice(0, 169).ToArray(), Is.EqualTo(deciphered.Slice(0, 169)), "serialization");
     }
 
     [Test]
@@ -140,8 +141,8 @@ public class EciesCipherTests
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.IsTokenUsed, Is.EqualTo(false));
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
-        Assert.That(data.ReadAllBytesAsArray(), Is.EqualTo(deciphered), "serialization");
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
+        Assert.That(data.ReadOnlySpan.ToArray(), Is.EqualTo(deciphered), "serialization");
     }
 
     [Test]
@@ -173,10 +174,10 @@ public class EciesCipherTests
         Assert.That(NetTestVectors.NonceB, Is.EqualTo(ackMessage.Nonce));
         Assert.That(ackMessage.Version, Is.EqualTo(4));
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(ackMessage).AsDisposable();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(ackMessage);
 
         // TODO: check 102
-        Assert.That(data.ReadAllBytesAsArray().Slice(0, 102), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
+        Assert.That(data.ReadOnlySpan.Slice(0, 102).ToArray(), Is.EqualTo(deciphered.Slice(0, 102)), "serialization");
     }
 
     [Test]

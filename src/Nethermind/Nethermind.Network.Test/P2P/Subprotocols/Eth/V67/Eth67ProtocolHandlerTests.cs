@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -130,9 +132,8 @@ public class Eth67ProtocolHandlerTests
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        using DisposableByteBuffer getZeroPacket = _svc.ZeroSerialize(msg).AsDisposable();
-        getZeroPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(getZeroPacket) { PacketType = (byte)messageCode });
+        using PooledBuffer getZeroPacket = _svc.ZeroSerialize(msg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(getZeroPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
     }
 
     private void HandleIncomingStatusMessage()
@@ -141,8 +142,7 @@ public class Eth67ProtocolHandlerTests
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 }

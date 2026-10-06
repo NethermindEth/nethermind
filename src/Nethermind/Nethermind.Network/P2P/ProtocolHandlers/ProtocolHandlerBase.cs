@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Logging;
@@ -53,12 +52,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
-        protected T Deserialize<T>(byte[] data) where T : P2PMessage
+        protected T Deserialize<T>(ReadOnlySpan<byte> data) where T : P2PMessage
         {
             int size = data.Length;
             try
             {
-                return _serializer.Deserialize<T>(data);
+                T result = _serializer.Deserialize<T>(data, out int consumed);
+                if (consumed != data.Length) ThrowIncompleteDeserializationException(consumed, data.Length - consumed);
+                if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
+
+                return result;
             }
             catch (RlpLimitException e)
             {
@@ -93,32 +96,8 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private void TraceRlpLimitException(string messageType, RlpLimitException exception) =>
             Logger.Trace($"Failed to deserialize message {messageType} on session {Session} due to rlp limits, with exception {exception}");
 
-        protected T Deserialize<T>(IByteBuffer data) where T : P2PMessage
-        {
-            int size = data.ReadableBytes;
-            try
-            {
-                int originalReaderIndex = data.ReaderIndex;
-                T result = _serializer.Deserialize<T>(data);
-                if (data.IsReadable()) ThrowIncompleteDeserializationException(data, originalReaderIndex);
-                if (Logger.IsTrace) Logger.Trace($"{Counter} Got {typeof(T).Name}");
-
-                return result;
-            }
-            catch (RlpLimitException e)
-            {
-                HandleRlpLimitException<T>(size, e);
-                throw;
-            }
-            catch (RlpException e)
-            {
-                HandleRlpException<T>(size, e);
-                throw;
-            }
-        }
-
         [DoesNotReturn]
-        private static void ThrowIncompleteDeserializationException(IByteBuffer data, int originalReaderIndex) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {data.ReaderIndex - originalReaderIndex}. Readable bytes: {data.ReadableBytes}");
+        private static void ThrowIncompleteDeserializationException(int consumed, int remaining) => throw new IncompleteDeserializationException($"Incomplete deserialization detected. Buffer is still readable. Read bytes: {consumed}. Readable bytes: {remaining}");
 
         protected internal void Send<T>(T message) where T : P2PMessage
         {
@@ -213,8 +192,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         private TReq DeserializeAndReport<TReq>(ZeroPacket message) where TReq : P2PMessage
         {
-            TReq messageObject = Deserialize<TReq>(message.Content);
-            ReportIn(messageObject, message.Content.ReadableBytes);
+            ReadOnlySpan<byte> content = message.Content.AsSpan();
+            TReq messageObject = Deserialize<TReq>(content);
+            ReportIn(messageObject, content.Length);
             return messageObject;
         }
 

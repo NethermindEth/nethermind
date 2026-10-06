@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using System.Linq;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap;
@@ -114,10 +115,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
-            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
-            serializer.Serialize(buffer, msg);
+            using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(msg, out _));
+            serializer.Serialize(buffer.Span, msg);
 
-            Assert.That(() => serializer.Deserialize(buffer), Throws.InstanceOf<RlpException>());
+            Assert.That(() => serializer.Deserialize(buffer.ReadOnlySpan, out _), Throws.InstanceOf<RlpException>());
         }
 
         [Test]
@@ -145,15 +146,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             };
 
             GetTrieNodesMessageSerializer serializer = new();
-            IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 64);
+            using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(msg, out _));
             try
             {
-                serializer.Serialize(buffer, msg);
-                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer));
+                serializer.Serialize(buffer.Span, msg);
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer.ReadOnlySpan, out _));
             }
             finally
             {
-                buffer.Release();
                 msg.Dispose();
             }
         }
@@ -164,24 +164,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
         /// </summary>
         private static void AssertByteRoundtrip(GetTrieNodesMessageSerializer serializer, GetTrieNodesMessage msg)
         {
-            using GetTrieNodesMessage _ = msg;
-            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-            using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+            using GetTrieNodesMessage ownedMsg = msg;
+            using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(msg, out _));
 
-            serializer.Serialize(buffer, msg);
-            byte[] firstBytes = new byte[buffer.ReadableBytes];
-            buffer.GetBytes(buffer.ReaderIndex, firstBytes);
+            serializer.Serialize(buffer.Span, msg);
+            byte[] firstBytes = buffer.ReadOnlySpan.ToArray();
 
-            using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer);
+            using GetTrieNodesMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out _);
 
             Assert.That(deserialized.RequestId, Is.EqualTo(msg.RequestId));
             Assert.That(deserialized.RootHash, Is.EqualTo(msg.RootHash));
             Assert.That(deserialized.Bytes, Is.EqualTo(msg.Bytes));
             Assert.That(deserialized.Paths.Count, Is.EqualTo(msg.Paths.Count));
 
-            serializer.Serialize(buffer2, deserialized);
-            byte[] secondBytes = new byte[buffer2.ReadableBytes];
-            buffer2.GetBytes(buffer2.ReaderIndex, secondBytes);
+            using PooledBuffer buffer2 = PooledBuffer.Rent(serializer.GetLength(deserialized, out _));
+            serializer.Serialize(buffer2.Span, deserialized);
+            byte[] secondBytes = buffer2.ReadOnlySpan.ToArray();
 
             Assert.That(secondBytes, Is.EqualTo(firstBytes));
         }

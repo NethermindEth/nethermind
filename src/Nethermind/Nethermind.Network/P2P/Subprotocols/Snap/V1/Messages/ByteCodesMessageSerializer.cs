@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
 
@@ -9,22 +9,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class ByteCodesMessageSerializer : IZeroMessageSerializer<ByteCodesMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
+        public void Serialize(Span<byte> buffer, ByteCodesMessage message)
         {
             int codesLength = Rlp.LengthOfByteArrayList(message.Codes);
             int contentLength = Rlp.LengthOf(message.RequestId) + codesLength;
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             writer.WriteByteArrayList(message.Codes);
         }
 
-        public ByteCodesMessage Deserialize(IByteBuffer byteBuffer)
+        public int GetLength(ByteCodesMessage message, out int contentLength)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfByteArrayList(message.Codes);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        public ByteCodesMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            PooledBuffer? memoryOwner = PooledBuffer.Rent(data.Length);
+            data.CopyTo(memoryOwner.Span);
             RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
             RlpByteArrayList? list = null;
 
             try
@@ -34,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 
                 list = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.ByteCodesRlpLimit);
                 memoryOwner = null;
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                consumed = ctx.Position;
 
                 return new ByteCodesMessage(list) { RequestId = requestId };
             }

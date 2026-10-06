@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -95,10 +96,10 @@ public class PooledTransactionsMessageSerializerTests
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_contain_network_form_tx_wrapper(PooledTransactionsMessage transactionsMessage)
     {
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         PooledTransactionsMessageSerializer serializer = new();
-        serializer.Serialize(buffer, transactionsMessage);
-        using PooledTransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(transactionsMessage, out _));
+        serializer.Serialize(buffer.Span, transactionsMessage);
+        using PooledTransactionsMessage deserializedMessage = serializer.Deserialize(buffer.ReadOnlySpan, out _);
         foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.Type == TxType.Blob))
         {
             Assert.That(tx.NetworkWrapper, Is.Not.Null);

@@ -2,11 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
+using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using Nethermind.Core.Buffers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P.Messages;
 
@@ -35,8 +39,8 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
             return 0;
         }
 
-        IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message, allocator: _context.Allocator);
-        int length = buffer.ReadableBytes;
+        PooledBuffer buffer = _messageSerializationService.ZeroSerialize(message);
+        int length = buffer.Length;
 
         // Running in background
         SendBuffer(buffer);
@@ -44,7 +48,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         return length;
     }
 
-    private void SendBuffer(IByteBuffer buffer)
+    private void SendBuffer(PooledBuffer buffer)
     {
         try
         {
@@ -65,7 +69,7 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         }
         catch (Exception exception)
         {
-            buffer.Release();
+            buffer.Dispose();
             HandleSendFailure(exception);
             return;
         }
@@ -75,60 +79,80 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
 
     private void DelayThenWrite(Task delayTask, object? state)
     {
+        PooledBuffer buffer = (PooledBuffer)state!;
         if (delayTask.IsFaulted)
         {
-            ((IByteBuffer)state!).Release();
+            buffer.Dispose();
             HandleSendFailure(delayTask.Exception?.GetBaseException() ?? delayTask.Exception!);
             return;
         }
 
         if (delayTask.IsCanceled)
         {
-            ((IByteBuffer)state!).Release();
+            buffer.Dispose();
             HandleSendFailure(new TaskCanceledException(delayTask));
             return;
         }
 
-        StartWrite((IByteBuffer)state!);
+        StartWrite(buffer);
     }
 
-    private void StartWrite(IByteBuffer buffer)
+    private void StartWrite(PooledBuffer buffer)
     {
+        // Zero-copy view over the pooled message for the DotNetty pipeline, which stays in
+        // place for RLPx framing. The wrapper is released by the downstream encoder; the
+        // pooled rental is returned below once the write completes.
+        if (!MemoryMarshal.TryGetArray(buffer.ReadOnlyMemory, out ArraySegment<byte> segment) ||
+            segment.Array is null)
+        {
+            buffer.Dispose();
+            HandleSendFailure(new InvalidOperationException("Pooled message buffer is not array-backed."));
+            return;
+        }
+
+        IByteBuffer wrapped = Unpooled.WrappedBuffer(segment.Array, segment.Offset, segment.Count);
         try
         {
-            Task writeTask = _context.WriteAndFlushAsync(buffer);
+            Task writeTask = _context.WriteAndFlushAsync(wrapped);
             if (writeTask.IsCompletedSuccessfully)
             {
+                buffer.Dispose();
                 return;
             }
 
             if (writeTask.IsFaulted)
             {
+                buffer.Dispose();
                 HandleSendFailure(writeTask.Exception?.GetBaseException() ?? writeTask.Exception!);
                 return;
             }
 
             if (writeTask.IsCanceled)
             {
+                buffer.Dispose();
                 HandleSendFailure(new TaskCanceledException(writeTask));
                 return;
             }
 
             _ = writeTask.ContinueWith(
                 ObserveWriteCompletionAction,
-                null,
+                buffer,
                 CancellationToken.None,
                 TaskContinuationOptions.ExecuteSynchronously,
                 TaskScheduler.Default);
         }
         catch (Exception exception)
         {
+            // A synchronous throw means the pipeline never took ownership of the view.
+            wrapped.SafeRelease();
+            buffer.Dispose();
             HandleSendFailure(exception);
         }
     }
 
-    private void ObserveWriteCompletion(Task writeTask, object? _)
+    private void ObserveWriteCompletion(Task writeTask, object? state)
     {
+        ((PooledBuffer)state!).Dispose();
         if (writeTask.IsFaulted)
         {
             HandleSendFailure(writeTask.Exception?.GetBaseException() ?? writeTask.Exception!);

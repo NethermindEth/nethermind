@@ -3,7 +3,6 @@
 
 using System;
 using Nethermind.Core;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -13,15 +12,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
     public class GetPooledTransactionsMessageSerializer : GetPooledTransactionsMessageSerializer<GetPooledTransactionsMessage>;
 
-    public class GetPooledTransactionsMessageSerializer<T> : IZeroInnerMessageSerializer<T>
+    public class GetPooledTransactionsMessageSerializer<T> : IZeroMessageSerializer<T>
         where T : GetPooledTransactionsMessage, INew<IOwnedReadOnlyList<ValueHash256>, T>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<T>(NethermindSyncLimits.MaxHashesFetch, nameof(GetPooledTransactionsMessage.Hashes));
 
-        public void Serialize(IByteBuffer byteBuffer, T message)
+        public void Serialize(Span<byte> buffer, T message)
         {
-            byteBuffer.EnsureWritable(GetLength(message, out int contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan()) writer.Encode(in hash);
         }
@@ -32,17 +31,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public T Deserialize(IByteBuffer byteBuffer)
+        public T Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            RlpReader reader = new(byteBuffer.AsSpan());
-            try
-            {
-                return T.New(reader.DecodeNonNullArrayPoolList(static (ref RlpReader r) => r.DecodeValueKeccakNonNull(), limit: RlpLimit));
-            }
-            finally
-            {
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + reader.Position);
-            }
+            RlpReader reader = new(data);
+            T result = T.New(reader.DecodeNonNullArrayPoolList(static (ref RlpReader r) => r.DecodeValueKeccakNonNull(), limit: RlpLimit));
+            consumed = reader.Position;
+            return result;
         }
     }
 }

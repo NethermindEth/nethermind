@@ -20,17 +20,16 @@ public class GetReceiptsMessageSerializer70Tests
         byte[] bytes = trailingData
             ? [0xe5, 0x01, 0x80, 0xe1, 0xa0, .. TestItem.KeccakA.Bytes, 0x80]
             : [0xe4, 0x01, 0x80, 0xe1, 0xa0, .. TestItem.KeccakA.Bytes];
-        using DisposableByteBuffer payload = Unpooled.WrappedBuffer(bytes).AsDisposable();
         try
         {
             if (trailingData)
             {
-                Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+                Assert.Throws<RlpException>(() => serializer.Deserialize(bytes, out _));
                 Assert.Throws<ObjectDisposedException>(() => { _ = serializer.Decoded!.Hashes.AsSpan(); });
             }
             else
             {
-                GetReceiptsMessage70 message = serializer.Deserialize(payload);
+                GetReceiptsMessage70 message = serializer.Deserialize(bytes, out _);
                 Assert.That(message.Hashes.AsSpan().Length, Is.EqualTo(1));
             }
         }
@@ -52,8 +51,8 @@ public class GetReceiptsMessageSerializer70Tests
     public void Deserialize_throws_on_null_hash()
     {
         GetReceiptsMessageSerializer70 serializer = new();
-        using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc4, 0x01, 0x80, 0xc1, 0x80]).AsDisposable();
+        byte[] payload = [0xc4, 0x01, 0x80, 0xc1, 0x80];
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload, out _), Throws.InstanceOf<RlpException>());
     }
 }

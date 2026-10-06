@@ -1,44 +1,42 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroInnerMessageSerializer<TEth66Message>
+    public class Eth66MessageSerializer<TEth66Message, TEthMessage> : IZeroMessageSerializer<TEth66Message>
         where TEth66Message : Eth66Message<TEthMessage>, new()
         where TEthMessage : P2PMessage
     {
-        private readonly IZeroInnerMessageSerializer<TEthMessage> _ethMessageSerializer;
+        private readonly IZeroMessageSerializer<TEthMessage> _ethMessageSerializer;
 
-        protected Eth66MessageSerializer(IZeroInnerMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
+        protected Eth66MessageSerializer(IZeroMessageSerializer<TEthMessage> ethMessageSerializer) => _ethMessageSerializer = ethMessageSerializer;
 
-        public void Serialize(IByteBuffer byteBuffer, TEth66Message message)
+        public void Serialize(Span<byte> buffer, TEth66Message message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
-            _ethMessageSerializer.Serialize(byteBuffer, message.EthMessage);
+            _ethMessageSerializer.Serialize(buffer.Slice(writer.Position), message.EthMessage);
         }
 
-        public TEth66Message Deserialize(IByteBuffer byteBuffer)
+        public TEth66Message Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            int startReaderIndex = byteBuffer.ReaderIndex;
-            RlpReader ctx = new(byteBuffer.AsSpan());
+            RlpReader ctx = new(data);
             int sequenceLength = ctx.ReadSequenceLength();
             int checkPosition = ctx.Position + sequenceLength;
             TEth66Message eth66Message = new();
             eth66Message.RequestId = ctx.DecodeLong();
-            byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
-            eth66Message.EthMessage = _ethMessageSerializer.Deserialize(byteBuffer);
+            eth66Message.EthMessage = _ethMessageSerializer.Deserialize(data.Slice(ctx.Position), out int innerConsumed);
+            consumed = ctx.Position + innerConsumed;
 
-            if (byteBuffer.ReaderIndex - startReaderIndex != checkPosition)
+            if (consumed != checkPosition)
             {
                 eth66Message.Dispose();
                 ThrowUnexpectedTrailingData();

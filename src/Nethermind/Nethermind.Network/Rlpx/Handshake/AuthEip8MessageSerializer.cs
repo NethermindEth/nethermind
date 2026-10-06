@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
@@ -13,31 +12,40 @@ namespace Nethermind.Network.Rlpx.Handshake
     {
         private readonly IMessagePad _messagePad = messagePad;
 
-        public void Serialize(IByteBuffer byteBuffer, AuthEip8Message msg)
+        public void Serialize(Span<byte> buffer, AuthEip8Message msg)
         {
-            int totalLength = GetLength(msg);
-            // TODO: Account for the padding
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(totalLength);
+            GetLength(msg, out int contentLength);
+            RlpWriter writer = new(buffer);
+            writer.StartSequence(contentLength);
             writer.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
             writer.Encode(msg.PublicKey.Bytes);
             writer.Encode(msg.Nonce);
             writer.Encode(msg.Version);
-            _messagePad?.Pad(byteBuffer);
+            _messagePad.Pad(buffer.Slice(writer.Position));
         }
 
-        public static int GetLength(AuthEip8Message msg)
+        /// <summary>
+        /// Samples the random padding length once: the returned total sizes the rental for the
+        /// <c>Serialize</c> call that follows, which pads exactly the buffer remainder, so the two
+        /// always agree within one serialize operation. Do not call <c>GetLength</c> twice for one
+        /// message and expect the same total.
+        /// </summary>
+        public int GetLength(AuthEip8Message msg, out int contentLength)
         {
-            int contentLength = Rlp.LengthOf(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId))
+            contentLength = Rlp.LengthOf(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId))
                                 + Rlp.LengthOf(msg.PublicKey.Bytes)
                                 + Rlp.LengthOf(msg.Nonce)
                                 + Rlp.LengthOf(msg.Version);
-            return contentLength;
+            return Rlp.LengthOfSequence(contentLength) + _messagePad.GetPaddingLength();
         }
 
-        public AuthEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+        public AuthEip8Message Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            AuthEip8Message msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         private static AuthEip8Message Deserialize(ref RlpReader ctx)
         {

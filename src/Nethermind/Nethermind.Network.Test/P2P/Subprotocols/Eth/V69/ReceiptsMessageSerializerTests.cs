@@ -4,6 +4,7 @@
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -199,8 +200,8 @@ public class ReceiptsMessageSerializerTests
 
         ReceiptsMessageSerializer69 serializer = new(new TestSpecProvider(Prague.Instance));
 
-        IByteBuffer x = PooledByteBufferAllocator.Default.Buffer(1024);
-        serializer.Serialize(x, message);
+        using PooledBuffer x = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(x.Span, message);
 
         SerializerTester.TestZero(
             serializer,

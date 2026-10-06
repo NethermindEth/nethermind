@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -179,15 +181,13 @@ public class PooledTransactionsRequestingTests
         statusMsg.GenesisHash = _genesisBlock.Hash;
         statusMsg.BestHash = _genesisBlock.Hash;
 
-        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-        statusPacket.ReadByte();
-        handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(Eth66ProtocolHandler handler, T msg, int messageCode) where T : MessageBase
     {
-        using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
-        packet.ReadByte();
-        handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        using PooledBuffer packet = _svc.ZeroSerialize(msg);
+        handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
     }
 }

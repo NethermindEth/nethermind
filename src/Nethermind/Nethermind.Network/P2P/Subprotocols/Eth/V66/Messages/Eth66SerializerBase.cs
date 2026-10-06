@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
@@ -9,21 +9,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
     /// <summary>
     /// Shared serializer for eth request/response messages that prefix their payload with a request id.
     /// </summary>
-    public abstract class Eth66SerializerBase<TMessage> : IZeroInnerMessageSerializer<TMessage>
+    public abstract class Eth66SerializerBase<TMessage> : IZeroMessageSerializer<TMessage>
         where TMessage : Eth66MessageBase
     {
-        public void Serialize(IByteBuffer byteBuffer, TMessage message)
+        public void Serialize(Span<byte> buffer, TMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+            GetLength(message, out int contentLength);
 
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
-            SerializeInternal(byteBuffer, message);
+            SerializeInternal(buffer.Slice(writer.Position), message);
         }
 
-        public virtual TMessage Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+        public virtual TMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            TMessage message = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return message;
+        }
 
         private TMessage Deserialize(ref RlpReader ctx)
         {
@@ -50,7 +55,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        protected abstract void SerializeInternal(IByteBuffer byteBuffer, TMessage message);
+        protected abstract void SerializeInternal(Span<byte> buffer, TMessage message);
         protected abstract TMessage DeserializeInternal(ref RlpReader ctx, long requestId);
         protected abstract int GetLengthInternal(TMessage message);
     }

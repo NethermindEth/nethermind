@@ -16,6 +16,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -57,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetReceiptsMessage, ReceiptsMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.Receipts:
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content.AsSpan());
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     return true;
@@ -65,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                     HandleInBackground<GetNodeDataMessage, NodeDataMessage>(message, Handle);
                     return true;
                 case Eth63MessageCode.NodeData:
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content.AsSpan());
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     return true;

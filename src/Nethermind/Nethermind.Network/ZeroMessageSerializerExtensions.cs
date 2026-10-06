@@ -1,9 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
-using Nethermind.Serialization.Rlp;
+using System;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Network
 {
@@ -11,34 +10,12 @@ namespace Nethermind.Network
     {
         public static byte[] Serialize<T>(this IZeroMessageSerializer<T> serializer, T message) where T : MessageBase
         {
-            IByteBuffer byteBuffer = UnpooledByteBufferAllocator.Default.Buffer(
-                serializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-                    ? zeroInnerMessageSerializer.GetLength(message, out _)
-                    : 64);
-            try
-            {
-                serializer.Serialize(byteBuffer, message);
-                return byteBuffer.ReadAllBytesAsArray();
-
-            }
-            finally
-            {
-                byteBuffer.SafeRelease();
-            }
+            using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+            serializer.Serialize(buffer.Span, message);
+            return buffer.ReadOnlySpan.ToArray();
         }
 
-        public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase
-        {
-            IByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(message.Length);
-            try
-            {
-                buffer.WriteBytes(message);
-                return serializer.Deserialize(buffer);
-            }
-            finally
-            {
-                buffer.SafeRelease();
-            }
-        }
+        public static T Deserialize<T>(this IZeroMessageSerializer<T> serializer, byte[] message) where T : MessageBase =>
+            serializer.Deserialize(message, out _);
     }
 }

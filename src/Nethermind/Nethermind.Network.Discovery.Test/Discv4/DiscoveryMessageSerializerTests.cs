@@ -4,8 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
-using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -34,7 +34,7 @@ public class DiscoveryMessageSerializerTests
     private readonly IPEndPoint _nearAddress;
     private readonly IMessageSerializationService _messageSerializationService;
     private readonly ITimestamper _timestamper;
-    private readonly PooledByteBufferAllocator _leakDetectionAllocator = PooledBufferLeakDetector.CreateAllocator();
+
 
     public DiscoveryMessageSerializerTests()
     {
@@ -50,14 +50,14 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PingMessageTest()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         PingMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, _farAddress, _nearAddress,
                 new byte[32])
             { FarAddress = _farAddress };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
-        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data.ReadOnlySpan);
 
         byte[] expectedPingMdc =
             Bytes.FromHexString("0xf8c61953f3b94a91aefe611e61dd74fe26aa5c969d9f29b7e063e6169171a772");
@@ -147,10 +147,10 @@ public class DiscoveryMessageSerializerTests
                 new byte[32])
             { FarAddress = _farAddress };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        data.SetByte(data.ReaderIndex, data.GetByte(data.ReaderIndex) ^ 1);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        data.Span[0] ^= 1;
 
-        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(data),
+        Assert.That(() => _messageSerializationService.Deserialize<PingMsg>(data.ReadOnlySpan),
             Throws.TypeOf<NetworkingException>().And.Message.EqualTo("Invalid packet hash"));
     }
 
@@ -165,8 +165,8 @@ public class DiscoveryMessageSerializerTests
                 new byte[32], sourceTcpPort: 30303, destinationTcpPort: 0)
             { FarAddress = destination };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        byte[] packet = data.ReadAllBytesAsArray();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        byte[] packet = data.ReadOnlySpan.ToArray();
         RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         Assert.That(ctx.DecodeInt(), Is.EqualTo(message.Version));
@@ -193,8 +193,8 @@ public class DiscoveryMessageSerializerTests
             Assert.That(destinationTcpPort, Is.EqualTo(message.DestinationTcpPort));
         }
 
-        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
-        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(copy);
+
+        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(packet);
 
         using (Assert.EnterMultipleScope())
         {
@@ -211,8 +211,8 @@ public class DiscoveryMessageSerializerTests
                 new byte[32])
             { FarAddress = _farAddress };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        PingMsg deserializedMessage = _messageSerializationService.Deserialize<PingMsg>(data.ReadOnlySpan);
 
         Assert.That(deserializedMessage.SourceAddress.Port, Is.Zero);
     }
@@ -231,8 +231,8 @@ public class DiscoveryMessageSerializerTests
             FarAddress = _farAddress
         };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        PingMsg deserialized = _messageSerializationService.Deserialize<PingMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        PingMsg deserialized = _messageSerializationService.Deserialize<PingMsg>(data.ReadOnlySpan);
 
         IPEndPoint expected = new(IPAddress.Parse("192.0.2.1"), mapped.Port);
         using (Assert.EnterMultipleScope())
@@ -257,15 +257,15 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void PongMessageTest()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         PongMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, TestItem.KeccakA.ValueHash256)
             {
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
-        PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(data.ReadOnlySpan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -282,8 +282,8 @@ public class DiscoveryMessageSerializerTests
     {
         PingMsg pingMsg = new(TestItem.PublicKeyA, long.MaxValue, new IPEndPoint(TestItem.IPEndPointA.Address, 30303), new IPEndPoint(TestItem.IPEndPointB.Address, 30303), new byte[32]);
         pingMsg.EnrSequence = 3;
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pingMsg).AsDisposable();
-        pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized);
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(pingMsg);
+        pingMsg = _messageSerializationService.Deserialize<PingMsg>(serialized.ReadOnlySpan);
         Assert.That(pingMsg.EnrSequence, Is.EqualTo(3));
     }
 
@@ -295,8 +295,8 @@ public class DiscoveryMessageSerializerTests
             long.MaxValue,
             TestItem.KeccakA.ValueHash256,
             3);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg).AsDisposable();
-        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized);
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(pongMsg);
+        pongMsg = _messageSerializationService.Deserialize<PongMsg>(serialized.ReadOnlySpan);
         Assert.That(pongMsg.EnrSequence, Is.EqualTo(3));
     }
 
@@ -309,8 +309,8 @@ public class DiscoveryMessageSerializerTests
             FarAddress = ipv6Address
         };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        byte[] packet = data.ReadAllBytesAsArray();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        byte[] packet = data.ReadOnlySpan.ToArray();
         RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         ctx.ReadSequenceLength();
@@ -324,8 +324,8 @@ public class DiscoveryMessageSerializerTests
 
         // The pong endpoint is not preserved on deserialize (taken from the datagram instead),
         // so assert the rest of the payload survives the 16-byte address form.
-        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
-        PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(copy);
+
+        PongMsg deserializedMessage = _messageSerializationService.Deserialize<PongMsg>(packet);
         Assert.That(deserializedMessage.EnrSequence, Is.EqualTo(3));
     }
 
@@ -367,8 +367,8 @@ public class DiscoveryMessageSerializerTests
     public void Enr_request_there_and_back()
     {
         EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
-        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized);
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(serialized.ReadOnlySpan);
         Assert.That(deserialized.ExpirationTime, Is.EqualTo(msg.ExpirationTime));
         Assert.That(_privateKey.PublicKey, Is.EqualTo(deserialized.FarPublicKey));
     }
@@ -377,13 +377,13 @@ public class DiscoveryMessageSerializerTests
     public void Enr_request_hash_does_not_alias_input_buffer()
     {
         EnrRequestMsg msg = new(TestItem.PublicKeyA, long.MaxValue);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg).AsDisposable();
-        byte[] packet = serialized.ReadAllBytesAsArray();
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        byte[] packet = serialized.ReadOnlySpan.ToArray();
         Hash256 expectedHash = new(packet.AsSpan(0, 32));
         Assert.That(expectedHash, Is.EqualTo(new Hash256("0x64c2e38e89cdfca030166b7a271c301dd77cf043172966ab112d97fc3430fa16")));
 
-        using DisposableByteBuffer input = Unpooled.WrappedBuffer(packet).AsDisposable();
-        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(input);
+
+        EnrRequestMsg deserialized = _messageSerializationService.Deserialize<EnrRequestMsg>(packet);
         Array.Clear(packet);
 
         Assert.That(deserialized.Hash, Is.Not.Null);
@@ -393,11 +393,11 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void Enr_response_there_and_back()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         EnrResponseMsg msg = BuildEnrResponse(_privateKey.CompressedPublicKey);
 
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
-        EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized);
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
+        EnrResponseMsg deserialized = _messageSerializationService.Deserialize<EnrResponseMsg>(serialized.ReadOnlySpan);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(deserialized.NodeRecord.EnrSequence, Is.EqualTo(msg.NodeRecord.EnrSequence));
@@ -412,12 +412,12 @@ public class DiscoveryMessageSerializerTests
         // ENR with mismatched signature: Secp256K1 entry uses differentKey, but ENR is
         // signed with _privateKey. The outer Discovery envelope is valid, but the inner
         // ENR signature verification fails because the recovered signer doesn't match.
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         PrivateKey differentKey = new("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266");
         EnrResponseMsg msg = BuildEnrResponse(differentKey.CompressedPublicKey);
-        using DisposableByteBuffer serialized = _messageSerializationService.ZeroSerialize(msg, detector.Allocator).AsDisposable();
+        using PooledBuffer serialized = _messageSerializationService.ZeroSerialize(msg);
 
-        Assert.That(() => _messageSerializationService.Deserialize<EnrResponseMsg>(serialized), Throws.TypeOf<NetworkingException>().And.Matches<NetworkingException>(ex => ex.Message.Contains("Invalid ENR signature")));
+        Assert.That(() => _messageSerializationService.Deserialize<EnrResponseMsg>(serialized.ReadOnlySpan), Throws.TypeOf<NetworkingException>().And.Matches<NetworkingException>(ex => ex.Message.Contains("Invalid ENR signature")));
     }
 
     [Test]
@@ -442,15 +442,15 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void FindNodeMessageTest()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         FindNodeMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong, new byte[] { 1, 2, 3 })
             {
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
-        FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        FindNodeMsg deserializedMessage = _messageSerializationService.Deserialize<FindNodeMsg>(data.ReadOnlySpan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -470,14 +470,14 @@ public class DiscoveryMessageSerializerTests
             FarAddress = _farAddress
         };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<FindNodeMsg>(data));
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<FindNodeMsg>(data.ReadOnlySpan));
     }
 
     [Test]
     public void NeighborsMessageTest()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new[]
@@ -490,8 +490,8 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
-        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data.ReadOnlySpan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -520,8 +520,8 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        byte[] packet = data.ReadAllBytesAsArray();
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        byte[] packet = data.ReadOnlySpan.ToArray();
         RlpReader ctx = new(packet.AsSpan(DiscoveryPacketDataOffset));
         ctx.ReadSequenceLength();
         int nodesEnd = ctx.ReadSequenceLength() + ctx.Position;
@@ -541,8 +541,8 @@ public class DiscoveryMessageSerializerTests
             Assert.That(ctx.Position, Is.EqualTo(nodesEnd));
         }
 
-        using DisposableByteBuffer copy = Unpooled.WrappedBuffer(packet).AsDisposable();
-        NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(copy);
+
+        NeighborsMsg deserialized = _messageSerializationService.Deserialize<NeighborsMsg>(packet);
         Assert.That(deserialized.Nodes, Has.Count.EqualTo(1));
         Assert.That(deserialized.Nodes[0].DiscoveryAddress, Is.EqualTo(node.DiscoveryAddress));
     }
@@ -557,8 +557,8 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data);
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        NeighborsMsg deserializedMessage = _messageSerializationService.Deserialize<NeighborsMsg>(data.ReadOnlySpan);
 
         using (Assert.EnterMultipleScope())
         {
@@ -583,8 +583,8 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        Assert.That(data.ReadableBytes, Is.LessThanOrEqualTo(1280));
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        Assert.That(data.Length, Is.LessThanOrEqualTo(1280));
     }
 
     [Test]
@@ -663,7 +663,7 @@ public class DiscoveryMessageSerializerTests
     [Test]
     public void NeighborsMessage_Rejects_Port_Zero()
     {
-        using PooledBufferLeakDetector detector = new(_leakDetectionAllocator);
+
         NeighborsMsg message =
             new(_privateKey.PublicKey, 60 + _timestamper.UnixTime.MillisecondsLong,
                 new Node[] { new(TestItem.PublicKeyA, "192.168.1.2", 0) })
@@ -671,8 +671,8 @@ public class DiscoveryMessageSerializerTests
                 FarAddress = _farAddress
             };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message, detector.Allocator).AsDisposable();
-        Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data));
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        Assert.Throws<NetworkingException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data.ReadOnlySpan));
     }
 
     [Test]
@@ -689,8 +689,8 @@ public class DiscoveryMessageSerializerTests
             FarAddress = _farAddress
         };
 
-        using DisposableByteBuffer data = _messageSerializationService.ZeroSerialize(message).AsDisposable();
-        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data));
+        using PooledBuffer data = _messageSerializationService.ZeroSerialize(message);
+        Assert.Throws<RlpLimitException>(() => _messageSerializationService.Deserialize<NeighborsMsg>(data.ReadOnlySpan));
     }
 
     [Test]

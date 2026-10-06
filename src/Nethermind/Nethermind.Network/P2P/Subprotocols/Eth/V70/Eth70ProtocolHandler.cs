@@ -72,8 +72,8 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                _receiptsRequests70.ThrowIfNotRequested(message.Content);
-                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
+                _receiptsRequests70.ThrowIfNotRequested(message.Content.AsSpan());
+                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content.AsSpan());
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
                 return true;

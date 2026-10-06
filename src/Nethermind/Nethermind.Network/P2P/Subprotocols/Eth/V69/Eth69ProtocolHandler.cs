@@ -18,6 +18,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -64,13 +65,13 @@ public class Eth69ProtocolHandler(
         switch (message.PacketType)
         {
             case Eth69MessageCode.Status:
-                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
+                StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content.AsSpan());
                 ReportIn(statusMsg, size);
                 Handle(statusMsg);
                 return true;
             case Eth69MessageCode.Receipts:
-                ThrowIfReceiptsNotRequested(message.Content);
-                ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
+                ThrowIfReceiptsNotRequested(message.Content.AsSpan());
+                ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content.AsSpan());
                 ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
                 return true;
@@ -78,7 +79,7 @@ public class Eth69ProtocolHandler(
                 HandleInBackground<GetReceiptsMessage, ReceiptsMessage69>(message, Handle);
                 return true;
             case Eth69MessageCode.BlockRangeUpdate:
-                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content);
+                BlockRangeUpdateMessage blockRangeUpdateMsg = Deserialize<BlockRangeUpdateMessage>(message.Content.AsSpan());
                 ReportIn(blockRangeUpdateMsg, size);
                 Handle(blockRangeUpdateMsg);
                 return true;

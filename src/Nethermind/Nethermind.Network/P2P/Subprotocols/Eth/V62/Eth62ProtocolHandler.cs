@@ -134,7 +134,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 case Eth62MessageCode.Status:
                     {
-                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content.AsSpan());
                         ReportIn(statusMsg, size);
                         Handle(statusMsg);
                         return true;
@@ -142,7 +142,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.NewBlockHashes:
                     if (CanAcceptBlockGossip())
                     {
-                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
+                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content.AsSpan());
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
@@ -152,7 +152,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content);
+                            TransactionsMessage txMsg = Deserialize<TransactionsMessage>(message.Content.AsSpan());
                             ReportIn(txMsg, size);
                             Handle(txMsg);
                         }
@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockHeadersMessage, BlockHeadersMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockHeaders:
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content.AsSpan());
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     return true;
@@ -181,7 +181,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     HandleInBackground<GetBlockBodiesMessage, BlockBodiesMessage>(message, Handle);
                     return true;
                 case Eth62MessageCode.BlockBodies:
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content.AsSpan());
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     return true;

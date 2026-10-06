@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -110,8 +111,8 @@ public class XdcKademliaAdapterTests
             .Returns(ci =>
             {
                 PingMsg sent = (PingMsg)ci[0]!;
-                using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
-                PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                using PooledBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
+                PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer.ReadOnlySpan);
                 PongMsg pong = new(msg.FarPublicKey!, _timestamper.UnixTime.SecondsLong + 1, sent.Mdc!.Value, pongEnrSequence);
                 pong.FarAddress = sent.FarAddress;
                 return _adapter.OnIncomingMsg(pong);

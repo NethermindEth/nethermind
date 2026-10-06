@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -15,19 +15,23 @@ namespace Nethermind.Network.P2P.Messages
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<Capability>((int)1.KiB, nameof(Capability.ProtocolCode));
 
-        public void Serialize(IByteBuffer byteBuffer, AddCapabilityMessage msg)
+        public void Serialize(Span<byte> buffer, AddCapabilityMessage msg)
         {
-            int totalLength = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
+            GetLength(msg, out int contentLength);
 
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(msg.Capability.ProtocolCode.ToLowerInvariant());
             writer.Encode(msg.Capability.Version);
         }
 
-        public AddCapabilityMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+        public AddCapabilityMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            AddCapabilityMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         private static AddCapabilityMessage Deserialize(ref RlpReader ctx)
         {
@@ -37,7 +41,7 @@ namespace Nethermind.Network.P2P.Messages
 
             return new AddCapabilityMessage(new Capability(protocolCode, version));
         }
-        private static int GetLength(AddCapabilityMessage msg, out int contentLength)
+        public int GetLength(AddCapabilityMessage msg, out int contentLength)
         {
             contentLength = Rlp.LengthOf(msg.Capability.ProtocolCode.ToLowerInvariant());
             contentLength += Rlp.LengthOf(msg.Capability.Version);

@@ -19,7 +19,7 @@ internal static class UndecodableResponse
 {
     public const long RequestId = 1111;
 
-    public static IByteBuffer Create(long requestId = RequestId)
+    public static byte[] Create(long requestId = RequestId)
     {
         byte[] id = Rlp.Encode(requestId).Bytes;
         // A list header promising 5 bytes that never follow.
@@ -29,12 +29,12 @@ internal static class UndecodableResponse
         payload[0] = (byte)(0xc0 + id.Length + 1);
         id.CopyTo(payload, 1);
         payload[^1] = truncatedList;
-        return Unpooled.WrappedBuffer(payload);
+        return payload;
     }
 
     public static void AssertRejectedAsUnrequested(Action<ZeroPacket> handle, int packetType)
     {
-        ZeroPacket packet = new(Create()) { PacketType = (byte)packetType };
+        ZeroPacket packet = new(Unpooled.WrappedBuffer(Create())) { PacketType = (byte)packetType };
         try
         {
             Assert.That(() => handle(packet),

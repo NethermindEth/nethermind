@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -209,11 +210,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             msg.Skip = 1;
             msg.Reverse = 1;
 
-            using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
-            packet.ReadByte();
+            using PooledBuffer packet = _svc.ZeroSerialize(msg);
 
             Assert.Throws<SubprotocolException>(
-                () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth62MessageCode.GetBlockHeaders }));
+                () => _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth62MessageCode.GetBlockHeaders }));
         }
 
         [Test]
@@ -337,11 +337,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             HandleIncomingStatusMessage();
 
-            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage).AsDisposable();
-            getBlockHeadersPacket.ReadByte();
+            using PooledBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
 
             _syncManager.WhenForAnyArgs(w => w.AddNewBlock(null!, _handler)).Do(_ => throw new Exception());
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock });
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(getBlockHeadersPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth62MessageCode.NewBlock });
 
             _session.Received().InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, Arg.Any<string>());
         }
@@ -609,19 +608,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         }
 
         /// <summary>Decodes transaction messages as usual, attaching a witness to every transaction it decodes.</summary>
-        private sealed class WitnessingTransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+        private sealed class WitnessingTransactionsMessageSerializer : IZeroMessageSerializer<TransactionsMessage>
         {
             private readonly TransactionsMessageSerializer _serializer = new();
 
             public List<RecycledTransactionWitness> Witnesses { get; } = [];
 
-            public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message) => _serializer.Serialize(byteBuffer, message);
+            public void Serialize(Span<byte> buffer, TransactionsMessage message) => _serializer.Serialize(buffer, message);
 
             public int GetLength(TransactionsMessage message, out int contentLength) => _serializer.GetLength(message, out contentLength);
 
-            public TransactionsMessage Deserialize(IByteBuffer byteBuffer)
+            public TransactionsMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
             {
-                TransactionsMessage message = _serializer.Deserialize(byteBuffer);
+                TransactionsMessage message = _serializer.Deserialize(data, out consumed);
                 IOwnedReadOnlyList<Transaction> transactions = message.Transactions;
                 for (int i = 0; i < transactions.Count; i++)
                 {
@@ -1038,9 +1037,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
-            getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            using PooledBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(getBlockHeadersPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
         }
 
         private void HandleZeroMessage(IByteBuffer msg, int messageCode) =>
@@ -1069,20 +1067,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             newBlockMessage.Block = Build.A.Block.WithParent(_genesisBlock).TestObject;
             newBlockMessage.TotalDifficulty = _genesisBlock.Difficulty + newBlockMessage.Block.Difficulty;
 
-            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage).AsDisposable();
-            getBlockHeadersPacket.ReadByte();
+            using PooledBuffer getBlockHeadersPacket = _svc.ZeroSerialize(newBlockMessage);
             Assert.Throws<SubprotocolException>(
                 () => _handler.HandleMessage(
-                    new ZeroPacket(getBlockHeadersPacket) { PacketType = Eth62MessageCode.NewBlock }));
+                    new ZeroPacket(Unpooled.WrappedBuffer(getBlockHeadersPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth62MessageCode.NewBlock }));
         }
 
         private void HandleIncomingStatusMessage()
         {
             using StatusMessage statusMsg = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
-            using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-            statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
         }
 
         [Test]
@@ -1091,9 +1087,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
 
             using StatusMessage filler = new() { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
-            using DisposableByteBuffer packet = _svc.ZeroSerialize(filler).AsDisposable();
-            packet.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(packet) { PacketType = 99 });
+            using PooledBuffer packet = _svc.ZeroSerialize(filler);
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 99 });
 
             _session.Received().InitiateDisconnect(DisconnectReason.BreachOfProtocol, Arg.Any<string>());
         }

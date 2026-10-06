@@ -29,9 +29,9 @@ public class ReceiptsMessageSerializer70Tests
     public void Deserialize_rejects_invalid_lastBlockIncomplete()
     {
         ReceiptsMessageSerializer70 serializer = new(new TestSpecProvider(Prague.Instance));
-        using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x80, 0x02, 0xc0]).AsDisposable();
+        byte[] payload = [0xc3, 0x80, 0x02, 0xc0];
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload, out _), Throws.InstanceOf<RlpException>());
     }
 
     private static IEnumerable<TestCaseData> RoundtripCases()

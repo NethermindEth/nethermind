@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
@@ -17,22 +17,31 @@ namespace Nethermind.Network.Rlpx.Handshake
         public const int VersionOffset = NonceOffset + NonceLength;
         public const int TotalLength = EphemeralPublicKeyLength + NonceLength;
 
-        public void Serialize(IByteBuffer byteBuffer, AckEip8Message msg)
+        public void Serialize(Span<byte> buffer, AckEip8Message msg)
         {
-            int totalLength = Rlp.LengthOf(msg.EphemeralPublicKey.Bytes);
-            totalLength += Rlp.LengthOf(msg.Nonce);
-            totalLength += Rlp.LengthOf(msg.Version);
-
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
-            writer.StartSequence(totalLength);
+            GetLength(msg, out int contentLength);
+            RlpWriter writer = new(buffer);
+            writer.StartSequence(contentLength);
             writer.Encode(msg.EphemeralPublicKey.Bytes);
             writer.Encode(msg.Nonce);
             writer.Encode(msg.Version);
         }
 
-        public AckEip8Message Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+        public int GetLength(AckEip8Message msg, out int contentLength)
+        {
+            contentLength = Rlp.LengthOf(msg.EphemeralPublicKey.Bytes)
+                + Rlp.LengthOf(msg.Nonce)
+                + Rlp.LengthOf(msg.Version);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        public AckEip8Message Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            AckEip8Message msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         private static AckEip8Message Deserialize(ref RlpReader ctx)
         {

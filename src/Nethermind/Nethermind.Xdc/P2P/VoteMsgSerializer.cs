@@ -1,30 +1,28 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Xdc.RLP;
 
 namespace Nethermind.Xdc.P2P;
 
-internal class VoteMsgSerializer : IZeroInnerMessageSerializer<VoteMsg>
+internal class VoteMsgSerializer : IZeroMessageSerializer<VoteMsg>
 {
     private static readonly VoteDecoder _voteDecoder = new();
 
-    public void Serialize(IByteBuffer byteBuffer, VoteMsg message)
+    public void Serialize(Span<byte> buffer, VoteMsg message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(buffer);
         _voteDecoder.Encode(ref writer, message.Vote);
     }
 
-    public VoteMsg Deserialize(IByteBuffer byteBuffer)
+    public VoteMsg Deserialize(ReadOnlySpan<byte> data, out int consumed)
     {
-        RlpReader ctx = new(byteBuffer.AsSpan());
+        RlpReader ctx = new(data);
         Types.Vote vote = _voteDecoder.Decode(ref ctx, RlpBehaviors.None);
-        byteBuffer.SkipBytes(ctx.Position);
+        consumed = ctx.Position;
         return new() { Vote = vote };
     }
 

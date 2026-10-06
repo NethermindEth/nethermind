@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -84,8 +85,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
-                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    using PooledBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer.ReadOnlySpan);
                     onWirePing?.Invoke(msg);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
@@ -235,9 +236,9 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
 
         private T AddReceiverFarAddress<T>(T msg) where T : DiscoveryMsg
         {
-            using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg).AsDisposable();
+            using PooledBuffer buffer = _receiverSerializationManager.ZeroSerialize<T>(msg);
             IPEndPoint? farAddress = msg.FarAddress;
-            msg = _receiverSerializationManager.Deserialize<T>(buffer);
+            msg = _receiverSerializationManager.Deserialize<T>(buffer.ReadOnlySpan);
             msg.FarAddress = farAddress;
             return msg;
         }
@@ -306,8 +307,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4.Kademlia
                 .Returns(ci =>
                 {
                     PingMsg sent = (PingMsg)ci[0]!;
-                    using DisposableByteBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent).AsDisposable();
-                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer);
+                    using PooledBuffer buffer = _receiverSerializationManager.ZeroSerialize(sent);
+                    PingMsg msg = _receiverSerializationManager.Deserialize<PingMsg>(buffer.ReadOnlySpan);
                     PongMsg pong = new(
                         msg.FarPublicKey!,
                         _timestamper.UnixTime.SecondsLong + 1,

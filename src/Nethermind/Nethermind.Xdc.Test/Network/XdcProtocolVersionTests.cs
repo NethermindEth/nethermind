@@ -68,7 +68,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
 
         Vote vote = new(new BlockRoundInfo(TestItem.KeccakA, 5, 100), 0, new Signature(new byte[64], 0));
-        peer.Serializer.Deserialize<VoteMsg>(Arg.Any<IByteBuffer>()).Returns(new VoteMsg { Vote = vote });
+        peer.Serializer.Respond(new VoteMsg { Vote = vote });
 
         peer.Receive(XdcMessageCode.VoteMsg);
 
@@ -93,8 +93,7 @@ public class XdcProtocolVersionTests
         peer.ReceiveStatus();
         peer.TxPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
             .Returns(AnnounceResult.RequestRequired);
-        peer.Serializer.Deserialize<NewPooledTransactionHashesMessage>(Arg.Any<IByteBuffer>())
-            .Returns(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));
+        peer.Serializer.Respond(new NewPooledTransactionHashesMessage(new[] { TestItem.KeccakA }.ToPooledList()));
 
         peer.Receive(XdcMessageCode.NewPooledTransactionHashes);
 
@@ -116,7 +115,7 @@ public class XdcProtocolVersionTests
 
     private sealed class Peer : IDisposable
     {
-        private Peer(ZeroProtocolHandlerBase handler, ISession session, IMessageSerializationService serializer,
+        private Peer(ZeroProtocolHandlerBase handler, ISession session, StubSerializationService serializer,
             IVotesManager votesManager, ITxPool txPool)
         {
             Handler = handler;
@@ -128,13 +127,13 @@ public class XdcProtocolVersionTests
 
         public ZeroProtocolHandlerBase Handler { get; }
         public ISession Session { get; }
-        public IMessageSerializationService Serializer { get; }
+        public StubSerializationService Serializer { get; }
         public IVotesManager VotesManager { get; }
         public ITxPool TxPool { get; }
 
         public static Peer Create(byte version)
         {
-            IMessageSerializationService serializer = Substitute.For<IMessageSerializationService>();
+            StubSerializationService serializer = new();
             ISession session = Substitute.For<ISession>();
             session.RemoteNodeId.Returns(TestItem.PublicKeyA);
             session.Node.Returns(new Node(TestItem.PublicKeyA, "127.0.0.1", 30303));
@@ -181,7 +180,7 @@ public class XdcProtocolVersionTests
 
         public void ReceiveStatus()
         {
-            Serializer.Deserialize<StatusMessage>(Arg.Any<IByteBuffer>()).Returns(new StatusMessage());
+            Serializer.Respond(new StatusMessage());
             Receive(Eth62MessageCode.Status);
         }
 

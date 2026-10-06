@@ -3,6 +3,6 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public class ReceiptsMessageSerializer(IZeroInnerMessageSerializer<V63.Messages.ReceiptsMessage> ethMessageSerializer)
+    public class ReceiptsMessageSerializer(IZeroMessageSerializer<V63.Messages.ReceiptsMessage> ethMessageSerializer)
         : Eth66MessageSerializer<ReceiptsMessage, V63.Messages.ReceiptsMessage>(ethMessageSerializer);
 }

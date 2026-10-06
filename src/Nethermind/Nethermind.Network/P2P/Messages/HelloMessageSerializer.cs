@@ -3,7 +3,6 @@
 
 using System;
 using System.Text;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
@@ -14,11 +13,10 @@ namespace Nethermind.Network.P2P.Messages
     {
         private static readonly RlpLimit ClientIdRlpLimit = RlpLimit.For<HelloMessage>(1_024, nameof(HelloMessage.ClientId));
 
-        public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
+        public void Serialize(Span<byte> buffer, HelloMessage msg)
         {
             (int totalLength, int innerLength) = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), force: true);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(totalLength);
             writer.Encode(msg.P2PVersion);
             writer.Encode(msg.ClientId);
@@ -55,8 +53,20 @@ namespace Nethermind.Network.P2P.Messages
             return (contentLength, innerContentLength);
         }
 
-        public HelloMessage Deserialize(IByteBuffer msgBytes) =>
-            msgBytes.DeserializeRlp(Deserialize);
+        public int GetLength(HelloMessage msg, out int contentLength)
+        {
+            (int totalLength, int _) = GetLength(msg);
+            contentLength = totalLength;
+            return Rlp.LengthOfSequence(totalLength);
+        }
+
+        public HelloMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            HelloMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         private static HelloMessage Deserialize(ref RlpReader ctx)
         {

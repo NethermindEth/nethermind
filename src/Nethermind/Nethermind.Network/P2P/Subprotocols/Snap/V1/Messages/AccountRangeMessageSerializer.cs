@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -15,13 +14,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
     {
         private readonly AccountDecoder _decoder = new(true);
 
-        public void Serialize(IByteBuffer byteBuffer, AccountRangeMessage message)
+        public void Serialize(Span<byte> buffer, AccountRangeMessage message)
         {
             (int contentLength, int pwasLength) = GetLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
 
             writer.Encode(message.RequestId);
@@ -49,11 +46,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             writer.WriteByteArrayList(message.Proofs);
         }
 
-        public AccountRangeMessage Deserialize(IByteBuffer byteBuffer)
+        public AccountRangeMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            PooledBuffer? memoryOwner = PooledBuffer.Rent(data.Length);
+            data.CopyTo(memoryOwner.Span);
             RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
             AccountRangeMessage message = new();
             ArrayPoolList<PathWithAccount>? pathsWithAccounts = null;
 
@@ -80,7 +77,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.AccountRangeProofsRlpLimit);
                 memoryOwner = null;
 
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                consumed = ctx.Position;
 
                 return message;
             }
@@ -91,6 +88,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 memoryOwner?.Dispose();
                 throw;
             }
+        }
+
+        public int GetLength(AccountRangeMessage message, out int contentLength)
+        {
+            (int totalLength, int _) = GetLength(message);
+            contentLength = totalLength;
+            return Rlp.LengthOfSequence(totalLength);
         }
 
         private (int contentLength, int pwasLength) GetLength(AccountRangeMessage message)

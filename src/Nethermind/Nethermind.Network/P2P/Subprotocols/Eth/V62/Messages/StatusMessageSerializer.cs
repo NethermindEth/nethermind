@@ -1,17 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class StatusMessageSerializer : IZeroInnerMessageSerializer<StatusMessage>
+    public class StatusMessageSerializer : IZeroMessageSerializer<StatusMessage>
     {
         private const int ForkHashLength = 5;
 
-        public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
+        public void Serialize(Span<byte> buffer, StatusMessage message)
         {
             Hash256 bestHash = GetRequiredHash(message.BestHash, nameof(message.BestHash));
             Hash256 genesisHash = GetRequiredHash(message.GenesisHash, nameof(message.GenesisHash));
@@ -23,9 +23,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 forkIdContentLength = ForkHashLength + Rlp.LengthOf(forkId.Next);
             }
 
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.ProtocolVersion);
             writer.Encode(message.NetworkId);
@@ -64,8 +63,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        public StatusMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+        public StatusMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            StatusMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         private static StatusMessage Deserialize(ref RlpReader ctx)
         {

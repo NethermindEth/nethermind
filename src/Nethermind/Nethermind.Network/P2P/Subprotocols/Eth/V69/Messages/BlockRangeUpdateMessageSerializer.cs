@@ -1,19 +1,18 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 public class BlockRangeUpdateMessageSerializer :
-    IZeroInnerMessageSerializer<BlockRangeUpdateMessage>
+    IZeroMessageSerializer<BlockRangeUpdateMessage>
 {
-    public void Serialize(IByteBuffer byteBuffer, BlockRangeUpdateMessage message)
+    public void Serialize(Span<byte> buffer, BlockRangeUpdateMessage message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        GetLength(message, out int contentLength);
+        RlpWriter writer = new(buffer);
         writer.StartSequence(contentLength);
 
         writer.Encode(message.EarliestBlock);
@@ -21,8 +20,13 @@ public class BlockRangeUpdateMessageSerializer :
         writer.Encode(message.LatestBlockHash);
     }
 
-    public BlockRangeUpdateMessage Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public BlockRangeUpdateMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+    {
+        RlpReader ctx = new(data);
+        BlockRangeUpdateMessage msg = Deserialize(ref ctx);
+        consumed = ctx.Position;
+        return msg;
+    }
 
     private static BlockRangeUpdateMessage Deserialize(ref RlpReader ctx)
     {

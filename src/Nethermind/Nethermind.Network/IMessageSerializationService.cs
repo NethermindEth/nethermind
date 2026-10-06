@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 
 namespace Nethermind.Network
 {
     public interface IMessageSerializationService
     {
-        IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase;
-        T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase;
-        T Deserialize<T>(IByteBuffer buffer) where T : MessageBase;
+        PooledBuffer ZeroSerialize<T>(T message) where T : MessageBase;
+        T Deserialize<T>(ReadOnlySpan<byte> data) where T : MessageBase;
+        T Deserialize<T>(ReadOnlySpan<byte> data, out int consumed) where T : MessageBase;
     }
 }

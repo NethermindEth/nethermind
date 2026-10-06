@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network;
@@ -26,8 +27,8 @@ namespace Nethermind.Xdc.Test.Network
             msg.Timeout = XdcTestHelper.BuildSignedTimeout(Build.A.PrivateKey.TestObject, 123, 400);
 
             MessageSerializationService service = new(SerializerInfo.Create(new TimeoutMsgSerializer()));
-            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
-            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
+            using PooledBuffer dataBuffer = service.ZeroSerialize(msg);
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.Span.ToArray());
 
             Run(packet, inbound, outbound, framingEnabled);
         }
@@ -41,8 +42,8 @@ namespace Nethermind.Xdc.Test.Network
                 new BlockRoundInfo(Hash256.Zero, 123, 100), 400, Build.A.PrivateKey.TestObject);
 
             MessageSerializationService service = new(SerializerInfo.Create(new VoteMsgSerializer()));
-            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
-            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
+            using PooledBuffer dataBuffer = service.ZeroSerialize(msg);
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.Span.ToArray());
 
             Run(packet, inbound, outbound, framingEnabled);
         }
@@ -55,8 +56,8 @@ namespace Nethermind.Xdc.Test.Network
             msg.SyncInfo = XdcTestHelper.BuildSyncInfo(Build.A.PrivateKey.TestObject, 123, 400);
 
             MessageSerializationService service = new(SerializerInfo.Create(new SyncInfoMsgSerializer()));
-            using DisposableByteBuffer dataBuffer = service.ZeroSerialize(msg).AsDisposable();
-            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.AsSpan().ToArray());
+            using PooledBuffer dataBuffer = service.ZeroSerialize(msg);
+            Packet packet = new("eth", msg.AdaptivePacketType, dataBuffer.Span.ToArray());
 
             Run(packet, inbound, outbound, framingEnabled);
         }

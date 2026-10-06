@@ -4,6 +4,7 @@
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -146,12 +147,10 @@ public class ReceiptsMessageSerializerTests
         using ReceiptsMessage message = new(data.ToPooledList());
         ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
-        using DisposableByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1).AsDisposable();
-        buffer.WriteByte(Rlp.OfEmptyList[0]);
-        buffer.ReadByte();
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _) + 1);
 
-        serializer.Serialize(buffer, message);
-        using ReceiptsMessage deserialized = serializer.Deserialize(buffer);
+        serializer.Serialize(buffer.Span.Slice(1), message);
+        using ReceiptsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan.Slice(1), out _);
 
         Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(data.Length));
     }

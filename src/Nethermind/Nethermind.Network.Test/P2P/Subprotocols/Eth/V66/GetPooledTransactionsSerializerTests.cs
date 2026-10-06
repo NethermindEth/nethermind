@@ -22,22 +22,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         {
             IOwnedReadOnlyList<ValueHash256> hashes = Substitute.For<IOwnedReadOnlyList<ValueHash256>>();
             InnerMessage inner = new(hashes);
-            IZeroInnerMessageSerializer<InnerMessage> innerSerializer = Substitute.For<IZeroInnerMessageSerializer<InnerMessage>>();
-            innerSerializer.Deserialize(Arg.Any<IByteBuffer>()).Returns(call =>
-            {
-                call.Arg<IByteBuffer>().SkipBytes(1);
-                return inner;
-            });
-            TrackingSerializer serializer = new(innerSerializer);
-            using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Convert.FromHexString(trailingData ? "c301c000" : "c201c0")).AsDisposable();
+            TrackingSerializer serializer = new(new PartialConsumingSerializer(inner));
+            byte[] buffer = Convert.FromHexString(trailingData ? "c301c000" : "c201c0");
 
             if (trailingData)
             {
-                Assert.Throws<RlpException>(() => serializer.Deserialize(buffer));
+                Assert.Throws<RlpException>(() => serializer.Deserialize(buffer, out _));
             }
             else
             {
-                GetPooledTransactionsMessage message = serializer.Deserialize(buffer);
+                GetPooledTransactionsMessage message = serializer.Deserialize(buffer, out _);
                 hashes.DidNotReceive().Dispose();
                 message.Dispose();
             }
@@ -45,8 +39,25 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             hashes.Received(1).Dispose();
         }
 
-        private sealed class TrackingSerializer(IZeroInnerMessageSerializer<InnerMessage> innerSerializer)
+        private sealed class TrackingSerializer(IZeroMessageSerializer<InnerMessage> innerSerializer)
             : Eth66MessageSerializer<GetPooledTransactionsMessage, InnerMessage>(innerSerializer);
+
+        private sealed class PartialConsumingSerializer(InnerMessage message) : IZeroMessageSerializer<InnerMessage>
+        {
+            public void Serialize(Span<byte> buffer, InnerMessage message) => throw new NotImplementedException();
+
+            public InnerMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+            {
+                consumed = 1;
+                return message;
+            }
+
+            public int GetLength(InnerMessage message, out int contentLength)
+            {
+                contentLength = 0;
+                return 0;
+            }
+        }
 
         //test from https://github.com/ethereum/EIPs/blob/master/EIPS/eip-2481.md
         [Test]

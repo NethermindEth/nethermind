@@ -1,21 +1,20 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
 public class StatusMessageSerializer69 :
-    IZeroInnerMessageSerializer<StatusMessage69>
+    IZeroMessageSerializer<StatusMessage69>
 {
     private const int ForkHashLength = 5;
 
-    public void Serialize(IByteBuffer byteBuffer, StatusMessage69 message)
+    public void Serialize(Span<byte> buffer, StatusMessage69 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        GetLength(message, out int contentLength);
+        RlpWriter writer = new(buffer);
         writer.StartSequence(contentLength);
 
         writer.Encode(message.ProtocolVersion);
@@ -41,8 +40,13 @@ public class StatusMessageSerializer69 :
         return Rlp.LengthOfSequence(contentLength);
     }
 
-    public StatusMessage69 Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public StatusMessage69 Deserialize(ReadOnlySpan<byte> data, out int consumed)
+    {
+        RlpReader ctx = new(data);
+        StatusMessage69 msg = Deserialize(ref ctx);
+        consumed = ctx.Position;
+        return msg;
+    }
 
     private static StatusMessage69 Deserialize(ref RlpReader ctx)
     {

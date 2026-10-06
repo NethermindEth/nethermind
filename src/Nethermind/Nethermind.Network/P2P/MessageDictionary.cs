@@ -8,7 +8,6 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
@@ -120,7 +119,7 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     /// The request stays pending; <see cref="Handle"/> still claims it once the response is decoded.
     /// </remarks>
     /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
-    public void ThrowIfNotRequested(IByteBuffer content)
+    public void ThrowIfNotRequested(ReadOnlySpan<byte> content)
     {
         if (!Eth66RequestId.TryPeek(content, out long id) || !_requests.ContainsKey(id))
         {
