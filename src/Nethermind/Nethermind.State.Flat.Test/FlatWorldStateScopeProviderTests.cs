@@ -918,6 +918,54 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void PredictedStorage_TheNextBlockOfTheScopeReachesTheSameRoot([Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 64;
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+        UInt256[] expected = new UInt256[slotCount];
+
+        // Block 1: every slot written, half of them predicted wrong, the prediction adopted.
+        List<(UInt256 Slot, UInt256 Value)> predicted = [];
+        for (int slot = 0; slot < slotCount; slot++) predicted.Add(((UInt256)slot, slot % 2 == 0 ? (UInt256)(slot + 1) : (UInt256)0x4e4d));
+        scope.HintPredictedStorage(address, predicted);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                expected[slot] = (UInt256)(slot + 1);
+                storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+
+        scope.Commit(1);
+
+        // Block 2: a third of the slots deleted, the rest rewritten, without a prediction.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                expected[slot] = slot % 3 == 0 ? 0 : (UInt256)(slot + 1000);
+                storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+
+        scope.Commit(2);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);

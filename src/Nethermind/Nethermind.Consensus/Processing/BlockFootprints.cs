@@ -68,7 +68,12 @@ internal sealed class BlockFootprints(Block block)
     // slot, so a footprint that earlier positions' writes invalidate can be warmed again on the values they leave.
     private readonly Lock _versionsLock = new();
     private readonly Dictionary<StorageCell, List<(int Position, UInt256 Value)>> _slotVersions = [];
-    private readonly Dictionary<StorageCell, List<int>> _slotReaders = [];
+    private readonly Dictionary<StorageCell, List<(int Position, UInt256 Value)>> _slotReaders = [];
+    // A slot more positions touch than this is left out: tracking it would cost more than warming its readers again saves.
+    private const int MaxTrackedPerSlot = 64;
+    private const int MaxRewarmsPerBlock = 128;
+    private readonly HashSet<StorageCell> _hotSlots = [];
+    private int _rewarmsTaken;
     private readonly Dictionary<int, (StorageCell[] Written, StorageCell[] Read)> _keysByPosition = [];
     private readonly SortedSet<int> _stale = [];
     private readonly SemaphoreSlim _staleSignal = new(0);
@@ -95,7 +100,7 @@ internal sealed class BlockFootprints(Block block)
 
                 foreach (StorageCell cell in replaced.Read)
                 {
-                    if (_slotReaders.TryGetValue(cell, out List<int>? readers)) readers.Remove(position);
+                    if (_slotReaders.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers)) readers.RemoveAll(r => r.Position == position);
                 }
             }
 
@@ -103,10 +108,19 @@ internal sealed class BlockFootprints(Block block)
             int w = 0;
             foreach ((StorageCell cell, UInt256 value) in writes)
             {
-                written[w++] = cell;
+                if (_hotSlots.Contains(cell)) continue;
                 ref List<(int Position, UInt256 Value)>? versions = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotVersions, cell, out _);
-                InsertVersion(versions ??= [], position, value);
+                if ((versions ??= []).Count >= MaxTrackedPerSlot)
+                {
+                    MakeHot(cell);
+                    continue;
+                }
+
+                written[w++] = cell;
+                InsertVersion(versions, position, value);
             }
+
+            if (w < written.Length) Array.Resize(ref written, w);
 
             foreach (StorageCell cell in written) marked |= MarkReaders(cell, position);
             if (replaced.Written is not null)
@@ -114,18 +128,25 @@ internal sealed class BlockFootprints(Block block)
                 foreach (StorageCell cell in replaced.Written) marked |= MarkReaders(cell, position);
             }
 
-            StorageCell[] read = new StorageCell[reads.Length];
+            List<StorageCell> read = new(reads.Length);
             bool stale = false;
             for (int i = 0; i < reads.Length; i++)
             {
                 StorageCell cell = reads[i].Cell;
-                read[i] = cell;
-                ref List<int>? readers = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotReaders, cell, out _);
-                (readers ??= []).Add(position);
+                if (_hotSlots.Contains(cell)) continue;
+                ref List<(int Position, UInt256 Value)>? readers = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotReaders, cell, out _);
+                if ((readers ??= []).Count >= MaxTrackedPerSlot)
+                {
+                    MakeHot(cell);
+                    continue;
+                }
+
+                read.Add(cell);
+                readers.Add((position, reads[i].Value));
                 if (VersionBefore(cell, position) is { } before && before != reads[i].Value) stale = true;
             }
 
-            _keysByPosition[position] = (written, read);
+            _keysByPosition[position] = (written, [.. read]);
             if (stale && _stale.Add(position))
             {
                 marked = true;
@@ -139,11 +160,11 @@ internal sealed class BlockFootprints(Block block)
     // Marks the later readers of the slot whose footprint read a value other than the one the block now leaves it at.
     private bool MarkReaders(StorageCell cell, int position)
     {
-        if (!_slotReaders.TryGetValue(cell, out List<int>? readers)) return false;
+        if (!_slotReaders.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers)) return false;
         bool marked = false;
-        foreach (int reader in readers)
+        foreach ((int reader, UInt256 read) in readers)
         {
-            if (reader <= position || VersionBefore(cell, reader) is not { } value || ReadValue(reader, cell) is not { } read || read == value) continue;
+            if (reader <= position || VersionBefore(cell, reader) is not { } value || read == value) continue;
             if (_stale.Add(reader))
             {
                 marked = true;
@@ -154,15 +175,27 @@ internal sealed class BlockFootprints(Block block)
         return marked;
     }
 
-    private UInt256? ReadValue(int position, in StorageCell cell)
+    // Stops tracking the slot; its readers are no longer warmed again for it.
+    private void MakeHot(StorageCell cell)
     {
-        if (Volatile.Read(ref _footprints[position]) is not { } footprint) return null;
-        foreach (ref readonly SlotPrecondition slot in footprint.Slots)
-        {
-            if (slot.Cell.Equals(cell)) return slot.Value;
-        }
+        _hotSlots.Add(cell);
+        _slotVersions.Remove(cell);
+        _slotReaders.Remove(cell);
+    }
 
-        return null;
+    /// <summary>Whether the footprint read a slot too many positions touch to be tracked.</summary>
+    public bool ReadsHotSlot(TransactionFootprint footprint)
+    {
+        lock (_versionsLock)
+        {
+            if (_hotSlots.Count == 0) return false;
+            foreach (ref readonly SlotPrecondition slot in footprint.Slots)
+            {
+                if (_hotSlots.Contains(slot.Cell)) return true;
+            }
+
+            return false;
+        }
     }
 
     private UInt256? VersionBefore(in StorageCell cell, int position)
@@ -199,12 +232,13 @@ internal sealed class BlockFootprints(Block block)
     {
         lock (_versionsLock)
         {
-            while (_stale.Count > 0)
+            while (_stale.Count > 0 && _rewarmsTaken < MaxRewarmsPerBlock)
             {
                 int first = _stale.Min;
                 _stale.Remove(first);
                 if (first > after)
                 {
+                    _rewarmsTaken++;
                     position = first;
                     return true;
                 }
@@ -219,7 +253,7 @@ internal sealed class BlockFootprints(Block block)
     {
         get
         {
-            lock (_versionsLock) return _stale.Count > 0;
+            lock (_versionsLock) return _stale.Count > 0 && _rewarmsTaken < MaxRewarmsPerBlock;
         }
     }
 

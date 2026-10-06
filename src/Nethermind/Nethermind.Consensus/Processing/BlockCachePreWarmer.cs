@@ -1021,7 +1021,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private static void Rewarm(IPrewarmerEnv env, BlockState blockState, BlockFootprints footprints, int position, CancellationToken token)
     {
-        if (footprints.Get(position) is not { } stale || env.Recorder is not { } recorder) return;
+        if (footprints.Get(position) is not { } stale || env.Recorder is not { } recorder || footprints.ReadsHotSlot(stale)) return;
 
         Transaction tx = stale.Transaction;
         BlockHeader header = blockState.Block.Header;
