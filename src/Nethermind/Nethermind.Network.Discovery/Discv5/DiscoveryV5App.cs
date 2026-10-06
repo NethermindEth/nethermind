@@ -23,6 +23,7 @@ using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
