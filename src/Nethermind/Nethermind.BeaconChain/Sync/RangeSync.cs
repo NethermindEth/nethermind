@@ -512,42 +512,26 @@ public class RangeSync(IBeaconSyncPeerPool peerPool, ILogManager logManager, Dat
                 continue;
             }
 
-            if (!requested)
+            bool reachedKzg = requested
+                && DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, block!.Body!.BlobKzgCommitments!)
+                && DataColumnSidecarVerifier.VerifyStructure(sidecar)
+                && DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
+                && DataColumnSidecarVerifier.VerifyInclusionProof(sidecar);
+            if (reachedKzg && DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
             {
-                if (penalized.Add(key))
-                {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
-                }
-
+                sidecarPool.Add(sidecarBlockRoot, header.Slot, sidecar);
                 continue;
             }
 
-            IReadOnlyList<SszKzgCommitment> commitments = block!.Body!.BlobKzgCommitments!;
-            if (!DataColumnAvailability.MatchesBlock(sidecar, sidecarBlockRoot, commitments)
-                || !DataColumnSidecarVerifier.VerifyStructure(sidecar)
-                || !DataColumnSidecarVerifier.VerifyBlobCount(sidecar, spec)
-                || !DataColumnSidecarVerifier.VerifyInclusionProof(sidecar))
+            if (penalized.Add(key))
             {
-                if (penalized.Add(key))
-                {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
-                }
-
-                continue;
+                peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
             }
 
-            if (!DataColumnSidecarVerifier.VerifyKzgProofs(sidecar))
+            if (reachedKzg)
             {
-                if (penalized.Add(key))
-                {
-                    peer.ReportFailure(PeerFailureReason.ProtocolViolation, $"Data column sidecar at slot {header.Slot} column {sidecar.Index} failed verification");
-                }
-
                 rejected.Add(key);
-                continue;
             }
-
-            sidecarPool.Add(sidecarBlockRoot, header.Slot, sidecar);
         }
     }
 
