@@ -207,8 +207,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
         _directorySynced = true;
     }
 
-    private const int O_RDONLY = 0;
-    private const int O_DIRECTORY = 0x10000;
+    private const int O_RDONLY = 0; // enough to fsync a directory; O_DIRECTORY's value differs between architectures
 
     [DllImport("libc", EntryPoint = "open", SetLastError = true)]
     private static extern int Open([MarshalAs(UnmanagedType.LPUTF8Str)] string path, int flags);
@@ -226,7 +225,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
     private static void FsyncDirectory(string path)
     {
         if (!OperatingSystem.IsLinux()) return;
-        int fd = Open(path, O_RDONLY | O_DIRECTORY);
+        int fd = Open(path, O_RDONLY);
         if (fd < 0) throw new IOException($"open failed for directory {path}: errno {Marshal.GetLastPInvokeError()}");
         try
         {
