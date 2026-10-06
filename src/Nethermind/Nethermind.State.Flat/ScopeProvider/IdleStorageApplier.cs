@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
@@ -19,7 +20,9 @@ internal sealed class IdleStorageApplier
     private const int SleepsBeforeParking = 50;
 
     // Settable for tests.
-    internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(250);
+    // Experiment only: NETHERMIND_EXP_IDLE_GAP_MS overrides the gap, 0 applying early on back-to-back blocks too.
+    internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_IDLE_GAP_MS"), out int gapMs) && gapMs >= 0 ? gapMs : 250);
 
     private static readonly Lock InstanceLock = new();
     private static IdleStorageApplier? _instance;
