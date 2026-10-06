@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Primitives;
@@ -10,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
@@ -23,10 +25,10 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogM
     private readonly ILogger _logger = logManager.GetClassLogger<ClientVersionSszHandler>();
 
     private static readonly System.Text.Json.JsonSerializerOptions _jsonOptions =
-        new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase };
+        new() { PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase, TypeInfoResolver = ClientVersionJsonContext.Default };
 
     private static readonly System.Text.Json.JsonSerializerOptions _headerJsonOptions =
-        new() { PropertyNameCaseInsensitive = true };
+        new() { PropertyNameCaseInsensitive = true, TypeInfoResolver = ClientVersionJsonContext.Default };
 
     public override string HttpMethod => "GET";
     public override string Resource => SszRestPaths.ClientVersion;
@@ -46,7 +48,7 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogM
 
         ctx.Response.ContentType = "application/json";
         ctx.Response.StatusCode = StatusCodes.Status200OK;
-        string json = System.Text.Json.JsonSerializer.Serialize(result.Data, _jsonOptions);
+        string json = TypeInfoJsonSerializer.Serialize(result.Data, _jsonOptions);
         await ctx.Response.WriteAsync(json, ctx.RequestAborted);
     }
 
@@ -61,7 +63,7 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogM
 
         try
         {
-            return System.Text.Json.JsonSerializer.Deserialize<ClientVersionV1>(headerVal, _headerJsonOptions);
+            return TypeInfoJsonSerializer.Deserialize<ClientVersionV1>(headerVal, _headerJsonOptions);
         }
         catch (Exception ex)
         {
@@ -70,3 +72,6 @@ public sealed class ClientVersionSszHandler(IEngineRpcModule engineModule, ILogM
         }
     }
 }
+
+[JsonSerializable(typeof(ClientVersionV1[]))]
+internal partial class ClientVersionJsonContext : JsonSerializerContext;

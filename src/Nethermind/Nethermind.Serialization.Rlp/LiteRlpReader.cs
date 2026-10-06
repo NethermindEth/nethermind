@@ -33,11 +33,6 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     public int PeekNextRlpLength(int position)
         => RlpHelpers.PeekNextRlpLength(_data, position);
 
-    /// <inheritdoc cref="RlpHelpers.CountItems(ReadOnlySpan{byte}, int, int, int)"/>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int CountItems(int position, int end, int maxSearch)
-        => RlpHelpers.CountItems(_data, position, end, maxSearch);
-
     /// <inheritdoc cref="RlpHelpers.SkipLength(ReadOnlySpan{byte}, int)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void SkipLength(scoped ref int position)
@@ -96,6 +91,14 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     public Bloom DecodeBloomNonNull(scoped ref int position)
     {
         (position, Bloom value) = RlpHelpers.DecodeBloomNonNull(_data, position);
+        return value;
+    }
+
+    /// <inheritdoc cref="RlpHelpers.DecodeBloomNonNull(ReadOnlySpan{byte}, int, out Bloom, RlpBehaviors)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public Bloom DecodeBloomNonNull(scoped ref int position, RlpBehaviors rlpBehaviors)
+    {
+        position = RlpHelpers.DecodeBloomNonNull(_data, position, out Bloom value, rlpBehaviors);
         return value;
     }
 
@@ -228,6 +231,11 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     public void DecodeBloom(scoped ref int position, out Bloom bloom)
         => position = RlpHelpers.DecodeBloom(_data, position, out bloom);
 
+    /// <inheritdoc cref="RlpHelpers.DecodeBloomOrZeroLength(ReadOnlySpan{byte}, int, out Bloom)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeBloomOrZeroLength(scoped ref int position, out Bloom bloom)
+        => position = RlpHelpers.DecodeBloomOrZeroLength(_data, position, out bloom);
+
     /// <inheritdoc cref="RlpHelpers.DecodeBloomSpan(ReadOnlySpan{byte}, int, out ReadOnlySpan{byte})" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeBloomSpan(scoped ref int position, out ReadOnlySpan<byte> bloomBytes)
@@ -267,6 +275,16 @@ internal readonly ref struct LiteRlpReader(ReadOnlySpan<byte> data)
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void DecodeKeccak(scoped ref int position, out Hash256 keccak)
         => position = RlpHelpers.DecodeKeccak(_data, position, out keccak);
+
+    /// <inheritdoc cref="RlpHelpers.DecodeLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeLogTopic0(_data, position, out topic);
+
+    /// <inheritdoc cref="RlpHelpers.DecodeZeroPrefixLogTopic0(ReadOnlySpan{byte}, int, out Hash256)" path="/summary"/>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void DecodeZeroPrefixLogTopic0(scoped ref int position, out Hash256 topic)
+        => position = RlpHelpers.DecodeZeroPrefixLogTopic0(_data, position, out topic);
 
     /// <inheritdoc cref="RlpHelpers.DecodeValueKeccakNonNull(ReadOnlySpan{byte}, int, out ValueHash256)" path="/summary"/>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

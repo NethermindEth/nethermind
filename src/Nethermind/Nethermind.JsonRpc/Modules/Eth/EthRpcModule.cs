@@ -505,7 +505,7 @@ public partial class EthRpcModule(
             return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
 
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
-            return ResultWrapper<FillTransactionResult>.Fail($"invalid chain id (have={chainId}, want={requestedChainId})", ErrorCodes.InvalidInput);
+            return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
         legacyTx.Nonce ??= _txPool.GetLatestPendingNonce(from);
 
@@ -532,6 +532,15 @@ public partial class EthRpcModule(
             && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
         {
             return ResultWrapper<FillTransactionResult>.Fail(orderError, ErrorCodes.InvalidInput);
+        }
+
+        if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
+        {
+            using CancellationTokenSource timeout = BuildTimeoutCancellationTokenSource();
+            Result<FrameForRpc[]> frameGasResult = FillFrameGas(frameTx, head, timeout.Token, out int errorCode);
+            if (!frameGasResult)
+                return ResultWrapper<FillTransactionResult>.Fail(frameGasResult.Error!, errorCode);
+            frameTx.Frames = frameGasResult.Data;
         }
 
         if (rpcTx.Gas is null)
@@ -658,20 +667,20 @@ public partial class EthRpcModule(
     }
 
     public virtual ResultWrapper<HexBytes> eth_call(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
-            .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
+        ExecuteWithFrameGas(new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
+            transactionCall, blockParameter, stateOverride, blockOverride);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
         new SimulateTxExecutor<SimulateCallResult>(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, new SimulateBlockMutatorTracerFactory(), secondsPerSlot: _secondsPerSlot)
             .Execute(payload, blockParameter);
 
     public virtual ResultWrapper<UInt256?> eth_estimateGas(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter, Dictionary<Address, AccountOverride>? stateOverride = null, BlockOverride? blockOverride = null) =>
-        new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider)
-            .ExecuteTx(transactionCall, blockParameter, stateOverride, blockOverride);
+        ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
+            transactionCall, blockParameter, stateOverride, blockOverride);
 
     public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
-        new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize)
-            .ExecuteTx(transactionCall, blockParameter, stateOverride);
+        ExecuteWithFrameGas(new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize),
+            transactionCall, blockParameter, stateOverride);
 
     public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) => GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
 
@@ -990,10 +999,9 @@ public partial class EthRpcModule(
         {
             CancellationToken cancellationToken = timeout.Token;
 
-            ulong? headNumber = _blockFinder.Head?.Number;
-            if (headNumber < fromBlock.BlockNumber || headNumber < toBlock.BlockNumber)
+            if (_blockFinder.IsRangeInFuture(fromBlock, toBlock))
             {
-                return ResultWrapper<IEnumerable<FilterLog>>.Fail("requested block range is in the future", ErrorCodes.InvalidParams);
+                return ResultWrapper<IEnumerable<FilterLog>>.Fail(BlockFinderExtensions.BlockRangeInFuture, ErrorCodes.InvalidParams);
             }
             if (fromBlock.BlockNumber > toBlock.BlockNumber)
             {
@@ -1225,7 +1233,7 @@ public partial class EthRpcModule(
     {
         ForkActivationsSummary forks = forkInfo.GetForkActivationsSummary(_blockFinder.Head?.Header);
 
-        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(JsonSerializer.Serialize((new ForkConfigSummary
+        return ResultWrapper<JsonNode>.Success(JsonNode.Parse(TypeInfoJsonSerializer.Serialize((new ForkConfigSummary
         {
             Current = GetForkConfig(forks.Current, _specProvider)!,
             Next = GetForkConfig(forks.Next, _specProvider),

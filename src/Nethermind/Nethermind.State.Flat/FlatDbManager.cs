@@ -41,6 +41,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly Task _persistenceTask;
     private readonly Channel<StateId> _persistenceJobs;
 
+    private StateId _lastClearedPersistedStateId = StateId.PreGenesis;
+    private long _lastClearedRemovedBaseSnapshotCount;
+
     // Periodically clear the ReadOnlySnapshotBundle cache to prevent stale entries
     private readonly Task _clearBundleCacheTask;
 
@@ -53,6 +56,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
     private readonly CancellationTokenSource _cancelTokenSource;
     private int _isDisposed = 0;
     private readonly bool _enableDetailedMetrics;
+    private readonly double _inMemorySlotFilterBitsPerKey;
 
     public FlatDbManager(
         IResourcePool resourcePool,
@@ -74,6 +78,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         _persistenceManager = persistenceManager;
         _logger = logManager.GetClassLogger<FlatDbManager>();
         _enableDetailedMetrics = enableDetailedMetrics;
+        _inMemorySlotFilterBitsPerKey = config.InMemorySnapshotBloomBitsPerKey;
 
         // Must run before any background worker or read can access the persisted tier.
         persistedSnapshotLoader.Load();
@@ -143,10 +148,7 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         // We do this async because of the lock
         _snapshotRepository.AddStateId(stateId);
 
-        if (_snapshotCompactor.DoCompactSnapshot(stateId))
-        {
-            ClearReadOnlyBundleCache();
-        }
+        _snapshotCompactor.DoCompactSnapshot(stateId);
 
         // Trigger persistence job.
         await _persistenceJobs.Writer.WriteAsync(stateId, cancellationToken);
@@ -184,7 +186,14 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         StateId currentPersistedStateId = _persistenceManager.GetCurrentPersistedStateId();
         if (currentPersistedStateId == StateId.PreGenesis) return;
 
-        ClearReadOnlyBundleCache();
+        long removedBaseSnapshotCount = _snapshotRepository.RemovedBaseSnapshotCount;
+        if (currentPersistedStateId != _lastClearedPersistedStateId
+            || removedBaseSnapshotCount != _lastClearedRemovedBaseSnapshotCount)
+        {
+            _lastClearedPersistedStateId = currentPersistedStateId;
+            _lastClearedRemovedBaseSnapshotCount = removedBaseSnapshotCount;
+            ClearReadOnlyBundleCache();
+        }
     }
 
     private async Task RunTrieCachePopulator(CancellationToken cancellationToken)
@@ -355,8 +364,11 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
             ReportBundleMetrics(assembled);
 
+            // Flagged bundles are one-off full scans (trie verification) that never read through the slot filter, so
+            // only shared bundles get bits per key. Nothing is built here: the first filtered read builds the filter.
             ReadOnlySnapshotBundle res = new(assembled.InMemory, persistenceReader, _enableDetailedMetrics,
-                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics));
+                new PersistedSnapshotStack(assembled.Persisted, _enableDetailedMetrics),
+                slotFilterBitsPerKey: shareable ? _inMemorySlotFilterBitsPerKey : 0);
 
             if (!shareable) return res;
 

@@ -5,6 +5,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -39,6 +40,7 @@ public partial class EngineRpcModule(
     IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
     IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
     IInclusionListTxSource inclusionListTxSource,
+    IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
     IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
     IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -47,7 +49,8 @@ public partial class EngineRpcModule(
     ISpecProvider specProvider,
     GCKeeper gcKeeper,
     IBlockProcessingQueue processingQueue,
-    ILogManager logManager) : IEngineRpcModule
+    ILogManager logManager,
+    IBlockTree blockTree) : IEngineRpcModule
 {
     /// <summary>Initializes the module with module-local blob custody tracking.</summary>
     /// <remarks>Use the overload accepting <see cref="IBlobCustodyTracker"/> when custody state must be shared with networking.</remarks>
@@ -71,6 +74,7 @@ public partial class EngineRpcModule(
         IGetPayloadBodiesByRangeV2Handler getPayloadBodiesByRangeV2Handler,
         IHandler<Hash256?, InclusionListBytes> getInclusionListTransactionsHandler,
         IInclusionListTxSource inclusionListTxSource,
+        IInclusionListComplianceEvaluator inclusionListComplianceEvaluator,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV3>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV4,
         IAsyncHandler<ExecutionPayloadParams<ExecutionPayloadV4>, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV5,
         IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> newPayloadWithWitnessHandlerV6,
@@ -78,7 +82,8 @@ public partial class EngineRpcModule(
         ISpecProvider specProvider,
         GCKeeper gcKeeper,
         IBlockProcessingQueue processingQueue,
-        ILogManager logManager)
+        ILogManager logManager,
+        IBlockTree blockTree)
         : this(
             getPayloadHandlerV1,
             getPayloadHandlerV2,
@@ -99,6 +104,7 @@ public partial class EngineRpcModule(
             getPayloadBodiesByRangeV2Handler,
             getInclusionListTransactionsHandler,
             inclusionListTxSource,
+            inclusionListComplianceEvaluator,
             newPayloadWithWitnessHandlerV4,
             newPayloadWithWitnessHandlerV5,
             newPayloadWithWitnessHandlerV6,
@@ -107,7 +113,8 @@ public partial class EngineRpcModule(
             specProvider,
             gcKeeper,
             processingQueue,
-            logManager)
+            logManager,
+            blockTree)
     {
     }
 

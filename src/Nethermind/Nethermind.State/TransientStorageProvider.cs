@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -20,15 +19,24 @@ namespace Nethermind.State
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public override void Set(in StorageCell cell, in UInt256 value)
         {
-            if (_intraBlockCache.Count == 0 && value.IsZero) return;
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, cell, out bool exists);
-            if (exists && value == head.Value) return;
-            if (!exists && value.IsZero)
+            if (value.IsZero)
             {
-                _intraBlockCache.Remove(cell);
+                SetZero(in cell);
                 return;
             }
+
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
+            if (exists && value == head.Value) return;
             PushUpdate(in cell, in value, ref head, exists);
+        }
+
+        /// <remarks>An absent cell already reads zero, so only a present non-zero cell is journaled.</remarks>
+        private void SetZero(in StorageCell cell)
+        {
+            if (_intraBlockCache.Count == 0) return;
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(cell);
+            if (Unsafe.IsNullRef(ref head) || head.Value.IsZero) return;
+            PushUpdate(in cell, in UInt256.Zero, ref head, exists: true);
         }
 
         protected override void ClearSlot(in StorageCell cell, ref HeadChange head, bool exists)

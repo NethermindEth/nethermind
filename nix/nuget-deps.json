@@ -801,13 +801,13 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.9.0",
-    "hash": "sha256-AlueeeeK61ptszw/pbyCzjbPEjGYdVNF+wKrzB/XuZw="
+    "version": "1.10.0",
+    "hash": "sha256-kQPmDuI075MaubUjoA7x54zrZswUTpDe2veyZ98EMgM="
   },
   {
     "pname": "Nethermind.RocksDbBindings",
-    "version": "11.8.1-preview.92",
-    "hash": "sha256-DXrV5LELNDICN6tK68/cFR0/dJuj9+bjZqfU29nGKUk="
+    "version": "11.8.1-preview.140",
+    "hash": "sha256-bs7Au30itZw16/Qkp1lx1cfGscRbllJzUjF5P86ryXA="
   },
   {
     "pname": "Nethermind.TurboPForBindings",
@@ -860,11 +860,6 @@
     "hash": "sha256-orioa8JnOStiukyKGIuR3RFqeupdeqsFZrAWqn5mm0U="
   },
   {
-    "pname": "Open.NAT.Core",
-    "version": "2.1.0.5",
-    "hash": "sha256-LqG5L2APr11142fsZPQ3clk3tJfAYBMXi1rP0EM9zDg="
-  },
-  {
     "pname": "Polly",
     "version": "8.7.0",
     "hash": "sha256-iMNusWW+4nuIvkNLUaoru23Roe9vpC140TOIHbLvewE="
@@ -893,6 +888,11 @@
     "pname": "SCrypt",
     "version": "2.0.0.2",
     "hash": "sha256-RqSXi+nw9xPkkLol0UeoKu0wpgIsrhHM1uwXsiNSOQ4="
+  },
+  {
+    "pname": "SharpOpenNat",
+    "version": "4.0.19",
+    "hash": "sha256-Y/xIqA3IOpXMo1kFSMaN0mr9exSnP1bR12aNQayLEu4="
   },
   {
     "pname": "SimpleBase",

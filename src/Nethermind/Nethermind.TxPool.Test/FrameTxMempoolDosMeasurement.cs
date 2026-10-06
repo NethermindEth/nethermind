@@ -15,6 +15,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -563,6 +564,49 @@ public class FrameTxMempoolDosMeasurement
         return new FrameGasReadout(probe.TopLevelFrameGasAvailable, probe.TopLevelFrameGas, probe.TopLevelOps);
     }
 
+    /// <summary>
+    /// Prices the margin a measured-charge width scheme needs. The EIP-8141 validation prefix may read only
+    /// <c>tx.sender</c> storage, so the only way a sender can make its own prefix cost more between admission and a
+    /// later revalidation is to have it read one more of its own slots cold. Each such slot is exactly one
+    /// <see cref="GasCostOf.ColdSLoad"/> under EIP-2929, which is the per-slot margin, and no foreign state change can
+    /// move the number.
+    /// </summary>
+    [Test]
+    public async Task Margin_each_added_sender_slot_costs_one_cold_sload([Values(8, 16)] int slots)
+    {
+        _frameExecutionGasLimit = VerifyGas;
+        await BuildHarness(OwnStorageReadPrefix(slots));
+
+        FrameGasProbeTracer probe = new();
+        FrameGasReadout readout = ProbeFrame(probe);
+
+        (int Count, long Gas) sload = probe.Histogram[Instruction.SLOAD];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(sload.Count, Is.EqualTo(slots),
+                "the prefix did not read each seeded sender slot once, so the per-slot cost is not isolated");
+            Assert.That(sload.Gas, Is.EqualTo(slots * (long)GasCostOf.ColdSLoad),
+                "a distinct sender slot read for the first time is a cold SLOAD, so the growth a measured charge "
+                + "must tolerate is exactly this many gas per slot the sender adds to its own prefix");
+        }
+
+        Emit($"case=margin_cold_sload slots={slots} prefix_gas_burned={readout.Burned} "
+             + $"sload_gas={sload.Gas} per_slot_gas={sload.Gas / slots} eip2929_cold_sload={GasCostOf.ColdSLoad}");
+    }
+
+    /// <summary>Verify code that reads a run of distinct <c>tx.sender</c> storage slots, each a first-touch cold
+    /// SLOAD, then stops, so the measured prefix gas is a fixed overhead plus one cold SLOAD per slot.</summary>
+    private static byte[] OwnStorageReadPrefix(int slots)
+    {
+        Prepare code = Prepare.EvmCode;
+        for (int slot = 0; slot < slots; slot++)
+        {
+            code = code.PushData(slot).Op(Instruction.SLOAD).Op(Instruction.POP);
+        }
+
+        return code.Op(Instruction.STOP).Done;
+    }
+
     /// <summary>Loads runtime bytecode and invalid calldata for one Groth16 sweep point.</summary>
     private byte[] LoadGroth16Sweep(Groth16Sweep sweep)
     {
@@ -767,12 +811,12 @@ public class FrameTxMempoolDosMeasurement
     {
         if (senderCode.Length == 0) return;
 
-        Assert.That(_poolState.GetCode(Sender), Is.EqualTo(senderCode),
+        Assert.That(_poolState.GetCode(Sender), Is.SequenceEqualTo(senderCode),
             "the pool's chain-head view does not carry the sender's code, so the two stores disagree");
 
         using IReadOnlyTxProcessorSource source = envFactory.Create();
         using IReadOnlyTxProcessingScope scope = source.Build(head);
-        Assert.That(scope.WorldState.GetCode(Sender), Is.EqualTo(senderCode),
+        Assert.That(scope.WorldState.GetCode(Sender), Is.SequenceEqualTo(senderCode),
             "the simulator's view of the head does not carry the sender's code, so the EVM would run "
             + "default verify code and the measurement would describe the wrong work");
     }
@@ -793,6 +837,7 @@ public class FrameTxMempoolDosMeasurement
             new SpecChangeTxValidator(_specProvider.ChainId),
             _logManager,
             new TransactionComparerProvider(_specProvider, _blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(txPoolConfig),
             ShouldGossip.Instance,
             incomingTxFilters: null,
             thereIsPriorityContract: false,
@@ -833,12 +878,13 @@ public class FrameTxMempoolDosMeasurement
             Transaction tx,
             bool signaturesPreValidated = false,
             bool local = false,
-            CancellationToken token = default)
+            CancellationToken token = default,
+            Func<bool>? preempt = null)
         {
             long start = Stopwatch.GetTimestamp();
             try
             {
-                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token);
+                return inner.Simulate(tx, signaturesPreValidated: signaturesPreValidated, local: local, token: token, preempt: preempt);
             }
             finally
             {
