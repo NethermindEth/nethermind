@@ -9,8 +9,8 @@ using Nethermind.Core.Specs;
 namespace Nethermind.Consensus.Tracing;
 
 /// <summary>The worker budget for each kind of seed a whole-block trace can stand on: a block that carries an access
-/// list is seeded from it, any other block from the flat history changesets. Each has its own setting, and a block is
-/// traced in parallel only when the budget of the seed it takes allows two workers or more.</summary>
+/// list is seeded from it, any other block from the flat history changesets. Both are sized by the same setting, and a
+/// block is traced in parallel only when the budget of the seed it takes allows two workers or more.</summary>
 /// <remarks>Borrows <paramref name="changesets"/>, null when no changeset seed source exists, and owns
 /// <paramref name="accessLists"/>.</remarks>
 public sealed class ParallelTraceBudgets(ISpecProvider specProvider, ParallelTraceBudget? changesets, ParallelTraceBudget accessLists) : IDisposable

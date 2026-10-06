@@ -286,25 +286,14 @@ public class TransactionChangesetIndexModuleTests
         .WithTransactions(transaction).WithWithdrawals().TestObject;
 
     [TestCase(-1, 1)]
+    [TestCase(0, 1)]
     [TestCase(1, 1)]
     [TestCase(4, 4)]
     [TestCase(64, 16)]
-    public void ParallelTraceBudget_WhenConfigured_BoundsTheWorkerDegree(int configured, int expected)
+    public void ParallelTraceBudget_WhenBounded_ClampsTheWorkerDegree(int configured, int expected)
     {
-        using ParallelTraceBudget budget = new(new FlatDbConfig { HistoryTransactionIndexTraceParallelism = configured });
-        Assert.That(budget.Degree, Is.EqualTo(expected));
-    }
-
-    [Test]
-    public void ParallelTraceBudget_WhenAutomatic_UsesAvailableProcessorsUpToTheLimit()
-    {
-        using ParallelTraceBudget budget = new(0);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(budget.Degree, Is.InRange(1, 16));
-            Assert.That(budget.Degree, Is.LessThanOrEqualTo(Environment.ProcessorCount));
-            if (Environment.ProcessorCount <= 16) Assert.That(budget.Degree, Is.EqualTo(Environment.ProcessorCount));
-        }
+        using ParallelTraceBudget budget = ParallelTraceBudget.Bounded(configured);
+        Assert.That(budget.Degree, Is.EqualTo(Math.Min(expected, Environment.ProcessorCount)));
     }
 
     [TestCase(true, TestName = "PrefixSeedSource_WithTheTransactionIndexOn_ArmsChangesetSeeds")]
@@ -333,7 +322,7 @@ public class TransactionChangesetIndexModuleTests
         JsonRpcConfig rpc = new();
         if (configured != 4) rpc.TraceBlockParallelism = configured;
         using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = false, HistoryTransactionIndexTraceParallelism = 8 }, rpc))
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = false }, rpc))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Amsterdam.Instance))
             .Build();
         Block block = Build.A.Block.WithNumber(1).TestObject;
@@ -344,25 +333,26 @@ public class TransactionChangesetIndexModuleTests
         {
             Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(4), "the default is four workers");
             Assert.That(parallel, Is.EqualTo(configured >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
-            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the access list setting, not the flat history one");
-            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only the access list setting can start a parallel tracer");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the configured setting");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only the access list budget can start a parallel tracer");
         }
     }
 
-    [TestCase(true, true, 3, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheFlatHistorySetting")]
+    [TestCase(true, true, 2, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceOtherBlocksOnTheTraceBlockSetting")]
     [TestCase(true, true, 1, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToOne_TraceOtherBlocksSequentially")]
-    [TestCase(true, false, 3, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
-    [TestCase(false, true, 3, false, TestName = "ParallelTraceBudgets_WithFlatOff_NeverTraceOtherBlocksInParallel")]
-    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheFlatHistorySetting(bool flatEnabled, bool indexEnabled, int configured, bool expected)
+    [TestCase(true, true, 0, false, TestName = "ParallelTraceBudgets_WithChangesetSeedsSetToZero_TraceOtherBlocksSequentially")]
+    [TestCase(true, false, 2, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_NeverTraceOtherBlocksInParallel")]
+    [TestCase(false, true, 2, false, TestName = "ParallelTraceBudgets_WithFlatOff_NeverTraceOtherBlocksInParallel")]
+    public void ParallelTraceBudgets_ForBlocksWithoutAccessLists_FollowTheTraceBlockSetting(bool flatEnabled, bool indexEnabled, int configured, bool expected)
     {
+        expected &= Environment.ProcessorCount >= 2;
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig
             {
                 Enabled = flatEnabled,
                 HistoryEnabled = true,
                 HistoryTransactionIndexEnabled = indexEnabled,
-                HistoryTransactionIndexTraceParallelism = configured,
-            }))
+            }, new JsonRpcConfig { TraceBlockParallelism = configured }))
             .Build();
         Block block = Build.A.Block.WithNumber(1).TestObject;
 
@@ -370,8 +360,8 @@ public class TransactionChangesetIndexModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list takes the changeset seeds' budget, set by the flat history setting");
-            if (parallel) Assert.That(budget.Degree, Is.EqualTo(configured), "the flat history setting keeps its meaning");
+            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list takes the changeset seeds' budget, sized by the trace block setting");
+            if (parallel) Assert.That(budget.Degree, Is.EqualTo(configured), "the degree is the configured setting");
             Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(expected), "the parallel tracer is built only when a seed this chain can take allows two workers");
         }
     }

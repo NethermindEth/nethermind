@@ -110,7 +110,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
             // Trace
-            .AddSingleton<ParallelTraceBudget>()
+            .AddSingleton<ParallelTraceBudget>(_ => ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism))
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
             // Each instance holds two full block-processing scopes for the life of the process, and they are built on
             // demand and never released, so the default stays where it was: parallel tracing shares one pool across
@@ -129,7 +129,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
     }
 
     /// <summary>Changeset seeds exist only where flat history captures the transaction index, the same switch that
-    /// arms them; without it their setting must not start a parallel tracer that could never seed a block.</summary>
+    /// arms them; without it their budget must not start a parallel tracer that could never seed a block.</summary>
     private ParallelTraceBudgets CreateParallelTraceBudgets(ISpecProvider specProvider, IFlatDbConfig flatDbConfig, ParallelTraceBudget changesets) =>
         new(specProvider,
             flatDbConfig.Enabled && flatDbConfig.HistoryEnabled && flatDbConfig.HistoryTransactionIndexEnabled ? changesets : null,
