@@ -654,7 +654,15 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             using StackAccessTracker accessTracker = new(isTracingAccess: true);
             WarmUpTxAccesses(tx, spec, in accessTracker, recipient);
-            tracer.ReportAccess(accessTracker.AccessedAddresses, accessTracker.AccessedStorageCells);
+            tracer.ReportAccess(EnumerateAccessedAddresses(accessTracker.AccessedAddresses), accessTracker.AccessedStorageCells);
+        }
+
+        private static IEnumerable<Address> EnumerateAccessedAddresses(JournalSet<AddressAsKey> addresses)
+        {
+            foreach (AddressAsKey address in addresses)
+            {
+                yield return address.Value;
+            }
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1248,12 +1256,14 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
+            if (opts.HasFlag(ExecutionOptions.StrictWarmup)) WorldState.NoteMinimumBalance(sender, in balanceCheck);
+
             if (balance < balanceCheck)
             {
                 // A warm sender may be funded earlier in the block by another sender's
                 // transaction, which per-sender warm groups cannot see; charge best-effort
                 // instead of losing that sender's warming entirely.
-                if (opts.HasFlag(ExecutionOptions.Warmup))
+                if (opts.HasFlag(ExecutionOptions.Warmup) && !opts.HasFlag(ExecutionOptions.StrictWarmup))
                 {
                     UInt256 warmCharge = UInt256.Min(senderReservedGasPayment, balance);
                     if (!warmCharge.IsZero) WorldState.SubtractFromBalance(sender, warmCharge, spec);
@@ -1485,7 +1495,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (_tracerFlags.IsTracingAccess)
                 {
-                    tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+                    tracer.ReportAccess(EnumerateAccessedAddresses(accessedItems.AccessedAddresses), accessedItems.AccessedStorageCells);
                 }
 
                 if (substate.ShouldRevert || substate.IsError)
@@ -1588,7 +1598,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // tracker outlives the Dispose: RentTopLevel leaves `_canRestore` false, so it never Restores.
             if (_tracerFlags.IsTracingAccess)
             {
-                tracer.ReportAccess(accessedItems.AccessedAddresses, accessedItems.AccessedStorageCells);
+                tracer.ReportAccess(EnumerateAccessedAddresses(accessedItems.AccessedAddresses), accessedItems.AccessedStorageCells);
             }
         Complete:
             return statusCode;
@@ -1719,8 +1729,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
             // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
-            // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
+            // the refund counter pre-execution and applies min(before_refund / 5, counter) (uncapped under EIP-3298).
             ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
+            if (spec.IsEip3298Enabled && executionRefund > preRefundGas)
+                return InvalidStateGas(Logger, $"EIP-3298 halt-path invariant violated: refund ({executionRefund}) exceeds gas used ({preRefundGas}).");
             ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
             // only the post-reset intrinsic remainder.
@@ -1792,7 +1804,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // Same best-effort rule as BuyGas: a warm sender funded earlier in the block has no
             // parent-state balance to move, and failing here would abort its warming.
-            if (opts.HasFlag(ExecutionOptions.Warmup))
+            if (opts.HasFlag(ExecutionOptions.Warmup) && !opts.HasFlag(ExecutionOptions.StrictWarmup))
             {
                 UInt256 charge = UInt256.Min(tx.Value, WorldState.GetBalance(tx.SenderAddress!));
                 if (!charge.IsZero) WorldState.SubtractFromBalance(tx.SenderAddress!, in charge, spec);
@@ -1880,6 +1892,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
+            if (spec.IsEip3298Enabled && refund > 0 && (ulong)refund > spentGas)
+                return InvalidStateGas(Logger, $"EIP-3298 invariant violated: refund ({refund}) exceeds gas used ({spentGas}).");
             (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
             if (blockStateGas < 0)
                 return InvalidStateGas(Logger, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
@@ -1931,6 +1945,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long totalToRefund = (long)codeInsertExecutionRefund;
             if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * (long)spec.GasCosts.DestroyRefund;
+
+            // EIP-3298: no cap; the remaining refunds never exceed the same transaction's charges.
+            if (spec.IsEip3298Enabled)
+                return (spentGas, totalToRefund);
 
             long quotient = spec.IsEip3529Enabled ? (long)RefundHelper.MaxRefundQuotientEIP3529 : (long)RefundHelper.MaxRefundQuotient;
             return (spentGas, Math.Min((long)(spentGas / (ulong)quotient), totalToRefund));

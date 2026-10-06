@@ -42,4 +42,7 @@ public static class TxPoolErrorMessages
     public const string FrameTxMisplacedExpiryFrame = "frame transaction has an expiry verifier frame that does not lead its frame list";
     public const string NonCanonicalPaymasterLimitReached = "non-canonical paymaster already sponsors the maximum number of pending frame transactions";
     public const string FrameTxCodeDependencyLimitReached = "frame transaction validation prefix relies on mutable code already relied on by the maximum number of pending frame transactions";
+    public const string WidthUnmet = "sender width insufficient for another pending keyed-nonce frame transaction";
+
+    public const string KeyedNonceOverlap = "keyed nonce set intersects another pending frame transaction from the same sender";
 }

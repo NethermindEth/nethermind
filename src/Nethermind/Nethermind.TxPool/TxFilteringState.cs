@@ -29,6 +29,17 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// <summary>Whether a filter has recorded this transaction's EIP-8298 code dependencies and still owes their release.</summary>
     internal bool CodeDependenciesReserved;
 
+    /// <summary>Whether a filter has reserved this transaction's EIP-8141 payer exposure and still owes its release.</summary>
+    /// <remarks>The reservation is taken before the filters that follow can reject, so the pool unwinds it once the
+    /// outcome is known rather than leaving the payer's balance permanently committed.</remarks>
+    internal bool PayerExposureReserved;
+
+    /// <summary>The sender admission gate a filter entered for this submission, which the pool exits once it settles.</summary>
+    internal System.Threading.Lock? SenderAdmissionGate;
+
+    /// <summary>Set when this submission takes its sender's free MATCHA baseline, which the pool records once it is inserted.</summary>
+    internal bool TakesSenderBaseline;
+
     /// <summary>
     /// The chain head specification the whole submission is judged against.
     /// </summary>
