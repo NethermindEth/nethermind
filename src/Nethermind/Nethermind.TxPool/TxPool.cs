@@ -74,8 +74,10 @@ namespace Nethermind.TxPool
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly SenderWidthCache _senderWidth;
+        private readonly SenderWidthCache _paymasterWidth;
         private readonly SenderAdmissionGates _senderAdmissionGates = new();
         private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
+        private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _paymasterBaselines = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -192,6 +194,7 @@ namespace Nethermind.TxPool
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
+            _paymasterWidth = frameTxWidthLedger.PaymasterWidth;
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -352,7 +355,7 @@ namespace Nethermind.TxPool
             // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor. After the filters
             // that prove a transaction garbage, so taking a sponsor's slot needs a valid one; before the
             // simulation, which is the per-sponsor work the cap exists to bound.
-            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, _logger));
+            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, txPoolConfig, _paymasterWidth, _paymasterBaselines, _logger));
 
             // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
@@ -368,7 +371,7 @@ namespace Nethermind.TxPool
             {
                 postHashFilters.Add(new SenderAdmissionGateFilter(_senderAdmissionGates));
                 postHashFilters.Add(new KeyedNonceDisjointnessFilter(_transactions, _blobTransactions));
-                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _headInfo, _transactions, _blobTransactions, _senderWidth, _senderBaselines, _logger));
+                postHashFilters.Add(new FrameTxWidthFilter(txPoolConfig, _headInfo, _transactions, _blobTransactions, _senderWidth, _senderBaselines, _paymasterWidth, _logger));
             }
 
             _postHashFilters = postHashFilters.ToArray();
@@ -627,7 +630,14 @@ namespace Nethermind.TxPool
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
-                if (_txPoolConfig.FrameTxWidthEnabled) _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
+                if (_txPoolConfig.FrameTxWidthEnabled)
+                {
+                    _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
+                    if (PendingPaymasterCache.KeyFor(args.Value) is Address paymaster)
+                    {
+                        _paymasterBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(paymaster, args.Value.Hash!.ValueHash256));
+                    }
+                }
                 // The budget, not IsEmpty: this runs under the owning pool's lock, and IsEmpty takes all of the
                 // dictionary's locks whenever it is empty, which is always at the default budget.
                 if (_frameEvictionRetryBudget > 1 && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
@@ -1805,6 +1815,12 @@ namespace Nethermind.TxPool
                     _senderBaselines[baseline.Key] = baseline.Value;
                     if (!relevantPool.ContainsKey(baseline.Value)) _senderBaselines.TryRemove(baseline);
                 }
+                if (state.TakesPaymasterBaseline && PendingPaymasterCache.KeyFor(tx) is Address paymaster)
+                {
+                    KeyValuePair<AddressAsKey, ValueHash256> baseline = new(paymaster, tx.Hash!.ValueHash256);
+                    _paymasterBaselines[baseline.Key] = baseline.Value;
+                    if (!relevantPool.ContainsKey(baseline.Value)) _paymasterBaselines.TryRemove(baseline);
+                }
                 Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
                 Interlocked.Increment(ref _pendingTransactionsAdded);
                 if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
@@ -2848,6 +2864,7 @@ namespace Nethermind.TxPool
             Interlocked.Add(ref Metrics.FrameTxEvictionRetryLedgerEntries, -_frameEvictionAttempts.Count);
             _frameEvictionAttempts.Clear();
             _senderWidth.Clear();
+            _paymasterWidth.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;

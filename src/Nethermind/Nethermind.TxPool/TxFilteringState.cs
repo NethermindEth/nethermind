@@ -37,6 +37,12 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// <summary>Set when this submission takes its sender's free MATCHA baseline, which the pool records once it is inserted.</summary>
     internal bool TakesSenderBaseline;
 
+    /// <summary>Set when this submission takes its paymaster's free MATCHA baseline, which the pool records once it is inserted.</summary>
+    internal bool TakesPaymasterBaseline;
+
+    /// <summary>Set when this submission is beyond its paymaster's free MATCHA baseline, so the width filter charges the paymaster for it.</summary>
+    internal bool BeyondPaymasterBaseline;
+
     /// <summary>
     /// The chain head specification the whole submission is judged against.
     /// </summary>
