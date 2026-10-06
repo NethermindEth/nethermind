@@ -700,24 +700,8 @@ public class SszMiddlewareTests
     }
 
     [Test]
-    public async Task Capabilities_advertises_supported_forks_when_osaka_is_active_at_genesis()
+    public async Task Capabilities_advertises_all_supported_fork_schemas()
     {
-        _specProvider = new ChainSpecBasedSpecProvider(new ChainSpec
-        {
-            ChainId = 12345,
-            Parameters = new ChainParameters
-            {
-                TerminalTotalDifficulty = UInt256.Zero,
-                Eip4895TransitionTimestamp = 0,
-                Eip4844TransitionTimestamp = 0,
-                Eip6110TransitionTimestamp = 0,
-                Eip7594TransitionTimestamp = 0,
-                Eip7928TransitionTimestamp = 10_000,
-            }
-        });
-        Assert.That(SszRestPaths.GetEngineApiForkName(_specProvider.GenesisSpec), Is.EqualTo("osaka"));
-        Assert.That(_specProvider.TransitionActivations.Any(static activation => activation.Timestamp == 10_000), Is.True);
-        _middleware = BuildMiddleware();
         DefaultHttpContext ctx = MakeGetContext("/engine/v1/capabilities");
         await _middleware.InvokeAsync(ctx);
 

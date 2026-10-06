@@ -11,9 +11,12 @@ using Microsoft.AspNetCore.Http;
 namespace Nethermind.Merge.Plugin.SszRest.Handlers;
 
 /// <summary>
-/// Handles <c>GET /engine/v1/capabilities</c>, the HTTP/REST equivalent of
-/// <c>engine_exchangeCapabilities</c>.
+/// Handles the SSZ REST capabilities endpoint.
 /// </summary>
+/// <remarks>
+/// <c>supported_forks</c> lists every SSZ schema implemented by this client, independent of the network's fork
+/// schedule. Callers select a schema on fork-scoped requests with <c>Eth-Execution-Version</c>.
+/// </remarks>
 public sealed class CapabilitiesSszHandler : SszEndpointHandlerBase
 {
     private static readonly byte[] _responseBody = BuildBody();
