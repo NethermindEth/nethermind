@@ -7,7 +7,8 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
-/// Per-scope memo of "does this account have any self-destruct marker at or before the scope's block".
+/// Per-scope memo of an account's self-destruct markers: whether any lies at or before the scope's block, and the
+/// lowest poisoned clear above it.
 /// </summary>
 /// <remarks>The poisoned-clear range lies above the scope's block, so a capture can still add to it: a negative
 /// is trusted only while no capture has published since it was probed.</remarks>
