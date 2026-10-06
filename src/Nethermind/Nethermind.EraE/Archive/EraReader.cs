@@ -5,7 +5,6 @@ using System.Collections.Concurrent;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.EraE.E2Store;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
