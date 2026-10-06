@@ -1554,7 +1554,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
             nint fusedOpCodeCount = 0;
-            return EvmInstructions.InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, TCallSub>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+            return EvmInstructions.InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, TCallSub>(ref stack, ref gas, ref vm, ref programCounter, ref fusedOpCodeCount);
         }
     }
 

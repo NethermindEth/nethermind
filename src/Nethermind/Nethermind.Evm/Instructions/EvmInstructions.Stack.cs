@@ -111,13 +111,13 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         nint fusedOpCodeCount = 0;
-        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, ref vm, ref programCounter, ref fusedOpCodeCount);
     }
 
     /// <typeparam name="TCallSub">Whether an untraced EIP-7979 <c>CALLSUB</c> after the push runs fused with it.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TCallSub>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TCallSub>(ref EvmStack stack, ref TGasPolicy gas, ref VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseVmCounter : struct, IFlag
@@ -154,7 +154,7 @@ public static partial class EvmInstructions
 
             if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
             {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 // The return address is the instruction after CALLSUB.
                 programCounter += Size + 1;
@@ -164,12 +164,12 @@ public static partial class EvmInstructions
 
             if (nextInstruction == Instruction.JUMP)
             {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<JumpIGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
                 if (!stack.EnsureDepth(1)) goto StackUnderflow;
                 if (EvmStack.IsSlotZero(ref stack.PopBytesByRefUnchecked()))
@@ -187,7 +187,7 @@ public static partial class EvmInstructions
                 goto InvalidJumpDestination;
             // Skip the JUMPDEST byte we just validated, charging its gas and count here.
             programCounter = jumpTarget + 1;
-            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+            IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
             if (!TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
 
             goto Success;
@@ -222,7 +222,7 @@ public static partial class EvmInstructions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
+    private static void IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref VirtualMachine<TGasPolicy> vm, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TUseVmCounter : struct, IFlag
     {

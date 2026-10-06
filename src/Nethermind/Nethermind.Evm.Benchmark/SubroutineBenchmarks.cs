@@ -25,7 +25,6 @@ namespace Nethermind.Evm.Benchmark;
 /// EIP-7979 subroutine workloads on the production interpreter loop: a tight call/return loop, a recursive call
 /// tree and the EIP's SQUARE example, next to the same SQUARE synthesized with <c>JUMP</c>.
 /// </summary>
-/// <remarks>Opcodes are the provisional <c>CALLSUB = 0xba</c>, <c>CALLDEST = 0xbb</c>, <c>RETURNSUB = 0xbc</c>.</remarks>
 [MemoryDiagnoser]
 public class SubroutineBenchmarks
 {

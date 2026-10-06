@@ -248,12 +248,12 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>Untraced PUSH2 counting its fused opcodes in the chain's counter.</summary>
-        /// <remarks>Only an EIP-7979 table, which may fuse a <c>CALLSUB</c>, reads the virtual machine.</remarks>
+        /// <remarks>The machine goes by reference, so only a fused EIP-7979 <c>CALLSUB</c> loads it.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static EvmExceptionType ExecuteUntracedPush2<TOpcode>(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, ref nint pc, ref nint opCodeCount) =>
             typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)
-                ? EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, state.Vm, ref pc, ref opCodeCount)
-                : EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, null!, ref pc, ref opCodeCount);
+                ? EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, ref state.Vm, ref pc, ref opCodeCount)
+                : EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, ref Unsafe.NullRef<VirtualMachine<TGasPolicy>>(), ref pc, ref opCodeCount);
 
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
