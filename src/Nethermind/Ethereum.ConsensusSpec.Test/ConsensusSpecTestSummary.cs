@@ -35,14 +35,9 @@ public static class ConsensusSpecTestSummary
             Record(suite, fork, preset, vectorName, VectorOutcome.NotImplemented, notImplemented.Message);
             Assert.Inconclusive(notImplemented.Message);
         }
-        catch (Exception ex) when (ex is not AssertionException)
+        catch (Exception ex)
         {
-            Record(suite, fork, preset, vectorName, VectorOutcome.Fail, ex.ToString());
-            throw;
-        }
-        catch (AssertionException ex)
-        {
-            Record(suite, fork, preset, vectorName, VectorOutcome.Fail, ex.Message);
+            Record(suite, fork, preset, vectorName, VectorOutcome.Fail, ex is AssertionException ? ex.Message : ex.ToString());
             throw;
         }
     }
