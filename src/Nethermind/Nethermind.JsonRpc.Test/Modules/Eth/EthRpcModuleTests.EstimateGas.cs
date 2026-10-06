@@ -158,6 +158,53 @@ public partial class EthRpcModuleTests
         Assert.That(response, Is.EqualTo(expected));
     }
 
+    private const string RevertsWithoutGasPrice = "0x3a6007575f5ffd5b00";
+
+    [Test]
+    public async Task FrameGas_CreateAccessList_PriorityFeeOnly_EstimatesWithTheFilledFeeCap()
+    {
+        // The sender frame's target reverts when it sees a zero gas price. A request that sets only a priority fee gets
+        // its fee cap filled before its frame gas is estimated, so the estimate sees the price the access-list run does.
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc omitted = FrameGasRequest();
+        FrameTransactionForRpc explicitLimits = FrameGasRequest();
+        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGas, frame.StateGas) = (50_000UL, 200_000UL);
+        foreach (FrameTransactionForRpc request in new[] { omitted, explicitLimits })
+            (request.MaxFeePerGas, request.MaxPriorityFeePerGas) = (null, 1);
+        object overrides = FrameTargetCode(omitted, RevertsWithoutGasPrice);
+
+        string expected = await ctx.Test.TestEthRpc("eth_createAccessList", explicitLimits, "latest", overrides);
+        string response = await ctx.Test.TestEthRpc("eth_createAccessList", omitted, "latest", overrides);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(expected)["result"]?["error"], Is.Null, $"precondition: the priced run sees a non-zero gas price: {expected}");
+            Assert.That(JToken.Parse(response)["error"], Is.Null, $"the frame gas estimate sees the filled fee cap: {response}");
+            Assert.That(JToken.Parse(response)["result"]?["error"], Is.Null, $"the estimated frame gas covers the priced run: {response}");
+        }
+    }
+
+    [Test]
+    public async Task FrameGas_CreateAccessList_RejectedFees_ReportedLikeExplicitLimits()
+    {
+        // A zero fee cap is rejected before any frame gas is estimated, so the frame that would revert at a zero gas
+        // price never runs and the error is the one explicit limits get.
+        using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
+        FrameTransactionForRpc omitted = FrameGasRequest();
+        FrameTransactionForRpc explicitLimits = FrameGasRequest();
+        foreach (FrameForRpc frame in explicitLimits.Frames!) (frame.ExecutionGas, frame.StateGas) = (50_000UL, 200_000UL);
+        object overrides = FrameTargetCode(omitted, RevertsWithoutGasPrice);
+
+        string expected = await ctx.Test.TestEthRpc("eth_createAccessList", explicitLimits, "latest", overrides);
+        string response = await ctx.Test.TestEthRpc("eth_createAccessList", omitted, "latest", overrides);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(expected)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas must be non-zero"), $"precondition: {expected}");
+            Assert.That(response, Is.EqualTo(expected), "the fee error comes before frame gas estimation");
+        }
+    }
+
     [Test]
     public async Task FrameGas_UsesEarlierFrameWrites([Values("eth_estimateGas", "eth_call", "eth_createAccessList")] string method, [Values] bool atomic, [Values] bool catchesInnerFailure)
     {
@@ -1806,4 +1853,7 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Does.Not.Contain("-32603"), serialized);
         Assert.That(serialized, Does.Contain("\"result\":\"0x"), serialized);
     }
+
+    private static object FrameTargetCode(FrameTransactionForRpc request, string code) =>
+        JsonSerializer.Deserialize<object>($$$"""{"{{{request.Frames![1].Target}}}":{"code":"{{{code}}}"}}""")!;
 }
