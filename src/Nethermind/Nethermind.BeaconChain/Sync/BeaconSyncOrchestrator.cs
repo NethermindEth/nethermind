@@ -2497,7 +2497,7 @@ public sealed class BeaconSyncOrchestrator(
 
         if (_lastHead is { } previous && head.Finalized.Epoch > previous.Finalized.Epoch)
         {
-            if (_logger.IsInfo) _logger.Info($"FINALIZED epoch={head.Finalized.Epoch} root={head.Finalized.Root}");
+            if (_logger.IsInfo) _logger.Info($"Finalized epoch={head.Finalized.Epoch} root={head.Finalized.Root}");
             importer.OnFinalized(head.Finalized);
         }
 
