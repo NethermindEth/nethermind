@@ -12,10 +12,11 @@ namespace Nethermind.Merge.Plugin.Test;
 public class TimeoutUtilsTests
 {
     [Test]
-    public async Task TimeoutOn_fast_task_completes_and_cts_disposes_safely()
+    public async Task TimeoutOn_fast_task_completes_and_cts_disposes_safely([Values] bool timeoutElapsed)
     {
         using CancellationTokenSource cts = new();
-        Task timeoutTask = Task.Delay(TimeSpan.FromSeconds(10), cts.Token);
+        // A result already in hand wins over a budget that ran out meanwhile.
+        Task timeoutTask = timeoutElapsed ? Task.CompletedTask : Task.Delay(TimeSpan.FromSeconds(10), cts.Token);
 
         int result = await Task.FromResult(42).TimeoutOn(timeoutTask, cts);
 
