@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,17 +36,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// <summary>The change-map capacity a per-contract state is trimmed to when it goes back to the pool.</summary>
     internal const int PooledDictionaryCapacity = 512;
 
-    private Dictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
+    private OptimizedDictionary<AddressAsKey, PerContractState> _storages = new(StoragesInitialCapacity);
     // Handed back by a detached write-back once it is done with the map it took.
-    private Dictionary<AddressAsKey, PerContractState>? _spareStorages;
-    private readonly Dictionary<AddressAsKey, bool> _toUpdateRoots = [];
+    private OptimizedDictionary<AddressAsKey, PerContractState>? _spareStorages;
+    private readonly OptimizedDictionary<AddressAsKey, bool> _toUpdateRoots = [];
 
     /// <summary>
     /// <see href="https://eips.ethereum.org/EIPS/eip-1283"/>
     /// </summary>
-    private Dictionary<StorageCell, UInt256> _originalValues = [];
+    private OptimizedDictionary<StorageCell, UInt256> _originalValues = [];
     // The provider's own map while a pooled large one holds the round's entries.
-    private Dictionary<StorageCell, UInt256>? _parkedOriginalValues;
+    private OptimizedDictionary<StorageCell, UInt256>? _parkedOriginalValues;
     // A map past the trim limit is cut back every round, so it would regrow on the LOH. A resize takes the next prime
     // at least twice the capacity, under 2.4 times it here (3,371 grows to 7,013, 4,049 to 8,419), so a full map above
     // 5/12 of the limit moves into a pooled one instead.
@@ -54,7 +55,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     // Memoizes captured values only; transaction originals still resolve through the journal.
     private StorageCell _lastCapturedCell;
     private UInt256 _lastCapturedOriginal;
-    private readonly HashSet<AddressAsKey> _destroyedThisRound = [];
+    private readonly OptimizedHashSet<AddressAsKey> _destroyedThisRound = [];
     private readonly List<StorageClearChange> _storageClearJournal = [];
 
     // The low bit belongs to StorageChangeTrace.IsInitialValue; zero means never captured.
@@ -193,7 +194,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         // stack the captured original is the answer.
         if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0)
         {
-            ref HeadChange head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraBlockCache, storageCell);
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
             if (!Unsafe.IsNullRef(ref head))
             {
                 int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
@@ -227,7 +228,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     public Hash256 GetStorageRoot(Address address) => GetOrCreateStorage(address).StorageRoot;
 
-    private HashSet<AddressAsKey>? _tempToUpdateRoots;
+    private OptimizedHashSet<AddressAsKey>? _tempToUpdateRoots;
     /// <summary>
     /// Called by Commit
     /// Used for persistent storage specific logic
@@ -248,7 +249,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             throw new InvalidOperationException($"Change at current position {currentPosition} was null when committing {nameof(PartialStorageProviderBase)}");
         }
 
-        HashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
+        OptimizedHashSet<AddressAsKey> toUpdateRoots = (_tempToUpdateRoots ??= []);
 
         ReadOnlySpan<Change> changes = CollectionsMarshal.AsSpan(_changes);
         Dictionary<StorageCell, StorageChangeTrace>? trace;
@@ -331,7 +332,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             if (trace.TryGetValue(cell, out StorageChangeTrace changeTrace))
             {
-                trace[cell] = new StorageChangeTrace(in originalValue, in changeTrace.After);
+                trace[cell] = new StorageChangeTrace(in originalValue, changeTrace.After);
             }
             else
             {
@@ -342,7 +343,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void CommitChanges<TStorageTracing, HasDestroyedAccounts>(
         ReadOnlySpan<Change> changes,
-        HashSet<AddressAsKey> toUpdateRoots,
+        OptimizedHashSet<AddressAsKey> toUpdateRoots,
         Dictionary<StorageCell, StorageChangeTrace>? trace)
         where TStorageTracing : struct, IFlag
         where HasDestroyedAccounts : struct, IFlag
@@ -351,6 +352,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         Debug.Assert(HasDestroyedAccounts.IsActive == (_destroyedThisRound.Count != 0));
         bool hasStorageClears = _storageClearJournal.Count != 0;
 
+        // Heads come mostly grouped by contract, so the root set is probed once per run of one.
+        Address? lastRootUpdate = null;
         // SaveChange and backend hints must not re-enter the journal while its heads are enumerated.
         foreach (HeadChange head in _intraBlockCache.Values)
         {
@@ -383,7 +386,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             }
             else
             {
-                toUpdateRoots.Add(change.StorageCell.Address);
+                if (!ReferenceEquals(change.StorageCell.Address, lastRootUpdate))
+                {
+                    lastRootUpdate = change.StorageCell.Address;
+                    toUpdateRoots.Add(lastRootUpdate);
+                }
 
                 GetOrCreateStorage(change.StorageCell.Address)
                     .SaveChange(change.StorageCell, change.Value);
@@ -472,6 +479,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         InvalidateStorageMemo();
     }
 
+    /// <summary>Drops the block's storage changes of every account <paramref name="bal"/> changed, whose slots are now the scope's.</summary>
+    /// <remarks>
+    /// The write-back then carries only the BAL's slots for such an account, so when the block touched others of its
+    /// slots (or wiped it) before the BAL was applied, the account's cached storage is dropped instead.
+    /// </remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal)
+    {
+        if (_intraBlockCache.Count != 0) ThrowJournalNotEmpty();
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (!accountChanges.HasStateChanges || !_storages.Remove(accountChanges.Address, out PerContractState? state)) continue;
+
+            if (state.TouchesSlotsOutside(accountChanges)) _stateProvider.ForgetCachedStorage(accountChanges.Address);
+            state.Return();
+        }
+
+        InvalidateStorageMemo();
+    }
+
     /// <summary>
     /// Hands over the block's storage changes, leaving an empty map in their place, with each contract's block-end
     /// fate already resolved so the snapshot needs nothing from the state provider afterwards.
@@ -491,8 +517,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             storage.Value.BlockEndFate = FateOf(storage);
         }
 
-        Dictionary<AddressAsKey, PerContractState> storages = _storages;
-        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new Dictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
+        OptimizedDictionary<AddressAsKey, PerContractState> storages = _storages;
+        _storages = Interlocked.Exchange(ref _spareStorages, null) ?? new OptimizedDictionary<AddressAsKey, PerContractState>(StoragesInitialCapacity);
         InvalidateStorageMemo();
         return new StorageChangeSnapshot(this, storages, _stateProvider.DetachRemovedAccountsWithStorage());
     }
@@ -507,7 +533,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </remarks>
     private sealed class StorageChangeSnapshot(
         PersistentStorageProvider provider,
-        Dictionary<AddressAsKey, PerContractState> storages,
+        OptimizedDictionary<AddressAsKey, PerContractState> storages,
         List<AddressAsKey> removedWithStorage) : IWorldStateScopeProvider.IBlockChangeSnapshot
     {
         /// <summary>
@@ -598,7 +624,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             return _lastStorage;
         }
 
-        ref PerContractState? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+        ref PerContractState? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
         if (!exists) value = PerContractState.Rent(address, this);
         PerContractState storage = value ?? ThrowNoStorageState(address);
         _lastStorageAddress = address;
@@ -632,13 +658,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// </summary>
     private void CaptureOriginalValue(in StorageCell cell, in UInt256 value)
     {
-        Dictionary<StorageCell, UInt256> originals = _originalValues;
+        OptimizedDictionary<StorageCell, UInt256> originals = _originalValues;
         if (originals.Count == originals.Capacity && originals.Capacity > OriginalsGrowIntoLargeAbove && !originals.ContainsKey(cell))
         {
             GrowOriginalsIntoLarge();
         }
 
-        ref UInt256 slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_originalValues, cell, out bool exists);
+        ref UInt256 slot = ref _originalValues.GetValueRefOrAddDefault(cell, out bool exists);
         if (!exists)
         {
             slot = value;
@@ -649,8 +675,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
     private void GrowOriginalsIntoLarge()
     {
-        Dictionary<StorageCell, UInt256> current = _originalValues;
-        Dictionary<StorageCell, UInt256> large = OriginalsPool.Rent(current.Count * 2);
+        OptimizedDictionary<StorageCell, UInt256> current = _originalValues;
+        OptimizedDictionary<StorageCell, UInt256> large = OriginalsPool.Rent(current.Count * 2);
         foreach (KeyValuePair<StorageCell, UInt256> entry in current) large.Add(entry.Key, entry.Value);
 
         if (_parkedOriginalValues is null)
@@ -765,7 +791,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         {
             foreach (KeyValuePair<StorageCell, UInt256> readCell in originalValues)
             {
-                ref HeadChange head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraBlockCache, readCell.Key, out bool exists);
+                ref HeadChange head = ref _intraBlockCache.GetValueRefOrAddDefault(readCell.Key, out bool exists);
                 if (!exists)
                 {
                     ClearSlot(readCell.Key, ref head, exists: false);
@@ -835,7 +861,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         if (change.OriginalValues is not null)
         {
-            _originalValues.AddOrUpdateRange(change.OriginalValues);
+            foreach (KeyValuePair<StorageCell, UInt256> original in change.OriginalValues)
+            {
+                _originalValues[original.Key] = original.Value;
+            }
         }
 
         if (change.RootUpdate is { } rootUpdate)
@@ -884,10 +913,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         private bool _missingAreDefault;
         private bool _clearedNonEmptyStorage;
-        private Dictionary<SlotKey, StorageChangeTrace> _dictionary = [];
-        private Dictionary<SlotKey, StorageChangeTrace>? _spare;
+        private OptimizedDictionary<SlotKey, StorageChangeTrace> _dictionary = [];
+        private OptimizedDictionary<SlotKey, StorageChangeTrace>? _spare;
         // The contract's own map while a pooled large one holds its entries.
-        private Dictionary<SlotKey, StorageChangeTrace>? _parked;
+        private OptimizedDictionary<SlotKey, StorageChangeTrace>? _parked;
         public int EstimatedSize => _dictionary.Count + (_missingAreDefault ? 1 : 0);
         public int Count => _dictionary.Count;
         public bool HasClear => _missingAreDefault;
@@ -917,7 +946,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count > capacity)
             {
                 // These arrays will be discarded; clearing their entries first only adds writes.
-                _dictionary = new Dictionary<SlotKey, StorageChangeTrace>(capacity);
+                _dictionary = new OptimizedDictionary<SlotKey, StorageChangeTrace>(capacity);
             }
             else
             {
@@ -934,7 +963,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public ClearSnapshot ClearRevertibly(bool clearedNonEmptyStorage)
         {
-            Dictionary<SlotKey, StorageChangeTrace>? previousEntries = null;
+            OptimizedDictionary<SlotKey, StorageChangeTrace>? previousEntries = null;
             if (_dictionary.Count != 0)
             {
                 previousEntries = _dictionary;
@@ -972,13 +1001,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public ref StorageChangeTrace GetValueRefOrAddDefault(in UInt256 storageCellIndex, out bool exists)
         {
-            Dictionary<SlotKey, StorageChangeTrace> dictionary = _dictionary;
+            OptimizedDictionary<SlotKey, StorageChangeTrace> dictionary = _dictionary;
             if (dictionary.Count == dictionary.Capacity && dictionary.Count >= GrowIntoLargeAt && !dictionary.ContainsKey(storageCellIndex))
             {
                 GrowIntoLarge();
             }
 
-            ref StorageChangeTrace value = ref CollectionsMarshal.GetValueRefOrAddDefault(_dictionary, storageCellIndex, out exists);
+            ref StorageChangeTrace value = ref _dictionary.GetValueRefOrAddDefault(storageCellIndex, out exists);
             if (!exists && _missingAreDefault)
             {
                 // Where we know the rest of the tree is empty
@@ -994,8 +1023,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         /// otherwise regrow on the LOH every block or call.</remarks>
         private void GrowIntoLarge()
         {
-            Dictionary<SlotKey, StorageChangeTrace> current = _dictionary;
-            Dictionary<SlotKey, StorageChangeTrace> large = LargeMaps.Rent(current.Count * 2);
+            OptimizedDictionary<SlotKey, StorageChangeTrace> current = _dictionary;
+            OptimizedDictionary<SlotKey, StorageChangeTrace> large = LargeMaps.Rent(current.Count * 2);
             foreach (KeyValuePair<SlotKey, StorageChangeTrace> entry in current) large.Add(entry.Key, entry.Value);
 
             if (_parked is null)
@@ -1012,14 +1041,11 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public ref StorageChangeTrace GetValueRefOrNullRef(in UInt256 storageCellIndex)
-            => ref CollectionsMarshal.GetValueRefOrNullRef(_dictionary, storageCellIndex);
+            => ref _dictionary.GetValueRefOrNullRef(storageCellIndex);
 
-        public StorageChangeTrace this[UInt256 key]
-        {
-            set => _dictionary[key] = value;
-        }
+        public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
 
-        public Dictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
+        public OptimizedDictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
 
         public void UnmarkClear()
         {
@@ -1028,7 +1054,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public readonly record struct ClearSnapshot(
-            Dictionary<SlotKey, StorageChangeTrace>? PreviousEntries,
+            OptimizedDictionary<SlotKey, StorageChangeTrace>? PreviousEntries,
             bool MissingAreDefault,
             bool ClearedNonEmptyStorage);
     }
@@ -1039,17 +1065,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     /// owner rents and <see cref="MaxRetainedCapacity"/> built with the pool's comparer: anything else would never be
     /// rented again, or would be rented with the wrong comparer.
     /// </remarks>
-    internal sealed class LargeMapPool<TKey, TValue>(IEqualityComparer<TKey>? comparer, int minRetainedCapacity) where TKey : notnull
+    internal sealed class LargeMapPool<TKey, TValue>(IEqualityComparer<TKey>? comparer, int minRetainedCapacity) where TKey : notnull, IEquatable<TKey>
     {
         internal const int MaxRetainedEntries = 256 * 1024;
         internal const int MaxRetainedCapacity = 128 * 1024;
         private readonly IEqualityComparer<TKey> _comparer = comparer ?? EqualityComparer<TKey>.Default;
         private readonly Lock _lock = new();
-        private readonly List<Dictionary<TKey, TValue>> _retained = [];
+        private readonly List<OptimizedDictionary<TKey, TValue>> _retained = [];
         private int _retainedEntries;
 
         /// <summary>The smallest retained map with at least <paramref name="minCapacity"/> capacity, or a new one.</summary>
-        public Dictionary<TKey, TValue> Rent(int minCapacity)
+        public OptimizedDictionary<TKey, TValue> Rent(int minCapacity)
         {
             lock (_lock)
             {
@@ -1062,17 +1088,17 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
                 if (best >= 0)
                 {
-                    Dictionary<TKey, TValue> retained = _retained[best];
+                    OptimizedDictionary<TKey, TValue> retained = _retained[best];
                     _retained.RemoveAt(best);
                     _retainedEntries -= retained.Capacity;
                     return retained;
                 }
             }
 
-            return new Dictionary<TKey, TValue>(minCapacity, _comparer);
+            return new OptimizedDictionary<TKey, TValue>(minCapacity, _comparer);
         }
 
-        public void Return(Dictionary<TKey, TValue> map)
+        public void Return(OptimizedDictionary<TKey, TValue> map)
         {
             int capacity = map.Capacity;
             if (capacity > MaxRetainedCapacity || capacity < minRetainedCapacity || !ReferenceEquals(map.Comparer, _comparer)) return;
@@ -1088,7 +1114,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
     }
 
-    private sealed class PerContractState : IReturnable
+    private sealed partial class PerContractState : IReturnable
     {
         private IWorldStateScopeProvider.IStorageTree? _backend;
 
@@ -1313,15 +1339,13 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             _wasWritten = true;
             ref StorageChangeTrace valueChanges = ref BlockChange.GetValueRefOrAddDefault(storageCell.Index, out bool exists);
-            if (!exists)
+            if (!exists || valueChanges.IsInitialValue)
             {
-                valueChanges = new StorageChangeTrace(value);
+                valueChanges.Set(UInt256.Zero, value, isInitialValue: true);
             }
             else
             {
-                valueChanges = valueChanges.IsInitialValue
-                    ? new StorageChangeTrace(value)
-                    : new StorageChangeTrace(valueChanges.Before, value);
+                valueChanges.Set(valueChanges.Before, value, isInitialValue: false);
             }
 
             EnsureStorageTree();
@@ -1351,7 +1375,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 LoadFromTreeStorage(in storageCell, out value);
 
-                valueChange = new(value, value);
+                valueChange.Set(value, value, isInitialValue: false);
             }
             else
             {
@@ -1381,7 +1405,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             _backend.Get(storageCell.Index, out value);
         }
 
-        [SkipLocalsInit]
         public (int writes, int skipped) ProcessStorageChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
         {
             // Rewrites BlockChange below, and the commit that normally bumps the round first returns
@@ -1389,9 +1412,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             ForgetLastRead();
             EnsureStorageTree();
             using IWorldStateScopeProvider.IStorageWriteBatch _ = storageWriteBatch;
-
-            int writes = 0;
-            int skipped = 0;
 
             if (BlockChange.HasClear)
             {
@@ -1405,43 +1425,33 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             // resolving the surviving sibling node. Applying deletes last keeps the trie traversal aligned with
             // stateless verifiers that insert before deleting (see EELS client), which may avoid unnecessary branch
             // node collapses causing extra node resolving. So the captured witness node-set matches and partial-trie replay stays consistent.
-            // Deletes are likely rare, so start with zero capacity; the pooled array is rented only on first Add.
+            return WriteChanges(storageWriteBatch);
+        }
 
-            using ArrayPoolListRef<UInt256> deferredDeletes = new(0);
+        private partial (int writes, int skipped) WriteChanges(IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch);
 
-            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
+        /// <summary>Marks a pending change as committed, writing its value now unless it clears the slot.</summary>
+        /// <returns><see langword="false"/> when the change clears the slot, so its delete must follow every write.</returns>
+        /// <remarks>Safe while enumerating <see cref="BlockChange"/>: it only overwrites an existing entry, never adds or removes one.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool CommitAndWriteUnlessDelete(in UInt256 key, ref StorageChangeTrace change, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            UInt256 after = change.After;
+            change.Set(after, after, isInitialValue: false);
+            if (after.IsZero) return false;
+
+            storageWriteBatch.Set(in key, in after);
+            return true;
+        }
+
+        private static int WriteDeletes(ReadOnlySpan<UInt256> keys, IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch)
+        {
+            foreach (ref readonly UInt256 key in keys)
             {
-                UInt256 after = kvp.Value.After;
-                if (kvp.Value.Before != after || kvp.Value.IsInitialValue)
-                {
-                    if (after.IsZero)
-                    {
-                        deferredDeletes.Add(kvp.Key);
-                    }
-                    else
-                    {
-                        // Safe while enumerating: this only overwrites the existing key, never adds or removes.
-                        BlockChange[kvp.Key] = new(after, after);
-                        storageWriteBatch.Set(kvp.Key, in after);
-
-                        writes++;
-                    }
-                }
-                else
-                {
-                    skipped++;
-                }
-            }
-
-            foreach (ref readonly UInt256 key in deferredDeletes.AsSpan())
-            {
-                BlockChange[key] = default;
                 storageWriteBatch.Set(in key, UInt256.Zero);
-
-                writes++;
             }
 
-            return (writes, skipped);
+            return keys.Length;
         }
 
         /// <summary>Whether the contract held storage before the block, or <see langword="null"/> when the block never resolved its tree.</summary>
@@ -1469,6 +1479,19 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             {
                 storageWriteBatch.Set(kvp.Key, kvp.Value.After);
             }
+        }
+
+        /// <summary>Whether the block wiped this storage or touched a slot that <paramref name="balChanges"/> does not write.</summary>
+        public bool TouchesSlotsOutside(ReadOnlyAccountChanges balChanges)
+        {
+            if (_wasCleared) return true;
+
+            foreach (KeyValuePair<SlotKey, StorageChangeTrace> kvp in BlockChange)
+            {
+                if (!balChanges.TryGetDeclaredSlotChanges(kvp.Key, out ReadOnlySlotChanges? slotChanges) || slotChanges is null) return true;
+            }
+
+            return false;
         }
 
         public void RemoveStorageTree() => _backend = null;
@@ -1527,10 +1550,23 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         public void SetCapturedRound(ulong round) => _metadata = round | (_metadata & 1);
 
-        public readonly UInt256 Before;
-        public readonly UInt256 After;
+        /// <summary>Overwrites the trace in place, clearing its captured round.</summary>
+        /// <remarks>
+        /// Assigning a new trace through a ref builds it in a zeroed temporary and block-copies it, and the
+        /// guest makes that copy through corelib's out-of-line <c>Memmove</c>; field stores move the words directly.
+        /// </remarks>
+        public void Set(in UInt256 before, in UInt256 after, bool isInitialValue)
+        {
+            Before = before;
+            After = after;
+            _metadata = isInitialValue ? 1UL : 0UL;
+        }
+
+        public UInt256 Before { readonly get; private set; }
+        public UInt256 After { readonly get; private set; }
         private ulong _metadata;
         public readonly bool IsInitialValue => (_metadata & 1) != 0;
+        public readonly bool IsPendingWrite => Before != After || IsInitialValue;
         public readonly ulong CapturedRound => _metadata & ~1UL;
     }
 }

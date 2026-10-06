@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Network.P2P.Subprotocols;
@@ -32,13 +33,33 @@ internal static class UndecodableResponse
         return payload;
     }
 
-    public static void AssertRejectedAsUnrequested(Action<ZeroPacket> handle, int packetType)
+    public static void AssertRejectedAsUnrequested(Action<ZeroPacket> handle, int packetType) =>
+        AssertRejected(handle, new ZeroPacket(Unpooled.WrappedBuffer(Create())) { PacketType = (byte)packetType }, "has not been requested");
+
+    /// <summary>
+    /// A <c>[request-id, ...fields, [[item, ...]]]</c> receipts response with one block of <paramref name="receipts"/>
+    /// items that are not receipts, so decoding it would fail with an RLP error.
+    /// </summary>
+    /// <param name="requestId">The request id, or <see langword="null"/> for an eth/63 response, which is the block list alone.</param>
+    public static byte[] CreateReceipts(long? requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
     {
-        ZeroPacket packet = new(Unpooled.WrappedBuffer(Create())) { PacketType = (byte)packetType };
+        Rlp block = Rlp.Encode(Enumerable.Repeat(new Rlp([0x01]), receipts).ToArray());
+        Rlp blocks = Rlp.Encode(new[] { block });
+        Rlp response = requestId is long id ? Rlp.Encode([Rlp.Encode(id), .. fieldsBeforeReceipts, blocks]) : blocks;
+        return response.Bytes;
+    }
+
+    /// <summary>
+    /// Asserts that a receipts response with more receipts than the request allows is rejected before it is decoded.
+    /// </summary>
+    public static void AssertReceiptsRejectedBeforeDecoding(Action<ZeroPacket> handle, byte[] content, int packetType) =>
+        AssertRejected(handle, new ZeroPacket(Unpooled.WrappedBuffer(content)) { PacketType = (byte)packetType }, "exceeds the request");
+
+    private static void AssertRejected(Action<ZeroPacket> handle, ZeroPacket packet, string message)
+    {
         try
         {
-            Assert.That(() => handle(packet),
-                Throws.TypeOf<SubprotocolException>().With.Message.Contains("has not been requested"));
+            Assert.That(() => handle(packet), Throws.TypeOf<SubprotocolException>().With.Message.Contains(message));
         }
         finally
         {

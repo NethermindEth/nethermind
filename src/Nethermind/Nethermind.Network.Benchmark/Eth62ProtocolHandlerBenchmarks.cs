@@ -10,6 +10,7 @@ using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
@@ -65,7 +66,8 @@ namespace Nethermind.Network.Benchmarks
                 new TxValidator(TestBlockchainIds.ChainId),
                 new SpecChangeTxValidator(TestBlockchainIds.ChainId),
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, tree).GetDefaultComparer(),
+                TestFrameTxWidthLedger.For(new TxPoolConfig()));
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);

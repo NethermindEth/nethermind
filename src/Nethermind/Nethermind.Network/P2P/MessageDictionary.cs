@@ -119,12 +119,25 @@ public class MessageDictionary<T66Msg, TData>(ProtocolHandlerBase handler, TimeS
     /// The request stays pending; <see cref="Handle"/> still claims it once the response is decoded.
     /// </remarks>
     /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
-    public void ThrowIfNotRequested(ReadOnlySpan<byte> content)
+    public void ThrowIfNotRequested(ReadOnlySpan<byte> content) => GetPendingRequest(content);
+
+    /// <summary>
+    /// Returns the pending request that the response in <paramref name="content"/> answers.
+    /// </summary>
+    /// <remarks>
+    /// Like <see cref="ThrowIfNotRequested"/>, called before deserialization; the request stays pending, so the
+    /// response can be checked against it before <see cref="Handle"/> claims it.
+    /// </remarks>
+    /// <exception cref="SubprotocolException">The request id is unreadable or not pending.</exception>
+    public T66Msg GetPendingRequest(ReadOnlySpan<byte> content)
     {
-        if (!Eth66RequestId.TryPeek(content, out long id) || !_requests.ContainsKey(id))
+        Request<T66Msg, TData>? request = null;
+        if (!Eth66RequestId.TryPeek(content, out long id) || !_requests.TryGetValue(id, out request))
         {
             ThrowNotRequested();
         }
+
+        return request.Message;
     }
 
     [StackTraceHidden, DoesNotReturn]

@@ -6,7 +6,10 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Encoding;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
@@ -66,6 +69,25 @@ public class ReceiptsMessageSerializerTests
                     }
                 }
             }
+        }
+    }
+
+    [Test]
+    public void Zero_length_bloom_decodes_only_on_a_chain_scheduling_eip7668([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        ReceiptsMessageSerializer serializer = new(new TestSingleReleaseSpecProvider(spec));
+        using ReceiptsMessage message = new(new TxReceipt[][] { [Build.A.Receipt.WithAllFieldsFilled.WithBloom(Bloom.ZeroLength).TestObject] }.ToPooledList());
+        byte[] serialized = serializer.Serialize(message);
+
+        if (eip7668)
+        {
+            using ReceiptsMessage deserialized = serializer.Deserialize(serialized);
+            Assert.That(deserialized.TxReceipts[0][0].Bloom, Is.SameAs(Bloom.ZeroLength));
+        }
+        else
+        {
+            Assert.That(() => serializer.Deserialize(serialized), Throws.TypeOf<RlpException>());
         }
     }
 

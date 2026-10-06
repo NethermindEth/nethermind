@@ -95,6 +95,65 @@ public static class FrameTxSignatureValidator
         return true;
     }
 
+    /// <summary>Recovers the signer of every well-formed SECP256K1 entry into <see cref="TxFrameSignature.Recovered"/>,
+    /// so a later validation of the same transaction skips the recovery.</summary>
+    /// <remarks>Never decides validity: an entry is still fully checked when the transaction executes.</remarks>
+    public static void RecoverSecp256k1Signers(Transaction tx, IEthereumEcdsa ecdsa)
+    {
+        TxFrameSignature[]? signatures = tx.FrameSignatures;
+        if (signatures is null) return;
+
+        ValueHash256 sigHash = default;
+        bool sigHashComputed = false;
+        foreach (TxFrameSignature signature in signatures)
+        {
+            ReadOnlySpan<byte> raw = signature.Signature.Span;
+            if (signature.Scheme != TxFrameSignature.SchemeSecp256k1
+                || (!signature.Msg.IsEmpty && signature.Msg.Length != Hash256.Size)
+                || raw.Length != TxFrameSignature.Secp256k1SignatureLength
+                || raw[0] > 1
+                || !HasCanonicalSecp256k1RS(raw))
+            {
+                continue;
+            }
+
+            if (signature.Msg.IsEmpty && !sigHashComputed)
+            {
+                sigHash = FrameTxSigHash.ComputeValue(tx);
+                sigHashComputed = true;
+            }
+
+            RecoverSecp256k1(signature, raw, signature.Msg.IsEmpty ? sigHash : new ValueHash256(signature.Msg.Span), ecdsa);
+        }
+    }
+
+    /// <summary>Whether every SECP256K1 entry carries a recovered signer.</summary>
+    public static bool Secp256k1SignersRecovered(Transaction tx)
+    {
+        foreach (TxFrameSignature signature in tx.FrameSignatures ?? [])
+        {
+            if (signature.Scheme == TxFrameSignature.SchemeSecp256k1 && signature.Recovered is null) return false;
+        }
+
+        return true;
+    }
+
+    private static bool HasCanonicalSecp256k1RS(ReadOnlySpan<byte> raw)
+    {
+        UInt256 r = new(raw[1..33], isBigEndian: true);
+        UInt256 s = new(raw[33..65], isBigEndian: true);
+        return !(r.IsZero || r >= SecP256k1Curve.N || s.IsZero || s > SecP256k1Curve.HalfN);
+    }
+
+    private static Address? RecoverSecp256k1(TxFrameSignature signature, ReadOnlySpan<byte> raw, in ValueHash256 message, IEthereumEcdsa ecdsa)
+    {
+        if (signature.Recovered is { } cached && cached.Message == message) return cached.Signer;
+
+        Address? recovered = ecdsa.RecoverAddress(new Signature(raw[1..33], raw[33..65], (ulong)raw[0] + Signature.VOffset), in message);
+        if (recovered is not null) signature.Recovered = new TxFrameSignature.SignerRecovery(message, recovered);
+        return recovered;
+    }
+
     private static bool ValidateSecp256k1(TxFrameSignature signature, Address resolvedSigner, in ValueHash256 message, IEthereumEcdsa ecdsa, bool skipVerification, out string? error)
     {
         error = null;
@@ -105,9 +164,7 @@ public static class FrameTxSignatureValidator
         if (v > 1) return Fail(NonCanonicalSignature, out error);
         if (skipVerification) return true;
 
-        UInt256 r = new(raw[1..33], isBigEndian: true);
-        UInt256 s = new(raw[33..65], isBigEndian: true);
-        if (r.IsZero || r >= SecP256k1Curve.N || s.IsZero || s > SecP256k1Curve.HalfN)
+        if (!HasCanonicalSecp256k1RS(raw))
         {
             return Fail(NonCanonicalSignature, out error);
         }
@@ -115,8 +172,7 @@ public static class FrameTxSignatureValidator
         // Split as the P256 arm is: recovery failing outright is the signature not verifying, and only a
         // recovered address that differs from the signer is a signer mismatch. The canonicality gate above
         // bounds r but cannot make it a curve x-coordinate, so a null recovery is reachable.
-        Signature ecdsaSignature = new(raw[1..33], raw[33..65], v + Signature.VOffset);
-        Address? recovered = ecdsa.RecoverAddress(ecdsaSignature, in message);
+        Address? recovered = RecoverSecp256k1(signature, raw, in message, ecdsa);
         if (recovered is null) return Fail(InvalidSignature, out error);
         return recovered == resolvedSigner || Fail(InvalidSecp256k1Signer, out error);
     }

@@ -82,6 +82,77 @@ public class GuestAddressHashTests
         }
     }
 
+    [Test]
+    public void Slot_index_hash_reuses_the_memo_only_for_the_last_slot([Values] bool zeroKey)
+    {
+        // A fresh seed leaves the memo holding the all-zero key.
+        byte[] slot = zeroKey ? new byte[32] : SlotBytes;
+        byte[] otherSlot = (byte[])SlotBytes.Clone();
+        otherSlot[^1] ^= 0x01;
+        ulong addressSum = SpanExtensions.SumAddressWords(ref MemoryMarshal.GetArrayDataReference(AddressBytes));
+
+        SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
+        ulong afterReseed = MixSlotIndex(slot);
+        MixSlot(addressSum, otherSlot);
+        ulong computed = MixSlotIndex(slot);
+        MixSlot(~addressSum, slot);
+        ulong remembered = MixSlotIndex(slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterReseed, Is.EqualTo(computed), "after reseed");
+            Assert.That(remembered, Is.EqualTo(computed), "remembered");
+            Assert.That(MixSlotIndex(otherSlot), Is.Not.EqualTo(computed), "other slot");
+        }
+    }
+
+    [Test]
+    public void Slot_index_hash_misses_the_memo_when_any_lane_differs([Range(0, 3)] int lane)
+    {
+        byte[] laneSlot = (byte[])SlotBytes.Clone();
+        laneSlot[lane * sizeof(ulong)] ^= 0x01;
+        ulong addressSum = SpanExtensions.SumAddressWords(ref MemoryMarshal.GetArrayDataReference(AddressBytes));
+
+        SpanExtensions.SeedHashes(SeedGuestHashes.Seed);
+        ulong computed = MixSlotIndex(laneSlot);
+        MixSlot(addressSum, SlotBytes);
+
+        Assert.That(MixSlotIndex(laneSlot), Is.EqualTo(computed));
+    }
+
+    private static ulong MixSlotIndex(byte[] slot) => SpanExtensions.MixSlotIndex(ref MemoryMarshal.GetArrayDataReference(slot));
+
+    [Test]
+    public void Storage_cell_hash_is_its_address_and_slot_hash()
+    {
+        UInt256 slot = new(SlotBytes, isBigEndian: true);
+        StorageCell cell = new(new Address(AddressBytes), in slot);
+        StorageCell equalCell = new(new Address(AddressBytes), in slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cell.GetHashCode64(), Is.EqualTo(cell.Address.GetHashCode64(in slot)));
+            Assert.That(equalCell.GetHashCode64(), Is.EqualTo(cell.GetHashCode64()), "equal cell");
+            Assert.That(new StorageCell(cell.Address, slot + 1).GetHashCode64(), Is.Not.EqualTo(cell.GetHashCode64()), "other slot");
+        }
+    }
+
+    [Test]
+    public void Storage_cell_hash_uses_the_seed_active_when_it_is_made()
+    {
+        UInt256 slot = new(SlotBytes, isBigEndian: true);
+        long defaultSeedHash = new StorageCell(new Address(AddressBytes), in slot).GetHashCode64();
+
+        SpanExtensions.SeedHashes(OtherSeed);
+        StorageCell cell = new(new Address(AddressBytes), in slot);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cell.GetHashCode64(), Is.EqualTo(cell.Address.GetHashCode64(in slot)));
+            Assert.That(cell.GetHashCode64(), Is.Not.EqualTo(defaultSeedHash));
+        }
+    }
+
     private static ulong MixSlot(byte[] address, byte[] slot) =>
         MixSlot(SpanExtensions.SumAddressWords(ref MemoryMarshal.GetArrayDataReference(address)), slot);
 

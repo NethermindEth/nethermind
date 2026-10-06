@@ -47,18 +47,27 @@ public sealed class SnapshotBundle : IDisposable
 
     internal ResourcePool.Usage _usage;
 
+    // Slot reads that reach the wrapped bundle go through its negative filter. Only read-only execution opts in;
+    // block processing keeps the plain loop, so its reads do not depend on the filter.
+    private readonly bool _filterInMemorySlotReads;
+
+    /// <param name="filterInMemorySlotReads">Serve slot reads with
+    /// <see cref="ReadOnlySnapshotBundle.GetSlotFiltered"/>; for read-only execution only.</param>
     public SnapshotBundle(
         ReadOnlySnapshotBundle readOnlySnapshotBundle,
         ITrieNodeCache trieNodeCache,
         IResourcePool resourcePool,
         ResourcePool.Usage usage,
-        SnapshotPooledList? snapshots = null)
+        SnapshotPooledList? snapshots = null,
+        bool filterInMemorySlotReads = false)
     {
         _readOnlySnapshotBundle = readOnlySnapshotBundle;
         _snapshots = snapshots ?? new SnapshotPooledList(1);
         _trieNodeCache = trieNodeCache;
         _resourcePool = resourcePool;
         _usage = usage;
+        // A bundle that can never have a filter would only pay GetSlotFiltered's extra checks on every read.
+        _filterInMemorySlotReads = filterInMemorySlotReads && readOnlySnapshotBundle.MayFilterSlots;
 
         _currentPooledContent = resourcePool.GetSnapshotContent(usage);
         _transientResource = resourcePool.GetCachedResource(usage);
@@ -157,7 +166,14 @@ public sealed class SnapshotBundle : IDisposable
             }
         }
 
-        _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
+        if (_filterInMemorySlotReads)
+        {
+            _readOnlySnapshotBundle.GetSlotFiltered(selfDestructStateIdx, key, out value);
+        }
+        else
+        {
+            _readOnlySnapshotBundle.GetSlot(selfDestructStateIdx, key, out value);
+        }
     }
 
     public TrieNode FindStateNodeOrUnknown(in TreePath path, Hash256 hash)

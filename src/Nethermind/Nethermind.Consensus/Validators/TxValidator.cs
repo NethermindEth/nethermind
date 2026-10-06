@@ -135,6 +135,7 @@ public class CompositeTxValidator(params ITxValidator[] validators) : ITxValidat
 {
     // Bound once, each delegate calls its implementation directly, whereas one interface call site shared by
     // all the validator types resolves the target through a polymorphic dispatch cache on every call.
+    // A validator implementing only a shorter overload binds the interface default, which dispatches to it again.
     private readonly Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>[] _validators =
         Array.ConvertAll(validators, static validator =>
             (Func<Transaction, IReleaseSpec, ulong, TxValidationOptions, ValidationResult>)validator.IsWellFormed);
@@ -222,6 +223,9 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
 {
     internal static readonly ReleaseSpecTxValidator Instance = new();
 
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         !(validate?.Invoke(releaseSpec) ?? IsEnabled(transaction.Type, releaseSpec))
             ? TxErrorMessages.InvalidTxType(releaseSpec.Name)
@@ -241,6 +245,9 @@ public sealed class ReleaseSpecTxValidator(Func<IReleaseSpec, bool>? validate = 
 
 public sealed class ExpectedChainIdTxValidator(ulong chainId) : ITxValidator
 {
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.ChainId != chainId ? TxErrorMessages.InvalidTxChainId(chainId, transaction.ChainId) : ValidationResult.Success;
 }
@@ -249,6 +256,9 @@ public sealed class GasFieldsTxValidator : ITxValidator
 {
     public static readonly GasFieldsTxValidator Instance = new();
     private GasFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
@@ -409,6 +419,9 @@ public sealed class ContractSizeTxValidator : ITxValidator
     public static readonly ContractSizeTxValidator Instance = new();
     private ContractSizeTxValidator() { }
 
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.IsAboveInitCode(releaseSpec) ? TxErrorMessages.ContractSizeTooBig : ValidationResult.Success;
 }
@@ -421,6 +434,9 @@ public sealed class NonBlobFieldsTxValidator : ITxValidator
 {
     public static readonly NonBlobFieldsTxValidator Instance = new();
     private NonBlobFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
     {
@@ -437,6 +453,9 @@ public sealed class NonSetCodeFieldsTxValidator : ITxValidator
     public static readonly NonSetCodeFieldsTxValidator Instance = new();
     private NonSetCodeFieldsTxValidator() { }
 
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) => transaction switch
     {
         { AuthorizationList: not null } => TxErrorMessages.NotAllowedAuthorizationList,
@@ -448,6 +467,9 @@ public sealed class BlobFieldsTxValidator : ITxValidator
 {
     public static readonly BlobFieldsTxValidator Instance = new();
     private BlobFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction switch
@@ -583,6 +605,9 @@ public sealed class MempoolBlobTxProofVersionValidator : ITxValidator
     public static readonly MempoolBlobTxProofVersionValidator Instance = new();
     private MempoolBlobTxProofVersionValidator() { }
 
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
         if (!transaction.SupportsBlobs && !transaction.CarriesBlobs) return ValidationResult.Success;
@@ -601,6 +626,9 @@ public abstract class BaseSignatureTxValidator : ITxValidator
 {
     protected virtual ValidationResult ValidateChainId(Transaction transaction, IReleaseSpec releaseSpec) =>
         releaseSpec.ValidateChainId ? TxErrorMessages.InvalidTxSignature : ValidationResult.Success;
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -642,6 +670,10 @@ public sealed class NoContractCreationTxValidator : ITxValidator
 {
     public static readonly NoContractCreationTxValidator Instance = new();
     private NoContractCreationTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         SetCodeTxValidation.ValidateNoContractCreation(transaction);
 }
@@ -651,6 +683,9 @@ public sealed class AuthorizationListTxValidator : ITxValidator
     public static readonly AuthorizationListTxValidator Instance = new();
     private AuthorizationListTxValidator() { }
 
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
+
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         SetCodeTxValidation.ValidateAuthorizationList(transaction);
 }
@@ -659,6 +694,9 @@ public sealed class GasLimitCapTxValidator : ITxValidator
 {
     public static readonly GasLimitCapTxValidator Instance = new();
     private GasLimitCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -675,6 +713,9 @@ public sealed class NonceCapTxValidator : ITxValidator
 {
     public static readonly NonceCapTxValidator Instance = new();
     private NonceCapTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit, TxValidationOptions options) =>
+        IsWellFormed(transaction, releaseSpec);
 
     public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
         transaction.Nonce < ulong.MaxValue ? ValidationResult.Success : TxErrorMessages.NonceTooHigh;

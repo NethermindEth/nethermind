@@ -30,12 +30,29 @@ namespace Nethermind.Evm.ZkEvm.Test;
 public class GuestOpcodeHandlerTests
 {
     private const byte STOP = (byte)Instruction.STOP;
+    private const byte ADD = (byte)Instruction.ADD;
     private const byte SUB = (byte)Instruction.SUB;
+    private const byte MUL = (byte)Instruction.MUL;
+    private const byte DIV = (byte)Instruction.DIV;
+    private const byte AND = (byte)Instruction.AND;
+    private const byte OR = (byte)Instruction.OR;
+    private const byte XOR = (byte)Instruction.XOR;
     private const byte LT = (byte)Instruction.LT;
     private const byte GT = (byte)Instruction.GT;
+    private const byte SLT = (byte)Instruction.SLT;
+    private const byte SGT = (byte)Instruction.SGT;
     private const byte EQ = (byte)Instruction.EQ;
     private const byte SHL = (byte)Instruction.SHL;
     private const byte SHR = (byte)Instruction.SHR;
+    private const byte SAR = (byte)Instruction.SAR;
+    private const byte BYTE = (byte)Instruction.BYTE;
+    private const byte SIGNEXTEND = (byte)Instruction.SIGNEXTEND;
+    private const byte NOT = (byte)Instruction.NOT;
+    private const byte ADDMOD = (byte)Instruction.ADDMOD;
+    private const byte MULMOD = (byte)Instruction.MULMOD;
+    private const byte MSTORE8 = (byte)Instruction.MSTORE8;
+    private const byte GAS = (byte)Instruction.GAS;
+    private const byte RETURNDATASIZE = (byte)Instruction.RETURNDATASIZE;
     private const byte ISZERO = (byte)Instruction.ISZERO;
     private const byte MLOAD = (byte)Instruction.MLOAD;
     private const byte MSTORE = (byte)Instruction.MSTORE;
@@ -54,7 +71,9 @@ public class GuestOpcodeHandlerTests
     private const byte DUP1 = (byte)Instruction.DUP1;
     private const byte DUP2 = (byte)Instruction.DUP2;
     private const byte SWAP1 = (byte)Instruction.SWAP1;
+    private const byte POP = (byte)Instruction.POP;
     private const byte CALLDATALOAD = (byte)Instruction.CALLDATALOAD;
+    private const byte CALLDATASIZE = (byte)Instruction.CALLDATASIZE;
     private const byte KECCAK256 = (byte)Instruction.KECCAK256;
     private const byte INVALID = (byte)Instruction.INVALID;
 
@@ -116,8 +135,16 @@ public class GuestOpcodeHandlerTests
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, LT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
         yield return Succeeds("GT PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 0, DUP2, GT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SLT PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, SLT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SGT PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 0, DUP2, SGT, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
         yield return Succeeds("ISZERO ISZERO PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, ISZERO, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * conditionIteration);
+        yield return Succeeds("SLT ISZERO PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, PUSH1, 1, DUP2, SLT, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
+        yield return Succeeds("SGT ISZERO PUSH2 JUMPI loop",
+            Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 1, SGT, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
         yield return Succeeds("EQ ISZERO PUSH2 JUMPI loop",
             Code(PUSH1, 3, JUMPDEST, PUSH1, 1, SWAP1, SUB, DUP1, PUSH1, 0, EQ, ISZERO, PUSH2, 0, 2, JUMPI, STOP), 3 + 3 * (conditionIteration + 3));
         yield return Succeeds("EQ PUSH2 JUMPI not taken onto an invalid destination",
@@ -178,6 +205,17 @@ public class GuestOpcodeHandlerTests
         yield return Succeeds("PUSH2 with one immediate", Code(PUSH2, 1), 3);
         yield return Succeeds("PUSH2 ending the code", Code(PUSH2, 1, 2), 3);
         yield return Succeeds("PUSH2 onto a stack one short of full", Code([.. Filled(1023, PUSH0), PUSH2, 0, 0, STOP]), 1023 * 2 + 3);
+
+        // Every width from three bytes up, each with a leading limb of its own width.
+        for (int n = 3; n <= 32; n++)
+        {
+            byte[] immediates = DistinctWord(n)[..n];
+            yield return Succeeds($"PUSH{n}", Code([(byte)(PUSH1 + n - 1), .. immediates, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3),
+                [.. new byte[32 - n], .. immediates]);
+        }
+
+        // Pairs fuse, and the odd one out runs alone.
+        yield return Succeeds("POP runs", Code(PUSH0, PUSH0, PUSH0, POP, POP, POP, PUSH0, POP, STOP), 4 * 2 + 4 * 2);
 
         // Memory starts empty, so the first store grows it; the next two reuse it and the last grows it again.
         yield return Succeeds("MSTORE and MLOAD round trip",
@@ -240,6 +278,76 @@ public class GuestOpcodeHandlerTests
             (growingStores - 1) * (2 + 2 + 3) + (3 + 3 + 3) + MemoryCost(growingStores),
             overflow);
 
+        // Carries and borrows through every limb, and operands in either order.
+        BigInteger wordA = new(WordA, isUnsigned: true, isBigEndian: true);
+        BigInteger wordB = new(WordB, isUnsigned: true, isBigEndian: true);
+        BigInteger allOnes = (BigInteger.One << 256) - 1;
+        (BigInteger Top, BigInteger Second)[] operands =
+        [
+            (wordA, wordB), (wordB, wordA), (allOnes, 1), (1, allOnes), (ulong.MaxValue, 1), (0, 1),
+            (BigInteger.One << 192, (BigInteger.One << 192) - 1),
+            // A word below 2^64 against one whose carry or borrow stops at each limb in turn.
+            (1, (BigInteger.One << 64) - 1), (1, (BigInteger.One << 128) - 1), (1, (BigInteger.One << 192) - 1),
+            (BigInteger.One << 64, 1), (BigInteger.One << 128, 1), (BigInteger.One << 192, 1),
+        ];
+        (byte Op, string Name, Func<BigInteger, BigInteger, BigInteger> Apply)[] operations =
+        [
+            (ADD, "ADD", static (a, b) => a + b), (SUB, "SUB", static (a, b) => a - b),
+            (AND, "AND", static (a, b) => a & b), (OR, "OR", static (a, b) => a | b), (XOR, "XOR", static (a, b) => a ^ b),
+        ];
+        foreach ((byte op, string name, Func<BigInteger, BigInteger, BigInteger> apply) in operations)
+        {
+            foreach ((BigInteger top, BigInteger second) in operands)
+            {
+                yield return Succeeds($"{name} of {top:x} and {second:x}",
+                    Code([PUSH32, .. Word(second), PUSH32, .. Word(top), op, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                    Word(apply(top, second)));
+            }
+        }
+
+        // Signs either way, equal words, and words that differ only below the sign limb.
+        (BigInteger Top, BigInteger Second)[] signedOperands =
+        [
+            (-1, 1), (1, -1), (-2, -1), (-1, -2), (-1, -1), (BigInteger.One << 254, -(BigInteger.One << 254)), (5, 7), (BigInteger.One << 192, 1),
+        ];
+        foreach ((BigInteger top, BigInteger second) in signedOperands)
+        {
+            yield return Succeeds($"SLT of {top} and {second}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), SLT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                Word(top < second ? 1 : 0));
+            yield return Succeeds($"SGT of {top} and {second}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), SGT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 3 + (3 + 3 + 3),
+                Word(top > second ? 1 : 0));
+        }
+
+        // Operands below 2^64, powers of two on either side, a zero divisor, and wider ones the shared handlers take.
+        (BigInteger Top, BigInteger Second)[] factors =
+        [
+            (ulong.MaxValue, ulong.MaxValue), (ulong.MaxValue, 7), (7, ulong.MaxValue), (0, wordA), (wordA, 0), (wordA, 1), (1, wordA),
+            (BigInteger.One << 200, wordA), (wordA, BigInteger.One << 64), (wordA, BigInteger.One << 224), (wordA, BigInteger.One << 255),
+            (wordA, wordB), (wordB, (BigInteger.One << 64) + 1),
+        ];
+        foreach ((BigInteger top, BigInteger second) in factors)
+        {
+            yield return Succeeds($"MUL of {top:x} and {second:x}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), MUL, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 5 + (3 + 3 + 3),
+                Word(top * second));
+            yield return Succeeds($"DIV of {top:x} by {second:x}",
+                Code([PUSH32, .. Word(second), PUSH32, .. Word(top), DIV, PUSH1, 0, MSTORE, STOP]), 3 + 3 + 5 + (3 + 3 + 3),
+                Word(second.IsZero ? BigInteger.Zero : top / second));
+        }
+
+        // At every depth: the word moved to the top is stored first, then the word under it after the copy, or for a
+        // swap the word sent down, once the words between are popped.
+        for (int n = 1; n <= 16; n++)
+        {
+            yield return Succeeds($"DUP{n}", Code([.. DistinctWords(n), (byte)(DUP1 + n - 1), PUSH1, 0, MSTORE, PUSH1, 32, MSTORE, STOP]),
+                3 * (ulong)n + 3 + (3 + 3) + (3 + 3) + MemoryCost(2), [.. DistinctWord(0), .. DistinctWord(n - 1)]);
+            yield return Succeeds($"SWAP{n}",
+                Code([.. DistinctWords(n + 1), (byte)(SWAP1 + n - 1), PUSH1, 0, MSTORE, .. Filled(n - 1, POP), PUSH1, 32, MSTORE, STOP]),
+                3 * (ulong)(n + 1) + 3 + (3 + 3) + 2 * (ulong)(n - 1) + (3 + 3) + MemoryCost(2), [.. DistinctWord(0), .. DistinctWord(n)]);
+        }
+
         // Words wholly inside the input data, one ending at its last byte, and ones that run past it or start past it,
         // which read as zero-padded.
         byte[] input = Enumerable.Range(1, 40).Select(static b => (byte)b).ToArray();
@@ -250,6 +358,11 @@ public class GuestOpcodeHandlerTests
                 3 + 3 + (3 + 3 + 3), padded[offset..(offset + 32)], input);
         }
 
+        yield return Succeeds("CALLDATASIZE", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), Word(input.Length), input);
+        yield return Succeeds("RETURNDATASIZE before any call", Code(RETURNDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
+        // Run on exactly its gas, GAS leaves what the opcodes after it charge.
+        yield return Succeeds("GAS", Code(GAS, PUSH1, 0, MSTORE, JUMPDEST, STOP), 2 + 3 + (3 + 3) + 1, Word(3 + (3 + 3) + 1));
+        yield return Succeeds("CALLDATASIZE of no input", Code(CALLDATASIZE, PUSH1, 0, MSTORE, STOP), 2 + 3 + (3 + 3), new byte[32]);
         yield return Succeeds("CALLDATALOAD at 2^32", Code(PUSH5, 1, 0, 0, 0, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32], input);
         yield return Succeeds("CALLDATALOAD of no input", Code(PUSH1, 0, CALLDATALOAD, PUSH1, 0, MSTORE, STOP), 3 + 3 + (3 + 3 + 3), new byte[32]);
 
@@ -265,6 +378,59 @@ public class GuestOpcodeHandlerTests
                 shiftGas, Word(amount < 256 ? shifted << (int)amount : BigInteger.Zero));
             yield return Succeeds($"SHR by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SHR, PUSH1, 0, MSTORE, STOP]),
                 shiftGas, Word(amount < 256 ? shifted >> (int)amount : BigInteger.Zero));
+            // BigInteger shifts arithmetically, and a shift past the word leaves the sign.
+            BigInteger negative = shifted - (BigInteger.One << 256);
+            yield return Succeeds($"SAR of a negative word by {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(negative >> (int)BigInteger.Min(amount, 256)));
+            yield return Succeeds($"SAR of a positive word by {name}", Code([PUSH32, .. WordA, PUSH32, .. Word(amount), SAR, PUSH1, 0, MSTORE, STOP]),
+                shiftGas, Word(new BigInteger(WordA, isUnsigned: true, isBigEndian: true) >> (int)BigInteger.Min(amount, 256)));
+        }
+
+        // Every byte boundary of a limb, the last byte of the word, and indices past it, including one only a high limb makes large.
+        BigInteger[] indices = [0, 1, 7, 8, 15, 16, 23, 24, 30, 31, 32, BigInteger.One << 64];
+        foreach (BigInteger index in indices)
+        {
+            string name = index > ushort.MaxValue ? "2^64" : index.ToString();
+            yield return Succeeds($"BYTE {name}", Code([PUSH32, .. WordB, PUSH32, .. Word(index), BYTE, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + (3 + 3 + 3), Word(index < 32 ? WordB[(int)index] : 0));
+            // WordA's bytes are below 0x80 and WordB's above, so the sign byte at every index extends both ways.
+            foreach (byte[] word in (byte[][])[WordA, WordB])
+            {
+                BigInteger value = new(word, isUnsigned: true, isBigEndian: true);
+                BigInteger extended = value;
+                if (index < 31)
+                {
+                    int bits = 8 * ((int)index + 1);
+                    BigInteger low = value & ((BigInteger.One << bits) - 1);
+                    extended = low >= BigInteger.One << (bits - 1) ? low - (BigInteger.One << bits) : low;
+                }
+
+                yield return Succeeds($"SIGNEXTEND {name} of {word[0]:x2}..", Code([PUSH32, .. word, PUSH32, .. Word(index), SIGNEXTEND, PUSH1, 0, MSTORE, STOP]),
+                    3 + 3 + 5 + (3 + 3 + 3), Word(extended));
+            }
+        }
+
+        byte[] storedByte = new byte[32];
+        storedByte[31] = 0xab;
+        storedByte[5] = 0x34;
+        yield return Succeeds("MSTORE8 inside active memory",
+            Code(PUSH1, 0xab, PUSH1, 0, MSTORE, PUSH2, 0x12, 0x34, PUSH1, 5, MSTORE8, STOP), 3 + 3 + (3 + 3) + 3 + 3 + 3, storedByte);
+        byte[] grownByte = new byte[64];
+        grownByte[40] = 0x34;
+        yield return Succeeds("MSTORE8 growing memory", Code(PUSH2, 0x12, 0x34, PUSH1, 40, MSTORE8, STOP), 3 + 3 + 3 + MemoryCost(2), grownByte);
+
+        yield return Succeeds("NOT", Code([PUSH32, .. WordA, NOT, PUSH1, 0, MSTORE, STOP]), 3 + 3 + (3 + 3 + 3),
+            Word(~new BigInteger(WordA, isUnsigned: true, isBigEndian: true)));
+
+        // A zero modulus, one, and ones the operands reach or pass.
+        BigInteger[] moduli = [0, 1, 97, ulong.MaxValue, new BigInteger(WordB, isUnsigned: true, isBigEndian: true)];
+        foreach (BigInteger modulus in moduli)
+        {
+            BigInteger a = new(WordB, isUnsigned: true, isBigEndian: true), b = new(WordA, isUnsigned: true, isBigEndian: true);
+            yield return Succeeds($"ADDMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, ADDMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : (a + b) % modulus));
+            yield return Succeeds($"MULMOD mod {modulus:x}", Code([PUSH32, .. Word(modulus), PUSH32, .. WordA, PUSH32, .. WordB, MULMOD, PUSH1, 0, MSTORE, STOP]),
+                3 + 3 + 3 + 8 + (3 + 3 + 3), Word(modulus.IsZero ? 0 : a * b % modulus));
         }
     }
 
@@ -289,6 +455,10 @@ public class GuestOpcodeHandlerTests
         yield return Fails("PUSH2 JUMP onto a non-JUMPDEST byte", Code(PUSH2, 0, 4, JUMP, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI onto a non-JUMPDEST byte", Code(PUSH1, 1, PUSH2, 0, 6, JUMPI, STOP), EvmExceptionType.InvalidJumpDestination);
         yield return Fails("PUSH2 JUMPI on an empty stack", Code(PUSH2, 0, 4, JUMPI, JUMPDEST), EvmExceptionType.StackUnderflow);
+        yield return Fails("PUSH0 onto a full stack", Filled(1025, PUSH0), EvmExceptionType.StackOverflow);
+        yield return Fails("GAS onto a full stack", Code([.. Filled(1024, PUSH0), GAS]), EvmExceptionType.StackOverflow);
+        yield return Fails("RETURNDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), RETURNDATASIZE]), EvmExceptionType.StackOverflow);
+        yield return Fails("CALLDATASIZE onto a full stack", Code([.. Filled(1024, PUSH0), CALLDATASIZE]), EvmExceptionType.StackOverflow);
         yield return Fails("PUSH1 onto a full stack", Code([.. Filled(1024, PUSH0), PUSH1, 0, STOP]), EvmExceptionType.StackOverflow);
         // The branch's PUSH2 overflows the stack an ISZERO leaves full, so the comparison runs unfused before it faults.
         yield return Fails("ISZERO PUSH2 JUMPI on a full stack", Code([.. Filled(1024, PUSH0), ISZERO, PUSH2, 0, 0x3f, JUMPI, STOP]), EvmExceptionType.StackOverflow);
@@ -299,6 +469,17 @@ public class GuestOpcodeHandlerTests
         yield return Fails("ISZERO on an empty stack", Code(ISZERO), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 on an empty stack", Code(DUP1), EvmExceptionType.StackUnderflow);
         yield return Fails("DUP1 onto a full stack", Code([.. Filled(1024, PUSH0), DUP1]), EvmExceptionType.StackOverflow);
+        foreach (int n in (int[])[2, 16])
+        {
+            yield return Fails($"DUP{n} one word short", Code([.. Filled(n - 1, PUSH0), (byte)(DUP1 + n - 1)]), EvmExceptionType.StackUnderflow);
+            yield return Fails($"DUP{n} onto a full stack", Code([.. Filled(1024, PUSH0), (byte)(DUP1 + n - 1)]), EvmExceptionType.StackOverflow);
+        }
+
+        foreach (int n in (int[])[1, 16])
+        {
+            yield return Fails($"SWAP{n} one word short", Code([.. Filled(n, PUSH0), (byte)(SWAP1 + n - 1)]), EvmExceptionType.StackUnderflow);
+        }
+
         // DUP1 fits but the selector's PUSH4 does not, so DUP1 runs unfused before the push faults.
         yield return Fails("DUP1 PUSH4 EQ PUSH2 JUMPI on a stack one short of full",
             Code([.. Filled(1023, PUSH0), DUP1, PUSH4, 0, 0, 0, 0, EQ, PUSH2, 0, 0, JUMPI]), EvmExceptionType.StackOverflow);
@@ -309,6 +490,8 @@ public class GuestOpcodeHandlerTests
         // A following jump does not exempt the push from the stack limit.
         yield return Fails("PUSH2 JUMP onto a full stack", Code([.. Filled(1024, PUSH0), PUSH2, 0x04, 0x04, JUMP, JUMPDEST]), EvmExceptionType.StackOverflow);
 
+        yield return Fails("POP on an empty stack", Code(POP), EvmExceptionType.StackUnderflow);
+        yield return Fails("POP POP of one word", Code(PUSH0, POP, POP), EvmExceptionType.StackUnderflow);
         yield return Fails("MSTORE with one operand", Code(PUSH1, 0, MSTORE), EvmExceptionType.StackUnderflow);
         yield return Fails("MLOAD on an empty stack", Code(MLOAD), EvmExceptionType.StackUnderflow);
         yield return Fails("MSTORE at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, MSTORE), EvmExceptionType.OutOfGas);
@@ -322,7 +505,24 @@ public class GuestOpcodeHandlerTests
         yield return Fails("KECCAK256 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("KECCAK256 of 2^32 bytes", Code(PUSH5, 1, 0, 0, 0, 0, PUSH1, 0, KECCAK256), EvmExceptionType.OutOfGas);
         yield return Fails("SHL with one operand", Code(PUSH1, 1, SHL), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[ADD, SUB, AND, OR, XOR])
+        {
+            yield return Fails($"{(Instruction)op} with one operand", Code(PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
+
         yield return Fails("SHR with one operand", Code(PUSH1, 1, SHR), EvmExceptionType.StackUnderflow);
+        foreach (byte op in (byte[])[SAR, BYTE, SIGNEXTEND])
+        {
+            yield return Fails($"{(Instruction)op} with one operand", Code(PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
+
+        yield return Fails("NOT on an empty stack", Code(NOT), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 with one operand", Code(PUSH1, 0, MSTORE8), EvmExceptionType.StackUnderflow);
+        yield return Fails("MSTORE8 at 2^32", Code(PUSH1, 1, PUSH5, 1, 0, 0, 0, 0, MSTORE8), EvmExceptionType.OutOfGas);
+        foreach (byte op in (byte[])[ADDMOD, MULMOD])
+        {
+            yield return Fails($"{(Instruction)op} with two operands", Code(PUSH1, 1, PUSH1, 1, op), EvmExceptionType.StackUnderflow);
+        }
     }
 
     [TestCaseSource(nameof(Successes))]
@@ -390,6 +590,17 @@ public class GuestOpcodeHandlerTests
     public void MLoad_past_the_active_size_of_fresh_memory_charges_its_expansion() =>
         AssertSucceedsOnExactlyItsGas(Code(PUSH1, 0, MLOAD, STOP), 3 + (3 + 3), new byte[32], [], freshMemory: true);
 
+    /// <remarks>The first run leaves its words in the pooled frame's memory, where the gap of the second run's store lies.</remarks>
+    [Test]
+    public void MStore_leaving_a_gap_clears_it([Values(0x10, 0x30, 0x40, 0x45)] int offset)
+    {
+        Run(Code([PUSH32, .. WordB, PUSH1, 0, MSTORE, PUSH32, .. WordB, PUSH1, 32, MSTORE, PUSH32, .. WordB, PUSH1, 64, MSTORE, STOP]), 100);
+
+        ulong words = (ulong)(offset + 32 + 31) / 32;
+        AssertSucceedsOnExactlyItsGas(Code([PUSH32, .. WordA, PUSH1, (byte)offset, MSTORE, STOP]), 3 + 3 + 3 + MemoryCost(words),
+            [.. new byte[offset], .. WordA, .. new byte[(int)words * 32 - offset - 32]], []);
+    }
+
     /// <remarks>
     /// Once the first pass has analyzed the destination, every later iteration runs the fused step, and the range
     /// of gas lets it run out at each of the charges inside it.
@@ -451,9 +662,9 @@ public class GuestOpcodeHandlerTests
             // The code info's copy of the code is the one followed by the padding that dispatch may read.
             EvmStack stack = new(0, ref stackStart, codeInfo.CodeSpan, codeInfo);
             stack.HoistInputData(env.InputData.Span);
-            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm };
-            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, nint, nint, nint*, ref byte, nint, EvmExceptionType>)table[code[0]])(
-                ref stack, gas, ref state, 0, stack.Head, table, ref stack.Code, stack.CodeLength);
+            VirtualMachine<EthereumGasPolicy>.DispatchState state = new() { Gas = ref gasPolicy[0], OpcodeHandlers = table, Vm = vm, Memory = ref frame.Memory };
+            exception = ((delegate*<ref EvmStack, ulong, ref VirtualMachine<EthereumGasPolicy>.DispatchState, ref byte, nint, nint*, ref byte, ref byte, EvmExceptionType>)table[code[0]])(
+                ref stack, gas, ref state, ref stack.Code, stack.Head, table, ref stack.Code, ref stack.Bottom);
         }
 
         ulong size = frame.Memory.Size;
@@ -480,6 +691,12 @@ public class GuestOpcodeHandlerTests
     }
 
     private static byte[] Filled(int length, byte op) => Enumerable.Repeat(op, length).ToArray();
+
+    /// <summary>PUSH32s of <see cref="DistinctWord"/> 0 to <paramref name="count"/> - 1, in that order.</summary>
+    private static byte[] DistinctWords(int count) => Enumerable.Range(0, count).SelectMany(static k => (byte[])[PUSH32, .. DistinctWord(k)]).ToArray();
+
+    /// <summary>A word whose bytes all differ, and differ from every other word's bytes at the same position.</summary>
+    private static byte[] DistinctWord(int k) => Enumerable.Range(0, 32).Select(i => (byte)(13 * k + i)).ToArray();
 
     private static byte[] Repeated(int times, params byte[] ops) => Enumerable.Repeat(ops, times).SelectMany(static o => o).ToArray();
 

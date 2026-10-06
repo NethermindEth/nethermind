@@ -107,7 +107,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    ThrowIfReceiptsNotRequested(message.Content.AsSpan());
+                    ThrowIfReceiptsUnexpected(message.Content.AsSpan());
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content.AsSpan());
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
@@ -168,7 +168,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
 
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
-        protected void ThrowIfReceiptsNotRequested(ReadOnlySpan<byte> content) => _receiptsRequests66.ThrowIfNotRequested(content);
+        protected void ThrowIfReceiptsUnexpected(ReadOnlySpan<byte> content) =>
+            ThrowIfReceiptsExceedRequest(content, 1, _receiptsRequests66.GetPendingRequest(content).EthMessage);
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 

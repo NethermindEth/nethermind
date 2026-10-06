@@ -18,16 +18,18 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockBuildingTracker? _blockBuildingTracker;
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), blockBuildingTracker)
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
         {
+            _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
             Block? head = blockTree.Head;
@@ -53,6 +55,8 @@ namespace Nethermind.Blockchain
 
         public UInt256 CurrentBaseFee { get; private set; }
 
+        public UInt256 NextBaseFee { get; private set; }
+
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
         public ProofVersion CurrentProofVersion { get; private set; }
@@ -73,6 +77,8 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
 
+        public bool IsBuildingBlock => _blockBuildingTracker?.IsBuildingBlock ?? false;
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
@@ -91,6 +97,8 @@ namespace Nethermind.Blockchain
             IReleaseSpec spec = SpecProvider.GetSpec(header);
             BlockGasLimit = header.GasLimit;
             CurrentBaseFee = header.BaseFeePerGas;
+            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
+            NextBaseFee = childSpec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(header, childSpec) : UInt256.Zero;
             CurrentFeePerBlobGas =
                 BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas

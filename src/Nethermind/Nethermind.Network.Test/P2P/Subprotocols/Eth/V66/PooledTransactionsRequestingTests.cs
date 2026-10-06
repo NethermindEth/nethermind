@@ -7,6 +7,7 @@ using Nethermind.Blockchain.Spec;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -80,7 +81,8 @@ public class PooledTransactionsRequestingTests
             new TxValidator(specProvider.ChainId),
             new SpecChangeTxValidator(specProvider.ChainId),
             LimboLogs.Instance,
-            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer());
+            new TransactionComparerProvider(specProvider, blockTree).GetDefaultComparer(),
+            TestFrameTxWidthLedger.For(new TxPoolConfig()));
         ISyncServer syncManager = Substitute.For<ISyncServer>();
         syncManager.Head.Returns(_genesisBlock.Header);
         syncManager.Genesis.Returns(_genesisBlock.Header);
