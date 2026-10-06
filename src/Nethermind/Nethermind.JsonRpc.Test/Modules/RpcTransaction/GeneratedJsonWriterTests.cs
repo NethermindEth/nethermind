@@ -173,6 +173,30 @@ public class GeneratedJsonWriterTests
     }
 
     [Test]
+    public void Converter_for_a_wider_type_uses_the_metadata_path()
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        options.Converters.Insert(0, new WithdrawalsAsObjectConverter());
+        BlockForRpc value = new() { Withdrawals = [] };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GetWriter(typeof(BlockForRpc), options).IsActive(options), Is.False);
+            Assert.That(System.Text.Encoding.UTF8.GetString(Serialize(value, typeof(BlockForRpc), options)), Does.Contain("\"withdrawals\":\"converted\""));
+        }
+    }
+
+    // STJ adapts a converter for a wider type by casting; a generated writer cannot call it as JsonConverter<Withdrawal[]>.
+    private sealed class WithdrawalsAsObjectConverter : System.Text.Json.Serialization.JsonConverter<object>
+    {
+        public override bool CanConvert(Type typeToConvert) => typeToConvert == typeof(Withdrawal[]);
+
+        public override object Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options) => throw new NotSupportedException();
+
+        public override void Write(Utf8JsonWriter writer, object value, JsonSerializerOptions options) => writer.WriteStringValue("converted");
+    }
+
+    [Test]
     public void Naming_policy_is_applied_at_run_time()
     {
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions) { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower };

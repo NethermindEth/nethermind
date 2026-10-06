@@ -96,7 +96,18 @@ internal static class JsonWriterEmitter
         sb.Append("        ").Append(Stj).Append(".JsonEncodedText[] names = ").Append(Runtime).Append(".GeneratedJsonWriters.GetPropertyNames<").Append(type.FullName)
             .Append(">(options, Contract, ").Append(Bool(type.HasOnSerializing)).Append(", ").Append(Bool(type.HasOnSerialized)).Append(", out ")
             .Append(Stj).AppendLine(".Serialization.JsonConverter[] propertyConverters);");
-        sb.AppendLine("        return names is null ? null : new State(names, propertyConverters, options);");
+        sb.AppendLine("        if (names is null) return null;");
+        sb.Append("        ").Append(Stj).Append(".Serialization.JsonConverter[] converters = new ").Append(Stj).Append(".Serialization.JsonConverter[").Append(type.Contract.Length).AppendLine("];");
+        for (int i = 0; i < type.Contract.Length; i++)
+        {
+            PropertyModel p = type.Contract[i];
+            if (!p.Emit) continue;
+            // A converter for another type that STJ adapts by casting cannot be called directly, so such a contract stays on the metadata path.
+            sb.Append("        if (!").Append(Runtime).Append(".GeneratedJsonWriters.TryGetConverter<").Append(p.TypeName).Append(">(")
+                .Append(p.ConverterTypeName is null ? "null" : $"propertyConverters[{i}]").Append(", options, out converters[").Append(i).AppendLine("])) return null;");
+        }
+
+        sb.AppendLine("        return new State(names, converters, options);");
         sb.AppendLine("    }");
         sb.AppendLine();
     }
@@ -192,7 +203,7 @@ internal static class JsonWriterEmitter
         }
 
         sb.AppendLine();
-        sb.Append("        public State(").Append(Stj).Append(".JsonEncodedText[] names, ").Append(Stj).Append(".Serialization.JsonConverter[] propertyConverters, ")
+        sb.Append("        public State(").Append(Stj).Append(".JsonEncodedText[] names, ").Append(Stj).Append(".Serialization.JsonConverter[] converters, ")
             .Append(Stj).AppendLine(".JsonSerializerOptions options)");
         sb.AppendLine("        {");
         sb.Append("            MaxDepth = ").Append(Runtime).AppendLine(".GeneratedJsonWriters.GetMaxDepth(options);");
@@ -204,10 +215,7 @@ internal static class JsonWriterEmitter
             PropertyModel p = type.Contract[i];
             if (!p.Emit) continue;
             sb.Append("            Name").Append(i).Append(" = names[").Append(i).AppendLine("];");
-            sb.Append("            Converter").Append(i).Append(" = ").Append(Runtime).Append(".GeneratedJsonWriters.GetConverter<").Append(p.TypeName).Append(">(");
-            // The metadata contract's own property-level converter instance, so both paths share it.
-            if (p.ConverterTypeName is not null) sb.Append("propertyConverters[").Append(i).Append("], ");
-            sb.AppendLine("options);");
+            sb.Append("            Converter").Append(i).Append(" = (").Append(Stj).Append(".Serialization.JsonConverter<").Append(p.TypeName).Append(">)converters[").Append(i).AppendLine("];");
             sb.Append("            HandleNull").Append(i).Append(" = Converter").Append(i).AppendLine(".HandleNull;");
         }
 

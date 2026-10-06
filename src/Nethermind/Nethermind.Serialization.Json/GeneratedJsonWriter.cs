@@ -287,16 +287,24 @@ internal static class GeneratedJsonWriters
         return false;
     }
 
-    /// <summary>Gets the converter <paramref name="options"/> resolve for a property of type <typeparamref name="TProperty"/>.</summary>
-    /// <remarks>Read from the type's metadata, as the metadata path does, so no reflection is needed.</remarks>
-    public static JsonConverter<TProperty> GetConverter<TProperty>(JsonSerializerOptions options) =>
-        (JsonConverter<TProperty>)TypeInfoJsonSerializer.GetTypeInfo<TProperty>(options).Converter;
+    /// <summary>
+    /// Gets the converter the metadata path uses for a property of type <typeparamref name="TProperty"/>: the contract's
+    /// property-level converter when there is one, otherwise the one <paramref name="options"/> resolve for the type.
+    /// </summary>
+    /// <returns><see langword="false"/> when that converter is not a <see cref="JsonConverter{T}"/> of exactly <typeparamref name="TProperty"/>.</returns>
+    /// <remarks>Read from metadata, as the metadata path does, so no reflection is needed.</remarks>
+    public static bool TryGetConverter<TProperty>(JsonConverter? propertyConverter, JsonSerializerOptions options, [NotNullWhen(true)] out JsonConverter? converter)
+    {
+        JsonConverter resolved = propertyConverter switch
+        {
+            null => TypeInfoJsonSerializer.GetTypeInfo<TProperty>(options).Converter,
+            JsonConverterFactory factory => factory.CreateConverter(typeof(TProperty), options)!,
+            _ => propertyConverter,
+        };
 
-    /// <summary>Gets the converter the metadata path builds from a property-level <c>[JsonConverter]</c> attribute.</summary>
-    public static JsonConverter<TProperty> GetConverter<TProperty>(JsonConverter attributeConverter, JsonSerializerOptions options) =>
-        (JsonConverter<TProperty>)(attributeConverter is JsonConverterFactory factory
-            ? factory.CreateConverter(typeof(TProperty), options)!
-            : attributeConverter);
+        converter = resolved as JsonConverter<TProperty>;
+        return converter is not null;
+    }
 
     public static int GetMaxDepth(JsonSerializerOptions options) => options.MaxDepth == 0 ? DefaultMaxDepth : options.MaxDepth;
 
