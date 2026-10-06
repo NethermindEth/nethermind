@@ -1224,6 +1224,49 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_ScopeCachedNoPoison_ThenOverCapDestructCaptured_ReadFailsClosed()
+    {
+        (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
+
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).PutSpan(StorageKey(AddrA, slot), EncodedHistorySlot(0x01));
+        }
+
+        StorageClearsScopeCache scopeCache = new();
+        Assert.That(windowedReader.TryGetStorage(0, AddrA, Slot1, out _, scopeCache), Is.True);
+
+        CommitBlock(0, 1, accountChanges: [(AddrA, null)], selfDestructs: [(AddrA, false)]);
+        windowedWriter.CaptureUpTo(StateAt(1), _repository, CancellationToken.None);
+
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            _db.GetColumnDb(FlatDbColumns.Storage).Remove(StorageKey(AddrA, slot));
+        }
+
+        UInt256 missedSlot = 0;
+        for (UInt256 slot = 1; slot <= HistoryWriter.DestructSlotEnumerationCap + 1; slot++)
+        {
+            try
+            {
+                windowedReader.TryGetStorage(0, AddrA, slot, out _);
+            }
+            catch (StateUnavailableException)
+            {
+                missedSlot = slot;
+                break;
+            }
+        }
+
+        Assert.That(missedSlot, Is.Not.EqualTo((UInt256)0), "the capped enumeration must have missed a slot for the scenario to exist");
+        Assert.That(() => windowedReader.TryGetStorage(0, AddrA, missedSlot, out _, scopeCache),
+            Throws.InstanceOf<StateUnavailableException>(),
+            "the scope cached \"no poison above block 0\" before the destruct was captured; trusting it reads a slot that held 0x01 as unset");
+    }
+
+    [Test]
     public void V3_SelfDestruct_AboveEnumerationCap_ARecordedRowStillAnswers_OnlyTheLiveFallbackFailsClosed()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
