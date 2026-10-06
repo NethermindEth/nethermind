@@ -241,8 +241,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         lookup[(int)Instruction.PUSH1] = OpcodeHandler<PushOpcode<EvmInstructions.Op1, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH2] = !TTracingInst.IsActive && spec.IsEip7979Enabled
-            ? OpcodeHandler<Push2CallSubOpcode, TTracingInst, TCancelable>()
-            : OpcodeHandler<Push2Opcode<TTracingInst>, TTracingInst, TCancelable>();
+            ? OpcodeHandler<Push2Opcode<TTracingInst, OnFlag>, TTracingInst, TCancelable>()
+            : OpcodeHandler<Push2Opcode<TTracingInst, OffFlag>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH3] = OpcodeHandler<PushOpcode<EvmInstructions.Op3, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH4] = OpcodeHandler<PushOpcode<EvmInstructions.Op4, TTracingInst>, TTracingInst, TCancelable>();
         lookup[(int)Instruction.PUSH5] = OpcodeHandler<PushOpcode<EvmInstructions.Op5, TTracingInst>, TTracingInst, TCancelable>();
@@ -1534,47 +1534,28 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 : EvmInstructions.InstructionPush0<TGasPolicy, TTracingInst>(ref stack, ref gas, vm);
     }
 
+    /// <typeparam name="TCallSub">Whether an untraced EIP-7979 <c>CALLSUB</c> after the push runs fused with it.</typeparam>
     [SkipLocalsInit]
-    private readonly struct Push2Opcode<TTracingInst> : IOpcodeBody where TTracingInst : struct, IFlag
+    private readonly struct Push2Opcode<TTracingInst, TCallSub> : IOpcodeBody
+        where TTracingInst : struct, IFlag
+        where TCallSub : struct, IFlag
     {
         public static bool ChargesFixedGas => true;
-        // Only counting the fused opcodes reads the virtual machine.
-        public static bool UsesVm => DispatchFlags.CountOpcodes;
+        // Only counting the fused opcodes or a fused CALLSUB reads the virtual machine.
+        public static bool UsesVm => DispatchFlags.CountOpcodes || TCallSub.IsActive;
         public static bool StaysInline
         {
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
             get => !TTracingInst.IsActive;
         }
-        // Untraced PUSH2 runs a following JUMP or JUMPI itself.
+        // Untraced PUSH2 runs a following JUMP, JUMPI or fused CALLSUB itself.
         public static bool MayJump => !TTracingInst.IsActive;
-
-        public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter) =>
-            EvmInstructions.InstructionPush2<TGasPolicy, TTracingInst>(ref stack, ref gas, vm, ref programCounter);
-    }
-
-    /// <summary>Untraced PUSH2 on an EIP-7979 spec, which also runs a following <c>CALLSUB</c>.</summary>
-    [SkipLocalsInit]
-    private readonly struct Push2CallSubOpcode : IOpcodeBody
-    {
-        public static bool ChargesFixedGas => true;
-        public static bool UsesVm => true;
-        public static bool MayJump => true;
 
         public static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter)
         {
-            if (!EvmInstructions.IsCallSubAfterPush2(ref stack, programCounter))
-                return EvmInstructions.InstructionPush2<TGasPolicy, OffFlag>(ref stack, ref gas, vm, ref programCounter);
-
             nint fusedOpCodeCount = 0;
-            return EvmInstructions.InstructionPush2CallSub<TGasPolicy, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+            return EvmInstructions.InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, TCallSub>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
         }
-
-        /// <summary>The dispatch form, which counts fused opcodes in the chain's counter and reads the virtual machine only for a CALLSUB.</summary>
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        internal static EvmExceptionType Execute(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, ref nint programCounter, ref nint opCodeCount) =>
-            EvmInstructions.IsCallSubAfterPush2(ref stack, programCounter)
-                ? EvmInstructions.InstructionPush2CallSub<TGasPolicy, OffFlag>(ref stack, ref gas, state.Vm, ref programCounter, ref opCodeCount)
-                : EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref gas, null!, ref programCounter, ref opCodeCount);
     }
 
     [SkipLocalsInit]

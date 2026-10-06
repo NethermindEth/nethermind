@@ -247,6 +247,14 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             return new OpcodeResult(pc, EvmExceptionType.None);
         }
 
+        /// <summary>Untraced PUSH2 counting its fused opcodes in the chain's counter.</summary>
+        /// <remarks>Only an EIP-7979 table, which may fuse a <c>CALLSUB</c>, reads the virtual machine.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static EvmExceptionType ExecuteUntracedPush2<TOpcode>(ref EvmStack stack, ref TGasPolicy gas, ref DispatchState state, ref nint pc, ref nint opCodeCount) =>
+            typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)
+                ? EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, state.Vm, ref pc, ref opCodeCount)
+                : EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, null!, ref pc, ref opCodeCount);
+
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
         internal static EvmExceptionType ExecuteOpcode<TOpcode, TTracingInst, TCancelable, TContinuable>(
@@ -308,30 +316,18 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             pc++;
             opCodeCount++;
             EvmExceptionType exceptionType;
-            if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(Push2Opcode<OffFlag>))
+            if (!TTracingInst.IsActive && !TCancelable.IsActive
+                && (typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OffFlag>) || typeof(TOpcode) == typeof(Push2Opcode<OffFlag, OnFlag>)))
             {
                 if (carriesExecutionGas)
                 {
                     LoadFixedGas(out TGasPolicy localGas, gas);
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref localGas, null!, ref pc, ref opCodeCount);
+                    exceptionType = ExecuteUntracedPush2<TOpcode>(ref stack, ref localGas, ref state, ref pc, ref opCodeCount);
                     gas = GetExecutionGas(ref localGas);
                 }
                 else
                 {
-                    exceptionType = EvmInstructions.InstructionPush2Core<TGasPolicy, OffFlag, OffFlag>(ref stack, ref state.Gas, null!, ref pc, ref opCodeCount);
-                }
-            }
-            else if (!TCancelable.IsActive && typeof(TOpcode) == typeof(Push2CallSubOpcode))
-            {
-                if (carriesExecutionGas)
-                {
-                    LoadFixedGas(out TGasPolicy localGas, gas);
-                    exceptionType = Push2CallSubOpcode.Execute(ref stack, ref localGas, ref state, ref pc, ref opCodeCount);
-                    gas = GetExecutionGas(ref localGas);
-                }
-                else
-                {
-                    exceptionType = Push2CallSubOpcode.Execute(ref stack, ref state.Gas, ref state, ref pc, ref opCodeCount);
+                    exceptionType = ExecuteUntracedPush2<TOpcode>(ref stack, ref state.Gas, ref state, ref pc, ref opCodeCount);
                 }
             }
             else if (!TTracingInst.IsActive && !TCancelable.IsActive && typeof(TOpcode) == typeof(JumpOpcode<OffFlag>))

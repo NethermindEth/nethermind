@@ -111,15 +111,17 @@ public static partial class EvmInstructions
         where TTracingInst : struct, IFlag
     {
         nint fusedOpCodeCount = 0;
-        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
+        return InstructionPush2Core<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, ref programCounter, ref fusedOpCodeCount);
     }
 
+    /// <typeparam name="TCallSub">Whether an untraced EIP-7979 <c>CALLSUB</c> after the push runs fused with it.</typeparam>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
+    internal static EvmExceptionType InstructionPush2Core<TGasPolicy, TTracingInst, TUseVmCounter, TCallSub>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where TUseVmCounter : struct, IFlag
+        where TCallSub : struct, IFlag
     {
         const int Size = sizeof(ushort);
         // Deduct a very low gas cost for the push operation.
@@ -136,8 +138,8 @@ public static partial class EvmInstructions
             return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
-            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size))
-                is Instruction.JUMP or Instruction.JUMPI))
+            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI
+                || (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
@@ -149,6 +151,16 @@ public static partial class EvmInstructions
             if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination)
                 && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
                 goto Unfused;
+
+            if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
+            {
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
+                if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+                // The return address is the instruction after CALLSUB.
+                programCounter += Size + 1;
+                return CallSubTo<TGasPolicy, OnFlag, TUseVmCounter>(
+                    ref stack, ref gas, vm, JumpDestination((int)destination, ref stack), ref programCounter, ref fusedOpCodeCount);
+            }
 
             if (nextInstruction == Instruction.JUMP)
             {
@@ -207,51 +219,6 @@ public static partial class EvmInstructions
         return EvmExceptionType.InvalidJumpDestination;
     StackUnderflow:
         return EvmExceptionType.StackUnderflow;
-    }
-
-    /// <summary>Whether the instruction after the PUSH2 at <paramref name="programCounter"/> - 1 is an EIP-7979 <c>CALLSUB</c>.</summary>
-    /// <remarks>Untraced code is padded, so the read is in bounds even past the end.</remarks>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static bool IsCallSubAfterPush2(ref EvmStack stack, nint programCounter) =>
-        (Instruction)Unsafe.Add(ref stack.Code, programCounter + sizeof(ushort)) == Instruction.CALLSUB;
-
-    /// <summary>
-    /// Untraced PUSH2 followed by an EIP-7979 <c>CALLSUB</c> (see <see cref="IsCallSubAfterPush2"/>): runs the call and the
-    /// <c>CALLDEST</c> it lands on, so the static destination never reaches the data stack.
-    /// </summary>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    [SkipLocalsInit]
-    internal static EvmExceptionType InstructionPush2CallSub<TGasPolicy, TUseVmCounter>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, ref nint programCounter, ref nint fusedOpCodeCount)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TUseVmCounter : struct, IFlag
-    {
-        const int Size = sizeof(ushort);
-        if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        ref byte immediate = ref Unsafe.Add(ref stack.Code, programCounter);
-        // A following CALLSUB does not exempt PUSH2 from the stack limit.
-        if (stack.Head >= EvmStack.MaxStackSize - 1)
-        {
-            programCounter += Size;
-            return EvmExceptionType.StackOverflow;
-        }
-
-        ushort destination = BinaryPrimitives.ReverseEndianness(Unsafe.As<byte, ushort>(ref immediate));
-        // With lazy analysis an unanalyzed destination runs unfused, leaving the analysis to CALLSUB.
-        if (EvmStack.AnalyzesJumpDestinationsLazily && !stack.IsKnownJumpDestination(destination))
-        {
-            programCounter += Size;
-            return stack.Push2Bytes<OffFlag, OffFlag>(ref immediate);
-        }
-
-        IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
-        if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
-        nint target = CallDestination(destination, ref stack);
-        if (target < 0) return EvmExceptionType.InvalidJumpDestination;
-        // The return address is the instruction after CALLSUB.
-        if (!vm.VmState.TryPushReturnAddress((int)(programCounter + Size + 1))) return EvmExceptionType.ReturnStackOverflow;
-        programCounter = target + 1;
-        IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(vm, ref fusedOpCodeCount);
-        return TGasPolicy.UpdateGas<JumpDestGasCost>(ref gas) ? EvmExceptionType.None : EvmExceptionType.OutOfGas;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
