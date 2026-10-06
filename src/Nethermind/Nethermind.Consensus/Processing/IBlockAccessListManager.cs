@@ -59,6 +59,7 @@ public interface IBlockAccessListManager
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
     void InstallPredeploys(IReleaseSpec spec);
+    void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
     /// <summary>

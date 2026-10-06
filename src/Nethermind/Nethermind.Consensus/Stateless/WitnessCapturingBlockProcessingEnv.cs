@@ -90,7 +90,8 @@ public sealed class WitnessCapturingBlockProcessingEnv(
                 ctx.Resolve<IBlocksConfig>(),
                 ctx.Resolve<IWithdrawalProcessorFactory>(),
                 ctx.Resolve<BalTxProcessorFactory>(),
-                indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>()))
+                indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>(),
+                zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()))
             // Validation tx executor; everything else is inherited from root and re-resolved against the overridden world state.
             .AddModule(validationModules));
 

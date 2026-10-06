@@ -42,8 +42,9 @@ public class CLChainSpecEngineParameters : IChainSpecEngineParameters
     public Address? PermissionedDisputeGame { get; init; }
     public Address? PreimageOracle { get; init; }
 
-    public Address SystemTransactionSender { get; init; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
-    public Address SystemTransactionTo { get; init; } = new("0x4200000000000000000000000000000000000015");
+    // Setters rather than init: source-generated metadata passes defaults for absent init-only members, losing these values.
+    public Address SystemTransactionSender { get; set; } = new("0xDeaDDEaDDeAdDeAdDEAdDEaddeAddEAdDEAd0001");
+    public Address SystemTransactionTo { get; set; } = new("0x4200000000000000000000000000000000000015");
     public string[]? Nodes { get; init; }
     public ulong? L1BeaconGenesisSlotTime { get; init; }
     public ulong? L1ChainId { get; init; }

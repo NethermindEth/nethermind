@@ -112,7 +112,8 @@ public class WitnessGeneratingBlockProcessingEnvFactory(
                     ctx.Resolve<IBlocksConfig>(),
                     ctx.Resolve<IWithdrawalProcessorFactory>(),
                     ctx.Resolve<BalTxProcessorFactory>(),
-                    indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>()));
+                    indexTableHandlerFactory: ctx.ResolveOptional<IIndexTableHandlerFactory>(),
+                    zeroNonceStorageAccountsTransition: ctx.Resolve<ZeroNonceStorageAccountsTransition>()));
             if (recordsTransactionDiffs)
             {
                 // At scope level so the tx processor and the code repository share one slice.
