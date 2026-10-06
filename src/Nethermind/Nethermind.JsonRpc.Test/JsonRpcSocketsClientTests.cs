@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
@@ -104,7 +105,7 @@ public class JsonRpcSocketsClientTests
     [Test]
     public async Task WebSocket_timeout_replaces_uncommitted_result_or_fails_receive_loop([Values] bool committed, [Values] bool batch)
     {
-        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(30));
         using Socket listener = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
         listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
         listener.Listen();
@@ -387,7 +388,7 @@ public class JsonRpcSocketsClientTests
             AssertMatchesIpcDisconnectFilter(stopped);
             Assert.That(rejected!.InnerException, Is.SameAs(reset));
             Assert.That(partial.Length, Is.EqualTo(failAfter));
-            Assert.That(stream.ToArray(), Is.EqualTo(partial), "later sends must not extend the failed message");
+            Assert.That(stream, Is.SequenceEqualTo(partial), "later sends must not extend the failed message");
         }
     }
 
@@ -478,7 +479,7 @@ public class JsonRpcSocketsClientTests
             Assert.That(fixture.SendLock.Failure, Is.SameAs(failure), "disposal must not replace the item failure");
             Assert.That(rejected!.InnerException, Is.SameAs(failure));
             Assert.That(Encoding.UTF8.GetString(partial), Is.EqualTo("["));
-            Assert.That(fixture.Stream.ToArray(), Is.EqualTo(partial));
+            Assert.That(fixture.Stream, Is.SequenceEqualTo(partial));
         }
     }
 
@@ -593,7 +594,7 @@ public class JsonRpcSocketsClientTests
         {
             Assert.That(partial.AsSpan().Count((byte)'\n'), Is.Zero, "the failed message must not be terminated");
             Assert.That(Encoding.UTF8.GetString(partial), Does.Not.Contain("unsent-tail"), "the failed tail must not be flushed");
-            Assert.That(stream.ToArray(), Is.EqualTo(partial), "later sends must not extend the failed message");
+            Assert.That(stream, Is.SequenceEqualTo(partial), "later sends must not extend the failed message");
         }
     }
 

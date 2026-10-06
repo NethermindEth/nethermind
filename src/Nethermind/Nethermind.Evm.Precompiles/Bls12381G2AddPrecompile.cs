@@ -24,6 +24,9 @@ public partial class Bls12381G2AddPrecompile : IPrecompile<Bls12381G2AddPrecompi
 
     public ulong DataGasCost(ReadOnlyMemory<byte> inputData, IReleaseSpec _) => 0UL;
 
+    public ReadOnlyMemory<byte> NormalizeInput(ReadOnlyMemory<byte> inputData) =>
+        ValidateInputLength(inputData) ? inputData : ReadOnlyMemory<byte>.Empty;
+
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _);
 
     private static bool ValidateInputLength(ReadOnlyMemory<byte> inputData) => inputData.Length == 2 * Eip2537.LenG2;

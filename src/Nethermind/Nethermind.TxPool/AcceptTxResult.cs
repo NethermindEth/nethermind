@@ -162,6 +162,9 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose validation prefix can never approve a payer: unincludable rather than malformed, so the relaying peer is not disconnected.</summary>
         public static readonly AcceptTxResult FrameTxNoPayer = new(TxPoolErrorMessages.FrameTxNoPayer);
 
+        /// <summary>An EIP-8141 frame transaction whose prefix is outside the public-mempool grammar. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxUnrecognizedPrefix = new(TxPoolErrorMessages.FrameTxUnrecognizedPrefix);
+
         /// <summary>An EIP-8141 blob-carrying frame transaction submitted without the blob sidecar that its mempool form requires.</summary>
         public static readonly AcceptTxResult FrameTxMissingSidecar = new(TxPoolErrorMessages.FrameTxMissingSidecar);
 
@@ -186,6 +189,19 @@ namespace Nethermind.TxPool
         /// a peer sending transactions this node rejects.
         /// </remarks>
         public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
+
+        /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction beyond its sender's free pending baseline, submitted while
+        /// the sender holds too little MATCHA width to admit another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult WidthUnmet = new(TxPoolErrorMessages.WidthUnmet);
+
+        /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction whose nonce-key set intersects a pending transaction of
+        /// the same sender. EIP-8250 admits several pending frame transactions per sender only on disjoint key
+        /// sets, so this is a local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceOverlap = new(TxPoolErrorMessages.KeyedNonceOverlap);
 
         /// <summary>
         /// Declares a result distinct from every other declared result.

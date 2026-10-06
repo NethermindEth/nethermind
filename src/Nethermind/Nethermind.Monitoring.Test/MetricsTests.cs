@@ -82,6 +82,31 @@ public class MetricsTests
         public string[] Labels { get; } = [method, status];
     }
 
+    private sealed class StableMetricLabels(string value) : IStableMetricLabels
+    {
+        private int _labelsReadCount;
+
+        public int LabelsReadCount => Volatile.Read(ref _labelsReadCount);
+
+        public string[] Labels
+        {
+            get
+            {
+                Interlocked.Increment(ref _labelsReadCount);
+                return [value];
+            }
+        }
+    }
+
+    private sealed class MutableMetricLabels(string value) : IMetricLabels
+    {
+        public string Value { get; set; } = value;
+
+        public string[] Labels => [Value];
+    }
+
+    private static int _testMetricId;
+
     [Test]
     public async Task Test_update_correct_gauge()
     {
@@ -177,6 +202,96 @@ public class MetricsTests
     }
 
     [Test]
+    public async Task Stable_labels_reuse_child_for_repeated_observations([Values] bool summaryMetric)
+    {
+        Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
+        string metricName = CreateTestMetricName("stable_repeated");
+        IMetricObserver observer = CreateObserver(registry, summaryMetric, metricName, ["state"]);
+        StableMetricLabels labels = new("stable");
+
+        observer.Observe(1, labels);
+        observer.Observe(2, labels);
+
+        string scrape = await CollectAsync(registry);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(labels.LabelsReadCount, Is.EqualTo(1));
+            AssertContainsMetricLine(scrape, $"{metricName}_count{{state=\"stable\"}} 2");
+            AssertContainsMetricLine(scrape, $"{metricName}_sum{{state=\"stable\"}} 3");
+        }
+    }
+
+    [Test]
+    public async Task Separate_observers_keep_their_own_stable_children([Values] bool summaryMetric)
+    {
+        Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
+        string firstMetricName = CreateTestMetricName("stable_first");
+        string secondMetricName = CreateTestMetricName("stable_second");
+        IMetricObserver firstObserver = CreateObserver(registry, summaryMetric, firstMetricName, ["state"]);
+        IMetricObserver secondObserver = CreateObserver(registry, summaryMetric, secondMetricName, ["state"]);
+        StableMetricLabels labels = new("shared");
+
+        firstObserver.Observe(4, labels);
+        secondObserver.Observe(7, labels);
+
+        string scrape = await CollectAsync(registry);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertContainsMetricLine(scrape, $"{firstMetricName}_count{{state=\"shared\"}} 1");
+            AssertContainsMetricLine(scrape, $"{firstMetricName}_sum{{state=\"shared\"}} 4");
+            AssertContainsMetricLine(scrape, $"{secondMetricName}_count{{state=\"shared\"}} 1");
+            AssertContainsMetricLine(scrape, $"{secondMetricName}_sum{{state=\"shared\"}} 7");
+        }
+    }
+
+    [Test]
+    public async Task Concurrent_stable_observations_are_recorded([Values] bool summaryMetric)
+    {
+        Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
+        string metricName = CreateTestMetricName("stable_concurrent");
+        IMetricObserver observer = CreateObserver(registry, summaryMetric, metricName, ["state"]);
+        StableMetricLabels labels = new("concurrent");
+        const int observationCount = 1_000;
+
+        Parallel.For(0, observationCount, _ => observer.Observe(1, labels));
+
+        string scrape = await CollectAsync(registry);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertContainsMetricLine(scrape, $"{metricName}_count{{state=\"concurrent\"}} {observationCount}");
+            AssertContainsMetricLine(scrape, $"{metricName}_sum{{state=\"concurrent\"}} {observationCount}");
+        }
+    }
+
+    [Test]
+    public async Task Dynamic_labels_and_unlabelled_observations_keep_existing_behavior([Values] bool summaryMetric)
+    {
+        Prometheus.CollectorRegistry registry = Prometheus.Metrics.NewCustomRegistry();
+        string labelledMetricName = CreateTestMetricName("dynamic");
+        IMetricObserver labelledObserver = CreateObserver(registry, summaryMetric, labelledMetricName, ["state"]);
+        MutableMetricLabels labels = new("before");
+
+        labelledObserver.Observe(1, labels);
+        labels.Value = "after";
+        labelledObserver.Observe(2, labels);
+
+        string unlabelledMetricName = CreateTestMetricName("unlabelled");
+        IMetricObserver unlabelledObserver = CreateObserver(registry, summaryMetric, unlabelledMetricName, []);
+        unlabelledObserver.Observe(3);
+
+        string scrape = await CollectAsync(registry);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertContainsMetricLine(scrape, $"{labelledMetricName}_count{{state=\"before\"}} 1");
+            AssertContainsMetricLine(scrape, $"{labelledMetricName}_sum{{state=\"before\"}} 1");
+            AssertContainsMetricLine(scrape, $"{labelledMetricName}_count{{state=\"after\"}} 1");
+            AssertContainsMetricLine(scrape, $"{labelledMetricName}_sum{{state=\"after\"}} 2");
+            AssertContainsMetricLine(scrape, $"{unlabelledMetricName}_count 1");
+            AssertContainsMetricLine(scrape, $"{unlabelledMetricName}_sum 3");
+        }
+    }
+
+    [Test]
     public void Load_DetailedMetric([Values] bool enableDetailedMetric)
     {
         MetricsConfig metricsConfig = new()
@@ -229,7 +344,7 @@ public class MetricsTests
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotHits)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotMisses)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountWipes)}"));
-                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotWipes)}"));
+                Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotEvictions)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardAccountCount)}"));
                 Assert.That(updater.Keys, Has.Member($"{typeName}.{nameof(Nethermind.State.Flat.Metrics.CarryForwardSlotCount)}"));
             }
@@ -354,4 +469,24 @@ public class MetricsTests
             }
         }
     }
+
+    private static IMetricObserver CreateObserver(Prometheus.CollectorRegistry registry, bool summaryMetric, string metricName, string[] labelNames)
+    {
+        Prometheus.MetricFactory factory = Prometheus.Metrics.WithCustomRegistry(registry);
+        return summaryMetric
+            ? new MetricsController.SummaryMetricUpdater(factory.CreateSummary(metricName, string.Empty, labelNames))
+            : new MetricsController.HistogramMetricUpdater(factory.CreateHistogram(metricName, string.Empty, labelNames));
+    }
+
+    private static async Task<string> CollectAsync(Prometheus.CollectorRegistry registry)
+    {
+        using MemoryStream stream = new();
+        await registry.CollectAndExportAsTextAsync(stream);
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void AssertContainsMetricLine(string scrape, string expectedLine) =>
+        Assert.That(scrape.Split('\n').Select(static line => line.TrimEnd('\r')), Does.Contain(expectedLine));
+
+    private static string CreateTestMetricName(string prefix) => $"nethermind_metrics_test_{prefix}_{Interlocked.Increment(ref _testMetricId)}";
 }

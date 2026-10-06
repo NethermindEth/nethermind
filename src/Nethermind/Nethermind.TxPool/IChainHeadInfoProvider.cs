@@ -37,12 +37,23 @@ namespace Nethermind.TxPool
 
         UInt256 CurrentBaseFee { get; }
 
+        /// <summary>Base fee per gas (wei) of the block that follows the current chain head.</summary>
+        /// <remarks>
+        /// Derived from the head header under the spec of the child block, which is resolved at the head's number plus
+        /// one and the head's own timestamp. Zero while that spec has EIP-1559 disabled, and zero until the first head
+        /// facts are read.
+        /// </remarks>
+        UInt256 NextBaseFee { get; }
+
         public UInt256 CurrentFeePerBlobGas { get; }
 
         ProofVersion CurrentProofVersion { get; }
 
         bool IsSyncing { get; }
         bool IsProcessingBlock { get; }
+
+        /// <summary>True while this node's block producer executes a block it is building.</summary>
+        bool IsBuildingBlock { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
     }

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -63,6 +65,21 @@ public partial class BlockAccessListManager
         PredeployInstaller.Install(stateProvider, preExecution.WorldState, spec);
     }
 
+    public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip8253Enabled) return;
+
+        ZeroNonceStorageAccountsTransition transition = zeroNonceStorageAccountsTransition
+            ?? throw new InvalidOperationException($"EIP-8253 is enabled but no {nameof(ZeroNonceStorageAccountsTransition)} was provided.");
+        transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
+    }
+
+    private IWorldState GetPreExecutionWorldState()
+    {
+        CheckInitialized();
+        return _txProcessorWithWorldStateManager.GetPreExecution().WorldState;
+    }
+
     public void ProcessWithdrawals(Block block, IReleaseSpec spec)
     {
         CheckInitialized();
@@ -81,8 +98,6 @@ public partial class BlockAccessListManager
         CheckInitialized();
 
         TxProcessorWithWorldState postExecution = _txProcessorWithWorldStateManager.GetPostExecution();
-        IExecutionRequestsProcessor executionRequestsProcessor =
-            (executionRequestsProcessorFactory ?? ExecutionRequestsProcessorFactory.Instance).Create(postExecution.TxProcessor);
-        executionRequestsProcessor.ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
+        new ExecutionRequestsProcessor(postExecution.TxProcessor).ProcessExecutionRequests(block, postExecution.WorldState, txReceipts, spec);
     }
 }

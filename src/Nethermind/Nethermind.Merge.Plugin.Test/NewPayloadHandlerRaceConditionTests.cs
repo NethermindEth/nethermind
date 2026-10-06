@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Reflection;
+using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -14,6 +16,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -38,8 +42,110 @@ namespace Nethermind.Merge.Plugin.Test;
 [TestFixture]
 public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 {
+    private sealed class TrackingExecutionPayload : ExecutionPayload
+    {
+        public Action<ParallelUnbalancedWork.WorkerGroup?>? OnDecoding { get; set; }
+
+        public new static TrackingExecutionPayload Create(Block block) => Create<TrackingExecutionPayload>(block);
+
+        public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
+        {
+            OnDecoding?.Invoke(ParallelUnbalancedWork.GetCurrentGroup());
+            return base.TryGetBlock(totalDifficulty);
+        }
+    }
+
     private static readonly FieldInfo? BlockValidationTasksField =
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
+
+    [Test]
+    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
+    {
+        using ManualResetEventSlim finishRecovery = new();
+        TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IEthereumEcdsa ecdsa = Substitute.For<IEthereumEcdsa>();
+        ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<ValueHash256>()).Returns(_ =>
+        {
+            entered.TrySetResult(ParallelUnbalancedWork.GetCurrentGroup());
+            if (ParallelUnbalancedWork.GetCurrentGroup()?.Concurrency > 1 && !finishRecovery.Wait(TimeSpan.FromSeconds(10)))
+                throw new TimeoutException("Recovery was not released");
+            return TestItem.AddressA;
+        });
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<IEthereumEcdsa>(ecdsa)
+            .Build();
+        RecoverSignatures recovery = container.Resolve<RecoverSignatures>();
+        Transaction tx = Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).WithSenderAddress(null).TestObject;
+        Block block = Build.A.Block.WithParentHash(TestItem.KeccakC).WithNumber(1)
+            .WithDifficulty(0).WithNonce(0).WithTransactions(tx).TestObject;
+        block.Header.IsPostMerge = true;
+        TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
+        ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
+        payload.OnDecoding = workers => decodingWorkers = workers;
+        Transaction[] transactions = payload.TryGetTransactions().Data!;
+        if (invalidHash) payload.BlockHash = TestItem.KeccakB;
+        using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
+            wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
+            specProvider: container.Resolve<ISpecProvider>());
+        ISenderRecoveryProgress? progress = null;
+        try
+        {
+            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+            progress = recovery.GetInFlight(transactions);
+            bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
+            ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
+                ? null : await entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(decodingWorkers, Is.Not.Null);
+                Assert.That(observed, singleProcessor ? Is.Null : Is.SameAs(decodingWorkers));
+                Assert.That(entered.Task.IsCompleted, Is.EqualTo(!singleProcessor));
+                Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
+                Assert.That(progress, singleProcessor ? Is.Null : Is.Not.Null);
+            }
+        }
+        finally
+        {
+            finishRecovery.Set();
+            progress ??= recovery.GetInFlight(transactions);
+            if (progress is not null)
+                Assert.That(progress.WaitForCompletion(10_000), Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Canonical_payload_far_behind_head_does_not_walk_the_full_ancestry()
+    {
+        Block block = PostMergeBlock();
+        int parentLookups = 0;
+        using NewPayloadHandler handler = CreateHandler(
+            block, AddBlockResult.AlreadyKnown, wasProcessed: false, validateSuggestedBlock: true,
+            configure: (blockTree, stateReader) =>
+            {
+                BlockHeader head = Build.A.BlockHeader.WithNumber(1000).WithParentHash(TestItem.KeccakC).TestObject;
+                blockTree.Head.Returns(Build.A.Block.WithHeader(head).TestObject);
+                blockTree.IsMainChain(Arg.Any<BlockHeader>()).Returns(true);
+                stateReader.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+                blockTree.FindHeader(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<ulong?>())
+                    .Returns(call =>
+                    {
+                        ulong? number = call.ArgAt<ulong?>(2);
+                        if (number is null)
+                        {
+                            return Build.A.BlockHeader.WithHash(block.ParentHash!).WithNumber(0).WithDifficulty(UInt256.Zero).TestObject;
+                        }
+
+                        Interlocked.Increment(ref parentLookups);
+                        return Build.A.BlockHeader.WithNumber(number.Value).WithParentHash(TestItem.KeccakC).TestObject;
+                    });
+            });
+
+        ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(ExecutionPayload.Create(block));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        Assert.That(parentLookups, Is.Zero, "an archive node may retain state thousands of blocks behind head");
+    }
 
     [Test]
     public async Task NewPayloadV1_RaceCondition_EventHandling_Should_Not_Throw_When_Multiple_Completions()
@@ -161,13 +267,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     {
         Block block = PostMergeBlock();
 
-        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
             {
-                enqueued.TrySetResult();
+                enqueued.TrySetResult(ParallelUnbalancedWork.GetCurrentGroup());
                 return ValueTask.CompletedTask;
             });
 
@@ -179,14 +285,18 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             processingQueue: processingQueue,
             timeoutMs: 5_000);
 
-        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(ExecutionPayload.Create(block));
-        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
+        ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
+        payload.OnDecoding = workers => decodingWorkers = workers;
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
+        ParallelUnbalancedWork.WorkerGroup? queuedWorkers = await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
         // The verdict lands; BlockRemoved never does, as if the commit were still running.
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         ResultWrapper<PayloadStatusV1> result = await request;
 
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(queuedWorkers, Is.Not.Null.And.SameAs(decodingWorkers));
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
             Assert.That(GetPendingValidationTaskCount(handler), Is.EqualTo(0), "an answered request must not leave its completion behind");
         }
@@ -614,7 +724,10 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         IBlockProcessingQueue? processingQueue = null,
         int timeoutMs = 50,
         Func<bool>? wasProcessedNow = null,
-        Func<bool>? parentProcessedNow = null)
+        Func<bool>? parentProcessedNow = null,
+        Action<IBlockTree, IStateReader>? configure = null,
+        RecoverSignatures? senderRecovery = null,
+        ISpecProvider? specProvider = null)
     {
         IPayloadPreparationService payloadPreparationService = Substitute.For<IPayloadPreparationService>();
         IBlockValidator blockValidator = Substitute.For<IBlockValidator>();
@@ -650,6 +763,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         blockTree.SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
             .Returns(ValueTask.FromResult(suggestBlockResult));
         blockTree.WasProcessed(block.Number, block.Hash!).Returns(_ => wasProcessedNow?.Invoke() ?? wasProcessed);
+        // The AlreadyKnown shortcut reads the block's own info and the state it committed, not just the flag.
+        blockTree.GetInfo(block.Number, block.Hash!).Returns(_ =>
+            (new BlockInfo(block.Hash!, UInt256.Zero) { WasProcessed = wasProcessedNow?.Invoke() ?? wasProcessed, BlockNumber = block.Number }, null));
 
         blockValidator.ValidateSuggestedBlock(Arg.Any<Block>(), Arg.Any<BlockHeader>(), out Arg.Any<string?>(), false)
             .Returns(callInfo =>
@@ -663,11 +779,15 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         poSSwitcher.TransitionFinished.Returns(true);
         beaconSyncStrategy.IsBeaconSyncFinished(Arg.Any<BlockHeader?>()).Returns(true);
         stateReader.HasStateForBlock(parent).Returns(true);
+        // The handler re-decodes the payload, so match by hash; an expression tree cannot use `is not null`.
+        stateReader.HasStateForBlock(Arg.Is<BlockHeader>(h => h != null && h.Hash == block.Hash)).Returns(true);
         if (processingQueue is null)
         {
             effectiveProcessingQueue.Count.Returns(0);
             effectiveProcessingQueue.Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>()).Returns(_ => ValueTask.CompletedTask);
         }
+
+        configure?.Invoke(blockTree, stateReader);
 
         return new NewPayloadHandler(
             payloadPreparationService,
@@ -683,8 +803,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             mergeConfig,
             receiptConfig,
             stateReader,
-            new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
-            Substitute.For<ISpecProvider>(),
+            senderRecovery ?? new RecoverSignatures(Substitute.For<IEthereumEcdsa>(), Substitute.For<ISpecProvider>(), LimboLogs.Instance),
+            specProvider ?? Substitute.For<ISpecProvider>(),
             Substitute.For<ITxValidator>(),
             LimboLogs.Instance);
     }
