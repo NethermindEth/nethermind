@@ -261,10 +261,21 @@ public class JsonWriterGeneratorTests
     private static IIncrementalGenerator CreateSystemTextJsonGenerator()
     {
         string runtimeDirectory = Path.GetDirectoryName(typeof(object).Assembly.Location)!;
-        string version = Path.GetFileName(runtimeDirectory);
-        string dotnetRoot = Path.GetFullPath(Path.Combine(runtimeDirectory, "..", "..", ".."));
-        string path = Path.Combine(dotnetRoot, "packs", "Microsoft.NETCore.App.Ref", version, "analyzers", "dotnet", "cs", "System.Text.Json.SourceGeneration.dll");
-        Assert.That(File.Exists(path), Is.True, $"System.Text.Json source generator not found at {path}");
+        string runtimeVersion = Path.GetFileName(runtimeDirectory);
+        string packs = Path.GetFullPath(Path.Combine(runtimeDirectory, "..", "..", "..", "packs", "Microsoft.NETCore.App.Ref"));
+
+        // A runtime installed without its SDK has no matching reference pack, so fall back to the newest pack of the same major version.
+        string major = runtimeVersion.Split('.')[0] + ".";
+        string? path = Directory.Exists(packs)
+            ? Directory.GetDirectories(packs)
+                .Select(static d => (Name: Path.GetFileName(d), Generator: Path.Combine(d, "analyzers", "dotnet", "cs", "System.Text.Json.SourceGeneration.dll")))
+                .Where(p => p.Name.StartsWith(major, StringComparison.Ordinal) && File.Exists(p.Generator))
+                .OrderByDescending(p => p.Name == runtimeVersion)
+                .ThenByDescending(static p => Version.TryParse(p.Name.Split('-')[0], out Version? v) ? v : new Version())
+                .Select(static p => p.Generator)
+                .FirstOrDefault()
+            : null;
+        Assert.That(path, Is.Not.Null, $"no System.Text.Json source generator for runtime {runtimeVersion} under {packs}");
 
         Assembly assembly = Assembly.LoadFrom(path);
         Type generatorType = assembly.GetTypes().Single(static t => !t.IsAbstract && typeof(IIncrementalGenerator).IsAssignableFrom(t));
