@@ -478,6 +478,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
 
     private async Task RunClearBundleCache(CancellationToken cancellationToken)
     {
+        // A clock-driven clear lands on a different block every run; compactions and writes still clear the cache.
+        if (Core.DeterministicBenchmark.Enabled) return;
+
         using PeriodicTimer timer = new(TimeSpan.FromSeconds(15));
         try
         {

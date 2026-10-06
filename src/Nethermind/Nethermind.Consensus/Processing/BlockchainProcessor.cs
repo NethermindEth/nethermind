@@ -568,20 +568,63 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationToken CancellationToken
         => _loopCancellationSource?.Token ?? CancellationTokenExtensions.AlreadyCancelledToken;
 
-    private async Task RunProcessing()
+    private Task RunProcessing()
+    {
+        // In a deterministic benchmark the loop gets a thread of its own. Each await in the pooled loop can resume on
+        // another pool thread, so which thread's thread-local caches a block meets would depend on timing.
+        if (!DeterministicBenchmark.Enabled) return RunProcessingOnThreadPool();
+
+        TaskCompletionSource completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        Thread thread = new(() =>
+        {
+            try
+            {
+                RunProcessingLoopOnCurrentThread();
+                LogProcessingEnded(null);
+            }
+            catch (Exception ex)
+            {
+                LogProcessingEnded(ex);
+            }
+            finally
+            {
+                completion.SetResult();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Block processing",
+        };
+        thread.Start();
+        return completion.Task;
+    }
+
+    private async Task RunProcessingOnThreadPool()
     {
         try
         {
             await RunProcessingLoop();
-            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+            LogProcessingEnded(null);
         }
         catch (Exception ex)
         {
-            if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+            LogProcessingEnded(ex);
+        }
+    }
+
+    private void LogProcessingEnded(Exception? ex)
+    {
+        switch (ex)
+        {
+            case null:
+                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} complete.");
+                break;
+            case OperationCanceledException:
+                if (_logger.IsDebug) _logger.Debug($"{nameof(BlockchainProcessor)} stopped.");
+                break;
+            default:
+                if (_logger.IsError) _logger.Error($"{nameof(BlockchainProcessor)} encountered an exception.", ex);
+                break;
         }
     }
 
@@ -589,42 +632,64 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
     private async Task RunProcessingLoop()
     {
+        StartProcessingLoop();
+        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
+        {
+            await _pauseGate.WaitWhilePausedAsync(CancellationToken);
+            ProcessQueuedBlocks();
+        }
+
+        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+    }
+
+    /// <summary>The loop of <see cref="RunProcessingLoop"/>, blocking the calling thread between blocks instead of awaiting.</summary>
+    private void RunProcessingLoopOnCurrentThread()
+    {
+        StartProcessingLoop();
+        while (_blockQueue.Reader.WaitToReadAsync(CancellationToken).AsTask().GetAwaiter().GetResult())
+        {
+            _pauseGate.WaitWhilePausedAsync(CancellationToken).AsTask().GetAwaiter().GetResult();
+            ProcessQueuedBlocks();
+        }
+
+        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+    }
+
+    private void StartProcessingLoop()
+    {
         if (_logger.IsDebug) _logger.Debug($"Starting block processor - {_blockQueue.Reader.Count} blocks waiting in the queue.");
 
         FireProcessingQueueEmpty();
 
         GCScheduler.Instance.SwitchOnBackgroundGC(0);
-        while (await _blockQueue.Reader.WaitToReadAsync(CancellationToken))
+    }
+
+    private void ProcessQueuedBlocks()
+    {
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
+        // Released within the iteration, before the loop awaits and the thread can go back to the pool.
+        using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
+        using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
         {
-            await _pauseGate.WaitWhilePausedAsync(CancellationToken);
-
-            using ThreadExtensions.Disposable handle = Thread.CurrentThread.SetHighestPriority();
-            // Released within the iteration, before the loop awaits and the thread can go back to the pool.
-            using PerformanceCores.Scope performanceCores = PerformanceCores.NarrowCurrentThread(_options.ProcessingCores, _logger);
-            using (BlockTreeMutationLock.Scope mutation = _mutationLock.Enter())
-            {
-                if (_pauseGate.IsPaused) continue;
-                IsProcessingBlock = true;
-            }
-            bool previousMainThread = IsBlockProcessingThread;
-            IsBlockProcessingThread = true;
-            try
-            {
-                GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
-                ProcessBlocks();
-            }
-            finally
-            {
-                IsBlockProcessingThread = previousMainThread;
-                IsProcessingBlock = false;
-                GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
-            }
-
-            if (_logger.IsTrace) Trace();
-            FireProcessingQueueEmpty();
+            if (_pauseGate.IsPaused) return;
+            IsProcessingBlock = true;
+        }
+        bool previousMainThread = IsBlockProcessingThread;
+        IsBlockProcessingThread = true;
+        try
+        {
+            GCScheduler.Instance.SwitchOffBackgroundGC(_blockQueue.Reader.Count);
+            ProcessBlocks();
+        }
+        finally
+        {
+            IsBlockProcessingThread = previousMainThread;
+            IsProcessingBlock = false;
+            GCScheduler.Instance.SwitchOnBackgroundGC(_blockQueue.Reader.Count);
         }
 
-        if (_logger.IsInfo) _logger.Info("Block processor queue stopped.");
+        if (_logger.IsTrace) Trace();
+        FireProcessingQueueEmpty();
 
         [MethodImpl(MethodImplOptions.NoInlining)]
         void Trace() => _logger.Trace($"Now {_blockQueue.Reader.Count} blocks waiting in the queue.");
