@@ -140,6 +140,7 @@ public static partial class EvmInstructions
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
             if (!TEip8037.IsActive && vm.IsTracingActions)
