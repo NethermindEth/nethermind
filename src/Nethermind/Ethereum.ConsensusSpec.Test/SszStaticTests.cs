@@ -317,24 +317,11 @@ public class SszStaticTests
         if (!Directory.Exists(sszStaticGlobRoot))
             yield break;
 
-        foreach (string forkDir in Directory.GetDirectories(sszStaticGlobRoot))
-        {
-            string fork = Path.GetFileName(forkDir);
-            string sszStaticDir = Path.Combine(forkDir, "ssz_static");
-            if (!Directory.Exists(sszStaticDir))
-                continue;
-
-            foreach (string containerDir in Directory.GetDirectories(sszStaticDir))
-            {
-                string containerName = Path.GetFileName(containerDir);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(containerDir, "serialized.ssz_snappy"))
-                {
-                    string vectorName = $"{preset}/{fork}/ssz_static/{containerName}/{Path.GetRelativePath(containerDir, caseDir).Replace('\\', '/')}";
-                    SszStaticCase testCase = new(preset.ToString(), fork, containerName, caseDir, vectorName);
-                    yield return new TestCaseData(testCase).SetName(vectorName);
-                }
-            }
-        }
+        IEnumerable<string> forks = Directory.GetDirectories(sszStaticGlobRoot).Select(Path.GetFileName)!;
+        foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(preset, forks, "ssz_static", "serialized.ssz_snappy",
+                     static (p, fork, container, path, name) => new SszStaticCase(p.ToString(), fork, container, path, name),
+                     strictHandlerDirectory: true, relativeNames: true))
+            yield return testCase;
     }
 }
 

@@ -60,19 +60,12 @@ public class GenesisTests
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
         string presetRoot = Path.Combine(ConsensusSpecArchive.GetRoot(preset), "tests", ConsensusSpecArchive.PresetDirName(preset));
-        foreach (string forkDir in Directory.Exists(presetRoot) ? Directory.GetDirectories(presetRoot).Order(StringComparer.Ordinal).ToArray() : Array.Empty<string>())
-        {
-            string fork = Path.GetFileName(forkDir);
-            foreach (string handler in Handlers)
-            {
-                string handlerRoot = Path.Combine(forkDir, Suite, handler);
-                foreach (string caseDir in ConsensusSpecArchive.LeafDirs(handlerRoot, "manifest.yaml"))
-                {
-                    string vectorName = $"{preset}/{fork}/{Suite}/{handler}/{Path.GetRelativePath(handlerRoot, caseDir).Replace('\\', '/')}";
-                    yield return new TestCaseData(new GenesisCase(preset.ToString(), fork, handler, vectorName)).SetName(vectorName);
-                }
-            }
-        }
+        IEnumerable<string> forks = Directory.Exists(presetRoot)
+            ? Directory.GetDirectories(presetRoot).Order(StringComparer.Ordinal).Select(static path => Path.GetFileName(path)!)
+            : [];
+        foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(preset, forks, Suite, "manifest.yaml",
+                     static (p, fork, handler, _, name) => new GenesisCase(p.ToString(), fork, handler, name), Handlers, relativeNames: true))
+            yield return testCase;
     }
 }
 
