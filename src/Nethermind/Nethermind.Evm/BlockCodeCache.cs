@@ -31,9 +31,9 @@ public sealed class BlockCodeCache : ICodeCache
     internal const int EntryOverheadBytes = 256;
 
     /// <summary>The transaction executing on this thread, or 0 outside one.</summary>
-    [ThreadStatic] private static long t_transaction;
+    [ThreadStatic] private static long _currentTransaction;
 
-    private static long s_lastTransaction;
+    private static long _lastTransaction;
 
     private readonly ICodeCache _inner;
     private readonly long _maxBytes;
@@ -64,10 +64,15 @@ public sealed class BlockCodeCache : ICodeCache
     /// <remarks>Code loaded outside a transaction, as warming does, is kept too, but gives way to a transaction's code past the cap.</remarks>
     public TransactionScope BeginTransaction()
     {
-        long transaction = Interlocked.Increment(ref s_lastTransaction);
-        lock (_retained.Running) _retained.Running.Add(transaction);
-        long previous = t_transaction;
-        t_transaction = transaction;
+        long transaction;
+        lock (_retained.Running)
+        {
+            transaction = Interlocked.Increment(ref _lastTransaction);
+            _retained.Running.Add(transaction);
+        }
+
+        long previous = _currentTransaction;
+        _currentTransaction = transaction;
         return new TransactionScope(this, transaction, previous);
     }
 
@@ -79,7 +84,7 @@ public sealed class BlockCodeCache : ICodeCache
             return codeInfo;
         }
 
-        long transaction = t_transaction;
+        long transaction = _currentTransaction;
         if (transaction != 0 && entry.Transaction != transaction) entry.Transaction = transaction;
         return entry.Code;
     }
@@ -90,7 +95,7 @@ public sealed class BlockCodeCache : ICodeCache
 
         // Racing loads may each pass the check, overshooting the cap by at most one code per thread.
         long charge = codeInfo.CodeLength + (codeInfo.CodeLength >> 3) + EntryOverheadBytes;
-        long transaction = t_transaction;
+        long transaction = _currentTransaction;
         if (Volatile.Read(ref _retained.Bytes) + charge > _maxBytes && (transaction == 0 || !_retained.TryMakeRoom(charge, _maxBytes)))
         {
             return;
@@ -107,7 +112,6 @@ public sealed class BlockCodeCache : ICodeCache
     {
         _retained.Code.Clear();
         Volatile.Write(ref _retained.Bytes, 0);
-        _retained.SweptAtFinished = -1;
     }
 
     public void Clear()
@@ -118,7 +122,7 @@ public sealed class BlockCodeCache : ICodeCache
 
     private void EndTransaction(long transaction, long previous)
     {
-        t_transaction = previous;
+        _currentTransaction = previous;
         lock (_retained.Running)
         {
             _retained.Running.Remove(transaction);
@@ -161,7 +165,7 @@ public sealed class BlockCodeCache : ICodeCache
         /// <summary>Transactions finished, guarded by <see cref="Running"/>.</summary>
         public int Finished;
 
-        /// <summary><see cref="Finished"/> at the last sweep, or -1 before the block's first.</summary>
+        /// <summary><see cref="Finished"/> at the last sweep, or -1 before the first.</summary>
         public int SweptAtFinished = -1;
 
         /// <summary>Evicts the code no running transaction has used, unless that was done since the last transaction finished.</summary>
@@ -171,14 +175,16 @@ public sealed class BlockCodeCache : ICodeCache
             if (!_sweepLock.TryEnter()) return false;
             try
             {
-                // Read before the running set: a transaction stamped after it may already own code, so it is kept, while
-                // one stamped before and not yet running has stamped no code.
-                long lastTransaction = Volatile.Read(ref s_lastTransaction);
+                // Transactions are numbered under this lock, so every one up to lastTransaction is in the snapshot or has
+                // finished, and later ones are kept. A hit can still stamp an entry after the loop reads it; that entry is
+                // evicted and its transaction reloads it once.
+                long lastTransaction;
                 HashSet<long> running;
                 int finished;
                 lock (Running)
                 {
                     if (Finished == SweptAtFinished) return false;
+                    lastTransaction = Volatile.Read(ref _lastTransaction);
                     finished = Finished;
                     running = [.. Running];
                 }

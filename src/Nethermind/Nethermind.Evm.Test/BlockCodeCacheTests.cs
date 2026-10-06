@@ -72,7 +72,7 @@ public class BlockCodeCacheTests
     }
 
     [Test]
-    public void Past_the_cap_code_running_transactions_use_is_not_evicted()
+    public void Past_the_cap_code_running_transactions_use_is_kept_until_they_finish()
     {
         BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
         CodeInfo[] concurrent = [];
@@ -91,16 +91,33 @@ public class BlockCodeCacheTests
         loaded.Wait();
 
         CodeInfo[] codes;
-        using (cache.BeginTransaction()) codes = Load(cache, count: 10, first: 4);
-        finish.Set();
-        concurrentTransaction.Join();
+        CodeInfo[] afterFinish;
+        using (cache.BeginTransaction())
+        {
+            codes = Load(cache, count: 10, first: 4);
+            // Not looking up the concurrent transaction's code here: a hit would make it this transaction's too.
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 4; i < 14; i++)
+                {
+                    ValueHash256 hash = Hash(i);
+                    Assert.That(cache.Get(in hash), i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
+                }
+
+                Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge), "the concurrent transaction's code kept");
+            }
+
+            finish.Set();
+            concurrentTransaction.Join();
+            afterFinish = Load(cache, count: 4, first: 14);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            for (int i = 0; i < 14; i++)
+            for (int i = 0; i < 18; i++)
             {
                 ValueHash256 hash = Hash(i);
-                Assert.That(cache.Get(in hash), i < 4 ? Is.SameAs(concurrent[i]) : i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
+                Assert.That(cache.Get(in hash), i is >= 4 and < 10 ? Is.SameAs(codes[i - 4]) : i >= 14 ? Is.SameAs(afterFinish[i - 14]) : Is.Null, $"code {i} after the concurrent transaction finished");
             }
 
             Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
