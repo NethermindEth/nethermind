@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -18,7 +19,10 @@ public class ProcessedTransactionsDbCleaner : IDisposable
     private readonly IBlockTree _blockTree;
     private readonly IDb _processedTxsDb;
     private readonly ILogger _logger;
+    private readonly Lock _cleaningLock = new();
     private ulong _lastFinalizedBlock = 0;
+    private ulong _pendingFinalizedBlock = 0;
+    private bool _isCleaning;
     public Task CleaningTask { get; private set; } = Task.CompletedTask;
 
     public ProcessedTransactionsDbCleaner(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, ITxPoolConfig txPoolConfig)
@@ -35,13 +39,60 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
     private void OnBlocksFinalized(object? sender, FinalizeEventArgs e)
     {
-        if (e.FinalizedBlock.Number > _lastFinalizedBlock && CleaningTask.IsCompleted)
+        lock (_cleaningLock)
         {
-            CleaningTask = Task.Run(() => CleanProcessedTransactionsDb(e.FinalizedBlock.Number));
+            // A finalization arriving while a clean runs must be recorded rather than dropped: the running
+            // cleaner re-reads this target, and cleaning to the highest one also covers everything below it.
+            if (e.FinalizedBlock.Number <= _pendingFinalizedBlock) return;
+            _pendingFinalizedBlock = e.FinalizedBlock.Number;
+
+            if (_isCleaning) return;
+            _isCleaning = true;
+        }
+
+        CleaningTask = Task.Run(RunCleaner);
+    }
+
+    private void RunCleaner()
+    {
+        try
+        {
+            while (true)
+            {
+                ulong target;
+                lock (_cleaningLock)
+                {
+                    target = _pendingFinalizedBlock;
+                    if (target <= _lastFinalizedBlock)
+                    {
+                        // Publishing idle has to be atomic with deciding there is nothing left to clean,
+                        // or a finalization recorded in between would find a cleaner that is already leaving.
+                        _isCleaning = false;
+                        return;
+                    }
+                }
+
+                // A failed attempt leaves _lastFinalizedBlock where it was, so stop instead of rescanning the
+                // same target forever; the next finalization will start a new attempt.
+                if (!CleanProcessedTransactionsDb(target))
+                {
+                    lock (_cleaningLock) { _isCleaning = false; }
+                    return;
+                }
+
+                lock (_cleaningLock) { _lastFinalizedBlock = target; }
+            }
+        }
+        catch (Exception exception)
+        {
+            lock (_cleaningLock) { _isCleaning = false; }
+            if (_logger.IsError) _logger.Error("Processed transactions db cleaning loop failed", exception);
         }
     }
 
-    private void CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
+    /// <summary>Deletes the processed transactions of every block up to <paramref name="newlyFinalizedBlockNumber"/>.</summary>
+    /// <returns><see langword="true"/> when the records were deleted, <see langword="false"/> when the attempt failed.</returns>
+    private bool CleanProcessedTransactionsDb(ulong newlyFinalizedBlockNumber)
     {
         // BlobTxStorage tolerates missing payloads during reads; this unsynchronized cleaner must only delete records.
         try
@@ -68,11 +119,12 @@ public class ProcessedTransactionsDbCleaner : IDisposable
 
             if (_logger.IsDebug) _logger.Debug($"Blob transactions database columns have been compacted");
 
-            _lastFinalizedBlock = newlyFinalizedBlockNumber;
+            return true;
         }
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Couldn't correctly clean db with processed transactions. Newly finalized block {newlyFinalizedBlockNumber}, last finalized block: {_lastFinalizedBlock}", exception);
+            return false;
         }
     }
 
