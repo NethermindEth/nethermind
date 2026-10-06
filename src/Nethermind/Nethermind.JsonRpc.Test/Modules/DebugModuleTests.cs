@@ -317,6 +317,40 @@ public class DebugModuleTests
     }
 
     [Test]
+    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(
+        [Values(12345UL, 26236007UL)] ulong number, [Values(null, "missingTracer")] string? tracer, [Values] bool streaming)
+    {
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
+        string response = await SerializedRequest("debug_traceBlockByNumber", new BlockParameter(number), new { tracer });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo($"block #{number} not found"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [TestCase(false, ErrorCodes.InternalError, "Incorrect head block")]
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
+    public void Debug_traceBlockByNumber_preserves_non_lookup_failures(bool hasHead, int errorCode, string message)
+    {
+        Block block = Build.A.Block.WithNumber(1).TestObject;
+        if (hasHead)
+        {
+            _blockFinder.Head.Returns(block);
+            _blockFinder.FindHeader(new BlockParameter(1UL)).Returns(block.Header);
+        }
+        using ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>> response = CreateModule().debug_traceBlockByNumber(new BlockParameter(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(errorCode));
+            Assert.That(response.Result.Error, Does.StartWith(message));
+        }
+    }
+
+    [Test]
     public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock)
     {
         Hash256 blockHash = Keccak.EmptyTreeHash;
