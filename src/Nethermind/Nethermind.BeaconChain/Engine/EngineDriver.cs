@@ -96,8 +96,10 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
     /// execution-apis amsterdam.md defines as a CL that provides no custody services.
     /// </remarks>
     /// <exception cref="EngineUnavailableException">The call produced no status; a failure is not SYNCING.</exception>
-    public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash) =>
-        CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{FormatExecutionBlock(headExecHash)}, Safe: {FormatExecutionBlock(safeExecHash)}, Finalized: {FormatExecutionBlock(finalizedExecHash)}" : null, async () =>
+    public Task<PayloadStatusV1> ForkchoiceUpdated(Hash256 headExecHash, Hash256 safeExecHash, Hash256 finalizedExecHash)
+    {
+        ulong? headNumber = _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null;
+        return CallEngineAsync("forkchoiceUpdated", _logger.IsInfo ? $"{(headNumber is { } number ? $"{number} ({headExecHash.ToShortString()})" : headExecHash.ToShortString())}, Safe: {FormatExecutionBlock(safeExecHash)}, Finalized: {FormatExecutionBlock(finalizedExecHash)}" : null, async () =>
         {
             Interlocked.Increment(ref Metrics.ForkchoiceUpdatedCallsCount);
             ForkchoiceStateV1 state = new(headExecHash, finalizedExecHash, safeExecHash);
@@ -108,7 +110,8 @@ public sealed class EngineDriver(ExternalClDetector detector, ILogManager logMan
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             (PayloadStatusV1 status, TimeSpan elapsed) = await pending.WaitAsync(ForkchoiceTimeout);
             return (LastForkchoiceStatus = status, elapsed);
-        }, blockNumber: _logger.IsInfo ? blockTree?.FindHeader(headExecHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing)?.Number : null);
+        }, blockNumber: headNumber);
+    }
 
     private string FormatExecutionBlock(Hash256 hash) =>
         blockTree?.FindHeader(hash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing) is { } header
