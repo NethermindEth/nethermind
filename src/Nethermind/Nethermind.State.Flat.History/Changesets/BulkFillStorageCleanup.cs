@@ -12,37 +12,27 @@ namespace Nethermind.State.Flat.History.Changesets;
 
 internal static class BulkFillStorageCleanup
 {
-    /// <summary>Each account's slot deletions and the removal of its clear marker go in one batch, so a crash leaves
-    /// either the marker with the slots or neither. That is what makes a single WAL sync at the end enough: a batch
-    /// the crash loses is redone from its marker on the next run, and syncing per account would cost an fsync for
-    /// every one of them.</summary>
+    /// <summary>Each account's marker is removed in the batch with its last slot deletions, so a cleanup a crash cuts
+    /// short leaves the marker in place and is finished by the cleanup that runs before replay resumes. Nothing outside
+    /// the scratch depends on how far a cleanup got, so it is never synced.</summary>
     public static void Run(IColumnsDb<Columns> db, CancellationToken token)
     {
         Span<byte> upper = stackalloc byte[Hash256.Size + 1];
         upper.Fill(0xFF);
-        bool cleaned = false;
-        try
+        while (true)
         {
-            while (true)
+            token.ThrowIfCancellationRequested();
+            ValueHash256 address;
+            ulong clearedAt;
+            using (ISortedView clears = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Clears)).GetViewBetween([], upper))
             {
-                token.ThrowIfCancellationRequested();
-                ValueHash256 address;
-                ulong clearedAt;
-                using (ISortedView clears = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Clears)).GetViewBetween([], upper))
-                {
-                    if (!clears.MoveNext()) return;
-                    if (clears.CurrentKey.Length != Hash256.Size || clears.CurrentValue.Length != sizeof(ulong))
-                        throw new InvalidDataException("Invalid scratch clear during cleanup.");
-                    address = new ValueHash256(clears.CurrentKey);
-                    clearedAt = BinaryPrimitives.ReadUInt64BigEndian(clears.CurrentValue);
-                }
-                CleanAccount(db, address, clearedAt, token);
-                cleaned = true;
+                if (!clears.MoveNext()) return;
+                if (clears.CurrentKey.Length != Hash256.Size || clears.CurrentValue.Length != sizeof(ulong))
+                    throw new InvalidDataException("Invalid scratch clear during cleanup.");
+                address = new ValueHash256(clears.CurrentKey);
+                clearedAt = BinaryPrimitives.ReadUInt64BigEndian(clears.CurrentValue);
             }
-        }
-        finally
-        {
-            if (cleaned) db.SyncWal();
+            CleanAccount(db, address, clearedAt, token);
         }
     }
 
