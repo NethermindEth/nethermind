@@ -843,6 +843,48 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void PredictedStorage_BlockEndBatchReachesTheSameRoot([Values] bool clearAtBlockEnd, [Values] bool deferStorageTrieCommit)
+    {
+        const int slotCount = 40;
+        using TestContext ctx = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit });
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(TestItem.GenerateRandomAccount());
+
+        // Predicted: every slot once, slot 1 with a value the block does not end with, slot 2 with one the block never writes.
+        List<(UInt256 Slot, UInt256 Value)> predicted = [];
+        for (int slot = 0; slot < slotCount; slot++) predicted.Add(((UInt256)slot, (UInt256)(slot + 1)));
+        predicted[1] = (1, 1000);
+        predicted[2] = (2, 0x4e4d);
+        long adopted = PredictedStorageCounters.Adopted;
+        scope.HintPredictedStorage(address, predicted);
+
+        UInt256[] expected = new UInt256[slotCount];
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, slotCount);
+            if (clearAtBlockEnd) storageBatch.Clear();
+            for (int slot = 0; slot < slotCount; slot++)
+            {
+                if (slot == 2) continue;
+                expected[slot] = slot == 1 ? 2000 : (UInt256)(slot + 1);
+                storageBatch.Set((UInt256)slot, expected[slot]);
+            }
+        }
+
+        Assert.That(PredictedStorageCounters.Adopted, Is.GreaterThan(adopted));
+        scope.Commit(1);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            if (!expected[slot].IsZero) expectedTree.Set((UInt256)slot, expected[slot].ToMinimalBigEndian());
+        }
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void EarlyStorageApply_IsOnByDefaultButNotWithVerifyWithTrie()
     {
         using IDisposable gap = SetMinIdleGap(TimeSpan.Zero);

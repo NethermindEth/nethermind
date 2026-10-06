@@ -9,8 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -33,6 +35,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly Hash256 _initialStateRoot;
     private StateTree? _stateTree;
     private readonly Dictionary<AddressAsKey, FlatStorageTree> _storages = [];
+
+    // Experiment only: storage trees built ahead from predicted final writes, taken by the block's write batch.
+    private ConcurrentDictionary<AddressAsKey, PredictedStorage>? _predictedStorages;
+    private volatile bool _predictionsClosed;
+    // The warmer adapter only sees the scope's base, so predictions only serve its first block.
+    private volatile int _committedBlocks;
+
+    internal sealed record PredictedStorage(Hash256 BaseRoot, StorageTree Tree, Dictionary<UInt256, UInt256> Applied);
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -516,16 +526,82 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         return storage;
     }
 
+    [SkipLocalsInit]
+    public void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes)
+    {
+        if (writes.Count == 0 || _predictionsClosed || _committedBlocks != 0 || IsDisposed || _isReadOnly || _trieless || _configuration.VerifyWithTrie
+            || _snapshotBundle._usage != ResourcePool.Usage.MainBlockProcessing) return;
+        if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return;
+
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            Hash256 baseRoot = _snapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_snapshotBundle, address.ToAccountPath.ToHash256()), _logManager);
+            tree.SetRootHash(baseRoot, false);
+
+            Dictionary<UInt256, UInt256> applied = new(writes.Count);
+            using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(writes.Count);
+            Unsafe.SkipInit(out EvmWord word);
+            ValueHash256 key = default;
+            foreach ((UInt256 slot, UInt256 value) in writes)
+            {
+                bool isZero = value.IsZero;
+                StorageTree.ComputeKeyWithLookup(slot, ref key);
+                entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
+                applied[slot] = value;
+            }
+
+            tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
+            tree.UpdateRootHash(canBeParallel: false);
+            if (_predictionsClosed)
+            {
+                Interlocked.Increment(ref PredictedStorageCounters.Late);
+                return;
+            }
+
+            (Volatile.Read(ref _predictedStorages) ?? InitializePredictedStorages())[address] = new PredictedStorage(baseRoot, tree, applied);
+            Interlocked.Increment(ref PredictedStorageCounters.Built);
+            Interlocked.Add(ref PredictedStorageCounters.BuiltWrites, writes.Count);
+        }
+        catch (Exception)
+        {
+            // A prediction that fails to build is simply not offered.
+        }
+        finally
+        {
+            Interlocked.Add(ref PredictedStorageCounters.BuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - start);
+            _snapshotBundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
+    private ConcurrentDictionary<AddressAsKey, PredictedStorage> InitializePredictedStorages()
+    {
+        ConcurrentDictionary<AddressAsKey, PredictedStorage> created = new();
+        return Interlocked.CompareExchange(ref _predictedStorages, created, null) ?? created;
+    }
+
+    /// <summary>Takes the tree predicted for <paramref name="address"/> if it was built on <paramref name="storageRoot"/>.</summary>
+    internal PredictedStorage? TakePredictedStorage(Address address, Hash256 storageRoot)
+    {
+        if (Volatile.Read(ref _predictedStorages) is not { } predicted || !predicted.TryRemove(address, out PredictedStorage? storage)) return null;
+        if (storage.BaseRoot == storageRoot) return storage;
+        Interlocked.Increment(ref PredictedStorageCounters.StaleBase);
+        return null;
+    }
+
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        _predictionsClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
     public void Commit(ulong blockNumber)
     {
         _pausePrewarmer = true;
+        _committedBlocks++;
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -538,6 +614,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         _storages.Clear();
         _hintWarmStorages?.Clear();
+        if (Volatile.Read(ref _predictedStorages) is { Count: > 0 } unclaimed)
+        {
+            Interlocked.Add(ref PredictedStorageCounters.Unclaimed, unclaimed.Count);
+            unclaimed.Clear();
+        }
 
         StateId newStateId = new(blockNumber, RootHash);
         bool shouldAddSnapshot = !_isReadOnly && _currentStateId != newStateId;

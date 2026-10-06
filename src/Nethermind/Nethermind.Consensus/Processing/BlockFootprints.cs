@@ -21,6 +21,10 @@ internal sealed class BlockFootprints(Block block)
 
     public void SetStatus(int index, int status) => Volatile.Write(ref _status[index], status);
 
+    public int Count => _footprints.Length;
+
+    public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
+
     public int Status(int index, Transaction tx)
     {
         if ((uint)index >= (uint)_status.Length) return HandoffDiagnostics.OtherTransaction;

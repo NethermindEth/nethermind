@@ -51,6 +51,7 @@ public static class HandoffDiagnostics
     internal static BlockFootprints? Block;
     private static long _firstTxStart, _lastTxEnd;
     private static int _lastAbsence = -1;
+    private static long _built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late;
 
     internal static void TxStarted(long timestamp)
     {
@@ -154,6 +155,24 @@ public static class HandoffDiagnostics
                 executedAccounts++;
                 executedSlots += entry.Value;
             }
+
+            long built = PredictedStorageCounters.Built, builtWrites = PredictedStorageCounters.BuiltWrites, buildTicks = PredictedStorageCounters.BuildTicks;
+            long adopted = PredictedStorageCounters.Adopted, unclaimed = PredictedStorageCounters.Unclaimed;
+            long stale = PredictedStorageCounters.StaleBase, late = PredictedStorageCounters.Late;
+            if (built != _built || late != _late)
+            {
+                writer.WriteStartObject("predicted_storage");
+                writer.WriteNumber("built", built - _built);
+                writer.WriteNumber("built_writes", builtWrites - _builtWrites);
+                writer.WriteNumber("build_cpu_ms", Math.Round((buildTicks - _buildTicks) * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteNumber("adopted", adopted - _adopted);
+                writer.WriteNumber("unclaimed_previous_block", unclaimed - _unclaimed);
+                writer.WriteNumber("stale_base", stale - _stale);
+                writer.WriteNumber("late", late - _late);
+                writer.WriteEndObject();
+            }
+
+            (_built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late) = (built, builtWrites, buildTicks, adopted, unclaimed, stale, late);
 
             writer.WriteStartObject("storage_writers");
             writer.WriteNumber("replay_only_accounts", replayOnly);

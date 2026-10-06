@@ -197,7 +197,14 @@ public sealed class FlatStorageTree(
 
     private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
     {
-        if (Volatile.Read(ref _earlyWrites) is null) return null;
+        if (Volatile.Read(ref _earlyWrites) is null)
+        {
+            // Experiment only: a tree built ahead from the predicted final writes, reconciled slot by slot like an early tree.
+            if (_scope.TakePredictedStorage(_address, _storageRoot) is not { Applied.Count: > 0 } predicted) return null;
+            tree.RootRef = predicted.Tree.RootRef;
+            Interlocked.Increment(ref PredictedStorageCounters.Adopted);
+            return predicted.Applied;
+        }
 
         int previous = Interlocked.Exchange(ref _earlyState, EarlyClaimed);
         if (previous == EarlyApplying)

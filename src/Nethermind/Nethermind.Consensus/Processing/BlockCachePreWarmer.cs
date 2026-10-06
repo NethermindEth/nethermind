@@ -227,7 +227,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
-                    if (footprints is not null) Volatile.Write(ref footprints.WarmedAt, Stopwatch.GetTimestamp());
+                    if (footprints is not null)
+                    {
+                        Volatile.Write(ref footprints.WarmedAt, Stopwatch.GetTimestamp());
+                        if (PredictsStorageRoots && !token.IsCancellationRequested) PredictStorageRoots(footprints, token);
+                    }
                     discoveryWork?.WaitForCompletion();
                 }
                 finally
@@ -924,6 +928,57 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <returns>Whether the transaction can have one at all.</returns>
+    /// <summary>Experiment only: build storage trees from the block's footprints once its warm pass ends; NETHERMIND_EXP_FOOTPRINT_ROOTS=0 turns it off.</summary>
+    private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") != "0";
+
+    private void PredictStorageRoots(BlockFootprints footprints, CancellationToken token)
+    {
+        if (_preBlockCaches?.MainScope is not { } mainScope) return;
+
+        // The block's writes as the footprints have them: in transaction order, the last write wins. An account whose
+        // storage a footprint clears or destroys is left to the block's write batch.
+        Dictionary<AddressAsKey, Dictionary<UInt256, UInt256>?> predicted = [];
+        for (int i = 0; i < footprints.Count; i++)
+        {
+            if (footprints.Get(i) is not { } footprint) continue;
+            foreach (ref readonly StateEffect effect in footprint.Effects)
+            {
+                switch (effect.Kind)
+                {
+                    case EffectKind.SetStorage:
+                        ref Dictionary<UInt256, UInt256>? slots = ref CollectionsMarshal.GetValueRefOrAddDefault(predicted, effect.Address, out bool exists);
+                        if (!exists) slots = [];
+                        if (slots is not null) slots[effect.Index] = effect.Value;
+                        break;
+                    case EffectKind.ClearStorage or EffectKind.MarkStorageDestroyed or EffectKind.DeleteAccount:
+                        predicted[effect.Address] = null;
+                        break;
+                }
+            }
+        }
+
+        List<(Address Address, List<(UInt256 Slot, UInt256 Value)> Writes)> work = new(predicted.Count);
+        foreach ((AddressAsKey address, Dictionary<UInt256, UInt256>? slots) in predicted)
+        {
+            if (slots is not { Count: > 0 }) continue;
+            List<(UInt256, UInt256)> writes = new(slots.Count);
+            foreach ((UInt256 slot, UInt256 value) in slots) writes.Add((slot, value));
+            work.Add((address, writes));
+        }
+
+        // Largest first, so the long builds start early.
+        work.Sort(static (left, right) => right.Writes.Count.CompareTo(left.Writes.Count));
+        ParallelOptions options = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = token };
+        try
+        {
+            Parallel.For(0, work.Count, options, i => mainScope.HintPredictedStorage(work[i].Address, work[i].Writes));
+        }
+        catch (OperationCanceledException)
+        {
+            // Block processing finished its transactions; what is built is offered, the rest is not.
+        }
+    }
+
     /// <summary>Experiment only: what the run of the transaction the main thread just started came to.</summary>
     internal int FootprintStatus(Transaction tx) => Volatile.Read(ref _footprints)?.Status(_mainThreadTxIndex, tx) ?? HandoffDiagnostics.OtherTransaction;
 

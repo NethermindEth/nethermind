@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -65,6 +66,10 @@ public interface IWorldStateScopeProvider
 
         /// <inheritdoc cref="HintWarmAccount(Address)"/>
         void HintWarmSlot(Address address, in UInt256 index) { }
+
+        /// <summary>Experiment only: the storage writes <paramref name="address"/> is predicted to end the block with.</summary>
+        /// <remarks>Called from worker threads; a backend may build the storage tree ahead and reconcile it at the block's write batch.</remarks>
+        void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes) { }
 
         /// <summary>
         /// Get the account information for the following address.

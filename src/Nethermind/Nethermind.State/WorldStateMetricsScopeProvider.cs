@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading.Tasks;
@@ -52,6 +53,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
         public void HintWarmAccount(Address address) => baseScope.HintWarmAccount(address);
 
         public void HintWarmSlot(Address address, in UInt256 index) => baseScope.HintWarmSlot(address, in index);
+
+        public void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes) => baseScope.HintPredictedStorage(address, writes);
 
         public void Dispose()
         {
