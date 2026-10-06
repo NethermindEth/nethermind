@@ -310,17 +310,21 @@ public class CommitmentEmitterTests
         int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.Empty, exact: true);
         byte[] row = store.TryGetExact(prefix[..prefixLength], 3)!;
         ChildVector carried = ChildVector.Rent();
-        ushort presence = ParentRowCodec.Presence(row);
-
-        using (Assert.EnterMultipleScope())
+        try
         {
-            Assert.That(presence, Is.EqualTo((ushort)0b11));
-            Assert.That(ParentRowCodec.Changed(row), Is.EqualTo(expectedChanged),
-                "a branch the emitter still remembers writes only its changed children; one it forgot writes every present child, as if it had never been a branch");
-            Assert.That(ParentRowCodec.Fill(row, presence, carried), Is.EqualTo(expectedChanged), "the row carries a reference for exactly the children it marks changed");
+            ushort presence = ParentRowCodec.Presence(row);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(presence, Is.EqualTo((ushort)0b11));
+                Assert.That(ParentRowCodec.Changed(row), Is.EqualTo(expectedChanged),
+                    "a branch the emitter still remembers writes only its changed children; one it forgot writes every present child, as if it had never been a branch");
+                Assert.That(ParentRowCodec.Fill(row, presence, carried), Is.EqualTo(expectedChanged), "the row carries a reference for exactly the children it marks changed");
+            }
         }
-
-        ChildVector.Return(carried);
+        finally
+        {
+            ChildVector.Return(carried);
+        }
     }
 
     private static void RecordLargeStorageRoot(CommitmentEmitter emitter, in ValueHash256 account)
