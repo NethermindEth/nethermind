@@ -23,61 +23,49 @@ public class ColumnGossipRouterReconstructionTests
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan Timeout = TimeSpan.FromSeconds(10);
 
-    [Test]
-    public void Sidecars_of_another_root_are_not_blocked_while_one_root_recovers()
+    [TestCase(false, TestName = "Sidecars_of_another_root_are_not_blocked_while_one_root_recovers")]
+    [TestCase(true, TestName = "A_root_is_never_recovered_twice_concurrently")]
+    public void Concurrent_sidecars_do_not_wait_for_recovery_or_claim_a_recovering_root(bool sameRoot)
     {
         using GatedRecovery recovery = new(CurrentSlot);
         (ColumnGossipRouter router, DataColumnSidecarPool pool, ConcurrentBag<DataColumnSidecar> received) = Create(recovery);
         Hash256 gatedRoot = Seed(pool, CurrentSlot);
-        Hash256 otherRoot = Seed(pool, CurrentSlot - 1);
+        Hash256 otherRoot = sameRoot ? gatedRoot : Seed(pool, CurrentSlot - 1);
 
         Task gated = Task.Run(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot)));
         bool entered = recovery.Entered.Wait(Timeout);
-        Task<MessageValidity> other = Task.Run(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot - 1)));
+        Task<MessageValidity> other = Task.Run(() => router.Handle((ulong)(sameRoot ? Required : Required - 1), gloasTopic: false,
+            Message((ulong)(sameRoot ? Required : Required - 1), sameRoot ? CurrentSlot : CurrentSlot - 1)));
         bool otherFinishedWhileGated = other.Wait(Timeout);
         bool gatedStillRecovering = !gated.IsCompleted;
-        recovery.Release.Set();
-        bool gatedFinished = gated.Wait(Timeout);
-        bool otherFinished = other.Wait(Timeout);
-
-        using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(entered, Is.True, "fixture: the first root's recovery started");
-        Assert.That(otherFinishedWhileGated, Is.True, "the other root's sidecar is validated while the first root recovers");
-        Assert.That(gatedStillRecovering, Is.True, "fixture: the first root was still recovering");
-        Assert.That(gatedFinished, Is.True);
-        Assert.That(otherFinished, Is.True);
-        Assert.That(pool.TryGet(otherRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the other root was recovered too");
-        Assert.That(pool.TryGet(gatedRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
-        Assert.That(received.Count, Is.EqualTo(2 * Eip7594DasConstants.NumberOfColumns - 2 * (Required - 1)), "every missing column of both roots was raised once");
-    }
-
-    [Test]
-    public void A_root_is_never_recovered_twice_concurrently()
-    {
-        using GatedRecovery recovery = new(CurrentSlot);
-        (ColumnGossipRouter router, DataColumnSidecarPool pool, ConcurrentBag<DataColumnSidecar> received) = Create(recovery);
-        Hash256 root = Seed(pool, CurrentSlot);
-
-        Task gated = Task.Run(() => router.Handle(Required - 1, gloasTopic: false, Message(Required - 1, CurrentSlot)));
-        bool entered = recovery.Entered.Wait(Timeout);
-        Task<MessageValidity> another = Task.Run(() => router.Handle(Required, gloasTopic: false, Message(Required, CurrentSlot)));
-        bool anotherFinishedWhileGated = another.Wait(Timeout);
         int callsWhileGated = recovery.Calls;
         recovery.Release.Set();
         bool gatedFinished = gated.Wait(Timeout);
-        bool anotherFinished = another.Wait(Timeout);
-        typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
-            .Invoke(router, [root, CurrentSlot]);
+        bool otherFinished = other.Wait(Timeout);
+        if (sameRoot)
+        {
+            typeof(ColumnGossipRouter).GetMethod("TrackHeldColumnAndMaybeReconstruct", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+                .Invoke(router, [gatedRoot, CurrentSlot]);
+        }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(entered, Is.True, "fixture: the recovery started");
-        Assert.That(anotherFinishedWhileGated, Is.True, "a sidecar of the recovering root does not wait for it");
-        Assert.That(callsWhileGated, Is.EqualTo(1), "the recovering root is not claimed again");
+        Assert.That(entered, Is.True, "fixture: the first root's recovery started");
+        Assert.That(otherFinishedWhileGated, Is.True, "a sidecar is validated while the first root recovers");
+        Assert.That(gatedStillRecovering, Is.True, "fixture: the first root was still recovering");
         Assert.That(gatedFinished, Is.True);
-        Assert.That(anotherFinished, Is.True);
-        Assert.That(recovery.Calls, Is.EqualTo(1), "a recovered root is never recovered again");
-        Assert.That(pool.TryGet(root, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
-        Assert.That(received.Select(static s => s.Index), Is.Unique);
+        Assert.That(otherFinished, Is.True);
+        Assert.That(pool.TryGet(gatedRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True);
+        if (sameRoot)
+        {
+            Assert.That(callsWhileGated, Is.EqualTo(1), "the recovering root is not claimed again");
+            Assert.That(recovery.Calls, Is.EqualTo(1), "a recovered root is never recovered again");
+            Assert.That(received.Select(static s => s.Index), Is.Unique);
+        }
+        else
+        {
+            Assert.That(pool.TryGet(otherRoot, Eip7594DasConstants.NumberOfColumns - 1, out _), Is.True, "the other root was recovered too");
+            Assert.That(received.Count, Is.EqualTo(2 * Eip7594DasConstants.NumberOfColumns - 2 * (Required - 1)), "every missing column of both roots was raised once");
+        }
     }
 
     [Test]
