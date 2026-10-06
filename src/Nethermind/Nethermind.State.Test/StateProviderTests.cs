@@ -143,6 +143,31 @@ public class StateProviderTests(bool useFlat)
     }
 
     [Test]
+    public void DeleteAccount_WhenRecreatedAndDeletedAgainInOneCommit_RemovesThePreExistingAccount()
+    {
+        using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
+        WorldState state = (WorldState)ctx.WorldState;
+        BlockHeader baseBlock;
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(_address1, 1);
+            state.Commit(Frontier.Instance);
+            state.CommitTree(0);
+            baseBlock = Build.A.BlockHeader.WithStateRoot(state.StateRoot).TestObject;
+        }
+
+        using IDisposable scope = state.BeginScope(baseBlock);
+        // Block production commits once per block, so both self-destructs share one journal.
+        state.GetBalance(_address1);
+        state.DeleteAccount(_address1);
+        state.CreateAccount(_address1, 0);
+        state.DeleteAccount(_address1);
+        state.Commit(Cancun.Instance);
+
+        Assert.That(state.AccountExists(_address1), Is.False);
+    }
+
+    [Test]
     public void Eip_158_zero_value_transfer_deletes()
     {
         using Context ctx = new(useFlat, UnavailableStateHeaderProvider.Instance);
