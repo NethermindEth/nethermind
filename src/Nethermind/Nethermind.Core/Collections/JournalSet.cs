@@ -21,9 +21,11 @@ namespace Nethermind.Core.Collections
     /// </remarks>
     public sealed class JournalSet<T>(EqualityComparer<T> equalityComparer) : ICollection<T>, IJournal<int> where T : notnull, IEquatable<T>
     {
+#if !ZK_EVM
         // Removing entries one by one beats zeroing every bucket only while few remain: add, restore, clear and reuse
         // cycles on Address and StorageCell journals put the crossover between about Capacity/100 and Capacity/1000.
         private const int SparseClearCapacityDivisor = 256;
+#endif
 
         private readonly List<T> _items = [];
         private readonly OptimizedHashSet<T> _set = new(GenericEqualityComparer.GetOptimized(equalityComparer));
@@ -67,6 +69,8 @@ namespace Nethermind.Core.Collections
 
         public void Clear()
         {
+            // The guest set's own Clear already zeroes only the buckets in use while it is sparse.
+#if !ZK_EVM
             if (Count <= _set.Capacity / SparseClearCapacityDivisor)
             {
                 foreach (T item in CollectionsMarshal.AsSpan(_items))
@@ -75,6 +79,7 @@ namespace Nethermind.Core.Collections
                 }
             }
             else
+#endif
             {
                 _set.Clear();
             }
