@@ -6,16 +6,12 @@ using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.DataAvailability;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Serialization.Ssz.Merkleization;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
 
-/// <summary>
-/// Runs the consensus-specs <c>merkle_proof</c> suite (tests/formats/light_client/single_merkle_proof.md). Fulu's
-/// <c>blob_kzg_commitments</c> proof is the <c>kzg_commitments_inclusion_proof</c> of a data column sidecar, so each vector
-/// is checked through <see cref="DataColumnSidecarVerifier.VerifyInclusionProof"/>. Electra's single-commitment proof
-/// belongs to the blob sidecars this node never verifies and is reported not implemented.
-/// </summary>
 [TestFixture]
 public class MerkleProofTests
 {
@@ -30,9 +26,9 @@ public class MerkleProofTests
         Assert.That(FuluDriverSupport.TestedCases<MerkleProofCase>(preset, MinimalCases, MainnetCases).Select(static testCase => testCase.Fork).Distinct(),
             Is.EquivalentTo(Forks));
     [Test]
-    public void Fulu_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
+    public void Every_fork_runs_a_compiled_preset_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            [.. FuluDriverSupport.TestedCases<MerkleProofCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases).Where(static testCase => testCase.Fork == "fulu")],
+            FuluDriverSupport.TestedCases<MerkleProofCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => testCase.Fork,
             Run);
 
@@ -43,7 +39,7 @@ public class MerkleProofTests
     {
         FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         string proofName = Path.GetFileName(testCase.CasePath).Split("__")[0];
-        if (testCase.Fork != "fulu" || proofName != "blob_kzg_commitments_merkle_proof")
+        if ((testCase.Fork, proofName) is not ("fulu", "blob_kzg_commitments_merkle_proof") and not ("electra", "blob_kzg_commitment_merkle_proof"))
             throw new NotImplementedInDriverException($"{testCase.Fork} {proofName} proves a leaf no code in this node verifies.");
 
         BeaconBlockBody.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "object.ssz_snappy")), out BeaconBlockBody body);
@@ -51,6 +47,24 @@ public class MerkleProofTests
         Hash256 leaf = new(FuluDriverSupport.Scalar(proof, "leaf"));
         ulong leafIndex = ulong.Parse(FuluDriverSupport.Scalar(proof, "leaf_index"));
         Hash256[] branch = [.. ((YamlSequenceNode)proof.Children[new YamlScalarNode("branch")]).Children.Select(static node => new Hash256(((YamlScalarNode)node).Value!))];
+
+        const ulong commitmentsFieldIndex = (1UL << Eip7594DasConstants.KzgCommitmentsInclusionProofDepth)
+            + Eip7594DasConstants.BlobKzgCommitmentsSubtreeIndex;
+        if (testCase.Fork == "electra")
+        {
+            int depth = Eip7594DasConstants.KzgCommitmentsInclusionProofDepth + 1
+                + System.Numerics.BitOperations.Log2((uint)Eip7594DasConstants.MaxBlobCommitmentsPerBlock);
+            Assert.That(branch, Has.Length.EqualTo(depth));
+            Assert.That(body.BlobKzgCommitments, Is.Not.Empty);
+            Merkle.Merkleize(out UInt256 commitmentRoot, body.BlobKzgCommitments![0].AsSpan());
+            using System.IDisposable scope = Assert.EnterMultipleScope();
+            Assert.That(leafIndex, Is.EqualTo(commitmentsFieldIndex * 2 * Eip7594DasConstants.MaxBlobCommitmentsPerBlock),
+                "the vector proves the first commitment in BeaconBlockBody.blob_kzg_commitments");
+            Assert.That(new Hash256(commitmentRoot.ToLittleEndian()), Is.EqualTo(leaf));
+            Assert.That(DataColumnSidecarVerifier.IsValidMerkleBranch(leaf.Bytes, branch, depth,
+                checked((int)leafIndex), SszRoots.HashTreeRoot(body).Bytes), Is.True);
+            return;
+        }
 
         DataColumnSidecar sidecar = new()
         {
@@ -60,7 +74,7 @@ public class MerkleProofTests
         };
 
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(leafIndex, Is.EqualTo((1UL << Eip7594DasConstants.KzgCommitmentsInclusionProofDepth) + (ulong)Eip7594DasConstants.BlobKzgCommitmentsSubtreeIndex),
+        Assert.That(leafIndex, Is.EqualTo(commitmentsFieldIndex),
             "the vector proves the generalized index the sidecar check folds up from");
         Assert.That(DataColumnSidecarVerifier.ComputeCommitmentsListRoot(body.BlobKzgCommitments!), Is.EqualTo(leaf));
         Assert.That(DataColumnSidecarVerifier.VerifyInclusionProof(sidecar), Is.True);
