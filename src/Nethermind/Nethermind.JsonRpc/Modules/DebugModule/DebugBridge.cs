@@ -182,7 +182,7 @@ public class DebugBridge : IDebugBridge
         return IsDeleted(_blockTree.LowestInsertedHeader?.Number) ||
                IsDeleted(_syncPointers.LowestInsertedBodyNumber) ||
                IsDeleted(_syncPointers.LowestInsertedReceiptBlockNumber) ||
-               IsDeleted(_syncPointers.LowestInsertedBlockAccessListBlockNumber)
+               IsDeleted(LowestRequiredBlockAccessListNumber)
             ? ResultWrapper<int>.Fail("Historical sync progress lies in the deletion range; choose a higher startNumber.", ErrorCodes.ResourceUnavailable)
             : null;
 
@@ -244,7 +244,20 @@ public class DebugBridge : IDebugBridge
         _blockTree.LowestInsertedHeader?.Number > number ||
         _syncPointers.LowestInsertedBodyNumber > number ||
         _syncPointers.LowestInsertedReceiptBlockNumber > number ||
-        _syncPointers.LowestInsertedBlockAccessListBlockNumber > number;
+        LowestRequiredBlockAccessListNumber > number;
+
+    /// <summary>
+    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block below it predates EIP-7928.
+    /// </summary>
+    /// <remarks>
+    /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
+    /// leaves there does not bound how deep the chain can be rewound or deleted.
+    /// </remarks>
+    private ulong? LowestRequiredBlockAccessListNumber =>
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber is { } lowest and > 0 &&
+        _blockTree.FindHeader(lowest - 1, BlockTreeLookupOptions.RequireCanonical) is { BlockAccessListHash: null }
+            ? null
+            : _syncPointers.LowestInsertedBlockAccessListBlockNumber;
 
     private bool CanRewindChain()
     {

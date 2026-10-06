@@ -2,6 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -54,7 +57,7 @@ public class BlockAccessListsSyncFeedTests
         _feed.InitializeFeed();
     }
 
-    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider) =>
+    private BlockAccessListsSyncFeed CreateFeed(ISpecProvider specProvider, ILogManager? logManager = null) =>
         new(
             specProvider,
             _blockTree,
@@ -64,7 +67,7 @@ public class BlockAccessListsSyncFeedTests
             new TestSyncConfig { FastSync = true, PivotNumber = 1 },
             new NullSyncReport(),
             _metadataDb,
-            LimboLogs.Instance);
+            logManager ?? LimboLogs.Instance);
 
     private static TestSpecProvider SpecProviderWithBlockAccessLists() =>
         new(new ReleaseSpec())
@@ -258,6 +261,120 @@ public class BlockAccessListsSyncFeedTests
             Arg.Any<PeerInfo>(),
             Arg.Any<DisconnectReason>(),
             Arg.Any<string>());
+    }
+
+    [Test]
+    public async Task Stops_at_block_access_lists_activation_with_requests_in_flight_and_stays_finished_after_restart([Values] bool timestampActivation)
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        ConcurrentBag<ulong> lookups = [];
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation, headersAvailable: true, lookups);
+        _syncPeerPool
+            .EstimateRequestLimit(Arg.Any<RequestType>(), Arg.Any<IPeerAllocationStrategy>(), Arg.Any<AllocationContexts>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult<int?>(3));
+        _feed.Dispose();
+        _feed = CreateFeed(specProvider);
+        _feed.InitializeFeed();
+        _feed.Activate();
+        lookups.Clear();
+
+        List<BlockAccessListsSyncBatch> inFlight = [];
+        for (int i = 0; i < 10; i++)
+        {
+            if (await _feed.PrepareRequest() is { } batch) inFlight.Add(batch);
+        }
+
+        ulong[] requested = inFlight.SelectMany(static b => b.Infos).OfType<BlockInfo>().Select(static b => b.BlockNumber).ToArray();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(requested, Is.EquivalentTo(Enumerable.Range((int)activation, (int)(pivot - activation + 1)).Select(static n => (ulong)n)));
+            Assert.That(lookups.Min(), Is.EqualTo(activation - 1), "no block below the last pre-activation block is looked up");
+        }
+
+        foreach (BlockAccessListsSyncBatch batch in inFlight)
+        {
+            batch.Response = BuildBlockAccessLists(batch.Infos.OfType<BlockInfo>().Select(static _ => EmptyBlockAccessList).ToArray());
+            Assert.That(_feed.HandleResponse(batch), Is.EqualTo(SyncResponseHandlingResult.OK));
+        }
+
+        Assert.That(await _feed.PrepareRequest(), Is.Null);
+        Assert.That(await _feed.PrepareRequest(), Is.Null);
+        Assert.That(_feed.CurrentState, Is.EqualTo(SyncFeedState.Finished));
+
+        using BlockAccessListsSyncFeed restarted = CreateFeed(specProvider);
+        Assert.That(restarted.IsFinished, Is.True);
+    }
+
+    [Test]
+    public void Keeps_configured_barrier_when_headers_below_pivot_are_missing()
+    {
+        const ulong pivot = 40;
+        const ulong activation = 20;
+        ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation: false, headersAvailable: false, []);
+        _syncPointers.LowestInsertedBlockAccessListBlockNumber = activation - 2;
+        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+        logger.IsInfo.Returns(true);
+        ILogger classLogger = new(logger);
+        ILogManager logManager = Substitute.For<ILogManager>();
+        logManager.GetClassLogger<BlockAccessListsSyncFeed>().Returns(classLogger);
+
+        using BlockAccessListsSyncFeed feed = CreateFeed(specProvider, logManager);
+        feed.InitializeFeed();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(feed.IsFinished, Is.False);
+            logger.Received(1).Info(Arg.Is<string>(static m => m.Contains("cannot find the EIP-7928 activation")));
+        }
+    }
+
+    private static readonly byte[] EmptyBlockAccessList = [0xc0];
+
+    private ISpecProvider SetUpChainWithActivation(ulong pivot, ulong activation, bool timestampActivation, bool headersAvailable, ConcurrentBag<ulong> lookups)
+    {
+        const ulong secondsPerBlock = 12;
+        Hash256 blockAccessListHash = Keccak.Compute(EmptyBlockAccessList);
+        for (ulong number = 1; number <= pivot; number++)
+        {
+            ulong blockNumber = number;
+            BlockHeader header = Build.A.BlockHeader
+                .WithNumber(blockNumber)
+                .WithTimestamp(blockNumber * secondsPerBlock)
+                .WithBlockAccessListHash(blockNumber >= activation ? blockAccessListHash : null)
+                .TestObject;
+            BlockInfo blockInfo = new(header.Hash!, 0) { BlockNumber = blockNumber };
+            if (headersAvailable || blockNumber == pivot)
+            {
+                _blockTree.FindCanonicalBlockInfo(blockNumber).Returns(_ =>
+                {
+                    lookups.Add(blockNumber);
+                    return blockInfo;
+                });
+            }
+            _blockTree.FindHeader(header.Hash!, blockNumber: blockNumber).Returns(_ =>
+            {
+                lookups.Add(blockNumber);
+                return header;
+            });
+            if (blockNumber == pivot) _blockTree.SyncPivot.Returns((pivot, header.Hash!));
+        }
+
+        if (!timestampActivation)
+        {
+            return new TestSpecProvider(new ReleaseSpec())
+            {
+                ForkOnBlockNumber = activation,
+                NextForkSpec = new ReleaseSpec { IsEip7928Enabled = true }
+            };
+        }
+
+        IReleaseSpec preActivation = new ReleaseSpec();
+        IReleaseSpec postActivation = new ReleaseSpec { IsEip7928Enabled = true };
+        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+        specProvider.GetSpec(Arg.Any<ForkActivation>())
+            .Returns(ci => ci.Arg<ForkActivation>().Timestamp >= activation * secondsPerBlock ? postActivation : preActivation);
+        return specProvider;
     }
 
     private ISyncProgressResolver CreateProgressResolver(

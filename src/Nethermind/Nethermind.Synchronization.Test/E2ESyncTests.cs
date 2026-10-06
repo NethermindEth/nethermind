@@ -790,7 +790,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TestContext.Progress.WriteLine($"Partial BAL sync test: head {PartialBalSyncChainLength}, pivot {syncPivotNumber}, activation {PartialBalActivationBlock}.");
 
             await client.Resolve<SyncTestContext>().SyncFromServerAndVerifyAccessLists(server, syncPivotNumber, cancellationToken);
-            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.LessThanOrEqualTo(1));
+            Assert.That(client.Resolve<ISyncPointers>().LowestInsertedBlockAccessListBlockNumber, Is.InRange(PartialBalActivationBlock - 2, PartialBalActivationBlock - 1));
         });
     }
 
