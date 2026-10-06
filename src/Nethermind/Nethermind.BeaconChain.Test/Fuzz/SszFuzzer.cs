@@ -270,6 +270,11 @@ internal sealed class SszValueGenerator(Random random)
     {
         int? vectorLength = property.GetCustomAttribute<SszVectorAttribute>()?.Length;
         ulong? limit = property.GetCustomAttribute<SszListAttribute>()?.Limit;
+        if (type == typeof(ReadOnlyMemory<byte>))
+        {
+            return new ReadOnlyMemory<byte>((byte[])CreateValue(typeof(byte[]), property));
+        }
+
         if (type == typeof(BitArray))
         {
             BitArray bits = new(vectorLength ?? Count(limit, MaxBits));
