@@ -481,14 +481,14 @@ namespace Nethermind.Serialization.Rlp
             if (length < RlpHelpers.SmallPrefixBarrier)
             {
                 output[0] = (byte)(0x80 + length);
-                input.CopyTo(output[1..]);
+                Core.Extensions.Bytes.Copy(input, output[1..]);
                 return 1 + length;
             }
 
             int lengthOfLength = LengthOfLength(length);
             output[0] = (byte)(0xb7 + lengthOfLength);
             SerializeLength(length, output.Slice(1, lengthOfLength));
-            input.CopyTo(output[(1 + lengthOfLength)..]);
+            Core.Extensions.Bytes.Copy(input, output[(1 + lengthOfLength)..]);
             return 1 + lengthOfLength + length;
         }
 
