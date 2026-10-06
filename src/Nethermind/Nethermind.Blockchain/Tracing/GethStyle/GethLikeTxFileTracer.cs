@@ -62,7 +62,9 @@ public class GethLikeTxFileTracer : GethLikeTxTracer<GethTxFileTraceEntry>
 
     public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
+        ulong executionGas = Trace.Gas;
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
+        Trace.Gas = executionGas;
         SetReceiptGasFallback(in gasSpent);
     }
 

@@ -290,7 +290,6 @@ public class GethStyleTracer(
 
         // For a synthetic tx trace (`debug_traceCall`), the base block must be the block itself rather than
         // its parent, so that state overrides applied in `BuildAndOverride` bind to the correct state root.
-        BlockHeader baseBlockHeader = useBlockAsBase ? block.Header : FindParent(block);
         if (options.BlockOverrides is not null || options.NoBaseFee)
         {
             block = block.WithReplacedBodyCloned(block.Body);

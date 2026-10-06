@@ -118,7 +118,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        if (options?.TxIndex is not null) blockParameter = new BlockParameter(header!.Hash!);
+        blockParameter = new BlockParameter(header!.Hash!);
 
         Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
@@ -741,6 +741,8 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (options?.TxIndex is not null) options = options with { TxIndex = null };
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
             ? TraceCallManyWithOverrides(bundles, options, header)
