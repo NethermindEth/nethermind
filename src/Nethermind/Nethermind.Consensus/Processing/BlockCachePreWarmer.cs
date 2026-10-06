@@ -201,6 +201,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
+                if (WarmRace.On) WarmRace.Mark(0);
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
@@ -979,6 +980,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
 
     private void WarmupTransactions(BlockState blockState, ParallelOptions parallelOptions)
     {
+        if (WarmRace.On) WarmRace.Mark(1);
         Block block = blockState.Block;
         int txCount = block.Transactions.Length;
         if (txCount == 0 || parallelOptions.CancellationToken.IsCancellationRequested) return;
@@ -1005,6 +1007,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             // worker could ever pick up, so no more workers than that are started: a block that groups into two
             // jobs must not queue a dozen pool items that each rent an env, find nothing and leave.
             int pending = queue.Load(blockState, claimed, txCount, parallelOptions);
+            if (WarmRace.On)
+            {
+                WarmRace.Mark(2);
+                WarmRace.LoadDone(pending, blockState.Recovery?.Recovered ?? -1);
+            }
             if (pending > 0)
             {
                 // Each iteration is one worker that runs until the block has nothing left for it; the range only
@@ -1270,7 +1277,14 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (WarmRace.On) WarmRace.Mark(5);
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex)
+            {
+                if (WarmRace.On) WarmRace.SkipMain();
+                return;
+            }
+
+            if (WarmRace.On) WarmRace.Mark(6);
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1281,6 +1295,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
             }
 
+            if (WarmRace.On) WarmRace.Mark(7);
             // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
             if (blockState.Spec.UseTxAccessLists)
             {
@@ -1293,7 +1308,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             if (watched) ColdReadWatch.Arm(ColdReadsBeforeDiscovery, blockState, txIndex, tx);
 
             TransactionResult result;
-            if (WarmRace.On) WarmRace.WarmTxStart(txIndex);
+            if (WarmRace.On)
+            {
+                WarmRace.Mark(8);
+                WarmRace.FirstStartMainIndex(blockState.PreWarmer.MainThreadTxIndex);
+                WarmRace.WarmTxStart(txIndex);
+            }
             try
             {
                 result = scope.TransactionProcessor.Warmup(tx, tracer);
@@ -2205,6 +2225,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
         /// </summary>
         public void Drain(int slot)
         {
+            if (WarmRace.On) WarmRace.Mark(3);
             WarmupQueue queue = _queue;
             BlockCachePreWarmer preWarmer = queue.PreWarmer;
             PerformanceCores.PrewarmSplit? split = preWarmer._coreSplit;
@@ -2301,7 +2322,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer
             BlockState blockState = _queue.BlockState;
             // Indices are ascending, so if the main thread has started the job's last tx it has started them all;
             // the per-tx guard would discard each one, so skip before building a scope.
-            if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex) return;
+            if (WarmRace.On) WarmRace.Mark(4);
+            if (blockState.PreWarmer.MainThreadTxIndex >= lastIndex)
+            {
+                if (WarmRace.On) WarmRace.WarmEarly();
+                return;
+            }
 
             CancellationToken token = _queue.Token;
             // Each job builds and disposes its own scope, so no speculative state crosses jobs.

@@ -36,6 +36,8 @@ public static class WarmRace
     [ThreadStatic] private static long[]? _noneCount;
     [ThreadStatic] private static long[]? _noneTicks;
     private static long _warmBlockAt, _firstWarmTxAt;
+    private static readonly long[] _marks = new long[9];
+    private static int _skipMain, _warmEarly, _pending = -1, _recoveredAtLoad = -1, _mainAtFirstStart = -2;
     [ThreadStatic] private static long _accountMisses, _accountTicks;
 
     private static List<(StorageCell Cell, long At, long Ticks, byte Category, int Ordinal, int TxWarm)> Misses => _misses ??= [];
@@ -44,6 +46,10 @@ public static class WarmRace
     {
         _txState = new int[txCount];
         Volatile.Write(ref _firstWarmTxAt, 0);
+        Array.Clear(_marks);
+        _skipMain = _warmEarly = 0;
+        _pending = _recoveredAtLoad = -1;
+        _mainAtFirstStart = -2;
         Volatile.Write(ref _warmBlockAt, Stopwatch.GetTimestamp());
     }
 
@@ -52,6 +58,36 @@ public static class WarmRace
         int[] state = _txState;
         if ((uint)index < (uint)state.Length) Volatile.Write(ref state[index], 1);
         if (Volatile.Read(ref _firstWarmTxAt) == 0) Interlocked.CompareExchange(ref _firstWarmTxAt, Stopwatch.GetTimestamp(), 0);
+    }
+
+    public static void Mark(int stage)
+    {
+        if (Volatile.Read(ref _marks[stage]) == 0) Interlocked.CompareExchange(ref _marks[stage], Stopwatch.GetTimestamp(), 0);
+    }
+
+    public static void FirstStartMainIndex(int mainIndex) => Interlocked.CompareExchange(ref _mainAtFirstStart, mainIndex, -2);
+
+    public static void SkipMain() => Interlocked.Increment(ref _skipMain);
+
+    public static void WarmEarly() => Interlocked.Increment(ref _warmEarly);
+
+    public static void LoadDone(int pending, int recovered)
+    {
+        _pending = pending;
+        _recoveredAtLoad = recovered;
+    }
+
+    private static string Stages(long blockStart, double f)
+    {
+        System.Text.StringBuilder sb = new();
+        for (int i = 0; i < _marks.Length; i++)
+        {
+            long m = Volatile.Read(ref _marks[i]);
+            sb.Append(CultureInfo.InvariantCulture, $" st{i}_ms={(m == 0 ? -1 : (m - blockStart) * f):F3}");
+        }
+
+        sb.Append(CultureInfo.InvariantCulture, $" skip_main={Volatile.Read(ref _skipMain)} warm_early={Volatile.Read(ref _warmEarly)} pending={_pending} recovered_at_load={_recoveredAtLoad} main_at_first_start={Volatile.Read(ref _mainAtFirstStart)}");
+        return sb.ToString();
     }
 
     public static void WarmTxDone(int index)
@@ -187,7 +223,7 @@ public static class WarmRace
         }
 
         Console.WriteLine(string.Create(CultureInfo.InvariantCulture,
-            $"WARMRACE block={number} miss={total} miss_ms={totalTicks * f:F3} lost={lost} lost_ms={lostTicks * f:F3} inflight={inFlight} inflight_ms={inFlightTicks * f:F3} late={late} late_ms={lateTicks * f:F3} late_le1={late1} late_le10={late10} late_gt10={lateMore} never={never} never_ms={neverTicks * f:F3} ord1={ordinalCount[0]} ord1_ms={ordinalTicks[0] * f:F3} ord2_4={ordinalCount[1]} ord2_4_ms={ordinalTicks[1] * f:F3} ord5_24={ordinalCount[2]} ord5_24_ms={ordinalTicks[2] * f:F3} ord25={ordinalCount[3]} ord25_ms={ordinalTicks[3] * f:F3} acct_miss={_accountMisses} acct_ms={_accountTicks * f:F3} warm_loads={WarmStart.Count} tx_none={_txWarmCount![0]} tx_run={_txWarmCount[1]} tx_done={_txWarmCount[2]} acct_none_ms={_accountTicksByWarm![0] * f:F3} acct_run_ms={_accountTicksByWarm[1] * f:F3} acct_done_ms={_accountTicksByWarm[2] * f:F3} inflight_none_ms={byWarm[3] * f:F3} inflight_run_ms={byWarm[4] * f:F3} inflight_done_ms={byWarm[5] * f:F3} late_none_ms={byWarm[6] * f:F3} late_run_ms={byWarm[7] * f:F3} late_done_ms={byWarm[8] * f:F3} never_none_ms={byWarm[9] * f:F3} never_run_ms={byWarm[10] * f:F3} never_done_ms={byWarm[11] * f:F3} warm_block_ms={(Volatile.Read(ref _warmBlockAt) - _blockStart) * f:F3} first_warm_tx_ms={(Volatile.Read(ref _firstWarmTxAt) == 0 ? -1 : (Volatile.Read(ref _firstWarmTxAt) - _blockStart) * f):F3} none_i0={_noneCount![0]} none_i1_7={_noneCount[1]} none_i8_31={_noneCount[2]} none_i32={_noneCount[3]} none_t1={_noneCount[4]} none_t10={_noneCount[5]} none_t100={_noneCount[6]} none_tmore={_noneCount[7]} none_i0_ms={_noneTicks![0] * f:F3} none_i1_7_ms={_noneTicks[1] * f:F3} none_i8_31_ms={_noneTicks[2] * f:F3} none_i32_ms={_noneTicks[3] * f:F3} none_t1_ms={_noneTicks[4] * f:F3} none_t10_ms={_noneTicks[5] * f:F3} none_t100_ms={_noneTicks[6] * f:F3} none_tmore_ms={_noneTicks[7] * f:F3}"));
+            $"WARMRACE block={number} miss={total} miss_ms={totalTicks * f:F3} lost={lost} lost_ms={lostTicks * f:F3} inflight={inFlight} inflight_ms={inFlightTicks * f:F3} late={late} late_ms={lateTicks * f:F3} late_le1={late1} late_le10={late10} late_gt10={lateMore} never={never} never_ms={neverTicks * f:F3} ord1={ordinalCount[0]} ord1_ms={ordinalTicks[0] * f:F3} ord2_4={ordinalCount[1]} ord2_4_ms={ordinalTicks[1] * f:F3} ord5_24={ordinalCount[2]} ord5_24_ms={ordinalTicks[2] * f:F3} ord25={ordinalCount[3]} ord25_ms={ordinalTicks[3] * f:F3} acct_miss={_accountMisses} acct_ms={_accountTicks * f:F3} warm_loads={WarmStart.Count} tx_none={_txWarmCount![0]} tx_run={_txWarmCount[1]} tx_done={_txWarmCount[2]} acct_none_ms={_accountTicksByWarm![0] * f:F3} acct_run_ms={_accountTicksByWarm[1] * f:F3} acct_done_ms={_accountTicksByWarm[2] * f:F3} inflight_none_ms={byWarm[3] * f:F3} inflight_run_ms={byWarm[4] * f:F3} inflight_done_ms={byWarm[5] * f:F3} late_none_ms={byWarm[6] * f:F3} late_run_ms={byWarm[7] * f:F3} late_done_ms={byWarm[8] * f:F3} never_none_ms={byWarm[9] * f:F3} never_run_ms={byWarm[10] * f:F3} never_done_ms={byWarm[11] * f:F3} warm_block_ms={(Volatile.Read(ref _warmBlockAt) - _blockStart) * f:F3} first_warm_tx_ms={(Volatile.Read(ref _firstWarmTxAt) == 0 ? -1 : (Volatile.Read(ref _firstWarmTxAt) - _blockStart) * f):F3} none_i0={_noneCount![0]} none_i1_7={_noneCount[1]} none_i8_31={_noneCount[2]} none_i32={_noneCount[3]} none_t1={_noneCount[4]} none_t10={_noneCount[5]} none_t100={_noneCount[6]} none_tmore={_noneCount[7]} none_i0_ms={_noneTicks![0] * f:F3} none_i1_7_ms={_noneTicks[1] * f:F3} none_i8_31_ms={_noneTicks[2] * f:F3} none_i32_ms={_noneTicks[3] * f:F3} none_t1_ms={_noneTicks[4] * f:F3} none_t10_ms={_noneTicks[5] * f:F3} none_t100_ms={_noneTicks[6] * f:F3} none_tmore_ms={_noneTicks[7] * f:F3}{Stages(_blockStart, f)}"));
 
         Volatile.Write(ref _mainMissCount, 0);
         MainMissed.Clear();
