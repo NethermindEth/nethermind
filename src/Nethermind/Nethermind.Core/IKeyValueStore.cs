@@ -218,7 +218,8 @@ namespace Nethermind.Core
         public bool StartBefore(ReadOnlySpan<byte> value);
 
         /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
-        /// iteration; returns false when no such key remains below the view's upper bound.</summary>
+        /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
+        /// remains below the view's upper bound.</summary>
         public bool SeekTo(ReadOnlySpan<byte> key);
 
         public bool MoveNext();

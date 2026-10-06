@@ -602,7 +602,9 @@ namespace Nethermind.Db
                 ? (_currentKey, int.MaxValue, null)
                 : (_firstKey, 0, null));
 
-            public bool SeekTo(ReadOnlySpan<byte> key) => MoveToFirstFrom((key.ToArray(), 0, null));
+            public bool SeekTo(ReadOnlySpan<byte> key) => MoveToFirstFrom(key.SequenceCompareTo(_firstKey) < 0
+                ? (_firstKey, 0, null)
+                : (key.ToArray(), 0, null));
 
             private bool MoveToFirstFrom((byte[], int, byte[]?) lower)
             {

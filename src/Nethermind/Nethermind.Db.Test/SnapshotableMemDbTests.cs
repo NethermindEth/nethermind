@@ -274,10 +274,10 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void SeekTo_MidIteration_LandsOnTheFirstLiveKeyAtOrAfterTheTargetWithinTheUpperBound()
+        public void SeekTo_MidIteration_LandsOnTheFirstLiveKeyAtOrAfterTheTargetWithinTheViewBounds()
         {
             SnapshotableMemDb memDb = new();
-            foreach (byte b in new byte[] { 1, 2, 3, 4, 5, 7 })
+            foreach (byte b in new byte[] { 0, 1, 2, 3, 4, 5, 7 })
             {
                 memDb.Set([b], [b]);
             }
@@ -291,6 +291,8 @@ namespace Nethermind.Db.Test
             Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 5 }), "4 was removed, so the seek lands on the next live key");
             Assert.That(view.MoveNext(), Is.False, "7 is the exclusive upper bound, so 5 is the last key of the view");
             Assert.That(view.SeekTo([6]), Is.False, "the only key at or after 6 is the excluded upper bound itself");
+            Assert.That(view.SeekTo([0]), Is.True, "a target below the lower bound is clamped to it");
+            Assert.That(view.CurrentKey.ToArray(), Is.EqualTo(new byte[] { 1 }), "0 sits outside the view, so the seek lands on the lower bound");
         }
 
         [Test]
