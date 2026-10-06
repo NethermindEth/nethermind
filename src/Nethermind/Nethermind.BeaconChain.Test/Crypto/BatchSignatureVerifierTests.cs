@@ -57,7 +57,6 @@ public class BatchSignatureVerifierTests
         BlsSignatureSet set2 = MakeSet(2, message, 1);
         List<BlsSignatureSet> sets = [set1, set2];
 
-
         Bls.Pairing naive = new(hashOrEncode: true, BatchSignatureVerifier.Cryptosuite);
         naive.Aggregate(set1.PublicKey, set1.Signature, set1.Message);
         naive.Aggregate(set2.PublicKey, set2.Signature, set2.Message);
@@ -126,7 +125,6 @@ public class BatchSignatureVerifierTests
         Assert.That(BlsSignatureSet.TryCreate(pk, message, NotInG2Signature, out BlsSignatureSet? set), Is.False);
         Assert.That(set, Is.Null);
     }
-
 
     [Test]
     public void Never_a_false_accept_over_randomized_inputs()

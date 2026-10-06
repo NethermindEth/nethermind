@@ -280,7 +280,6 @@ public class ColumnGossipRouterFuluHeaderTests
         yield return Case("imported block whose parent the snapshot does not hold yet is consumed but not forwarded", null, Ancestry.BlockAndParentNotInSnapshot, MessageValidity.Ignored, kzgBatches: 1, consumed: true, null);
     }
 
-
     private static IEnumerable<HeaderValidationCase> UnimportedCases()
     {
         yield return Unimported("signed header with a valid parent is consumed but not forwarded", null, 0, Ancestry.DescendsFromFinalized, MessageValidity.Ignored, 1, true, null);
@@ -305,7 +304,6 @@ public class ColumnGossipRouterFuluHeaderTests
         yield return Unimported("tampered inclusion proof with no key cache is rejected before KZG",
             static s => s.KzgCommitmentsInclusionProof![0] = Hash256.Zero, Unsigned, Ancestry.DescendsFromFinalized, MessageValidity.Rejected, 0, false, ColumnGossipDropReason.FailedInclusionProof, withPubkeys: false);
     }
-
 
     [Test]
     public void Another_signature_over_a_header_is_rejected_without_evicting_the_verified_signature()
@@ -430,7 +428,6 @@ public class ColumnGossipRouterFuluHeaderTests
         yield return Proposer("header whose parent is in the lookahead walks to the dependent root below it", epoch - 1, ParentRoot, 0, 0, MessageValidity.Accepted, 1, true, null, ParentInLookahead);
         yield return Proposer("header whose parent is in the lookahead is not covered by the parent's root", epoch - 1, MidRoot, 0, 0, MessageValidity.Ignored, 0, false, ColumnGossipDropReason.ProposerNotVerifiable, ParentInLookahead);
     }
-
 
     public enum ImportOrder
     {
@@ -767,9 +764,6 @@ public class ColumnGossipRouterFuluHeaderTests
         block.Signature = new BlsSignature(BlsSigner.Sign(GloasTestFixtures.DeriveKey(signer), signingRoot.Bytes).Bytes);
     }
 
-
-
-
     [Test]
     public void A_header_signed_under_a_cached_key_outside_the_subgroup_is_refused([Values] bool offSubgroup)
     {
@@ -822,7 +816,6 @@ public class ColumnGossipRouterFuluHeaderTests
         Assert.That(pool.TryGet(SszRoots.HashTreeRoot(honest.SignedBlockHeader!.Message!), Column, out _), Is.True, "the other proposer's queued column survives the flood");
         Assert.That(router.GetDropCount(ColumnGossipDropReason.UnexpectedProposer), Is.EqualTo(ColumnGossipRouter.ParkedColumnsPerProposer), "the retry meets exactly the flooding proposer's share of the queue");
     }
-
 
     private static byte[] UndecodableMessage => Snappy.CompressToArray([0x01, 0x02, 0x03]);
 
