@@ -174,6 +174,7 @@ public class JsonRpcProcessorTests
     [TestCase("203.0.113.7", null, " from 203.0.113.7")]
     [TestCase("203.0.113.7", "198.51.100.1, 192.0.2.4", " from 203.0.113.7 (X-Forwarded-For: 198.51.100.1, 192.0.2.4)")]
     [TestCase(null, null, "", TestName = "No remote address keeps the existing format")]
+    [TestCase(null, "198.51.100.1", "", TestName = "Forwarded header without a remote address keeps the existing format")]
     public async Task Debug_logs_include_remote_address(string? remoteAddress, string? forwardedFor, string expectedSuffix)
     {
         IJsonRpcService service = CreateService(request => new JsonRpcErrorResponse

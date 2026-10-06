@@ -848,7 +848,8 @@ public sealed class JsonRpcProcessor : IJsonRpcProcessor
 
     /// <remarks>Debug lines only: the forwarded header is caller-controlled, so it must not reach default-level output.</remarks>
     private static string DescribeRemoteAddress(JsonRpcContext context) =>
-        context.ForwardedFor is { } forwardedFor ? $" from {context.RemoteAddress} (X-Forwarded-For: {forwardedFor})"
+        context.RemoteAddress is null ? string.Empty
+        : context.ForwardedFor is { } forwardedFor ? $" from {context.RemoteAddress} (X-Forwarded-For: {forwardedFor})"
         : context.RemoteAddress is { } remoteAddress ? $" from {remoteAddress}"
         : string.Empty;
 
