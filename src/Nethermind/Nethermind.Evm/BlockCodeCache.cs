@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 
 namespace Nethermind.Evm;
@@ -12,48 +13,75 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// A warm CALL costs 100 gas whatever the size of the code, so a block can call more distinct large contracts, round
 /// and round, than the process-wide cache holds; each call would then read and analyse its code again. Code loaded
-/// during the block is kept here, up to <c>maxBytes</c> of it. Past that, code is not taken in rather than evicting
-/// other code, as evicting on a cycle over a set larger than the cache misses on every load.
+/// during the block is kept here, up to a cap on the memory it retains. Past the cap, code is not taken in rather than
+/// evicting other code, as evicting on a cycle over a set larger than the cache misses on every load.
 /// The process-wide cache is probed first, so a block it serves pays nothing here.
 /// </remarks>
-/// <param name="inner">The process-wide cache.</param>
-/// <param name="maxBytes">The most code kept for the block, in bytes.</param>
-public sealed class BlockCodeCache(ICodeCache inner, long maxBytes = BlockCodeCache.DefaultMaxBytes) : ICodeCache
+public sealed class BlockCodeCache : ICodeCache
 {
-    /// <summary>1 GiB: the code of 16k distinct contracts of 64 KiB.</summary>
-    public const long DefaultMaxBytes = 1024L * 1024 * 1024;
+    /// <summary>The default cap on retained memory: about 14k contracts of 64 KiB.</summary>
+    public static readonly long DefaultMaxBytes = 1.GiB;
 
-    private readonly ConcurrentDictionary<ValueHash256, CodeInfo> _block = new();
-    private long _bytes;
+    /// <summary>Charged per entry on top of its code and jump-destination bitmap: the objects, padding and dictionary entry.</summary>
+    internal const int EntryOverheadBytes = 256;
 
-    /// <summary>The code bytes kept for the block.</summary>
-    internal long Bytes => Volatile.Read(ref _bytes);
+    private readonly ICodeCache _inner;
+    private readonly long _maxBytes;
+    private readonly Retained _retained;
+
+    /// <param name="inner">The process-wide cache.</param>
+    public BlockCodeCache(ICodeCache inner) : this(inner, DefaultMaxBytes) { }
+
+    /// <param name="inner">The process-wide cache.</param>
+    /// <param name="maxBytes">The most memory the block's code retains, in bytes.</param>
+    public BlockCodeCache(ICodeCache inner, long maxBytes) : this(inner, maxBytes, new Retained()) { }
+
+    private BlockCodeCache(ICodeCache inner, long maxBytes, Retained retained)
+    {
+        _inner = inner;
+        _maxBytes = maxBytes;
+        _retained = retained;
+    }
+
+    /// <summary>The memory charged for the block's code, in bytes.</summary>
+    internal long Bytes => Volatile.Read(ref _retained.Bytes);
+
+    /// <summary>A view of the same block's code that takes code in only while the block retains less than <paramref name="maxBytes"/>.</summary>
+    /// <remarks>Lets warming share the block's code without spending the budget of the block's own execution.</remarks>
+    public BlockCodeCache WithLimit(long maxBytes) => new(_inner, maxBytes, _retained);
 
     public CodeInfo? Get(in ValueHash256 codeHash) =>
-        inner.Get(in codeHash) ?? (Volatile.Read(ref _bytes) != 0 && _block.TryGetValue(codeHash, out CodeInfo? codeInfo) ? codeInfo : null);
+        _inner.Get(in codeHash)
+        ?? (Volatile.Read(ref _retained.Bytes) != 0 && _retained.Code.TryGetValue(codeHash, out CodeInfo? codeInfo) ? codeInfo : null);
 
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
-        inner.Set(in codeHash, codeInfo);
+        _inner.Set(in codeHash, codeInfo);
 
         // Racing loads may each pass the check, overshooting the cap by at most one code per thread.
-        int length = codeInfo.CodeLength;
-        if (Volatile.Read(ref _bytes) + length <= maxBytes && _block.TryAdd(codeHash, codeInfo))
+        long charge = codeInfo.CodeLength + (codeInfo.CodeLength >> 3) + EntryOverheadBytes;
+        if (Volatile.Read(ref _retained.Bytes) + charge <= _maxBytes && _retained.Code.TryAdd(codeHash, codeInfo))
         {
-            Interlocked.Add(ref _bytes, length);
+            Interlocked.Add(ref _retained.Bytes, charge);
         }
     }
 
-    /// <summary>Drops the code kept for the block.</summary>
+    /// <summary>Drops the code kept for the block, for every view of it.</summary>
     public void ClearBlock()
     {
-        _block.Clear();
-        Volatile.Write(ref _bytes, 0);
+        _retained.Code.Clear();
+        Volatile.Write(ref _retained.Bytes, 0);
     }
 
     public void Clear()
     {
         ClearBlock();
-        inner.Clear();
+        _inner.Clear();
+    }
+
+    private sealed class Retained
+    {
+        public readonly ConcurrentDictionary<ValueHash256, CodeInfo> Code = new();
+        public long Bytes;
     }
 }

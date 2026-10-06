@@ -211,7 +211,6 @@ public class CodeLoadBenchmarks
     [IterationSetup]
     public void PickBlock()
     {
-        (_codeCache as BlockCodeCache)?.ClearBlock();
         switch (Load)
         {
             case Workload.Attack:
@@ -235,6 +234,8 @@ public class CodeLoadBenchmarks
         }
 
         if (Load == Workload.HotAfterAttack) FloodCodeCache();
+        // After the flood: the attack block's retention ends with it, while its code stays in the process-wide cache.
+        (_codeCache as BlockCodeCache)?.ClearBlock();
         _random.Shuffle(_accessListOrder);
         _blocks++;
         if (_dropCaches) File.WriteAllText("/proc/sys/vm/drop_caches", "1");

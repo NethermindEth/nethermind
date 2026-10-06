@@ -7,6 +7,8 @@ using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -15,8 +17,12 @@ namespace Nethermind.Consensus.Processing;
 
 public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManager logManager, ILifetimeScope parentLifetime)
 {
+    /// <summary>The most memory warming lets the block's code retain, so warming cannot spend execution's budget.</summary>
+    private static readonly long WarmingCodeMaxBytes = 256.MiB;
+
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
+        BlockCodeCache? warmingCodeCache = parentLifetime.ResolveOptional<BlockCodeCache>()?.WithLimit(WarmingCodeMaxBytes);
         PrewarmerState prewarmerState = new(preBlockCaches, isPrewarmer: true);
         PrewarmerScopeProvider worldState = new(
             worldStateManager.CreateResettableWorldState(),
@@ -30,6 +36,7 @@ public class PrewarmerEnvFactory(IWorldStateManager worldStateManager, ILogManag
                 .AddSingleton<IPrewarmerState>(prewarmerState)
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddSingleton<AutoReadOnlyTxProcessingEnvFactory.AutoReadOnlyTxProcessingEnv>();
+            if (warmingCodeCache is not null) builder.AddSingleton<ICodeCache>(warmingCodeCache);
         });
 
         try

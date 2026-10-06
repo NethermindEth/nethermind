@@ -12,6 +12,7 @@ namespace Nethermind.Evm.Test;
 public class BlockCodeCacheTests
 {
     private const int LargeCodeLength = StaticCodeCache.MediumCodeSize + 1;
+    private const long LargeCodeCharge = LargeCodeLength + (LargeCodeLength >> 3) + BlockCodeCache.EntryOverheadBytes;
 
     [Test]
     public void A_cycle_over_more_code_than_the_process_wide_cache_holds_is_loaded_once()
@@ -32,7 +33,7 @@ public class BlockCodeCacheTests
     [Test]
     public void Code_past_the_cap_is_not_kept_and_does_not_evict_kept_code()
     {
-        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10L * LargeCodeLength);
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
         CodeInfo[] codes = Load(cache, count: 20);
 
         using (Assert.EnterMultipleScope())
@@ -43,8 +44,34 @@ public class BlockCodeCacheTests
                 Assert.That(cache.Get(in hash), i < 10 ? Is.SameAs(codes[i]) : Is.Null, $"code {i}");
             }
 
-            Assert.That(cache.Bytes, Is.EqualTo(10L * LargeCodeLength));
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
         }
+    }
+
+    [Test]
+    public void A_limited_view_shares_the_block_but_stops_taking_code_in_at_its_own_limit()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        BlockCodeCache view = cache.WithLimit(4 * LargeCodeCharge);
+        CodeInfo[] warmed = Load(view, count: 6);
+        CodeInfo executed = new(new byte[LargeCodeLength]);
+        ValueHash256 executedHash = Hash(100);
+        cache.Set(in executedHash, executed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < warmed.Length; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i < 4 ? Is.SameAs(warmed[i]) : Is.Null, $"warmed code {i}");
+            }
+
+            Assert.That(view.Get(in executedHash), Is.SameAs(executed));
+            Assert.That(cache.Bytes, Is.EqualTo(5 * LargeCodeCharge));
+        }
+
+        view.ClearBlock();
+        Assert.That(cache.Get(in executedHash), Is.Null);
     }
 
     [Test]

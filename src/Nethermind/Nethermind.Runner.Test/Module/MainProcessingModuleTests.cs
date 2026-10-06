@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Config;
@@ -42,8 +43,9 @@ public class MainProcessingModuleTests
 
         ILifetimeScope mainScope = (ctx.Resolve<IMainProcessingContext>() as MainProcessingContext).LifetimeScope;
         BlockCodeCache blockCodeCache = mainScope.Resolve<BlockCodeCache>();
-        ValueHash256 codeHash = ValueKeccak.Compute([1]);
-        CodeInfo code = new(new byte[] { 1 });
+        byte[] bytecode = Guid.NewGuid().ToByteArray();
+        ValueHash256 codeHash = ValueKeccak.Compute(bytecode);
+        CodeInfo code = new(bytecode);
         blockCodeCache.Set(in codeHash, code);
         // Leaves the block's copy as the only one.
         StaticCodeCache.Instance.Clear();
