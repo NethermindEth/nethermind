@@ -7,15 +7,10 @@ using Nethermind.Merge.Plugin.Data;
 
 namespace Nethermind.Merge.Plugin.SszRest;
 
-/// <summary>
-/// Domain ↔ SSZ-wire conversion extensions used by <see cref="SszCodec"/> and
-/// the per-version descriptors. Methods are scoped <c>internal</c> so they only
-/// surface inside this assembly and don't pollute IntelliSense for unrelated
-/// generic-collection callsites.
-/// </summary>
-internal static class WireConversionExtensions
+/// <summary>Converts between execution-domain and SSZ wire types.</summary>
+public static class WireConversionExtensions
 {
-    public static SszTransaction[] ToTxsWire(this byte[][] txs)
+    internal static SszTransaction[] ToTxsWire(this byte[][] txs)
     {
         if (txs.Length == 0) return [];
         SszTransaction[] result = new SszTransaction[txs.Length];
@@ -23,7 +18,7 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static SszWithdrawal[] ToWire(this Withdrawal[]? ws)
+    internal static SszWithdrawal[] ToWire(this Withdrawal[]? ws)
     {
         if (ws is null || ws.Length == 0) return [];
         SszWithdrawal[] result = new SszWithdrawal[ws.Length];
@@ -38,6 +33,7 @@ internal static class WireConversionExtensions
         return result;
     }
 
+    /// <summary>Converts withdrawals in wire order, treating null as an empty list.</summary>
     public static Withdrawal[] ToDomain(this SszWithdrawal[]? ws)
     {
         if (ws is null || ws.Length == 0) return [];
@@ -53,7 +49,7 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static byte[]?[] ToBytesArrays(this Hash256[]? hashes)
+    internal static byte[]?[] ToBytesArrays(this Hash256[]? hashes)
     {
         if (hashes is null || hashes.Length == 0) return [];
         byte[]?[] result = new byte[]?[hashes.Length];
@@ -66,14 +62,14 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static SszKzgCommitment[] ToKzgWire(this byte[][] proofs)
+    internal static SszKzgCommitment[] ToKzgWire(this byte[][] proofs)
     {
         SszKzgCommitment[] result = new SszKzgCommitment[proofs.Length];
         for (int i = 0; i < proofs.Length; i++) result[i] = SszKzgCommitment.FromSpan(proofs[i]);
         return result;
     }
 
-    public static SszTransaction[] ToExecutionRequestsWire(this byte[][]? reqs)
+    internal static SszTransaction[] ToExecutionRequestsWire(this byte[][]? reqs)
     {
         if (reqs is null) return [];
         SszTransaction[] result = new SszTransaction[reqs.Length];
@@ -81,7 +77,7 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static byte[][]? ToExecutionRequests(this SszTransaction[]? reqs) => reqs switch
+    internal static byte[][]? ToExecutionRequests(this SszTransaction[]? reqs) => reqs switch
     {
         null => null,
         [] => [],
@@ -95,7 +91,7 @@ internal static class WireConversionExtensions
         return result;
     }
 
-    public static BlobsBundleV1Wire ToWire(this BlobsBundleV1? b)
+    internal static BlobsBundleV1Wire ToWire(this BlobsBundleV1? b)
     {
         if (b?.Commitments is null) return new BlobsBundleV1Wire();
         return new BlobsBundleV1Wire
@@ -106,7 +102,7 @@ internal static class WireConversionExtensions
         };
     }
 
-    public static BlobsBundleV2Wire ToWire(this BlobsBundleV2? b)
+    internal static BlobsBundleV2Wire ToWire(this BlobsBundleV2? b)
     {
         if (b?.Commitments is null) return new BlobsBundleV2Wire();
         return new BlobsBundleV2Wire
@@ -117,14 +113,14 @@ internal static class WireConversionExtensions
         };
     }
 
-    public static ExecutionPayloadBodyV1Wire ToBodyWire(this ExecutionPayloadBodyV1Result body) =>
+    internal static ExecutionPayloadBodyV1Wire ToBodyWire(this ExecutionPayloadBodyV1Result body) =>
         new()
         {
             Transactions = body.Transactions.ToTxsWire(),
             Withdrawals = body.Withdrawals.ToWire()
         };
 
-    public static ExecutionPayloadBodyV2Wire ToBodyWire(this ExecutionPayloadBodyV2Result body) =>
+    internal static ExecutionPayloadBodyV2Wire ToBodyWire(this ExecutionPayloadBodyV2Result body) =>
         new()
         {
             Transactions = body.Transactions.ToTxsWire(),

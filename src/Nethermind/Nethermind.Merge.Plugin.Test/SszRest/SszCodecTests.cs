@@ -285,9 +285,15 @@ public class SszCodecTests
     }
 
     [Test]
-    public void DecodeNewPayload_v4_roundtrip_preserves_all_fields()
+    public void DecodeNewPayload_v4_roundtrip_preserves_all_fields([Values(-1, 0, 1)] int withdrawalCount)
     {
         byte[] executionRequest = [0x01, 0x02, 0x03, 0x04];
+        SszWithdrawal[]? withdrawals = withdrawalCount switch
+        {
+            -1 => null,
+            0 => [],
+            _ => [new SszWithdrawal { Index = 1, ValidatorIndex = 2, Address = TestItem.AddressA, Amount = 3 }]
+        };
 
         NewPayloadV4RequestWire wire = new()
         {
@@ -295,6 +301,20 @@ public class SszCodecTests
             ParentBeaconBlockRoot = TestItem.KeccakC,
             ExecutionRequests = [new SszTransaction { Bytes = executionRequest }]
         };
+        wire.ExecutionPayload.Withdrawals = withdrawals!;
+        Assert.That(wire.ExecutionPayload.AsExecutionPayload().Withdrawals, withdrawals is null ? Is.Null : Has.Length.EqualTo(withdrawalCount));
+        Withdrawal[] projected = withdrawals.ToDomain();
+        Assert.That(projected, Has.Length.EqualTo(Math.Max(0, withdrawalCount)));
+        if (projected.Length > 0)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((projected[0].Index, projected[0].ValidatorIndex, projected[0].AmountInGwei), Is.EqualTo((1UL, 2UL, 3UL)));
+                Assert.That(projected[0].Address, Is.SameAs(TestItem.AddressA));
+            }
+            projected[0].AmountInGwei = 4;
+            Assert.That(withdrawals![0].Amount, Is.EqualTo(3UL));
+        }
 
         byte[] encoded = NewPayloadV4RequestWire.Encode(wire);
 
@@ -310,6 +330,7 @@ public class SszCodecTests
             Assert.That(payload.BlockHash, Is.EqualTo(TestItem.KeccakE));
             Assert.That(payload.BlobGasUsed, Is.EqualTo(0x20000UL));
             Assert.That(payload.ExcessBlobGas, Is.EqualTo(0x40000UL));
+            Assert.That(payload.Withdrawals, Has.Length.EqualTo(Math.Max(0, withdrawalCount)));
         }
 
         AssertCommonNewPayloadFields(
