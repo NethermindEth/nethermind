@@ -169,29 +169,15 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
-        {
-            (true, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
-            (true, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
-            (true, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
-            (true, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
-            (false, true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm),
-            (false, true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm),
-            (false, false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm),
-            (false, false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm),
-        };
-
     [SkipLocalsInit]
     internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
@@ -273,6 +259,9 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
@@ -280,24 +269,6 @@ public static partial class EvmInstructions
     /// <returns>
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code if an error occurs.
     /// </returns>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage, vm.Spec.IsEip8279Enabled) switch
-        {
-            (true, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (true, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-            (true, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (true, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-            (false, true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (false, true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-            (false, false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (false, false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-        };
-
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
