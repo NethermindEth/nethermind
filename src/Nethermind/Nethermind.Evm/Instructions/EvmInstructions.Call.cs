@@ -17,6 +17,14 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
+    {
+        if (state.GetBalance(account) < value) return false;
+        state.NoteMinimumBalance(account, in value);
+        return true;
+    }
+
     /// <summary>
     /// Interface defining the execution type for a call-like opcode.
     /// </summary>
@@ -205,7 +213,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
+            (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
             EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (vm.IsTracingActions)
