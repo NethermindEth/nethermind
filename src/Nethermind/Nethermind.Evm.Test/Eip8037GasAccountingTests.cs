@@ -145,7 +145,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
 
         UInt256 senderBalance = TestState.GetBalance(Sender);
         TestAllTracerWithOutput tracer = CreateTracer();
-        tracer.IsTracingAccess = false;
         TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         TestState.Commit(Spec);
 
@@ -501,8 +500,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         }
 
         TestAllTracerWithOutput tracer = CreateTracer();
-        // Access tracing would pre-warm every touched account/slot and shift all expected values.
-        tracer.IsTracingAccess = false;
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())
