@@ -36,6 +36,9 @@ internal sealed class WindowSlab : IDisposable
     private readonly ArrayPoolList<byte[]> _chunks = new(4);
     private readonly Dictionary<int, byte[]> _oversizedWholes = [];
     private int _count;
+    private int _previousCount;
+
+    public int ChunkCount => _chunks.Count;
 
     public int Allocate()
     {
@@ -101,6 +104,10 @@ internal sealed class WindowSlab : IDisposable
     {
         foreach (byte[] whole in _oversizedWholes.Values) ArrayPool<byte>.Shared.Return(whole);
         _oversizedWholes.Clear();
+        int keep = ChunksFor(Math.Max(_count, _previousCount));
+        for (int chunk = keep; chunk < _chunks.Count; chunk++) ArrayPool<byte>.Shared.Return(_chunks[chunk]);
+        _chunks.Truncate(keep);
+        _previousCount = _count;
         _count = 0;
     }
 
@@ -110,6 +117,8 @@ internal sealed class WindowSlab : IDisposable
         foreach (byte[] chunk in _chunks) ArrayPool<byte>.Shared.Return(chunk);
         _chunks.Dispose();
     }
+
+    private static int ChunksFor(int slots) => (slots + SlotsPerChunk - 1) / SlotsPerChunk;
 
     private Span<byte> Slot(int slot) => _chunks[slot / SlotsPerChunk].AsSpan(slot % SlotsPerChunk * SlotSize, SlotSize);
 

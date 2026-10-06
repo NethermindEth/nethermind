@@ -442,7 +442,7 @@ public class CommitmentEmitterTests
     }
 
     [Test]
-    public void FlushWindows_AcrossTheOpenNodeCapAndSeveralWindows_WritesTheRowsPinnedBeforeTheSlab()
+    public void FlushWindows_AcrossTheOpenNodeCapAndSeveralWindows_WritesPinnedRows()
     {
         using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
         {
@@ -458,7 +458,7 @@ public class CommitmentEmitterTests
         }
 
         Assert.That(CommitmentRowsDigest(), Is.EqualTo(PinnedRowsDigest),
-            "the window accumulator only changes where open nodes live, so every flushed row must stay byte-identical to the rows the per-node window objects wrote");
+            "the digest covers every account and storage commitment row this sequence writes; a change to how open nodes are held must leave it byte-identical");
     }
 
     [Test]
