@@ -18,7 +18,6 @@ public class GloasOperationsTests
 {
     private static readonly ulong SlotsPerEpoch = Presets.SlotsPerEpoch;
 
-
     [Test]
     public void ProcessProposerSlashing_slashes_the_proposer_and_clears_the_pending_builder_payment_for_its_proposal()
     {
@@ -97,19 +96,13 @@ public class GloasOperationsTests
         Assert.That(state.BuilderPendingPayments[32].ProposerIndex, Is.EqualTo((ulong)proposer));
     }
 
-
-
     [Test]
     public void ProcessAttesterSlashing_slashes_exactly_the_validators_in_both_conflicting_votes()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         PubkeyCache pubkeys = InstallRealValidatorKeys(state);
         // A double vote: same target epoch, different data.
-        AttesterSlashingGloas slashing = new()
-        {
-            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), [1, 2, 3]),
-            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), [2, 3, 4]),
-        };
+        AttesterSlashingGloas slashing = ConflictingVotes(state, [1, 2, 3], [2, 3, 4]);
         ulong balanceBefore = state.Balances![2];
 
         GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true);
@@ -132,11 +125,7 @@ public class GloasOperationsTests
         ulong slashedBalanceBefore = state.Balances![alreadySlashed];
         ulong slashingsBefore = state.Slashings![1];
         Assert.That(slashingsBefore, Is.EqualTo(32 * Gwei), "fixture bug: the first slashing must have been accounted");
-        AttesterSlashingGloas slashing = new()
-        {
-            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), [1, alreadySlashed, stillSlashable]),
-            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), [alreadySlashed, stillSlashable, 4]),
-        };
+        AttesterSlashingGloas slashing = ConflictingVotes(state, [1, alreadySlashed, stillSlashable], [alreadySlashed, stillSlashable, 4]);
 
         GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, cache, pubkeys, verifySignatures: true);
 
@@ -153,16 +142,18 @@ public class GloasOperationsTests
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
         PubkeyCache pubkeys = InstallRealValidatorKeys(state);
-        AttesterSlashingGloas slashing = new()
-        {
-            Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), unsorted ? [2, 1] : [1, 2]),
-            Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), commonValidatorAlreadySlashed || unsorted ? [2, 3] : [3, 4]),
-        };
+        AttesterSlashingGloas slashing = ConflictingVotes(state, unsorted ? [2, 1] : [1, 2], commonValidatorAlreadySlashed || unsorted ? [2, 3] : [3, 4]);
         if (commonValidatorAlreadySlashed)
             state.SlashValidator(2, new EpochCache());
         AssertRefusedWithoutMutation(state, () =>
             GloasBlockProcessing.ProcessAttesterSlashing(state, slashing, new EpochCache(), pubkeys, verifySignatures: true), expectedMessage, "a rejected slashing must leave the state untouched");
     }
+
+    private static AttesterSlashingGloas ConflictingVotes(BeaconStateGloas state, int[] first, int[] second) => new()
+    {
+        Attestation1 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xA0), first),
+        Attestation2 = SignedIndexedAttestation(state, Vote(slot: 32, sourceEpoch: 0, targetEpoch: 1, fill: 0xB0), second),
+    };
 
     [Test]
     public void IsValidIndexedAttestation_enforces_the_eip7688_bound_that_replaced_the_lists_ssz_limit()
@@ -180,7 +171,6 @@ public class GloasOperationsTests
         Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound), new PubkeyCache(), verifySignature: false), Is.True);
         Assert.That(GloasBlockProcessing.IsValidIndexedAttestation(state, WithIndices(bound + 1), new PubkeyCache(), verifySignature: false), Is.False);
     }
-
 
     [Test]
     public void ProcessAttestation_sets_the_same_flags_and_proposer_reward_as_the_fulu_pipeline_for_a_same_slot_vote()
@@ -389,7 +379,6 @@ public class GloasOperationsTests
         Assert.That(state.CurrentEpochParticipation, Has.All.EqualTo(0));
     }
 
-
     private static BeaconStateGloas StateProcessingBlock33(out PubkeyCache pubkeys, out Hash256 parentRoot)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
@@ -528,7 +517,6 @@ public class GloasOperationsTests
         Assert.That(() => state.GetPtc(63, SyntheticSpec(gloasForkEpoch: 2)), Throws.TypeOf<BeaconStateException>().With.Message.Contains("GLOAS_FORK_EPOCH"),
             "a slot before GLOAS_FORK_EPOCH has no PTC even inside the window");
     }
-
 
     [Test]
     public void ProcessBlock_applies_every_operation_kind_the_body_carries()

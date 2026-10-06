@@ -90,18 +90,12 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.Known.Contains(child.ComputeMessageRoot()), Is.EqualTo(reDriven));
     }
 
-
-
-
-
     public enum ParkedBlockFate
     {
         FinalizedAway,
         RetryInvalid,
         RetryUnknownParent,
     }
-
-
 
     [Test]
     public async Task Walk_holds_its_blocks_once_its_fetched_ancestor_waits_for_a_payload_elsewhere([Values] bool ancestorHeld)

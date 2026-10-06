@@ -1348,7 +1348,6 @@ public class DeferredBlockColumnFetchTests
 
         public bool IsKnown(Hash256 blockRoot) => _accepted.Contains(blockRoot) || inner.IsKnown(blockRoot);
 
-
         public BlockImportResult Import(ForkedSignedBeaconBlock block, Hash256 blockRoot, bool verifySignatures)
         {
             ImportCalls.Add(blockRoot);
