@@ -346,6 +346,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip8250Enabled = (chainSpec.Parameters.Eip8250TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip8272Enabled = (chainSpec.Parameters.Eip8272TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.IsEip7906Enabled = (chainSpec.Parameters.Eip7906TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip7979Enabled = (chainSpec.Parameters.Eip7979TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             bool eip1559FeeCollector = releaseSpec.IsEip1559Enabled && BlockOf(chainSpec.Parameters.Eip1559FeeCollectorTransition) <= block;
             bool eip4844FeeCollector = releaseSpec.IsEip4844Enabled && (chainSpec.Parameters.Eip4844FeeCollectorTransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
@@ -376,6 +377,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             }
 
             releaseSpec.IsEip2780Enabled = (chainSpec.Parameters.Eip2780TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip3298Enabled = (chainSpec.Parameters.Eip3298TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.IsEip8131Enabled = (chainSpec.Parameters.Eip8131TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
 
             foreach (IChainSpecEngineParameters item in _chainSpec.EngineChainSpecParametersProvider
                          .AllChainSpecParameters)
