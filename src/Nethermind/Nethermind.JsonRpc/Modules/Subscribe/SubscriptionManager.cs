@@ -39,6 +39,15 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void AddOrUpdateClientsBag(Subscription subscription)
         {
             IJsonRpcDuplexClient client = subscription.JsonRpcDuplexClient;
+            JoinOrCreateClientsBag(subscription, client);
+
+            // Closed is raised once, after the client is marked closed, so a subscription registered after it would
+            // never be disposed. Checking the flag after hooking means either the handler runs or this sees it closed.
+            if (client.IsClosed) RemoveSubscriptionsOfClosedClient(client, subscription);
+        }
+
+        private void JoinOrCreateClientsBag(Subscription subscription, IJsonRpcDuplexClient client)
+        {
             // A connection processes its requests concurrently, so its first two subscriptions can race to create the
             // bag: only the one that stores it hooks Closed, and the other joins the stored bag.
             while (true)
@@ -60,6 +69,14 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                     return;
                 }
             }
+        }
+
+        private void RemoveSubscriptionsOfClosedClient(IJsonRpcDuplexClient client, Subscription subscription)
+        {
+            client.Closed -= OnJsonRpcDuplexClientClosed;
+            RemoveClientSubscriptions(client);
+            // The bag this joined may already have been removed and disposed by the Closed handler.
+            if (_subscriptions.TryRemove(subscription.Id, out _)) subscription.Dispose();
         }
 
         private void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)

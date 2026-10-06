@@ -1476,9 +1476,51 @@ namespace Nethermind.JsonRpc.Test.Modules
             Assert.That(failures, Is.Empty, () => string.Join(Environment.NewLine, failures));
         }
 
+        [TestCase(false, TestName = "AddSubscription_OnAnOpenClient_KeepsTheSubscription")]
+        [TestCase(true, TestName = "AddSubscription_AfterTheClientClosed_DisposesTheSubscription")]
+        public void AddSubscription_ClientClosedBeforehand_DecidesWhetherTheSubscriptionIsKept(bool clientClosed)
+        {
+            // 1. The client is already closed (its Closed event fired before this subscription existed), or still open.
+            // 2. An eth_subscribe that was still running registers its subscription; nothing raises Closed again.
+            // 3. On a closed client the subscription must be disposed and unregistered at once, or it leaks.
+            TrackingSubscription? subscription = null;
+            ISubscriptionFactory factory = Substitute.For<ISubscriptionFactory>();
+            factory
+                .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
+                .Returns(ci => subscription = new TrackingSubscription((IJsonRpcDuplexClient)ci[0]));
+            SubscriptionManager manager = new(factory, LimboLogs.Instance);
+
+            IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+            client.Id.Returns("late-subscriber");
+            client.IsClosed.Returns(clientClosed);
+
+            string subscriptionId = manager.AddSubscription(client, "test");
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(subscription!.Disposed, Is.EqualTo(clientClosed),
+                    "a subscription registered after its client closed is disposed at once; an open client's is kept");
+                Assert.That(manager.RemoveSubscription(client, subscriptionId), Is.EqualTo(!clientClosed),
+                    "only an open client's subscription is still registered");
+            }
+        }
+
         private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
         {
             public override string Type => "test";
+        }
+
+        private sealed class TrackingSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
+        {
+            public bool Disposed { get; private set; }
+
+            public override string Type => "test";
+
+            public override void Dispose()
+            {
+                Disposed = true;
+                base.Dispose();
+            }
         }
     }
 }

@@ -222,10 +222,10 @@ public interface IJsonRpcConfig : IConfig
     [ConfigItem(Description = "The JSON-RPC server CORS origins.", DefaultValue = "*")]
     string[] CorsOrigins { get; set; }
 
-    [ConfigItem(Description = "The number of requests one WebSocket connection processes at a time. Responses to requests pipelined on one connection can arrive out of order; each response carries its request id, and a batch is answered in order as one message. 1 processes the requests of a connection one by one.", DefaultValue = "16")]
+    [ConfigItem(Description = "The number of requests one public WebSocket connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Engine API and other authenticated connections always process their requests one by one. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int WebSocketsProcessingConcurrency { get; set; }
 
-    [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Responses to requests pipelined on one connection can arrive out of order; each response carries its request id, and a batch is answered in order as one message. 1 processes the requests of a connection one by one.", DefaultValue = "16")]
+    [ConfigItem(Description = "The number of requests one IPC connection processes at a time. Requests pipelined on one connection are processed and answered in any order; each response carries its request id, and a batch is still processed and answered in order as one message. Set to 1 if a client relies on the order, for example when it pipelines dependent transactions such as blob transactions with consecutive nonces.", DefaultValue = "16")]
     int IpcProcessingConcurrency { get; set; }
 
     [ConfigItem(Description = "Enable per-method call metric", DefaultValue = "true")]
