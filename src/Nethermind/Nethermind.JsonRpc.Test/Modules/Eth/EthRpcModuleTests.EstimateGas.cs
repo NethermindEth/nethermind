@@ -90,6 +90,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1_000_000_000;
         if (explicitExecution) request.Frames![1].ExecutionGas = 50_000;
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request);
@@ -122,7 +123,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
-        if (method == "eth_createAccessList") request.MaxFeePerGas = 1_000_000_000;
+        if (method is "eth_createAccessList" or "eth_fillTransaction") request.MaxFeePerGas = 1_000_000_000;
         request.Frames![1].ExecutionGas = stateGas ? 50_000UL : 0;
         request.Frames[1].StateGas = stateGas ? 0 : 200_000UL;
 
@@ -193,6 +194,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc request = FrameGasRequest();
+        request.MaxFeePerGas = 1_000_000_000;
         FrameForRpc verify = request.Frames![0];
         request.Frames = new FrameForRpc[Eip8141Constants.MaxFrames];
         request.Frames[0] = verify;
@@ -510,6 +512,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Eip8141Prototype.Instance));
         FrameTransactionForRpc transaction = UnsignedFrameRequest();
+        if (method == "eth_fillTransaction") transaction.MaxFeePerGas = 1_000_000_000;
 
         object request = method == "eth_simulateV1"
             ? new { blockStateCalls = new[] { new { calls = new[] { transaction } } }, validation = false }
