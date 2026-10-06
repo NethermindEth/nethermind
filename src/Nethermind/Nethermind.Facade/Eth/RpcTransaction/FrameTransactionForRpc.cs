@@ -3,6 +3,7 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
@@ -31,9 +32,12 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     /// supply one per entry the signed transaction will carry; entries with signature bytes are still verified.</remarks>
     public FrameSignatureForRpc[]? Signatures { get; set; }
 
-    /// <summary><c>max_fee_per_blob_gas</c>, an unconditional field of the signed payload.</summary>
-    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    /// <summary><c>max_fee_per_blob_gas</c>, a field of the signed payload unless it carries <see cref="MaxFee"/>.</summary>
     public UInt256? MaxFeePerBlobGas { get; set; }
+
+    /// <summary>EIP-7999 <c>max_fee</c>: one budget, in wei, for all of the transaction's gas, in place of
+    /// <c>maxFeePerGas</c> and <c>maxFeePerBlobGas</c>.</summary>
+    public UInt256? MaxFee { get; set; }
 
     /// <summary><c>blob_versioned_hashes</c>, an unconditional field of the signed payload.</summary>
     [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
@@ -53,12 +57,25 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         RecentRootReferences = RecentRootReferenceForRpc.FromReferences(transaction.RecentRootReferences);
 
         // Covered by the sig hash, so always reported: a consumer must be able to rebuild the payload.
-        MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
+        if (transaction.MaxFee is { } maxFee)
+        {
+            // The per-gas cap the base reported is derived, not signed.
+            MaxFee = maxFee;
+            MaxFeePerGas = null;
+        }
+        else
+        {
+            MaxFeePerBlobGas = transaction.MaxFeePerBlobGas ?? 0;
+        }
+
         BlobVersionedHashes = transaction.BlobVersionedHashes ?? [];
     }
 
     public override Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
     {
+        if (validateUserInput && MaxFee is not null && (MaxFeePerGas is not null || MaxFeePerBlobGas is not null))
+            return RpcTransactionErrors.MaxFeeWithPerGasFees;
+
         Result<Transaction> baseResult = base.ToTransaction(validateUserInput, gasCap, spec);
         if (baseResult.IsError) return baseResult;
 
@@ -92,8 +109,24 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
         tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
         tx.BlobVersionedHashes = BlobVersionedHashes;
         tx.RecentRootReferences = references;
+
+        // EIP-7999 admits only the max_fee shape, so a call priced per gas is converted to the budget that price
+        // buys over the frame gas: what the caller offered for the gas, blob gas aside.
+        UInt256? maxFee = MaxFee ?? (spec is { IsEip7999Enabled: true } ? BudgetFor(MaxFeePerGas ?? UInt256.Zero, totalFrameGas) : null);
+        if (maxFee is { } budget)
+        {
+            tx.MaxFee = budget;
+            tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(budget, totalFrameGas);
+            tx.MaxFeePerBlobGas = null;
+        }
+
         return tx;
     }
+
+    public override bool ShouldSetBaseFee() => base.ShouldSetBaseFee() || MaxFee.IsPositive();
+
+    private static UInt256 BudgetFor(in UInt256 maxFeePerGas, ulong gas) =>
+        UInt256.MultiplyOverflow(maxFeePerGas, (UInt256)gas, out UInt256 budget) ? UInt256.MaxValue : budget;
 
     public new static FrameTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData)
         => new(tx, extraData);

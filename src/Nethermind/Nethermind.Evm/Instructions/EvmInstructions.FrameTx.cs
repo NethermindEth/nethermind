@@ -99,8 +99,9 @@ public static unsafe partial class EvmInstructions
             0x01 => stack.PushUInt256<TTracingInst>(ctx.Nonce),
             0x02 => stack.PushAddress<TTracingInst>(ctx.Sender),
             0x03 => stack.PushUInt256<TTracingInst>(ctx.MaxPriorityFeePerGas),
-            0x04 => stack.PushUInt256<TTracingInst>(ctx.MaxFeePerGas),
-            0x05 => stack.PushUInt256<TTracingInst>(ctx.MaxFeePerBlobGas),
+            // EIP-7999: 0x04 reads max_fee and 0x05 is undefined, as the envelope has no per-gas caps.
+            0x04 => stack.PushUInt256<TTracingInst>(ctx.MaxFee ?? ctx.MaxFeePerGas),
+            0x05 when ctx.MaxFee is null => stack.PushUInt256<TTracingInst>(ctx.MaxFeePerBlobGas),
             0x06 => stack.PushUInt256<TTracingInst>(ctx.MaxCost),
             0x07 => stack.PushUInt256<TTracingInst>((UInt256)(blobHashes?.Length ?? 0)),
             0x08 => stack.PushBytes<TTracingInst>(ctx.SigHash.BytesAsSpan),

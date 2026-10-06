@@ -42,8 +42,9 @@ namespace Nethermind.TxPool.Comparison
 
             /* MaxFeePerGas for legacy will be GasPrice and MaxPriorityFeePerGas will be GasPrice too
             so we can compare legacy txs without any problems */
-            UInt256 bumpMaxFeePerGas = oldTx.MaxFeePerGas / PartOfFeeRequiredToIncrease;
-            if (oldTx.MaxFeePerGas + bumpMaxFeePerGas > newTx.MaxFeePerGas) return TxComparisonResult.KeepOld;
+            (UInt256 oldFeeCap, UInt256 newFeeCap) = GetFeeCaps(newTx, oldTx);
+            UInt256 bumpMaxFeePerGas = oldFeeCap / PartOfFeeRequiredToIncrease;
+            if (oldFeeCap + bumpMaxFeePerGas > newFeeCap) return TxComparisonResult.KeepOld;
 
             UInt256 bumpMaxPriorityFeePerGas = oldTx.MaxPriorityFeePerGas / PartOfFeeRequiredToIncrease;
             int result = (oldTx.MaxPriorityFeePerGas + bumpMaxPriorityFeePerGas).CompareTo(newTx.MaxPriorityFeePerGas);
@@ -54,5 +55,10 @@ namespace Nethermind.TxPool.Comparison
                 : TxComparisonResult.KeepOld;
         }
 
+        /// <summary>The fee caps a replacement must bump: EIP-7999 <c>max_fee</c> when both carry one, else <see cref="Transaction.MaxFeePerGas"/>.</summary>
+        internal static (UInt256 OldFeeCap, UInt256 NewFeeCap) GetFeeCaps(Transaction newTx, Transaction oldTx) =>
+            oldTx.MaxFee is { } oldMaxFee && newTx.MaxFee is { } newMaxFee
+                ? (oldMaxFee, newMaxFee)
+                : (oldTx.MaxFeePerGas, newTx.MaxFeePerGas);
     }
 }

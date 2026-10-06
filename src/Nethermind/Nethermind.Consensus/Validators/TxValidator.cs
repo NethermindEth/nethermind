@@ -91,7 +91,7 @@ public sealed class TxValidator : ITxValidator
             new ReleaseSpecTxValidator(static spec => spec.IsEip8141Enabled),
             NonceCapTxValidator.Instance,
             expectedChainIdTxValidator,
-            GasFieldsTxValidator.Instance,
+            FrameTxGasFieldsTxValidator.Instance,
             // The frame-tx decoder always populates both blob fields, so the presence-based
             // NonBlobFieldsTxValidator would reject every frame tx; this one checks them by value.
             FrameTxFieldsTxValidator.Instance,
@@ -264,6 +264,17 @@ public sealed class GasFieldsTxValidator : ITxValidator
         transaction.MaxFeePerGas < transaction.MaxPriorityFeePerGas ? TxErrorMessages.InvalidMaxPriorityFeePerGas : ValidationResult.Success;
 }
 
+/// <summary><see cref="GasFieldsTxValidator"/> for a frame transaction carrying per-gas fee caps.</summary>
+/// <remarks>An EIP-7999 <c>max_fee</c> has no per-gas cap to order against the tip: the budget bounds the tip.</remarks>
+public sealed class FrameTxGasFieldsTxValidator : ITxValidator
+{
+    public static readonly FrameTxGasFieldsTxValidator Instance = new();
+    private FrameTxGasFieldsTxValidator() { }
+
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+        transaction.MaxFee is null ? GasFieldsTxValidator.Instance.IsWellFormed(transaction, releaseSpec) : ValidationResult.Success;
+}
+
 /// <summary>EIP-8141 static constraints (frame modes, flags, atomic batch shape, signature schemes) plus the
 /// EIP-7594 blob constraints for a blob-carrying frame transaction.</summary>
 public sealed class FrameTxFieldsTxValidator : ITxValidator
@@ -290,7 +301,8 @@ public sealed class FrameTxFieldsTxValidator : ITxValidator
         byte[]?[]? blobVersionedHashes = transaction.BlobVersionedHashes;
         if (blobVersionedHashes is { Length: > 0 })
         {
-            if (transaction.MaxFeePerBlobGas is null)
+            // EIP-7999: the max_fee budget covers blob gas too.
+            if (transaction.MaxFeePerBlobGas is null && transaction.MaxFee is null)
             {
                 return TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
             }
@@ -397,7 +409,7 @@ public sealed class FrameTxNonceKeysTxValidator : ITxValidator
     }
 }
 
-/// <summary>Admits the frame-transaction envelope extensions only on forks that define them.</summary>
+/// <summary>Admits the frame-transaction envelope extensions, and the EIP-7999 fee shape, only on forks that define them.</summary>
 /// <remarks>The RLP decoder tells the envelope shapes apart without fork context, so the fork gate lives here.
 /// The reference cap is not re-checked: <see cref="FrameTxFieldsTxValidator"/> also sits in the frame-transaction
 /// composite and enforces it through <see cref="FrameTxValidation.IsWellFormed"/>, on decoder-built and
@@ -408,10 +420,20 @@ public sealed class FrameTxEnvelopeTxValidator : ITxValidator
     public static readonly FrameTxEnvelopeTxValidator Instance = new();
     private FrameTxEnvelopeTxValidator() { }
 
-    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
-        transaction.RecentRootReferences is null || releaseSpec.IsEip8272Enabled
+    public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if (transaction.RecentRootReferences is not null && !releaseSpec.IsEip8272Enabled)
+        {
+            return FrameTxValidation.RecentRootReferencesNotEnabled;
+        }
+
+        // Also runs on every pooled type at a fork transition, where only a frame transaction has a fee shape to check.
+        return (transaction.MaxFee is null && !releaseSpec.IsEip7999Enabled)
+               || !transaction.SupportsFrames
+               || FrameTxValidation.HasFeesForFork(transaction, releaseSpec, out string? feesError)
             ? ValidationResult.Success
-            : FrameTxValidation.RecentRootReferencesNotEnabled;
+            : feesError!;
+    }
 }
 
 public sealed class ContractSizeTxValidator : ITxValidator

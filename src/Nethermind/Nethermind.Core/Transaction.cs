@@ -209,6 +209,14 @@ namespace Nethermind.Core
 
         public UInt256? MaxFeePerBlobGas { get; set; } // eip4844
 
+        /// <summary>
+        /// The aggregate fee budget, in wei, of an EIP-8141 frame transaction carrying EIP-7999 fees
+        /// <c>[max_fee, max_priority_fee_per_gas]</c>; <c>null</c> for one carrying per-gas fee caps.
+        /// </summary>
+        /// <remarks>Such a transaction has no <c>max_fee_per_gas</c>; <see cref="DecodedMaxFeePerGas"/> then holds
+        /// <see cref="FrameTxValidation.ImpliedMaxFeePerGas"/>, the per-gas view mempool and block-building policy read.</remarks>
+        public UInt256? MaxFee { get; set; }
+
         public byte[]?[]? BlobVersionedHashes { get; set; } // eip4844
 
         private object? _networkWrapper;
@@ -407,6 +415,7 @@ namespace Nethermind.Core
                 obj.Timestamp = default;
                 obj.AccessList = default;
                 obj.MaxFeePerBlobGas = default;
+                obj.MaxFee = default;
                 obj.BlobVersionedHashes = default;
                 PooledBlobBuffers.Return(obj);
                 obj.NetworkWrapper = default;
@@ -466,6 +475,7 @@ namespace Nethermind.Core
             tx.Timestamp = Timestamp;
             tx.AccessList = AccessList;
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
+            tx.MaxFee = MaxFee;
             tx.BlobVersionedHashes = BlobVersionedHashes;
             tx.NetworkWrapper = NetworkWrapper;
             tx.IsServiceTransaction = IsServiceTransaction;

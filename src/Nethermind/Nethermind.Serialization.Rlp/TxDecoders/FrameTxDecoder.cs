@@ -13,8 +13,8 @@ using Nethermind.Int256;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
-/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
-/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
+/// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>
+/// or EIP-7999's <c>[max_fee, max_priority_fee_per_gas]</c>, with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
@@ -137,9 +137,23 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             limit: SignaturesCountLimit(Math.Max(0, payloadEnd - decoderContext.Position)));
         int feesLength = decoderContext.ReadSequenceLength();
         int feesCheck = feesLength + decoderContext.Position;
-        transaction.GasPrice = decoderContext.DecodeUInt256(); // max_priority_fee_per_gas
-        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        UInt256 firstFee = decoderContext.DecodeUInt256();
+        UInt256 secondFee = decoderContext.DecodeUInt256();
+        // The arity tells the fee shapes apart; which one the fork admits is a validation rule.
+        if (decoderContext.Position == feesCheck)
+        {
+            transaction.MaxFee = firstFee;
+            transaction.GasPrice = secondFee; // max_priority_fee_per_gas
+            transaction.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(firstFee, FrameTxValidation.TotalGasLimit(transaction.Frames));
+            transaction.MaxFeePerBlobGas = null;
+        }
+        else
+        {
+            transaction.GasPrice = firstFee; // max_priority_fee_per_gas
+            transaction.DecodedMaxFeePerGas = secondFee;
+            transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+        }
+
         decoderContext.Check(feesCheck);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
         transaction.RecentRootReferences = null;
@@ -221,9 +235,17 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         TxFrameDecoder.Instance.EncodeArray(ref writer, transaction.Frames);
         TxFrameSignatureDecoder.Instance.EncodeArray(ref writer, transaction.FrameSignatures, elideCanonicalSignatureBytes);
         writer.StartSequence(GetFeesContentLength(transaction));
-        writer.Encode(transaction.GasPrice);
-        writer.Encode(transaction.DecodedMaxFeePerGas);
-        writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        if (transaction.MaxFee is { } maxFee)
+        {
+            writer.Encode(maxFee);
+            writer.Encode(transaction.GasPrice);
+        }
+        else
+        {
+            writer.Encode(transaction.GasPrice);
+            writer.Encode(transaction.DecodedMaxFeePerGas);
+            writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        }
         EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
         if (transaction.RecentRootReferences is { } references)
         {
@@ -270,9 +292,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     private static int GetFeesContentLength(Transaction transaction) =>
-        Rlp.LengthOf(transaction.GasPrice)
-        + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
-        + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
+        transaction.MaxFee is { } maxFee
+            ? Rlp.LengthOf(maxFee) + Rlp.LengthOf(transaction.GasPrice)
+            : Rlp.LengthOf(transaction.GasPrice)
+              + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
+              + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
 
     protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
         bool isEip155Enabled = false, ulong chainId = 0) =>

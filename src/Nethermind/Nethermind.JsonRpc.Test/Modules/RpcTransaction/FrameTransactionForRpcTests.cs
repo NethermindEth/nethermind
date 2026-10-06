@@ -16,6 +16,8 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Converters;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
@@ -274,6 +276,84 @@ public class FrameTransactionForRpcTests
             Assert.That(roundTripped.MaxFeePerBlobGas, Is.EqualTo((UInt256)456));
             Assert.That(roundTripped.BlobVersionedHashes, Has.Length.EqualTo(1));
         }
+    }
+
+    private static Transaction BuildMaxFeeFrameTx()
+    {
+        Transaction tx = BuildMinimalFrameTx();
+        tx.MaxFee = 1_000;
+        tx.MaxFeePerBlobGas = null;
+        tx.DecodedMaxFeePerGas = FrameTxValidation.ImpliedMaxFeePerGas(1_000, tx.GasLimit);
+        return tx;
+    }
+
+    private static readonly OverridableReleaseSpec BogotaWithMaxFee = new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = true };
+
+    // EIP-7999: the signed payload carries max_fee in place of both per-gas caps, so those are not reported.
+    [Test]
+    public void FrameTransactionForRpc_ReportsTheFeeFieldsOfItsShape([Values] bool maxFeeShape)
+    {
+        TransactionForRpc rpc = TransactionForRpc.FromTransaction(maxFeeShape ? BuildMaxFeeFrameTx() : BuildMinimalFrameTx());
+
+        using JsonDocument doc = SerializeToJson(rpc);
+        JsonElement root = doc.RootElement;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.TryGetProperty("maxFee", out JsonElement maxFee), Is.EqualTo(maxFeeShape));
+            if (maxFeeShape) Assert.That(maxFee.GetString(), Is.EqualTo("0x3e8"));
+            Assert.That(root.TryGetProperty("maxFeePerBlobGas", out _), Is.EqualTo(!maxFeeShape));
+            Assert.That(root.GetProperty("maxFeePerGas").ValueKind, Is.EqualTo(maxFeeShape ? JsonValueKind.Null : JsonValueKind.String));
+            Assert.That(root.GetProperty("maxPriorityFeePerGas").GetString(), Is.EqualTo("0x1"));
+        }
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_RoundTripsTheMaxFee()
+    {
+        Transaction original = BuildMaxFeeFrameTx();
+
+        Transaction roundTripped = ((FrameTransactionForRpc)TransactionForRpc.FromTransaction(original)).ToTransaction().Data!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(roundTripped.MaxFee, Is.EqualTo((UInt256?)1_000));
+            Assert.That(roundTripped.MaxFeePerBlobGas, Is.Null);
+            Assert.That(roundTripped.MaxPriorityFeePerGas, Is.EqualTo((UInt256)1));
+            Assert.That(roundTripped.DecodedMaxFeePerGas, Is.EqualTo(FrameTxValidation.ImpliedMaxFeePerGas(1_000, roundTripped.GasLimit)));
+        }
+    }
+
+    // A call priced per gas still runs once EIP-7999 admits only budgets: it buys what that price would.
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_ConvertsAPerGasCallUnderEip7999([Values] bool eip7999)
+    {
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMinimalFrameTx());
+        rpc.MaxFeePerGas = 3;
+
+        Transaction tx = rpc.ToTransaction(spec: eip7999 ? BogotaWithMaxFee : Bogota.Instance).Data!;
+
+        Assert.That(tx.MaxFee, Is.EqualTo(eip7999 ? (UInt256?)(3 * tx.GasLimit) : null));
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_ToTransaction_RejectsMaxFeeWithPerGasCaps([Values] bool perBlob)
+    {
+        FrameTransactionForRpc rpc = (FrameTransactionForRpc)TransactionForRpc.FromTransaction(BuildMaxFeeFrameTx());
+        if (perBlob) rpc.MaxFeePerBlobGas = 1;
+        else rpc.MaxFeePerGas = 1;
+
+        Result<Transaction> result = rpc.ToTransaction(validateUserInput: true);
+
+        Assert.That(result.Error, Is.EqualTo(RpcTransactionErrors.MaxFeeWithPerGasFees));
+    }
+
+    [Test]
+    public void FrameTransactionForRpc_MaxFeeAlone_SetsTheBaseFee()
+    {
+        FrameTransactionForRpc rpc = new() { MaxFee = 1 };
+
+        Assert.That(rpc.ShouldSetBaseFee(), Is.True);
     }
 
     /// <remarks>

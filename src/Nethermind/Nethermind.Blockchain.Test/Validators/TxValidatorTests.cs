@@ -1396,6 +1396,79 @@ public class TxValidatorTests
         return new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, spec).AsBool();
     }
 
+    private static OverridableReleaseSpec BogotaFrames(bool eip7999) =>
+        new(Bogota.Instance) { IsEip8141Enabled = true, IsEip7999Enabled = eip7999 };
+
+    private static Transaction MaxFeeShapeFrameTx(bool maxFeeShape, UInt256 maxPriorityFeePerGas, bool blobs = false)
+    {
+        Transaction tx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = TestBlockchainIds.ChainId,
+            SenderAddress = TestItem.AddressA,
+            Frames = [SelfVerify(PrefixFrameGas)],
+            FrameSignatures = [],
+            GasPrice = maxPriorityFeePerGas,
+            DecodedMaxFeePerGas = 1,
+            MaxFeePerBlobGas = 0,
+        };
+        if (blobs) tx.BlobVersionedHashes = [Bytes.FromHexString("0x01" + new string('0', 62))];
+        if (maxFeeShape)
+        {
+            tx.MaxFee = 1;
+            tx.MaxFeePerBlobGas = null;
+        }
+
+        return tx;
+    }
+
+    // EIP-7999: the decoder tells the fee shapes apart, so the fork gate is a validation rule, enforced at
+    // admission and again at a fork transition, where pooled transactions of the old shape are evicted.
+    [Test]
+    public void IsWellFormed_FrameTxFeeShape_GatedOnEip7999([Values] bool eip7999, [Values] bool maxFeeShape, [Values] bool atHead)
+    {
+        Transaction tx = MaxFeeShapeFrameTx(maxFeeShape, maxPriorityFeePerGas: 1);
+        ITxValidator validator = atHead ? new HeadTxValidator() : new TxValidator(TestBlockchainIds.ChainId);
+
+        ValidationResult result = validator.IsWellFormed(tx, BogotaFrames(eip7999));
+
+        Assert.That(result.AsBool(), Is.EqualTo(eip7999 == maxFeeShape), result.Error);
+        if (eip7999 != maxFeeShape)
+        {
+            Assert.That(result.Error, Is.EqualTo(eip7999 ? FrameTxValidation.PerGasFeesNotAllowed : FrameTxValidation.MaxFeeNotEnabled));
+        }
+    }
+
+    [Test]
+    public void IsWellFormed_NonFrameTx_IgnoresTheEip7999FeeShapeGate()
+    {
+        Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithMaxFeePerGas(2).WithMaxPriorityFeePerGas(1).TestObject;
+
+        Assert.That(new HeadTxValidator().IsWellFormed(tx, BogotaFrames(eip7999: true)).AsBool(), Is.True);
+    }
+
+    // A budget has no per-gas cap to order the tip against; the per-gas shape keeps that rule.
+    [Test]
+    public void IsWellFormed_FrameTxTipAboveFeeCap_OnlyInvalidForThePerGasShape([Values] bool eip7999)
+    {
+        Transaction tx = MaxFeeShapeFrameTx(eip7999, maxPriorityFeePerGas: 100);
+
+        ValidationResult result = new TxValidator(TestBlockchainIds.ChainId).IsWellFormed(tx, BogotaFrames(eip7999));
+
+        Assert.That(result.AsBool(), Is.EqualTo(eip7999), result.Error);
+    }
+
+    // The budget covers blob gas too, so a blob-carrying max_fee transaction has no max_fee_per_blob_gas to miss.
+    [Test]
+    public void IsWellFormed_BlobCarryingMaxFeeFrameTx_NeedsNoBlobFeeCap()
+    {
+        Transaction tx = MaxFeeShapeFrameTx(maxFeeShape: true, maxPriorityFeePerGas: 1, blobs: true);
+
+        ValidationResult result = FrameTxFieldsTxValidator.Instance.IsWellFormed(tx, BogotaFrames(eip7999: true));
+
+        Assert.That(result.AsBool(), Is.True, result.Error);
+    }
+
     [Test]
     public void IsWellFormed_FrameTxExecutionReservationIsBoundedByEip7825()
     {

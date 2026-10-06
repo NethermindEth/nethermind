@@ -393,6 +393,44 @@ public class LightTxDecoderTests
         }
     }
 
+    // EIP-7999: a max_fee frame transaction has no max_fee_per_blob_gas, so its budget rides in the group.
+    [TestCase(false, TestName = "max_fee alone")]
+    [TestCase(true, TestName = "max_fee behind a payer and a paymaster")]
+    public void Round_trip_carries_the_max_fee(bool withPayer)
+    {
+        Transaction tx = BlobCarryingTx(TxType.FrameTx, paymaster: withPayer ? TestItem.AddressC : null);
+        tx.MaxFee = 4_000;
+        tx.MaxFeePerBlobGas = null;
+        if (withPayer)
+        {
+            tx.PayerAddress = TestItem.AddressB;
+            tx.PayerExposure = 4_000;
+        }
+
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(tx));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.MaxFee, Is.EqualTo((UInt256?)4_000));
+            Assert.That(decoded.MaxFeePerBlobGas, Is.Null);
+            Assert.That(decoded.DecodedMaxFeePerGas, Is.EqualTo(tx.DecodedMaxFeePerGas));
+            Assert.That(decoded.PersistedPaymaster, Is.EqualTo(withPayer ? TestItem.AddressC : null));
+            Assert.That(decoded.PayerAddress, Is.EqualTo(withPayer ? TestItem.AddressB : null));
+        }
+    }
+
+    [Test]
+    public void Round_trip_of_a_per_gas_record_has_no_max_fee()
+    {
+        LightTransaction decoded = LightTxDecoder.Decode(LightTxDecoder.Encode(BlobCarryingTx(TxType.FrameTx, paymaster: TestItem.AddressC)));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded.MaxFee, Is.Null);
+            Assert.That(decoded.MaxFeePerBlobGas, Is.EqualTo((UInt256?)3));
+        }
+    }
+
     // Downgrade readability is why the trailing fields are one nested group: a build predating a later slot
     // must still read the record, losing that field rather than the whole record.
     [Test]

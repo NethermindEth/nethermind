@@ -101,6 +101,9 @@ public sealed class FrameTxContext(
     /// <summary>EIP-4844 <c>max_fee_per_blob_gas</c> of the envelope; zero when it carries no blobs.</summary>
     public UInt256 MaxFeePerBlobGas { get; } = maxFeePerBlobGas;
 
+    /// <summary>EIP-7999 <c>max_fee</c> of the envelope, or <see langword="null"/> when it carries per-gas fee caps.</summary>
+    public UInt256? MaxFee => transaction.MaxFee;
+
     /// <summary>The EIP-8272 recent-root references of the signed envelope, empty when it carries none.</summary>
     /// <remarks>Absent and empty are different envelopes but indistinguishable to executing code.</remarks>
     public RecentRootReference[] RecentRootReferences { get; } = recentRootReferences ?? [];

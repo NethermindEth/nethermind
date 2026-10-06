@@ -50,6 +50,8 @@ public static class FrameTxValidation
     public const string MalformedNonceKeySet = "malformed nonce key set";
     public const string TooManyRecentRootReferences = "at most 16 recent root references are allowed";
     public const string RecentRootReferencesNotEnabled = "recent root references are not enabled";
+    public const string MaxFeeNotEnabled = "max_fee fees are not enabled";
+    public const string PerGasFeesNotAllowed = "per-gas fee caps are not allowed once max_fee fees are enabled";
 
     /// <summary>
     /// Runs the EIP-8141 §Constraints checks a frame transaction can be judged on without state, over its frame
@@ -289,6 +291,27 @@ public static class FrameTxValidation
         }
 
         return total;
+    }
+
+    /// <summary>The highest uniform per-gas price an EIP-7999 <c>max_fee</c> covers over <paramref name="gasLimit"/>.</summary>
+    /// <remarks>Policy only, for the mempool and block-building code that ranks by a per-gas cap: execution checks
+    /// the budget itself. Over <see cref="Transaction.GasLimit"/>, which omits the intrinsic cost, it overstates
+    /// the cap execution enforces, so a transaction it admits can still fail the budget check at inclusion.</remarks>
+    public static UInt256 ImpliedMaxFeePerGas(in UInt256 maxFee, ulong gasLimit) =>
+        gasLimit == 0 ? maxFee : maxFee / gasLimit;
+
+    /// <summary>Whether the fee fields of <paramref name="transaction"/> take the shape the fork requires.</summary>
+    /// <remarks>EIP-7999 replaces <c>[max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c> with
+    /// <c>[max_fee, max_priority_fee_per_gas]</c>. The decoder tells them apart without fork context.</remarks>
+    public static bool HasFeesForFork(Transaction transaction, IReleaseSpec spec, out string? error)
+    {
+        error = (transaction.MaxFee is not null, spec.IsEip7999Enabled) switch
+        {
+            (true, false) => MaxFeeNotEnabled,
+            (false, true) => PerGasFeesNotAllowed,
+            _ => null
+        };
+        return error is null;
     }
 
     /// <summary>
@@ -618,8 +641,19 @@ public static class FrameTxValidation
     public static bool TryCalculateMaxCost(Transaction transaction, IReleaseSpec spec, out UInt256 maxCost)
     {
         maxCost = UInt256.Zero;
-        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas)
-            || UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
+        if (!TryCalculateGasBudget(transaction, spec, out _, out _, out ulong maxGas))
+        {
+            return false;
+        }
+
+        // EIP-7999: max_cost depends on the including block's base fees, and max_fee bounds it at any of them.
+        if (transaction.MaxFee is { } maxFee)
+        {
+            maxCost = maxFee;
+            return true;
+        }
+
+        if (UInt256.MultiplyOverflow((UInt256)maxGas, transaction.DecodedMaxFeePerGas, out UInt256 gasCost))
         {
             return false;
         }

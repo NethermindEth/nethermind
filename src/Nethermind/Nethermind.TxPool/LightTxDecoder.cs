@@ -25,7 +25,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                + Rlp.LengthOf(tx.GasLimit)
                + Rlp.LengthOf(tx.GasPrice)
                + Rlp.LengthOf(tx.DecodedMaxFeePerGas)
-               + Rlp.LengthOf(tx.MaxFeePerBlobGas!.Value)
+               + Rlp.LengthOf(tx.MaxFeePerBlobGas.GetValueOrDefault())
                + Rlp.LengthOf(tx.BlobVersionedHashes!)
                + Rlp.LengthOf(tx.PoolIndex)
                + Rlp.LengthOf(networkSize)
@@ -60,14 +60,15 @@ public class LightTxDecoder : TxDecoder<Transaction>
     /// </remarks>
     private static int TrailingContentLength(Transaction tx, Address? paymaster)
     {
-        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true }) return 0;
+        if (tx.PayerAddress is null && paymaster is null && tx.PayerExposure is null or { IsZero: true } && tx.MaxFee is null) return 0;
 
         // Slot 0 is always the keys list, so its sequence header is what tells this form from the flat
         // nonce_keys list a groupless record still writes, whose first element is a scalar.
         return (tx.NonceKeys is { } nonceKeys ? FrameTxNonceCalldata.KeysLength(nonceKeys) : Rlp.LengthOfSequence(0))
                + Rlp.LengthOf(tx.PayerAddress)
                + Rlp.LengthOf(tx.PayerExposure ?? default)
-               + (paymaster is null ? 0 : Rlp.LengthOf(paymaster));
+               + (paymaster is null && tx.MaxFee is null ? 0 : Rlp.LengthOf(paymaster))
+               + (tx.MaxFee is { } maxFee ? Rlp.LengthOf(maxFee) : 0);
     }
 
     public static byte[] Encode(Transaction tx)
@@ -87,7 +88,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
         writer.Encode(tx.GasLimit);
         writer.Encode(tx.GasPrice);
         writer.Encode(tx.DecodedMaxFeePerGas);
-        writer.Encode(tx.MaxFeePerBlobGas!.Value);
+        // An EIP-7999 max_fee transaction has no max_fee_per_blob_gas; its max_fee is a trailing slot.
+        writer.Encode(tx.MaxFeePerBlobGas.GetValueOrDefault());
         writer.Encode(tx.BlobVersionedHashes!);
         writer.Encode(tx.PoolIndex);
         writer.Encode(networkSize);
@@ -119,7 +121,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             // The placeholder for a transaction that never reached the exposure gate, read back as absent.
             // A genuine zero price collapses onto it and costs the same: the fallback's fee terms are zero too.
             writer.Encode(tx.PayerExposure ?? default);
-            if (paymaster is not null) writer.Encode(paymaster);
+            if (paymaster is not null || tx.MaxFee is not null) writer.Encode(paymaster);
+            if (tx.MaxFee is { } maxFee) writer.Encode(maxFee);
         }
 
         return bytes;
@@ -170,6 +173,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         Address? payerAddress = null;
         UInt256? payerExposure = null;
         Address? paymaster = null;
+        UInt256? maxFee = null;
         if (ctx.PeekNumberOfItemsRemaining(maxSearch: 1) == 1)
         {
             // Legacy records end in a flat nonce_keys list, whose first element is a scalar; the grouped form
@@ -195,6 +199,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
                 // Nullable for the same reason as the payer: once a later slot exists, an absent paymaster
                 // is written as the placeholder rather than omitted.
                 if (ctx.Position < end) paymaster = ctx.DecodeAddressOrNull();
+                if (ctx.Position < end) maxFee = ctx.DecodeUInt256();
                 // Anything a later build appended is skipped, so a new slot costs this one that field
                 // rather than making every grouped record unreadable.
                 ctx.Position = end;
@@ -231,7 +236,8 @@ public class LightTxDecoder : TxDecoder<Transaction>
             nonceKeys,
             payerAddress,
             payerExposure,
-            paymaster);
+            paymaster,
+            maxFee);
     }
 
     private static void EncodeAvailableCellMask(Transaction tx, ref RlpWriter writer)
