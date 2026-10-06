@@ -42,11 +42,11 @@ namespace Nethermind.Logging.NLog.Test
             SensitiveLogMasking.Enabled = maskSensitiveData;
 
             string endpoint = "192.0.2.42:30303";
-            logger.Info($"Peer {endpoint:sensitive} on port {42:D5}");
-            logger.Info($"Peer {endpoint,24:sensitive}");
+            logger.Info($"Peer {endpoint:hide} on port {42:D5}");
+            logger.Info($"Peer {endpoint,24:hide}");
             ReadOnlySpan<char> endpointSpan = endpoint.AsSpan();
-            logger.Info($"Span {endpointSpan:sensitive}");
-            logger.Info($"Aligned span {endpointSpan,24:sensitive}");
+            logger.Info($"Span {endpointSpan:hide}");
+            logger.Info($"Aligned span {endpointSpan,24:hide}");
             string alreadyFormatted = $"Already formatted {endpoint}";
             logger.Info(alreadyFormatted);
 
@@ -70,7 +70,7 @@ namespace Nethermind.Logging.NLog.Test
             ILogger logger = manager.GetLogger("DisabledSensitiveLogTests");
             int evaluated = 0;
 
-            logger.Info($"Peer {GetEndpoint():sensitive}");
+            logger.Info($"Peer {GetEndpoint():hide}");
 
             Assert.That(evaluated, Is.Zero);
             Assert.That(target.Logs, Is.Empty);

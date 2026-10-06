@@ -7,7 +7,7 @@ using System.Runtime.CompilerServices;
 namespace Nethermind.Logging;
 
 /// <summary>
-/// Formats informational log messages, masking fields marked with <c>:sensitive</c> when enabled.
+/// Formats informational log messages, masking fields marked with <c>:hide</c> when enabled.
 /// </summary>
 [InterpolatedStringHandler]
 public ref struct InfoInterpolatedStringHandler
@@ -32,7 +32,7 @@ public ref struct InfoInterpolatedStringHandler
 
     public void AppendFormatted(ReadOnlySpan<char> value, int alignment = 0, string? format = null)
     {
-        if (format is "sensitive")
+        if (format is "hide")
         {
             if (_maskSensitiveData) _inner.AppendFormatted("[redacted]", alignment);
             else _inner.AppendFormatted(value, alignment, null);
@@ -45,7 +45,7 @@ public ref struct InfoInterpolatedStringHandler
 
     public void AppendFormatted<T>(T value, string? format)
     {
-        if (format is "sensitive")
+        if (format is "hide")
         {
             if (_maskSensitiveData) _inner.AppendLiteral("[redacted]");
             else _inner.AppendFormatted(value);
@@ -58,7 +58,7 @@ public ref struct InfoInterpolatedStringHandler
 
     public void AppendFormatted<T>(T value, int alignment, string? format)
     {
-        if (format is "sensitive")
+        if (format is "hide")
         {
             if (_maskSensitiveData) _inner.AppendFormatted("[redacted]", alignment);
             else _inner.AppendFormatted(value, alignment);

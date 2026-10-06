@@ -69,8 +69,9 @@ public struct ILogger : IEquatable<ILogger>
     }
 
     /// <summary>
-    /// Logs an interpolated informational message and optionally masks fields marked with <c>:sensitive</c>.
+    /// Logs an interpolated informational message and optionally masks fields marked with <c>:hide</c>.
     /// </summary>
+    /// <remarks>Marked fields must be interpolated directly into this overload; <c>NETH008</c> rejects string materialization before logging.</remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     public readonly void Info([InterpolatedStringHandlerArgument("")] ref InfoInterpolatedStringHandler handler)
     {

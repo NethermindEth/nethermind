@@ -57,7 +57,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The logs format as `LogPath:LogLevel;*`", DefaultValue = "null")]
     string? LogRules { get; set; }
 
-    [ConfigItem(Description = "Whether to mask values marked as sensitive in interpolated Info logs. Other log messages are unchanged.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to mask :hide fields in interpolated Info logs. Other log messages are unchanged.", DefaultValue = "false")]
     bool MaskSensitiveData { get; set; }
 
     [ConfigItem(Description = "The diagnostic mode.", DefaultValue = "None")]

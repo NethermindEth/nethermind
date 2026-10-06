@@ -6,7 +6,7 @@ using System.Threading;
 namespace Nethermind.Logging;
 
 /// <summary>
-/// Controls masking of interpolated log values marked with the <c>sensitive</c> format.
+/// Controls masking of interpolated Info log values marked with the <c>hide</c> format.
 /// </summary>
 public static class SensitiveLogMasking
 {
