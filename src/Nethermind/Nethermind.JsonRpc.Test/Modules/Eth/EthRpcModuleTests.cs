@@ -1002,6 +1002,19 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedResponse));
     }
 
+    private static async Task<string> CallLogsMethod(Context ctx, string method, string filter)
+    {
+        string parameter = filter;
+
+        if (method == "eth_getFilterLogs")
+        {
+            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
+            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
+        }
+
+        return await ctx.Test.TestEthRpc(method, parameter);
+    }
+
     private static IEnumerable<TestCaseData> MaxBlockDepthCases()
     {
         foreach ((string name, int maxBlockDepth, string filter, bool shouldReject) in Cases())
@@ -1038,15 +1051,7 @@ public partial class EthRpcModuleTests
             .WithReceiptConfig(new ReceiptConfig { MaxBlockDepth = maxBlockDepth })
             .Build();
 
-        string parameter = filter;
-
-        if (method == "eth_getFilterLogs")
-        {
-            using JsonRpcResponse newFilterResponse = await RpcTest.TestRequest(ctx.Test.EthRpcModule, "eth_newFilter", filter);
-            parameter = RpcTest.AssertSuccess<UInt256?>(newFilterResponse)?.ToString() ?? "0x0";
-        }
-
-        string serialized = await ctx.Test.TestEthRpc(method, parameter);
+        string serialized = await CallLogsMethod(ctx, method, filter);
 
         if (shouldReject)
         {
@@ -1057,6 +1062,38 @@ public partial class EthRpcModuleTests
         {
             Assert.That(serialized, Does.Not.Contain("\"error\""));
         }
+    }
+
+    private static IEnumerable<TestCaseData> ReversedRangeEndingAtBlockZeroCases()
+    {
+        foreach ((string name, string filter, ulong expectedFromBlock) in Cases())
+        {
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getLogs_{name}_Stream");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, false).SetName($"{{m}}_getFilterLogs_{name}_Buffered");
+            yield return new TestCaseData("eth_getFilterLogs", filter, expectedFromBlock, true).SetName($"{{m}}_getFilterLogs_{name}_Stream");
+        }
+
+        static IEnumerable<(string Name, string Filter, ulong ExpectedFromBlock)> Cases()
+        {
+            yield return ("latest_to_earliest", """{"fromBlock":"latest","toBlock":"earliest"}""", TestBlockchain.HeadNumber);
+            yield return ("latest_to_block_zero", """{"fromBlock":"latest","toBlock":"0x0"}""", TestBlockchain.HeadNumber);
+            yield return ("explicit_from_to_earliest", """{"fromBlock":"0x2","toBlock":"earliest"}""", 2UL);
+        }
+    }
+
+    [TestCaseSource(nameof(ReversedRangeEndingAtBlockZeroCases))]
+    public async Task Eth_logs_reject_reversed_range_ending_at_block_zero(string method, string filter, ulong expectedFromBlock, bool enableLogsStreamMode)
+    {
+        using Context ctx = await Context.Create();
+
+        ctx.Test = await CreateLogsTestBlockchainBuilder(enableLogsStreamMode).Build();
+
+        string serialized = await CallLogsMethod(ctx, method, filter);
+
+        string message = $"From block {expectedFromBlock} is later than to block 0.";
+        Assert.That(serialized, Is.EqualTo(
+            $$"""{"jsonrpc":"2.0","error":{"code":-32602,"message":"{{message}}","data":"System.ArgumentException: {{message}}"},"id":67}"""));
     }
 
     [TestCase("eth_getLogs", "{}")]
@@ -1686,6 +1723,33 @@ public partial class EthRpcModuleTests
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_getProof", TestBlockchain.AccountA.ToString(), "[]", "0x2");
         Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":{\"accountProof\":[\"0xf8718080808080a0fc8311b2cabe1a1b33ea04f1865132a44aa0c17c567acd233422f9cfb516877480808080a0be8ea164b2fb1567e2505295dae6d8a9fe5f09e9c5ac854a7da23b2bc5f8523ca053692ab7cdc9bb02a28b1f45afe7be86cb27041ea98586e6ff05d98c9b0667138080808080\",\"0xf8518080808080a00dd1727b2abb59c0a6ac75c01176a9d1a276b0049d5fe32da3e1551096549e258080808080808080a038ca33d3070331da1ccf804819da57fcfc83358cadbef1d8bde89e1a346de5098080\",\"0xf872a020227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5eb84ff84d01893635c9adc5de9fadf7a0475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72ba0dbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\"],\"address\":\"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"balance\":\"0x3635c9adc5de9fadf7\",\"codeHash\":\"0xdbe576b4818846aa77e82f4ed5fa78f92766b141f282d36703886d196df39322\",\"nonce\":\"0x1\",\"storageHash\":\"0x475ae75f323761db271e75cbdae41aede237e48bc04127fb6611f0f33298f72b\",\"storageProof\":[]},\"id\":67}"), serialized.Replace("\"", "\\\""));
+    }
+
+    [Test]
+    public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[0];
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            ForkOnBlockNumber = ulong.MaxValue,
+            ChainId = BlockchainIds.Mainnet,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        string preFork = chain.BlockTree.Head!.Number.ToHexString(true);
+        specProvider.ForkOnBlockNumber = chain.BlockTree.Head!.Number + 1;
+        await chain.AddBlock();
+
+        string proof = await chain.TestEthRpc("eth_getProof", target.ToString(), "[]", "latest");
+        string count = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), "latest");
+        string preForkCount = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), preFork);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Does.Contain("\"nonce\":\"0x1\""));
+            Assert.That(count, Does.Contain("\"result\":\"0x1\""));
+            Assert.That(preForkCount, Does.Contain("\"result\":\"0x0\""));
+        }
     }
 
     [Test]
@@ -2707,6 +2771,27 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_omits_entries_that_only_raise_the_eip8131_content_floor()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(
+            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const int calldataBytes = 1000;
+        // PUSH20 0xdeadbeef; BALANCE; POP; STOP: one cold account access, under a calldata-bound content floor.
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","data":"0x{{new string('0', 2 * calldataBytes)}}"}""";
+
+        // The entry saves nothing at the standard rate but adds 20 bytes to the binding floor, so the empty list wins.
+        (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+            Assert.That(optimizedGas, Is.EqualTo((long)(GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + calldataBytes * Eip8131Constants.FloorGasPerByte)));
+        }
+    }
+
+    [Test]
     public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
@@ -2898,7 +2983,7 @@ public partial class EthRpcModuleTests
 
         await test.AddBlock(setCodeTx);
 
-        byte[]? code = test.ReadOnlyState.GetCode(TestItem.AddressB);
+        byte[] code = test.ReadOnlyState.GetCode(TestItem.AddressB).ToArray();
 
         Assert.That(code!.Slice(0, 3), Is.EquivalentTo(Eip7702Constants.DelegationHeader.ToArray()));
 

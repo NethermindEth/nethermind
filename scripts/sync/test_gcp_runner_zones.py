@@ -99,13 +99,14 @@ class OrderZonesTest(unittest.TestCase):
 
 
 class CreateErrorClassificationTest(unittest.TestCase):
-    """create.sh tries quota, then retryable, then fatal, so a message is classified by
+    """create.sh tries not-offered, quota, retryable, then fatal, so a message is classified by
     precedence rather than by matching exactly one pattern."""
 
     def classify(self, message):
         return sh(
             f"msg={shlex.quote(message)}; "
-            'if grep -qE "$QUOTA_CREATE_ERR" <<<"$msg"; then echo quota; '
+            'if grep -qE "$NOT_OFFERED_CREATE_ERR" <<<"$msg"; then echo not-offered; '
+            'elif grep -qE "$QUOTA_CREATE_ERR" <<<"$msg"; then echo quota; '
             'elif grep -qE "$RETRYABLE_CREATE_ERR" <<<"$msg"; then echo retryable; '
             'elif grep -qE "$FATAL_CREATE_ERR" <<<"$msg"; then echo fatal; '
             "else echo unrecognised; fi"
@@ -147,27 +148,62 @@ class CreateErrorClassificationTest(unittest.TestCase):
             "fatal",
         )
 
+    def test_a_machine_type_the_zone_lacks_is_its_own_class(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
+                " - Invalid value for field 'resource.machineType': 'zones/europe-west2-a/"
+                "machineTypes/c3d-standard-8-lssd'. Machine type with name"
+                " 'c3d-standard-8-lssd' does not exist in zone 'europe-west2-a'."
+            ),
+            "not-offered",
+        )
+
+    def test_another_zonal_resource_the_zone_lacks_is_not_blamed_on_the_machine_type(self):
+        self.assertEqual(
+            self.classify(
+                "ERROR: (gcloud.compute.instances.create) Could not fetch resource:"
+                " - Invalid value for field 'resource.disks[0].initializeParams.diskType':"
+                " 'zones/europe-west2-a/diskTypes/hyperdisk-balanced'. Disk type with name"
+                " 'hyperdisk-balanced' does not exist in zone 'europe-west2-a'."
+            ),
+            "unrecognised",
+        )
+
     def test_an_unrecognised_message_matches_nothing(self):
         self.assertEqual(self.classify("ERROR: something entirely new"), "unrecognised")
 
     def test_create_sh_checks_the_classes_in_that_order(self):
         # classify() above models create.sh's branch order; pin it so the two cannot drift.
-        order = re.findall(r"\$(QUOTA|RETRYABLE|FATAL)_CREATE_ERR", (ACTION / "create.sh").read_text())
-        self.assertEqual(order, ["QUOTA", "RETRYABLE", "FATAL"])
+        order = re.findall(
+            r"\$(NOT_OFFERED|QUOTA|RETRYABLE|FATAL)_CREATE_ERR", (ACTION / "create.sh").read_text()
+        )
+        self.assertEqual(order, ["NOT_OFFERED", "QUOTA", "RETRYABLE", "FATAL"])
 
 
 class CreateZoneWalkTest(unittest.TestCase):
     """Runs create.sh against stubbed gcloud/gh/curl to check which zones it actually tries."""
 
     GCLOUD_STUB = """#!/usr/bin/env bash
-    zone=""
-    for a in "$@"; do case "$a" in --zone=*) zone="${a#--zone=}" ;; esac; done
+    zone=""; model=""
+    for a in "$@"; do
+      case "$a" in
+        --zone=*) zone="${a#--zone=}" ;;
+        --provisioning-model=*) model="${a#--provisioning-model=}" ;;
+      esac
+    done
     case "$*" in *"instances delete"*|*"instances list"*|*get-serial-port-output*) exit 0 ;; esac
     echo "$zone" >> "$ATTEMPTS"
-    if [ "$zone" = "${SUCCEED_ZONE:-}" ]; then
+    echo "$model" >> "$MODELS_TRIED"
+    if [ "$zone" = "${SUCCEED_ZONE:-}" ] && [ "${SUCCEED_MODEL:-$model}" = "$model" ]; then
       echo '[{"networkInterfaces":[{"accessConfigs":[{"natIP":"1.2.3.4"}]}]}]'
       exit 0
     fi
+    case ",${NOT_OFFERED_ZONES:-}," in
+      *",${zone},"*)
+        echo "ERROR: Machine type with name '$MACHINE_TYPE' does not exist in zone '$zone'." >&2
+        exit 1 ;;
+    esac
     case ",${CAPACITY_ZONES:-}," in
       *",${zone},"*) echo "ERROR: The zone '$zone' does not have enough resources available." >&2 ;;
       *)
@@ -204,7 +240,7 @@ class CreateZoneWalkTest(unittest.TestCase):
         "PROJECT_ID": "p",
         "MACHINE_TYPE": "c2-standard-8",
         "LOCAL_SSD_COUNT": "2",
-        "SPOT_FALLBACK_TO_STANDARD": "true",
+        "SPOT_FALLBACK_TO_STANDARD": "false",
         "BOOT_DISK_SIZE": "100",
         "BOOT_DISK_TYPE": "pd-balanced",
         "BOOT_TIMEOUT": "600",
@@ -218,7 +254,11 @@ class CreateZoneWalkTest(unittest.TestCase):
     }
 
     def create(self, zones, **overrides):
-        """Returns (exit code, stdout, the zones gcloud was asked to create in, in order)."""
+        """Returns (exit code, stdout, the zones gcloud was asked to create in, in order).
+
+        The provisioning models of those attempts, the job summary and the step outputs are
+        left on self.models, self.summary and self.outputs.
+        """
         with tempfile.TemporaryDirectory() as tmp:
             tmp = Path(tmp)
             binaries = tmp / "bin"
@@ -234,11 +274,17 @@ class CreateZoneWalkTest(unittest.TestCase):
 
             attempts = tmp / "attempts"
             attempts.touch()
+            models = tmp / "models"
+            models.touch()
+            summary = tmp / "summary"
+            summary.touch()
             env = {
                 **os.environ,
                 **self.ENV,
                 "PATH": f"{binaries}:{os.environ['PATH']}",
                 "ATTEMPTS": str(attempts),
+                "MODELS_TRIED": str(models),
+                "GITHUB_STEP_SUMMARY": str(summary),
                 "RUNNER_TEMP": str(tmp),
                 "GITHUB_OUTPUT": str(tmp / "out"),
                 "ZONES": zones,
@@ -253,6 +299,14 @@ class CreateZoneWalkTest(unittest.TestCase):
                 text=True,
                 stdin=subprocess.DEVNULL,
                 env=env,
+            )
+            self.models = models.read_text().split()
+            self.summary = summary.read_text()
+            output = tmp / "out"
+            self.outputs = dict(
+                line.split("=", 1)
+                for line in (output.read_text() if output.exists() else "").splitlines()
+                if "=" in line
             )
             return run.returncode, run.stdout + run.stderr, attempts.read_text().split()
 
@@ -275,10 +329,71 @@ class CreateZoneWalkTest(unittest.TestCase):
             attempts, ["europe-west1-b", "europe-west1-c", "europe-west1-d"]
         )
 
-    def test_the_standard_retry_tries_a_region_spot_found_at_quota(self):
+    def test_a_zone_without_the_machine_type_moves_on_to_the_next(self):
+        code, out, attempts = self.create(
+            "europe-west2-a,europe-west1-b",
+            NOT_OFFERED_ZONES="europe-west2-a",
+            SUCCEED_ZONE="europe-west1-b",
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(attempts, ["europe-west2-a", "europe-west1-b"])
+
+    def test_a_machine_type_no_zone_offers_fails_after_one_pass(self):
+        zones = "europe-west1-b,europe-west2-a"
+        code, out, attempts = self.create(
+            zones,
+            PROVISIONING_MODEL="SPOT",
+            SPOT_FALLBACK_TO_STANDARD="true",
+            NOT_OFFERED_ZONES=zones,
+            SUCCEED_ZONE="",
+        )
+        self.assertEqual(code, 1, out)
+        self.assertEqual(attempts, zones.split(","))
+        self.assertEqual(set(self.models), {"SPOT"})
+        self.assertIn("is not offered in any of", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
+
+    def test_the_action_defaults_to_no_fallback(self):
+        block = re.search(
+            r"^  spot_fallback_to_standard:\n(?:    .*\n)*",
+            (ACTION / "action.yaml").read_text(),
+            re.MULTILINE,
+        )
+        self.assertIsNotNone(block)
+        self.assertRegex(block.group(0), r'default: "false"')
+
+    def test_spot_exhaustion_at_quota_fails_without_trying_standard(self):
         code, out, attempts = self.create(
             "europe-west1-b,europe-west4-a",
             PROVISIONING_MODEL="SPOT",
+            SUCCEED_ZONE="",
+        )
+        self.assertEqual(code, 1, out)
+        self.assertEqual(attempts, ["europe-west1-b", "europe-west4-a"])
+        self.assertEqual(set(self.models), {"SPOT"})
+        self.assertIn("regions at quota:", out)
+        self.assertNotIn("no SPOT capacity in any zone", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
+        self.assertEqual(self.summary, "")
+
+    def test_spot_exhaustion_on_capacity_fails_without_trying_standard(self):
+        zones = "europe-west1-b,europe-west1-c,europe-west4-a"
+        code, out, attempts = self.create(
+            zones, PROVISIONING_MODEL="SPOT", CAPACITY_ZONES=zones, SUCCEED_ZONE=""
+        )
+        self.assertEqual(code, 1, out)
+        self.assertEqual(attempts, zones.split(","))
+        self.assertEqual(set(self.models), {"SPOT"})
+        self.assertIn("no SPOT capacity in any zone", out)
+        self.assertEqual(self.outputs.get("spot_exhausted"), "true")
+        self.assertRegex(self.outputs.get("spot_exhausted_at", ""), r"^[1-9][0-9]+$")
+
+    def test_an_explicit_fallback_retries_every_zone_as_standard(self):
+        code, out, attempts = self.create(
+            "europe-west1-b,europe-west4-a",
+            PROVISIONING_MODEL="SPOT",
+            SPOT_FALLBACK_TO_STANDARD="true",
+            CAPACITY_ZONES="europe-west1-b,europe-west4-a",
             SUCCEED_ZONE="",
         )
         self.assertEqual(code, 1, out)
@@ -286,7 +401,40 @@ class CreateZoneWalkTest(unittest.TestCase):
             attempts,
             ["europe-west1-b", "europe-west4-a", "europe-west1-b", "europe-west4-a"],
         )
-        self.assertIn("regions at quota:", out)
+        self.assertEqual(self.models, ["SPOT", "SPOT", "STANDARD", "STANDARD"])
+        self.assertNotIn("no SPOT capacity in any zone", out)
+        self.assertNotIn("spot_exhausted", self.outputs)
+
+    def test_a_fallback_to_standard_warns_and_lands_in_the_summary(self):
+        code, out, _ = self.create(
+            "europe-west1-b",
+            PROVISIONING_MODEL="SPOT",
+            SPOT_FALLBACK_TO_STANDARD="true",
+            CAPACITY_ZONES="europe-west1-b",
+            SUCCEED_ZONE="europe-west1-b",
+            SUCCEED_MODEL="STANDARD",
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.models, ["SPOT", "STANDARD"])
+        self.assertIn("fell back to STANDARD", out)
+        self.assertIn("STANDARD in europe-west1-b", self.summary)
+
+    def test_an_explicit_standard_vm_is_still_announced(self):
+        code, out, _ = self.create("europe-west1-b", SUCCEED_ZONE="europe-west1-b")
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.models, ["STANDARD"])
+        self.assertIn("::warning title=GCP runner::", out)
+        self.assertIn("requested explicitly", out)
+        self.assertIn("STANDARD in europe-west1-b", self.summary)
+
+    def test_a_spot_vm_lands_in_the_summary_without_a_warning(self):
+        code, out, _ = self.create(
+            "europe-west1-b", PROVISIONING_MODEL="SPOT", SUCCEED_ZONE="europe-west1-b"
+        )
+        self.assertEqual(code, 0, out)
+        self.assertEqual(self.models, ["SPOT"])
+        self.assertNotIn("::warning", out)
+        self.assertIn("SPOT in europe-west1-b (c2-standard-8)", self.summary)
 
     def test_a_global_quota_stops_after_one_attempt(self):
         code, out, attempts = self.create(

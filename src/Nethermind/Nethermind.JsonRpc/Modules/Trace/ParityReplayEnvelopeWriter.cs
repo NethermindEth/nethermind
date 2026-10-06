@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace;
 
@@ -19,14 +20,14 @@ public static class ParityReplayEnvelopeWriter
     {
         writer.WriteStartObject();
         writer.WritePropertyName("vmTrace"u8);
-        JsonSerializer.Serialize(writer, trace.VmTrace, options);
+        TypeInfoJsonSerializer.Serialize(writer, trace.VmTrace, options);
         WriteTail(writer, trace, includeTxHash, options);
     }
 
     public static void WriteTail(Utf8JsonWriter writer, ParityLikeTxTrace trace, bool includeTxHash, JsonSerializerOptions options)
     {
         writer.WritePropertyName("output"u8);
-        JsonSerializer.Serialize(writer, trace.Output, options);
+        TypeInfoJsonSerializer.Serialize(writer, trace.Output, options);
 
         writer.WritePropertyName("stateDiff"u8);
         WriteStateDiff(writer, trace.StateChanges, options);
@@ -42,7 +43,7 @@ public static class ParityReplayEnvelopeWriter
         if (includeTxHash)
         {
             writer.WritePropertyName("transactionHash"u8);
-            JsonSerializer.Serialize(writer, trace.TransactionHash, options);
+            TypeInfoJsonSerializer.Serialize(writer, trace.TransactionHash, options);
         }
 
         writer.WriteEndObject();
@@ -70,7 +71,7 @@ public static class ParityReplayEnvelopeWriter
         {
             address.Bytes.OutputBytesToByteHex(hex, false);
             writer.WritePropertyName(addressBytes);
-            JsonSerializer.Serialize(writer, stateChange, options);
+            TypeInfoJsonSerializer.Serialize(writer, stateChange, options);
         }
 
         writer.WriteEndObject();
@@ -101,15 +102,18 @@ public static class ParityReplayEnvelopeWriter
         writer.WritePropertyName("action"u8);
         ParityTraceActionConverter.Instance.Write(writer, action, options);
 
-        if (action.Error is null)
+        // A failed action keeps its result only when it produced output, as a reverted frame does; a failed root
+        // built without an action keeps an empty one, which is not written.
+        if (action.Error is null || action.Result?.Output is not null)
         {
             writer.WritePropertyName("result"u8);
-            JsonSerializer.Serialize(writer, action.Result, options);
+            TypeInfoJsonSerializer.Serialize(writer, action.Result, options);
         }
-        else
+
+        if (action.Error is not null)
         {
             writer.WritePropertyName("error"u8);
-            JsonSerializer.Serialize(writer, action.Error, options);
+            TypeInfoJsonSerializer.Serialize(writer, action.Error, options);
         }
 
         writer.WriteNumber("subtraces"u8, action.Subtraces.Count);

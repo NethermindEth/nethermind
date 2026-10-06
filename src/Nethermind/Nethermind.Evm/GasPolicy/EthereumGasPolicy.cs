@@ -21,7 +21,7 @@ namespace Nethermind.Evm.GasPolicy;
 /// <remarks>
 /// The spill split fields below follow EIP-8037 block-gas accounting.
 /// </remarks>
-public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
+public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
 {
     /// <summary>Execution gas budget (legacy gas_left).</summary>
     public ulong Value;
@@ -428,6 +428,10 @@ public struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
         return UpdateGas(ref gas, memoryCost);
     }
 
+    /// <remarks>
+    /// The fast paths of MLOAD and MSTORE in the untraced tables (<c>TryExecuteFast</c> in VirtualMachine.OpcodeHandlers.cs)
+    /// charge a word's access without calling this; a change to this charge must be made there too.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UpdateMemoryCost(ref EthereumGasPolicy gas,
         in UInt256 position,

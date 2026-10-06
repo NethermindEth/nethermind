@@ -5,9 +5,18 @@ namespace Nethermind.Core.Threading;
 
 public partial class ParallelUnbalancedWork
 {
+    internal static partial WorkerGroup? GetCurrentGroup() => null;
+
+    internal sealed partial class WorkerGroup
+    {
+        private partial void Initialize() { }
+        internal partial WorkerScope Enter() => new(1);
+        internal partial void Queue(System.Threading.IThreadPoolWorkItem work) => work.Execute();
+    }
+
     public sealed partial class WorkerScope
     {
-        internal WorkerScope(int concurrency) { }
+        internal WorkerScope(int concurrency, bool limitConcurrency = false) { }
 
         public partial void Dispose() { }
     }

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -20,12 +21,43 @@ public class TransactionDiffViewTests
     private static readonly byte[] Code = [0x60, 0x00];
     private static readonly byte[] Designator = [0xef, 0x01, 0x00, .. High.Bytes];
 
+    [Test]
+    public void TopicEvents_ExcludeSignatureTopicsAndDeduplicateEachLog()
+    {
+        Hash256 topic = new(new string('f', 64));
+        Hash256 signature = new(new string('a', 64));
+        LogEntry[] logs =
+        [
+            new(Low, [], [topic]),
+            new(Mid, [], [signature, topic, signature, topic]),
+            new(High, [], [signature, topic]),
+        ];
+        TransactionDiffView view = TransactionDiffView.Build(new BlockAccessListAtIndex(), logs);
+        ValueHash256 topicValue = topic.ValueHash256;
+        ValueHash256 signatureValue = signature.ValueHash256;
+        UInt256 first = 0, second = 1, pastEnd = 2, huge = UInt256.MaxValue;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(view.TopicEventCount(in topicValue), Is.EqualTo(2));
+            Assert.That(view.TopicEventCount(in signatureValue), Is.EqualTo(1));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in signatureValue, in first, out int signatureGlobal), Is.True);
+            Assert.That(signatureGlobal, Is.EqualTo(1));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in first, out int firstGlobal), Is.True);
+            Assert.That(firstGlobal, Is.EqualTo(1));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in second, out int secondGlobal), Is.True);
+            Assert.That(secondGlobal, Is.EqualTo(2));
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in pastEnd, out _), Is.False);
+            Assert.That(view.TryGetTopicEventGlobalIndex(in topicValue, in huge, out _), Is.False);
+        }
+    }
+
     [TestCase(false, 1, TestName = "Code appearing on a codeless account is a deployment")]
     [TestCase(true, 0, TestName = "Code replacing existing code is not a deployment")]
     public void Build_EnumeratesDeploymentsByPreTxCode(bool hadCode, int expected)
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, hadCode ? [0x00] : [], Code);
+        slice.AddCodeChange(Low, hadCode ? new byte[] { 0x00 } : Array.Empty<byte>(), Code);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
@@ -37,7 +69,7 @@ public class TransactionDiffViewTests
     public void Build_DelegationDesignatorOnFreshEoa_IsNotADeployment()
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(Low, [], Designator);
+        slice.AddCodeChange(Low, Array.Empty<byte>(), Designator);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
@@ -129,9 +161,9 @@ public class TransactionDiffViewTests
     public void Build_SortsDeployedAddressesAscending()
     {
         BlockAccessListAtIndex slice = new();
-        slice.AddCodeChange(High, [], Code);
-        slice.AddCodeChange(Low, [], Code);
-        slice.AddCodeChange(Mid, [], Code);
+        slice.AddCodeChange(High, Array.Empty<byte>(), Code);
+        slice.AddCodeChange(Low, Array.Empty<byte>(), Code);
+        slice.AddCodeChange(Mid, Array.Empty<byte>(), Code);
 
         TransactionDiffView view = TransactionDiffView.Build(slice, []);
 
