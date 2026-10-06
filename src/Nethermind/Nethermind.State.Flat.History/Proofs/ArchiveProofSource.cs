@@ -111,13 +111,17 @@ public sealed class ArchiveProofSource(
         ArchiveProofNodeCache cache = _nodeCache.Value;
         bool storageRootKnown = TryReadCachedStorageRoot(cache, stateRoot, identity, out ValueHash256 storageRoot);
         HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> deeper = [];
+        bool anyUncached = false;
         foreach (ValueHash256 slot in slots)
         {
             int fromDepth = storageRootKnown ? cache.FirstUncachedDepth(storageRoot, slot, out _) : 0;
-            if (fromDepth != ArchiveProofNodeCache.PathCached) storage.CollectPrefetch(slot, deeper, Math.Max(1, fromDepth));
+            if (fromDepth == ArchiveProofNodeCache.PathCached) continue;
+
+            anyUncached = true;
+            storage.CollectPrefetch(slot, deeper, Math.Max(1, fromDepth));
         }
 
-        if (deeper.Count == 0) return;
+        if (!anyUncached) return;
 
         storage.PrefetchOne(TreePath.Empty);
         Prefetch(deeper, storage.FanOutOptions);

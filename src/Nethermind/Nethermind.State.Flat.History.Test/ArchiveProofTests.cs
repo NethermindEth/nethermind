@@ -1701,6 +1701,7 @@ public class ArchiveProofTests
             Assert.That(afterRepeat, Is.EqualTo(afterFirst), "a repeated proof walks a fully cached path and prefetches nothing");
             Assert.That(afterSecond, Is.GreaterThan(afterRepeat),
                 "an account under another root child shares only the cached root with the first proof, so the levels below it are prefetched rather than resolved one by one on the way down");
+            Assert.That(afterFirstSlots, Is.GreaterThan(afterSecond), "the first slot proof of a contract finds its storage trie uncached and prefetches the slot paths");
             Assert.That(afterOtherSlots, Is.GreaterThan(afterFirstSlots),
                 "other slots of a contract whose storage root is already cached still prefetch the storage levels the earlier slots did not cache");
             Assert.That(source.PrefetchedPaths, Is.EqualTo(afterOtherSlots), "repeating the slots of the last proof prefetches nothing");
