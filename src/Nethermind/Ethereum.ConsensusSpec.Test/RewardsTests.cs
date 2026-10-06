@@ -37,7 +37,7 @@ public class RewardsTests
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsSomeVector(
-            FuluDriverSupport.TestedCases<RewardsCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            FuluDriverSupport.TestedCases<RewardsCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => $"{testCase.Fork}/{testCase.Handler}",
             Run);
 
@@ -58,7 +58,7 @@ public class RewardsTests
 
     private static void Run(RewardsCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
         FuluDriverSupport.Dispatch(testCase.Fork, testCase,
             static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), EpochProcessing.ProcessRewardsAndPenalties),
             static (testCase, driver) => Run(testCase, driver, static state => state.Balances!, static state => state.GetCurrentEpoch(), GloasEpochProcessing.ProcessRewardsAndPenalties));

@@ -37,7 +37,7 @@ public class BlockSequenceTests
     [Test]
     public void Every_fork_and_suite_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<SanityCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            FuluDriverSupport.TestedCases<SanityCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => $"{testCase.Fork}/{SuiteOf(testCase)}",
             SanityTests.RunBlocks);
 

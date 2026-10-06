@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -28,7 +29,7 @@ public partial class ExecutionPayload
     public Hash256? BlockHash { get; set; }
     [SszList(1_048_576)]
     public SszTransaction[]? Transactions { get; set; }
-    [SszList(16)]
+    [SszList((ulong)Presets.MaxWithdrawalsPerPayload)]
     public SszWithdrawal[]? Withdrawals { get; set; }
     public ulong BlobGasUsed { get; set; }
     public ulong ExcessBlobGas { get; set; }

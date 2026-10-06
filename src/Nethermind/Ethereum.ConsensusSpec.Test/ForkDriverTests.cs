@@ -52,7 +52,7 @@ public class ForkDriverTests
         electra.Eth1DepositIndex = 7;
         BeaconStateFulu working = new();
         ForkDriver.CopyElectraFields(electra, working);
-        working.ProposerLookahead = Enumerable.Range(1, 64).Select(i => (ulong)i).ToArray();
+        working.ProposerLookahead = Enumerable.Range(1, (int)(2 * Presets.SlotsPerEpoch)).Select(i => (ulong)i).ToArray();
 
         Hash256 electraRoot = ForkDriver.ElectraRoot(electra);
         Hash256 fuluRoot = FuluPipeline("fulu").StateRoot(working);
@@ -123,13 +123,13 @@ public class ForkDriverTests
     {
         BeaconStateFulu working = new()
         {
-            Slot = 3 * 32,
+            Slot = 3 * Presets.SlotsPerEpoch,
             Validators = [new Validator { EffectiveBalance = 32_000_000_000, ActivationEpoch = 0, ExitEpoch = 1, WithdrawableEpoch = 2 }],
         };
 
         ForkDriver.RefillProposerLookahead(working);
 
-        Assert.That(working.ProposerLookahead, Has.Length.EqualTo(64).And.All.EqualTo(ForkDriver.NoProposer),
+        Assert.That(working.ProposerLookahead, Has.Length.EqualTo(2 * Presets.SlotsPerEpoch).And.All.EqualTo(ForkDriver.NoProposer),
             "a slot without a proposer must not name validator 0, which an operation reading it would then accept");
     }
 

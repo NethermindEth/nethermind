@@ -198,20 +198,20 @@ public class GossipValidationTests
     [Test]
     public void Every_unrouted_handler_has_vectors_and_its_topic_is_not_routed()
     {
-        if (!ConsensusSpecArchive.MainnetEnabled)
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
 
         // A gossip handler the archive gains must be driven, listed as unrouted or run by the column suite, never left out unseen.
         foreach ((string fork, string[] driven) in Suites)
         {
-            string[] archived = [.. ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, fork, Suite)).Select(Path.GetFileName).Where(static name => name!.StartsWith("gossip_", StringComparison.Ordinal))!];
+            string[] archived = [.. ConsensusSpecArchive.SubDirs(ConsensusSpecArchive.SuitePath(FuluDriverSupport.CompiledPreset, fork, Suite)).Select(Path.GetFileName).Where(static name => name!.StartsWith("gossip_", StringComparison.Ordinal))!];
             string[] unroutedInFork = UnroutedSuites.Single(suite => suite.Fork == fork).Handlers;
             Assert.That(archived, Is.EquivalentTo([.. driven, .. unroutedInFork, "gossip_data_column_sidecar"]), $"{fork} gossip handlers in the archive");
         }
 
         List<GossipValidationCase> unrouted = [.. AllCases().Where(IsUnrouted)];
         IEnumerable<string> expected = UnroutedSuites.SelectMany(static s => s.Handlers.Select(handler => $"{s.Fork}/{handler}"));
-        GossipRouter probe = new(BeaconChainSpec.Mainnet, new SlotClock(BeaconChainSpec.Mainnet, new ManualTimestamper(DateTime.UnixEpoch)), LimboLogs.Instance);
+        GossipRouter probe = new(FuluDriverSupport.DefaultSpec, new SlotClock(FuluDriverSupport.DefaultSpec, new ManualTimestamper(DateTime.UnixEpoch)), LimboLogs.Instance);
         using System.IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(unrouted.Select(KeyOf).Distinct(), Is.EquivalentTo(expected));
         // The router's own dispatch is the probe: a subnet topic name carries a numeric suffix, so both forms are tried.
@@ -258,7 +258,7 @@ public class GossipValidationTests
     private static List<GossipValidationCase> TestedCases() => [.. AllCases().Where(static testCase => !IsUnrouted(testCase))];
 
     private static List<GossipValidationCase> AllCases() =>
-        FuluDriverSupport.TestedCases<GossipValidationCase>(ConsensusPreset.Mainnet, static () => [], MainnetCases);
+        FuluDriverSupport.TestedCases<GossipValidationCase>(FuluDriverSupport.CompiledPreset, MainnetCases, MainnetCases);
 
     private static void Execute(GossipValidationCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord(Suite, testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
@@ -477,11 +477,11 @@ public class GossipValidationTests
 
     private static IEnumerable<TestCaseData> MainnetCases()
     {
-        if (!ConsensusSpecArchive.MainnetEnabled) yield break;
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled) yield break;
 
         foreach ((string fork, string[] handlers) in Suites.Concat(UnroutedSuites))
         {
-            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, [fork], Suite, "meta.yaml",
+            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(FuluDriverSupport.CompiledPreset, [fork], Suite, "meta.yaml",
                          static (p, f, handler, path, name) => new GossipValidationCase(p.ToString(), f, handler, path, name), handlers, relativeNames: true))
                 yield return testCase;
         }

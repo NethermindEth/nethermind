@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -71,8 +72,8 @@ public partial class BuilderExitRequest
 [SszContainer]
 public partial class PayloadTimelinessCommittee
 {
-    /// <remarks>Length is <c>PTC_SIZE</c> (512).</remarks>
-    [SszVector(512)]
+    /// <remarks>Length is <c>PTC_SIZE</c>.</remarks>
+    [SszVector((int)Presets.PtcSize)]
     public ulong[]? Indices { get; set; }
 }
 
@@ -101,7 +102,7 @@ public partial class PayloadAttestation
 {
     /// <remarks><c>PayloadTimelinessCommitteeBits</c>: <c>BitVector[PTC_SIZE]</c>.</remarks>
     [SszField(0)]
-    [SszVector(512)]
+    [SszVector((int)Presets.PtcSize)]
     public BitArray? AggregationBits { get; set; }
     [SszField(1)]
     public PayloadAttestationData? Data { get; set; }
@@ -115,7 +116,7 @@ public partial class IndexedPayloadAttestation
 {
     /// <remarks><c>PayloadTimelinessCommitteeIndices</c>: <c>List[ValidatorIndex, PTC_SIZE]</c> (a regular bounded list, not progressive).</remarks>
     [SszField(0)]
-    [SszList(512)]
+    [SszList(Presets.PtcSize)]
     public ulong[]? AttestingIndices { get; set; }
     [SszField(1)]
     public PayloadAttestationData? Data { get; set; }
@@ -302,7 +303,7 @@ public partial class AttestationGloas
     public BlsSignature Signature { get; set; }
     /// <remarks><c>CommitteeBits</c>: unchanged <c>Bitvector[MAX_COMMITTEES_PER_SLOT]</c> (EIP-7549).</remarks>
     [SszField(3)]
-    [SszVector(64)]
+    [SszVector(Presets.MaxCommitteesPerSlot)]
     public BitArray? CommitteeBits { get; set; }
 }
 

@@ -63,10 +63,10 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private const ulong HistoricalRootsLimit = 16_777_216;
     private const int UInt64ListDepth = 38;
     private const int ParticipationDepth = 35;
-    private const int RootsVectorDepth = 13;
-    private const int RandaoMixesDepth = 16;
-    private const ulong SlashingsChunkCount = 2048;
-    private const ulong ProposerLookaheadChunkCount = 16;
+    private const int RootsVectorDepth = Presets.SlotsPerHistoricalRoot == 64 ? 6 : 13;
+    private const int RandaoMixesDepth = Presets.EpochsPerHistoricalVector == 64 ? 6 : 16;
+    private const ulong SlashingsChunkCount = Presets.EpochsPerSlashingsVector / 4;
+    private const ulong ProposerLookaheadChunkCount = Presets.ProposerLookaheadSlots / 4;
     private const int JustificationBitsLength = Presets.JustificationBitsLength;
     private const int FieldCount = 38;
     private const int GloasFieldCount = 46;
@@ -125,7 +125,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[6] = _stateRoots.Root(state.StateRoots);
         roots[7] = RootListRoot(state.HistoricalRoots, HistoricalRootsLimit);
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
-        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], 2048, out roots[9]);
+        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], Presets.Eth1DataVotesLimit, out roots[9]);
         roots[10] = new UInt256(state.Eth1DepositIndex);
         roots[11] = _validators.Root(state.Validators);
         roots[12] = _balances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);
@@ -151,8 +151,8 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[32] = new UInt256(state.ConsolidationBalanceToConsume);
         roots[33] = new UInt256(state.EarliestConsolidationEpoch);
         PendingDeposit.MerkleizeList(state.PendingDeposits ?? [], 134_217_728, out roots[34]);
-        PendingPartialWithdrawal.MerkleizeList(state.PendingPartialWithdrawals ?? [], 134_217_728, out roots[35]);
-        PendingConsolidation.MerkleizeList(state.PendingConsolidations ?? [], 262_144, out roots[36]);
+        PendingPartialWithdrawal.MerkleizeList(state.PendingPartialWithdrawals ?? [], (ulong)Presets.PendingPartialWithdrawalsLimit, out roots[35]);
+        PendingConsolidation.MerkleizeList(state.PendingConsolidations ?? [], (ulong)Presets.PendingConsolidationsLimit, out roots[36]);
         Merkle.Merkleize(out roots[37], MemoryMarshal.AsBytes<ulong>(state.ProposerLookahead), ProposerLookaheadChunkCount);
 
         Merkle.Merkleize(out UInt256 root, roots);
@@ -191,7 +191,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
         roots[6] = _stateRoots.Root(state.StateRoots);
         roots[7] = RootListRoot(state.HistoricalRoots, HistoricalRootsLimit);
         Eth1Data.Merkleize(state.Eth1Data ?? s_defaultEth1Data, out roots[8]);
-        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], 2048, out roots[9]);
+        Eth1Data.MerkleizeList(state.Eth1DataVotes ?? [], Presets.Eth1DataVotesLimit, out roots[9]);
         roots[10] = new UInt256(state.Eth1DepositIndex);
         roots[11] = _gloasValidators.Root(state.Validators);
         roots[12] = _gloasBalances.Root(MemoryMarshal.AsBytes<ulong>(state.Balances), state.Balances?.Length ?? 0);

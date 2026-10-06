@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Ssz;
 
@@ -16,23 +17,23 @@ public partial class BeaconStateElectra
     public ulong Slot { get; set; }
     public Fork? Fork { get; set; }
     public BeaconBlockHeader? LatestBlockHeader { get; set; }
-    [SszVector(8192)]
+    [SszVector((int)Presets.SlotsPerHistoricalRoot)]
     public Hash256[]? BlockRoots { get; set; }
-    [SszVector(8192)]
+    [SszVector((int)Presets.SlotsPerHistoricalRoot)]
     public Hash256[]? StateRoots { get; set; }
     [SszList(16_777_216)]
     public Hash256[]? HistoricalRoots { get; set; }
     public Eth1Data? Eth1Data { get; set; }
-    [SszList(2048)]
+    [SszList(Presets.Eth1DataVotesLimit)]
     public Eth1Data[]? Eth1DataVotes { get; set; }
     public ulong Eth1DepositIndex { get; set; }
     [SszList(1_099_511_627_776)]
     public Validator[]? Validators { get; set; }
     [SszList(1_099_511_627_776)]
     public ulong[]? Balances { get; set; }
-    [SszVector(65_536)]
+    [SszVector((int)Presets.EpochsPerHistoricalVector)]
     public Hash256[]? RandaoMixes { get; set; }
-    [SszVector(8192)]
+    [SszVector((int)Presets.EpochsPerSlashingsVector)]
     public ulong[]? Slashings { get; set; }
     [SszList(1_099_511_627_776)]
     public byte[]? PreviousEpochParticipation { get; set; }
@@ -60,9 +61,9 @@ public partial class BeaconStateElectra
     public ulong EarliestConsolidationEpoch { get; set; }
     [SszList(134_217_728)]
     public PendingDeposit[]? PendingDeposits { get; set; }
-    [SszList(134_217_728)]
+    [SszList((ulong)Presets.PendingPartialWithdrawalsLimit)]
     public PendingPartialWithdrawal[]? PendingPartialWithdrawals { get; set; }
-    [SszList(262_144)]
+    [SszList((ulong)Presets.PendingConsolidationsLimit)]
     public PendingConsolidation[]? PendingConsolidations { get; set; }
 }
 
@@ -71,7 +72,7 @@ public partial class BeaconStateElectra
 public partial class BeaconStateFulu : BeaconStateElectra
 {
     /// <remarks>Length is <c>(MIN_SEED_LOOKAHEAD + 1) * SLOTS_PER_EPOCH</c>.</remarks>
-    [SszVector(64)]
+    [SszVector((int)Presets.ProposerLookaheadSlots)]
     public ulong[]? ProposerLookahead { get; set; }
 }
 
@@ -94,10 +95,10 @@ public partial class BeaconStateGloas
     [SszField(4)]
     public BeaconBlockHeader? LatestBlockHeader { get; set; }
     [SszField(5)]
-    [SszVector(8192)]
+    [SszVector((int)Presets.SlotsPerHistoricalRoot)]
     public Hash256[]? BlockRoots { get; set; }
     [SszField(6)]
-    [SszVector(8192)]
+    [SszVector((int)Presets.SlotsPerHistoricalRoot)]
     public Hash256[]? StateRoots { get; set; }
     /// <remarks>Unmodified in Gloas: still a plain bounded list, not progressive.</remarks>
     [SszField(7)]
@@ -107,7 +108,7 @@ public partial class BeaconStateGloas
     public Eth1Data? Eth1Data { get; set; }
     /// <remarks>Unmodified in Gloas: still a plain bounded list, not progressive.</remarks>
     [SszField(9)]
-    [SszList(2048)]
+    [SszList(Presets.Eth1DataVotesLimit)]
     public Eth1Data[]? Eth1DataVotes { get; set; }
     [SszField(10)]
     public ulong Eth1DepositIndex { get; set; }
@@ -118,10 +119,10 @@ public partial class BeaconStateGloas
     [SszProgressiveList]
     public ulong[]? Balances { get; set; }
     [SszField(13)]
-    [SszVector(65_536)]
+    [SszVector((int)Presets.EpochsPerHistoricalVector)]
     public Hash256[]? RandaoMixes { get; set; }
     [SszField(14)]
-    [SszVector(8192)]
+    [SszVector((int)Presets.EpochsPerSlashingsVector)]
     public ulong[]? Slashings { get; set; }
     [SszField(15)]
     [SszProgressiveList]
@@ -182,7 +183,7 @@ public partial class BeaconStateGloas
     public PendingConsolidation[]? PendingConsolidations { get; set; }
     /// <remarks>Unmodified in Gloas (EIP-7917), unlike its siblings: still a plain fixed vector.</remarks>
     [SszField(37)]
-    [SszVector(64)]
+    [SszVector((int)Presets.ProposerLookaheadSlots)]
     public ulong[]? ProposerLookahead { get; set; }
     /// <remarks>[New in Gloas:EIP7732]. The builder registry.</remarks>
     [SszField(38)]
@@ -197,15 +198,15 @@ public partial class BeaconStateGloas
     /// wrong for the post-upgrade value (the spec initializes every bit to 1), so callers must set it.
     /// </remarks>
     [SszField(40)]
-    [SszVector(8192)]
+    [SszVector((int)Presets.SlotsPerHistoricalRoot)]
     public BitArray? ExecutionPayloadAvailability { get; set; }
     /// <remarks>
     /// [New in Gloas:EIP7732]. <c>Vector[BuilderPendingPayment, 2 * SLOTS_PER_EPOCH]</c> — a fixed
     /// vector of composite items, so (unlike a vector of a basic type) a null value does NOT default
-    /// to a zero-filled array on encode; callers must supply all 64 entries explicitly.
+    /// to a zero-filled array on encode; callers must supply all entries explicitly.
     /// </remarks>
     [SszField(41)]
-    [SszVector(64)]
+    [SszVector((int)Presets.BuilderPendingPaymentsLength)]
     public BuilderPendingPayment[]? BuilderPendingPayments { get; set; }
     /// <remarks>[New in Gloas:EIP7732].</remarks>
     [SszField(42)]
@@ -221,9 +222,9 @@ public partial class BeaconStateGloas
     /// <remarks>
     /// [New in Gloas:EIP7732]. <c>Vector[PayloadTimelinessCommittee, (MIN_SEED_LOOKAHEAD + 2) * SLOTS_PER_EPOCH]</c>
     /// (96 entries on mainnet). A fixed vector of composite items: like <see cref="BuilderPendingPayments"/>,
-    /// a null value does not default, so callers must supply all 96 entries.
+    /// a null value does not default, so callers must supply all entries.
     /// </remarks>
     [SszField(45)]
-    [SszVector(96)]
+    [SszVector((int)Presets.PtcWindowLength)]
     public PayloadTimelinessCommittee[]? PtcWindow { get; set; }
 }

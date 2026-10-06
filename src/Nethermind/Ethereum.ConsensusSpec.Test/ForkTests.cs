@@ -3,7 +3,6 @@
 
 using System.IO;
 using Ethereum.Ssz.Test;
-using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -18,7 +17,7 @@ public class ForkTests
     internal static readonly IReadOnlyDictionary<string, ForkUpgrade> UpgradesByFork = new Dictionary<string, ForkUpgrade>(StringComparer.Ordinal)
     {
         ["gloas"] = new(
-            prePath => RoundTripped(GloasForkTransition.UpgradeToGloas(FuluDriverSupport.DecodeState(prePath), BeaconChainSpec.Mainnet)),
+            prePath => RoundTripped(GloasForkTransition.UpgradeToGloas(FuluDriverSupport.DecodeState(prePath), FuluDriverSupport.DefaultSpec)),
             postPath =>
             {
                 BeaconStateGloas post = DecodeGloas(postPath);
@@ -30,12 +29,12 @@ public class ForkTests
     [TestCase("fork_builder_deposit_uses_deposit_slot_epoch")]
     public void Required_gloas_upgrade_matches_the_independent_post_state(string name)
     {
-        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
-            "tests", "mainnet", "gloas", "fork", "fork", "pyspec_tests", name);
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(FuluDriverSupport.CompiledPreset),
+            "tests", ConsensusSpecArchive.PresetDirName(FuluDriverSupport.CompiledPreset), "gloas", "fork", "fork", "pyspec_tests", name);
         foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy" })
             Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory fork vector is missing {file}");
-        Assert.That(() => Run(new ForkCase(nameof(ConsensusPreset.Mainnet), "gloas", path,
-            $"mainnet/gloas/fork/fork/pyspec_tests/{name}")), Throws.Nothing);
+        Assert.That(() => Run(new ForkCase(FuluDriverSupport.CompiledPreset.ToString(), "gloas", path,
+            $"{FuluDriverSupport.CompiledPreset}/gloas/fork/fork/pyspec_tests/{name}")), Throws.Nothing);
     }
 
     [TestCaseSource(nameof(MinimalCases))]
@@ -53,7 +52,7 @@ public class ForkTests
     {
         foreach (string fork in ConsensusSpecArchive.ForkUpgradeForks)
         {
-            ForkCase? testCase = TestedCases(ConsensusPreset.Mainnet).Cast<ForkCase?>().FirstOrDefault(testCase => testCase!.Value.Fork == fork);
+            ForkCase? testCase = TestedCases(FuluDriverSupport.CompiledPreset).Cast<ForkCase?>().FirstOrDefault(testCase => testCase!.Value.Fork == fork);
             Assert.That(testCase, Is.Not.Null, $"no mainnet '{fork}' fork vector is enumerated");
             Assert.That(() => Run(testCase!.Value), Throws.Nothing, testCase!.Value.VectorName);
         }
@@ -66,7 +65,7 @@ public class ForkTests
 
     private static void Run(ForkCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         if (!UpgradesByFork.TryGetValue(testCase.Fork, out ForkUpgrade upgrade))
             throw new NotImplementedInDriverException($"fork '{testCase.Fork}' has no upgrade in this driver.");

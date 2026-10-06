@@ -7,3 +7,4 @@ using System.Runtime.CompilerServices;
 // Lets the beacon chain plugin reach the one already-loaded KZG trusted setup handle
 // (KzgPolynomialCommitments.CkzgSetup) instead of loading a second copy of its own.
 [assembly: InternalsVisibleTo("Nethermind.BeaconChain")]
+[assembly: InternalsVisibleTo("Nethermind.BeaconChain.Minimal")]

@@ -176,6 +176,14 @@ internal static class GloasForkChoiceStepDriver
                 case "proposer_boost_root":
                     AssertEqual(stepIndex, key, new Hash256(GetScalar(checks, key)), runner.ProposerBoostRoot);
                     break;
+                case "viable_for_head_roots_and_weights":
+                    TryGetChild(checks, key, out YamlNode? viableNode);
+                    (ForkChoiceNode Node, ulong Weight)[] expected = [.. ((YamlSequenceNode)viableNode!).Children.Cast<YamlMappingNode>()
+                        .Select(static node => (new ForkChoiceNode(new Hash256(GetScalar(node, "root")),
+                            (ForkChoicePayloadStatus)byte.Parse(GetScalar(node, "payload_status"))), ulong.Parse(GetScalar(node, "weight"))))];
+                    (ForkChoiceNode Node, ulong Weight)[] actual = [.. runner.GetViableHeadNodes().Select(node => (node, runner.GetWeight(node)))];
+                    Assert.That(actual, Is.EquivalentTo(expected), $"step {stepIndex}: checks.{key}");
+                    break;
                 case "payload_timeliness_vote":
                 case "payload_data_availability_vote":
                     TryGetChild(checks, key, out YamlNode? voteNode);

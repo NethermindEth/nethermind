@@ -43,12 +43,10 @@ public class GloasForkChoiceTests
     [Test]
     public void Every_handler_passes_a_vector_outright() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<ForkChoiceCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            FuluDriverSupport.TestedCases<ForkChoiceCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             HandlerOf, static testCase => GloasForkChoiceStepDriver.Run(testCase.CasePath));
 
     private const string FabricationSource = "on_attestation/pyspec_tests/validate_on_attestation_later_slot_full_vote_valid";
-
-    private const string SlotOneBlock = "block_0x76bf14e70fc96a5a3442a46dff3bfb897d5568cdb4dc7e94419f625df2fcd9e5";
 
     /// <summary>
     /// The pyspec harness's <c>add_block</c> replays a block's body attestations and attester slashings into fork choice
@@ -60,7 +58,12 @@ public class GloasForkChoiceTests
     public void Block_body_attestations_and_attester_slashings_are_replayed_into_fork_choice(string casePath)
     {
         BeaconStateGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, "anchor_state.ssz_snappy")), out BeaconStateGloas anchorState);
-        SignedBeaconBlockGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, SlotOneBlock + ".ssz_snappy")), out SignedBeaconBlockGloas signedBlock);
+        SignedBeaconBlockGloas signedBlock = Directory.GetFiles(casePath, "block_*.ssz_snappy")
+            .Select(static path =>
+            {
+                SignedBeaconBlockGloas.Decode(SszConsensusTestLoader.ReadSszSnappy(path), out SignedBeaconBlockGloas block);
+                return block;
+            }).Single(static block => block.Message!.Slot == 1);
         Hash256 anchorRoot = AnchorRoot(casePath);
         BeaconChainSpec spec = FuluDriverSupport.TransitionSpec(0);
 
@@ -95,7 +98,7 @@ public class GloasForkChoiceTests
         block.StateRoot = SszRoots.HashTreeRoot(postState);
         Hash256 blockRoot = SszRoots.HashTreeRoot(block);
 
-        ForkChoiceRunner runner = RunFabricatedCase(casePath, ["{tick: 12}", "{block: block_attesting, valid: true}"], ("block_attesting", SignedBeaconBlockGloas.Encode(signedBlock)));
+        ForkChoiceRunner runner = RunFabricatedCase(casePath, [$"{{tick: {Presets.SecondsPerSlot}}}", "{block: block_attesting, valid: true}"], ("block_attesting", SignedBeaconBlockGloas.Encode(signedBlock)));
         runner.GetHead();
         IReadOnlyList<ForkChoiceSnapshotNode> nodes = runner.Snapshot().Nodes;
         ulong anchorOwnWeight = nodes.Single(n => n.Root == anchorRoot).Weight - nodes.Single(n => n.Root == blockRoot).Weight;
@@ -106,12 +109,12 @@ public class GloasForkChoiceTests
 
     private static IEnumerable<TestCaseData> MainnetOnly()
     {
-        if (ConsensusSpecArchive.MainnetEnabled)
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Minimal || ConsensusSpecArchive.MainnetEnabled)
             yield return new TestCaseData(FabricationSourcePath).SetArgDisplayNames(FabricationSource);
     }
 
     private static string FabricationSourcePath =>
-        Path.Combine(ConsensusSpecArchive.SuitePath(ConsensusPreset.Mainnet, "gloas", "fork_choice")!, FabricationSource);
+        Path.Combine(ConsensusSpecArchive.SuitePath(FuluDriverSupport.CompiledPreset, "gloas", "fork_choice")!, FabricationSource);
 
     private static Hash256 AnchorRoot(string casePath)
     {
@@ -145,8 +148,7 @@ public class GloasForkChoiceTests
 
     private static void Run(ForkChoiceCase testCase)
     {
-        if (testCase.Preset == nameof(ConsensusPreset.Minimal))
-            throw new NotImplementedInDriverException("BeaconStateGloas's SSZ shape hard-codes mainnet-preset bounds, so it cannot decode a minimal-preset anchor_state.ssz_snappy.");
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         GloasForkChoiceStepDriver.Run(testCase.CasePath);
     }

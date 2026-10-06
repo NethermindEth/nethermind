@@ -125,7 +125,7 @@ public class DataColumnSidecarNetworkingTests
     }
 
     private static List<GossipValidationCase> TestedCases() =>
-        FuluDriverSupport.TestedCases<GossipValidationCase>(ConsensusPreset.Mainnet, static () => [], MainnetCases);
+        FuluDriverSupport.TestedCases<GossipValidationCase>(FuluDriverSupport.CompiledPreset, MainnetCases, MainnetCases);
 
     private static void Run(GossipValidationCase testCase, ICollection<Observation>? observations = null)
     {
@@ -271,8 +271,8 @@ public class DataColumnSidecarNetworkingTests
         SynchronousVerdicts.TryGetValue(fork, out (string Reason, ColumnVerdict Verdict)[]? rows) && rows.Contains((reason, verdict));
 
     private static IEnumerable<TestCaseData> MainnetCases() =>
-        ConsensusSpecArchive.MainnetEnabled
-            ? FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, Forks, Suite, "meta.yaml",
+        (FuluDriverSupport.CompiledPreset == ConsensusPreset.Minimal || ConsensusSpecArchive.MainnetEnabled)
+            ? FuluDriverSupport.HandlerCases(FuluDriverSupport.CompiledPreset, Forks, Suite, "meta.yaml",
                 static (p, fork, handler, path, name) => new GossipValidationCase(p.ToString(), fork, handler, path, name), [Handler], relativeNames: true)
             : [];
 

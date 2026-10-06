@@ -83,7 +83,7 @@ public class EpochProcessingTests
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<EpochProcessingCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            FuluDriverSupport.TestedCases<EpochProcessingCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => $"{testCase.Fork}/{testCase.SubTransitionName}",
             Run);
 
@@ -92,7 +92,7 @@ public class EpochProcessingTests
 
     private static void Run(EpochProcessingCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         FuluDriverSupport.Dispatch(testCase.Fork, testCase,
             static (testCase, driver) => Run(testCase, driver, Handlers),
