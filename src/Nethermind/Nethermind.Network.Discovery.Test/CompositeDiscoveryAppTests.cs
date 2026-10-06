@@ -478,6 +478,38 @@ public class CompositeDiscoveryAppTests
         Assert.That(Interlocked.Read(ref Metrics.DiscoveryBytesReceived) - bytesReceivedBefore, Is.EqualTo(data.Length));
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Receive_ContinuesAfterSendToClosedPort()
+    {
+        NetworkListenerState listenerState = CreateListenerState("127.0.0.1", IPAddress.Loopback);
+        DiscoveryConnectionsPool pool = CreatePool(listenerState);
+        Channel<byte[]> received = Channel.CreateUnbounded<byte[]>();
+        try
+        {
+            IDatagramSocket socket = pool.Bind(
+                address => CreateSocket(address),
+                0,
+                datagram =>
+                {
+                    received.Writer.TryWrite(datagram.Buffer.ToArray());
+                    datagram.Dispose();
+                });
+
+            // On Windows, the ICMP port unreachable reply fails the pending receive with a connection reset.
+            await socket.SendToAsync(new byte[] { 2 }, new IPEndPoint(IPAddress.Loopback, GetAvailableUdpPort()));
+            await Task.Delay(100);
+            await SendAsync(AddressFamily.InterNetwork, IPAddress.Loopback, socket.LocalEndpoint!.Port);
+
+            using CancellationTokenSource cancellationSource = new(TimeSpan.FromSeconds(5));
+            Assert.That(await received.Reader.ReadAsync(cancellationSource.Token), Is.EqualTo(new byte[] { 1 }));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
     /// <summary>
     /// Sends <paramref name="datagrams"/> from <paramref name="sender"/> to a pool listening on an in-memory socket
     /// and returns the first <paramref name="expectedCount"/> datagrams the pool delivers.
