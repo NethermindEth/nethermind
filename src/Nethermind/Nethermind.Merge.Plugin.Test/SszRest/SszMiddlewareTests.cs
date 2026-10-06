@@ -172,6 +172,17 @@ public class SszMiddlewareTests
         Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
     }
 
+    [Test]
+    public void Chain_spec_release_covers_every_supported_engine_api_fork()
+    {
+        ChainSpecBasedSpecProvider provider = CreateChainSpecProvider();
+        HashSet<string?> forks = [SszRestPaths.GetEngineApiForkName(provider.GenesisSpec)];
+        foreach (ForkActivation activation in provider.TransitionActivations)
+            forks.Add(SszRestPaths.GetEngineApiForkName(provider.GetSpec(activation)));
+
+        Assert.That(forks, Is.EquivalentTo(SszRestPaths.SupportedForksOrdered));
+    }
+
     // A resource mapped to a method version with no registered handler is advertised and recognised but
     // unservable, and nothing else catches that since the handler set is assembled by hand.
     [Test]
@@ -1077,27 +1088,16 @@ public class SszMiddlewareTests
     [Test]
     public async Task Forkchoice_unsupported_fork_returns_400([Values] bool chainSpecBased)
     {
-        IReleaseSpec shanghaiSpec = Substitute.For<IReleaseSpec>();
-        IReleaseSpec cancunSpec = Substitute.For<IReleaseSpec>();
-
-        const ulong shanghaiTs = 1_000UL;
-        const ulong cancunTs = 2_000UL;
         const ulong payloadTs = 1_500UL;
-
-        ForkActivation[] transitions =
-        [
-            ForkActivation.TimestampOnly(shanghaiTs),
-            ForkActivation.TimestampOnly(cancunTs),
-        ];
-        _specProvider.TransitionActivations.Returns(transitions);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == shanghaiTs)).Returns(shanghaiSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == cancunTs)).Returns(cancunSpec);
-        _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs)).Returns(shanghaiSpec);
-
         if (chainSpecBased)
         {
             _specProvider = CreateChainSpecProvider();
             _middleware = BuildMiddleware();
+        }
+        else
+        {
+            _specProvider.GetSpec(Arg.Is<ForkActivation>(fa => fa.Timestamp == payloadTs))
+                .Returns(Shanghai.Instance);
         }
 
         ForkchoiceUpdatedV3RequestWire request = new()
