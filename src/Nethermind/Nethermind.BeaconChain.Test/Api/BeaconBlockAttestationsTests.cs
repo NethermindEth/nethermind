@@ -35,7 +35,7 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
     [Test]
     public async Task Attestations_are_the_body_attestations_in_beacon_api_encoding()
     {
-        JsonElement root = await ReadEnvelope($"/eth/v2/beacon/blocks/{RichRoot}/attestations", expectedFinalized: false);
+        JsonElement root = await ReadFuluEnvelope($"/eth/v2/beacon/blocks/{RichRoot}/attestations", expectedFinalized: false);
         JsonElement data = root.GetProperty("data");
         Assert.That(data.GetArrayLength(), Is.EqualTo(1));
         JsonElement attestation = data[0];
@@ -59,7 +59,7 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
     [Test]
     public async Task Block_without_attestations_gives_an_empty_list()
     {
-        JsonElement root = await ReadEnvelope($"/eth/v2/beacon/blocks/{EmptySlot}/attestations", expectedFinalized: false);
+        JsonElement root = await ReadFuluEnvelope($"/eth/v2/beacon/blocks/{EmptySlot}/attestations", expectedFinalized: false);
         Assert.That(root.GetProperty("data").GetArrayLength(), Is.Zero);
     }
 
@@ -67,7 +67,7 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
     public async Task Finalized_flag_follows_the_finalized_checkpoint()
     {
         _host.SetStatus(RichRoot, RichRoot, 412_501);
-        await ReadEnvelope($"/eth/v2/beacon/blocks/{RichSlot}/attestations", expectedFinalized: true);
+        await ReadFuluEnvelope($"/eth/v2/beacon/blocks/{RichSlot}/attestations", expectedFinalized: true);
     }
 
     [TestCase("not-a-block", Json, HttpStatusCode.BadRequest)]
@@ -78,18 +78,5 @@ public class BeaconBlockAttestationsTests : BeaconApiFixture
     {
         using HttpResponseMessage response = await _host.GetAsync($"/eth/v2/beacon/blocks/{blockId}/attestations", accept);
         await BeaconApiTestHost.AssertErrorAsync(response, expected);
-    }
-
-    private async Task<JsonElement> ReadEnvelope(string path, bool expectedFinalized)
-    {
-        using HttpResponseMessage response = await _host.GetAsync(path, Json);
-        string raw = await BeaconApiTestHost.ReadSuccessfulBodyAsync(response);
-        Assert.That(response.Headers.GetValues("Eth-Consensus-Version").Single(), Is.EqualTo("fulu"));
-
-        JsonElement root = JsonDocument.Parse(raw).RootElement;
-        Assert.That(root.GetProperty("version").GetString(), Is.EqualTo("fulu"));
-        Assert.That(root.GetProperty("execution_optimistic").GetBoolean(), Is.True);
-        Assert.That(root.GetProperty("finalized").GetBoolean(), Is.EqualTo(expectedFinalized));
-        return root;
     }
 }
