@@ -224,7 +224,7 @@ internal sealed class HistoryWalkRun
             folds.Add(() =>
             {
                 MismatchSink found = new(merge.RemainingCapacity);
-                using RootHeaderCheck root = new(_headers, _availableBlocks, found, chunks[chunk].To, _logger, _token);
+                using RootHeaderCheck root = new(_headers, _availableBlocks, found, chunks[chunk].To, _logger, _token, () => merge.StoppedBefore(chunk));
                 using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
                 using (SeriesWriter series = new(_history))
                 {

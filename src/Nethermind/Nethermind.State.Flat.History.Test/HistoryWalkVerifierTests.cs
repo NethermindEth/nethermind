@@ -888,4 +888,30 @@ public class HistoryWalkVerifierTests
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
     }
+
+    [Test]
+    public void RootHeaderCheck_AfterAnEarlierChunkStopped_StopsWithoutReadingAHeader()
+    {
+        FakeHeaders headers = new();
+        int reads = 0;
+        headers.OnRead = _ => reads++;
+        RootFoldMerge merge = new(new MismatchSink(), chunks: 3);
+        merge.Complete(1, new MismatchSink(), compared: 5, stopped: true);
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        MismatchSink laterFound = new();
+        MismatchSink earlierFound = new();
+        using RootHeaderCheck later = new(headers, availableBlocks, laterFound, to: 100, LimboLogs.Instance.GetClassLogger<RootHeaderCheck>(), CancellationToken.None, () => merge.StoppedBefore(2));
+        using RootHeaderCheck earlier = new(headers, availableBlocks, earlierFound, to: 100, LimboLogs.Instance.GetClassLogger<RootHeaderCheck>(), CancellationToken.None, () => merge.StoppedBefore(1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(later.OnBlock(50, NodeView.Empty), Is.False, "chunk 1 stopped, so the merge discards chunk 2 and its header check stops");
+            Assert.That(reads, Is.Zero, "a discarded chunk fetches no headers");
+            Assert.That(later.Stopped, Is.False, "stopping because an earlier chunk stopped is not a finding of its own");
+            Assert.That(laterFound.Count, Is.Zero);
+            Assert.That(earlier.OnBlock(10, NodeView.Empty), Is.False, "chunk 1 is not discarded by its own stop, so it reads the header and finds none");
+            Assert.That(reads, Is.EqualTo(91), "chunk 1 prefetches its headers up to its end");
+            Assert.That(earlier.Stopped, Is.True);
+        }
+    }
 }

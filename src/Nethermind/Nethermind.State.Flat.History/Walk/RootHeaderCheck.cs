@@ -9,7 +9,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availableBlocks, MismatchSink sink, ulong to, ILogger logger, CancellationToken token = default) : ViewObserver, IDisposable
+internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availableBlocks, MismatchSink sink, ulong to, ILogger logger, CancellationToken token = default, Func<bool>? superseded = null) : ViewObserver, IDisposable
 {
     public const int PrefetchedBlocks = 16_384;
     private const int PrefetchedBlocksPerCancellationCheck = 1 << 10;
@@ -29,7 +29,13 @@ internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availabl
 
     public override bool OnBlock(ulong block, in NodeView view)
     {
-        ValueHash256? expected = StateRootAt(block);
+        if (!IsPrefetched(block))
+        {
+            if (superseded?.Invoke() == true) return false;
+            Prefetch(block);
+        }
+
+        ValueHash256? expected = _roots[block - _firstPrefetched];
         if (expected is null)
         {
             sink.Add(new HistoryWalkMismatch(block, HistoryWalkMismatchKind.MissingHeader, view.Hash, default));
@@ -48,20 +54,18 @@ internal sealed class RootHeaderCheck(IHistoryHeaderSource headers, IDb availabl
         return false;
     }
 
-    private ValueHash256? StateRootAt(ulong block)
-    {
-        if (_prefetched == 0 || block < _firstPrefetched || block >= _firstPrefetched + (ulong)_prefetched)
-        {
-            _firstPrefetched = block;
-            _prefetched = to - block < PrefetchedBlocks ? (int)(to - block) + 1 : PrefetchedBlocks;
-            for (int i = 0; i < _prefetched; i++)
-            {
-                if ((i & (PrefetchedBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
-                _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
-            }
-        }
+    private bool IsPrefetched(ulong block) =>
+        _prefetched != 0 && block >= _firstPrefetched && block < _firstPrefetched + (ulong)_prefetched;
 
-        return _roots[block - _firstPrefetched];
+    private void Prefetch(ulong block)
+    {
+        _firstPrefetched = block;
+        _prefetched = to - block < PrefetchedBlocks ? (int)(to - block) + 1 : PrefetchedBlocks;
+        for (int i = 0; i < _prefetched; i++)
+        {
+            if ((i & (PrefetchedBlocksPerCancellationCheck - 1)) == 0) token.ThrowIfCancellationRequested();
+            _roots[i] = headers.TryGetStateRoot(block + (ulong)i);
+        }
     }
 
     private void CheckMarker(ulong block, in ValueHash256 expected)
