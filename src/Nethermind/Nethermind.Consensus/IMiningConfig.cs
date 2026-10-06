@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Consensus;
 
@@ -14,4 +15,10 @@ public interface IMiningConfig : IConfig
     HiddenFromDocs = false,
     DefaultValue = "null")]
     string? Signer { get; set; }
+
+    [ConfigItem(
+    Description = "Dumps diagnostic traces of every block this node builds, including each payload rebuild, to the `nethermind-produced-blocks` subdirectory of the system temp directory, keeping the newest 256 files. Accepts the same values as `Init.AutoDump`. For debugging only: Geth-style traces include EVM memory and can take gigabytes per block.",
+    HiddenFromDocs = true,
+    DefaultValue = "None")]
+    DumpOptions DumpProducedBlocks { get; set; }
 }
