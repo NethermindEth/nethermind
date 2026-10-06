@@ -77,6 +77,30 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Call_trace_log_indices_include_hidden_children_and_discard_reverts([Values] bool onlyTopCall, [Values] bool childReverts)
+    {
+        byte[] childCode = childReverts
+            ? Prepare.EvmCode.Log(0, 0).Log(0, 0).Revert(0, 0).Done
+            : Prepare.EvmCode.Log(0, 0).Log(0, 0).STOP().Done;
+        TestState.CreateAccount(TestItem.AddressC, 0);
+        TestState.InsertCode(TestItem.AddressC, childCode, Spec);
+        byte[] code = Prepare.EvmCode.Log(0, 0).Call(TestItem.AddressC, 30000).Log(0, 0).STOP().Done;
+
+        using JsonDocument trace = JsonDocument.Parse(ExecuteCallTrace(code, onlyTopCall ? WithLogAndOnlyTopCall : WithLog));
+        JsonElement root = trace.RootElement;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(root.GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x0"));
+            Assert.That(root.GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo(childReverts ? "0x1" : "0x3"));
+            if (!onlyTopCall && !childReverts)
+            {
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[0].GetProperty("index").GetString(), Is.EqualTo("0x1"));
+                Assert.That(root.GetProperty("calls")[0].GetProperty("logs")[1].GetProperty("index").GetString(), Is.EqualTo("0x2"));
+            }
+        }
+    }
+
     public enum GasCheckpointCase { InvalidOpcode, StackUnderflow, OutOfGas, Revert, InvalidDeposit, DepositOutOfGas, PrecompileFailure }
 
     [Test]
