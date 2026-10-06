@@ -4,6 +4,7 @@
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.Crypto;
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using static Ethereum.ConsensusSpec.Test.OperationVectorHandlers;
@@ -27,12 +28,12 @@ public class OperationsTests
     [TestCase("gloas", "withdrawals", "early_return_empty_parent_block")]
     public void Required_successful_operation_contract(string fork, string operation, string name)
     {
-        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
-            "tests", "mainnet", fork, "operations", operation, "pyspec_tests", name);
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(FuluDriverSupport.CompiledPreset),
+            "tests", ConsensusSpecArchive.PresetDirName(FuluDriverSupport.CompiledPreset), fork, "operations", operation, "pyspec_tests", name);
         foreach (string file in new[] { "pre.ssz_snappy", "post.ssz_snappy" })
             Assert.That(File.Exists(Path.Combine(path, file)), Is.True, $"mandatory positive vector is missing {file}");
-        Assert.That(() => Execute(new OperationCase(nameof(ConsensusPreset.Mainnet), fork, operation, path,
-            $"mainnet/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
+        Assert.That(() => Execute(new OperationCase(FuluDriverSupport.CompiledPreset.ToString(), fork, operation, path,
+            $"{FuluDriverSupport.CompiledPreset}/{fork}/operations/{operation}/pyspec_tests/{name}")), Throws.Nothing);
     }
 
     [TestCase("attester_slashing", "invalid_same_data", "not slashable")]
@@ -48,7 +49,7 @@ public class OperationsTests
     [TestCase("voluntary_exit", "invalid_validator_already_exited", "already initiated an exit")]
     [TestCase("voluntary_exit", "invalid_validator_not_active", "is not active")]
     [TestCase("voluntary_exit", "invalid_validator_incorrect_validator_index", "is out of range")]
-    [TestCase("voluntary_exit", "invalid_validator_not_active_long_enough", "not been active long enough", 32ul)]
+    [TestCase("voluntary_exit", "invalid_validator_not_active_long_enough", "not been active long enough", Presets.SlotsPerEpoch)]
     [TestCase("voluntary_exit", "invalid_validator_exit_in_future", "not valid before epoch")]
     [TestCase("bls_to_execution_change", "invalid_bad_signature", "Invalid BLS to execution change signature")]
     [TestCase("bls_to_execution_change", "invalid_incorrect_from_bls_pubkey", "does not match the withdrawal credentials")]
@@ -61,8 +62,8 @@ public class OperationsTests
     [TestCase("withdrawals", "invalid_validator_index_sweep", "out of range")]
     public void Required_invalid_gloas_operation_preserves_the_state(string operation, string name, string expectedMessage, ulong? slot = null)
     {
-        string path = Path.Combine(ConsensusSpecArchive.GetRoot(ConsensusPreset.Mainnet),
-            "tests", "mainnet", "gloas", "operations", operation, "pyspec_tests", name);
+        string path = Path.Combine(ConsensusSpecArchive.GetRoot(FuluDriverSupport.CompiledPreset),
+            "tests", ConsensusSpecArchive.PresetDirName(FuluDriverSupport.CompiledPreset), "gloas", "operations", operation, "pyspec_tests", name);
         (string? file, Action<OpContext<BeaconStateGloas>, byte[], BlockSignatureBatch?> apply) = GloasHandlers[operation];
         foreach (string required in new[] { "pre.ssz_snappy", file }.OfType<string>())
             Assert.That(File.Exists(Path.Combine(path, required)), Is.True, $"mandatory negative vector is missing {required}");
@@ -102,7 +103,7 @@ public class OperationsTests
     [Test]
     public void Every_fork_and_handler_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            FuluDriverSupport.TestedCases<OperationCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases),
+            FuluDriverSupport.TestedCases<OperationCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases),
             static testCase => $"{testCase.Fork}/{testCase.OperationName}",
             Run);
 
@@ -111,7 +112,7 @@ public class OperationsTests
 
     private static void Run(OperationCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         FuluDriverSupport.Dispatch(testCase.Fork, testCase,
             static (testCase, driver) => Run(testCase, driver, Handlers),

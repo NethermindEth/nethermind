@@ -26,7 +26,7 @@ public class TransitionTests
     }
     [Test]
     public void Every_transition_fork_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
-        FuluDriverSupport.AssertEveryKeyRunsAVector(TestedCases(ConsensusPreset.Mainnet), static testCase => testCase.Fork, Run);
+        FuluDriverSupport.AssertEveryKeyRunsAVector(TestedCases(FuluDriverSupport.CompiledPreset), static testCase => testCase.Fork, Run);
 
     private static List<TransitionCase> TestedCases(ConsensusPreset preset) =>
         FuluDriverSupport.TestedCases<TransitionCase>(preset, MinimalCases, MainnetCases);
@@ -36,7 +36,7 @@ public class TransitionTests
 
     private static void Run(TransitionCase testCase)
     {
-        FuluDriverSupport.RequireMainnetPreset(testCase.Preset);
+        FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         Dictionary<string, string> meta = FuluDriverSupport.ParseFlowMap(Path.Combine(testCase.CasePath, "meta.yaml"));
         if (meta["post_fork"] != "gloas")

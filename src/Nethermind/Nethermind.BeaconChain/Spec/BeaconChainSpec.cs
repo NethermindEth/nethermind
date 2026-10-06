@@ -327,14 +327,25 @@ public record BeaconChainSpec
         return Bytes.FromHexString(digits.ToString());
     }
 
+#if MINIMAL_PRESET
+    private static readonly BeaconChainSpec s_minimalSigningSpec = Mainnet with
+    {
+        Forks = [.. Mainnet.Forks.Select(static fork => new ForkScheduleEntry([.. fork.Version[..3], 1], fork.Epoch))],
+    };
+#endif
+
     /// <summary>The supported network a state with <paramref name="genesisValidatorsRoot"/> belongs to.</summary>
     /// <remarks>
     /// Signing domains fixed to a config fork version (<see cref="GenesisForkVersion"/>, <see cref="CapellaForkVersion"/>)
     /// resolve the network through the state's own root, so a testnet state never signs with mainnet's versions. Any
-    /// other root is a consensus-spec test state, whose config is mainnet's.
+    /// other root is a consensus-spec test state, whose fixed signing versions match the compiled preset.
     /// </remarks>
     public static BeaconChainSpec ForGenesisValidatorsRoot(Hash256 genesisValidatorsRoot) =>
         genesisValidatorsRoot == Hoodi.GenesisValidatorsRoot ? Hoodi
         : genesisValidatorsRoot == Sepolia.GenesisValidatorsRoot ? Sepolia
+#if MINIMAL_PRESET
+        : s_minimalSigningSpec;
+#else
         : Mainnet;
+#endif
 }

@@ -41,7 +41,7 @@ public class BlockSignatureBatchVectorTests
     [Test]
     public void Every_fork_and_signature_operation_has_vectors()
     {
-        if (!ConsensusSpecArchive.MainnetEnabled)
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             Assert.Ignore("Set NETHERMIND_CONSENSUS_SPEC_MAINNET=1 to enumerate the mainnet vectors this differential runs over.");
 
         List<SanityCase> blocks = [.. SanityBlockCases().Select(static data => (SanityCase)data.Arguments[0]!)];
@@ -170,20 +170,20 @@ public class BlockSignatureBatchVectorTests
     }
 
     private static IEnumerable<TestCaseData> SanityBlockCases() =>
-        ConsensusSpecArchive.MainnetEnabled
-            ? FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, ConsensusSpecArchive.StateTransitionForks, "sanity", "meta.yaml",
+        (FuluDriverSupport.CompiledPreset == ConsensusPreset.Minimal || ConsensusSpecArchive.MainnetEnabled)
+            ? FuluDriverSupport.HandlerCases(FuluDriverSupport.CompiledPreset, ConsensusSpecArchive.StateTransitionForks, "sanity", "meta.yaml",
                 static (preset, fork, _, path, name) => new SanityCase(preset.ToString(), fork, path, name), ["blocks"])
             : [];
 
     private static IEnumerable<TestCaseData> OperationCases()
     {
-        if (!ConsensusSpecArchive.MainnetEnabled)
+        if (FuluDriverSupport.CompiledPreset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             yield break;
 
         foreach (string fork in ConsensusSpecArchive.StateTransitionForks)
         {
             IEnumerable<string> table = fork == "gloas" ? GloasOperations.Keys : FuluOperations.Keys;
-            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(ConsensusPreset.Mainnet, [fork], "operations", "pre.ssz_snappy",
+            foreach (TestCaseData testCase in FuluDriverSupport.HandlerCases(FuluDriverSupport.CompiledPreset, [fork], "operations", "pre.ssz_snappy",
                          static (p, f, operation, path, name) => new OperationCase(p.ToString(), f, operation, path, name), table))
                 yield return testCase;
         }

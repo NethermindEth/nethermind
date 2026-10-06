@@ -19,9 +19,36 @@ namespace Ethereum.ConsensusSpec.Test;
 
 public static class FuluDriverSupport
 {
+#if MINIMAL_PRESET
+    internal const ConsensusPreset CompiledPreset = ConsensusPreset.Minimal;
+    internal static BeaconChainSpec DefaultSpec { get; } = BeaconChainSpec.Mainnet with
+    {
+        ChainId = 0,
+        CheckpointSyncUrl = null,
+        Bootnodes = [],
+        SecondsPerSlot = Presets.SecondsPerSlot,
+        SlotsPerEpoch = Presets.SlotsPerEpoch,
+        GenesisTime = 0,
+        GenesisValidatorsRoot = Hash256.Zero,
+        Forks = [.. Enumerable.Range(0, 7).Select(static fork => new ForkScheduleEntry([(byte)fork, 0, 0, 1], 0))],
+        BlobSchedule = [],
+        ElectraForkEpoch = 0,
+        FuluForkEpoch = 0,
+        GloasForkVersion = [7, 0, 0, 1],
+    };
+#else
+    internal const ConsensusPreset CompiledPreset = ConsensusPreset.Mainnet;
+    internal static BeaconChainSpec DefaultSpec => BeaconChainSpec.Mainnet;
+#endif
+
+    internal static bool Enumerates(ConsensusPreset preset) =>
+        CompiledPreset == ConsensusPreset.Mainnet || preset == CompiledPreset;
+
     internal static IEnumerable<TestCaseData> RelativeCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
         Func<ConsensusPreset, string, string, string, T> createCase)
     {
+        if (!Enumerates(preset))
+            yield break;
         foreach (string fork in forks)
         {
             string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
@@ -36,6 +63,8 @@ public static class FuluDriverSupport
     internal static IEnumerable<TestCaseData> HandlerCases<T>(ConsensusPreset preset, IEnumerable<string> forks, string suite, string marker,
         Func<ConsensusPreset, string, string, string, string, T> createCase, IEnumerable<string>? handlers = null, bool strictHandlerDirectory = false, bool relativeNames = false)
     {
+        if (!Enumerates(preset))
+            yield break;
         foreach (string fork in forks)
         {
             string? root = ConsensusSpecArchive.SuitePath(preset, fork, suite);
@@ -84,20 +113,17 @@ public static class FuluDriverSupport
         }
     }
 
-    public static void RequireMainnetPreset(string preset)
+    public static void RequireCompiledPreset(string preset)
     {
-        if (preset == nameof(ConsensusPreset.Minimal))
-        {
-            throw new NotImplementedInDriverException(
-                "This repo's BeaconState containers hard-code mainnet-preset-scaled vector bounds, so they cannot decode a " +
-                "minimal-preset pre.ssz_snappy at all; this suite only runs for real against the mainnet preset " +
-                "(opt in with NETHERMIND_CONSENSUS_SPEC_MAINNET=1).");
-        }
+        if (preset != CompiledPreset.ToString())
+            throw new NotImplementedInDriverException($"This assembly's SSZ bounds use {CompiledPreset}; {preset} state fixtures require their own compiled preset.");
     }
 
     /// <remarks>Ignores the calling test for the mainnet preset unless mainnet vectors are enabled, since the mainnet source is then empty by design.</remarks>
     public static List<TCase> TestedCases<TCase>(ConsensusPreset preset, Func<IEnumerable<TestCaseData>> minimalCases, Func<IEnumerable<TestCaseData>> mainnetCases)
     {
+        if (!Enumerates(preset))
+            Assert.Ignore($"This assembly uses {CompiledPreset}.");
         if (preset == ConsensusPreset.Mainnet && !ConsensusSpecArchive.MainnetEnabled)
             Assert.Ignore("mainnet vectors are opt-in (NETHERMIND_CONSENSUS_SPEC_MAINNET=1)");
 
@@ -191,11 +217,11 @@ public static class FuluDriverSupport
         return pubkeys;
     }
 
-    /// <summary>Reads config.yaml overrides (tests/formats/README.md), retaining mainnet defaults for omitted keys.</summary>
-    /// <remarks>Only transition-relevant fork epochs/versions, MAX_BLOBS_PER_BLOCK_ELECTRA and BLOB_SCHEDULE are read.</remarks>
+    /// <summary>Reads config.yaml overrides (tests/formats/README.md), retaining compiled-preset defaults for omitted keys.</summary>
+    /// <remarks>Reads fork epochs/versions, slot duration, MAX_BLOBS_PER_BLOCK_ELECTRA and BLOB_SCHEDULE.</remarks>
     public static BeaconChainSpec CaseSpec(string casePath)
     {
-        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        BeaconChainSpec mainnet = DefaultSpec;
         string configPath = Path.Combine(casePath, "config.yaml");
         if (!File.Exists(configPath))
             return mainnet;
@@ -217,28 +243,41 @@ public static class FuluDriverSupport
                 ulong.Parse(((YamlScalarNode)entry.Children[new YamlScalarNode("MAX_BLOBS_PER_BLOCK")]).Value!)))];
         }
 
-        return MainnetWith(
+        BeaconChainSpec spec = PresetWith(
             blobSchedule,
             Scalar("ELECTRA_FORK_EPOCH", mainnet.ElectraForkEpoch),
             Scalar("FULU_FORK_EPOCH", mainnet.FuluForkEpoch),
             Scalar("MAX_BLOBS_PER_BLOCK_ELECTRA", mainnet.MaxBlobsPerBlockElectra),
             Scalar("GLOAS_FORK_EPOCH", mainnet.GloasForkEpoch),
             gloasForkVersion);
+        string[] forkNames = ["GENESIS", "ALTAIR", "BELLATRIX", "CAPELLA", "DENEB", "ELECTRA", "FULU"];
+        ForkScheduleEntry[] forks = [.. spec.Forks.Take(7).Select((entry, index) => new ForkScheduleEntry(
+            config.Children.TryGetValue(new YamlScalarNode(forkNames[index] + "_FORK_VERSION"), out YamlNode? value)
+                ? Bytes.FromHexString(((YamlScalarNode)value).Value!) : entry.Version,
+            Scalar(forkNames[index] + "_FORK_EPOCH", entry.Epoch)))];
+        return spec with
+        {
+            SecondsPerSlot = Scalar("SLOT_DURATION_MS", spec.SecondsPerSlot * 1000) / 1000,
+            Forks = spec.GloasForkEpoch == Presets.FarFutureEpoch ? forks : [.. forks, new(gloasForkVersion, spec.GloasForkEpoch)],
+        };
     }
 
-    /// <summary>Uses mainnet with earlier forks at genesis and Gloas at meta.yaml's fork_epoch (tests/formats/transition/README.md).</summary>
+    /// <summary>Uses the compiled preset with earlier forks at genesis and Gloas at meta.yaml's fork_epoch (tests/formats/transition/README.md).</summary>
     public static BeaconChainSpec TransitionSpec(ulong gloasForkEpoch)
     {
-        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
-        return MainnetWith(mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
+        BeaconChainSpec mainnet = DefaultSpec;
+        BeaconChainSpec spec = PresetWith(mainnet.BlobSchedule, 0, 0, mainnet.MaxBlobsPerBlockElectra, gloasForkEpoch, mainnet.GloasForkVersion);
+        return spec with { Forks = [.. spec.Forks.Select((entry, index) => index < 7 ? entry with { Epoch = 0 } : entry)] };
     }
 
-    private static BeaconChainSpec MainnetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
+    private static BeaconChainSpec PresetWith(BlobScheduleEntry[] blobSchedule, ulong electraForkEpoch, ulong fuluForkEpoch, ulong maxBlobsPerBlockElectra, ulong gloasForkEpoch, byte[] gloasForkVersion)
     {
-        BeaconChainSpec mainnet = BeaconChainSpec.Mainnet;
+        BeaconChainSpec mainnet = DefaultSpec;
         return mainnet with
         {
             CheckpointSyncUrl = null,
+            Forks = [.. mainnet.Forks.Take(7).Select((entry, index) => entry with { Epoch = index == 5 ? electraForkEpoch : index == 6 ? fuluForkEpoch : entry.Epoch }),
+                .. (gloasForkEpoch == Presets.FarFutureEpoch ? Array.Empty<ForkScheduleEntry>() : [new(gloasForkVersion, gloasForkEpoch)])],
             BlobSchedule = blobSchedule,
             ElectraForkEpoch = electraForkEpoch,
             FuluForkEpoch = fuluForkEpoch,

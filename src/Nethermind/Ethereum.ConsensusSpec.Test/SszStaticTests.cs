@@ -64,7 +64,7 @@ public class SszStaticTests
     {
         Dictionary<string, Dictionary<string, Entry>> r = new(StringComparer.Ordinal);
 
-        // SSZ vector/list bounds are compiled for mainnet; minimal may fail decoding or silently hash at the wrong list depth.
+        // SSZ vector/list bounds must match the preset compiled into this assembly.
         void Map<T>(string name, IEnumerable<string> forks, bool presetDependent = false) where T : ISszCodec<T>
         {
             if (!r.TryGetValue(name, out Dictionary<string, Entry>? byFork))
@@ -130,7 +130,7 @@ public class SszStaticTests
         Map<SignedBeaconBlock>("SignedBeaconBlock", ElectraFulu, presetDependent: true);
         Map<SignedBeaconBlockGloas>("SignedBeaconBlock", GloasOnly, presetDependent: true);
 
-        // All modeled states embed mainnet-sized vectors/list bounds; none is minimal-preset safe.
+        // All modeled states embed preset-sized vectors and list bounds.
         Map<BeaconStateElectra>("BeaconState", ["electra"], presetDependent: true);
         Map<BeaconStateFulu>("BeaconState", ["fulu"], presetDependent: true);
         Map<BeaconStateGloas>("BeaconState", GloasOnly, presetDependent: true);
@@ -246,13 +246,20 @@ public class SszStaticTests
     [Test]
     public void Every_registered_container_runs_a_mainnet_vector_rather_than_reporting_it_not_implemented() =>
         FuluDriverSupport.AssertEveryKeyRunsAVector(
-            [.. FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Mainnet, MinimalCases, MainnetCases)
+            [.. FuluDriverSupport.TestedCases<SszStaticCase>(FuluDriverSupport.CompiledPreset, MinimalCases, MainnetCases)
                 .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork) && byFork.ContainsKey(testCase.Fork))],
             static testCase => PairKey(testCase.Fork, testCase.ContainerName),
             Run);
     [Test]
-    public void Every_preset_dependent_container_fails_to_decode_a_minimal_vector()
+    public void Every_preset_dependent_container_honors_the_compiled_preset()
     {
+#if MINIMAL_PRESET
+        FuluDriverSupport.AssertEveryKeyRunsAVector(
+            [.. FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, MainnetCases)
+                .Where(static testCase => Registry.TryGetValue(testCase.ContainerName, out IReadOnlyDictionary<string, Entry>? byFork)
+                    && byFork.TryGetValue(testCase.Fork, out Entry entry) && entry.PresetDependent)],
+            static testCase => PairKey(testCase.Fork, testCase.ContainerName), Run);
+#else
         List<SszStaticCase> minimal = FuluDriverSupport.TestedCases<SszStaticCase>(ConsensusPreset.Minimal, MinimalCases, static () => []);
         List<string> decodable = [];
         foreach (IGrouping<(string Fork, string ContainerName), SszStaticCase> pair in minimal.GroupBy(static c => (c.Fork, c.ContainerName)))
@@ -265,6 +272,7 @@ public class SszStaticTests
         }
 
         Assert.That(decodable, Is.Empty, "preset-dependent containers whose minimal vectors all decode");
+#endif
     }
 
     private static bool Decodes(SszStaticCase testCase, Entry entry) =>
@@ -286,12 +294,8 @@ public class SszStaticTests
                 $"No {testCase.ContainerName} container is modeled for fork '{testCase.Fork}' in this repo: {NotModeledReason(testCase.Fork, testCase.ContainerName) ?? "no reason is pinned"}.");
         }
 
-        if (entry.PresetDependent && testCase.Preset == nameof(ConsensusPreset.Minimal))
-        {
-            throw new NotImplementedInDriverException(
-                $"{testCase.ContainerName}'s SSZ shape embeds a mainnet-preset-scaled bound (e.g. committee/sync-committee/state-vector size) " +
-                "baked in at compile time by this repo's SszGenerator attributes; it cannot decode a minimal-preset fixture.");
-        }
+        if (entry.PresetDependent)
+            FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
 
         byte[] ssz = SszConsensusTestLoader.ReadSszSnappy(Path.Combine(testCase.CasePath, "serialized.ssz_snappy"));
 
@@ -312,6 +316,8 @@ public class SszStaticTests
 
     private static IEnumerable<TestCaseData> Cases(ConsensusPreset preset)
     {
+        if (!FuluDriverSupport.Enumerates(preset))
+            yield break;
         string root = ConsensusSpecArchive.GetRoot(preset);
         string sszStaticGlobRoot = Path.Combine(root, "tests", ConsensusSpecArchive.PresetDirName(preset));
         if (!Directory.Exists(sszStaticGlobRoot))
