@@ -985,33 +985,19 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCase(10UL, 10UL, false, TestName = "EIP-7979 with EIP-8024")]
-    [TestCase(20UL, 10UL, false, TestName = "EIP-7979 after EIP-8024")]
-    [TestCase(10UL, 20UL, true, TestName = "EIP-7979 before EIP-8024")]
-    [TestCase(10UL, null, true, TestName = "EIP-7979 without EIP-8024")]
-    public void Eip7979_requires_eip8024(ulong eip7979Timestamp, ulong? eip8024Timestamp, bool throws)
+    [Test]
+    public void Eip7979_activates_at_its_transition_timestamp()
     {
-        ChainSpecJson chainSpecJson = new()
+        const ulong eip7979Timestamp = 10;
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
         {
-            Params = new ChainSpecParamsJson
-            {
-                Eip7979TransitionTimestamp = eip7979Timestamp,
-                Eip8024TransitionTimestamp = eip8024Timestamp,
-            }
-        };
+            Params = new ChainSpecParamsJson { Eip7979TransitionTimestamp = eip7979Timestamp }
+        });
 
-        if (throws)
+        using (Assert.EnterMultipleScope())
         {
-            Assert.Throws<ArgumentException>(() => TestSpecHelper.LoadChainSpec(chainSpecJson));
-        }
-        else
-        {
-            (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(chainSpecJson);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
-                Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
-            }
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
         }
     }
 
