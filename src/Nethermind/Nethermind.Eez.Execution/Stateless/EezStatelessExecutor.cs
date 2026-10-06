@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Consensus.Validators;
@@ -27,7 +26,6 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
     private static readonly IRlpDecoder<TxReceipt> ReceiptTrieDecoder = Rlp.GetDecoderOrThrow<TxReceipt>(RlpDecoderKey.Trie);
 
     private readonly EthereumEcdsa _ecdsa = new(specProvider.ChainId);
-    private readonly ExecutionRequestsProcessorFactory _executionRequestsProcessorFactory = new(EezExecutionRequests.Options);
     private readonly EezTransactionProcessorFactory _transactionProcessorFactory = new();
 
     /// <param name="window">The blocks, oldest first.</param>
@@ -88,7 +86,7 @@ public sealed class EezStatelessExecutor(ISpecProvider specProvider, ILogManager
             TxValidator = CreateTxValidator(),
             BlockValidatorFactory = (txValidator, headerValidator, unclesValidator) =>
                 new EezBlockValidator(txValidator, headerValidator, unclesValidator, specProvider, logManager),
-            ExecutionRequestsProcessorFactory = _executionRequestsProcessorFactory,
+            ExecutionRequestsOptions = EezExecutionRequests.Options,
             TransactionProcessedEventHandler = transactionProcessed,
         };
 

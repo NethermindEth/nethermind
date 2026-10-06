@@ -57,6 +57,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxNoPayer { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions ignored because their validation prefix is outside the public-mempool grammar.")]
+        public static long PendingTransactionsFrameTxUnrecognizedPrefix { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because they carry a VERIFY frame after their validation prefix.")]
         public static long PendingTransactionsFrameTxVerifyAfterPrefix { get; set; }
 
@@ -79,6 +83,18 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of entries in the EIP-8141 frame-transaction eviction retry ledger, one per pending frame transaction while `TxPool.FrameTxEvictionRetryBudget` is above its default of `1` and zero otherwise. Entries are opened on pool insert and dropped on pool removal or pool disposal, so a floor above zero with no frame transactions pending is a leak.")]
         public static long FrameTxEvictionRetryLedgerEntries;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their sender held too little width for another pending transaction beyond its baseline.")]
+        public static long PendingTransactionsFrameTxWidthUnmet;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their nonce-key set intersects another pending frame transaction from the same sender.")]
+        public static long PendingTransactionsKeyedNonceOverlap;
+
+        [GaugeMetric]
+        [Description("Number of EIP-8250 keyed-nonce frame-transaction senders currently holding positive width.")]
+        public static long FrameTxSendersWithWidth;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
@@ -123,6 +139,10 @@ namespace Nethermind.TxPool
         [CounterMetric]
         [Description("Number of EIP-8141 frame transactions rejected because the per-head validation-prefix simulation budget was exhausted.")]
         public static long FrameTxSimulationsBudgetExhausted;
+
+        [CounterMetric]
+        [Description("Number of EIP-8141 validation-prefix simulations stopped or not started because block processing preempted them.")]
+        public static long FrameTxSimulationsPreempted;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were deferred because this node had spent its own validation-prefix simulation bounds, not because the prefix was judged.")]

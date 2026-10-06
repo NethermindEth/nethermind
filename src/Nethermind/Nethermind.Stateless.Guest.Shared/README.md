@@ -2,7 +2,7 @@
 
 The [ZisK](../Nethermind.Stateless.ZiskGuest/),
 [SP1](../Nethermind.Stateless.Sp1Guest/), and
-[OpenVM](../Nethermind.Stateless.OpenVmGuest/) projects compile the shared
+[OpenVM](../Nethermind.Stateless.OpenVMGuest/) projects compile the shared
 Nethermind stateless executor for each host. Compiler settings are shared in
 [`zkvm-guest.mk`](../zkvm-guest.mk); host Makefiles pin their execution images.
 

@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
 using System.Reflection;
-using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading;
@@ -17,6 +16,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -196,7 +196,7 @@ public class GetPayloadDirectResponseTests
             SszCodec.EncodePayloadBodiesV1Response(expected, expectedSsz);
             SszCodec.EncodePayloadBodiesV1Response(direct, actualSsz);
 
-            Assert.That(actualSsz.WrittenSpan.ToArray(), Is.EqualTo(expectedSsz.WrittenSpan.ToArray()));
+            Assert.That(actualSsz.WrittenSpan, Is.SequenceEqualTo(expectedSsz.WrittenSpan));
             return;
         }
 
@@ -220,7 +220,7 @@ public class GetPayloadDirectResponseTests
         SszCodec.EncodePayloadBodiesV2Response(expectedV2, expectedV2Ssz);
         SszCodec.EncodePayloadBodiesV2Response(directV2, actualV2Ssz);
 
-        Assert.That(actualV2Ssz.WrittenSpan.ToArray(), Is.EqualTo(expectedV2Ssz.WrittenSpan.ToArray()));
+        Assert.That(actualV2Ssz.WrittenSpan, Is.SequenceEqualTo(expectedV2Ssz.WrittenSpan));
     }
 
     [Test]
@@ -263,9 +263,7 @@ public class GetPayloadDirectResponseTests
             Assert.That(async () => await act(), Throws.TypeOf<OperationCanceledException>());
             await writer.FlushAsync(CancellationToken.None);
 
-            string partialResponse = Encoding.UTF8.GetString(stream.ToArray());
-            Assert.That(partialResponse, Does.Contain("\"result\":"));
-            Assert.That(partialResponse, Does.Not.Contain(",\"id\":"));
+            Assert.That(stream.Length, Is.Zero);
         }
         finally
         {
@@ -297,7 +295,7 @@ public class GetPayloadDirectResponseTests
             SszCodec.EncodeGetPayloadV6Response((GetPayloadV6Result)CreateDirectResult(version, block, blobsBundle, executionRequests), actual);
         }
 
-        Assert.That(actual.WrittenSpan.ToArray(), Is.EqualTo(expected.WrittenSpan.ToArray()));
+        Assert.That(actual.WrittenSpan, Is.SequenceEqualTo(expected.WrittenSpan));
     }
 
     [Test]

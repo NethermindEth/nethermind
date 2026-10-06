@@ -6,7 +6,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -48,6 +51,17 @@ public class BlockCachePreWarmerTests
 {
     private static readonly TimeSpan PendingProbe = TimeSpan.FromMilliseconds(200);
     private static readonly TimeSpan DiscoveryTimeout = TimeSpan.FromSeconds(30);
+    private static readonly Address LongLoopContract = new("0x00000000000000000000000000000000000010ad");
+    private static readonly StorageCell LongLoopEntered = new(LongLoopContract, 1);
+    private static readonly StorageCell LongLoopFinished = new(LongLoopContract, 2);
+    // Loops over PackedLoopSlots packed slots and halts unless each one's field above bit 72 is non-zero, as HEX's
+    // stakeEnd does dividing by a day's share total.
+    private static readonly Address PackedLoopContract = new("0x0000000000000000000000000000000000001007");
+    private const int PackedLoopSlots = 32;
+    // More copies of it than a block may hand to discovery, each reading cold slots of its own.
+    private const int PackedLoopCopies = 20;
+    private static Address PackedLoopCopy(int i) => new($"0x00000000000000000000000000000000000021{i:x2}");
+    private static UInt256 PackedLoopValue(int slot) => (UInt256.One << 72) | (UInt256)(ulong)(slot + 1);
 
     private IContainer _container;
     private ILifetimeScope _processingScope;
@@ -95,6 +109,21 @@ public class BlockCachePreWarmerTests
             worldState.InsertCode(TestItem.AddressF, Keccak.Compute(sloadManyCode), sloadManyCode, Osaka.Instance);
             // Non-empty storage root, or reads short-circuit to defaults without touching the tree
             worldState.Set(new StorageCell(TestItem.AddressF, 0), (UInt256)1);
+            byte[] longLoopCode = BuildLongLoopCode();
+            byte[] packedLoopCode = BuildPackedLoopCode(PackedLoopSlots);
+            worldState.CreateAccount(PackedLoopContract, 0);
+            worldState.InsertCode(PackedLoopContract, Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
+            for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopContract, (UInt256)(ulong)i), PackedLoopValue(i));
+            for (int copy = 0; copy < PackedLoopCopies; copy++)
+            {
+                worldState.CreateAccount(PackedLoopCopy(copy), 0);
+                worldState.InsertCode(PackedLoopCopy(copy), Keccak.Compute(packedLoopCode), packedLoopCode, Osaka.Instance);
+                for (int i = 0; i < PackedLoopSlots; i++) worldState.Set(new StorageCell(PackedLoopCopy(copy), (UInt256)(ulong)i), PackedLoopValue(i));
+            }
+            worldState.CreateAccount(LongLoopContract, 0);
+            worldState.InsertCode(LongLoopContract, Keccak.Compute(longLoopCode), longLoopCode, Osaka.Instance);
+            worldState.Set(LongLoopEntered, (UInt256)1);
+            worldState.Set(LongLoopFinished, (UInt256)1);
             // The EIP-4788 ring buffer: BeaconBlockRootHandler hints nothing unless the account exists, an empty one is
             // dropped on commit, and the cells are only read through the tree while the storage root is non-empty.
             byte[] beaconRootsCode = [0x00];
@@ -234,6 +263,127 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressA, out _), Is.True, "AddressA is in the BAL and should be pre-warmed");
         Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressB, out _), Is.True, "AddressB is in the BAL and should be pre-warmed");
+    }
+
+    /// <summary>
+    /// The accounts that large calldata names as ABI address words are read at the start of the block, while the
+    /// small integers in the same calldata (here an amount and an offset) are not taken for addresses.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_WarmsTheAccountsLargeCalldataNames()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            Block block = BuildCalldataAddressBlock(out Address first, out Address second, out Address small);
+            using (ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block))
+            {
+                Assert.That(collected, Is.EqualTo(new[] { first, second }), "a repeated word is collected once");
+            }
+
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.True, "a recipient named in calldata is read");
+                Assert.That(preBlockCaches.StateCache.TryGetValue(small, out _), Is.False, "a small integer is not an address");
+            }
+        }
+    }
+
+    /// <summary>
+    /// The speculative pass runs the address warmer inline ahead of the delta's transaction warming, so the calldata
+    /// scan is left to the block, which repeats it with the full fan-out.
+    /// </summary>
+    [Test]
+    public void StartSpeculativePreWarm_LeavesTheAccountsLargeCalldataNamesToTheBlock()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance, BuildCalldataAddressBlock(out Address first, out Address second, out _));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressD, out _), Is.True, "the pass still reads the recipients");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(first, out _), Is.False, "the calldata scan is left to the block");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(second, out _), Is.False, "the calldata scan is left to the block");
+        }
+    }
+
+    /// <summary>Inclusion-list transactions are scanned after the block's own, as the sender and recipient pass covers them.</summary>
+    [Test]
+    public void CollectCalldataAddresses_ScansInclusionListTransactionsAfterTheBlocks()
+    {
+        Block block = BuildCalldataAddressBlock(out Address first, out Address second, out _);
+        Address third = new("0x5a52e96bacdabb82fd05763e25335261b270efcb");
+        byte[] data = new byte[4 + BlockCachePreWarmer.MinCalldataWordsForAddressWarm * 32];
+        third.Bytes.CopyTo(data.AsSpan(4 + 12));
+        block.InclusionListTransactions = [Build.A.Transaction.WithData(data).WithTo(TestItem.AddressE).SignedAndResolved(TestItem.PrivateKeyD).TestObject];
+
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block);
+        Assert.That(collected, Is.EqualTo(new[] { first, second, third }));
+    }
+
+    [Test]
+    public void CollectCalldataAddresses_Cancelled_ScansNothing()
+    {
+        Block block = BuildCalldataAddressBlock(out _, out _, out _);
+        using ArrayPoolList<Address>? collected = BlockCachePreWarmer.CollectCalldataAddresses(block, new CancellationToken(canceled: true));
+        Assert.That(collected, Is.Null);
+    }
+
+    /// <summary>A range reads no further account once the session is cancelled during one of its reads.</summary>
+    [Test]
+    public void WarmCalldataRange_StopsAtTheFirstAccountAfterCancellation()
+    {
+        using CancellationTokenSource cancellation = new();
+        using ArrayPoolList<Address> addresses = new(4) { TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD };
+        List<Address> read = [];
+
+        BlockCachePreWarmer.WarmCalldataRange(addresses, 0, addresses.Count, cancellation, (source, address) =>
+        {
+            read.Add(address);
+            source.Cancel();
+        }, cancellation.Token);
+
+        Assert.That(read, Is.EqualTo(new[] { TestItem.AddressA }));
+    }
+
+    [TestCase("0000000000000000000000000000000000000000000000000000000000000000", false, TestName = "IsAddressWord_Zero_IsNot")]
+    [TestCase("00000000000000000000000095323debf3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_LeftPaddedAddress_Is")]
+    [TestCase("00000000000000000000000000000001f3e1084237250e6b17a40b9299d7daf0", true, TestName = "IsAddressWord_OnlyTheFourthAddressByteSet_Is")]
+    [TestCase("00000000000000000000000000000000f3e1084237250e6b17a40b9299d7daf0", false, TestName = "IsAddressWord_FourLeadingZeroAddressBytes_IsNot")]
+    [TestCase("00000000000000000000000001000000000000000000000000000000000000ff", true, TestName = "IsAddressWord_TopAddressByteSet_Is")]
+    [TestCase("0000000000000000000000ff95323debf3e1084237250e6b17a40b9299d7daf0", false, TestName = "IsAddressWord_TwelfthPaddingByteSet_IsNot")]
+    [TestCase("ff0000000000000000000000ffffffffffffffffffffffffffffffffffffffff", false, TestName = "IsAddressWord_FirstPaddingByteSet_IsNot")]
+    public void IsAddressWord_MatchesOnlyLeftPaddedAddresses(string word, bool expected) =>
+        Assert.That(BlockCachePreWarmer.IsAddressWord(Bytes.FromHexString(word)), Is.EqualTo(expected));
+
+    /// <summary>
+    /// A block whose first transaction's calldata names two addresses as ABI words, one of them twice, beside a small
+    /// integer and an offset, padded with two plain transfers: below three transactions a block gets no reactive warm.
+    /// </summary>
+    private static Block BuildCalldataAddressBlock(out Address first, out Address second, out Address small)
+    {
+        first = new("0x95323debf3e1084237250e6b17a40b9299d7daf0");
+        second = new("0x0e17015cb81c1eb8049764d80e133bf5d6b97d19");
+        small = Address.FromNumber(5);
+        byte[] data = new byte[4 + 10 * 32];
+        first.Bytes.CopyTo(data.AsSpan(4 + 2 * 32 + 12));
+        second.Bytes.CopyTo(data.AsSpan(4 + 3 * 32 + 12));
+        small.Bytes.CopyTo(data.AsSpan(4 + 4 * 32 + 12));
+        first.Bytes.CopyTo(data.AsSpan(4 + 5 * 32 + 12));
+        data[4 + 32 - 1] = 0x40;
+
+        return Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithData(data).WithGasLimit(1_000_000).WithTo(TestItem.AddressD).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
     }
 
     /// <summary>
@@ -461,6 +611,80 @@ public class BlockCachePreWarmerTests
 
         Assert.That(preBlockCaches.StorageCache.TryGetValue(in declaredSlot, out _), Is.True,
             "declared access-list slots are warmed for the main thread");
+    }
+
+    /// <summary>
+    /// Ending a pass must interrupt a warm transaction mid-execution: block processing waits on the join, so a
+    /// warm that runs to completion puts its whole length on the block.
+    /// </summary>
+    [Test]
+    public void PreWarmCaches_Dispose_InterruptsATransactionMidExecution()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            // Over the block gas limit, so storage discovery never admits it and only the warm pass runs the loop.
+            Transaction[] txs =
+            [
+                Build.A.Transaction.WithNonce(0).WithTo(LongLoopContract).WithGasLimit(200_000_000_000)
+                    .SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                Build.A.Transaction.WithNonce(1).WithTo(TestItem.AddressC).WithValue(1.Wei).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            ];
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+            BlockHeader parent = BuildParentHeader();
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+                Assert.That(session, Is.Not.Null, "precondition: the block must get a reactive pass");
+
+                bool entered = SpinWait.SpinUntil(() => preBlockCaches.StorageCache.TryGetValue(in LongLoopEntered, out _), DiscoveryTimeout);
+                long started = Stopwatch.GetTimestamp();
+                session!.Dispose();
+                TimeSpan joined = Stopwatch.GetElapsedTime(started);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(entered, Is.True, "precondition: the warm transaction must be running when the pass ends");
+                    Assert.That(preBlockCaches.StorageCache.TryGetValue(in LongLoopFinished, out _), Is.False,
+                        "the transaction must stop inside the loop, before the read that follows it");
+                    Assert.That(joined, Is.LessThan(TimeSpan.FromSeconds(5)), "the join must not wait out the loop");
+                }
+            }
+        }
+    }
+
+    /// <summary>Cancelling storage discovery must interrupt a candidate mid-execution, not wait for it to finish.</summary>
+    [Test]
+    public void DiscoverAndWarmStorage_Cancellation_InterruptsACandidateMidExecution()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            const ulong gasLimit = 200_000_000_000;
+            Transaction loop = Build.A.Transaction.WithGasLimit(gasLimit).WithTo(LongLoopContract)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(loop).WithGasLimit(gasLimit).TestObject;
+            using CancellationTokenSource cancellation = new();
+
+            Assert.That(preBlockCaches.StateCache.TryGetValue(LongLoopContract, out _), Is.False, "precondition: the contract starts cold");
+
+            Task discovery = Task.Run(() => preWarmer.DiscoverAndWarmStorage([(0, loop)], block, Osaka.Instance, null, cancellation.Token));
+            // Discovery reads the contract account on entering the call, past every check between transactions.
+            bool entered = SpinWait.SpinUntil(() => preBlockCaches.StateCache.TryGetValue(LongLoopContract, out _), DiscoveryTimeout);
+            cancellation.Cancel();
+            bool stopped = discovery.Wait(TimeSpan.FromSeconds(5));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(entered, Is.True, "precondition: the candidate must have entered its call when cancelled");
+                Assert.That(stopped, Is.True, "cancellation must not wait out the loop");
+            }
+        }
     }
 
     /// <summary>A cancelled token stops the access-list warm (storage-key dimension): live warms the tail slot, cancelled does not.</summary>
@@ -935,6 +1159,60 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public async Task StartSpeculativePreWarm_CancellationInterruptsIdleDelay()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        using CancellationTokenSource cancellation = new();
+        TaskCompletionSource passStarted = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int passes = 0;
+        int cancellationExceptions = 0;
+        CancellationToken sessionToken = default;
+        Task session = preWarmer.StartSpeculativePreWarm(BuildParentHeader(), Osaka.Instance, generation: 1, token =>
+        {
+            sessionToken = token;
+            Interlocked.Increment(ref passes);
+            passStarted.TrySetResult();
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+
+        try
+        {
+            await passStarted.Task.WaitAsync(DiscoveryTimeout);
+            await Task.Delay(PendingProbe);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(session.IsCompleted, Is.False, "the session must remain active during the idle delay");
+                Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "the idle delay must throttle subsequent passes");
+            }
+        }
+        finally
+        {
+            void OnException(object? sender, FirstChanceExceptionEventArgs args)
+            {
+                if (sessionToken.CanBeCanceled && args.Exception is OperationCanceledException exception && exception.CancellationToken == sessionToken)
+                    Interlocked.Increment(ref cancellationExceptions);
+            }
+
+            AppDomain.CurrentDomain.FirstChanceException += OnException;
+            try
+            {
+                cancellation.Cancel();
+                await session.WaitAsync(DiscoveryTimeout);
+            }
+            finally
+            {
+                AppDomain.CurrentDomain.FirstChanceException -= OnException;
+            }
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(session.IsCompletedSuccessfully, Is.True);
+            Assert.That(cancellationExceptions, Is.Zero, "cancelling the idle delay must not throw");
+        }
+    }
+
+    [Test]
     public void StartSpeculativePreWarm_WhileABlockExecutes_DoesNotTouchTheCaches()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -1310,6 +1588,212 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    /// <summary>
+    /// Two candidates of one contract capture the same cells in each round. The shared budget is charged once per
+    /// distinct cell: the duplicate a second capture records is refunded, and the refund creates no extra credit.
+    /// The contract reads slot[slot[0]], so the first round finds slot 0 and, through the placeholder 1, slot 1; the
+    /// second round, with slot 0 warm, finds slot 5. Three cells: twice that charge without the refunds, less with a
+    /// refund too many.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_ChargesASharedBudgetOncePerDistinctCell()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction first = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Transaction second = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
+                .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(first, second).WithGasLimit(30_000_000).TestObject;
+            const int budget = 100;
+            StrongBox<int> sharedCells = new(budget);
+
+            preWarmer.DiscoverAndWarmStorage([(0, first), (1, second)], block, Osaka.Instance, null, CancellationToken.None, sharedCells);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 0), out _), Is.True);
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 1), out _), Is.True);
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.True);
+                Assert.That(sharedCells.Value, Is.EqualTo(budget - 3), "slots 0, 1 and 5, each charged once");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A loop over packed slots that divides by an upper field ends at its first slot when every skipped read is 1, so
+    /// rounds alone discover one slot each and the rounds run out long before the loop does. The run is repeated with a
+    /// placeholder whose every byte is non-zero, which keeps it going to the end.
+    /// </summary>
+    [Test]
+    public void DiscoverAndWarmStorage_RetriesAHaltedRunWithEveryPackedFieldNonZero()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 4);
+        using (preWarmer)
+        {
+            Transaction tx = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(PackedLoopContract)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.DiscoverAndWarmStorage([(0, tx)], block, Osaka.Instance, null, CancellationToken.None);
+
+            StorageCell last = new(PackedLoopContract, (UInt256)(ulong)(PackedLoopSlots - 1));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(preBlockCaches.StorageCache.TryGetValue(in last, out UInt256 value), Is.True,
+                    "the loop's last slot is discovered, far past what one slot per round would reach");
+                Assert.That(value, Is.EqualTo(PackedLoopValue(PackedLoopSlots - 1)), "the warmed value is the real one");
+            }
+        }
+    }
+
+    /// <summary>
+    /// A warm that keeps reading cold slots, below the gas a transaction needs to be picked for discovery up front, hands
+    /// its transaction to discovery; one that reads a couple of slots does not.
+    /// </summary>
+    [Test]
+    public async Task PreWarmCaches_HandsAWarmCaughtInColdReadsToDiscovery()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Assert.That(PackedLoopSlots, Is.GreaterThan(BlockCachePreWarmer.ColdReadsBeforeDiscovery));
+
+        Block block = BuildPackedLoopBlock(gasLimit: 1_000_000);
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(1), "only the warm reading a chain of cold slots is handed off");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_HandsOffWhenTheSpecHasAccessListsButTheBlockCarriesNone()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Assert.That(preWarmer.IsBalReadWarmingEnabled(Amsterdam.Instance), Is.True);
+
+        // A block being produced has no access list yet, so its warms execute its transactions.
+        Block block = BuildPackedLoopBlock(gasLimit: 1_000_000);
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Amsterdam.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(1), "the warm reading a chain of cold slots is handed off");
+    }
+
+    [Test]
+    public async Task PreWarmCaches_LeavesAnUpFrontDiscoveryCandidateToTheUpFrontDiscovery()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Block block = BuildPackedLoopBlock(gasLimit: 12_000_000);
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.Zero, "a transaction above the gas threshold is discovered up front");
+    }
+
+    /// <summary>
+    /// A block whose first transaction runs the packed-slot loop with <paramref name="gasLimit"/>, followed by two
+    /// plain transfers: below three transactions a block gets no reactive warm at all.
+    /// </summary>
+    private static Block BuildPackedLoopBlock(ulong gasLimit) =>
+        Build.A.Block.WithNumber(1).WithGasLimit(30_000_000)
+            .WithTransactions(
+                Build.A.Transaction.WithGasLimit(gasLimit).WithTo(PackedLoopContract).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                GroupingTx(TestItem.PrivateKeyB, nonce: 0, gasLimit: 100_000),
+                GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 100_000))
+            .TestObject;
+
+    [Test]
+    public async Task PreWarmCaches_CapsTheHandOffsOfOneBlock()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+
+        Transaction[] transactions = new Transaction[PackedLoopCopies];
+        for (int i = 0; i < PackedLoopCopies; i++)
+        {
+            transactions[i] = Build.A.Transaction.WithNonce((ulong)i).WithGasLimit(1_000_000).WithTo(PackedLoopCopy(i)).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        }
+
+        Block block = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).WithTransactions(transactions).TestObject;
+
+        await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
+
+        Assert.That(preWarmer.DiscoveryHandOffCount, Is.EqualTo(16), "every warm reads a chain of cold slots, but a block hands off at most 16");
+    }
+
+    [TestCase(new byte[] { 0x4e, 0x48, 0x7b, 0x71, 0x00 }, "revert", true, TestName = "Panic revert")]
+    [TestCase(new byte[0], "BadInstruction", true, TestName = "Halt")]
+    [TestCase(new byte[0], "revert", false, TestName = "Revert without data")]
+    [TestCase(new byte[] { 0x08, 0xc3, 0x79, 0xa0, 0x00 }, "deadline passed", false, TestName = "Error(string) revert")]
+    public void PlaceholderFailureTracer_CountsOnlyFailuresAPlaceholderCanCause(byte[] output, string error, bool counted)
+    {
+        BlockCachePreWarmer.PlaceholderFailureTracer tracer = new();
+        tracer.MarkAsFailed(TestItem.AddressA, default, output, error);
+        Assert.That(tracer.Failed, Is.EqualTo(counted));
+    }
+
+    [Test]
+    public void ColdReadWatch_CallsBackOnceAtTheThreshold()
+    {
+        CountingColdReadHandler handler = new();
+        object item = new();
+        ColdReadWatch.Arm(3, handler, 7, item);
+        try
+        {
+            ColdReadWatch.Read();
+            ColdReadWatch.Read();
+            Assert.That(handler.Calls, Is.Zero, "below the threshold");
+            ColdReadWatch.Read();
+            ColdReadWatch.Read();
+            Assert.That(handler.Calls, Is.EqualTo(1), "once, at the threshold");
+            Assert.That(handler.LastIndex, Is.EqualTo(7));
+            Assert.That(handler.LastItem, Is.SameAs(item));
+        }
+        finally
+        {
+            ColdReadWatch.Disarm();
+        }
+
+        ColdReadWatch.Read();
+        Assert.That(handler.Calls, Is.EqualTo(1), "nothing counts once disarmed");
+    }
+
+    [Test]
+    public void ColdReadWatch_ArmingAllocatesNothing()
+    {
+        CountingColdReadHandler handler = new();
+        object item = new();
+        // The first arm on a thread allocates its thread-static storage.
+        ColdReadWatch.Arm(3, handler, 0, item);
+        ColdReadWatch.Disarm();
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 1_000; i++)
+        {
+            ColdReadWatch.Arm(3, handler, i, item);
+            ColdReadWatch.Read();
+            ColdReadWatch.Disarm();
+        }
+
+        Assert.That(GC.GetAllocatedBytesForCurrentThread() - before, Is.Zero, "every warmed transaction arms the watch");
+    }
+
+    private sealed class CountingColdReadHandler : IColdReadHandler
+    {
+        public int Calls;
+        public int LastIndex = -1;
+        public object? LastItem;
+
+        public void OnColdReads(int index, object? item)
+        {
+            Calls++;
+            LastIndex = index;
+            LastItem = item;
+        }
+    }
+
     [Test]
     public void DiscoverAndWarmStorage_SkipsCandidatesMainThreadHasStarted()
     {
@@ -1426,7 +1910,9 @@ public class BlockCachePreWarmerTests
         {
             Transaction ready = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressE)
                 .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-            Transaction pending = Build.A.Transaction.WithGasLimit(12_000_000).WithTo(TestItem.AddressF)
+            // Gas for a few of F's reads: at 12M it discovers thousands of cells, whose warm-up can evict F's slot 0
+            // from the set-associative cache.
+            Transaction pending = Build.A.Transaction.WithGasLimit(50_000).WithTo(TestItem.AddressF)
                 .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
             Address sender = pending.SenderAddress!;
             pending.SenderAddress = null;
@@ -2031,6 +2517,44 @@ public class BlockCachePreWarmerTests
 
     private const int SloadManySlotCount = BlockCachePreWarmer.MaxDiscoveredCells + 808;
 
+    /// <summary>
+    /// for (i = 0; i &lt; slots; i++) if (sload(i) &gt;&gt; 72 == 0) invalid();
+    /// </summary>
+    private static byte[] BuildPackedLoopCode(int slots) =>
+    [
+        0x5F,             // 00 PUSH0              i
+        0x5B,             // 01 JUMPDEST           loop
+        0x80,             // 02 DUP1               i i
+        0x54,             // 03 SLOAD              v i
+        0x60, 0x48,       // 04 PUSH1 72           72 v i
+        0x1C,             // 06 SHR                v>>72 i
+        0x60, 0x0B,       // 07 PUSH1 ok           ok v>>72 i
+        0x57,             // 09 JUMPI              i
+        0xFE,             // 0A INVALID
+        0x5B,             // 0B JUMPDEST           ok
+        0x60, 0x01,       // 0C PUSH1 1
+        0x01,             // 0E ADD                i+1
+        0x80,             // 0F DUP1               i+1 i+1
+        0x60, (byte)slots, // 10 PUSH1 slots       slots i+1 i+1
+        0x11,             // 12 GT                 slots>i+1 i+1
+        0x60, 0x01,       // 13 PUSH1 loop
+        0x57,             // 15 JUMPI              i+1
+        0x00,             // 16 STOP
+    ];
+
+    /// <summary>Reads slot 1, counts down from 2^32 - 1 (minutes of execution), then reads slot 2.</summary>
+    private static byte[] BuildLongLoopCode() =>
+    [
+        0x60, 0x01, 0x54, 0x50,             // PUSH1 1 SLOAD POP
+        0x63, 0xFF, 0xFF, 0xFF, 0xFF,       // PUSH4 counter
+        0x5B,                               // 9: JUMPDEST
+        0x60, 0x01, 0x90, 0x03,             // PUSH1 1 SWAP1 SUB
+        0x80, 0x60, 0x09, 0x57,             // DUP1 PUSH1 9 JUMPI
+        0x50,                               // POP
+        0x60, 0x02, 0x54, 0x50,             // PUSH1 2 SLOAD POP
+        0x00,                               // STOP
+    ];
+
     /// <summary>Bytecode SLOADing slots 0..<paramref name="slotCount"/>-1 (unrolled PUSH2/SLOAD/POP per slot).</summary>
     private static byte[] BuildSloadManyCode(int slotCount)
     {
@@ -2104,15 +2628,47 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
-    public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2)] int budget)
+    public void Speculative_warmers_share_one_worker_budget([Range(1, 2)] int budget)
+    {
+        ConcurrentBag<int> observedBudgets = [];
+        IHasAccessList hint = Substitute.For<IHasAccessList>();
+        hint.GetAccessList(Arg.Any<Block>(), Arg.Any<IReleaseSpec>()).Returns(_ =>
+        {
+            ParallelUnbalancedWork.For(0, 16, Core.Cpu.RuntimeInformation.ParallelOptionsLogicalCores,
+                _ => observedBudgets.Add(ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0));
+            return null;
+        });
+        using ILifetimeScope warmingScope = _processingScope.BeginLifetimeScope(b => b
+            .AddSingleton<IHasAccessList>(hint)
+            .AddSingleton<IBlocksConfig>(new BlocksConfig
+            {
+                PreWarming = PreWarmMode.BlockAndMempool,
+                PreWarmStateConcurrency = 4,
+                MempoolPreWarmConcurrency = budget,
+                ParallelExecutionBatchRead = true
+            }));
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)warmingScope.Resolve<IBlockCachePreWarmer>();
+
+        RunSpeculativePreWarm(preWarmer, BuildParentHeader(), Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observedBudgets, Is.Not.Empty);
+            Assert.That(observedBudgets, Is.All.EqualTo(budget));
+        }
+    }
+
+    [Test]
+    public void Reactive_warmers_share_one_worker_budget([Values] bool cancel, [Values(1, 2, 4)] int budget, [Values] bool shared)
     {
         PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
         using ManualResetEventSlim release = new(false);
-        using CountdownEvent occupied = new(budget);
+        using CountdownEvent occupied = new(Math.Min(budget, 2));
         using ManualResetEventSlim exceeded = new(false);
+        using ManualResetEventSlim entered = new(false);
         using CancellationTokenSource cancellation = new();
         SharedBudgetPolicy policy = new(_processingScope.Resolve<PrewarmerEnvFactory>(), caches,
-            release, occupied, exceeded);
+            release, occupied, exceeded, entered);
         using BlockCachePreWarmer preWarmer = new(policy, minPoolSize: 4, concurrency: 2,
             parallelExecutionBatchRead: true, _processingScope.Resolve<NodeStorageCache>(), caches, LimboLogs.Instance);
         Block block = Build.A.Block.WithTransactions(
@@ -2125,7 +2681,9 @@ public class BlockCachePreWarmerTests
         BlockHeader parent = BuildParentHeader();
         using (_processingScope.Resolve<IWorldState>().BeginScope(parent))
         {
-            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget);
+            // Only a budget above one gets a runner that could take the coordinator.
+            Task warming = StartPrewarming(preWarmer, block, parent, Osaka.Instance, cancellation.Token, budget,
+                budget > 1 ? entered : null, shared ? new ParallelUnbalancedWork.WorkerGroup(budget) : null);
             bool filled;
             bool oversubscribed;
             try
@@ -2142,7 +2700,7 @@ public class BlockCachePreWarmerTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(filled, Is.True, "all available workers must actually enter warming");
-                Assert.That(oversubscribed || exceeded.IsSet, Is.False, "all warming paths must share the inherited worker budget");
+                Assert.That(oversubscribed || exceeded.IsSet, Is.False, "all warming paths must honor both the configured and inherited worker budgets");
                 Assert.That(policy.Timeouts, Is.Zero);
                 if (!cancel) Assert.That(policy.DiscoveryBuilds, Is.GreaterThan(0), "storage discovery must still run");
             }
@@ -2150,7 +2708,7 @@ public class BlockCachePreWarmerTests
     }
 
     private sealed class SharedBudgetPolicy(PrewarmerEnvFactory factory, PreBlockCaches caches,
-        ManualResetEventSlim release, CountdownEvent occupied, ManualResetEventSlim exceeded)
+        ManualResetEventSlim release, CountdownEvent occupied, ManualResetEventSlim exceeded, ManualResetEventSlim entered)
         : IPooledObjectPolicy<IPrewarmerEnv>
     {
         private int _active;
@@ -2158,6 +2716,7 @@ public class BlockCachePreWarmerTests
         private ManualResetEventSlim Release => release;
         private CountdownEvent Occupied => occupied;
         private ManualResetEventSlim Exceeded => exceeded;
+        private ManualResetEventSlim Entered => entered;
         private PreBlockCaches Caches => caches;
         public int Timeouts;
         public int DiscoveryBuilds;
@@ -2175,6 +2734,7 @@ public class BlockCachePreWarmerTests
                 try
                 {
                     if (active > owner.Occupied.InitialCount) owner.Exceeded.Set();
+                    owner.Entered.Set();
                     if (Interlocked.Increment(ref owner._entered) <= owner.Occupied.InitialCount) owner.Occupied.Signal();
                     if (!owner.Release.Wait(DiscoveryTimeout)) Interlocked.Increment(ref owner.Timeouts);
                     if (owner.Caches.CurrentStorageReadCapture is not null) Interlocked.Increment(ref owner.DiscoveryBuilds);
@@ -2340,14 +2900,27 @@ public class BlockCachePreWarmerTests
     }
 
     private static Task StartPrewarming(BlockCachePreWarmer preWarmer, Block block, BlockHeader parent,
-        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0)
+        IReleaseSpec spec, CancellationToken token = default, int workerBudget = 0, ManualResetEventSlim? warmerEntered = null,
+        ParallelUnbalancedWork.WorkerGroup? group = null)
     {
         if (workerBudget > 0)
             return Task.Run(() =>
             {
-                using ParallelUnbalancedWork.WorkerScope scope = ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
+                using ParallelUnbalancedWork.WorkerScope scope = group?.Enter() ?? ParallelUnbalancedWork.BeginWorkerScope(workerBudget);
+                // Queued ahead of the session: a helper that starts before this thread joins would otherwise take the
+                // coordinator and leave this thread's share of the budget idle in the join. Relies on the scope handing
+                // its runner queued work oldest-first and requesting no runner beyond the one this item already has.
+                // Parked here, the runner waits for the coordinator to be warming on this thread, then drains the
+                // session's helper work.
+                using ParallelUnbalancedWork.BackgroundWork? parkedHelper = warmerEntered is null ? null
+                    : ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions, _ =>
+                    {
+                        if (!warmerEntered.Wait(DiscoveryTimeout))
+                            throw new TimeoutException("no warmer entered while the scope's runner was parked");
+                    });
                 using IDisposable? scopedSession = preWarmer.PreWarmCaches(block, parent, spec, token);
                 ((PrewarmingSession?)scopedSession)?.WaitForCompletion();
+                parkedHelper?.WaitForCompletion();
             });
 
         IDisposable? session = preWarmer.PreWarmCaches(block, parent, spec, token);
@@ -2363,10 +2936,12 @@ public class BlockCachePreWarmerTests
         IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
         using (mainWorldState.BeginScope(parent))
         {
+            // Prewarm before hinting, as block processing does: PreWarmCaches may clear the caches the hint fills.
+            Task prewarmTask = StartPrewarming(preWarmer, block, parent, spec);
             Task? hintBalTask = block.BlockAccessList is not null && preWarmer.IsBalReadWarmingEnabled(spec)
                 ? mainWorldState.HintBal(block.BlockAccessList)
                 : null;
-            StartPrewarming(preWarmer, block, parent, spec).GetAwaiter().GetResult();
+            prewarmTask.GetAwaiter().GetResult();
             hintBalTask?.GetAwaiter().GetResult();
         }
         return Task.CompletedTask;

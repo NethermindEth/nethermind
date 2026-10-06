@@ -30,7 +30,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockProcessingEnv(
+public partial class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
@@ -50,8 +50,8 @@ public class StatelessBlockProcessingEnv(
     // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
     private const int CodeCacheCapacity = 512;
 
-    /// <summary>Controls whether replay records derived requests or preserves the supplied requests hash.</summary>
-    public IExecutionRequestsProcessorFactory ExecutionRequestsProcessorFactory { get; init; } = StatelessExecutionRequestsProcessorFactory.Instance;
+    /// <summary>Controls how the request system calls treat an absent request predeploy.</summary>
+    public ExecutionRequestsOptions ExecutionRequestsOptions { get; init; } = ExecutionRequestsOptions.Default;
 
     /// <summary>Builds the transaction processors; the default executes the Ethereum rules.</summary>
     public ITransactionProcessorFactory? TransactionProcessorFactory { get; init; }
@@ -69,14 +69,18 @@ public class StatelessBlockProcessingEnv(
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+    public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
         new WorldState(
             new TrieStoreScopeProvider(
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
                 new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
             ),
             logManager
         )
     );
+
+    /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
+    private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
 
     private StatelessBlockTree BlockTree
     {
@@ -160,7 +164,8 @@ public class StatelessBlockProcessingEnv(
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache),
                 transactionProcessorFactory: TransactionProcessorFactory),
-            ExecutionRequestsProcessorFactory
+            ExecutionRequestsOptions,
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, BlockTree)
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -185,7 +190,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            ExecutionRequestsProcessorFactory.Create(txProcessor),
+            new ExecutionRequestsProcessor(txProcessor, ExecutionRequestsOptions),
             blockAccessListManager
         );
     }

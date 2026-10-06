@@ -156,11 +156,11 @@ public class EezModuleTests
     }
 
     [TestCase(false, TestName = "ScopedProcessor")]
-    [TestCase(true, TestName = "FactoryForBlockAccessListExecution")]
-    public void Resolve_ExecutionRequestsProcessor_SkipsCodelessRequestContracts(bool fromFactory)
+    [TestCase(true, TestName = "OptionsForBlockAccessListExecution")]
+    public void Resolve_ExecutionRequestsProcessor_SkipsCodelessRequestContracts(bool fromOptions)
     {
-        IExecutionRequestsProcessor processor = fromFactory
-            ? _scope.Resolve<IExecutionRequestsProcessorFactory>().Create(_scope.Resolve<ITransactionProcessor>())
+        IExecutionRequestsProcessor processor = fromOptions
+            ? new ExecutionRequestsProcessor(_scope.Resolve<ITransactionProcessor>(), _scope.Resolve<ExecutionRequestsOptions>())
             : _scope.Resolve<IExecutionRequestsProcessor>();
         using IDisposable stateScope = _codelessState.BeginScope(IWorldState.PreGenesis);
         Block block = Build.A.Block.WithNumber(1).TestObject;

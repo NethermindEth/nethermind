@@ -750,9 +750,9 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     // #13202: "Chainspec file is misconfigured!" was emitted once per eth_estimateGas call on a syncing mainnet
-    // node running the chainspec we ship. eth_estimateGas asks for the spec at (head + 1, wall-clock now) - see
-    // BlockchainBridge's treatBlockHeaderAsParentBlock path - so while the head is below the chain's largest block
-    // transition and the clock is past the first timestamp fork, the old per-call check was always true.
+    // node running the chainspec we ship. eth_estimateGas asked for the spec at (head + 1, wall-clock now), so
+    // while the head was below the chain's largest block transition and the clock was past the first timestamp
+    // fork, the old per-call check was always true.
     [TestCase("foundation")]
     [TestCase("gnosis")]
     public void No_misconfiguration_warning_for_a_shipped_chainspec_below_its_last_block_transition(string chain)
@@ -944,6 +944,26 @@ public class ChainSpecBasedSpecProviderTests
     }
 
     [Test]
+    public void Eip8131_activates_only_at_its_own_transition_timestamp()
+    {
+        const ulong eip8131Timestamp = 20;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8131TransitionTimestamp = eip8131Timestamp },
+            AmsterdamTimestamp = 10,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8131Timestamp - 1)).IsEip8131Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8131Timestamp)).IsEip8131Enabled, Is.True);
+        }
+    }
+
+    [Test]
     public void Frame_family_eips_activate_only_at_their_own_transition_timestamp()
     {
         const ulong eip8141Timestamp = 10;
@@ -982,6 +1002,35 @@ public class ChainSpecBasedSpecProviderTests
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7805Timestamp)).IsEip7805Enabled, Is.True);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp - 1)).IsEip8037Enabled, Is.False);
             Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip8037Timestamp)).IsEip8037Enabled, Is.True);
+        }
+    }
+
+    [TestCase(99ul, false)]
+    [TestCase(100ul, true)]
+    public void Eip8253_activates_at_its_transition_timestamp(ulong timestamp, bool expected)
+    {
+        ChainSpec chainSpec = new()
+        {
+            Parameters = new ChainParameters { Eip8253TransitionTimestamp = 100 },
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        Assert.That(new ChainSpecBasedSpecProvider(chainSpec).GetSpec(ForkActivation.TimestampOnly(timestamp)).IsEip8253Enabled, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Eip7979_activates_at_its_transition_timestamp()
+    {
+        const ulong eip7979Timestamp = 10;
+        (ChainSpecBasedSpecProvider provider, _) = TestSpecHelper.LoadChainSpec(new ChainSpecJson
+        {
+            Params = new ChainSpecParamsJson { Eip7979TransitionTimestamp = eip7979Timestamp }
+        });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp - 1)).IsEip7979Enabled, Is.False);
+            Assert.That(provider.GetSpec(ForkActivation.TimestampOnly(eip7979Timestamp)).IsEip7979Enabled, Is.True);
         }
     }
 

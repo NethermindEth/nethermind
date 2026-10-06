@@ -95,7 +95,7 @@ public class ReorgTests
             LimboLogs.Instance);
 
         BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig() { ParallelExecution = false }, new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(blockhashProvider, specProvider, LimboLogs.Instance),
-        ExecutionRequestsProcessorFactory.Instance);
+        ExecutionRequestsOptions.Default);
         BlockProcessor blockProcessor = new(
             MainnetSpecProvider.Instance,
             Always.Valid,

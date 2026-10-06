@@ -172,7 +172,7 @@ public class BlockAccessListSequentialValidationTests
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance),
-            ExecutionRequestsProcessorFactory.Instance);
+            ExecutionRequestsOptions.Default);
         return (stateProvider, balManager);
     }
 

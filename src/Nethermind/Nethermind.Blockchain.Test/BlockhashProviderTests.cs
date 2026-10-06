@@ -397,12 +397,12 @@ public class BlockhashProviderTests
 
         // Stands in for the beacon-root call: a BLOCKHASH on this header before the ring buffer is written.
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
-        Assert.That(before.ToArray(), Is.EqualTo(previousOccupant.Bytes.ToArray()), "precondition: the old occupant is still there");
+        Assert.That(before, Is.SequenceEqualTo(previousOccupant.Bytes), "precondition: the old occupant is still there");
 
         fixture.Store.ApplyBlockhashStateChanges(header, fixture.Spec);
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
-        Assert.That(after.ToArray(), Is.EqualTo(header.ParentHash!.Bytes.ToArray()),
+        Assert.That(after, Is.SequenceEqualTo(header.ParentHash!.Bytes),
             "the memo served what the slot held before the block wrote it");
     }
 
@@ -440,7 +440,7 @@ public class BlockhashProviderTests
         {
             Assert.That(fixture.Store.GetBlockHashFromState(header, number, fixture.Spec), Is.EqualTo(expected), because);
             Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> span), Is.True, because);
-            Assert.That(span.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), because);
+            Assert.That(span, Is.SequenceEqualTo(expected.Bytes), because);
         }
 
         void AssertNotServed(ulong number, string because)
@@ -467,7 +467,7 @@ public class BlockhashProviderTests
         fixture.Provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> first), Is.True);
-        Assert.That(first.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()), "first block");
+        Assert.That(first, Is.SequenceEqualTo(firstParent.Bytes), "first block");
 
         // A second header at the same height overwrites the same ring slot.
         Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
@@ -475,7 +475,7 @@ public class BlockhashProviderTests
         fixture.StoreParentHash(secondHeader, secondParent);
 
         Assert.That(fixture.Provider.TryGetBlockhash(secondHeader, number, fixture.Spec, out ReadOnlySpan<byte> second), Is.True);
-        Assert.That(second.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "a second block must not be served the first entry");
+        Assert.That(second, Is.SequenceEqualTo(secondParent.Bytes), "a second block must not be served the first entry");
     }
 
     /// <summary>Repeated lookups must keep agreeing with a direct read from state.</summary>
@@ -497,7 +497,7 @@ public class BlockhashProviderTests
                 Assert.That(found, Is.EqualTo(expected is not null), $"round {round}, number {number}");
                 if (expected is not null)
                 {
-                    Assert.That(actual.ToArray(), Is.EqualTo(expected.Bytes.ToArray()), $"round {round}, number {number}");
+                    Assert.That(actual, Is.SequenceEqualTo(expected.Bytes), $"round {round}, number {number}");
                 }
             }
         }
@@ -522,13 +522,13 @@ public class BlockhashProviderTests
             Assert.That(fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _), Is.True, $"number {n} should resolve");
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (ulong n = 1; n < 42; n++)
+        AssertNoPerLookupAllocation(100, 41, () =>
         {
-            fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero);
+            for (ulong n = 1; n < 42; n++)
+            {
+                fixture.Provider.TryGetBlockhash(header, n, fixture.Spec, out _);
+            }
+        });
     }
 
     /// <summary>The memo must hit for the header the block actually executes with, which is a
@@ -548,13 +548,8 @@ public class BlockhashProviderTests
 
         Assert.That(fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _), Is.True, "warm the memo via the clone");
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < 1000; i++)
-        {
-            fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _);
-        }
-
-        Assert.That(GC.GetAllocatedBytesForCurrentThread() - start, Is.Zero, "the clone must hit the armed memo");
+        AssertNoPerLookupAllocation(1000, 1, () => fixture.Provider.TryGetBlockhash(processing, number, fixture.Spec, out _),
+            "the clone must hit the armed memo");
     }
 
     /// <summary>An unarmed provider (one that never prefetched) must never serve the memo — it re-reads
@@ -570,14 +565,14 @@ public class BlockhashProviderTests
         fixture.StoreParentHash(header, firstParent);
         // No Prefetch: this provider is unarmed, exactly like a pooled eth_call env.
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> before), Is.True);
-        Assert.That(before.ToArray(), Is.EqualTo(firstParent.Bytes.ToArray()));
+        Assert.That(before, Is.SequenceEqualTo(firstParent.Bytes));
 
         // Rewrite the history slot through the same world state (the shape a stateOverride produces).
         Hash256 secondParent = new("0x2222222222222222222222222222222222222222222222222222222222222222");
         fixture.StoreParentHash(header, secondParent);
 
         Assert.That(fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out ReadOnlySpan<byte> after), Is.True);
-        Assert.That(after.ToArray(), Is.EqualTo(secondParent.Bytes.ToArray()), "an unarmed read must reflect the rewrite, not a memoized value");
+        Assert.That(after, Is.SequenceEqualTo(secondParent.Bytes), "an unarmed read must reflect the rewrite, not a memoized value");
     }
 
     /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
@@ -601,26 +596,35 @@ public class BlockhashProviderTests
             fixture.Provider.GetBlockhash(header, number, fixture.Spec);
         }
 
-        long start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _);
-        }
-        long spanAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
-
-        start = GC.GetAllocatedBytesForCurrentThread();
-        for (int i = 0; i < Iterations; i++)
-        {
-            fixture.Provider.GetBlockhash(header, number, fixture.Spec);
-        }
-        long hashAllocated = GC.GetAllocatedBytesForCurrentThread() - start;
+        long spanAllocated = AllocatedBy(Iterations, () => fixture.Provider.TryGetBlockhash(header, number, fixture.Spec, out _));
+        long hashAllocated = AllocatedBy(Iterations, () => fixture.Provider.GetBlockhash(header, number, fixture.Spec));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(spanAllocated, Is.Zero, $"span={spanAllocated} hash={hashAllocated}");
-            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.Zero,
+            Assert.That(spanAllocated, Is.LessThan(Iterations * MaxBytesPerLookup), $"span={spanAllocated} hash={hashAllocated}");
+            Assert.That(hashAllocated, blockHashInState ? Is.GreaterThan(Iterations * 8) : Is.LessThan(Iterations * MaxBytesPerLookup),
                 "only the storage-backed path materialises a Hash256 per lookup");
         }
+    }
+
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
+    private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
+
+    private static long AllocatedBy(int repeats, Action action)
+    {
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repeats; i++)
+        {
+            action();
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - start;
     }
 
     /// <summary>The span overload must left-pad exactly as the <see cref="Hash256"/> overload does.</summary>
@@ -644,7 +648,7 @@ public class BlockhashProviderTests
         Assert.That(found, Is.EqualTo(expected is not null));
         if (expected is not null)
         {
-            Assert.That(actual.ToArray(), Is.EqualTo(expected.Bytes.ToArray()));
+            Assert.That(actual, Is.SequenceEqualTo(expected.Bytes));
         }
     }
 
@@ -705,7 +709,7 @@ public class BlockhashProviderTests
             new BlocksConfig { ParallelExecution = false },
             new WithdrawalProcessorFactory(LimboLogs.Instance),
             new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), specProvider, LimboLogs.Instance),
-            ExecutionRequestsProcessorFactory.Instance);
+            ExecutionRequestsOptions.Default);
         balManager.PrepareForProcessing(current, spec, ProcessingOptions.None);
         balManager.SetBlockExecutionContext(new BlockExecutionContext(current.Header, spec));
         balManager.Setup(current);
