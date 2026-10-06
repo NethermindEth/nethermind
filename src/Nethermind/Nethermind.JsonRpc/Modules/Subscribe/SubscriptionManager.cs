@@ -38,29 +38,35 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void AddOrUpdateClientsBag(Subscription subscription)
         {
-            void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
+            IJsonRpcDuplexClient client = subscription.JsonRpcDuplexClient;
+            // A connection processes its requests concurrently, so its first two subscriptions can race to create the
+            // bag: only the one that stores it hooks Closed, and the other joins the stored bag.
+            while (true)
             {
-                IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
-                RemoveClientSubscriptions(jsonRpcDuplexClient!);
-                jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
-            }
-
-            _subscriptionsByJsonRpcClient.AddOrUpdate(subscription.JsonRpcDuplexClient.Id,
-                k =>
+                if (_subscriptionsByJsonRpcClient.TryGetValue(client.Id, out HashSet<Subscription> bag))
                 {
-                    if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
-                    subscription.JsonRpcDuplexClient.Closed += OnJsonRpcDuplexClientClosed;
-                    return [subscription];
-                },
-                (k, b) =>
-                {
-                    lock (b)
+                    lock (bag)
                     {
-                        b.Add(subscription);
+                        bag.Add(subscription);
                     }
                     if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
-                    return b;
-                });
+                    return;
+                }
+
+                if (_subscriptionsByJsonRpcClient.TryAdd(client.Id, [subscription]))
+                {
+                    client.Closed += OnJsonRpcDuplexClientClosed;
+                    if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
+                    return;
+                }
+            }
+        }
+
+        private void OnJsonRpcDuplexClientClosed(object? sender, EventArgs e)
+        {
+            IJsonRpcDuplexClient jsonRpcDuplexClient = (IJsonRpcDuplexClient)sender;
+            RemoveClientSubscriptions(jsonRpcDuplexClient!);
+            jsonRpcDuplexClient.Closed -= OnJsonRpcDuplexClientClosed;
         }
 
         public bool RemoveSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient, string subscriptionId)

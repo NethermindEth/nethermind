@@ -754,6 +754,54 @@ public class JsonRpcSocketsClientTests
         }
 
         [Test]
+        public async Task ReceiveLoop_WithDefaultConcurrency_AnswersAFastRequestBehindASlowOne()
+        {
+            // 1. One connection with the default IPC concurrency sends a slow request, then a fast one.
+            // 2. The slow request is held until the fast one has written its response.
+            // 3. Processing one request at a time would never answer the fast request, so the wait times out.
+            using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
+            TaskCompletionSource releaseSlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource fastAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            IJsonRpcProcessor jsonRpcProcessor = Substitute.For<IJsonRpcProcessor>();
+            async ValueTask ResponseFunc(CallInfo c)
+            {
+                PipeReader reader = c.ArgAt<PipeReader>(0);
+                ReadResult read = await reader.ReadToEndAsync();
+                bool slow = read.Buffer.FirstSpan.SequenceEqual("slow"u8);
+                reader.AdvanceTo(read.Buffer.End);
+                if (slow) await releaseSlow.Task;
+
+                IJsonRpcResponseSink sink = c.Arg<IJsonRpcResponseSink>();
+                await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), c.Arg<CancellationToken>());
+                if (!slow) fastAnswered.TrySetResult();
+            }
+
+            jsonRpcProcessor
+                .ProcessAsync(
+                    Arg.Any<PipeReader>(),
+                    Arg.Any<JsonRpcContext>(),
+                    Arg.Any<IJsonRpcResponseSink>(),
+                    Arg.Any<JsonRpcProcessingOptions>(),
+                    Arg.Any<CancellationToken>())
+                .Returns(ResponseFunc);
+
+            Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token, new JsonRpcConfig().IpcProcessingConcurrency);
+            await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
+            await sendStream.WriteAsync("slow"u8.ToArray(), pair.Cts.Token);
+            await sendStream.WriteEndOfMessageAsync();
+            await sendStream.WriteAsync("fast"u8.ToArray(), pair.Cts.Token);
+            await sendStream.WriteEndOfMessageAsync();
+
+            bool answered = await Task.WhenAny(fastAnswered.Task, Task.Delay(TimeSpan.FromSeconds(10))) == fastAnswered.Task;
+            releaseSlow.SetResult();
+
+            Assert.That(answered, Is.True, "a slow request must not block a later request on the same connection");
+
+            await ShutdownAndWait(pair.SendSocket, receiver);
+        }
+
+        [Test]
         public async Task Does_not_process_partial_message_without_delimiter()
         {
             using UnixSocketPair pair = await UnixSocketPair.CreateAsync();
