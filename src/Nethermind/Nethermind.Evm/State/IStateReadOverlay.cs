@@ -65,6 +65,9 @@ public sealed class StateReadOverlaySlot
 
     /// <summary>Answers part of the state underneath the overlay from memory, ahead of the scope; it is read behind
     /// <see cref="Cache"/> and what it answers is cached like a read of the scope.</summary>
+    /// <remarks>Because its answers land in the cache every worker of the block shares, it must be a copy of the state
+    /// the scope stands on, never a change laid over it, and every <see cref="Arm"/> that passes the same
+    /// <see cref="BlockReadCache"/> must pass the same parent state, or none.</remarks>
     public IStateReadOverlay? ParentState => _parentState;
 
     /// <summary>Takes ownership of the lease, replacing and releasing any previous one.</summary>
