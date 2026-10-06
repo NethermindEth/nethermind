@@ -1715,8 +1715,10 @@ namespace Nethermind.Evm.TransactionProcessing
             // left in gas_left (including refunded spill), so only the reservoir goes unspent here.
             ulong preRefundGas = tx.GasLimit - (ulong)stateReservoir;
             // The execution gas refund (e.g. EIP-7702 ACCOUNT_WRITE) survives a halt: the spec adds it to
-            // the refund counter pre-execution and applies min(before_refund / 5, counter) to tx_gas_used.
+            // the refund counter pre-execution and applies min(before_refund / 5, counter) (uncapped under EIP-3298).
             ulong executionRefund = CalculateClaimableRefund(preRefundGas, codeInsertExecutionRefund, spec);
+            if (spec.IsEip3298Enabled && executionRefund > preRefundGas)
+                return InvalidStateGas(Logger, $"EIP-3298 halt-path invariant violated: refund ({executionRefund}) exceeds gas used ({preRefundGas}).");
             ulong spentGas = Math.Max(preRefundGas - executionRefund, floorGas);
             // Spilled state gas burns in gas_left as execution gas; the state dimension keeps
             // only the post-reset intrinsic remainder.
@@ -1876,6 +1878,8 @@ namespace Nethermind.Evm.TransactionProcessing
             }
 
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
+            if (spec.IsEip3298Enabled && refund > 0 && (ulong)refund > spentGas)
+                return InvalidStateGas(Logger, $"EIP-3298 invariant violated: refund ({refund}) exceeds gas used ({spentGas}).");
             (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
             if (blockStateGas < 0)
                 return InvalidStateGas(Logger, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
@@ -1927,6 +1931,10 @@ namespace Nethermind.Evm.TransactionProcessing
             long totalToRefund = (long)codeInsertExecutionRefund;
             if (!substate.IsError && !substate.ShouldRevert)
                 totalToRefund += substate.Refund + (substate.DestroyList?.Count ?? 0) * (long)spec.GasCosts.DestroyRefund;
+
+            // EIP-3298: no cap; the remaining refunds never exceed the same transaction's charges.
+            if (spec.IsEip3298Enabled)
+                return (spentGas, totalToRefund);
 
             long quotient = spec.IsEip3529Enabled ? (long)RefundHelper.MaxRefundQuotientEIP3529 : (long)RefundHelper.MaxRefundQuotient;
             return (spentGas, Math.Min((long)(spentGas / (ulong)quotient), totalToRefund));
