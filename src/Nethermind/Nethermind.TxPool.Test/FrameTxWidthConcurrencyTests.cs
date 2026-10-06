@@ -151,21 +151,26 @@ public class FrameTxWidthConcurrencyTests
     }
 
     [Test]
-    public void SenderGauge_ReturnsToBaseline_AfterConcurrentChurnToZero()
+    public void SenderGauge_ReturnsToBaseline_AfterConcurrentChurnToZero([Values] bool holdsPaymasters)
     {
         const int senders = 256;
-        long before = Volatile.Read(ref Metrics.FrameTxSendersWithWidth);
-        SenderWidthCache cache = new();
+        ref long gauge = ref holdsPaymasters ? ref Metrics.FrameTxPaymastersWithWidth : ref Metrics.FrameTxSendersWithWidth;
+        ref long otherGauge = ref holdsPaymasters ? ref Metrics.FrameTxSendersWithWidth : ref Metrics.FrameTxPaymastersWithWidth;
+        long before = Volatile.Read(ref gauge);
+        long otherBefore = Volatile.Read(ref otherGauge);
+        SenderWidthCache cache = new(holdsPaymasters: holdsPaymasters);
         Address[] all = BuildSenders(senders);
 
         Parallel.ForEach(all, s => cache.Earn(s, Cost));
-        long peak = Volatile.Read(ref Metrics.FrameTxSendersWithWidth) - before;
+        long peak = Volatile.Read(ref gauge) - before;
+        long otherPeak = Volatile.Read(ref otherGauge) - otherBefore;
         Parallel.ForEach(all, s => Assert.That(cache.TrySpend(s, Cost), Is.True));
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(peak, Is.EqualTo(senders), "each first credit raises the gauge exactly once");
-            Assert.That(Volatile.Read(ref Metrics.FrameTxSendersWithWidth) - before, Is.EqualTo(0),
+            Assert.That(otherPeak, Is.Zero, "senders and paymasters are counted on separate gauges");
+            Assert.That(Volatile.Read(ref gauge) - before, Is.EqualTo(0),
                 "draining every sender to zero returns the gauge to baseline, so an idle pool reads no width");
         }
     }

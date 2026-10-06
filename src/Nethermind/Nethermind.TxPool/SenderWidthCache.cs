@@ -24,8 +24,9 @@ namespace Nethermind.TxPool;
 /// refused sender falls back to its free baseline. Credits come from the single finalization thread, which is
 /// the only user of the rotating window. New earnings stop at the caller's cap and otherwise saturate at
 /// <see cref="UInt256.MaxValue"/> rather than wrapping; a cap lowered later never shrinks a balance already earned.
+/// A second instance holds the width of EIP-8141 paymasters under the same rules, reported on its own gauge.
 /// </remarks>
-internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders)
+internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.DefaultMaxSenders, bool holdsPaymasters = false)
 {
     public const int DefaultMaxSenders = 1 << 16;
     private const int EvictionSample = 32;
@@ -35,6 +36,8 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
     private IEnumerator<KeyValuePair<AddressAsKey, UInt256>>? _evictionWindow;
 
     public int Count => Volatile.Read(ref _count);
+
+    private ref long HoldersWithWidth => ref holdsPaymasters ? ref Metrics.FrameTxPaymastersWithWidth : ref Metrics.FrameTxSendersWithWidth;
 
     public UInt256 GetWidth(AddressAsKey sender) => _width.TryGetValue(sender, out UInt256 width) ? width : UInt256.Zero;
 
@@ -107,7 +110,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
                 if (_width.TryAdd(sender, seeded))
                 {
                     Interlocked.Increment(ref _count);
-                    Interlocked.Increment(ref Metrics.FrameTxSendersWithWidth);
+                    Interlocked.Increment(ref HoldersWithWidth);
                     return;
                 }
             }
@@ -150,7 +153,7 @@ internal sealed class SenderWidthCache(int maxSenders = SenderWidthCache.Default
     private void Untrack()
     {
         Interlocked.Decrement(ref _count);
-        Interlocked.Decrement(ref Metrics.FrameTxSendersWithWidth);
+        Interlocked.Decrement(ref HoldersWithWidth);
     }
 
     /// <summary>Removes <paramref name="sender"/> only while its width is still <paramref name="expected"/>, so a racing credit is never dropped.</summary>

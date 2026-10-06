@@ -17,12 +17,14 @@ using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 public class FrameTxWidthFilterTests
 {
     private static readonly Address Sender = TestItem.AddressA;
+    private static readonly Address Paymaster = TestItem.AddressB;
     private static readonly UInt256 NonceKey = 0xbeef;
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
@@ -292,6 +294,25 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000));
     }
 
+    [TestCase(true, true, 0ul, 90_000ul, TestName = "a sponsored transaction credits its paymaster with the receipt gas")]
+    [TestCase(true, true, 50_000ul, 50_000ul, TestName = "the paymaster credit is held at the width cap")]
+    [TestCase(true, false, 0ul, 0ul, TestName = "a self-paid transaction credits no paymaster")]
+    [TestCase(false, true, 0ul, 0ul, TestName = "disabled width credits no paymaster")]
+    public void EarnWidthOnFinalization_CreditsThePaymasterOfASponsoredFrameTransaction(bool enabled, bool sponsored, ulong widthCap, ulong expected)
+    {
+        FrameTxWidthLedger ledger = new(new TxPoolConfig { FrameTxWidthEnabled = enabled, FrameTxWidthCap = widthCap }, LimboLogs.Instance);
+        Transaction finalized = FrameTx(nonce: 0, nonceKeys: null, frames: sponsored ? [OnlyVerify(), Pay(Paymaster)] : [SelfVerify()]);
+
+        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { GasUsed = 90_000 }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ledger.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo((UInt256)expected));
+            Assert.That(ledger.PaymasterWidth.Count, Is.EqualTo(expected == 0 ? 0 : 1));
+            Assert.That(ledger.SenderWidth.Count, Is.Zero, "paymaster width is held apart from sender width");
+        }
+    }
+
     private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille, Transaction? baseline = null, uint nextBaseFee = 0)
     {
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
@@ -315,7 +336,7 @@ public class FrameTxWidthFilterTests
 
     private static Transaction KeyedTx(ulong nonceSeq, uint gasPrice = 1, int signatures = 1) => FrameTx(nonceSeq, [NonceKey], gasPrice, signatures);
 
-    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1)
+    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1, TxFrame[]? frames = null)
     {
         TxFrameSignature[] frameSignatures = new TxFrameSignature[signatures];
         for (int i = 0; i < signatures; i++)
@@ -329,7 +350,7 @@ public class FrameTxWidthFilterTests
             SenderAddress = Sender,
             Nonce = nonce,
             NonceKeys = nonceKeys,
-            Frames = [],
+            Frames = frames ?? [],
             FrameSignatures = frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = gasPrice,

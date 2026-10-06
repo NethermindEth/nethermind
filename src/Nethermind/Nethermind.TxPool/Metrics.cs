@@ -96,6 +96,10 @@ namespace Nethermind.TxPool
         [Description("Number of EIP-8250 keyed-nonce frame-transaction senders currently holding positive width.")]
         public static long FrameTxSendersWithWidth;
 
+        [GaugeMetric]
+        [Description("Number of EIP-8141 frame-transaction paymasters currently holding positive width.")]
+        public static long FrameTxPaymastersWithWidth;
+
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]
         public static long PendingTransactionsFrameTxPaymasterLimitReached;
