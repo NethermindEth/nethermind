@@ -173,13 +173,26 @@ public static class SszRestPaths
     /// case-insensitively against the <c>Eth-Execution-Version</c> value, so it is returned as-is
     /// (no per-call lowercasing).
     /// </summary>
+    /// <remarks>
+    /// Chainspec-based and decorated specs are not <see cref="Forks.NamedReleaseSpec"/> instances,
+    /// so they are mapped to the newest fork whose marker EIP they enable.
+    /// </remarks>
     public static string? GetEngineApiForkName(IReleaseSpec spec)
     {
-        for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec; n is not null; n = n.Parent)
+        for (Forks.NamedReleaseSpec? n = spec as Forks.NamedReleaseSpec ?? MatchForkByMarker(spec); n is not null; n = n.Parent)
         {
             if (n.Name is { } name && _forkSpecByUrl.ContainsKey(name))
                 return name;
         }
         return null;
     }
+
+    private static Forks.NamedReleaseSpec MatchForkByMarker(IReleaseSpec spec) =>
+        spec.IsBogotaEnabled ? Forks.Bogota.Instance
+        : spec.IsAmsterdamEnabled ? Forks.Amsterdam.Instance
+        : spec.IsOsakaEnabled ? Forks.Osaka.Instance
+        : spec.IsPragueEnabled ? Forks.Prague.Instance
+        : spec.IsCancunEnabled ? Forks.Cancun.Instance
+        : spec.IsShanghaiEnabled ? Forks.Shanghai.Instance
+        : Forks.Paris.Instance;
 }

@@ -30,7 +30,10 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NSubstitute.Core;
@@ -153,6 +156,30 @@ public class SszMiddlewareTests
 
         Assert.That(missing, Is.Empty);
     }
+
+    // Chainspec-based and decorated specs are not NamedReleaseSpec instances, so the fork must come from their marker EIPs.
+    [TestCase(MainnetSpecProvider.ShanghaiBlockTimestamp, "shanghai")]
+    [TestCase(MainnetSpecProvider.CancunBlockTimestamp, "cancun")]
+    [TestCase(MainnetSpecProvider.PragueBlockTimestamp, "prague")]
+    [TestCase(MainnetSpecProvider.OsakaBlockTimestamp, "osaka")]
+    [TestCase(MainnetSpecProvider.BPO2BlockTimestamp, "osaka")]
+    public void GetEngineApiForkName_resolves_mainnet_chainspec_spec(ulong timestamp, string expectedFork)
+    {
+        ChainSpecFileLoader loader = new(new EthereumJsonSerializer(), LimboLogs.Instance);
+        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
+        ChainSpecBasedSpecProvider specProvider = new(loader.LoadEmbeddedOrFromFile(path));
+
+        IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(MainnetSpecProvider.ParisBlockNumber + 1, timestamp));
+
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork).IgnoreCase);
+    }
+
+    private static readonly IReleaseSpec[] EngineApiForks =
+        [Paris.Instance, Shanghai.Instance, Cancun.Instance, Prague.Instance, Osaka.Instance, BPO1.Instance, Amsterdam.Instance, Bogota.Instance];
+
+    [Test]
+    public void GetEngineApiForkName_resolves_decorated_spec_like_its_fork([ValueSource(nameof(EngineApiForks))] IReleaseSpec fork) =>
+        Assert.That(SszRestPaths.GetEngineApiForkName(new ReleaseSpecDecorator(fork)), Is.EqualTo(SszRestPaths.GetEngineApiForkName(fork)));
 
     // The coverage above only means something if this hand-built set matches what production registers.
     [Test]
