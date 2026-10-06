@@ -189,11 +189,15 @@ on:
           Processing measurement preset. standard preserves the normal RocksDB/client path;
           compute-warm enables EXPB_EVM_WARMUP=1 and raises the RPC gas cap for a lower-variance
           compute-focused signal. Compute-warm runs are not comparable with standard runs.
+          instructions counts the user-space instructions each block takes on the processing thread,
+          in a deterministic single-threaded mode that repeats within about 0.01% between runs
+          (Nethermind, one image); its timings are not comparable with the other presets.
         required: false
         type: choice
         options:
           - standard
           - compute-warm
+          - instructions
         default: standard
   pull_request:
     types: [labeled]
@@ -239,7 +243,7 @@ jobs:
       retrospective_last: ${{ steps.resolve.outputs.retrospective_last }}
       retrospective_step: ${{ steps.resolve.outputs.retrospective_step }}
       state_layout: ${{ steps.resolve.outputs.state_layout }}
-      payload_sets: ${{ steps.resolve.outputs.payload_sets }}
+      cells: ${{ steps.resolve.outputs.cells }}
       dottrace: ${{ steps.resolve.outputs.dottrace }}
       perf: ${{ steps.resolve.outputs.perf }}
       dottrace_mode: ${{ steps.resolve.outputs.dottrace_mode }}
@@ -300,6 +304,12 @@ jobs:
           # Default FlatDb write-buffer floor (bytes) for flat layout; overridden by the dispatch input.
           flat_write_buffer_floor="67108864"
           expb_env=""
+          # Every PR-label and master-push run benchmarks fusaka in three cells: 1000 payloads back to back, as in
+          # sync or catch-up; 100 payloads a second apart, which leaves the node idle between blocks as at the
+          # chain head; and the 1000 payloads again with their instructions counted rather than timed (see the
+          # measurement_mode input). A cell is the unit the benchmark matrix, the artifacts and the cached master
+          # baselines are keyed by; the first cell keeps the id the single fusaka run always had.
+          automated_cells='[{"id":"fusaka","payload_set":"fusaka","amount":"1000","delay_seconds":"0","mode":"timing"},{"id":"fusaka-delay1s","payload_set":"fusaka","amount":"100","delay_seconds":"1","mode":"timing"},{"id":"fusaka-instructions","payload_set":"fusaka","amount":"1000","delay_seconds":"0","mode":"instructions"}]'
           if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
             branch="${PUSH_BRANCH}"
             client="${DISPATCH_CLIENT:-nethermind}"
@@ -328,7 +338,19 @@ jobs:
             cleanup_grace_seconds="90"
             rebuild_docker="${DISPATCH_REBUILD_DOCKER:-true}"
             run_count="${DISPATCH_RUN_COUNT:-1}"
-            payload_sets="[\"${payload_set}\"]"
+            # The cell values are interpolated into JSON and the rendered config, so they must be plain tokens.
+            if ! [[ "${delay_seconds}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+              echo "::error::delay_seconds must be a non-negative number of seconds, e.g. 1 or 0.25 (got '${delay_seconds}')."
+              exit 1
+            fi
+            if ! [[ "${amount}" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::amount must be a positive whole number of payloads (got '${amount}')."
+              exit 1
+            fi
+            # A dispatch is one cell named after its payload set, so its artifact names stay as they were.
+            cell_mode="timing"
+            if [[ "${DISPATCH_MEASUREMENT_MODE:-}" == "instructions" ]]; then cell_mode="instructions"; fi
+            cells="[{\"id\":\"${payload_set}\",\"payload_set\":\"${payload_set}\",\"amount\":\"${amount}\",\"delay_seconds\":\"${delay_seconds}\",\"mode\":\"${cell_mode}\"}]"
 
             # Determine mode: multi-image if docker_images or retrospective is enabled
             docker_images="${DISPATCH_DOCKER_IMAGES:-}"
@@ -409,13 +431,14 @@ jobs:
             fi
             branch="${PR_HEAD_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -434,13 +457,14 @@ jobs:
           else
             branch="${PUSH_BRANCH}"
             state_layout="flat"
-            payload_set="superblocks"
-            payload_sets='["superblocks","realblocks","fusaka"]'
+            payload_set="fusaka"
+            cells="${automated_cells}"
             expb_repo="NethermindEth/execution-payloads-benchmarks"
             expb_branch="main"
             arch="amd64"
+            # Per-cell amount and delay come from cells; these describe the first cell.
             delay_seconds="0"
-            amount=""
+            amount="1000"
             additional_extra_flags=""
             cleanup_grace_seconds="90"
             rebuild_docker="true"
@@ -498,6 +522,10 @@ jobs:
             fi
             if [[ "${measurement_mode}" == "compute-warm" ]]; then
               echo "measurement_mode=compute-warm is Nethermind-only (it relies on EXPB_EVM_WARMUP) and cannot be used with client=${client}."
+              exit 1
+            fi
+            if [[ "${measurement_mode}" == "instructions" ]]; then
+              echo "measurement_mode=instructions is Nethermind-only (the counter is its BlockProfiler plugin) and cannot be used with client=${client}."
               exit 1
             fi
             if [[ -n "${trace_blocks}" ]]; then
@@ -609,9 +637,20 @@ jobs:
             exit 1
           fi
 
-          if [[ "${measurement_mode}" != "standard" && "${measurement_mode}" != "compute-warm" ]]; then
-            echo "measurement_mode must be standard or compute-warm, got '${measurement_mode}'."
+          if [[ "${measurement_mode}" != "standard" && "${measurement_mode}" != "compute-warm" && "${measurement_mode}" != "instructions" ]]; then
+            echo "measurement_mode must be standard, compute-warm or instructions, got '${measurement_mode}'."
             exit 1
+          fi
+          if [[ "${measurement_mode}" == "instructions" ]]; then
+            # The multi-image campaign has no counting setup, and a profiler in the process would count its own work.
+            if [[ "${mode}" != "single" ]]; then
+              echo "measurement_mode=instructions counts one image; it cannot be combined with docker_images or enable_retrospective."
+              exit 1
+            fi
+            if [[ "${dottrace}" == "true" || "${perf}" == "true" ]]; then
+              echo "measurement_mode=instructions cannot be combined with dottrace, perf or trace_blocks: a profiler changes the counts."
+              exit 1
+            fi
           fi
 
           # Build JSON array of run indices: [1] or [1,2,3] etc.
@@ -682,7 +721,7 @@ jobs:
             echo "retrospective_last=${retrospective_last:-100}"
             echo "retrospective_step=${retrospective_step:-10}"
             echo "state_layout=${state_layout}"
-            echo "payload_sets=${payload_sets}"
+            echo "cells=${cells}"
             echo "dottrace=${dottrace}"
             echo "perf=${perf:-false}"
             echo "dottrace_mode=${dottrace_mode}"
@@ -916,13 +955,13 @@ jobs:
           } >> "${GITHUB_OUTPUT}"
 
   benchmark:
-    name: benchmark (${{ matrix.payload_set }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
+    name: benchmark (${{ matrix.cell.id }}${{ needs.resolve.outputs.run_count != '1' && format(', run {0}', matrix.run) || '' }})
     needs: [resolve, prepare-docker]
     if: needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     strategy:
       matrix:
         run: ${{ fromJson(needs.resolve.outputs.run_indices) }}
-        payload_set: ${{ fromJson(needs.resolve.outputs.payload_sets) }}
+        cell: ${{ fromJson(needs.resolve.outputs.cells) }}
       max-parallel: 1
       fail-fast: false
     runs-on: [self-hosted, "${{ needs.resolve.outputs.runner_label }}"]
@@ -943,9 +982,10 @@ jobs:
         shell: bash
         env:
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
+          CELL_MODE: ${{ matrix.cell.mode }}
           RUN: ${{ matrix.run }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           CLIENT: ${{ needs.resolve.outputs.client }}
@@ -965,6 +1005,9 @@ jobs:
             config_file="github-action-mainnet.yaml"
           fi
           scenario_name="${CLIENT}-${STATE_LAYOUT}-${PAYLOAD_SET}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          if [[ "${CELL_MODE:-}" == "instructions" ]]; then
+            scenario_name="${scenario_name}-instructions"
+          fi
           if [[ "${RUN_COUNT}" -gt 1 ]]; then
             scenario_name="${scenario_name}-run${RUN}"
           fi
@@ -977,14 +1020,17 @@ jobs:
         run: |
           echo "Event: ${{ github.event_name }}"
           echo "Runner: ${{ needs.resolve.outputs.runner_label }}"
-          echo "Payload set: ${{ matrix.payload_set }}"
+          echo "Cell: ${{ matrix.cell.id }}"
+          echo "Payload set: ${{ matrix.cell.payload_set }}"
+          echo "Payload amount: ${{ matrix.cell.amount }}"
+          echo "Cell mode: ${{ matrix.cell.mode }}"
           echo "Nethermind branch: ${{ needs.resolve.outputs.branch }}"
           echo "Docker image: ${NETHERMIND_IMAGE}"
           echo "Docker image revision: ${IMAGE_REVISION}"
           echo "Client: ${CLIENT}"
           echo "Measurement source: ${MEASUREMENT_SOURCE}"
           echo "Config file: ${EXPB_DATA_DIR}/${CONFIG_FILE}"
-          echo "Delay placeholder value: ${{ needs.resolve.outputs.delay_seconds }}"
+          echo "Delay placeholder value: ${{ matrix.cell.delay_seconds }}"
           echo "Rebuild docker requested: ${{ needs.resolve.outputs.rebuild_docker }}"
           echo "Publish docker workflow triggered: ${{ needs.resolve.outputs.should_trigger_publish_docker }}"
           echo "Cleanup grace period (s): ${CLEANUP_GRACE_SECONDS}"
@@ -1002,15 +1048,37 @@ jobs:
           fi
           docker version
 
+      - name: Bring back CPUs a cancelled run left offline
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb takes each client core's second hyperthread offline for a scenario and brings it back afterwards, so
+          # a run cancelled mid-scenario leaves those CPUs offline. The whole-core pinning then cannot read their
+          # topology and every later run fails, while a later scenario that finds them offline leaves them so.
+          # This body is duplicated in both benchmark jobs; scripts/ci/test_expb_multiclient_workflow.py asserts the
+          # copies match and drives this body against a synthetic CPU tree.
+          # Positional, like the overlay reap: only that test passes a directory.
+          cpus="${1:-/sys/devices/system/cpu}"
+          for online in "${cpus}"/cpu[0-9]*/online; do
+            [[ -r "${online}" && "$(cat "${online}")" == "0" ]] || continue
+            cpu="$(basename "$(dirname "${online}")")"
+            if { echo 1 > "${online}"; } 2>/dev/null || echo 1 | sudo -n tee "${online}" > /dev/null 2>&1; then
+              echo "Brought ${cpu} back online."
+            else
+              echo "::warning::Could not bring ${cpu} back online."
+            fi
+          done
+          exit 0
+
       - name: Restore cached master metrics
         id: restore-master-metrics
         if: github.event_name == 'pull_request'
         uses: actions/cache/restore@v5
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.event.pull_request.base.sha }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          key: expb-master-metrics-v6-${{ matrix.cell.id }}-run-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v5-${{ matrix.payload_set }}-
+            expb-master-metrics-v6-${{ matrix.cell.id }}-run-
 
       - name: Ensure EXPB config file exists
         shell: bash
@@ -1031,9 +1099,9 @@ jobs:
           RENDERED_CONFIG_FILE: ${{ runner.temp }}/rendered-expb-config.yaml
           DOCKER_TAG: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
-          AMOUNT: ${{ needs.resolve.outputs.amount }}
-          PAYLOAD_SET: ${{ matrix.payload_set }}
+          DELAY_SECONDS: ${{ matrix.cell.delay_seconds }}
+          AMOUNT: ${{ matrix.cell.amount }}
+          PAYLOAD_SET: ${{ matrix.cell.payload_set }}
           SCENARIO_NAME: ${{ env.SCENARIO_NAME }}
           ADDITIONAL_EXTRA_FLAGS: ${{ needs.resolve.outputs.additional_extra_flags }}
           TRACE_BLOCKS: ${{ needs.resolve.outputs.trace_blocks }}
@@ -1043,6 +1111,7 @@ jobs:
           DOCKER_INFRA_CPUSET: ${{ needs.resolve.outputs.docker_infra_cpuset }}
           EXPB_ENV_PASSTHROUGH: ${{ needs.resolve.outputs.expb_env }}
           MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
+          CELL_MODE: ${{ matrix.cell.mode }}
         run: |
           set -euo pipefail
           if [[ -z "${AMOUNT}" ]]; then
@@ -1108,6 +1177,24 @@ jobs:
               exit 1
             fi
             printf '%s\n' '--JsonRpc.GasCap=1000000000000' >> "${flags_file}"
+          fi
+
+          # Instruction counting keeps the whole run on the processing thread and in memory: no prewarming or trie
+          # warmers, compaction on that thread, no persistence within the run, and a newPayload that waits for a
+          # slower single-threaded block. The node's no-GC window on newPayload and its collections between calls
+          # are off, because the counter holds a no-GC region around each branch itself. A flag the caller set wins.
+          if [[ "${CELL_MODE:-}" == "instructions" ]]; then
+            for flag in \
+              --Blocks.PreWarming=None \
+              --FlatDb.TrieWarmerWorkerCount=0 \
+              --FlatDb.InlineCompaction=true \
+              --FlatDb.MinReorgDepth=100000 \
+              --FlatDb.MaxInMemoryBaseSnapshotCount=100000 \
+              --Merge.NewPayloadBlockProcessingTimeout=60000 \
+              --Init.DisableGcOnNewPayload=false \
+              --Merge.SweepMemory=NoGC; do
+              grep -qiF -- "${flag%%=*}=" "${flags_file}" || printf '%s\n' "${flag}" >> "${flags_file}"
+            done
           fi
 
           YQ="${RUNNER_TEMP}/yq"
@@ -1207,6 +1294,35 @@ jobs:
             SK="${scenario_key}" V="${TRACE_BLOCKS}" \
               "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.NETHERMIND_PROFILE_BLOCKS = strenv(V)' "${RENDERED_CONFIG_FILE}"
             echo "Set NETHERMIND_PROFILE_BLOCKS=${TRACE_BLOCKS} for targeted dotTrace."
+          fi
+
+          # Instruction counting: the BlockProfiler plugin reads the processing thread's counters through
+          # perf_event_open, which needs CAP_PERFMON and a seccomp profile that allows the call. The deterministic mode
+          # takes the work that races the processing thread off the path. The runtime compiles each method once and
+          # sizes itself for one CPU; the GC is not concurrent and keeps freed memory mapped, and the shared ArrayPool
+          # does not trim, since it trims by the clock. The processing thread gets the client's first CPU to itself.
+          # Set before client_env, so a dispatch can override any of them.
+          if [[ "${CELL_MODE:-}" == "instructions" ]]; then
+            mapfile -t client_cpus < <(expand_cpus "$("${YQ}" -r '.resources.cpuset // ""' "${RENDERED_CONFIG_FILE}")")
+            counting_env=(
+              NETHERMIND_COUNT_INSTRUCTIONS=1
+              NETHERMIND_DETERMINISTIC_BENCHMARK=1
+              DOTNET_TieredCompilation=0
+              DOTNET_TieredPGO=0
+              DOTNET_PROCESSOR_COUNT=1
+              DOTNET_gcConcurrent=0
+              DOTNET_GCRetainVM=1
+              DOTNET_SYSTEM_BUFFERS_ARRAYPOOL_TRIMSHARED=0
+            )
+            if [[ "${#client_cpus[@]}" -gt 0 ]]; then counting_env+=("NETHERMIND_COUNT_PIN_CPU=${client_cpus[0]}"); fi
+            for entry in "${counting_env[@]}"; do
+              SK="${scenario_key}" K="${entry%%=*}" V="${entry#*=}" \
+                "${YQ}" -i '.scenarios.[strenv(SK)].extra_env.[strenv(K)] = strenv(V)' "${RENDERED_CONFIG_FILE}"
+            done
+            SK="${scenario_key}" "${YQ}" -i \
+              '.scenarios.[strenv(SK)].security_opt = ["seccomp=unconfined"] | .scenarios.[strenv(SK)].cap_add = ["PERFMON"]' \
+              "${RENDERED_CONFIG_FILE}"
+            echo "Instruction counting: ${counting_env[*]}"
           fi
 
           # Extra client container env vars (KEY=VALUE, comma-separated), e.g. GC tuning experiments.
@@ -1558,6 +1674,7 @@ jobs:
           MEASUREMENT_MODE: ${{ needs.resolve.outputs.measurement_mode }}
           MEASUREMENT_SOURCE: ${{ needs.resolve.outputs.measurement_source }}
           EXPECTED_AMOUNT: ${{ steps.render-config.outputs.expected_amount }}
+          CELL_MODE: ${{ matrix.cell.mode }}
         run: |
           set -euo pipefail
 
@@ -1574,6 +1691,27 @@ jobs:
           fi
 
           sed -E 's/\x1B\[[0-9;?]*[ -/]*[@-~]//g' "${RAW_RUN_LOG}" > "${clean_log}"
+
+          # An instruction cell keeps the client's EXPB-COUNT lines, one per block, for the report and the master
+          # baseline; every measured block must have one, or the counter did not run.
+          counts_file="${RUNNER_TEMP}/expb-counts.log"
+          rm -f "${counts_file}"
+          counts_status="not-requested"
+          if [[ "${CELL_MODE:-}" == "instructions" ]]; then
+            grep -a 'EXPB-COUNT' "${clean_log}" > "${counts_file}" || true
+            # Distinct block numbers in order. The measured payloads are the last EXPECTED_AMOUNT of them and follow one
+            # another, so they must span exactly that many numbers; warm-up blocks and repeats don't count towards it.
+            mapfile -t counted_blocks < <(grep -oa 'EXPB-COUNT block=[0-9]*' "${counts_file}" | cut -d= -f2 | sort -nu)
+            counted=${#counted_blocks[@]}
+            echo "Instruction counts: ${counted} blocks."
+            if [[ "${EXPECTED_AMOUNT}" =~ ^[1-9][0-9]*$ ]] && (( counted >= EXPECTED_AMOUNT )) \
+              && (( counted_blocks[counted - 1] - counted_blocks[counted - EXPECTED_AMOUNT] + 1 == EXPECTED_AMOUNT )); then
+              counts_status="ok"
+            else
+              counts_status="missing"
+              grep -m 5 'EXPB-COUNT' "${counts_file}" || echo "The client logged no EXPB-COUNT lines."
+            fi
+          fi
 
           warmup_status="not-requested"
           if [[ "${MEASUREMENT_MODE}" == "compute-warm" ]]; then
@@ -1834,6 +1972,7 @@ jobs:
             echo "invalid_block_found=${invalid_block_found}"
             echo "invalid_block_lines_file=${invalid_block_lines}"
             echo "warmup_status=${warmup_status}"
+            echo "counts_status=${counts_status}"
             echo "metrics_file=${metrics_file}"
             while IFS= read -r line; do
               key="${line%%=*}"
@@ -1846,24 +1985,38 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expb-single-metrics-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ steps.analyze.outputs.metrics_file }}
+          name: expb-single-metrics-${{ matrix.cell.id }}-run${{ matrix.run }}
+          # The counts exist for instruction cells only; both files land at the artifact root.
+          path: |
+            ${{ steps.analyze.outputs.metrics_file }}
+            ${{ runner.temp }}/expb-counts.log
           retention-days: 30
 
+      # An instruction cell without a count for every block would replace the last good baseline, so it saves none.
       - name: Prepare master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true' && (matrix.cell.mode != 'instructions' || steps.analyze.outputs.counts_status == 'ok')
         shell: bash
+        env:
+          CACHE_DIR: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
+          IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
         run: |
           set -euo pipefail
-          mkdir -p "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}"
-          cp "${{ steps.analyze.outputs.metrics_file }}" "/tmp/expb-master-metrics-cache-${{ matrix.payload_set }}/master-metrics.env"
+          mkdir -p "${CACHE_DIR}"
+          cp "${METRICS_FILE}" "${CACHE_DIR}/master-metrics.env"
+          # The commit the baseline measured, which the PR comment names: the restore takes the latest master run,
+          # not necessarily the PR's base.
+          printf '%s\n' "${IMAGE_REVISION}" > "${CACHE_DIR}/master-revision.txt"
+          if [[ -s "${RUNNER_TEMP}/expb-counts.log" ]]; then
+            cp "${RUNNER_TEMP}/expb-counts.log" "${CACHE_DIR}/master-counts.log"
+          fi
 
       - name: Save master metrics cache
-        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true'
+        if: github.event_name == 'push' && github.ref_name == 'master' && steps.analyze.outputs.exception_found != 'true' && steps.analyze.outputs.invalid_block_found != 'true' && (matrix.cell.mode != 'instructions' || steps.analyze.outputs.counts_status == 'ok')
         uses: actions/cache/save@v5
         with:
-          path: /tmp/expb-master-metrics-cache-${{ matrix.payload_set }}
-          key: expb-master-metrics-v5-${{ matrix.payload_set }}-${{ github.run_id }}
+          path: /tmp/expb-master-metrics-cache-${{ matrix.cell.id }}
+          key: expb-master-metrics-v6-${{ matrix.cell.id }}-run-${{ github.run_id }}
 
       - name: Enforce run quality gates
         if: always()
@@ -1897,12 +2050,17 @@ jobs:
             exit 1
           fi
 
+          if [[ "${{ matrix.cell.mode }}" == "instructions" && "${{ steps.analyze.outputs.counts_status }}" != "ok" ]]; then
+            echo "The instruction cell did not count every measured block (status: ${{ steps.analyze.outputs.counts_status || 'missing' }}); see the client's 'EXPB-COUNT' log lines."
+            exit 1
+          fi
+
       - name: Collect and upload profiling artifacts
         id: collect-profiling
         if: always() && (needs.resolve.outputs.dottrace == 'true' || needs.resolve.outputs.perf == 'true')
         shell: bash
         env:
-          ARTIFACT_SUFFIX: ${{ matrix.payload_set }}-run${{ matrix.run }}
+          ARTIFACT_SUFFIX: ${{ matrix.cell.id }}-run${{ matrix.run }}
           MARKER: ${{ runner.temp }}/.expb-run-marker
           DOTTRACE: ${{ needs.resolve.outputs.dottrace }}
           PERF: ${{ needs.resolve.outputs.perf }}
@@ -1991,13 +2149,14 @@ jobs:
           METRICS_FILE: ${{ steps.analyze.outputs.metrics_file }}
           RENDERED_CONFIG_FILE: ${{ steps.render-config.outputs.rendered_config_file }}
           YQ_BIN: ${{ runner.temp }}/yq
-          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          LOG_ARTIFACT_DIR: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
         run: |
           set -euo pipefail
           mkdir -p "${LOG_ARTIFACT_DIR}"
           [[ -f "${RAW_RUN_LOG}" ]] && cp "${RAW_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.log" || true
           [[ -f "${CLEAN_RUN_LOG}" ]] && cp "${CLEAN_RUN_LOG}" "${LOG_ARTIFACT_DIR}/combined.clean.log" || true
           [[ -n "${METRICS_FILE}" && -f "${METRICS_FILE}" ]] && cp "${METRICS_FILE}" "${LOG_ARTIFACT_DIR}/metrics.env" || true
+          [[ -s "${RUNNER_TEMP}/expb-counts.log" ]] && cp "${RUNNER_TEMP}/expb-counts.log" "${LOG_ARTIFACT_DIR}/expb-counts.log" || true
           if [[ -n "${RENDERED_CONFIG_FILE}" && -f "${RENDERED_CONFIG_FILE}" ]]; then
             [[ -x "${YQ_BIN}" ]] || { echo "::error::yq is required to sanitize the rendered config before artifact staging."; exit 1; }
             sanitized_config="$(mktemp "${LOG_ARTIFACT_DIR}/.rendered-config.XXXXXX")"
@@ -2009,7 +2168,11 @@ jobs:
           {
             echo "timestamp_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
             echo "event=${{ github.event_name }}"
-            echo "payload_set=${{ matrix.payload_set }}"
+            echo "cell=${{ matrix.cell.id }}"
+            echo "payload_set=${{ matrix.cell.payload_set }}"
+            echo "amount=${{ matrix.cell.amount }}"
+            echo "delay_seconds=${{ matrix.cell.delay_seconds }}"
+            echo "cell_mode=${{ matrix.cell.mode }}"
             echo "run=${{ matrix.run }}"
             echo "run_count=${{ needs.resolve.outputs.run_count }}"
             echo "measurement_mode=${{ needs.resolve.outputs.measurement_mode }}"
@@ -2020,8 +2183,8 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
-          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.payload_set }}-run${{ matrix.run }}
+          name: expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
+          path: ${{ runner.temp }}/expb-single-logs-${{ matrix.cell.id }}-run${{ matrix.run }}
           retention-days: 30
           if-no-files-found: warn
 
@@ -2052,54 +2215,60 @@ jobs:
       group: expb-report-${{ github.repository }}-pr-${{ github.event.pull_request.number }}
       cancel-in-progress: false
     steps:
+      # The instruction section comes from scripts/expb/instruction_counts.py.
+      - name: Checkout report scripts
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/expb
+          persist-credentials: false
+
       - name: Download all metrics artifacts
         uses: actions/download-artifact@v8
         with:
           path: ${{ runner.temp }}/all-metrics
           pattern: expb-single-metrics-*
 
-      - name: Restore master metrics (superblocks)
-        id: restore-master-superblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-superblocks
-          key: expb-master-metrics-v5-superblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v5-superblocks-
-
-      - name: Restore master metrics (realblocks)
-        id: restore-master-realblocks
-        continue-on-error: true
-        uses: actions/cache/restore@v5
-        with:
-          path: /tmp/expb-master-metrics-cache-realblocks
-          key: expb-master-metrics-v5-realblocks-${{ github.event.pull_request.base.sha }}
-          restore-keys: |
-            expb-master-metrics-v5-realblocks-
-
+      # One restore per cell of the PR-label run (see automated_cells in the resolver).
       - name: Restore master metrics (fusaka)
         id: restore-master-fusaka
         continue-on-error: true
         uses: actions/cache/restore@v5
         with:
           path: /tmp/expb-master-metrics-cache-fusaka
-          key: expb-master-metrics-v5-fusaka-${{ github.event.pull_request.base.sha }}
+          key: expb-master-metrics-v6-fusaka-run-${{ github.event.pull_request.base.sha }}
           restore-keys: |
-            expb-master-metrics-v5-fusaka-
+            expb-master-metrics-v6-fusaka-run-
+
+      - name: Restore master metrics (fusaka-delay1s)
+        id: restore-master-fusaka-delay1s
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka-delay1s
+          key: expb-master-metrics-v6-fusaka-delay1s-run-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v6-fusaka-delay1s-run-
+
+      - name: Restore master metrics (fusaka-instructions)
+        id: restore-master-fusaka-instructions
+        continue-on-error: true
+        uses: actions/cache/restore@v5
+        with:
+          path: /tmp/expb-master-metrics-cache-fusaka-instructions
+          key: expb-master-metrics-v6-fusaka-instructions-run-${{ github.event.pull_request.base.sha }}
+          restore-keys: |
+            expb-master-metrics-v6-fusaka-instructions-run-
 
       - name: Build PR comparison comment
         id: pr-comment
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          MASTER_SUPERBLOCKS: /tmp/expb-master-metrics-cache-superblocks/master-metrics.env
-          MASTER_REALBLOCKS: /tmp/expb-master-metrics-cache-realblocks/master-metrics.env
-          MASTER_FUSAKA: /tmp/expb-master-metrics-cache-fusaka/master-metrics.env
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          MASTER_CACHE_ROOT: /tmp
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          CELLS: ${{ needs.resolve.outputs.cells }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           IMAGE: ${{ needs.prepare-docker.outputs.image }}
           IMAGE_REVISION: ${{ needs.prepare-docker.outputs.image_revision }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -2187,16 +2356,21 @@ jobs:
           }
 
           build_table() {
-            local payload_set="$1"
+            local cell_json="$1"
             local current_metrics="$2"
             local master_metrics="$3"
-            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+            local cell_id payload_set amount delay
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            amount="$(jq -r '.amount' <<< "${cell_json}")"
+            delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            local scenario_name="${CLIENT}-${STATE_LAYOUT}-${payload_set}-${CLEAN_BRANCH}-delay${delay}s"
 
             local metrics=("MIN" "AVG" "MEDIAN" "P90" "P99" "MAX")
             local labels=("Min" "Avg" "P50" "P90" "P99" "Max")
 
             append_blank
-            append_line "#### ${payload_set}"
+            append_line "#### ${payload_set}: ${amount} payloads, ${delay} s delay"
             append_blank
 
             if [[ ! -f "${current_metrics}" ]]; then
@@ -2204,10 +2378,18 @@ jobs:
               return
             fi
 
-            append_line "Scenario: \`${scenario_name}\`"
+            # The restore takes the latest master run, which need not be the PR's base, so name the commit it measured.
+            local scenario_line="Scenario: \`${scenario_name}\`" master_revision=""
+            if [[ -f "${master_metrics}" ]]; then
+              master_revision="$(head -n 1 "$(dirname "${master_metrics}")/master-revision.txt" 2>/dev/null || true)"
+            fi
+            if [[ -n "${master_revision}" ]]; then
+              scenario_line+=" · master baseline \`${master_revision:0:12}\`"
+            fi
+            append_line "${scenario_line}"
 
             if [[ ! -f "${master_metrics}" ]]; then
-              append_line "No cached master baseline for \`${payload_set}\`. A baseline will be created from the next successful \`master\` push run."
+              append_line "No cached master baseline for \`${cell_id}\`. A baseline will be created from the next successful \`master\` push run."
             fi
 
             # The request time is what the consensus client waits for; the processing time isolates EVM
@@ -2274,28 +2456,47 @@ jobs:
             fi
           }
 
+          # An instruction cell is compared block by block with the master run of the same cell. The script also
+          # says when there is no baseline yet, or when the PR run produced no counts.
+          build_instruction_section() {
+            local cell_json="$1"
+            local cell_id payload_set amount master_dir master_revision
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            amount="$(jq -r '.amount' <<< "${cell_json}")"
+            master_dir="${MASTER_CACHE_ROOT}/expb-master-metrics-cache-${cell_id}"
+            master_revision="$(head -n 1 "${master_dir}/master-revision.txt" 2>/dev/null || true)"
+            append_blank
+            "${PYTHON:-python3}" scripts/expb/instruction_counts.py report \
+              --title "${payload_set}: ${amount} payloads, counted in instructions" \
+              --measured "${amount}" \
+              --pr "${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-counts.log" \
+              --master "${master_dir}/master-counts.log" \
+              --master-sha "${master_revision}" \
+              --base-sha "${BASE_SHA:-}" >> "${comment_file}"
+          }
+
           append_line "${marker}"
           append_line "Tested image: \`${IMAGE}\`"
           append_line "Tested against commit: ${IMAGE_REVISION}"
           append_line "### EXPB Benchmark Comparison"
           append_blank
           append_line "Run: [View workflow run](${RUN_URL})"
+          append_blank
+          append_line "_0 s delay sends the payloads back to back, as in sync or catch-up; 1 s delay leaves the node idle between them, as at the chain head._"
 
-          # Iterate over each payload_set from the matrix
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+          # One table per cell of the matrix, each against the cached master run of the same cell.
+          mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
 
-          for ps in "${payload_sets[@]}"; do
-            # Find the PR metrics artifact (run 1 by default)
-            current_metrics="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
-
-            # Master metrics from cache
-            case "${ps}" in
-              superblocks) master_metrics="${MASTER_SUPERBLOCKS}" ;;
-              fusaka) master_metrics="${MASTER_FUSAKA}" ;;
-              *) master_metrics="${MASTER_REALBLOCKS}" ;;
-            esac
-
-            build_table "${ps}" "${current_metrics}" "${master_metrics}"
+          for cell_json in "${cells[@]}"; do
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            if [[ "$(jq -r '.mode // "timing"' <<< "${cell_json}")" == "instructions" ]]; then
+              build_instruction_section "${cell_json}"
+              continue
+            fi
+            current_metrics="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
+            master_metrics="${MASTER_CACHE_ROOT}/expb-master-metrics-cache-${cell_id}/master-metrics.env"
+            build_table "${cell_json}" "${current_metrics}" "${master_metrics}"
           done
 
           {
@@ -2343,7 +2544,7 @@ jobs:
             });
 
   # ---------------------------------------------------------------------------
-  # Single-image summary: aggregates all runs × payload_sets into GITHUB_STEP_SUMMARY
+  # Single-image summary: aggregates all runs × cells into GITHUB_STEP_SUMMARY
   # ---------------------------------------------------------------------------
 
   single-summary:
@@ -2351,6 +2552,13 @@ jobs:
     if: always() && needs.resolve.outputs.should_run == 'true' && needs.resolve.outputs.mode == 'single'
     runs-on: ubuntu-latest
     steps:
+      # Instruction cells are summarized by scripts/expb/instruction_counts.py.
+      - name: Checkout report scripts
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: scripts/expb
+          persist-credentials: false
+
       - name: Download all metrics artifacts
         uses: actions/download-artifact@v8
         with:
@@ -2361,11 +2569,10 @@ jobs:
         shell: bash
         env:
           METRICS_DIR: ${{ runner.temp }}/all-metrics
-          PAYLOAD_SETS: ${{ needs.resolve.outputs.payload_sets }}
+          CELLS: ${{ needs.resolve.outputs.cells }}
           RUN_COUNT: ${{ needs.resolve.outputs.run_count }}
           STATE_LAYOUT: ${{ needs.resolve.outputs.state_layout }}
           CLEAN_BRANCH: ${{ needs.resolve.outputs.clean_branch }}
-          DELAY_SECONDS: ${{ needs.resolve.outputs.delay_seconds }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           CLIENT: ${{ needs.resolve.outputs.client }}
         run: |
@@ -2395,31 +2602,56 @@ jobs:
             printf '%s' "${source:-unknown}"
           }
 
-          mapfile -t payload_sets < <(echo "${PAYLOAD_SETS}" | jq -r '.[]')
+          mapfile -t cells < <(echo "${CELLS}" | jq -c '.[]')
 
           {
             echo "## EXPB Benchmark Results"
             echo ""
-            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Delay: \`${DELAY_SECONDS}s\` | Runs: \`${run_count}\`"
+            echo "Branch: \`${CLEAN_BRANCH}\` | Layout: \`${STATE_LAYOUT}\` | Runs: \`${run_count}\`"
             echo ""
             echo "Run: [View workflow run](${RUN_URL})"
           } > "${summary_file}"
 
-          for ps in "${payload_sets[@]}"; do
-            scenario_name="${CLIENT}-${STATE_LAYOUT}-${ps}-${CLEAN_BRANCH}-delay${DELAY_SECONDS}s"
+          for cell_json in "${cells[@]}"; do
+            cell_id="$(jq -r '.id' <<< "${cell_json}")"
+            cell_payload_set="$(jq -r '.payload_set' <<< "${cell_json}")"
+            cell_amount="$(jq -r '.amount' <<< "${cell_json}")"
+            cell_delay="$(jq -r '.delay_seconds' <<< "${cell_json}")"
+            scenario_name="${CLIENT}-${STATE_LAYOUT}-${cell_payload_set}-${CLEAN_BRANCH}-delay${cell_delay}s"
+            if [[ "$(jq -r '.mode // "timing"' <<< "${cell_json}")" == "instructions" ]]; then
+              scenario_name="${scenario_name}-instructions"
+            fi
 
             {
               echo ""
-              echo "### ${ps}"
+              echo "### ${cell_id}"
+              echo ""
+              echo "Payloads: \`${cell_amount}\` | Delay: \`${cell_delay}s\`"
               echo ""
               echo "Scenario: \`${scenario_name}\`"
               echo ""
             } >> "${summary_file}"
 
+            # An instruction cell shows its first run's counts, then every later run against the first: the spread
+            # between runs of one image that a comparison with master has to exceed.
+            if [[ "$(jq -r '.mode // "timing"' <<< "${cell_json}")" == "instructions" ]]; then
+              first_counts="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-counts.log"
+              "${PYTHON:-python3}" scripts/expb/instruction_counts.py report \
+                --title "Instruction counts, run 1" --measured "${cell_amount}" --pr "${first_counts}" >> "${summary_file}"
+              for (( r=2; r<=run_count; r++ )); do
+                echo "" >> "${summary_file}"
+                "${PYTHON:-python3}" scripts/expb/instruction_counts.py report \
+                  --title "Run ${r} against run 1" --labels "run 1,run ${r}" --measured "${cell_amount}" \
+                  --master "${first_counts}" --pr "${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-counts.log" \
+                  >> "${summary_file}"
+              done
+              continue
+            fi
+
             # Detect metrics source from first available run
             source_label=""
             for (( r=1; r<=run_count; r++ )); do
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
               if [[ -f "${mf}" ]]; then
                 if [[ "$(metrics_source "${mf}")" == "sse" ]]; then
                   source_label="SSE"
@@ -2447,7 +2679,7 @@ jobs:
               valid_runs=0
 
               for (( r=1; r<=run_count; r++ )); do
-                mf="${METRICS_DIR}/expb-single-metrics-${ps}-run${r}/expb-metrics.env"
+                mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run${r}/expb-metrics.env"
                 if [[ ! -f "${mf}" ]]; then
                   echo "| ${r} | - | - | - | - | - | - | - | - |" >> "${summary_file}"
                   continue
@@ -2503,7 +2735,7 @@ jobs:
               fi
             else
               # Single run — simple table
-              mf="${METRICS_DIR}/expb-single-metrics-${ps}-run1/expb-metrics.env"
+              mf="${METRICS_DIR}/expb-single-metrics-${cell_id}-run1/expb-metrics.env"
               if [[ ! -f "${mf}" ]]; then
                 echo "No metrics were produced." >> "${summary_file}"
               else
@@ -2771,6 +3003,28 @@ jobs:
             run_as_root systemctl start docker || run_as_root service docker start
           fi
           docker version
+
+      - name: Bring back CPUs a cancelled run left offline
+        shell: bash
+        run: |
+          set -uo pipefail
+          # expb takes each client core's second hyperthread offline for a scenario and brings it back afterwards, so
+          # a run cancelled mid-scenario leaves those CPUs offline. The whole-core pinning then cannot read their
+          # topology and every later run fails, while a later scenario that finds them offline leaves them so.
+          # This body is duplicated in both benchmark jobs; scripts/ci/test_expb_multiclient_workflow.py asserts the
+          # copies match and drives this body against a synthetic CPU tree.
+          # Positional, like the overlay reap: only that test passes a directory.
+          cpus="${1:-/sys/devices/system/cpu}"
+          for online in "${cpus}"/cpu[0-9]*/online; do
+            [[ -r "${online}" && "$(cat "${online}")" == "0" ]] || continue
+            cpu="$(basename "$(dirname "${online}")")"
+            if { echo 1 > "${online}"; } 2>/dev/null || echo 1 | sudo -n tee "${online}" > /dev/null 2>&1; then
+              echo "Brought ${cpu} back online."
+            else
+              echo "::warning::Could not bring ${cpu} back online."
+            fi
+          done
+          exit 0
       - name: Ensure EXPB config file exists
         shell: bash
         run: |
