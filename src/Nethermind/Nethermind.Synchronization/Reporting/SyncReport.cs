@@ -315,7 +315,7 @@ namespace Nethermind.Synchronization.Reporting
                 if (_isBehind)
                 {
                     _isBehind = false;
-                    if (_logger.IsInfo) _logger.Info("Node has caught up with the head of the chain.");
+                    if (_logger.IsInfo) _logger.Info("Head block is up to date again.");
                 }
 
                 return;
@@ -330,7 +330,7 @@ namespace Nethermind.Synchronization.Reporting
 
             // The head cannot advance until state sync completes, so an estimate would only ever say the gap is not closing.
             string eta = (currentSyncMode & SyncMode.StateNodes) == 0 ? FormatCatchUpEta(previousSample, now, head.Timestamp, secondsBehind) : "";
-            string message = $"Node is behind the head of the chain by {FormatSeconds(secondsBehind)}.{eta}";
+            string message = $"Head block is {FormatSeconds(secondsBehind)} old: the node is behind the chain or the chain is not producing blocks.{eta}";
 
             // Only a node that had already reached the tip is worth warning about; on a first sync
             // being behind is the expected state and would warn for the whole sync.

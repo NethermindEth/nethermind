@@ -163,8 +163,8 @@ namespace Nethermind.Synchronization.Test
         private static readonly DateTime SyncBehindNow = new(2026, 1, 1, 12, 0, 0, DateTimeKind.Utc);
         private const ulong DefaultSecondsPerSlot = 12;
 
-        private const string BehindMessage = "Node is behind the head of the chain by";
-        private const string CaughtUpMessage = "Node has caught up with the head of the chain";
+        private const string BehindMessage = "the node is behind the chain or the chain is not producing blocks";
+        private const string CaughtUpMessage = "Head block is up to date again";
         private const string EtaMessage = "Estimated time to catch up";
         private const string NotClosingMessage = "The gap is not closing.";
 
