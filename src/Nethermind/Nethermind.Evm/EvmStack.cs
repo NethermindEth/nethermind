@@ -24,6 +24,8 @@ public ref partial struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
+    /// <summary>EIP-7979: the most return addresses a frame's return stack may hold.</summary>
+    public const int ReturnStackLimit = 1024;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
@@ -93,6 +95,20 @@ public ref partial struct EvmStack
 
     /// <summary>Resolves the jump-destination bitmap when the stack is built, where the build flavour wants it.</summary>
     partial void InitializeJumpDestinations();
+
+    /// <summary>Validates jumps against the EIP-7979 bitmap, where a <c>CALLDEST</c> is also a jump destination.</summary>
+    /// <remarks>Chosen once per frame, so JUMP and JUMPI keep their single bit test.</remarks>
+    internal void UseCallDestinations()
+    {
+        if (CodeLength != 0 && _codeInfo is not null)
+        {
+            _jumpDestinations = _codeInfo.JumpAndCallDestinationBitmap;
+            OnJumpDestinationsReplaced();
+        }
+    }
+
+    /// <summary>Lets the build flavour follow a bitmap <see cref="UseCallDestinations"/> swapped in.</summary>
+    partial void OnJumpDestinationsReplaced();
 
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;

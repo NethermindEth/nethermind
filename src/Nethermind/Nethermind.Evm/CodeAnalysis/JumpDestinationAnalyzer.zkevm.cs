@@ -13,6 +13,10 @@ public sealed partial class JumpDestinationAnalyzer
     // Guest execution is single-threaded; no cross-thread bitmap publication is needed.
     private long[]? _jumpDestinationBitmap = (codeInfo.CodeLength == 0 || skipAnalysis) ? _emptyJumpDestinationBitmap : null;
 
+    /// <summary>The bitmap jumps are checked against when EIP-7979 adds no destination.</summary>
+    /// <remarks>The incremental one, so code with no <c>CALLDEST</c> byte keeps its lazy analysis under EIP-7979.</remarks>
+    private long[] PlainJumpBitmap => codeInfo.IncrementalJumpBitmap;
+
     /// <summary>The scan's two comparands, in the order it reads them: <c>JUMPDEST</c> then <c>PUSH1</c>.</summary>
     /// <remarks>
     /// ILC re-materialises a compared-against constant at every use inside a loop, and the preinitialiser

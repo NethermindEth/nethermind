@@ -119,6 +119,8 @@ public partial class ParityLikeTxTracer : TxTracer
         EvmExceptionType.NotEnoughBalance => "Insufficient balance for transfer",
         EvmExceptionType.InvalidCode => "Invalid code",
         EvmExceptionType.CallDepthExceeded => "Max call depth exceeded",
+        EvmExceptionType.ReturnStackOverflow => "Return stack overflow",
+        EvmExceptionType.ReturnStackUnderflow => "Return stack underflow",
         EvmExceptionType.Revert => "Reverted",
         _ => "Error",
     };
