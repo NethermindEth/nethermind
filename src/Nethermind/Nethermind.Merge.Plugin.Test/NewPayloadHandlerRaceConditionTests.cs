@@ -525,6 +525,73 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     /// <summary>
+    /// A copy is handed to the queue off the request's thread, so there is a moment when the queue does not have it
+    /// yet. A re-submission with another inclusion list must not queue its own copy in that gap: the earlier copy
+    /// would then run first and its verdict would answer the re-submission.
+    /// </summary>
+    [Test, MaxTime(30_000)]
+    public async Task ValidateBlockAndProcess_waits_for_a_copy_with_another_inclusion_list_that_the_queue_has_not_taken_yet()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource firstEnqueueEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstEnqueueReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondEnqueueEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int enqueues = 0;
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                if (Interlocked.Increment(ref enqueues) == 1)
+                {
+                    firstEnqueueEntered.TrySetResult();
+                    firstEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(10));
+                }
+                else
+                {
+                    secondEnqueueEntered.TrySetResult();
+                }
+
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: true,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 20_000);
+
+        ExecutionPayloadV3 firstPayload = ExecutionPayloadV3.Create(block);
+        firstPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+
+        Task<ResultWrapper<PayloadStatusV1>> first = handler.HandleAsync(firstPayload);
+        await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
+
+        try
+        {
+            Task queuedInTheGap = await Task.WhenAny(secondEnqueueEntered.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            Assert.That(queuedInTheGap, Is.Not.SameAs(secondEnqueueEntered.Task), "the re-submission must wait for the copy carrying another list");
+        }
+        finally
+        {
+            firstEnqueueReleased.TrySetResult();
+        }
+
+        await secondEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+        await first.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
+    /// <summary>
     /// The verdict is published before the block is committed, so a commit that then fails races the request's own
     /// cache write. Whichever of the two lands first, the answer must not stay cached: a block that never committed
     /// has to be processed again when the consensus client re-sends it, not answered VALID from the cache while

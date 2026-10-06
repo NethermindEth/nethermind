@@ -758,7 +758,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // list ever judged, so let the first copy finish first. A copy already gone costs nothing here.
             if (addResult == AddBlockResult.AlreadyKnown)
             {
-                Task removed = _processingQueue.WaitUntilRemovedAsync(block.Hash!, executedOnly: QueuedCopyCarriesSameList(block.Hash!, ilDigest)).AsTask();
+                Task removed = WaitForEarlierCopiesAsync(block.Hash!, ilDigest);
                 if (await Task.WhenAny(removed, timeoutTask) == timeoutTask) throw new TimeoutException();
                 // The first copy's own verdict and removal land on whatever completion is registered for the hash,
                 // so if they consumed this one it must not stand in for the answer to this request. A fault is that
@@ -866,11 +866,18 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         && _blockTree.WasProcessed(number, blockHash);
 
     /// <summary>
-    /// Whether a copy of the block still in the queue was judged against <paramref name="ilDigest"/>, so its verdict
-    /// can answer this request. A copy queued by sync is untracked and counts as carrying no list.
+    /// Waits out the copies of the block whose verdict cannot answer a request carrying <paramref name="ilDigest"/>.
+    /// A copy this handler queued with the same list answers through the shared completion, so only one that already
+    /// has its verdict is waited for. A copy with another list is waited for from the moment its request handed it
+    /// over, which is before the queue has taken it. A copy queued by sync is untracked and counts as carrying no list.
     /// </summary>
-    private bool QueuedCopyCarriesSameList(Hash256 blockHash, in ValueHash256 ilDigest) =>
-        (_queuedInclusionLists.TryGetValue(blockHash, out QueuedInclusionList? queued) ? queued.Digest : default) == ilDigest;
+    private Task WaitForEarlierCopiesAsync(Hash256 blockHash, in ValueHash256 ilDigest)
+    {
+        _queuedInclusionLists.TryGetValue(blockHash, out QueuedInclusionList? queued);
+        bool carriesSameList = (queued?.Digest ?? default) == ilDigest;
+        Task inQueue = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: carriesSameList).AsTask();
+        return queued is null || carriesSameList ? inQueue : Task.WhenAll(inQueue, queued.Left);
+    }
 
     private async Task EnqueueAsync(Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
@@ -893,6 +900,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         finally
         {
             _queuedInclusionLists.TryRemove(new KeyValuePair<Hash256, QueuedInclusionList>(block.Hash!, queued));
+            queued.MarkLeft();
         }
     }
 
@@ -1058,7 +1066,14 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// <summary>The inclusion list a copy this handler queued carries, so a resend knows whether that copy's verdict is its own.</summary>
     private sealed class QueuedInclusionList(ValueHash256 digest)
     {
+        private readonly TaskCompletionSource _left = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         public ValueHash256 Digest { get; } = digest;
+
+        /// <summary>Completes once the copy is out of the queue, or never got into it.</summary>
+        public Task Left => _left.Task;
+
+        public void MarkLeft() => _left.TrySetResult();
     }
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
