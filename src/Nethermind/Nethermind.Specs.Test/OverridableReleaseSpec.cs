@@ -103,6 +103,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8272Enabled { get; set; } = spec.IsEip8272Enabled;
 
         public bool IsEip7906Enabled { get; set; } = spec.IsEip7906Enabled;
+        public bool IsEip7979Enabled { get; set; } = spec.IsEip7979Enabled;
         public bool IsEip4788Enabled { get; set; } = spec.IsEip4788Enabled;
         public bool IsEip4844FeeCollectorEnabled { get; set; } = spec.IsEip4844FeeCollectorEnabled;
         public Address? Eip4788ContractAddress { get; set; } = spec.Eip4788ContractAddress;
@@ -135,6 +136,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip3298Enabled { get; set; } = spec.IsEip3298Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
 
