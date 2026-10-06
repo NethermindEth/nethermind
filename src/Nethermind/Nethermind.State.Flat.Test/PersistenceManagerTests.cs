@@ -1922,32 +1922,32 @@ public class PersistenceManagerTests
         Assert.That(_snapshotRepository.HasBasePersistedSnapshot(stale), Is.False);
     }
 
-    [Test]
-    public void DetermineSnapshotAction_EarlyPersist_IgnoresMinReorgDepthButKeepsFinalizationGate()
+    // CompactSize = 16, so the first boundary is block 16. Below boundary + CompactSize (32) early-persist
+    // waits for the 0->16 compacted snapshot; from 32 on it persists whatever chunk is available.
+    [TestCase(10ul, true, null, TestName = "boundary above finalized does not persist")]
+    [TestCase(18ul, true, 16ul, TestName = "compacted chunk persists regardless of MinReorgDepth")]
+    [TestCase(18ul, false, null, TestName = "waits for the compacted chunk")]
+    [TestCase(32ul, false, 1ul, TestName = "a full chunk past the boundary persists without compaction")]
+    public void DetermineSnapshotAction_EarlyPersist_GatesOnFinalizedBoundaryAndCompaction(ulong finalizedBlock, bool withCompacted, ulong? expectedTo)
     {
         _config.EarlyPersist = true;
         using PersistenceManager pm = CreateManager();
 
-        // Depth 20 is far below MinReorgDepth (64); only the finalization gate should matter.
-        StateId target = CreateStateId(16);
-        StateId latest = CreateStateId(20);
-        using Snapshot expected = CreateSnapshot(Block0, target, compacted: true);
-        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(target.StateRoot.Bytes));
-
-        _finalizedStateProvider.SetFinalizedBlockNumber(10);
-        Snapshot? whileUnfinalized = pm.DetermineSnapshotAction(latest).ToPersist;
-
-        _finalizedStateProvider.SetFinalizedBlockNumber(18);
-        Snapshot? whenFinalized = pm.DetermineSnapshotAction(latest).ToPersist;
-
-        using (Assert.EnterMultipleScope())
+        // Depth 20 is far below MinReorgDepth (64); MinReorgDepth must not matter.
+        StateId previous = Block0;
+        for (ulong block = 1; block <= 20; block++)
         {
-            Assert.That(whileUnfinalized, Is.Null, "boundary above finalized must not persist");
-            Assert.That(whenFinalized, Is.Not.Null, "finalized boundary should persist regardless of depth");
-            Assert.That(whenFinalized?.To, Is.EqualTo(target));
+            CreateSnapshot(previous, CreateStateId(block));
+            previous = CreateStateId(block);
         }
+        StateId boundary = CreateStateId(16);
+        if (withCompacted) CreateSnapshot(Block0, boundary, compacted: true);
+        _finalizedStateProvider.SetFinalizedStateRootAt(16, new Hash256(boundary.StateRoot.Bytes));
+        _finalizedStateProvider.SetFinalizedBlockNumber(finalizedBlock);
 
-        whenFinalized?.Dispose();
+        using Snapshot? toPersist = pm.DetermineSnapshotAction(CreateStateId(20)).ToPersist;
+
+        Assert.That(toPersist?.To, Is.EqualTo(expectedTo is { } to ? CreateStateId(to) : null));
     }
 
     [Test]

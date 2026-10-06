@@ -148,7 +148,8 @@ public class PersistenceManager(
             && (_earlyPersist || latestSnapshot.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth))
         {
             Hash256? canonicalRoot = finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot;
-            if (canonicalRoot is not null)
+            if (canonicalRoot is not null
+                && (!_earlyPersist || IsEarlyPersistReady(new StateId(nextBoundary, canonicalRoot), finalizedBlockNumber)))
             {
                 (PersistedSnapshot? persisted, Snapshot? inMemory) = snapshotRepository.FindSnapshotToPersist(
                     new StateId(nextBoundary, canonicalRoot), currentPersistedState, _compactSize);
@@ -201,6 +202,23 @@ public class PersistenceManager(
         }
 
         return (null, null, conversion);
+    }
+
+    /// <summary>
+    /// Whether early-persist may persist up to <paramref name="boundary"/>: either the boundary's
+    /// <c>CompactSize</c> compacted snapshot exists, or finality is a full chunk past the boundary.
+    /// </summary>
+    /// <remarks>
+    /// Waiting for the compacted snapshot keeps each reverse diff a full chunk instead of persisting
+    /// per-block bases while compaction is still in flight. Finality reaching <c>boundary + CompactSize</c>
+    /// keeps a lagging or missing compaction from stalling persistence.
+    /// </remarks>
+    private bool IsEarlyPersistReady(in StateId boundary, ulong finalizedBlockNumber)
+    {
+        if (finalizedBlockNumber - boundary.BlockNumber >= _compactSize) return true;
+        if (!snapshotRepository.TryLeaseInMemoryState(boundary, SnapshotTier.InMemoryCompacted, out Snapshot? compacted)) return false;
+        using Snapshot _ = compacted;
+        return compacted.To.BlockNumber - compacted.From.BlockNumber == _compactSize;
     }
 
     private StateId ForcedPersistSeed(in StateId latestSnapshot) =>
