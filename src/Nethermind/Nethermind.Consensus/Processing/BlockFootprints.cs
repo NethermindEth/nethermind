@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -54,7 +58,189 @@ internal sealed class BlockFootprints(Block block)
         && tx.Nonce != ulong.MaxValue
         && !(tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero);
 
-    public void Store(int index, TransactionFootprint footprint) => Volatile.Write(ref _footprints[index], footprint);
+    public void Store(int index, TransactionFootprint footprint)
+    {
+        Volatile.Write(ref _footprints[index], footprint);
+        if (RewarmCounters.Enabled) Track(index, footprint);
+    }
+
+    // Experiment only: the block's footprint storage writes by position, and the positions whose footprint read each
+    // slot, so a footprint that earlier positions' writes invalidate can be warmed again on the values they leave.
+    private readonly Lock _versionsLock = new();
+    private readonly Dictionary<StorageCell, List<(int Position, UInt256 Value)>> _slotVersions = [];
+    private readonly Dictionary<StorageCell, List<int>> _slotReaders = [];
+    private readonly Dictionary<int, (StorageCell[] Written, StorageCell[] Read)> _keysByPosition = [];
+    private readonly SortedSet<int> _stale = [];
+    private readonly SemaphoreSlim _staleSignal = new(0);
+    private volatile bool _warmPassEnded;
+
+    private void Track(int position, TransactionFootprint footprint)
+    {
+        Dictionary<StorageCell, UInt256> writes = [];
+        foreach (ref readonly StateEffect effect in footprint.Effects)
+        {
+            if (effect.Kind == EffectKind.SetStorage) writes[new StorageCell(effect.Address, effect.Index)] = effect.Value;
+        }
+
+        ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
+        bool marked = false;
+        lock (_versionsLock)
+        {
+            if (_keysByPosition.Remove(position, out (StorageCell[] Written, StorageCell[] Read) replaced))
+            {
+                foreach (StorageCell cell in replaced.Written)
+                {
+                    if (_slotVersions.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions)) versions.RemoveAll(v => v.Position == position);
+                }
+
+                foreach (StorageCell cell in replaced.Read)
+                {
+                    if (_slotReaders.TryGetValue(cell, out List<int>? readers)) readers.Remove(position);
+                }
+            }
+
+            StorageCell[] written = new StorageCell[writes.Count];
+            int w = 0;
+            foreach ((StorageCell cell, UInt256 value) in writes)
+            {
+                written[w++] = cell;
+                ref List<(int Position, UInt256 Value)>? versions = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotVersions, cell, out _);
+                InsertVersion(versions ??= [], position, value);
+            }
+
+            foreach (StorageCell cell in written) marked |= MarkReaders(cell, position);
+            if (replaced.Written is not null)
+            {
+                foreach (StorageCell cell in replaced.Written) marked |= MarkReaders(cell, position);
+            }
+
+            StorageCell[] read = new StorageCell[reads.Length];
+            bool stale = false;
+            for (int i = 0; i < reads.Length; i++)
+            {
+                StorageCell cell = reads[i].Cell;
+                read[i] = cell;
+                ref List<int>? readers = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotReaders, cell, out _);
+                (readers ??= []).Add(position);
+                if (VersionBefore(cell, position) is { } before && before != reads[i].Value) stale = true;
+            }
+
+            _keysByPosition[position] = (written, read);
+            if (stale && _stale.Add(position))
+            {
+                marked = true;
+                Interlocked.Increment(ref RewarmCounters.Marked);
+            }
+        }
+
+        if (marked) _staleSignal.Release();
+    }
+
+    // Marks the later readers of the slot whose footprint read a value other than the one the block now leaves it at.
+    private bool MarkReaders(StorageCell cell, int position)
+    {
+        if (!_slotReaders.TryGetValue(cell, out List<int>? readers)) return false;
+        bool marked = false;
+        foreach (int reader in readers)
+        {
+            if (reader <= position || VersionBefore(cell, reader) is not { } value || ReadValue(reader, cell) is not { } read || read == value) continue;
+            if (_stale.Add(reader))
+            {
+                marked = true;
+                Interlocked.Increment(ref RewarmCounters.Marked);
+            }
+        }
+
+        return marked;
+    }
+
+    private UInt256? ReadValue(int position, in StorageCell cell)
+    {
+        if (Volatile.Read(ref _footprints[position]) is not { } footprint) return null;
+        foreach (ref readonly SlotPrecondition slot in footprint.Slots)
+        {
+            if (slot.Cell.Equals(cell)) return slot.Value;
+        }
+
+        return null;
+    }
+
+    private UInt256? VersionBefore(in StorageCell cell, int position)
+    {
+        if (!_slotVersions.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions)) return null;
+        int at = FirstAtOrAfter(versions, position);
+        return at == 0 ? null : versions[at - 1].Value;
+    }
+
+    private static int FirstAtOrAfter(List<(int Position, UInt256 Value)> versions, int position)
+    {
+        int low = 0, high = versions.Count;
+        while (low < high)
+        {
+            int mid = (low + high) >>> 1;
+            if (versions[mid].Position < position) low = mid + 1;
+            else high = mid;
+        }
+
+        return low;
+    }
+
+    private static void InsertVersion(List<(int Position, UInt256 Value)> versions, int position, in UInt256 value) =>
+        versions.Insert(FirstAtOrAfter(versions, position), (position, value));
+
+    /// <summary>The value the block's earlier footprints leave <paramref name="cell"/> at before <paramref name="position"/>.</summary>
+    public UInt256? SlotBefore(in StorageCell cell, int position)
+    {
+        lock (_versionsLock) return VersionBefore(cell, position);
+    }
+
+    /// <summary>Takes the first stale position after <paramref name="after"/>, dropping the ones before it.</summary>
+    public bool TryTakeStale(int after, out int position)
+    {
+        lock (_versionsLock)
+        {
+            while (_stale.Count > 0)
+            {
+                int first = _stale.Min;
+                _stale.Remove(first);
+                if (first > after)
+                {
+                    position = first;
+                    return true;
+                }
+            }
+        }
+
+        position = -1;
+        return false;
+    }
+
+    public bool HasStale
+    {
+        get
+        {
+            lock (_versionsLock) return _stale.Count > 0;
+        }
+    }
+
+    public bool WarmPassEnded => _warmPassEnded;
+
+    public void EndWarmPass()
+    {
+        _warmPassEnded = true;
+        _staleSignal.Release();
+    }
+
+    public void WaitForStale(TimeSpan timeout, CancellationToken token)
+    {
+        try
+        {
+            _staleSignal.Wait(timeout, token);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+    }
 
     /// <summary>The footprint of <paramref name="tx"/>, at <paramref name="index"/> in the block <paramref name="header"/> heads.</summary>
     public TransactionFootprint? Find(int index, Transaction tx, BlockHeader header)

@@ -62,6 +62,9 @@ internal sealed class TransactionFootprint(
     /// <summary>Experiment only.</summary>
     public ReadOnlySpan<StateEffect> Effects => effects;
 
+    /// <summary>Experiment only: the slots the run read, at the values it read.</summary>
+    public ReadOnlySpan<SlotPrecondition> Slots => slots;
+
     public void Replay(IWorldState state, IReleaseSpec spec)
     {
         foreach (ref readonly StateEffect effect in effects.AsSpan())

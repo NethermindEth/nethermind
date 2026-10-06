@@ -208,6 +208,25 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     }
 
     [Test]
+    public void Footprints_an_earlier_transaction_invalidates_are_warmed_again_and_taken_over()
+    {
+        RewarmCounters.Enabled = true;
+        try
+        {
+            (int replayed, int rejected, _) = Handoff(BuildBlock(
+                Call(TestItem.PrivateKeyA, 0, Counter),
+                Call(TestItem.PrivateKeyB, 0, Counter),
+                Call(TestItem.PrivateKeyD, 0, Counter))).Tally;
+
+            Assert.That((replayed, rejected), Is.EqualTo((3, 0)));
+        }
+        finally
+        {
+            RewarmCounters.Enabled = false;
+        }
+    }
+
+    [Test]
     public void A_value_transfer_to_a_precompile_replays_until_the_block_creates_its_account()
     {
         (int replayed, int rejected, _) = Handoff(BuildBlock(
@@ -562,7 +581,12 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected PrewarmerTxAdapter ProductionAdapter => (PrewarmerTxAdapter)ProcessingScope.Resolve<ITransactionProcessorAdapter>();
 
     [SetUp]
-    public void Setup() => Initialize(handoff: true);
+    public void Setup()
+    {
+        // Experiment: the re-warm changes which footprints are rejected; the tests that count rejections expect it off.
+        RewarmCounters.Enabled = false;
+        Initialize(handoff: true);
+    }
 
     protected void Initialize(bool handoff)
     {

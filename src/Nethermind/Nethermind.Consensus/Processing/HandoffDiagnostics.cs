@@ -52,6 +52,7 @@ public static class HandoffDiagnostics
     private static long _firstTxStart, _lastTxEnd;
     private static int _lastAbsence = -1;
     private static long _built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late;
+    private static long _marked, _unchanged, _stored, _dropped, _overtaken, _rewarmTicks;
 
     internal static void TxStarted(long timestamp)
     {
@@ -173,6 +174,22 @@ public static class HandoffDiagnostics
             }
 
             (_built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late) = (built, builtWrites, buildTicks, adopted, unclaimed, stale, late);
+
+            long marked = RewarmCounters.Marked, unchanged = RewarmCounters.Unchanged, stored = RewarmCounters.Stored;
+            long dropped = RewarmCounters.Dropped, overtaken = RewarmCounters.Overtaken, rewarmTicks = RewarmCounters.Ticks;
+            if (marked != _marked)
+            {
+                writer.WriteStartObject("rewarm");
+                writer.WriteNumber("marked", marked - _marked);
+                writer.WriteNumber("unchanged", unchanged - _unchanged);
+                writer.WriteNumber("stored", stored - _stored);
+                writer.WriteNumber("dropped", dropped - _dropped);
+                writer.WriteNumber("overtaken", overtaken - _overtaken);
+                writer.WriteNumber("run_ms", Math.Round((rewarmTicks - _rewarmTicks) * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteEndObject();
+            }
+
+            (_marked, _unchanged, _stored, _dropped, _overtaken, _rewarmTicks) = (marked, unchanged, stored, dropped, overtaken, rewarmTicks);
 
             writer.WriteStartObject("storage_writers");
             writer.WriteNumber("replay_only_accounts", replayOnly);

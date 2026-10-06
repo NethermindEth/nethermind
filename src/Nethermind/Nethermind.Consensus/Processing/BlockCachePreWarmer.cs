@@ -27,6 +27,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing.State;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Collections;
@@ -223,6 +224,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
                     : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
+                using ParallelUnbalancedWork.BackgroundWork? rewarmWork = footprints is null || !RewarmCounters.Enabled ? null
+                    : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => RewarmStale(blockState, footprints, token));
                 try
                 {
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
@@ -230,9 +233,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     if (footprints is not null)
                     {
                         Volatile.Write(ref footprints.WarmedAt, Stopwatch.GetTimestamp());
+                        footprints.EndWarmPass();
                         if (PredictsStorageRoots && !token.IsCancellationRequested) PredictStorageRoots(footprints, token);
                     }
                     discoveryWork?.WaitForCompletion();
+                    rewarmWork?.WaitForCompletion();
                 }
                 finally
                 {
@@ -928,8 +933,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <returns>Whether the transaction can have one at all.</returns>
-    /// <summary>Experiment only: build storage trees from the block's footprints once its warm pass ends; NETHERMIND_EXP_FOOTPRINT_ROOTS=0 turns it off.</summary>
-    private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") != "0";
+    /// <summary>Experiment only: build storage trees from the block's footprints once its warm pass ends; off unless NETHERMIND_EXP_FOOTPRINT_ROOTS=1 (it breaks the state root on block-tree review re-runs).</summary>
+    private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") == "1";
 
     private void PredictStorageRoots(BlockFootprints footprints, CancellationToken token)
     {
@@ -976,6 +981,99 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         catch (OperationCanceledException)
         {
             // Block processing finished its transactions; what is built is offered, the rest is not.
+        }
+    }
+
+    private static readonly TimeSpan StaleWait = TimeSpan.FromMilliseconds(2);
+
+    /// <summary>Experiment only: warms again the footprints the block's earlier footprints invalidate, ahead of block processing.</summary>
+    /// <remarks>Ends once the warm pass has ended and nothing is stale, or when the block's transactions are done.</remarks>
+    private void RewarmStale(BlockState blockState, BlockFootprints footprints, CancellationToken token)
+    {
+        IPrewarmerEnv? env = null;
+        try
+        {
+            while (!token.IsCancellationRequested)
+            {
+                // The next position is the one block processing reaches next; leave it to execution.
+                while (footprints.TryTakeStale(MainThreadTxIndex + 1, out int position))
+                {
+                    if (token.IsCancellationRequested) return;
+                    Rewarm(env ??= _envPool.Get(), blockState, footprints, position, token);
+                }
+
+                if (footprints.WarmPassEnded && !footprints.HasStale) return;
+                footprints.WaitForStale(StaleWait, token);
+            }
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.DebugError("Error warming stale footprints", ex);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        finally
+        {
+            if (env is not null) _envPool.Return(env);
+        }
+    }
+
+    private static void Rewarm(IPrewarmerEnv env, BlockState blockState, BlockFootprints footprints, int position, CancellationToken token)
+    {
+        if (footprints.Get(position) is not { } stale || env.Recorder is not { } recorder) return;
+
+        Transaction tx = stale.Transaction;
+        BlockHeader header = blockState.Block.Header;
+        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(header);
+        scope.TransactionProcessor.SetBlockExecutionContext(new BlockExecutionContext(header, blockState.Spec));
+        IWorldState state = scope.WorldState;
+
+        // The slots the stale run read, at the values the block's earlier footprints leave them.
+        bool moved = false;
+        foreach (ref readonly SlotPrecondition slot in stale.Slots)
+        {
+            if (footprints.SlotBefore(slot.Cell, position) is not { } value) continue;
+            moved |= value != slot.Value;
+            state.Set(slot.Cell, value);
+        }
+
+        if (!moved)
+        {
+            Interlocked.Increment(ref RewarmCounters.Unchanged);
+            return;
+        }
+
+        Address sender = tx.SenderAddress!;
+        if (state.GetNonce(sender) < tx.Nonce) state.SetNonce(sender, tx.Nonce);
+        // Committed, so the run's EIP-2200 originals are the values it starts from, as in block processing.
+        state.Commit(blockState.Spec, NullStateTracer.Instance, commitRoots: false);
+
+        long start = Stopwatch.GetTimestamp();
+        recorder.Start(blockState.PreWarmer, position, token);
+        try
+        {
+            TransactionResult result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
+                ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            if (result && recorder.Finish(tx, in result) is { } footprint)
+            {
+                footprints.Store(position, footprint);
+                Interlocked.Increment(ref RewarmCounters.Stored);
+            }
+            else
+            {
+                Interlocked.Increment(ref RewarmCounters.Dropped);
+            }
+        }
+        catch (OperationCanceledException) when (!token.IsCancellationRequested)
+        {
+            recorder.Discard();
+            Interlocked.Increment(ref RewarmCounters.Overtaken);
+        }
+        finally
+        {
+            recorder.Stop();
+            Interlocked.Add(ref RewarmCounters.Ticks, Stopwatch.GetTimestamp() - start);
         }
     }
 
