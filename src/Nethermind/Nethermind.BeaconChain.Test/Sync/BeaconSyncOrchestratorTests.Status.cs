@@ -235,7 +235,7 @@ public partial class BeaconSyncOrchestratorTests
         importer.Head = importer.Head with { HeadSlot = gloasSlot + 1 };
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        string[] banners = [.. logs.Messages.Where(static message => message.Contains("crossed into Gloas"))];
+        string[] banners = [.. logs.Messages.Where(static message => message.Contains("Wild hard fork appeared (Gloas)"))];
         Assert.That(banners, Has.Length.EqualTo(1), "only the step that moves the head from a Fulu slot to a Gloas slot shows it");
         Assert.That(banners[0], Does.Contain($"slot {gloasSlot} (epoch {spec.GloasForkEpoch})"));
         Assert.That(banners[0].Split('\n'), Has.Length.LessThanOrEqualTo(GloasForkBanner.MaxLines), "the banner must fit a terminal");
@@ -253,7 +253,7 @@ public partial class BeaconSyncOrchestratorTests
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
         await orchestrator.RunHeadStepAsync(CancellationToken.None);
 
-        Assert.That(logs.Messages, Has.None.Contains("crossed into Gloas"), "a restart past the fork has no crossing to mark");
+        Assert.That(logs.Messages, Has.None.Contains("Wild hard fork appeared (Gloas)"), "a restart past the fork has no crossing to mark");
     }
 
     private static (BeaconSyncOrchestrator Orchestrator, BeaconChainStatusHolder StatusHolder, SlotClock SlotClock) CreateStatusHarness(DataColumnSidecarPool pool, ulong anchorSlot, ulong wallSlot, ulong headOffset = FuluHeadOffset, bool headFull = false, BeaconChainSpec? forkSpec = null, ulong? backfilledFrom = null, CheckpointRef? finalized = null, ScriptedImporter? scriptedImporter = null, ILogManager? logManager = null)

@@ -61,5 +61,5 @@ internal static class GloasForkBanner
 
     /// <summary>Renders the banner for the head at <paramref name="slot"/> in <paramref name="epoch"/>.</summary>
     internal static string Render(ulong slot, ulong epoch) =>
-        $"Beacon chain head crossed into Gloas at slot {slot} (epoch {epoch})\n{PolarBear}";
+        $"Wild hard fork appeared (Gloas) at slot {slot} (epoch {epoch})\n{PolarBear}";
 }
