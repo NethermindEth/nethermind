@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -405,6 +406,72 @@ public class HistoryWindowPrunerTests
             Assert.That(reader.IsAvailable(new StateId(11, rootBelowFloor)), Is.False,
                 "block 11 is below the floor and pruned regardless of its marker (reads there are refused before the marker is even consulted)");
         }
+    }
+
+    [TestCase(null, 12UL, TestName = "PruneBlockMarkers_WithNoSliceScope_RemovesMarkersBelowTheGlobalFloorOnly")]
+    [TestCase(5UL, 5UL, TestName = "PruneBlockMarkers_WithASliceScopeBelowTheGlobalFloor_KeepsMarkersDownToTheScopeFloor")]
+    public void PruneBlockMarkers_AfterACompletedPass_RemovesOnlyMarkersBelowTheMarkerFloorAndKeepsEveryReservedKey(ulong? scopeFloor, ulong expectedMarkerFloor)
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8: the global floor publishes at 12.
+        // 2. Optionally a slice scope at 5, which must keep its markers down to 5.
+        // 3. A marker sweep cursor left by an older binary that yielded mid-sweep.
+        // 4. One completed pass leaves exactly the markers at or above the marker floor and every reserved key.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        byte[] scopeRecordKey = [.. "history:floor:scope:"u8, .. HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB)];
+        if (scopeFloor is { } floor)
+        {
+            new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), floor);
+        }
+
+        byte[] legacyMarkerCursorKey = "history:prune:cursor:blocks"u8.ToArray();
+        availableBlocks.PutSpan(legacyMarkerCursorKey, BlockKey(3));
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool completed = pruner.RunOnePass(CancellationToken.None);
+
+        List<ulong> markers = [];
+        List<byte[]> reservedKeys = [];
+        foreach (KeyValuePair<byte[], byte[]> entry in availableBlocks.GetAll(ordered: true))
+        {
+            if (entry.Key.Length == sizeof(ulong)) markers.Add(BinaryPrimitives.ReadUInt64BigEndian(entry.Key));
+            else reservedKeys.Add(entry.Key);
+        }
+
+        List<byte[]> expectedReservedKeys =
+        [
+            "history:watermark"u8.ToArray(),
+            "history:format"u8.ToArray(),
+            "history:floor:global"u8.ToArray(),
+            legacyMarkerCursorKey,
+        ];
+        if (scopeFloor is not null) expectedReservedKeys.Add(scopeRecordKey);
+
+        List<ulong> expectedMarkers = [];
+        for (ulong block = expectedMarkerFloor; block <= 20; block++) expectedMarkers.Add(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "precondition: the pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "precondition: the global floor published at 12");
+            Assert.That(markers, Is.EqualTo(expectedMarkers),
+                "every marker below the marker floor is gone, including those below the stale cursor, and every marker at or above it stays");
+            Assert.That(reservedKeys, Is.EquivalentTo(expectedReservedKeys),
+                "the reserved keys sort above every marker below the floor, so the marker range never reaches them");
+        }
+    }
+
+    private static byte[] BlockKey(ulong block)
+    {
+        byte[] key = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return key;
     }
 
     private void RecordClear(StorageClearStore clears, byte[] accountKey, ulong block)
