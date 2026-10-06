@@ -137,7 +137,7 @@ internal sealed class DeferredGossipValidation(
             MessageValidity validity;
             try
             {
-                validity = validator.Validate(message, verdict);
+                validity = validator.Validate(message, verdict, source);
             }
             catch (Exception e) when (e is not OutOfMemoryException)
             {

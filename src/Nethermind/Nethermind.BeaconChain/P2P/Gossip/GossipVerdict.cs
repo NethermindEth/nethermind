@@ -24,6 +24,8 @@ public sealed class GossipVerdict
     private readonly Action? _onEnd;
     private readonly bool _local;
     private readonly TaskCompletionSource _completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+    private Action? _releaseOnEnd;
+    private bool _ended;
     private int _state;
     private int _handedOff;
     private Action? _onThrottled;
@@ -61,6 +63,21 @@ public sealed class GossipVerdict
         {
             _onThrottled += release;
         }
+    }
+
+    /// <summary>Runs cleanup before completion, or immediately when the verdict has already ended.</summary>
+    internal void ReleaseOnEnd(Action release)
+    {
+        lock (_completion)
+        {
+            if (!_ended)
+            {
+                _releaseOnEnd += release;
+                return;
+            }
+        }
+
+        release();
     }
 
     /// <summary>Records that a consumer took the verdict over.</summary>
@@ -135,7 +152,28 @@ public sealed class GossipVerdict
 
     private void End()
     {
-        _onEnd?.Invoke();
-        _completion.TrySetResult();
+        Action? release;
+        lock (_completion)
+        {
+            _ended = true;
+            release = _releaseOnEnd;
+            _releaseOnEnd = null;
+        }
+
+        try
+        {
+            release?.Invoke();
+        }
+        finally
+        {
+            try
+            {
+                _onEnd?.Invoke();
+            }
+            finally
+            {
+                _completion.TrySetResult();
+            }
+        }
     }
 }

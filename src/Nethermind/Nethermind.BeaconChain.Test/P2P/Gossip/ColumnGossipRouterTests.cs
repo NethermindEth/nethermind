@@ -87,7 +87,7 @@ public class ColumnGossipRouterTests
     }
 
     [Test]
-    public void Crossing_the_reconstruction_threshold_reconstructs_the_missing_columns_exactly_once_and_publishes_those_of_subscribed_subnets([Values] bool headerVerified)
+    public void Crossing_the_reconstruction_threshold_publishes_verified_columns_exactly_once([Values] bool headerVerified, [Values] bool crossSeed)
     {
         // Held directly over gossip: columns 0..63 (crosses the 64-column threshold on the last one).
         // Subscribed but not held: subnets 64..70, the ones a reconstructed column could be published to.
@@ -103,7 +103,8 @@ public class ColumnGossipRouterTests
         ColumnGossipRouter router = CreateRouter(pool, store: store);
         Dictionary<string, GossipDigestWindowTests.RecordingTopic> topics = [];
         byte[] digest = ForkDigest.Compute(Spec, 419_072);
-        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, subscribedSubnets);
+        router.Start(id => topics[id] = new GossipDigestWindowTests.RecordingTopic(), digest, subscribedSubnets,
+            crossSeed ? (id, data) => (topics[id] = new GossipDigestWindowTests.RecordingTopic()).Publish(data) : null);
 
         List<DataColumnSidecar> receivedEvents = [];
         router.DataColumnSidecarReceived += receivedEvents.Add;
@@ -122,13 +123,13 @@ public class ColumnGossipRouterTests
             Assert.That(receivedEvents.Select(s => s.Index), Is.EquivalentTo(Enumerable.Range(0, Eip7594DasConstants.NumberOfColumns).Select(i => (ulong)i)));
         }
 
-        // fulu/das-core.md "Reconstruction and cross-seeding": a reconstructed column of a subscribed subnet goes to that subnet's topic, and no other column is sent.
         // An unverified header may be forged, so its reconstructed columns are never sent.
-        ulong[] publishedColumns = [.. Enumerable.Range(required, headerVerified ? 7 : 0).Select(static column => (ulong)column)];
+        ulong[] publishedColumns = [.. Enumerable.Range(required, headerVerified ? crossSeed ? required : 7 : 0).Select(static column => (ulong)column)];
         string[] publishedTopics = [.. publishedColumns.Select(column => GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column)))];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(topics.Where(static t => t.Value.Published.Count > 0).Select(static t => t.Key), Is.EquivalentTo(publishedTopics), "only subscribed subnets are published to");
+            Assert.That(topics.Where(static t => t.Value.Published.Count > 0).Select(static t => t.Key), Is.EquivalentTo(publishedTopics));
+            Assert.That(topics.Where(static t => t.Value.IsSubscribed).Select(static t => t.Key), Is.EquivalentTo(subscribedSubnets.Select(column => GossipTopics.Topic(digest, GossipTopics.DataColumnSidecarTopicName(column)))));
             Assert.That(publishedTopics.Select(topic => topics[topic].Published), Is.EqualTo(publishedColumns.Select(column => new[] { Message(DataColumnSidecarTestFixture.BuildValidSidecar(column, CurrentSlot)) })),
                 "each reconstructed column is published once, as its snappy SSZ");
         }

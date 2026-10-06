@@ -63,7 +63,7 @@ public class GossipLoopbackTests
     // fulu/das-core.md: reconstructed columns of subscribed subnets MUST be sent to their mesh neighbors.
     [Test]
     [CancelAfter(120_000)]
-    public async Task Reconstructed_column_reaches_the_mesh_neighbor_on_its_subnet(CancellationToken token)
+    public async Task Reconstructed_column_reaches_its_subnet_without_requiring_a_subscription([Values] bool subscribed, CancellationToken token)
     {
         const ulong slot = 13_410_304;
         const ulong reconstructed = Eip7594DasConstants.RequiredColumnsForReconstruction;
@@ -78,11 +78,11 @@ public class GossipLoopbackTests
         await using BeaconP2P neighbor = CreateHost();
         await reconstructing.StartAsync(token);
         await neighbor.StartAsync(token);
-        columns.Start(reconstructing.GetTopic, digest, [.. Enumerable.Range(0, (int)reconstructed + 1).Select(static subnet => (ulong)subnet)]);
+        columns.Start(reconstructing.GetTopic, digest, [.. Enumerable.Range(0, (int)reconstructed + (subscribed ? 1 : 0)).Select(static subnet => (ulong)subnet)], reconstructing.Publish);
         TaskCompletionSource<byte[]> received = new(TaskCreationOptions.RunContinuationsAsynchronously);
         neighbor.GetTopic(topicId).OnMessage += (_, data) => received.TrySetResult(data);
         await ConnectAsync(neighbor, reconstructing, token);
-        while (!IsMeshNeighbor(reconstructing, topicId, neighbor.LocalPeerId!))
+        while (!IsMeshNeighbor(reconstructing, topicId, neighbor.LocalPeerId!, subscribed))
         {
             await Task.Delay(100, token);
         }
@@ -93,14 +93,15 @@ public class GossipLoopbackTests
         }
 
         Assert.That(await received.Task, Is.EqualTo(Snappy.CompressToArray(DataColumnSidecar.Encode(DataColumnSidecarTestFixture.BuildValidSidecar(reconstructed, slot)))));
+        Assert.That(((PubsubRouter)reconstructing.RoutingStateForTest!).GetTopic(topicId, subscribe: false).IsSubscribed, Is.EqualTo(subscribed));
     }
 
-    private static bool IsMeshNeighbor(BeaconP2P node, string topicId, PeerId peer)
+    private static bool IsMeshNeighbor(BeaconP2P node, string topicId, PeerId peer, bool subscribed = true)
     {
         IRoutingStateContainer router = node.RoutingStateForTest!;
         lock (router)
         {
-            return router.Mesh.TryGetValue(topicId, out HashSet<PeerId>? mesh) && mesh.Contains(peer);
+            return (subscribed ? router.Mesh : router.GossipsubPeers).TryGetValue(topicId, out HashSet<PeerId>? peers) && peers.Contains(peer);
         }
     }
 

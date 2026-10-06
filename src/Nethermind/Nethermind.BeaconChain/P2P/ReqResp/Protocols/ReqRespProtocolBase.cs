@@ -433,7 +433,7 @@ public abstract class SingleChunkProtocol<TRequest, TResponse> : ReqRespProtocol
 
     public virtual async Task<TResponse> DialAsync(IChannel downChannel, ISessionContext context, TRequest request)
     {
-        using RequestTiming.Exchange exchange = MaxRequestSize == 0 ? default : RequestTiming.Open(request);
+        using RequestTiming.Exchange exchange = RequestTiming.Open(request);
         RequestTiming? timing = exchange.Timing;
         using ChannelStreamAdapter input = new(downChannel);
         using CancellationTokenSource cts = StartTimeout(TtfbTimeout + RespTimeout);

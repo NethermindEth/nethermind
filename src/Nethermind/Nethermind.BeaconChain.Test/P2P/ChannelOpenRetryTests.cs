@@ -10,6 +10,7 @@ using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Storage;
+using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -19,14 +20,51 @@ using NSubstitute;
 
 namespace Nethermind.BeaconChain.Test.P2P;
 
-/// <summary>
-/// Nethermind.Libp2p.Protocols.Yamux 1.0.0 can drop the peer's first frames on a channel this node opens, so the channel never reaches its protocol.
-/// Such a request is opened once more after a short bound instead of waiting out its budget, the first attempt cancelled before the second starts.
-/// </summary>
 public class ChannelOpenRetryTests
 {
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
     private static readonly TimeSpan OpenBound = TimeSpan.FromMilliseconds(200);
+
+    public enum ControlRequest { Ping, Metadata, Goodbye }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Control_requests_retry_only_a_channel_that_never_opened([Values] ControlRequest request, [Values(0, 1, 2)] int drops, CancellationToken token)
+    {
+        DroppingOpener opener = new(drops, answerAfter: OpenBound * 2, openWhenAbandoned: drops == 2);
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(1));
+        Task Send() => request switch
+        {
+            ControlRequest.Ping => node.PingAsync(opener.Session, token),
+            ControlRequest.Metadata => node.RequestMetaDataAsync(opener.Session, token),
+            _ => node.GoodbyeAsync(opener.Session, 7, token),
+        };
+        if (drops == 2 && request != ControlRequest.Goodbye)
+            Assert.That(Assert.ThrowsAsync<ReqRespTimeoutException>(Send)!.ChannelNeverOpened, Is.True);
+        else
+            await Send();
+
+        Assert.That(opener.Attempts, Is.EqualTo(drops == 0 ? 1 : 2));
+        Assert.That(opener.LateOpens, Is.EqualTo(drops == 2 ? 1 : 0));
+        Assert.That(opener.EarlierCancelledWhenOpened, Is.EqualTo(drops == 0 ? Array.Empty<bool>() : new[] { true }));
+    }
+
+    [Test]
+    [CancelAfter(30_000)]
+    public async Task Cancelling_a_control_request_before_its_channel_opens_does_not_retry([Values] ControlRequest request, CancellationToken token)
+    {
+        DroppingOpener opener = new(drops: 1);
+        await using BeaconP2P node = CreateHost(TimeSpan.FromSeconds(1));
+        using CancellationTokenSource caller = CancellationTokenSource.CreateLinkedTokenSource(token);
+        caller.CancelAfter(OpenBound / 4);
+        Assert.CatchAsync<OperationCanceledException>(() => request switch
+        {
+            ControlRequest.Ping => node.PingAsync(opener.Session, caller.Token),
+            ControlRequest.Metadata => node.RequestMetaDataAsync(opener.Session, caller.Token),
+            _ => node.GoodbyeAsync(opener.Session, 7, caller.Token),
+        });
+        Assert.That((opener.Attempts, opener.FirstCancelled), Is.EqualTo((1, true)));
+    }
 
     [Test]
     [CancelAfter(30_000)]
@@ -241,7 +279,13 @@ public class ChannelOpenRetryTests
         public DroppingOpener(int drops, TimeSpan answerAfter = default, bool openWhenAbandoned = false)
         {
             Session = Substitute.For<ISession>();
-            Session.DialAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(default!, default).ReturnsForAnyArgs(call =>
+            Configure<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>([]);
+            Configure<Eth2PingProtocol, Uint64Request, ulong>(7);
+            Configure<MetaDataProtocolV3, Uint64Request, MetaDataV3>(new LocalMetadataSource().Current);
+            Configure<GoodbyeProtocol, Uint64Request, ulong>(7);
+
+            void Configure<TProtocol, TRequest, TResponse>(TResponse response) where TProtocol : ISessionProtocol<TRequest, TResponse>
+                => Session.DialAsync<TProtocol, TRequest, TResponse>(default!, default).ReturnsForAnyArgs(call =>
             {
                 CancellationToken token = call.Arg<CancellationToken>();
                 if (_tokens.LastOrDefault() is { CanBeCanceled: true } earlier)
@@ -250,11 +294,11 @@ public class ChannelOpenRetryTests
                 }
 
                 _tokens.Enqueue(token);
-                Hash256[] request = call.Arg<Hash256[]>();
+                object request = call.ArgAt<TRequest>(0)!;
                 int attempt = Interlocked.Increment(ref _attempts);
-                return attempt > drops ? AnswerAsync(request, answerAfter, token)
-                    : attempt == 1 && openWhenAbandoned ? OpenWhenAbandonedAsync(request, token)
-                    : Never<IReadOnlyList<ForkedSignedBeaconBlock>>(token);
+                return attempt > drops ? AnswerAsync(request, response, answerAfter, token)
+                    : attempt == 1 && openWhenAbandoned ? OpenWhenAbandonedAsync<TResponse>(request, token)
+                    : Never<TResponse>(token);
             });
         }
 
@@ -264,11 +308,11 @@ public class ChannelOpenRetryTests
         public bool FirstCancelled => _tokens.TryPeek(out CancellationToken first) && first.IsCancellationRequested;
         public bool[] EarlierCancelledWhenOpened => [.. _earlierCancelled];
 
-        private async Task<IReadOnlyList<ForkedSignedBeaconBlock>> OpenWhenAbandonedAsync(Hash256[] request, CancellationToken token)
+        private async Task<T> OpenWhenAbandonedAsync<T>(object request, CancellationToken token)
         {
             try
             {
-                return await Never<IReadOnlyList<ForkedSignedBeaconBlock>>(token);
+                return await Never<T>(token);
             }
             catch (OperationCanceledException)
             {
@@ -279,11 +323,11 @@ public class ChannelOpenRetryTests
             }
         }
 
-        private static async Task<IReadOnlyList<ForkedSignedBeaconBlock>> AnswerAsync(Hash256[] request, TimeSpan after, CancellationToken token)
+        private static async Task<T> AnswerAsync<T>(object request, T response, TimeSpan after, CancellationToken token)
         {
             using RequestTiming.Exchange exchange = RequestTiming.Open(request);
             await Task.Delay(after, token);
-            return [];
+            return response;
         }
     }
 }
