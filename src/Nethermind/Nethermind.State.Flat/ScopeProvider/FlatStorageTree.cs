@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -195,8 +196,9 @@ public sealed class FlatStorageTree(
         return tree;
     }
 
-    private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree)
+    private Dictionary<UInt256, UInt256>? AdoptEarlyTree(StorageTree tree, out Dictionary<UInt256, UInt256>? dryPredicted)
     {
+        dryPredicted = null;
         if (Volatile.Read(ref _earlyWrites) is null)
         {
             // Experiment only: a tree built ahead from the predicted final writes, reconciled slot by slot like an early tree.
@@ -204,6 +206,13 @@ public sealed class FlatStorageTree(
             // in the block would otherwise lose its writes.
             if (!ReferenceEquals(tree.RootRef, GetTrees().PreBlockRoot)
                 || _scope.TakePredictedStorage(_address, _storageRoot) is not { Applied.Count: > 0 } predicted) return null;
+            if (predicted.Tree is null)
+            {
+                // Dry run: compared with the batch, never adopted.
+                dryPredicted = predicted.Applied;
+                return null;
+            }
+
             tree.RootRef = predicted.Tree.RootRef;
             Interlocked.Increment(ref PredictedStorageCounters.Adopted);
             return predicted.Applied;
@@ -297,14 +306,81 @@ public sealed class FlatStorageTree(
         if (_scope.Trieless) return new FlatOverlayStorageWriteBatch(this);
 
         StorageTree tree = GetTrees().Tree;
-        Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree);
+        Dictionary<UInt256, UInt256>? earlyApplied = AdoptEarlyTree(tree, out Dictionary<UInt256, UInt256>? dryPredicted);
         // Deferred, the batch only hashes the tree and the scope commit writes its nodes after the block is reported
         // valid. The hash then goes parallel from the size at which a commit would split the tree across threads.
         TrieStoreScopeProvider.StorageTreeBulkWriteBatch trieBatch = new(estimatedEntries, tree, onRootUpdated, _address,
             commit: !_config.DeferStorageTrieCommit, minWritesToHashInParallel: MinWritesToHashInParallel);
-        return earlyApplied is null
+        IWorldStateScopeProvider.IStorageWriteBatch batch = earlyApplied is null
             ? new StorageTreeBulkWriteBatch(trieBatch, this)
             : new EarlyAppliedStorageWriteBatch(trieBatch, this, earlyApplied);
+        return PredictedStorageCounters.DryRun ? new DryRunStorageWriteBatch(batch, this, dryPredicted) : batch;
+    }
+
+    /// <summary>Experiment only: compares the block's writes with the predicted ones and times the trie work; changes nothing.</summary>
+    private sealed class DryRunStorageWriteBatch(
+        IWorldStateScopeProvider.IStorageWriteBatch inner,
+        FlatStorageTree storageTree,
+        Dictionary<UInt256, UInt256>? predicted) : IWorldStateScopeProvider.IStorageWriteBatch
+    {
+        private long _ticks;
+        private int _writes;
+        private int _matched;
+        private bool _cleared;
+
+        public void Set(in UInt256 index, in UInt256 value)
+        {
+            long start = Stopwatch.GetTimestamp();
+            _writes++;
+            if (predicted is not null && predicted.Remove(index, out UInt256 expected) && expected == value) _matched++;
+            inner.Set(in index, in value);
+            _ticks += Stopwatch.GetTimestamp() - start;
+        }
+
+        public void Clear()
+        {
+            _cleared = true;
+            inner.Clear();
+        }
+
+        public void Dispose()
+        {
+            long start = Stopwatch.GetTimestamp();
+            inner.Dispose();
+            long ticks = _ticks + Stopwatch.GetTimestamp() - start;
+            if (predicted is null)
+            {
+                Interlocked.Increment(ref PredictedStorageCounters.UnpredictedAccounts);
+                Interlocked.Add(ref PredictedStorageCounters.UnpredictedWrites, _writes);
+                Interlocked.Add(ref PredictedStorageCounters.UnpredictedTicks, ticks);
+                PredictedStorageCounters.Max(ref PredictedStorageCounters.UnpredictedMaxTicks, ticks);
+                return;
+            }
+
+            // A predicted write the batch does not carry is harmless only at the value the slot keeps.
+            int leftovers = 0;
+            foreach ((UInt256 slot, UInt256 expected) in predicted)
+            {
+                storageTree.Get(slot, out UInt256 kept);
+                if (kept != expected) leftovers++;
+            }
+
+            if (!_cleared && _matched == _writes && leftovers == 0)
+            {
+                Interlocked.Increment(ref PredictedStorageCounters.DryExactAccounts);
+                Interlocked.Add(ref PredictedStorageCounters.DryExactWrites, _writes);
+                Interlocked.Add(ref PredictedStorageCounters.DryExactTicks, ticks);
+                PredictedStorageCounters.Max(ref PredictedStorageCounters.DryExactMaxTicks, ticks);
+                return;
+            }
+
+            Interlocked.Increment(ref PredictedStorageCounters.DryInexactAccounts);
+            Interlocked.Add(ref PredictedStorageCounters.DryInexactWrites, _writes);
+            Interlocked.Add(ref PredictedStorageCounters.DryInexactMatched, _matched);
+            Interlocked.Add(ref PredictedStorageCounters.DryInexactLeftovers, leftovers);
+            Interlocked.Add(ref PredictedStorageCounters.DryInexactTicks, ticks);
+            PredictedStorageCounters.Max(ref PredictedStorageCounters.DryInexactMaxTicks, ticks);
+        }
     }
 
     // For a tree that already holds the early writes: unchanged slots only update the flat overlay.

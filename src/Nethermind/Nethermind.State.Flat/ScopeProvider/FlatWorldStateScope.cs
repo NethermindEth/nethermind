@@ -44,7 +44,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // The warmer adapter only sees the scope's base, so predictions only serve its first block.
     private volatile int _committedBlocks;
 
-    internal sealed record PredictedStorage(Hash256 BaseRoot, StorageTree Tree, Dictionary<UInt256, UInt256> Applied);
+    /// <summary>A tree built ahead from the predicted writes; in a dry run only the writes, with no tree.</summary>
+    internal sealed record PredictedStorage(Hash256 BaseRoot, StorageTree? Tree, Dictionary<UInt256, UInt256> Applied);
     private ConcurrentDictionary<AddressAsKey, FlatStorageTree?>? _hintWarmStorages;
     private bool _isDisposed = false;
 
@@ -539,6 +540,26 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         try
         {
             Hash256 baseRoot = _snapshotBundle.GetAccount(address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            if (PredictedStorageCounters.DryRun)
+            {
+                Dictionary<UInt256, UInt256> predicted = new(writes.Count);
+                foreach ((UInt256 slot, UInt256 value) in writes) predicted[slot] = value;
+                lock (_predictionsLock)
+                {
+                    if (_predictionsClosed)
+                    {
+                        Interlocked.Increment(ref PredictedStorageCounters.Late);
+                        return;
+                    }
+
+                    (Volatile.Read(ref _predictedStorages) ?? InitializePredictedStorages())[address] = new PredictedStorage(baseRoot, null, predicted);
+                }
+
+                Interlocked.Increment(ref PredictedStorageCounters.Built);
+                Interlocked.Add(ref PredictedStorageCounters.BuiltWrites, writes.Count);
+                return;
+            }
+
             StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_snapshotBundle, address.ToAccountPath.ToHash256()), _logManager);
             tree.SetRootHash(baseRoot, false);
 

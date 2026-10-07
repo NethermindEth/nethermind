@@ -145,6 +145,35 @@ public static class HandoffDiagnostics
         count++;
     }
 
+    private static readonly long[] _dryLast = new long[11];
+
+    // Per-block deltas of the dry run's process-wide sums; the maxima are taken and reset.
+    private static void WriteDryRun(Utf8JsonWriter writer)
+    {
+        long[] now =
+        [
+            PredictedStorageCounters.DryExactAccounts, PredictedStorageCounters.DryExactWrites, PredictedStorageCounters.DryExactTicks,
+            PredictedStorageCounters.DryInexactAccounts, PredictedStorageCounters.DryInexactWrites, PredictedStorageCounters.DryInexactMatched,
+            PredictedStorageCounters.DryInexactLeftovers, PredictedStorageCounters.DryInexactTicks,
+            PredictedStorageCounters.UnpredictedAccounts, PredictedStorageCounters.UnpredictedWrites, PredictedStorageCounters.UnpredictedTicks,
+        ];
+        string[] names = ["exact_accounts", "exact_writes", "exact_ms", "inexact_accounts", "inexact_writes", "inexact_matched", "inexact_leftovers",
+            "inexact_ms", "unpredicted_accounts", "unpredicted_writes", "unpredicted_ms"];
+        writer.WriteStartObject("storage_prediction");
+        for (int i = 0; i < now.Length; i++)
+        {
+            long delta = now[i] - _dryLast[i];
+            if (names[i].EndsWith("_ms", StringComparison.Ordinal)) writer.WriteNumber(names[i], Math.Round(delta * 1000.0 / Stopwatch.Frequency, 3));
+            else writer.WriteNumber(names[i], delta);
+            _dryLast[i] = now[i];
+        }
+
+        writer.WriteNumber("exact_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.DryExactMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
+        writer.WriteNumber("inexact_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.DryInexactMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
+        writer.WriteNumber("unpredicted_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.UnpredictedMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
+        writer.WriteEndObject();
+    }
+
     private static void WriteDeciles(Utf8JsonWriter writer, string name, long[,] counts, long[,] ticks, int row)
     {
         bool any = false;
@@ -251,6 +280,8 @@ public static class HandoffDiagnostics
             }
 
             (_built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late) = (built, builtWrites, buildTicks, adopted, unclaimed, stale, late);
+
+            if (PredictedStorageCounters.DryRun) WriteDryRun(writer);
 
             long marked = RewarmCounters.Marked, unchanged = RewarmCounters.Unchanged, stored = RewarmCounters.Stored;
             long dropped = RewarmCounters.Dropped, overtaken = RewarmCounters.Overtaken, rewarmTicks = RewarmCounters.Ticks;
