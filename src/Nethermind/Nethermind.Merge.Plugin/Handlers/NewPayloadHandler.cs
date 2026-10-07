@@ -155,7 +155,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo)
         {
-            _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
+            // The gas trend is read and advanced here, in request order; only the line is built and written elsewhere.
+            string gasChange = GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit);
+            LogReceived(requestStr, block, gasChange);
             _lastBlockNumber = block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
         }
@@ -375,6 +377,27 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 return ThrowUnknownValidationResult(result);
         }
     }
+
+    /// <summary>Writes the line that announces a new payload from the thread pool rather than the request's thread.</summary>
+    /// <remarks>
+    /// The logger renders a line and queues it to its targets on the thread that calls it, here the request's, with the
+    /// payload's verdict still ahead of it. Handed over instead, the same line at the same level reaches the log a moment
+    /// later: ahead of the block's "Processed" report, which goes to the thread pool only once the block has been
+    /// executed and committed, though a rejection this request logs on its own thread straight away can come first.
+    /// </remarks>
+    private void LogReceived(string requestStr, Block block, string gasChange) =>
+        ThreadPool.UnsafeQueueUserWorkItem(static state =>
+        {
+            try
+            {
+                state.Logger.Info($"Received {state.RequestStr}      | limit {state.Block.Header.GasLimit,13:N0} {state.GasChange} | {state.Block.ParsedExtraData()}");
+            }
+            catch (Exception e)
+            {
+                // Nothing may escape to the thread pool.
+                if (state.Logger.IsError) state.Logger.Error("Failed to log a received payload.", e);
+            }
+        }, (Logger: _logger, RequestStr: requestStr, Block: block, GasChange: gasChange), preferLocal: false);
 
     [DoesNotReturn]
     [StackTraceHidden]
