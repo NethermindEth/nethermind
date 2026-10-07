@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Collections;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
@@ -58,6 +59,9 @@ public class FlatTrieVerifier
         _logManager = logManager;
         _logger = logManager.GetClassLogger<FlatTrieVerifier>();
     }
+
+    /// <summary>Preimage storage slots of one account sorted in memory before spilling to disk.</summary>
+    internal int PreimageSlotsInMemory { get; init; } = 1_000_000;
 
     public VerificationStats Stats => new(
         Interlocked.Read(ref _accountCount),
@@ -703,6 +707,14 @@ public class FlatTrieVerifier
     private static bool MoveNextFlat(IPersistence.IFlatIterator flatIter, bool endExclusive, in ValueHash256 endKey) =>
         flatIter.MoveNext() && (!endExclusive || flatIter.CurrentKey < endKey);
 
+    /// <summary>
+    /// Verifies a preimage-keyed storage by co-iterating its flat slots, re-sorted by slot hash, with the trie leaves.
+    /// </summary>
+    /// <remarks>
+    /// Flat keys preimage storage by raw slot, so its order is unrelated to the trie's; <see cref="HashSortedSlotPool"/>
+    /// re-sorts it within bounded memory. A slot only in the pool is missing in trie and is reported by slot; a leaf
+    /// only in the trie is missing in flat and is reported by its slot hash.
+    /// </remarks>
     private void VerifyStoragePreimage(
         StorageVerificationJob job,
         IPersistence.IPersistenceReader reader,
@@ -717,55 +729,58 @@ public class FlatTrieVerifier
         }
 
         IScopedTrieStore storageTrieStore = (IScopedTrieStore)trieStore.GetStorageTrieNodeResolver(job.TrieAccountPath);
-        PatriciaTree storageTree = new(storageTrieStore, _logManager);
 
-        HashSet<ulong> verifiedSlots = [];
-
-        // Pass 1: Flat -> Trie
+        using HashSortedSlotPool flatSlots = new(_logManager, cancellationToken) { MaxInMemoryEntries = PreimageSlotsInMemory };
         using (IPersistence.IFlatIterator flatIter = reader.CreateStorageIterator(job.FlatAccountKey, ValueKeccak.Zero, ValueKeccak.MaxValue))
         {
             while (flatIter.MoveNext())
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                Interlocked.Increment(ref _slotCount);
-
-                // In preimage mode, flat key is raw slot bytes (big-endian UInt256)
-                ValueHash256 flatSlotKey = flatIter.CurrentKey;
-                Hash256 slotHash = Keccak.Compute(flatSlotKey.Bytes);
-                ulong hashKey = BinaryPrimitives.ReadUInt64LittleEndian(slotHash.Bytes);
-
-                // Direct RLP lookup using PatriciaTree.Get()
-                ReadOnlySpan<byte> trieValueRlp = storageTree.Get(slotHash.Bytes, job.StorageRoot);
-
-                if (trieValueRlp.IsEmpty)
-                {
-                    if (!IsZeroValue(flatIter.CurrentValue))
-                    {
-                        Interlocked.Increment(ref _missingInTrie);
-                        if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatSlotKey}");
-                    }
-                    continue;
-                }
-
-                verifiedSlots.Add(hashKey);
-                VerifySlotMatchPreimageWithRlp(flatIter.CurrentValue, trieValueRlp, job.FlatAccountKey, flatSlotKey);
+                flatSlots.Add(flatIter.CurrentKey, flatIter.CurrentValue);
             }
         }
+        flatSlots.CompleteAdding();
 
-        // Pass 2: Trie -> Flat (check for entries in trie not in flat)
         TrieLeafIterator trieIter = new(storageTrieStore, job.StorageRoot, LogTrieNodeException);
-        while (trieIter.MoveNext())
+
+        bool hasFlat = flatSlots.MoveNext();
+        bool hasTrie = trieIter.MoveNext();
+
+        while (hasFlat || hasTrie)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            ulong triePathKey = BinaryPrimitives.ReadUInt64LittleEndian(trieIter.CurrentPath.Path.Bytes);
+            int cmp = CompareStorageKeys(
+                hasFlat ? flatSlots.SlotHash : default,
+                hasTrie ? trieIter.CurrentPath : default,
+                hasFlat,
+                hasTrie);
 
-            if (verifiedSlots.Contains(triePathKey))
-                continue;
-
-            Interlocked.Increment(ref _slotCount);
-            Interlocked.Increment(ref _missingInFlat);
-            if (_logger.IsWarn) _logger.Warn($"Storage slot in trie not in flat. Account: {job.FlatAccountKey}, TriePath: {trieIter.CurrentPath}");
+            if (cmp == 0)
+            {
+                Interlocked.Increment(ref _slotCount);
+                VerifySlotMatch(flatSlots.Value, trieIter.CurrentLeaf!, job.FlatAccountKey, flatSlots.Slot);
+                hasFlat = flatSlots.MoveNext();
+                hasTrie = trieIter.MoveNext();
+            }
+            else if (cmp < 0 || !hasTrie)
+            {
+                Interlocked.Increment(ref _slotCount);
+                if (!IsZeroValue(flatSlots.Value))
+                {
+                    Interlocked.Increment(ref _missingInTrie);
+                    if (_logger.IsWarn) _logger.Warn($"Storage slot in flat not in trie. Account: {job.FlatAccountKey}, Slot: {flatSlots.Slot}");
+                    DiagnoseTriePath(storageTrieStore, job.StorageRoot, flatSlots.SlotHash);
+                }
+                hasFlat = flatSlots.MoveNext();
+            }
+            else
+            {
+                Interlocked.Increment(ref _slotCount);
+                Interlocked.Increment(ref _missingInFlat);
+                if (_logger.IsWarn) _logger.Warn($"Storage slot in trie not in flat. Account: {job.FlatAccountKey}, TriePath: {trieIter.CurrentPath}");
+                hasTrie = trieIter.MoveNext();
+            }
         }
     }
 
@@ -791,22 +806,6 @@ public class FlatTrieVerifier
 
         RlpReader ctx = new(trieValue);
         byte[] decodedTrieValue = ctx.DecodeByteArray();
-
-        ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
-        ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();
-
-        if (!Bytes.AreEqual(flatTrimmed, trieTrimmed))
-        {
-            Interlocked.Increment(ref _mismatchedSlot);
-            if (_logger.IsWarn) _logger.Warn($"Mismatched slot. Account: {accountKey}, Slot: {slotKey}. Flat: {flatTrimmed.ToHexString()}, Trie: {trieTrimmed.ToHexString()}");
-        }
-    }
-
-    private void VerifySlotMatchPreimageWithRlp(ReadOnlySpan<byte> flatValue, ReadOnlySpan<byte> trieValueRlp, in ValueHash256 accountKey, in ValueHash256 slotKey)
-    {
-        // Decode RLP to get the actual value
-        RlpReader reader = new(trieValueRlp);
-        byte[] decodedTrieValue = reader.DecodeByteArray();
 
         ReadOnlySpan<byte> flatTrimmed = flatValue.WithoutLeadingZeros();
         ReadOnlySpan<byte> trieTrimmed = decodedTrieValue.AsSpan().WithoutLeadingZeros();

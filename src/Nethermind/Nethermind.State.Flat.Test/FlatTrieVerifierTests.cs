@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -433,7 +434,7 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     }
 
     [Test]
-    public void Verify_Storage_LargeTrie_DetectsIssues()
+    public void Verify_Storage_LargeTrie_DetectsIssues([Values] bool spillPreimageSlotsToDisk)
     {
         Address address = TestItem.AddressA;
         (UInt256 slot, byte[] value)[] slots = CreateLargeStorageSlots();
@@ -446,8 +447,13 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         WriteStorageDirectToDb(address, slots[1].slot, [0xFF]); // Wrong value -> mismatched
         WriteStorageDirectToDb(address, LargeStorageSlotCount, [0xAB]); // Not in trie -> missing in trie
 
+        // Hashed mode logs from concurrent partitions, which TestLogger does not support.
+        TestLogger testLogger = new();
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
-        FlatTrieVerifier verifier = new(_logManager);
+        FlatTrieVerifier verifier = new(IsPreimage ? new OneLoggerLogManager(new ILogger(testLogger)) : _logManager)
+        {
+            PreimageSlotsInMemory = spillPreimageSlotsToDisk ? 64 : int.MaxValue
+        };
         verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -456,6 +462,11 @@ public class FlatTrieVerifierTests(FlatLayout layout)
             Assert.That(verifier.Stats.MismatchedSlot, Is.EqualTo(1));
             Assert.That(verifier.Stats.MissingInFlat, Is.EqualTo(1));
             Assert.That(verifier.Stats.MissingInTrie, Is.EqualTo(1));
+            if (IsPreimage)
+            {
+                Assert.That(testLogger.LogList, Has.One.StartsWith("Storage slot in trie not in flat"));
+                Assert.That(testLogger.LogList, Has.One.StartsWith("Storage slot in flat not in trie").And.EndsWith($"Slot: {new ValueHash256(((UInt256)LargeStorageSlotCount).ToBigEndian())}"));
+            }
         }
     }
 
