@@ -315,19 +315,23 @@ public class BlockAccessListsSyncFeedTests
     }
 
     [Test]
-    public void Keeps_configured_barrier_when_headers_below_pivot_are_missing()
+    public void Keeps_configured_barrier_when_headers_below_pivot_are_missing([Values] bool infoInitiallyEnabled)
     {
         const ulong pivot = 40;
         const ulong activation = 20;
         ISpecProvider specProvider = SetUpChainWithActivation(pivot, activation, timestampActivation: false, headersAvailable: false, []);
         _syncPointers.LowestInsertedBlockAccessListBlockNumber = activation - 2;
         InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsInfo.Returns(true);
+        logger.IsInfo.Returns(infoInitiallyEnabled);
         ILogger classLogger = new(logger);
         ILogManager logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<BlockAccessListsSyncFeed>().Returns(classLogger);
 
         using BlockAccessListsSyncFeed feed = CreateFeed(specProvider, logManager);
+        logger.DidNotReceive().Info(Arg.Is<string>(static m => m.Contains("cannot find the EIP-7928 activation")));
+        feed.InitializeFeed();
+        logger.IsInfo.Returns(true);
+        feed.InitializeFeed();
         feed.InitializeFeed();
 
         using (Assert.EnterMultipleScope())

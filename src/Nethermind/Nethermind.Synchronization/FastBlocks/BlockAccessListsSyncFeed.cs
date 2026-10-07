@@ -87,12 +87,12 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
 
         _pivotNumber = 0; // First reset in `InitializeFeed`.
         // Resolved before `InitializeFeed` so that `IsFinished` holds after a restart without reactivating the feed.
-        _barrier = ResolveBarrier();
+        _barrier = ResolveBarrier(logFallback: false);
     }
 
     public override void InitializeFeed()
     {
-        ulong barrier = ResolveBarrier();
+        ulong barrier = ResolveBarrier(logFallback: true);
         if (_syncStatusList is null || _pivotNumber != _blockTree.SyncPivot.BlockNumber || _barrier != barrier)
         {
             _pivotNumber = _blockTree.SyncPivot.BlockNumber;
@@ -113,7 +113,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
     /// The activation is found by a binary search over canonical headers, which covers both block number and timestamp
     /// activations. When the pivot predates activation or a header in the search is missing, the configured barrier is kept.
     /// </remarks>
-    private ulong ResolveBarrier()
+    private ulong ResolveBarrier(bool logFallback)
     {
         ulong barrier = _syncConfig.AncientBlockAccessListsBarrierCalc;
         BlockHeader? pivotHeader = FindPivotHeader(out ulong pivotNumber, out _);
@@ -127,7 +127,7 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
             case true:
                 return barrier;
             case null:
-                return KeepConfiguredBarrier(barrier, barrier);
+                return KeepConfiguredBarrier(barrier, barrier, logFallback);
         }
 
         ulong lastBeforeActivation = barrier;
@@ -144,18 +144,20 @@ public class BlockAccessListsSyncFeed : BarrierSyncFeed<BlockAccessListsSyncBatc
                     lastBeforeActivation = middle;
                     break;
                 default:
-                    return KeepConfiguredBarrier(barrier, middle);
+                    return KeepConfiguredBarrier(barrier, middle, logFallback);
             }
         }
 
         return lastBeforeActivation;
     }
 
-    private ulong KeepConfiguredBarrier(ulong barrier, ulong missingHeaderNumber)
+    private ulong KeepConfiguredBarrier(ulong barrier, ulong missingHeaderNumber, bool logFallback)
     {
-        if (!_barrierFallbackLogged && _logger.IsInfo)
+        if (logFallback && !_barrierFallbackLogged && _logger.IsInfo)
+        {
             _logger.Info($"Block access lists sync cannot find the EIP-7928 activation because header {missingHeaderNumber} is missing; keeping barrier {barrier}");
-        _barrierFallbackLogged = true;
+            _barrierFallbackLogged = true;
+        }
         return barrier;
     }
 

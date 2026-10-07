@@ -49,7 +49,7 @@ public class DebugBridgeTests
 {
     public enum ProcessingState { Running, PausedExecuting, PausedQueued, PausedIdle }
 
-    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead, AccessListActivation, AccessListActivationGap }
+    public enum HistoricalSync { Complete, CompleteDeepRewind, CompleteWithoutRewind, Headers, Bodies, Receipts, ReceiptsInactive, AccessLists, DeleteProgressFloor, BodyFloor, ReceiptFloor, AccessListFloor, BodyAboveHead, AccessListActivation, AccessListActivationGap, AccessListActivationFloor }
 
     private static IEnumerable<TestCaseData> HistoricalSyncCases()
     {
@@ -64,7 +64,7 @@ public class DebugBridgeTests
     {
         TestStateBoundary boundary = new();
         // EIP-7928 activates at block 3, so blocks below it have no access lists to sync.
-        bool activatesAccessLists = history is HistoricalSync.AccessListActivation or HistoricalSync.AccessListActivationGap;
+        bool activatesAccessLists = history is HistoricalSync.AccessListActivation or HistoricalSync.AccessListActivationGap or HistoricalSync.AccessListActivationFloor;
         ISyncPeer peer = Substitute.For<ISyncPeer>();
         peer.HeadNumber.Returns(5UL);
         peer.HeadHash.Returns(TestItem.KeccakC);
@@ -81,7 +81,7 @@ public class DebugBridgeTests
                 HeaderStateDistance = 1,
                 AncientBodiesBarrier = history == HistoricalSync.BodyFloor ? 3UL : history == HistoricalSync.BodyAboveHead ? 2UL : 1,
                 AncientReceiptsBarrier = history == HistoricalSync.ReceiptFloor ? 3UL : 1,
-                AncientBlockAccessListsBarrier = history == HistoricalSync.AccessListFloor ? 3UL : 1
+                AncientBlockAccessListsBarrier = history is HistoricalSync.AccessListFloor or HistoricalSync.AccessListActivationFloor ? 3UL : 1
             }, new FlatDbConfig { Enabled = false }))
             .AddSingleton<ISyncPeerPool>(peerPool)
             .AddSingleton<IStateBoundary>(boundary)
@@ -108,7 +108,7 @@ public class DebugBridgeTests
         ulong lowestAccessList = history switch
         {
             HistoricalSync.AccessLists or HistoricalSync.AccessListActivation => 2,
-            HistoricalSync.AccessListFloor => 3,
+            HistoricalSync.AccessListFloor or HistoricalSync.AccessListActivationFloor => 3,
             HistoricalSync.AccessListActivationGap => 4,
             _ => 1
         };

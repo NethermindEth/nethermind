@@ -247,7 +247,7 @@ public class DebugBridge : IDebugBridge
         LowestRequiredBlockAccessListNumber > number;
 
     /// <summary>
-    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block below it predates EIP-7928.
+    /// Gets the lowest block access list sync progress, or <see langword="null"/> when every block at or below it predates EIP-7928.
     /// </summary>
     /// <remarks>
     /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
@@ -255,7 +255,7 @@ public class DebugBridge : IDebugBridge
     /// </remarks>
     private ulong? LowestRequiredBlockAccessListNumber =>
         _syncPointers.LowestInsertedBlockAccessListBlockNumber is { } lowest and > 0 &&
-        _blockTree.FindHeader(lowest - 1, BlockTreeLookupOptions.RequireCanonical) is { BlockAccessListHash: null }
+        _blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { BlockAccessListHash: null }
             ? null
             : _syncPointers.LowestInsertedBlockAccessListBlockNumber;
 
