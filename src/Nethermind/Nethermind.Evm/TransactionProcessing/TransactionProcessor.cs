@@ -113,6 +113,10 @@ namespace Nethermind.Evm.TransactionProcessing
             public readonly bool IsTracingActions = tracer.IsTracingActions;
         }
 
+        /// <summary>Without validation (simulations, replays), a transaction that already carries a sender runs as that sender.</summary>
+        private protected static bool KeepsSender(Transaction tx, ExecutionOptions opts) =>
+            tx.SenderAddress is not null && opts.HasFlag(ExecutionOptions.SkipValidation);
+
         private protected static void DestroyAccount(IWorldState worldState, Address toBeDestroyed, in UInt256 balance, bool commit, bool removeSelfdestructBurn)
         {
             // Build-up rounds (!commit) span the whole block: later txs may redeploy this address,
@@ -279,7 +283,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     }
                 }
             }
-            RecoverSenderBeforeIntrinsicGas(tx, spec);
+            RecoverSenderBeforeIntrinsicGas(tx, spec, opts);
             IntrinsicGas<TGasPolicy> intrinsicGas = CalculateIntrinsicGas(tx, spec, header.GasLimit);
             return Execute(tx, tracer, opts, header, spec, in intrinsicGas);
         }
@@ -287,12 +291,12 @@ namespace Nethermind.Evm.TransactionProcessing
         // A sender still missing here is one the background recovery has not reached yet (blocks are
         // processed while it runs); EIP-2780 self-transfer pricing additionally needs the actual signer,
         // so both resolve before intrinsic gas.
-        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec)
+        private void RecoverSenderBeforeIntrinsicGas(Transaction tx, IReleaseSpec spec, ExecutionOptions opts)
         {
             if (tx.Signature is null) return;
 
             if (tx.SenderAddress is null
-                || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
+                || (spec.IsEip2780Enabled && tx.IsMessageCall && !KeepsSender(tx, opts) && !WorldState.AccountExists(tx.SenderAddress)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
             }
@@ -1118,7 +1122,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 // Message calls under EIP-2780 were re-recovered against this state before intrinsic gas;
                 // repeating it here would only redo that work.
-                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall))
+                if (tx.Signature is not null && (!spec.IsEip2780Enabled || !tx.IsMessageCall) && !KeepsSender(tx, opts))
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
                 if (sender != tx.SenderAddress)

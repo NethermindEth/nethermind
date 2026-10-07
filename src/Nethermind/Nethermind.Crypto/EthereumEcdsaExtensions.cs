@@ -18,15 +18,17 @@ public static class EthereumEcdsaExtensions
     private static readonly TxDecoder _txDecoder = TxDecoder.Instance;
 
     /// <remarks>
-    /// Cross-context cache of recovered senders keyed by transaction hash: a transaction recovered
-    /// on mempool ingress becomes a lookup on block arrival. Legacy transactions are excluded —
-    /// their signing hash depends on the ambient chain id, so the hash alone is not a safe global key.
-    /// The key is sound only while <see cref="Transaction.Hash"/> matches the signed content; all
-    /// ingress paths derive it from the raw bytes, and callers must not mutate a transaction's
-    /// content or signature after the hash is set.
+    /// Cross-context cache of recovered senders: a transaction recovered on mempool ingress becomes a
+    /// lookup on block arrival. The key is derived from exactly what recovery reads, the signing hash
+    /// and the signature (<see cref="CalculateSenderCacheKey"/>), so an entry is correct for every transaction
+    /// that maps to it. Legacy transactions are not cached.
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+
+    /// <remarks>Every recovery computes a signing hash, a cache hit included, so the hasher is reused rather than allocated.</remarks>
+    [ThreadStatic]
+    private static KeccakHash? _signingHasher;
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
     internal static void ClearSenderCache() => _senderCache.Clear();
@@ -103,21 +105,36 @@ public static class EthereumEcdsaExtensions
 
     private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
     {
-        Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
-        if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
+        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
+        bool cacheable = tx.Type != TxType.Legacy;
+        ValueHash256 key = default;
+        if (cacheable)
         {
-            return cached;
+            key = CalculateSenderCacheKey(in hash, signature);
+            if (_senderCache.TryGet(key, out Address? cached))
+            {
+                return cached;
+            }
         }
 
-        ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
-        if (txHash is not null && recovered is not null)
+        if (cacheable && recovered is not null)
         {
-            _senderCache.Set(txHash.ValueHash256, recovered);
+            _senderCache.Set(key, recovered);
         }
 
         return recovered;
+    }
+
+    /// <summary>The sender cache key: keccak(signing hash || r || s || recovery id).</summary>
+    [SkipLocalsInit]
+    private static ValueHash256 CalculateSenderCacheKey(in ValueHash256 signingHash, Signature signature)
+    {
+        Span<byte> input = stackalloc byte[ValueHash256.MemorySize + Signature.Size];
+        signingHash.Bytes.CopyTo(input);
+        signature.WriteBytesWithRecoveryTo(input[ValueHash256.MemorySize..]);
+        return ValueKeccak.Compute(input);
     }
 
     /// <summary>
@@ -140,7 +157,10 @@ public static class EthereumEcdsaExtensions
     {
         (bool applyEip155, ulong chainId) = SigningParameters(ecdsa, tx, signature, useSignatureChainId);
 
-        KeccakRlpWriter writer = new();
+        KeccakHash hasher = _signingHasher ??= KeccakHash.Create();
+        // Reset first, so an exception that interrupted a previous encoding cannot leave this thread's hasher partly fed.
+        hasher.Reset();
+        KeccakRlpWriter writer = new(hasher);
         _txDecoder.EncodeTx(ref writer, tx, RlpBehaviors.SkipTypedWrapping, true, applyEip155, chainId);
 
         return writer.GetValueHash();

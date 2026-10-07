@@ -482,6 +482,22 @@ namespace Nethermind.Core
             tx.FrameCalldataStats = FrameCalldataStats;
         }
 
+        /// <summary>A copy of this transaction, of its runtime type and with its hash.</summary>
+        /// <remarks>
+        /// Unlike <see cref="CopyTo(Transaction, bool)"/> into a new <see cref="Transaction"/>, it keeps the state of a
+        /// subclass. Like it, it is shallow: reference-typed fields are shared.
+        /// </remarks>
+        internal Transaction ShallowCopy()
+        {
+            lock (this)
+            {
+                // The pre-hash memory has a single owner, so it is hashed and released here rather than shared.
+                CalculateHashInternal();
+                PooledBlobBuffers.Disown(this);
+                return (Transaction)MemberwiseClone();
+            }
+        }
+
         public virtual ProofVersion? GetProofVersion() =>
             NetworkWrapper is ShardBlobNetworkWrapper { Version: var version }
                 ? version

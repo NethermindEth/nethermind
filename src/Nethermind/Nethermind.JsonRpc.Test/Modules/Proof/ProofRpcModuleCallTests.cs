@@ -13,6 +13,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
+using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Serialization.Rlp;
@@ -830,5 +831,34 @@ public class ProofRpcModuleCallTests
         Assert.That(result.Result, Is.Not.Null.And.Not.Empty,
             "from-but-no-nonce must not be rejected pre-VM");
         Assert.That(result.Result![^1], Is.EqualTo(0x42));
+    }
+
+    /// <summary>A signed transaction recovers its original signer after a <c>proof_call</c> with its fields and signature, which runs as its <c>from</c>.</summary>
+    [Test]
+    public async Task Proof_call_recovers_the_original_signer_after_the_call([Values] bool fromExistingAccount, [Values] bool nonceIsStateNonce)
+    {
+        using TestRpcBlockchain blockchain = await TestRpcBlockchain
+            .ForTest(SealEngineType.NethDev)
+            .Build(new TestSpecProvider(Cancun.Instance));
+        // proof_call rejects genesis.
+        await CreateTransferTx(blockchain);
+
+        Address from = fromExistingAccount ? TestItem.AddressA : TestItem.AddressF;
+        ulong chainId = blockchain.SpecProvider.ChainId;
+        (Transaction signedTx, Transaction receivedTx, Address signer) = SignedCallScenario.BuildSignedTypedTx(
+            blockchain.EthereumEcdsa, chainId, nonceIsStateNonce ? blockchain.ReadOnlyState.GetNonce(from) : null);
+        EIP1559TransactionForRpc rpcTx = SignedCallScenario.BuildCall(signedTx, from, chainId);
+
+        using ResultWrapper<CallResultWithProof> result = blockchain.ProofRpcModule.proof_call(rpcTx, BlockParameter.Latest);
+
+        // A fresh `from` is unfunded.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Result.ResultType, Is.EqualTo(fromExistingAccount ? ResultType.Success : ResultType.Failure), result.Result.Error);
+            Assert.That(result.Result.Error, fromExistingAccount ? Is.Null : Does.Contain($"insufficient funds for gas * price + value: address {from}").IgnoreCase);
+            Assert.That(SignedCallScenario.CachedSender(blockchain.EthereumEcdsa, receivedTx), Is.Null, "the call recovers no sender");
+        }
+
+        SignedCallScenario.AssertRecoversSigner(blockchain.EthereumEcdsa, receivedTx, signer);
     }
 }
