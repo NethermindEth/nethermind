@@ -63,6 +63,11 @@ GUEST_SOURCES := $(SHARED_SRC_DIR)/Program.cs $(SRC_DIR)/Program.cs
 # after the first, which is the shared one.
 GUEST_OUT := -o $(SRC_DIR)/Program
 
+# Every guest applies the shared substitutions; one that has its own substitutions.xml
+# applies that on top.
+GUEST_SUBSTITUTIONS := --substitution $(SHARED_SRC_DIR)/substitutions.xml \
+  $(if $(wildcard $(GUEST_DIR)/substitutions.xml),--substitution $(SRC_DIR)/substitutions.xml)
+
 # The managed closure. BIN_DIR is the guest's own artifacts directory, bound in
 # by its build target.
 BFLAT_REFS := \
@@ -126,7 +131,7 @@ build: dotnet-build $(addprefix $(GUEST_DIR)/,$(GUEST_OBJECTS))
 		--no-pthread \
 		--no-globalization \
 		--nostdlibrefs \
-		--substitution $(SRC_DIR)/substitutions.xml \
+		$(GUEST_SUBSTITUTIONS) \
 		$(BFLAT_REFS) \
 		--extlib $(BIN_DIR)/runtimes/linux-riscv64/native/$(GUEST_EXTLIB).bflat.manifest \
 		$(foreach object,$(GUEST_OBJECTS),--ldflags=$(SRC_DIR)/$(object)) \

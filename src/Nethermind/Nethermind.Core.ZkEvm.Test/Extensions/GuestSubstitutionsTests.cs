@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Resolves every method the ZisK guest's substitutions.xml names. ILC applies a substitution only to a
+/// Resolves every method the shared and the ZisK guest's substitutions.xml name. ILC applies a substitution only to a
 /// method it finds and otherwise keeps the original body, so a renamed member or a stale signature would
 /// quietly undo the substitution - <c>ZkEvmBitOperations.HasByteReverse</c> would stay false and ZisK would
 /// go back to the mask form without any build noticing.
@@ -24,8 +24,9 @@ public class GuestSubstitutionsTests
 
     private static IEnumerable<TestCaseData> SubstitutedMethods()
     {
-        XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, "ZiskGuest.substitutions.xml"));
-        foreach (XElement assembly in document.Root!.Elements("assembly"))
+        IEnumerable<XElement> assemblies = new[] { "Guest.substitutions.xml", "ZiskGuest.substitutions.xml" }
+            .SelectMany(file => XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, file)).Root!.Elements("assembly"));
+        foreach (XElement assembly in assemblies)
         {
             foreach (XElement type in assembly.Elements("type"))
             {

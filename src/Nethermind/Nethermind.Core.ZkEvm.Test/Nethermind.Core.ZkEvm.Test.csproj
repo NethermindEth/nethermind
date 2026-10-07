@@ -19,6 +19,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\Nethermind.Stateless.Guest\substitutions.xml" Link="Guest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
     <None Include="..\Nethermind.Stateless.ZiskGuest\substitutions.xml" Link="ZiskGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
