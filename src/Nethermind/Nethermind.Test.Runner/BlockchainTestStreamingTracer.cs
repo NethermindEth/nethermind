@@ -181,14 +181,18 @@ public class BlockchainTestStreamingTracer(
             HexWriter.WriteHexStringValue(writer, mem.Span);
         }
 
-        if (entry.Stack is { Length: > 0 } stack)
+        writer.WritePropertyName("stack");
+        if (entry.Stack is { } stack)
         {
-            writer.WritePropertyName("stack");
             writer.WriteStartArray();
             ReadOnlySpan<byte> sp = stack.Span;
             for (int i = 0; i < sp.Length; i += EvmStack.WordSize)
                 HexWriter.WriteUInt256HexRawValue(writer, new UInt256(sp.Slice(i, EvmStack.WordSize), isBigEndian: true), zeroPadded: false);
             writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteNullValue();
         }
 
         writer.WritePropertyName("depth");
