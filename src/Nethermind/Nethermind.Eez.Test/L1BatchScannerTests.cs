@@ -41,6 +41,21 @@ public class L1BatchScannerTests
     /// 1. its <c>BatchPosted</c> log leads to the transaction by block hash and index;
     /// 2. its four <c>L2ExecutionPerformed</c> logs settle the anchor and the three effects.
     /// </summary>
+    [Test]
+    public async Task Scan_RecordedDevnetBatch_SettlesItWhole()
+    {
+        ValueHash256[] claimed = ClaimedChain(_recordedBatch);
+        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash));
+        Logs(L1BatchScanner.L2ExecutionPerformedTopic, claimed.Select(static (root, i) => Settled(TransactionIndex, TransactionHash, (ulong)i, root)).ToArray());
+
+        ScannedBatch[] scanned = await ScanOnly(BlockNumber);
+
+        Assert.That(scanned, Has.Length.EqualTo(1), "one batch in the block");
+        Assert.That(scanned[0].Settlement, Is.EqualTo(new L1Settlement(0, claimed.Length, claimed[^1], scanned[0].Batch.ClaimedCurrentState!.Value)),
+            "every claimed step ran, ending at the recorded window's last block");
+        Assert.That(scanned[0].Settlement.Effects, Is.EqualTo(new ProducingSlice(0, claimed.Length - 1)), "the three effects all applied");
+    }
+
     [TestCase(64, true, TestName = "RootThenEtherBalance")]
     [TestCase(32, false, TestName = "RootOnly")]
     [TestCase(96, false, TestName = "ExtraWord")]
@@ -56,21 +71,6 @@ public class L1BatchScannerTests
         {
             Assert.That(root!.Value.Bytes[31], Is.EqualTo(0x42), "the root is the first word");
         }
-    }
-
-    [Test]
-    public async Task Scan_RecordedDevnetBatch_SettlesItWhole()
-    {
-        ValueHash256[] claimed = ClaimedChain(_recordedBatch);
-        Logs(L1BatchScanner.BatchPostedTopic, BatchPosted(TransactionIndex, TransactionHash));
-        Logs(L1BatchScanner.L2ExecutionPerformedTopic, claimed.Select(static (root, i) => Settled(TransactionIndex, TransactionHash, (ulong)i, root)).ToArray());
-
-        ScannedBatch[] scanned = await ScanOnly(BlockNumber);
-
-        Assert.That(scanned, Has.Length.EqualTo(1), "one batch in the block");
-        Assert.That(scanned[0].Settlement, Is.EqualTo(new L1Settlement(0, claimed.Length, claimed[^1], scanned[0].Batch.ClaimedCurrentState!.Value)),
-            "every claimed step ran, ending at the recorded window's last block");
-        Assert.That(scanned[0].Settlement.Effects, Is.EqualTo(new ProducingSlice(0, claimed.Length - 1)), "the three effects all applied");
     }
 
     [Test]
