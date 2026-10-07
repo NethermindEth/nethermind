@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
