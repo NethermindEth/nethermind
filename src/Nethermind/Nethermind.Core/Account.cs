@@ -153,6 +153,7 @@ namespace Nethermind.Core
                   Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
         }
 
+        /// <summary>Materializes these account values, reusing canonical hashes for empty storage and code.</summary>
         public Account ToAccount() =>
             new(_nonce, _balance,
                 IsStorageEmpty ? Keccak.EmptyTreeHash : _storageRoot.ToCommitment(),

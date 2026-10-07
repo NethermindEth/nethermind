@@ -181,9 +181,9 @@ public class HistoryBackedPersistenceReaderTests
 
         Account? contract = Reader(10).GetAccount(ContractAddress);
 
+        Assert.That(contract, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(contract, Is.Not.Null);
             Assert.That(contract!.StorageRoot, Is.EqualTo(TestItem.KeccakA));
             Assert.That(contract.CodeHash, Is.EqualTo(TestItem.KeccakB));
         }
