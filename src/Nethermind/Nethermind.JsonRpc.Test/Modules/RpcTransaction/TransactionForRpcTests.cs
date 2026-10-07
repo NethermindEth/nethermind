@@ -153,41 +153,6 @@ public class TransactionForRpcTests
             """{"frames":[],"authorizationList":[]}""")] string json) =>
         Assert.Throws<JsonException>(() => DeserializeTransactionForRpc(json));
 
-    [TestCase("""{"type":"0x0","maxFeePerGas":"0x7"}""", null)]
-    [TestCase("""{"type":"0x2","authorizationList":[]}""", null)]
-    [TestCase("""{"type":"0x4","blobVersionedHashes":[]}""", null)]
-    [TestCase("""{"type":"0x3","maxFeePerGas":"0x7"}""", typeof(BlobTransactionForRpc))]
-    [TestCase("""{"type":"0x2","gasPrice":"0x7"}""", typeof(EIP1559TransactionForRpc))]
-    [TestCase("""{"type":"0x1","gasPrice":"0x7"}""", typeof(AccessListTransactionForRpc))]
-    [TestCase("""{"type":"0x0","gasPrice":"0x7"}""", typeof(LegacyTransactionForRpc))]
-    [TestCase("""{"maxFeePerGas":"0x7"}""", typeof(EIP1559TransactionForRpc))]
-    public void Signing_applies_the_requested_type_or_reports_a_conflict(string json, Type? expectedType)
-    {
-        Result<TransactionForRpc> requested = DeserializeTransactionForRpc(json).WithRequestedType();
-
-        if (expectedType is null)
-        {
-            Assert.That(requested.IsError, Is.True);
-            return;
-        }
-
-        Assert.That(requested.Data, Is.TypeOf(expectedType));
-    }
-
-    [Test]
-    public void Requested_type_keeps_the_fields_when_signing()
-    {
-        TransactionForRpc requested = DeserializeTransactionForRpc("""{"type":"0x2","gasPrice":"0x7","nonce":"0x1","gas":"0x5208"}""").WithRequestedType().Data!;
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(requested, Is.TypeOf<EIP1559TransactionForRpc>());
-            Assert.That(((EIP1559TransactionForRpc)requested).GasPrice, Is.EqualTo((UInt256)7));
-            Assert.That(((EIP1559TransactionForRpc)requested).Nonce, Is.EqualTo(1UL));
-            Assert.That(requested.Gas, Is.EqualTo(0x5208UL));
-        }
-    }
-
     [TestCase("""{"type":"0x3","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","maxFeePerGas":"0x9","maxPriorityFeePerGas":"0x7"}""", TxType.EIP1559)]
     [TestCase("""{"type":"0x4","to":"0xb7705ae4c6f81b66cdb323c65f4e8133690fc099","gasPrice":"0x7","accessList":[]}""", TxType.AccessList)]
     public void Explicit_type_adds_no_requirement_to_a_call(string json, TxType expected) =>

@@ -379,10 +379,6 @@ public partial class EthRpcModule(
         if (CheckSendTransactionFees(rpcTx) is { } feeError)
             return Task.FromResult(feeError);
 
-        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
-            return Task.FromResult(ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput));
-        rpcTx = (SignableTransactionForRpc)requested;
-
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
         {
@@ -425,10 +421,6 @@ public partial class EthRpcModule(
         {
             return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
         }
-
-        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
-            return ResultWrapper<SignTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
-        rpcTx = (SignableTransactionForRpc)requested;
 
         Result<Transaction> txResult = rpcTx.ToSignableTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
@@ -512,10 +504,6 @@ public partial class EthRpcModule(
 
     public virtual async Task<ResultWrapper<FillTransactionResult>> eth_fillTransaction(SignableTransactionForRpc rpcTx)
     {
-        if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
-            return ResultWrapper<FillTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
-        rpcTx = (SignableTransactionForRpc)requested;
-
         BlockHeader? head = _blockFinder.Head?.Header;
         if (head is null)
             return ResultWrapper<FillTransactionResult>.Fail("No head block available", ErrorCodes.ResourceUnavailable);

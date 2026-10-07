@@ -78,12 +78,16 @@ public partial class EthRpcModuleTests
     [Test]
     public async Task FillTransaction_WhenDynamicFeeTxSuppliesOnlyGasPrice_UsesItAsFeeCapAndTip()
     {
-        EIP1559TransactionForRpc rpcTx = new()
+        // A legacy gasPrice alone selects a legacy transaction, so the blob hash makes this one dynamic-fee.
+        BlobTransactionForRpc rpcTx = new()
         {
             From = TestItem.AddressC,
             To = TestItem.AddressB,
             Value = 1,
+            Gas = GasCostOf.Transaction,
             GasPrice = 7,
+            BlobVersionedHashes = [Bytes.FromHexString("0x01" + new string('0', 62))],
+            MaxFeePerBlobGas = 1,
         };
 
         EIP1559TransactionForRpc filled = (EIP1559TransactionForRpc)await FillTransactionForResult(rpcTx);

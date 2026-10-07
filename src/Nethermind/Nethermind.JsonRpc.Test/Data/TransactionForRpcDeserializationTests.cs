@@ -104,8 +104,8 @@ public class TransactionForRpcDeserializationTests
             yield return Make(TxType.EIP1559, """{"frames":null}""");
             yield return Make(TxType.SetCode, """{"AuthorizationList":[]}""");
 
-            // An explicit type alone does not pick the class: a call runs on its fields, which here are none,
-            // so it is defaulted like any other; the signing methods apply the type (WithRequestedType).
+            // An explicit type alone does not pick the class: a request runs on its fields, which here are none,
+            // so it is defaulted like any other.
             yield return Make(TxType.EIP1559, """{"type":"0x0"}""");
             yield return Make(TxType.EIP1559, """{"type":"0x1"}""");
             yield return Make(TxType.EIP1559, """{"type":"0x2"}""");
@@ -162,23 +162,6 @@ public class TransactionForRpcDeserializationTests
 
             // No spec (null) → keeps defaulted EIP1559
             yield return Make(TxType.EIP1559, """{}""", null);
-        }
-    }
-
-    [Test]
-    public void Requested_type_applies_to_a_copy()
-    {
-        TransactionForRpc request = _serializer.Deserialize<TransactionForRpc>("""{"type":"0x0"}""")!;
-
-        Result<TransactionForRpc> first = request.WithRequestedType();
-        Result<TransactionForRpc> second = request.WithRequestedType();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(first.Data, Is.TypeOf<LegacyTransactionForRpc>(), first.Error);
-            Assert.That(second.Data, Is.TypeOf<LegacyTransactionForRpc>(), second.Error);
-            Assert.That(request, Is.TypeOf<EIP1559TransactionForRpc>());
-            Assert.That(request.ToTransaction(spec: Istanbul.Instance).Data?.Type, Is.EqualTo(TxType.Legacy));
         }
     }
 
