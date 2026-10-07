@@ -292,12 +292,15 @@ public class TransactionChangesetIndexModuleTests
     public void BulkReplay_WhenTheUnsyncedScratchTailIsLost_ResumesFromTheDurableCheckpointToTheSameRowsAndState()
     {
         FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
-        using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(config))
-            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance))
-            .Build();
         using MemDb code = new();
         using SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+        builder.RegisterInstance(history)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        using IContainer container = builder.Build();
         HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks)), config);
         Block genesis = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
         IBlockTree tree = container.Resolve<IBlockTree>();
@@ -307,7 +310,7 @@ public class TransactionChangesetIndexModuleTests
         foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
             Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
         session.VerifyAnchor(CancellationToken.None);
-        TransactionChangesetIndex index = new(history, config);
+        TransactionChangesetIndex index = container.Resolve<TransactionChangesetIndex>();
 
         byte[] runtime = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(1)
             .Op(Instruction.ADD).PushData(0).Op(Instruction.SSTORE).Done;
