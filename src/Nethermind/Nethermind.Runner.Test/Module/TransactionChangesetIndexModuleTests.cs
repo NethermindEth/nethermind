@@ -16,6 +16,7 @@ using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.ServiceStopper;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
@@ -366,6 +367,45 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
+    [TestCase(1, null, 1, TestName = "ChangesetTraceBudget_WithTheDeprecatedKeySetToOne_TracesSequentiallyAndWarns")]
+    [TestCase(1, 8, 1, TestName = "ChangesetTraceBudget_WithBothKeysSet_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(8, 2, 8, TestName = "ChangesetTraceBudget_WithBothKeysSetTheOtherWay_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(64, null, 16, TestName = "ChangesetTraceBudget_WithTheDeprecatedKeyAboveTheCap_ClampsToSixteenAndWarns")]
+    public void ChangesetTraceBudget_WithTheDeprecatedKeySet_KeepsItsOldMeaningAndWarns(int legacy, int? traceBlock, int expected)
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(legacy, traceBlock);
+        using (container)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.EqualTo(expected), "the deprecated key keeps sizing changeset seeds and wins over the trace block setting");
+            Assert.That(logger.LogList, Has.Some.Contains("FlatDb.HistoryTransactionIndexTraceParallelism is deprecated"));
+        }
+    }
+
+    [Test]
+    public void ChangesetTraceBudget_WithTheDeprecatedKeySetToZero_UsesTheProcessorCountAndWarns()
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(0, null);
+        using (container)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.EqualTo(Math.Min(Environment.ProcessorCount, 16)), "zero keeps its old meaning: the processor count capped at 16");
+            Assert.That(logger.LogList, Has.Some.Contains("FlatDb.HistoryTransactionIndexTraceParallelism is deprecated"));
+        }
+    }
+
+    [Test]
+    public void ChangesetTraceBudget_WithoutTheDeprecatedKey_FollowsTheTraceBlockDefaultWithoutWarning()
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(null, null);
+        using (container)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.Degree, Is.EqualTo(Math.Min(4, Environment.ProcessorCount)), "the trace block default of four applies");
+            Assert.That(logger.LogList, Has.None.Contains("deprecated"));
+        }
+    }
+
     [Test]
     public void An_executor_can_be_built_from_the_node_container()
     {
@@ -441,5 +481,23 @@ public class TransactionChangesetIndexModuleTests
         await container.Resolve<StartTransactionChangesetBuilder>().Execute(CancellationToken.None);
 
         stopper.Received(1).AddStoppable(builder);
+    }
+
+    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveChangesetTraceBudget(int? legacy, int? traceBlock)
+    {
+        JsonRpcConfig rpc = new();
+        if (traceBlock is int workers) rpc.TraceBlockParallelism = workers;
+        TestLogger logger = new();
+        IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                HistoryEnabled = true,
+                HistoryTransactionIndexEnabled = true,
+                HistoryTransactionIndexTraceParallelism = legacy,
+            }, rpc))
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+            .Build();
+        return (container.Resolve<ParallelTraceBudget>(), logger, container);
     }
 }

@@ -35,6 +35,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
+using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Network.Config;
 using Nethermind.Sockets;
@@ -110,7 +111,7 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IProofRpcModule, ProofRpcModule>()
 
             // Trace
-            .AddSingleton<ParallelTraceBudget>(_ => ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism))
+            .AddSingleton<ParallelTraceBudget, IFlatDbConfig, ILogManager>(CreateChangesetTraceBudget)
             .AddSingleton<ParallelTraceBudgets, ISpecProvider, IFlatDbConfig, ParallelTraceBudget>(CreateParallelTraceBudgets)
             // Each instance holds two full block-processing scopes for the life of the process, and they are built on
             // demand and never released, so the default stays where it was: parallel tracing shares one pool across
@@ -126,6 +127,18 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
                 .AddScoped<IGethStyleTracer, GethStyleTracer>()
 
             ;
+    }
+
+    /// <summary>The deprecated FlatDb key, while an operator still sets it, keeps sizing changeset seeds with its old
+    /// meaning and wins over <see cref="IJsonRpcConfig.TraceBlockParallelism"/> for them.</summary>
+    private ParallelTraceBudget CreateChangesetTraceBudget(IFlatDbConfig flatDbConfig, ILogManager logManager)
+    {
+        if (flatDbConfig.HistoryTransactionIndexTraceParallelism is not int legacy)
+            return ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism);
+
+        ILogger logger = logManager.GetClassLogger<RpcModules>();
+        if (logger.IsWarn) logger.Warn($"FlatDb.{nameof(IFlatDbConfig.HistoryTransactionIndexTraceParallelism)} is deprecated, use JsonRpc.{nameof(IJsonRpcConfig.TraceBlockParallelism)} instead. Until it is removed, its value {legacy} sizes the trace budget for blocks covered by the transaction index.");
+        return new ParallelTraceBudget(legacy == 0 ? Environment.ProcessorCount : legacy);
     }
 
     /// <summary>Changeset seeds exist only where flat history captures the transaction index, the same switch that
