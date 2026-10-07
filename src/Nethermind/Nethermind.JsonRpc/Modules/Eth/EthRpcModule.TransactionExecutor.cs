@@ -49,6 +49,12 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </summary>
             protected virtual bool AcceptsZeroBlobFeeCap => true;
 
+            /// <summary>
+            /// Whether the call is rejected for a field the fork it runs in lacks; a transaction to build is estimated
+            /// as a call without this check.
+            /// </summary>
+            public bool ChecksFork { private get; init; } = true;
+
             protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
             {
                 if (AcceptsZeroBlobFeeCap)
@@ -56,9 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 // The call converts against the fork it runs in, which a block override can change.
                 IReleaseSpec spec = GetSpec(_blockOverride?.ApplyTo(header) ?? header);
-                Result<Transaction> result = ValidatesFeeCapOrder
-                    ? call.ToValidatedTransaction(gasCap: _rpcConfig.GasCap, spec: spec)
-                    : call.ToTransaction(validateUserInput: true, gasCap: _rpcConfig.GasCap, spec: spec);
+                Result<Transaction> result = call.ToCallTransaction(spec, _rpcConfig.GasCap, validateFeeCapOrder: ValidatesFeeCapOrder, checksFork: ChecksFork);
                 if (result.IsError) return result;
 
                 Transaction tx = result.Data;

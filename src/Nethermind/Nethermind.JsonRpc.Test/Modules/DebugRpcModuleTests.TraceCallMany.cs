@@ -339,6 +339,22 @@ public partial class DebugRpcModuleTests
         Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(requestGas is not null));
     }
 
+    [Test]
+    public async Task Debug_traceCallMany_resolves_calls_against_the_options_block_override([Values] bool stream, [Values] bool dynamicFees)
+    {
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Berlin.Instance), ((ForkActivation)1, London.Instance)));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = stream;
+        TransactionForRpc call = dynamicFees
+            ? new EIP1559TransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction, MaxFeePerGas = UInt256.Zero }
+            : new LegacyTransactionForRpc { From = TestItem.AddressA, To = TestItem.AddressB, Gas = GasCostOf.Transaction };
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Number = 0 } };
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(call)], options);
+
+        // Overridden to a Berlin block, a call without fee fields still runs, and one with dynamic fees is rejected.
+        Assert.That((bool)result[0][0]!["failed"]!, Is.EqualTo(dynamicFees), result.ToString());
+    }
+
     [TestCaseSource(nameof(DebugTraceCallManyMissingGasCases))]
     public async Task Debug_traceCallMany_missing_or_zero_gas_respects_gas_cap(ulong? requestGas, ulong? configuredGasCap, bool uncapped)
     {

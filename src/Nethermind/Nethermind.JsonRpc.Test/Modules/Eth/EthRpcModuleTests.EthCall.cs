@@ -158,16 +158,48 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Fill_transaction_rejects_dynamic_fees_before_london()
+    public async Task Fill_transaction_is_outside_the_fork_rule([Values] bool estimated)
     {
         using Context ctx = await Context.Create(new TestSpecProvider(Berlin.Instance));
+        string gas = estimated ? "" : "\"gas\":\"0x5208\",";
         using JsonDocument request = JsonDocument.Parse(
-            $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",\"gas\":\"0x5208\",\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\"}}");
+            $"{{\"from\":\"{TestItem.AddressA}\",\"to\":\"{TestItem.AddressB}\",{gas}\"maxFeePerGas\":\"0x1\",\"maxPriorityFeePerGas\":\"0x1\"}}");
 
         string response = await ctx.Test.TestEthRpc("eth_fillTransaction", request.RootElement);
 
-        // No transaction before London carries dynamic fees, so there is nothing to fill.
-        Assert.That(JToken.Parse(response)["error"]?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Berlin.Instance.Name)), response);
+        // The filled transaction can only be included in a later block, whose fork the head doesn't determine.
+        Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+    }
+
+    [Test]
+    public async Task Eth_simulateV1_converts_each_call_against_its_simulated_block([Values] bool authorizationsFirst)
+    {
+        // The head runs Cancun; Prague activates at a timestamp only the second simulated block reaches.
+        const ulong pragueTime = 4_000_000_000;
+        using Context ctx = await Context.Create(new CustomSpecProvider(((ForkActivation)0, Cancun.Instance), (new ForkActivation(0, pragueTime), Prague.Instance)));
+        object plain = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressB.ToString() };
+        object authorizing = new
+        {
+            from = TestItem.AddressA.ToString(),
+            to = TestItem.AddressB.ToString(),
+            authorizationList = new[] { new { chainId = "0x1", address = TestItem.AddressC.ToString(), nonce = "0x0", yParity = "0x0", r = "0x1", s = "0x1" } }
+        };
+        object payload = new
+        {
+            blockStateCalls = new object[]
+            {
+                new { calls = new[] { authorizationsFirst ? authorizing : plain } },
+                new { blockOverrides = new { time = $"0x{pragueTime:x}" }, calls = new[] { authorizationsFirst ? plain : authorizing } }
+            }
+        };
+
+        string response = await ctx.Test.TestEthRpc("eth_simulateV1", payload);
+
+        JToken? error = JToken.Parse(response)["error"];
+        if (authorizationsFirst)
+            Assert.That(error?["message"]?.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(Cancun.Instance.Name)), response);
+        else
+            Assert.That(error, Is.Null, response);
     }
 
     [Test]

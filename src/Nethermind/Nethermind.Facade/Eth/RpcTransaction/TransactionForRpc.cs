@@ -110,16 +110,7 @@ public abstract class TransactionForRpc
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
-    {
-        TxType type = ResolveType(spec);
-        // A field the fork of the given spec lacks names a type it doesn't enable, even when its value is zero or
-        // empty, so no transaction there can carry it. A defaulted type names no field. Calls pass the spec of the
-        // block they run in; of the build and sign methods only eth_fillTransaction passes one, and it rejects such
-        // a field too rather than fill a transaction no block at that fork could include.
-        return spec is not null && !IsTypeDefaulted && !spec.IsTxTypeEnabled(type)
-            ? TxErrorMessages.InvalidTxType(spec.Name)
-            : new Transaction { Type = type };
-    }
+        => new Transaction { Type = ResolveType(spec) };
 
     /// <summary>
     /// Converts the request with its input validated, rejecting a fee cap below the priority fee as well; a call that
@@ -130,13 +121,30 @@ public abstract class TransactionForRpc
     /// so the first failing check still names the request.
     /// </remarks>
     public Result<Transaction> ToValidatedTransaction(ulong? gasCap = null, IReleaseSpec? spec = null)
+        => CheckFeeCapOrder(ToTransaction(validateUserInput: true, gasCap, spec));
+
+    private Result<Transaction> CheckFeeCapOrder(Result<Transaction> result) =>
+        this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
+        && maxFeePerGas < maxPriorityFeePerGas
+        && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
+            ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
+            : result;
+
+    /// <summary>
+    /// Converts an unsigned call that runs in a block of <paramref name="spec"/>, as <see cref="ToValidatedTransaction"/>
+    /// does, or as <see cref="ToTransaction"/> does without <paramref name="validateFeeCapOrder"/>. The call's fields
+    /// chose its type, so a field that fork lacks names a type it doesn't enable, even when its value is zero or empty,
+    /// and a call that converts is rejected before its fee cap order is checked; a defaulted type names no field. Transactions to
+    /// build or sign don't run in a known block, so they stay outside this check: they convert with
+    /// <see cref="ToValidatedTransaction"/>, or without <paramref name="checksFork"/> when they run as a call to
+    /// estimate their gas.
+    /// </summary>
+    public Result<Transaction> ToCallTransaction(IReleaseSpec spec, ulong? gasCap = null, bool validateUserInput = true, bool validateFeeCapOrder = true, bool checksFork = true)
     {
-        Result<Transaction> result = ToTransaction(validateUserInput: true, gasCap, spec);
-        return this is EIP1559TransactionForRpc { MaxFeePerGas: { } maxFeePerGas, MaxPriorityFeePerGas: { } maxPriorityFeePerGas }
-            && maxFeePerGas < maxPriorityFeePerGas
-            && (!result.IsError || result.Error == RpcTransactionErrors.ContractCreationWithoutData)
-                ? RpcTransactionErrors.MaxFeePerGasSmallerThanMaxPriorityFeePerGas(maxFeePerGas, maxPriorityFeePerGas)
-                : result;
+        Result<Transaction> result = ToTransaction(validateUserInput, gasCap, spec);
+        if (checksFork && result.Success(out Transaction? tx, out _) && !IsTypeDefaulted && !spec.IsTxTypeEnabled(tx.Type))
+            return TxErrorMessages.InvalidTxType(spec.Name);
+        return validateFeeCapOrder ? CheckFeeCapOrder(result) : result;
     }
 
     private TxType ResolveType(IReleaseSpec? spec)

@@ -183,14 +183,20 @@ public class TransactionForRpcDeserializationTests
     }
 
     // A field its fork lacks names a type the fork doesn't enable, even when empty or zero.
-    [TestCase("""{"accessList":[]}""", TestName = "Access list before Berlin")]
-    [TestCase("""{"gasPrice":"0x1","accessList":[]}""", TestName = "Priced access list before Berlin")]
-    [TestCase("""{"maxFeePerGas":"0x0"}""", TestName = "Dynamic fees before Berlin")]
+    [TestCase("""{"to":"0x0000000000000000000000000000000000000001","accessList":[]}""", TestName = "Access list before Berlin")]
+    [TestCase("""{"to":"0x0000000000000000000000000000000000000001","gasPrice":"0x1","accessList":[]}""", TestName = "Priced access list before Berlin")]
+    [TestCase("""{"to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0x0"}""", TestName = "Dynamic fees before Berlin")]
+    [TestCase("""{"to":"0x0000000000000000000000000000000000000001","maxFeePerGas":"0x0","maxPriorityFeePerGas":"0x1"}""", TestName = "Fee cap below the tip before Berlin")]
     public void Test_FieldChosenType_IsRejectedBeforeItsFork(string txJson)
     {
         TransactionForRpc transactionForRpc = _serializer.Deserialize<TransactionForRpc>(txJson)!;
-        Result<Transaction> result = transactionForRpc.ToTransaction(spec: Istanbul.Instance);
-        Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Istanbul.Instance.Name)));
+        Result<Transaction> result = transactionForRpc.ToCallTransaction(Istanbul.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Error, Is.EqualTo(TxErrorMessages.InvalidTxType(Istanbul.Instance.Name)));
+            // Converting to build or sign doesn't check the fork.
+            Assert.That(transactionForRpc.ToTransaction(spec: Istanbul.Instance).IsError, Is.False);
+        }
     }
 
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]
