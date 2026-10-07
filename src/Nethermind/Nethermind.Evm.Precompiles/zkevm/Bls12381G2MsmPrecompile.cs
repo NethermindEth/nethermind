@@ -40,7 +40,7 @@ public partial class Bls12381G2MsmPrecompile
 
             try
             {
-                return MsmCore(input, decodedInput, pairCount);
+                return MsmCore(input, decodedInput.AsSpan(0, decodedLen), pairCount);
             }
             finally
             {
