@@ -1,9 +1,10 @@
 # Runs the tests-zkevm-benchmark worst-case blocks through the ZisK guest and reports their cost.
 #
 # The release ships one archive per block gas value, each with ~1,200 compute benchmarks. A 30M block
-# emulates in 5-15 s, and emulation time grows roughly with gas, so the blocks are spread over shards
-# whose count scales with the gas value to keep every shard around 25 minutes. The host-side job runs
-# the same archives through nethtest, which also covers the setup blocks the guest jobs skip.
+# emulates in 5-15 s on one core, and emulation time grows roughly with gas, so the blocks are spread
+# over shards whose count scales with the gas value, and each shard runs one block per core. The
+# host-side job runs the same archives through nethtest, which also covers the setup blocks the guest
+# jobs skip.
 name: Stateless benchmark fixtures
 
 on:
@@ -185,31 +186,43 @@ jobs:
         working-directory: ${{ env.GUEST_DIR }}
         run: |
           set -euo pipefail
-          echo '[]' > "$RUNNER_TEMP/current.json"
-          failed=0
-          while read -r input output id; do
-            echo "::group::${input} ${id}"
-            status=0
-            timeout 15m make stats INPUT="$input" < /dev/null > "$RUNNER_TEMP/stats.log" 2>&1 || status=$?
-            cat "$RUNNER_TEMP/stats.log"
-            echo "::endgroup::"
+          # ziskemu is single-threaded, so one block runs per core. Each writes only its own directory
+          # and the logs are printed afterwards in manifest order, so concurrent runs never interleave.
+          measure() {
+            local input=$1 output=$2 dir="$RUNNER_TEMP/blocks/$1" status=0 verdict=ok
+            mkdir -p "$dir"
+            timeout 15m make stats INPUT="$input" < /dev/null > "$dir/stats.log" 2>&1 || status=$?
             if [[ "$status" -ne 0 ]]; then
-              echo "::error::${id}: the guest exited with $status"; failed=$((failed + 1))
-            elif ! grep -Fxq "$output" "$RUNNER_TEMP/stats.log"; then
-              echo "::error::${id}: output mismatch"; failed=$((failed + 1))
-            elif grep -qE 'Exception|Invalid Block' "$RUNNER_TEMP/stats.log"; then
-              echo "::error::${id}: the run logged an exception or an invalid block"; failed=$((failed + 1))
-            else
-              python3 -I "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
-                --input "$input" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
+              verdict="the guest exited with $status"
+            elif ! grep -Fxq "$output" "$dir/stats.log"; then
+              verdict="output mismatch"
+            elif grep -qE 'Exception|Invalid Block' "$dir/stats.log"; then
+              verdict="the run logged an exception or an invalid block"
+            elif ! python3 -I "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+              --input "$input" --log "$dir/stats.log" --into "$dir/row.json"; then
+              verdict="no cost figures in the log"
             fi
+            echo "$verdict" > "$dir/verdict"
             rm -f "bin/$input"
-          done < <(jq -r '.[] | "\(.input) \(.output) \(.id)"' "$RUNNER_TEMP/manifest.json")
+          }
+          export -f measure
+          jq -r '.[] | "\(.input) \(.output)"' "$RUNNER_TEMP/manifest.json" \
+            | xargs -P "$(nproc)" -L 1 bash -c 'measure "$@"' _
+
+          failed=0
+          while read -r input id; do
+            dir="$RUNNER_TEMP/blocks/$input"
+            echo "::group::${input} ${id}"
+            cat "$dir/stats.log" 2> /dev/null || true
+            echo "::endgroup::"
+            verdict=$(cat "$dir/verdict" 2> /dev/null || echo "the run produced no verdict")
+            [[ "$verdict" == ok ]] || { echo "::error::${id}: ${verdict}"; failed=$((failed + 1)); }
+          done < <(jq -r '.[] | "\(.input) \(.id)"' "$RUNNER_TEMP/manifest.json")
           [[ "$failed" -eq 0 ]] || { echo "::error::$failed block(s) failed"; exit 1; }
           mkdir -p "$RUNNER_TEMP/results"
-          jq --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
-            ($manifest[0] | INDEX(.input)) as $ids | map({gas: $gas, id: $ids[.input].id} + del(.input))
-          ' "$RUNNER_TEMP/current.json" > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          jq -s --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
+            ($manifest[0] | INDEX(.input)) as $ids | add | map({gas: $gas, id: $ids[.input].id} + del(.input))
+          ' "$RUNNER_TEMP"/blocks/*/row.json > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
 
       - name: Upload results
         uses: actions/upload-artifact@v7
