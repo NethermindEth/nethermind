@@ -89,7 +89,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         _formatVersion = rowFormat.FormatVersion;
         _formatStamped = availability.StampedFormatVersion == _formatVersion;
         _isV3 = rowFormat.IsV3;
-        _pendingV3 = _isV3 ? new PendingV3Writes() : null;
+        _pendingV3 = _isV3 ? new PendingV3Writes(_rlpWrapSlots) : null;
         _captureFromBlock = config.HistoryRetention == HistoryRetentionMode.SinceBlock ? config.HistoryRetentionSinceBlock : 0;
         if (_isV3)
         {
@@ -678,27 +678,14 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
     }
 
     /// <summary>The walk visits newest-to-oldest, so this post-value finalizes the newer pending touch.</summary>
-    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch)
-    {
-        if (account is null)
-        {
-            pending.TrackAccount(addrHash, block, ReadOnlySpan<byte>.Empty, accountBatch, _accountHistoryV3!);
-            return;
-        }
-
-        using ArrayPoolSpan<byte> rlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(account);
-        pending.TrackAccount(addrHash, block, rlp, accountBatch, _accountHistoryV3!);
-    }
+    private void RecordAccountV3(ulong block, in ValueHash256 addrHash, Account? account, PendingV3Writes pending, IWriteBatch accountBatch) =>
+        pending.TrackAccount(addrHash, block, account, accountBatch, _accountHistoryV3!);
 
     private void RecordStorageV3(ulong block, in ValueHash256 addrHash, in UInt256 slot, in UInt256? value, Span<byte> keyBuffer, Span<byte> valueBuffer, PendingV3Writes pending, IWriteBatch storageBatch)
     {
         ValueHash256 slotHash = ValueKeccak.Zero;
         StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
-
-        int written = value is UInt256 slotValue
-            ? BaseFlatPersistence.EncodeSlotValue(slotValue, _rlpWrapSlots, valueBuffer)
-            : 0;
-        pending.TrackStorage(addrHash, slotHash, block, valueBuffer[..written], keyBuffer, storageBatch, _storageHistoryV3!);
+        pending.TrackStorage(addrHash, slotHash, block, value, keyBuffer, valueBuffer, storageBatch, _storageHistoryV3!);
     }
 
     /// <summary>v3 only: a self-destruct wipes slots via a range-delete with no per-slot entries, so the account's
@@ -724,7 +711,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
                 return;
             }
 
-            pending.TrackStorage(addrHash, slots.CurrentKey, block, ReadOnlySpan<byte>.Empty, storageKeyBuffer, storageBatch, _storageHistoryV3!);
+            pending.TrackStorage(addrHash, slots.CurrentKey, block, null, storageKeyBuffer, Span<byte>.Empty, storageBatch, _storageHistoryV3!);
         }
     }
 
@@ -815,9 +802,12 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             return byAccount != 0 ? byAccount : a.Key.SlotHash.Bytes.SequenceCompareTo(b.Key.SlotHash.Bytes);
         });
 
-    /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.</summary>
-    private sealed class PendingV3Writes
+    /// <summary>Per-walk deferred-resolution state. Keyed on value structs so tracking a touch allocates nothing.
+    /// Post-values are encoded only when a row is written: a key's first touch in the walk writes nothing.</summary>
+    private sealed class PendingV3Writes(bool rlpWrapSlots)
     {
+        private const int AccountRlpBufferSize = 256;
+
         public readonly record struct SlotKey(ValueHash256 AddrPath, ValueHash256 SlotHash);
 
         public readonly Dictionary<ValueHash256, ulong> Accounts = [];
@@ -834,14 +824,16 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
         /// <summary>Keeps the lowest destruct seen, for slots first written lower in this same walk.</summary>
         public void TrackDestruct(in ValueHash256 addrPath, ulong block) => Destructs[addrPath] = block;
 
-        public void TrackAccount(in ValueHash256 addrPath, ulong block, ReadOnlySpan<byte> postValue, IWriteBatch batch, HistoryStoreV3 store)
+        [SkipLocalsInit]
+        public void TrackAccount(in ValueHash256 addrPath, ulong block, Account? postValue, IWriteBatch batch, HistoryStoreV3 store)
         {
             ref ulong entry = ref CollectionsMarshal.GetValueRefOrAddDefault(Accounts, addrPath, out bool exists);
             if (exists)
             {
                 if (entry == block) return; // same-block re-touch: resolving here would fabricate a pre-value
 
-                store.RecordPreValue(entry, addrPath.Bytes, postValue, batch);
+                Span<byte> rlp = stackalloc byte[AccountRlpBufferSize];
+                store.RecordPreValue(entry, addrPath.Bytes, EncodeAccount(postValue, rlp), batch);
             }
 
             entry = block;
@@ -851,8 +843,9 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             in ValueHash256 addrPath,
             in ValueHash256 slotHash,
             ulong block,
-            ReadOnlySpan<byte> postValue,
+            in UInt256? postValue,
             Span<byte> keyBuffer,
+            Span<byte> valueBuffer,
             IWriteBatch batch,
             HistoryStoreV3 store)
         {
@@ -869,7 +862,7 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             {
                 ReadOnlySpan<byte> destructKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
                 if (exists) store.RecordPreValue(entry, destructKey, ReadOnlySpan<byte>.Empty, batch);
-                store.RecordPreValue(destructBlock, destructKey, postValue, batch);
+                store.RecordPreValue(destructBlock, destructKey, EncodeSlot(postValue, valueBuffer), batch);
                 entry = block;
                 return;
             }
@@ -877,11 +870,24 @@ public sealed class HistoryWriter : IFlatPersistenceCaptureHook, IStateHistoryCa
             if (exists)
             {
                 ReadOnlySpan<byte> flatKey = BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(keyBuffer, addrPath, slotHash);
-                store.RecordPreValue(entry, flatKey, postValue, batch);
+                store.RecordPreValue(entry, flatKey, EncodeSlot(postValue, valueBuffer), batch);
             }
 
             entry = block;
         }
+
+        private static ReadOnlySpan<byte> EncodeAccount(Account? account, Span<byte> buffer)
+        {
+            if (account is null) return ReadOnlySpan<byte>.Empty;
+
+            int contentLength = AccountDecoder.Slim.GetContentLength(account);
+            RlpWriter writer = new(buffer);
+            AccountDecoder.Slim.Encode(account, ref writer, contentLength);
+            return buffer[..Rlp.LengthOfSequence(contentLength)];
+        }
+
+        private ReadOnlySpan<byte> EncodeSlot(in UInt256? value, Span<byte> buffer) =>
+            value is UInt256 slotValue ? buffer[..BaseFlatPersistence.EncodeSlotValue(slotValue, rlpWrapSlots, buffer)] : ReadOnlySpan<byte>.Empty;
     }
 
     private readonly ref struct HistoryColumnBatches(IColumnsWriteBatch<FlatHistoryColumns> batch)

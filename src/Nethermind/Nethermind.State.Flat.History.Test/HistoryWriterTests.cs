@@ -1002,6 +1002,46 @@ public class HistoryWriterTests
     }
 
     [Test]
+    public void V3_RowsResolvedInsideTheWalk_MatchTheFlatEncoders()
+    {
+        (HistoryWriter windowedWriter, _) = CreateWindowedPair(retentionBlocks: 1000);
+        windowedWriter.SeedGenesis([], StateAt(0).StateRoot);
+
+        Account account = new(7, 4242, TestItem.KeccakA, TestItem.KeccakB);
+        UInt256 slot = Slot(0xde, 0xad, 0xbe, 0xef);
+        CommitBlock(0, 1,
+            accountChanges: [(AddrA, account), (AddrB, null)],
+            storageChanges: [(AddrA, Slot1, slot), (AddrA, Slot2, null)]);
+        CommitBlock(1, 2,
+            accountChanges: [(AddrA, new Account(8, 1)), (AddrB, new Account(1, 1))],
+            storageChanges: [(AddrA, Slot1, Slot(0x02)), (AddrA, Slot2, Slot(0x03))]);
+        windowedWriter.CaptureUpTo(StateAt(2), _repository, CancellationToken.None);
+
+        HistoryStoreV3 accountHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AccountHistory));
+        HistoryStoreV3 storageHistory = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageHistory));
+        Span<byte> buffer = stackalloc byte[256];
+
+        int accountWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrA), buffer, out ulong accountRow);
+        byte[] accountBytes = buffer[..accountWritten].ToArray();
+        int deletedWritten = accountHistory.TryGetValueBeforeNextChange(1, AccountKey(AddrB), buffer, out ulong deletedRow);
+        int slotWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot1), buffer, out ulong slotRow);
+        byte[] slotBytes = buffer[..slotWritten].ToArray();
+        int zeroedWritten = storageHistory.TryGetValueBeforeNextChange(1, StorageKey(AddrA, Slot2), buffer, out ulong zeroedRow);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accountRow, Is.EqualTo(2UL));
+            Assert.That(accountBytes, Is.EqualTo(EncodedAccount(account)));
+            Assert.That(deletedRow, Is.EqualTo(2UL));
+            Assert.That(deletedWritten, Is.Zero);
+            Assert.That(slotRow, Is.EqualTo(2UL));
+            Assert.That(slotBytes, Is.EqualTo(EncodedSlot(slot.ToBigEndian().AsSpan())));
+            Assert.That(zeroedRow, Is.EqualTo(2UL));
+            Assert.That(zeroedWritten, Is.Zero);
+        }
+    }
+
+    [Test]
     public void V3Read_AtOrBelowWatermark_ResolvesCorrectly_BeforeAndAfterThePersistCatchesUp()
     {
         (HistoryWriter windowedWriter, HistoryReader windowedReader) = CreateWindowedPair(retentionBlocks: 1000);
