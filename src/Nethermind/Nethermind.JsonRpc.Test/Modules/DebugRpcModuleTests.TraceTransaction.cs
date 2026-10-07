@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
@@ -72,6 +74,90 @@ public partial class DebugRpcModuleTests
         await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
 
         Assert.That(header.BaseFeePerGas, Is.EqualTo(baseFee), "block override must not write into the block-tree-cached header");
+    }
+
+    /// <summary>
+    /// Regression: the replay writes the nonce it loads from state into each transaction, so a nonce override must not
+    /// reach the transactions the block tree caches, and the copies replayed instead keep their type and its state.
+    /// </summary>
+    [Test]
+    public async Task Debug_trace_with_nonce_override_does_not_mutate_cached_transaction(
+        [Values("debug_traceTransaction", "debug_traceBlockByHash", "debug_intermediateRoots", "debug_standardTraceBlockToFile")] string method)
+    {
+        List<Transaction> replayed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+
+        // A subclass, as plugins keep in blocks.
+        Transaction transaction = Build.A.NamedTransaction("subclass")
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(transaction);
+        Hash256 blockHash = chain.BlockTree.Head!.Hash!;
+        ulong nonce = transaction.Nonce;
+        Transaction cached = chain.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Transactions[0];
+        Assert.That(cached, Is.TypeOf<NamedTransaction>(), "precondition: the block tree caches the subclass");
+        replayed.Clear();
+
+        GethTraceOptions options = new()
+        {
+            StateOverrides = new Dictionary<Address, AccountOverride> { [TestItem.AddressA] = new() { Nonce = nonce + 5 } }
+        };
+        string? error = method switch
+        {
+            "debug_intermediateRoots" => chain.DebugRpcModule.debug_intermediateRoots(blockHash, options).Result.Error,
+            "debug_standardTraceBlockToFile" => TraceBlockToFile(chain, blockHash, options),
+            _ => JToken.Parse(await RpcTest.TestSerializedRequest(chain.DebugRpcModule, method,
+                method == "debug_traceTransaction" ? transaction.Hash : blockHash, options))["error"]?.ToString(),
+        };
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error, Is.Null);
+            Assert.That(cached.Nonce, Is.EqualTo(nonce), "a state override must not write into the block-tree-cached transaction");
+            Assert.That(replayed, Is.Not.Empty.And.All.Matches<Transaction>(t => !ReferenceEquals(t, cached) && t is NamedTransaction { Name: "subclass" }),
+                "the replayed copy keeps the subclass and its state");
+        }
+
+        static string? TraceBlockToFile(TestRpcBlockchain chain, Hash256 blockHash, GethTraceOptions options)
+        {
+            ResultWrapper<IEnumerable<string>> result = chain.DebugRpcModule.debug_standardTraceBlockToFile(blockHash, options);
+            foreach (string file in result.Data ?? [])
+                File.Delete(file);
+            return result.Result.Error;
+        }
+    }
+
+    /// <summary>
+    /// Regression: a block override can change what the block's earlier transactions do, and with it the nonce the
+    /// replay loads into each transaction, so such a replay runs on copies too.
+    /// </summary>
+    [Test]
+    public async Task Debug_traceTransaction_with_block_override_replays_copies_of_cached_transactions()
+    {
+        List<Transaction> replayed = [];
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddDecorator<ITransactionProcessorAdapter>((_, inner) => new ExecutedTransactionsAdapter(inner, replayed)));
+
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(chain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await chain.AddBlock(transaction);
+        Hash256 blockHash = chain.BlockTree.Head!.Hash!;
+        Transaction cached = chain.BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Transactions[0];
+        replayed.Clear();
+
+        GethTraceOptions options = new() { BlockOverrides = new BlockOverride { Time = chain.BlockTree.Head!.Timestamp + 12 } };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceTransaction", transaction.Hash, options);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(response)["error"], Is.Null, response);
+            Assert.That(replayed, Is.Not.Empty.And.All.Matches<Transaction>(t => !ReferenceEquals(t, cached)),
+                "the replay runs on copies, never on the block tree's cached transaction");
+        }
     }
 
     // Zero is the case where the overridden target would pass for genesis and open pre-genesis state; a cold

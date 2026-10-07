@@ -96,6 +96,17 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Debug_traceCallMany_ignores_traceCall_transaction_index([Values] bool streaming, [Values(0UL, ulong.MaxValue)] ulong index)
+    {
+        using Context ctx = await CreateContext();
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+        TransactionBundle[] bundles = [CreateBundle(CreateTransaction())];
+        JArray expected = await RunTraceCallManyAsJson(ctx, bundles);
+        JArray actual = await RunTraceCallManyAsJson(ctx, bundles, new GethTraceOptions { TxIndex = index });
+        Assert.That(JToken.DeepEquals(actual, expected), Is.True, actual.ToString());
+    }
+
+    [Test]
     public async Task Debug_traceCallMany_with_multiple_bundles()
     {
         using Context ctx = await CreateContext();
@@ -131,6 +142,30 @@ public partial class DebugRpcModuleTests
         Assert.That((long)trace["gas"]!, Is.GreaterThan(0), "failed trace gas reflects the tx gas limit");
         Assert.That((string)trace["error"]!, Does.Contain("insufficient funds"), "Nethermind wording is translated to Geth's wording for compat");
         Assert.That((int)trace["errorCode"]!, Is.EqualTo(ErrorCodes.InvalidInput), "tracing-failure errorCode mirrors the buffered ErrorCodes.InvalidInput");
+    }
+
+    /// <summary>A signed transaction recovers its original signer after a <c>debug_traceCallMany</c> call with its fields and signature.</summary>
+    [Test]
+    public async Task Debug_traceCallMany_recovers_the_original_signer_after_the_call([Values] bool streaming)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Cancun.Instance));
+        ctx.Blockchain.Container.Resolve<IJsonRpcConfig>().EnableTracingStreamMode = streaming;
+
+        ulong chainId = ctx.Blockchain.SpecProvider.ChainId;
+        (Transaction signedTx, Transaction receivedTx, Address signer) = SignedCallScenario.BuildSignedTypedTx(ctx.Blockchain.EthereumEcdsa, chainId);
+        EIP1559TransactionForRpc rpcTx = SignedCallScenario.BuildCall(signedTx, TestItem.AddressF, chainId);
+
+        JArray result = await RunTraceCallManyAsJson(ctx, [CreateBundle(rpcTx)]);
+
+        // A fresh `from` is unfunded; only the streamed trace carries the error.
+        JToken trace = result[0][0]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((bool)trace["failed"]!, Is.True);
+            if (streaming) Assert.That((string?)trace["error"], Does.Contain("insufficient funds"));
+        }
+
+        SignedCallScenario.AssertRecoversSigner(ctx.Blockchain.EthereumEcdsa, receivedTx, signer);
     }
 
     [Test]
