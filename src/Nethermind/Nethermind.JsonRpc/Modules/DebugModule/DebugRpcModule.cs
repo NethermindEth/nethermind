@@ -118,6 +118,8 @@ public class DebugRpcModule(
             return headerError;
         }
 
+        blockParameter = new BlockParameter(header.Hash!);
+
         Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
