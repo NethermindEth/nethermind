@@ -50,6 +50,12 @@ public class Eth68ProtocolHandler(ISession session,
     protected readonly bool _blobSupportEnabled = txPoolConfig.BlobsSupport.IsEnabled();
     protected readonly long _configuredMaxTxSize = txPoolConfig.MaxTxSize ?? long.MaxValue;
 
+    private readonly PeerValidationGasBudget? _frameValidationBudget = txPoolConfig.FrameTxPeerValidationGasPerSecond == 0
+        ? null
+        : new PeerValidationGasBudget(txPoolConfig.FrameTxPeerValidationGasPerSecond, burstSeconds: 1);
+
+    private protected override PeerValidationGasBudget? FrameValidationBudget => _frameValidationBudget;
+
     protected readonly long _configuredMaxBlobTxSize = txPoolConfig.MaxBlobTxSize is null
         ? long.MaxValue
         : txPoolConfig.MaxBlobTxSize.Value + (long)specProvider.GetFinalMaxBlobGasPerBlock();

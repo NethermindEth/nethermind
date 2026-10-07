@@ -578,6 +578,38 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
+    // Two 300k transactions spend a 600k burst; the third arrives before the bucket refills.
+    [TestCase("failed", 2, TestName = "Peer_validation_budget_drops_frame_txs_once_failing_validation_spends_it")]
+    [TestCase("accepted", 3, TestName = "Peer_validation_budget_refunds_admitted_frame_txs")]
+    [TestCase("off", 3, TestName = "Peer_validation_budget_off_submits_every_frame_tx")]
+    public void Peer_validation_budget_bounds_failing_frame_tx_validation(string outcome, int expectedSubmitted)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(outcome == "off" ? 0UL : 600_000UL);
+        RecreateHandler();
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(outcome == "accepted" ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed);
+
+        Transaction[] transactions =
+        [
+            FrameTx(TestItem.PrivateKeyA, validationGas: 300_000),
+            FrameTx(TestItem.PrivateKeyB, validationGas: 300_000),
+            FrameTx(TestItem.PrivateKeyC, validationGas: 300_000),
+        ];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _transactionPool.Received(expectedSubmitted).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
     // This handler has its own submission loop, so it needs the same stop once an invalid transaction closes the session.
     [Test]
     public void should_stop_submitting_the_rest_of_a_packet_after_an_invalid_transaction_requests_a_disconnect()
@@ -5335,6 +5367,13 @@ public class Eth72ProtocolHandlerTests
         .WithGasLimit(100_000)
         .WithTo(TestItem.AddressB)
         .SignedAndResolved(signer).TestObject;
+
+    private static Transaction FrameTx(PrivateKey signer, ulong validationGas)
+    {
+        Transaction tx = FrameTx(signer);
+        tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, validationGas, value: default, Array.Empty<byte>())];
+        return tx;
+    }
 
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,
