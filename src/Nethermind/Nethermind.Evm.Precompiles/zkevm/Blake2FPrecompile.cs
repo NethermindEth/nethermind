@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -12,6 +13,7 @@ namespace Nethermind.Evm.Precompiles;
 
 public partial class Blake2FPrecompile
 {
+    [SkipLocalsInit]
     public partial Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec _)
     {
         if (!TryPrepareInput(inputData, out ReadOnlySpan<byte> inputSpan, out Result<byte[]> error))
