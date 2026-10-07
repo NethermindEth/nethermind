@@ -110,6 +110,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void ClearStorage(Address address)
         => State.ClearStorage(address);
 
+    public virtual bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        => State.TryGetStorageBeforeClear(in storageCell, out value);
+
     public virtual void RecalculateStateRoot()
         => State.RecalculateStateRoot();
 

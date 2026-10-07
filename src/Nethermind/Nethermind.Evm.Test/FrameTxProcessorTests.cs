@@ -4432,6 +4432,55 @@ public partial class FrameTxProcessorTests
         Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
     }
 
+    public enum StorageWipe { WipeOnly, WriteOtherKey, WriteSameKeyThenRevert, RewritePrestate }
+
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, false, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, false, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange")]
+    [TestCase(StorageWipe.WipeOnly, 0ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_UnwrittenSlotsReadTheirPrestate_Parallel")]
+    [TestCase(StorageWipe.WriteOtherKey, 7ul, 0ul, 1, true, TestName = "Execute_TxDiff_StorageWipe_WrittenSlotReadsItsPrestate_Parallel")]
+    [TestCase(StorageWipe.WriteSameKeyThenRevert, 5ul, 9ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RevertedCreationKeepsThePrestate_Parallel")]
+    [TestCase(StorageWipe.RewritePrestate, 5ul, 0ul, 0, true, TestName = "Execute_TxDiff_StorageWipe_RewrittenPrestateIsNotAChange_Parallel")]
+    public void Execute_TxDiff_StorageWipe_ReadsTheTruePrestate(StorageWipe wipe, ulong afterA, ulong afterB, int slotsChanged, bool parallel)
+    {
+        UInt256 keyA = 0xa1;
+        UInt256 keyB = 0xb2;
+        byte[] initCode = wipe switch
+        {
+            StorageWipe.WipeOnly => Prepare.EvmCode.Op(Instruction.STOP).Done,
+            StorageWipe.WriteOtherKey => Prepare.EvmCode.PushData(7).PushData(keyA).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+            StorageWipe.WriteSameKeyThenRevert => Prepare.EvmCode.PushData(7).PushData(keyA).Op(Instruction.SSTORE).PushData(0).PushData(0).Op(Instruction.REVERT).Done,
+            _ => Prepare.EvmCode.PushData(5).PushData(keyA).Op(Instruction.SSTORE).Op(Instruction.STOP).Done,
+        };
+        byte[] salt = new byte[32];
+        Address created = ContractAddress.From(Observer, salt, initCode);
+
+        _stateProvider.CreateAccount(created, 1);
+        _stateProvider.Set(new StorageCell(created, keyA), 5);
+        _stateProvider.Set(new StorageCell(created, keyB), 9);
+        _stateProvider.Commit(Spec);
+        _stateProvider.CommitTree(0);
+
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Observer, Prepare.EvmCode.Create2(initCode, salt, UInt256.Zero).Op(Instruction.POP).Op(Instruction.STOP).Done);
+        List<(byte[] producer, byte[] expected32)> asserts =
+        [
+            (Txdiff(0x00, created, keyB), To32(9)),
+            (Txdiff(0x01, created, keyB), To32(afterB)),
+            (Txdiff(0x00, created, keyA), To32(5)),
+            (Txdiff(0x01, created, keyA), To32(afterA)),
+            (Txtrace(0x01, 0), To32((UInt256)slotsChanged)),
+        ];
+        if (slotsChanged == 1) asserts.Add((Txtrace(0x08, 0), To32(5)));
+        DeployContract(Recipient, PostTxAssertAll([.. asserts]));
+
+        (_, CallOutputTracer tracer) = ProcessTraced(FrameTx(nonce: 0,
+            SelfVerifyFrame(), Frame(FrameMode.Sender, target: Observer), Frame(FrameMode.PostTx, target: Recipient)), parallel);
+
+        Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
+    }
+
     // Payer and max cost come from the frame context rather than the diff, so they are read back
     // against TXPARAM, which exposes the same two values to the body.
     [Test]

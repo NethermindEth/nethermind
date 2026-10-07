@@ -650,6 +650,27 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal void GetPureRead(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(in storageCell, out value);
 
+    /// <summary>Reads the value a slot held before the first storage clear of its contract in this commit round.</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared in this round.</returns>
+    internal bool TryGetBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        foreach (StorageClearChange clear in _storageClearJournal)
+        {
+            if (clear.Address != storageCell.Address) continue;
+
+            if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
+                value = trace.After;
+            else if (clear.BlockChange.MissingAreDefault)
+                value = default;
+            else
+                GetPureRead(in storageCell, out value);
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
     /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
