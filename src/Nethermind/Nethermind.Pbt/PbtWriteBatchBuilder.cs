@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.Pbt;
@@ -39,7 +40,7 @@ public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where 
         public bool Return(Shard shard)
         {
             int count = shard.Entries.Count;
-            if (count > Volatile.Read(ref _createCapacity)) Volatile.Write(ref _createCapacity, count);
+            InterlockedEx.Max(ref _createCapacity, count);
             shard.Entries.Clear();
             return true;
         }

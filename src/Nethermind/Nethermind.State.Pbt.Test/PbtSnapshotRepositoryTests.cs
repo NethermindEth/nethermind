@@ -8,6 +8,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using NUnit.Framework;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -74,7 +75,7 @@ public class PbtSnapshotRepositoryTests
     {
         PbtConfig config = new() { CompactSize = 8, CompactionOffset = offset };
         using MemDb metadata = new();
-        PbtSnapshotCompactor compactor = new(_pool, new PbtCompactionSchedule(metadata, config, LimboLogs.Instance), _repository, config);
+        PbtSnapshotCompactor compactor = new(_pool, PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance), _repository, config);
         int firstBoundary = 8 - offset;
         for (int block = 0; block <= firstBoundary + 18; block++)
         {

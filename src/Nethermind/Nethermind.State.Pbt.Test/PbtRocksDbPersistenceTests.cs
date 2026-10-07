@@ -21,6 +21,7 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using NUnit.Framework;
@@ -277,7 +278,7 @@ public class PbtRocksDbPersistenceTests
         PbtConfig config = new() { CompactSize = 2, CompactionOffset = 0 };
         PbtResourcePool pool = new(config);
         PbtSnapshotRepository repository = new(new MetricsConfig());
-        PbtCompactionSchedule schedule = new(metadata, config, LimboLogs.Instance);
+        ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         using PbtTreeHarness tree = new();

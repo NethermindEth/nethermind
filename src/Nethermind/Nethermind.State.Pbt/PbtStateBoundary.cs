@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.Synchronization.ParallelSync;
 
 namespace Nethermind.State.Pbt;
 
@@ -14,13 +15,15 @@ namespace Nethermind.State.Pbt;
 /// injected into the block tree's constructor without resolving the manager's graph back into
 /// the block tree.
 /// </remarks>
-public class PbtStateBoundary(IPbtPersistence persistence) : IStateBoundary
+public class PbtStateBoundary(IPbtPersistence persistence) : IStateBoundary, IFullStateFinder
 {
     public ulong? RetentionWindowBlocks => null;
 
     public ulong? OldestStateBlock => CurrentPersistedBlock();
 
     public ulong? BestPersistedState => CurrentPersistedBlock();
+
+    public ulong FindBestFullState() => CurrentPersistedBlock() ?? 0;
 
     private ulong? CurrentPersistedBlock()
     {

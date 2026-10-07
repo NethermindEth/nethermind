@@ -3,12 +3,10 @@
 
 using Autofac;
 using Nethermind.Api.Steps;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
@@ -44,9 +42,10 @@ public class PbtModule(IPbtConfig config) : Module
             .Add<PbtOverridableWorldScope>()
 
             .Bind<IWorldStateManager, PbtWorldStateManager>()
-            .AddSingleton<IStateBoundary, PbtStateBoundary>()
-            .AddSingleton<IPruningTrieStateAdminRpcModule, PruningDisabledAdminRpcModule>()
-            .AddSingleton<IFullStateFinder, PbtFullStateFinder>()
+            .AddSingleton<PbtStateBoundary>()
+            .Bind<IStateBoundary, PbtStateBoundary>()
+            .Bind<IFullStateFinder, PbtStateBoundary>()
+            .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
             .AddSingleton<IMigrationTelemetry>(NullMigrationTelemetry.Instance)
@@ -91,10 +90,5 @@ public class PbtModule(IPbtConfig config) : Module
             ILogger logger = ctx.Resolve<ILogManager>().GetClassLogger<PbtModule>();
             if (logger.IsInfo) logger.Info("No binaryTrieTime in the chain specification; assuming the EIP-8297 binary tree state from genesis.");
         });
-    }
-
-    internal sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule
-    {
-        public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
     }
 }

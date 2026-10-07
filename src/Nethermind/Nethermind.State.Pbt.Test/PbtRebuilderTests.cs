@@ -19,6 +19,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using NUnit.Framework;

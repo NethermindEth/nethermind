@@ -3,7 +3,6 @@
 
 using System.IO;
 using System.Threading.Tasks;
-using System.Text.Json;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Find;
@@ -109,9 +108,7 @@ public class MigrationEngineRpcE2ETests
         BlockParameter requested = new(head.Hash!);
         ResultWrapper<UInt256?> balance = await eth.eth_getBalance(Address.Zero, requested);
         Assert.That(balance.Result.ResultType, Is.EqualTo(ResultType.Success), balance.Result.Error);
-        using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(harness.FixtureDirectory, "states", "a4.alloc.json")));
-        string expectedBalance = allocation.RootElement.GetProperty(Address.Zero.ToString()).GetProperty("balance").GetString()!;
-        UInt256 balanceValue = Eip8347FixtureState.ParseQuantity(expectedBalance);
+        UInt256 balanceValue = Eip8347FixtureState.LoadAllocation(harness.FixtureDirectory, "a4")[Address.Zero].Balance!.Value;
         IResultWrapper proof = eth.eth_getProof(Address.Zero, [], requested);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await engine.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(head.Hash!, anchorHash, anchorHash));

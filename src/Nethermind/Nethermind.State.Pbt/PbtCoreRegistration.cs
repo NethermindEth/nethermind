@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 
@@ -30,7 +31,12 @@ internal static class PbtCoreRegistration
             .AddSingleton<IPbtTrieNodeCache, PbtTrieNodeCache>()
             .AddSingleton<PbtSnapshotRepository>()
             .AddSingleton<PbtSnapshotCompactor>()
-            .AddSingleton<PbtCompactionSchedule>()
+            .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
             .AddSingleton<PbtPersistenceCoordinator>()
             .AddSingleton<IPbtDbManager, PbtDbManager>();
+
+    /// <summary>Builds the flat compaction schedule over the PBT compaction settings.</summary>
+    /// <remarks>The offset is stored under flat's metadata key, so a node running both backends compacts both on the same boundaries.</remarks>
+    public static ICompactionSchedule CreateCompactionSchedule(IDb metadataDb, IPbtConfig config, ILogManager logManager) =>
+        new CompactionSchedule(metadataDb, new FlatDbConfig { CompactSize = (ulong)config.CompactSize, CompactionOffset = config.CompactionOffset }, logManager);
 }

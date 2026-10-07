@@ -6,6 +6,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using NonBlocking;
 
 namespace Nethermind.State.Pbt;
@@ -91,18 +92,18 @@ public static class Metrics
     [DetailedMetric]
     [Description("Pbt pooled resources currently rented, by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtActivePooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtActivePooledResource { get; } = new();
 
     [DetailedMetric]
     [Description("Pbt pooled resources held in the pool, by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtCachedPooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtCachedPooledResource { get; } = new();
 
     /// <remarks>Plateaus once the pool is warm; a category sized too small climbs forever instead.</remarks>
     [DetailedMetric]
     [Description("Pbt pooled resources allocated because the pool was empty, by category and type")]
     [KeyIsLabel("category", "resource_type")]
-    public static ConcurrentDictionary<PbtResourcePool.PooledResourceLabel, long> PbtCreatedPooledResource { get; } = new();
+    public static ConcurrentDictionary<ResourcePool.PooledResourceLabel, long> PbtCreatedPooledResource { get; } = new();
 
     /// <remarks>
     /// One observation per point read of an account, storage slot, node group, or code.

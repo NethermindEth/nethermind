@@ -21,10 +21,10 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
 
@@ -64,9 +64,6 @@ public class ImportPbtFromPreimageFlat(
     /// <summary>Leaves per phase-two channel chunk and records per scan page.</summary>
     internal int EntryChunkSize { get; init; } = 2_048;
 
-    /// <summary>Keys deleted per view and write batch when clearing an interrupted import.</summary>
-    internal int ClearKeyChunk { get; init; } = 10_000;
-
     /// <summary>Writes per phase-one batch, bounding retained storage keys even within one account.</summary>
     internal int CopyBatchSize { get; init; } = 10_000;
 
@@ -83,7 +80,7 @@ public class ImportPbtFromPreimageFlat(
             return;
         }
 
-        FlatStateId sourceState;
+        StateId sourceState;
         // Keep the snapshot only long enough to validate the source and read its state.
         using (FlatPersistence.IPersistenceReader reader = flatSource.CreateReader())
         {
@@ -95,7 +92,7 @@ public class ImportPbtFromPreimageFlat(
             sourceState = reader.CurrentState;
         }
 
-        if (sourceState == FlatStateId.PreGenesis)
+        if (sourceState == StateId.PreGenesis)
         {
             if (_logger.IsInfo) _logger.Info("Source flat database is empty; nothing to import.");
             return;
@@ -109,27 +106,29 @@ public class ImportPbtFromPreimageFlat(
         await CopyFlatColumns(workerCount, partitionCount, cancellationToken);
 
         // State is addressed by the source block header's root; the fold records its tree root beside it.
-        await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, partitionCount, cancellationToken);
+        await DeriveAndFold(sourceState, workerCount, partitionCount, cancellationToken);
     }
 
     /// <remarks>
     /// An interrupted import can leave logical entries and trie nodes despite a pre-genesis state pointer.
     /// <see cref="TrieUpdater"/> reads a stored root group before its supplied root hash, so stale nodes
-    /// would produce the wrong root. Each deletion chunk closes its view before committing to avoid
-    /// pinning RocksDB versions throughout the sweep.
+    /// would produce the wrong root.
     /// </remarks>
     private void ClearInterruptedAttempt()
     {
-        long cleared = 0;
+        bool cleared = false;
         pbtDb.GetColumnDb(PbtColumns.Metadata).Remove(PbtRocksDbPersistence.RootNodeGroupKey);
 
         foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
             if (column == PbtColumns.Metadata) continue;
-            cleared += PbtColumnSweep.DeleteKeys(pbtDb.GetColumnDb(column), ClearKeyChunk, static _ => false, CancellationToken.None);
+            IDb columnDb = pbtDb.GetColumnDb(column);
+            if (((ISortedKeyValueStore)columnDb).FirstKey is null) continue;
+            ((IRangeRemovableKeyValueStore)columnDb).RemoveRange([], PbtColumnSweep.PastEveryKey());
+            cleared = true;
         }
 
-        if (cleared > 0 && _logger.IsInfo) _logger.Info($"Discarded {cleared:N0} entries left by an interrupted PBT import.");
+        if (cleared && _logger.IsInfo) _logger.Info("Discarded entries left by an interrupted PBT import.");
     }
 
     /// <summary>

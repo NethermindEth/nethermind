@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Persistence;
 

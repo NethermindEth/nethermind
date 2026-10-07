@@ -9,6 +9,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Persistence;
 
@@ -132,7 +133,13 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public PbtAccount? GetAccount(in ValueHash256 addressHash)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._accounts.TryGetValue(addressHash, out PbtAccount? cached)) return cached;
+            if (current && parent._accounts.TryGetValue(addressHash, out PbtAccount? cached))
+            {
+                // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+                if (parent.IsCurrent(generation)) return cached;
+                current = false;
+            }
+
             PbtAccount? account = inner.GetAccount(addressHash);
             if (current) parent.TryCacheAccount(addressHash, account, generation);
             return account;
@@ -141,7 +148,13 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._runs.TryGetValue(runKey, out PackedSlotRun? cached)) return cached.Clone();
+            if (current && parent._runs.TryGetValue(runKey, out PackedSlotRun? cached))
+            {
+                // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
+                if (parent.IsCurrent(generation)) return cached.Clone();
+                current = false;
+            }
+
             PackedSlotRun run = inner.GetSlotRun(runKey);
             if (current && !parent._runs.ContainsKey(runKey)) parent.TryCacheRun(runKey, run.Clone(), generation);
             return run;

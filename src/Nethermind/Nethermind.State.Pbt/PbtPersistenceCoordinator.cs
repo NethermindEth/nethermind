@@ -3,15 +3,18 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
@@ -29,7 +32,7 @@ public class PbtPersistenceCoordinator(
     IStateHeaderProvider finalizedStateProvider,
     IPbtPersistence persistence,
     PbtSnapshotRepository repository,
-    PbtCompactionSchedule schedule,
+    [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
     IStatePersistenceBarrier persistenceBarrier,
     ILogManager logManager)
 {
@@ -140,7 +143,7 @@ public class PbtPersistenceCoordinator(
         ulong nextBoundary = schedule.NextFullCompactionAfter(persisted);
 
         if (finalizedStateProvider.FinalizedBlockNumber >= nextBoundary
-            && depth + _compactSize > _minReorgDepth
+            && head.BlockNumber.SaturatingSub(nextBoundary) >= _minReorgDepth
             && finalizedStateProvider.GetFinalizedHeader(nextBoundary)?.StateRoot is Hash256 canonicalRoot
             && PersistSegment(new StateId(nextBoundary, canonicalRoot)))
         {

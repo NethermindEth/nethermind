@@ -11,6 +11,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Mirror;

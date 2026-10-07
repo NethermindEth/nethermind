@@ -13,6 +13,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
 using NUnit.Framework;

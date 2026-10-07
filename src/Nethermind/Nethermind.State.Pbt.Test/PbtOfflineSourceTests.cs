@@ -15,7 +15,6 @@ using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using NUnit.Framework;
-using FlatStateId = Nethermind.State.Flat.StateId;
 using Nethermind.State.Pbt.Image;
 
 namespace Nethermind.State.Pbt.Test;
@@ -64,7 +63,7 @@ public class PbtOfflineSourceTests
         {
             Assert.That(snapshot.ToArray(), Is.EqualTo(expectedSnapshot));
             Assert.That(preimages.ToArray(), Is.EqualTo(expectedPreimages));
-            Assert.That(reader.CurrentState, Is.EqualTo(new FlatStateId(header)));
+            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(header)));
             Assert.That(Directory.GetFileSystemEntries(_directory), Is.Empty);
         }
     }
@@ -77,7 +76,7 @@ public class PbtOfflineSourceTests
         Address address = new("0xffffffffffffffffffffffffffffffffffffffff");
         BlockHeader header = Build.A.BlockHeader.TestObject;
         PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue);
-        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
+        using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(header), WriteFlags.None))
             batch.SetAccount(address, new Account(1, 100));
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         using MemoryStream snapshot = new(), preimages = new();

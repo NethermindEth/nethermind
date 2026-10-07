@@ -17,6 +17,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;

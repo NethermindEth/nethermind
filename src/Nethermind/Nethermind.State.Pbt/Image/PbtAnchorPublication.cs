@@ -12,6 +12,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
 
@@ -264,9 +265,14 @@ internal sealed class PbtAnchorPublication(
                 throw new InvalidDataException("Unpublished native anchor belongs to another bootstrap source.");
             foreach (PbtColumns column in targetDb.ColumnKeys)
             {
+                token.ThrowIfCancellationRequested();
                 IDb records = targetDb.GetColumnDb(column);
-                PbtColumnSweep.DeleteKeys(records, 4096,
-                    recordKey => column == PbtColumns.Metadata && (recordKey.SequenceEqual(_provenanceKey) || PbtRocksDbPersistence.IsSchemaStamp(recordKey)), token);
+                if (column != PbtColumns.Metadata)
+                    ((IRangeRemovableKeyValueStore)records).RemoveRange([], PbtColumnSweep.PastEveryKey());
+                else
+                    foreach (byte[] recordKey in records.GetAllKeys())
+                        if (!recordKey.AsSpan().SequenceEqual(_provenanceKey) && !PbtRocksDbPersistence.IsSchemaStamp(recordKey))
+                            records.Remove(recordKey);
                 records.SyncWal();
             }
         }

@@ -3,12 +3,16 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using NUnit.Framework;
 
@@ -66,6 +70,57 @@ public class PbtCarryForwardCachingPersistenceTests
         ReadAccount(cache, AddressHash);
 
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
+    }
+
+    /// <summary>
+    /// A reader whose generation ends between its currency check and its lookup must not serve the entry a reader at
+    /// the next state filled. Every commit writes every account with its block number as the balance, so a stale hit
+    /// reads a balance other than its reader's block.
+    /// </summary>
+    [Test]
+    public async Task ConcurrentReadersAndCommitter_ReadEachReaderState()
+    {
+        const int readerThreads = 16;
+        const int readsPerReader = 64;
+        ValueHash256[] addressHashes = [.. Enumerable.Range(0, 8).Select(i => PbtStateKey.AddressKeyHash(TestItem.Addresses[i]))];
+        FakePersistence inner = new();
+        PbtCarryForwardCachingPersistence cache = new(inner);
+        using Barrier startLine = new(readerThreads + 1);
+        int mismatches = 0;
+
+        Task committer = Task.Factory.StartNew(() =>
+        {
+            Random random = new(1);
+            startLine.SignalAndWait();
+            for (ulong block = 1; block <= 30_000; block++)
+            {
+                using (IPbtPersistence.IWriteBatch batch = cache.CreateWriteBatch(new StateId(block - 1, Keccak.EmptyTreeHash), new StateId(block, Keccak.EmptyTreeHash), Keccak.EmptyTreeHash, WriteFlags.None))
+                {
+                    foreach (ValueHash256 addressHash in addressHashes) batch.SetAccount(addressHash, new Account(1, block).ToPbtAccount());
+                    batch.Commit();
+                }
+                inner.ReaderState = new StateId(block, Keccak.EmptyTreeHash);
+                Thread.SpinWait(random.Next(2000));
+            }
+        }, TaskCreationOptions.LongRunning);
+
+        Task[] readers = [.. Enumerable.Range(0, readerThreads).Select(seed => Task.Factory.StartNew(() =>
+        {
+            Random random = new(seed + 2);
+            startLine.SignalAndWait();
+            do
+            {
+                using IPbtPersistence.IReader reader = cache.CreateReader();
+                for (int i = 0; i < readsPerReader; i++)
+                {
+                    if (reader.GetAccount(addressHashes[random.Next(addressHashes.Length)])!.Value.ToAccount().Balance != reader.CurrentState.BlockNumber)
+                        Interlocked.Increment(ref mismatches);
+                }
+            } while (!committer.IsCompleted);
+        }, TaskCreationOptions.LongRunning))];
+
+        await Task.WhenAll([committer, .. readers]).WaitAsync(TimeSpan.FromMinutes(5));
+        Assert.That(mismatches, Is.Zero);
     }
 
     private static IEnumerable<TestCaseData> ReadCases()
@@ -143,13 +198,13 @@ public class PbtCarryForwardCachingPersistenceTests
 
         private sealed class Reader(FakePersistence parent) : IPbtPersistence.IReader
         {
-            public StateId CurrentState => parent.ReaderState;
+            public StateId CurrentState { get; } = parent.ReaderState;
             public ValueHash256 CurrentRoot => Keccak.EmptyTreeHash;
 
             public PbtAccount? GetAccount(in ValueHash256 addressHash)
             {
                 parent.AccountReads++;
-                return PbtAccount.From(new Account(1, 100), null);
+                return PbtAccount.From(new Account(1, CurrentState.BlockNumber), null);
             }
 
             public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)

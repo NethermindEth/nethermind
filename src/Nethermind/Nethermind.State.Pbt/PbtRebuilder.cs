@@ -12,6 +12,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;

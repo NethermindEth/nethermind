@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 

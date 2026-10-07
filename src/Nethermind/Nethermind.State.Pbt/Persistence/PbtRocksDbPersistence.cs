@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 
 namespace Nethermind.State.Pbt.Persistence;
@@ -101,8 +102,7 @@ public class PbtRocksDbPersistence(
         foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
             if (column == PbtColumns.Metadata) continue;
-            using IEnumerator<KeyValuePair<byte[], byte[]>> entries = db.GetColumnDb(column).GetAll().GetEnumerator();
-            if (entries.MoveNext()) return true;
+            if (((ISortedKeyValueStore)db.GetColumnDb(column)).FirstKey is not null) return true;
         }
         return false;
     }

@@ -8,12 +8,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.ScopeProvider;
 using NSubstitute;
 using NUnit.Framework;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -44,18 +44,18 @@ public class PbtFlatDrivenPersistenceTests
 
         FlatPersistence inner = Substitute.For<FlatPersistence>();
         FlatPersistence.IWriteBatch innerBatch = Substitute.For<FlatPersistence.IWriteBatch>();
-        inner.CreateWriteBatch(Arg.Any<FlatStateId>(), Arg.Any<FlatStateId>(), Arg.Any<WriteFlags>()).Returns(innerBatch);
+        inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<WriteFlags>()).Returns(innerBatch);
         PbtFlatDrivenPersistence persistence = new(inner, new Lazy<PbtDbManager>(ctx.Manager), ctx.Persistence);
 
-        FlatStateId to = target switch
+        StateId to = target switch
         {
-            FlatTarget.HeldState => new FlatStateId(2, root2),
-            FlatTarget.UnknownState => new FlatStateId(2, TestItem.KeccakA),
-            FlatTarget.PreGenesis => FlatStateId.PreGenesis,
-            _ => FlatStateId.Sync
+            FlatTarget.HeldState => new StateId(2, root2),
+            FlatTarget.UnknownState => new StateId(2, TestItem.KeccakA),
+            FlatTarget.PreGenesis => StateId.PreGenesis,
+            _ => StateId.Sync
         };
 
-        FlatPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, to);
+        FlatPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, to);
 
         Assert.That(batch, Is.SameAs(innerBatch), "the flat write batch must still be the inner one");
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(),

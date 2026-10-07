@@ -12,6 +12,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
@@ -80,35 +81,32 @@ internal static class PbtImageVerifier
             ValueHash256 mptRoot;
             using (ProgressReporter progress = PbtImageProgress.Start(MptPhase, "acc", accounts, logManager))
             using (PbtSortedSpool.Cursor cursor = spool.Read())
+            using (SortedStateRoot accountsRoot = new())
+            using (SortedStateRoot storageRoot = new())
             {
                 ulong folded = 0, foldedSlots = 0;
                 Func<string> slotCounter = PbtImageProgress.Counter("slot", () => foldedSlots);
                 progress.Logger.SetFormat(p => $"{PbtImageProgress.Format(MptPhase, "acc", p)} | {slotCounter()}");
-                mptRoot = MptRightmostNodeStore.CalculateRoot(Accounts(), MptRightmostNodeStore.DefaultWindowSize, cancellationToken);
-
-                IEnumerable<KeyValuePair<ValueHash256, byte[]>> Accounts()
+                while (cursor.MoveNext())
                 {
-                    while (cursor.MoveNext())
-                    {
-                        progress.Update(++folded);
-                        ValueHash256 addressHash = new(cursor.Key[..32]);
-                        uint slotCount = BinaryPrimitives.ReadUInt32BigEndian(cursor.Value);
-                        Account account = AccountDecoder.Slim.Decode(cursor.Value[sizeof(uint)..])!;
-                        ValueHash256 storageRoot = MptRightmostNodeStore.CalculateRoot(Storage(), MptRightmostNodeStore.DefaultWindowSize, cancellationToken);
-                        yield return new(addressHash, AccountDecoder.Instance.Encode(account.WithChangedStorageRoot(storageRoot.ToHash256())).Bytes);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    progress.Update(++folded);
+                    ValueHash256 addressHash = new(cursor.Key[..32]);
+                    uint slotCount = BinaryPrimitives.ReadUInt32BigEndian(cursor.Value);
+                    Account account = AccountDecoder.Slim.Decode(cursor.Value[sizeof(uint)..])!;
 
-                        // An account's tag sorts ahead of its slots', so its listed slots are the records right after it.
-                        IEnumerable<KeyValuePair<ValueHash256, byte[]>> Storage()
-                        {
-                            for (uint index = 0; index < slotCount; index++)
-                            {
-                                cursor.MoveNext();
-                                foldedSlots++;
-                                yield return new(new ValueHash256(cursor.Key[33..]), cursor.Value.ToArray());
-                            }
-                        }
+                    // An account's tag sorts ahead of its slots', so its listed slots are the records right after it.
+                    storageRoot.Reset();
+                    for (uint index = 0; index < slotCount; index++)
+                    {
+                        cancellationToken.ThrowIfCancellationRequested();
+                        cursor.MoveNext();
+                        foldedSlots++;
+                        storageRoot.Add(new ValueHash256(cursor.Key[33..]), cursor.Value);
                     }
+                    accountsRoot.Add(addressHash, AccountDecoder.Instance.Encode(account.WithChangedStorageRoot(storageRoot.Finish().ToHash256())).Bytes);
                 }
+                mptRoot = accountsRoot.Finish();
             }
 
             if (mptRoot != anchor.Header.StateRoot!.ValueHash256)

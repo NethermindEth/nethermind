@@ -4,6 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Core.Memory;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -311,6 +312,25 @@ public class PbtDbManagerTests
         Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(writes[^1].To));
     }
 
+    /// <summary>The finalized trigger folds to the next boundary only while <c>MinReorgDepth</c> blocks stay above it.</summary>
+    [TestCase(7, 0)]
+    [TestCase(8, 4)]
+    public void FinalizedTrigger_KeepsMinReorgDepthAboveTheNewBase(int head, int expectedPersisted)
+    {
+        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 4, CompactionOffset = 0, MinReorgDepth = 4, MaxReorgDepth = 100 });
+        for (int number = 1; number <= head; number++)
+        {
+            harness.Repository.TryAdd(PersistenceSnapshot(number - 1, number, harness.Pool));
+            harness.Finalized.SetCanonicalRoot((ulong)number, TestItem.KeccakA);
+        }
+        harness.Repository.TryAddCompacted(PersistenceSnapshot(0, 4, harness.Pool));
+        harness.Finalized.FinalizedBlockNumber = (ulong)head;
+
+        harness.Coordinator.CheckPersistence(PersistenceState(head));
+
+        Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(expectedPersisted)));
+    }
+
     [Test]
     public void Persistence_FailedCommitDoesNotPublishOrPrune_AndUnknownMirrorSeedDoesNotAdvance()
     {
@@ -529,7 +549,7 @@ public class PbtDbManagerTests
         {
             Config = config;
             Pool = new(config);
-            Schedule = new(Metadata, config, LimboLogs.Instance);
+            Schedule = PbtCoreRegistration.CreateCompactionSchedule(Metadata, config, LimboLogs.Instance);
             IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
             reader.CurrentState.Returns(PersistenceState(0));
             Persistence.CreateReader().Returns(reader);
@@ -541,7 +561,7 @@ public class PbtDbManagerTests
         public PbtResourcePool Pool { get; }
         public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig());
         public MemDb Metadata { get; } = new();
-        public PbtCompactionSchedule Schedule { get; }
+        public ICompactionSchedule Schedule { get; }
         public PbtTestContext.TestFinalizedStateProvider Finalized { get; } = new();
         public IPbtPersistence Persistence { get; } = Substitute.For<IPbtPersistence>();
         public IPbtPersistence.IWriteBatch Batch { get; } = Substitute.For<IPbtPersistence.IWriteBatch>();

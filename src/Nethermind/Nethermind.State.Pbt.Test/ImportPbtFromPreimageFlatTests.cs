@@ -28,7 +28,6 @@ using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Steps;
 using NUnit.Framework;
 using NSubstitute;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -248,10 +247,8 @@ public class ImportPbtFromPreimageFlatTests
     /// <summary>
     /// A retry after a pre-publication crash must clear staged new-format rows without reading stale nodes.
     /// </summary>
-    /// <param name="clearKeyChunk">A value of 1 reopens the view after each deleted key, verifying the exclusive resume cursor.</param>
-    [TestCase(10_000)]
-    [TestCase(1)]
-    public async Task Import_mode_recovers_an_interrupted_epoch_17_attempt(int clearKeyChunk)
+    [Test]
+    public async Task Import_mode_recovers_an_interrupted_epoch_17_attempt()
     {
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
@@ -270,10 +267,7 @@ public class ImportPbtFromPreimageFlatTests
 
         async Task<ValueHash256> Import()
         {
-            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance)
-            {
-                ClearKeyChunk = clearKeyChunk,
-            };
+            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance);
             await step.Execute(CancellationToken.None);
 
             using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
@@ -793,7 +787,7 @@ public class ImportPbtFromPreimageFlatTests
         db.AfterGroupCommit = null;
         db.ViewClosed = null;
         db.Recording = false;
-        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 5, ClearKeyChunk = 1 };
+        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 5 };
         await retry.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
@@ -806,7 +800,7 @@ public class ImportPbtFromPreimageFlatTests
     private static PreimageRocksdbPersistence CreateSource(SnapshotableMemColumnsDb<FlatDbColumns> flatDb, Action<IPersistence.IWriteBatch> write)
     {
         PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None);
+        using IPersistence.IWriteBatch batch = source.CreateWriteBatch(StateId.PreGenesis, new StateId(SourceBlock, SourceStateRoot), WriteFlags.None);
         write(batch);
         return source;
     }
@@ -922,7 +916,7 @@ public class ImportPbtFromPreimageFlatTests
             }
         }
 
-        private sealed class RecordingDb(RecordingColumnsDb owner, PbtColumns column, IDb database) : IDb, ISortedKeyValueStore
+        private sealed class RecordingDb(RecordingColumnsDb owner, PbtColumns column, IDb database) : IDb, ISortedKeyValueStore, IRangeRemovableKeyValueStore
         {
             private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)database;
             public string Name => database.Name;
@@ -937,6 +931,8 @@ public class ImportPbtFromPreimageFlatTests
             public IWriteBatch StartWriteBatch() => database.StartWriteBatch();
             public void Flush(bool onlyWal = false) => database.Flush(onlyWal);
             public void Dispose() { }
+            public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)database).RemoveRange(firstKeyInclusive, lastKeyExclusive);
+            public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)database).ReclaimRange(firstKeyInclusive, lastKeyExclusive);
             public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
             {
                 ISortedView view = Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags);

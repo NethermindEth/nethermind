@@ -16,6 +16,7 @@ using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using NSubstitute;

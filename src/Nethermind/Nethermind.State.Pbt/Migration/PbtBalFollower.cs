@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.State.Flat;
 using Nethermind.Synchronization.FastSync;
 
 namespace Nethermind.State.Pbt.Migration;
@@ -192,10 +193,8 @@ internal sealed class PbtBalFollower(
     /// <exception cref="RlpException"><paramref name="rlp"/> is not a single well-formed BAL.</exception>
     internal static ReadOnlyBlockAccessList? DecodeAuthenticated(BlockHeader header, ReadOnlySpan<byte> rlp)
     {
-        RlpReader reader = new(rlp);
-        ReadOnlyBlockAccessList? bal = BlockAccessListDecoder.Instance.Decode(ref reader);
-        reader.Check(rlp.Length);
-        // The decoder hashes the bytes it consumed, which the check pins to the whole input.
+        // The decoder hashes the bytes it consumed, which DecodeComplete pins to the whole input.
+        ReadOnlyBlockAccessList? bal = BlockAccessListDecoder.Instance.DecodeComplete(rlp);
         return header.BlockAccessListHash is not null && bal?.WireHash == header.BlockAccessListHash ? bal : null;
     }
 

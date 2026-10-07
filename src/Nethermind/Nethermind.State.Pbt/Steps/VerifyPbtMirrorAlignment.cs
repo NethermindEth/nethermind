@@ -6,10 +6,10 @@ using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.Persistence;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
 
@@ -32,14 +32,10 @@ public class VerifyPbtMirrorAlignment(
         using FlatPersistence.IPersistenceReader flatReader = flatPersistence.CreateReader();
         using IPbtPersistence.IReader pbtReader = pbtPersistence.CreateReader();
 
-        FlatStateId flatState = flatReader.CurrentState;
+        StateId flatState = flatReader.CurrentState;
         StateId pbtState = pbtReader.CurrentState;
 
-        StateId expected = flatState == FlatStateId.PreGenesis
-            ? StateId.PreGenesis
-            : new StateId(flatState.BlockNumber, flatState.StateRoot);
-
-        if (pbtState != expected)
+        if (pbtState != flatState)
         {
             throw new InvalidConfigurationException(
                 $"The mirrored pbt state is at {pbtState} while the flat state is at {flatState}. " +

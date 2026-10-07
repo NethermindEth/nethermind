@@ -13,9 +13,8 @@ internal static class PbtStateKey
     /// <summary>BLAKE3 of the 32-byte left-padded address; the flat account/storage column key.</summary>
     public static ValueHash256 AddressKeyHash(Address address)
     {
-        Span<byte> address32 = stackalloc byte[32];
-        Address32(address, address32);
-        return Blake3Hash.Hash(address32);
+        ValueHash256 address32 = address.ToHash();
+        return Blake3Hash.Hash(address32.Bytes);
     }
 
     public static PbtPath Account(in ValueHash256 addressHash, byte subIndex) =>
@@ -26,17 +25,15 @@ internal static class PbtStateKey
 
     public static PbtStorageTreeKey Storage(Address address, in UInt256 slot)
     {
-        Span<byte> address32 = stackalloc byte[32];
-        Address32(address, address32);
-        return Eip8297KeyDerivation.StorageKey(address32, slot);
+        ValueHash256 address32 = address.ToHash();
+        return Eip8297KeyDerivation.StorageKey(address32.Bytes, slot);
     }
 
     /// <summary><see cref="Storage(Address, in UInt256)"/> reusing a precomputed <see cref="AddressKeyHash"/>.</summary>
     public static PbtStorageTreeKey Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
-        Span<byte> address32 = stackalloc byte[32];
-        Address32(address, address32);
-        return Eip8297KeyDerivation.StorageKey(address32, addressHash, slot);
+        ValueHash256 address32 = address.ToHash();
+        return Eip8297KeyDerivation.StorageKey(address32.Bytes, addressHash, slot);
     }
 
     /// <summary>The <see cref="SlotRun.RunKey"/> of the slot's storage key, and the slot's index within the run.</summary>
@@ -48,10 +45,4 @@ internal static class PbtStateKey
     }
 
     internal static ValueHash256 StorageAddress(in PbtStorageTreeKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
-
-    private static void Address32(Address address, Span<byte> address32)
-    {
-        address32[..12].Clear();
-        address.Bytes.CopyTo(address32[12..]);
-    }
 }

@@ -20,6 +20,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
@@ -58,15 +59,16 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
         // Production randomizes this offset; tests must use stable compaction boundaries.
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
-        _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), new TestProcessExitSource(_cts));
+        ProcessExitSource processExitSource = new(_cts.Token);
+        _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), processExitSource);
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence) : _cachedReaderPersistence;
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
         ResourcePool = new PbtResourcePool(Config);
-        PbtCompactionSchedule schedule = new(new MemDb(), Config, LimboLogs.Instance);
+        ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _trieNodeCache = new PbtTrieNodeCache(Config);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, NodeGroupMemory, Config, _stateHeaderProvider, _trieNodeCache, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
@@ -184,13 +186,6 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
         public void SetCanonicalRoot(ulong blockNumber, Hash256 root) =>
             _headers[blockNumber] = Build.A.BlockHeader.WithNumber(blockNumber).WithStateRoot(root).TestObject;
-    }
-
-    private sealed class TestProcessExitSource(CancellationTokenSource cts) : IProcessExitSource
-    {
-        public CancellationToken Token => cts.Token;
-
-        public void Exit(int exitCode) => throw new NotSupportedException();
     }
 }
 

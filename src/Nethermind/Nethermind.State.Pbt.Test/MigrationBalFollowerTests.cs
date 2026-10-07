@@ -28,6 +28,7 @@ using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;

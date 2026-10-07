@@ -52,7 +52,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
             .AddSingleton<IBalHealing>(NoopBalHealing.Instance)
-            .AddSingleton<IPruningTrieStateAdminRpcModule, PbtModule.PruningDisabledAdminRpcModule>()
+            .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
             .AddSingleton<PbtAnchorPublication>()

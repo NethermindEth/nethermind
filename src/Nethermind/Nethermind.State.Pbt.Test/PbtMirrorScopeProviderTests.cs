@@ -10,6 +10,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Mirror;
 using NSubstitute;
 using NUnit.Framework;

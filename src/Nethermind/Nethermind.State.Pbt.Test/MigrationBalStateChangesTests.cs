@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -15,6 +16,7 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
 using NUnit.Framework;
 
@@ -33,11 +35,11 @@ public class MigrationBalStateChangesTests
         await using IContainer container = CreateContainer(binary);
         await using ILifetimeScope environment = CreateEnvironment(container);
         IWorldState worldState = environment.Resolve<IWorldState>();
-        using JsonDocument parentAllocations = Eip8347FixtureState.LoadAllocation(parent.GetProperty("name").GetString()!);
+        Dictionary<Address, GethGenesisAllocJson> parentAllocations = Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, parent.GetProperty("name").GetString()!);
         Hash256 parentRoot;
         using (worldState.BeginScope(null))
         {
-            Seed(worldState, parentAllocations.RootElement);
+            Seed(worldState, parentAllocations);
             worldState.Commit(Amsterdam.Instance, isGenesis: true);
             worldState.CommitTree(0);
             parentRoot = worldState.StateRoot;
@@ -49,11 +51,11 @@ public class MigrationBalStateChangesTests
             worldState.Commit(Amsterdam.Instance);
             worldState.ApplyBal(Decode(block.GetProperty("balRlp").GetString()!));
             worldState.RecalculateStateRoot();
-            using JsonDocument allocations = Eip8347FixtureState.LoadAllocation(name);
+            Dictionary<Address, GethGenesisAllocJson> allocations = Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(worldState.StateRoot, Is.EqualTo(new Hash256(block.GetProperty(binary ? "pbtRoot" : "mptRoot").GetString()!)), name);
-                AssertAllocation(worldState, allocations.RootElement);
+                AssertAllocation(worldState, allocations);
             }
         }
     }
@@ -130,33 +132,28 @@ public class MigrationBalStateChangesTests
         return BlockAccessListDecoder.Instance.Decode(ref reader)!;
     }
 
-    private static UInt256 Number(JsonElement account, string property) =>
-        account.TryGetProperty(property, out JsonElement value) ? Eip8347FixtureState.ParseQuantity(value.GetString()!) : UInt256.Zero;
-
-    private static void Seed(IWorldState worldState, JsonElement allocations)
+    private static void Seed(IWorldState worldState, Dictionary<Address, GethGenesisAllocJson> allocations)
     {
-        foreach (JsonProperty entry in allocations.EnumerateObject())
+        foreach ((Address address, GethGenesisAllocJson account) in allocations)
         {
-            Address address = new(entry.Name);
-            worldState.CreateAccount(address, Number(entry.Value, "balance"), (ulong)Number(entry.Value, "nonce"));
-            if (entry.Value.TryGetProperty("code", out JsonElement code))
-                worldState.InsertCode(address, Bytes.FromHexString(code.GetString()!), Amsterdam.Instance, isGenesis: true);
-            if (entry.Value.TryGetProperty("storage", out JsonElement storage))
-                foreach (JsonProperty slot in storage.EnumerateObject())
-                    worldState.Set(new StorageCell(address, Eip8347FixtureState.ParseQuantity(slot.Name)), Eip8347FixtureState.ParseQuantity(slot.Value.GetString()!));
+            worldState.CreateAccount(address, account.Balance ?? 0, account.Nonce ?? 0);
+            if (account.Code is not null)
+                worldState.InsertCode(address, account.Code, Amsterdam.Instance, isGenesis: true);
+            if (account.Storage is not null)
+                foreach ((UInt256 slot, byte[] value) in account.Storage)
+                    worldState.Set(new StorageCell(address, slot), new UInt256(value, isBigEndian: true));
         }
     }
 
-    private static void AssertAllocation(IWorldState worldState, JsonElement allocations)
+    private static void AssertAllocation(IWorldState worldState, Dictionary<Address, GethGenesisAllocJson> allocations)
     {
-        foreach (JsonProperty entry in allocations.EnumerateObject())
+        foreach ((Address address, GethGenesisAllocJson account) in allocations)
         {
-            Address address = new(entry.Name);
-            byte[] code = entry.Value.TryGetProperty("code", out JsonElement codeValue) ? Bytes.FromHexString(codeValue.GetString()!) : [];
-            Assert.That(worldState.GetBalance(address), Is.EqualTo(Number(entry.Value, "balance")), entry.Name);
-            Assert.That(worldState.GetNonce(address), Is.EqualTo((ulong)Number(entry.Value, "nonce")), entry.Name);
-            Assert.That(worldState.GetCodeHash(address), Is.EqualTo(ValueKeccak.Compute(code)), entry.Name);
-            Assert.That(worldState.GetCode(address).ToArray(), Is.EqualTo(code), entry.Name);
+            byte[] code = account.Code ?? [];
+            Assert.That(worldState.GetBalance(address), Is.EqualTo(account.Balance ?? 0), address.ToString());
+            Assert.That(worldState.GetNonce(address), Is.EqualTo(account.Nonce ?? 0), address.ToString());
+            Assert.That(worldState.GetCodeHash(address), Is.EqualTo(ValueKeccak.Compute(code)), address.ToString());
+            Assert.That(worldState.GetCode(address).ToArray(), Is.EqualTo(code), address.ToString());
         }
     }
 }

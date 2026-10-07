@@ -5,20 +5,20 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text.Json;
-using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.State.Flat;
+using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
 using NUnit.Framework;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -55,16 +55,14 @@ internal static class Eip8347FixtureState
             .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
     }
 
-    /// <summary>The reference allocation of fixture <paramref name="name"/>.</summary>
-    public static JsonDocument LoadAllocation(string name) => JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Directory, "states", name + ".alloc.json")));
-
-    /// <summary>Parses a big-endian hex quantity, which may have an odd number of digits.</summary>
-    public static UInt256 ParseQuantity(string value) => new(Bytes.FromHexString(value.Length % 2 == 0 ? value : "0x0" + value[2..]), true);
+    /// <summary>The reference allocation of fixture <paramref name="name"/> under <paramref name="directory"/>.</summary>
+    public static Dictionary<Address, GethGenesisAllocJson> LoadAllocation(string directory, string name) =>
+        new EthereumJsonSerializer().Deserialize<Dictionary<Address, GethGenesisAllocJson>>(File.ReadAllText(Path.Combine(directory, "states", name + ".alloc.json")))!;
 
     /// <summary>Writes the logical state of a fixture snapshot, addressed through its preimages, as the pre-genesis to <paramref name="anchor"/> transition.</summary>
     public static void ReplayInto(IPersistence persistence, IKeyValueStore codes, BlockHeader anchor, Stream snapshot, Stream preimages)
     {
-        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(anchor), WriteFlags.None);
+        using IPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(anchor), WriteFlags.None);
         Dictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
         foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot)) leaves.Add(entry.Key, entry.Leaf);
         PbtPreimageReader reader = new(preimages);
@@ -85,17 +83,16 @@ internal static class Eip8347FixtureState
                         chunkValue.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
             }
 
-            List<KeyValuePair<ValueHash256, byte[]>> slots = [];
+            using SortedStateRoot storage = new();
             for (uint index = 0; index < slotCount; index++)
             {
                 ValueHash256 rawSlot = reader.ReadSlot();
                 UInt256 slot = new(rawSlot.Bytes, isBigEndian: true);
                 UInt256 value = new(leaves[PbtStateKey.Storage(address!, slot)].Bytes, isBigEndian: true);
                 batch.SetStorage(address!, slot, value);
-                slots.Add(new(ValueKeccak.Compute(rawSlot.Bytes), Rlp.Encode(value).Bytes));
+                storage.Add(ValueKeccak.Compute(rawSlot.Bytes), Rlp.Encode(value).Bytes);
             }
-            ValueHash256 storageRoot = MptRightmostNodeStore.CalculateRoot(slots, MptRightmostNodeStore.DefaultWindowSize, CancellationToken.None);
-            Account account = new(nonce, balance, storageRoot.ToHash256(), Keccak.Compute(code));
+            Account account = new(nonce, balance, storage.Finish().ToHash256(), Keccak.Compute(code));
             batch.SetAccount(address!, account);
             if (code.Length != 0) codes[account.CodeHash.Bytes] = code;
         }

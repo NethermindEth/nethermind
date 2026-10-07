@@ -18,7 +18,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.PersistedSnapshots;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.Trie;
-using FlatStateId = Nethermind.State.Flat.StateId;
 using Snapshot = Nethermind.State.Flat.Snapshot;
 
 namespace Nethermind.State.Pbt.Migration;
@@ -52,8 +51,8 @@ internal sealed class MigrationGenesisBootstrap(
         BlockHeader genesis = blockTree.Genesis ?? throw new InvalidDataException("Genesis bootstrap requires the loaded genesis header.");
         using (IPersistence.IPersistenceReader reader = source.Persistence.CreateReader())
         {
-            if (reader.CurrentState == new FlatStateId(genesis)) return;
-            if (reader.CurrentState != FlatStateId.PreGenesis)
+            if (reader.CurrentState == new StateId(genesis)) return;
+            if (reader.CurrentState != StateId.PreGenesis)
                 throw new InvalidDataException("The existing genesis source belongs to a different state.");
         }
 
@@ -93,7 +92,7 @@ internal sealed class MigrationGenesisBootstrap(
         }
         try
         {
-            return new FlatWorldStateScope(FlatStateId.PreGenesis, bundle,
+            return new FlatWorldStateScope(StateId.PreGenesis, bundle,
                 new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb), this, configuration, new NoopTrieWarmer(), logManager);
         }
         catch
@@ -107,7 +106,7 @@ internal sealed class MigrationGenesisBootstrap(
     {
         try
         {
-            if (snapshot.From != FlatStateId.PreGenesis || snapshot.To.BlockNumber != 0 || Interlocked.CompareExchange(ref _committed, 1, 0) != 0)
+            if (snapshot.From != StateId.PreGenesis || snapshot.To.BlockNumber != 0 || Interlocked.CompareExchange(ref _committed, 1, 0) != 0)
                 throw new InvalidOperationException("Only one genesis commit is permitted.");
             // Code batches precede CommitTree; make them durable before the source state metadata.
             codeDb.SyncWal();

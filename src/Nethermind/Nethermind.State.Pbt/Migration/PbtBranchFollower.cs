@@ -10,6 +10,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -114,9 +115,7 @@ internal sealed class PbtBranchFollower(
     /// <returns>True once PBT holds <paramref name="target"/> or its branch is dead; false while PBT holds no ancestor of it.</returns>
     internal bool Follow(BlockHeader target, CancellationToken token)
     {
-        BlockHeader? finalized = blockTree.FinalizedHash is { } finalizedHash && finalizedHash != Hash256.Zero
-            ? blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.None)
-            : null;
+        BlockHeader? finalized = blockTree.FindFinalizedHeader();
         using ArrayPoolList<BlockHeader> path = new(1);
         BlockHeader cursor = target;
         while (!manager.HasStateForBlock(new StateId(cursor)))

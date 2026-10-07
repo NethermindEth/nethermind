@@ -21,9 +21,12 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Steps;
 using NUnit.Framework;
@@ -95,21 +98,18 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
     public void AssertAllocation(string name)
     {
         BlockHeader header = blocks[name].Header;
-        using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(fixtureDirectory, "states", name + ".alloc.json")));
         IStateReader reader = Reader;
-        foreach (JsonProperty account in allocation.RootElement.EnumerateObject())
+        foreach ((Address address, GethGenesisAllocJson account) in Eip8347FixtureState.LoadAllocation(fixtureDirectory, name))
         {
-            Address address = new(account.Name);
-            JsonElement value = account.Value;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetBalance(header, address), Is.EqualTo(Eip8347FixtureState.ParseQuantity(value.GetProperty("balance").GetString()!)), $"{name} balance {address}");
-                Assert.That(reader.GetNonce(header, address), Is.EqualTo(value.TryGetProperty("nonce", out JsonElement nonce) ? (ulong)Eip8347FixtureState.ParseQuantity(nonce.GetString()!) : 0UL), $"{name} nonce {address}");
-                Assert.That(reader.GetCode(header, address), Is.EqualTo(value.TryGetProperty("code", out JsonElement code) ? Bytes.FromHexString(code.GetString()!) : []), $"{name} code {address}");
+                Assert.That(reader.GetBalance(header, address), Is.EqualTo(account.Balance), $"{name} balance {address}");
+                Assert.That(reader.GetNonce(header, address), Is.EqualTo(account.Nonce ?? 0), $"{name} nonce {address}");
+                Assert.That(reader.GetCode(header, address), Is.EqualTo(account.Code ?? []), $"{name} code {address}");
             }
-            if (value.TryGetProperty("storage", out JsonElement storage))
-                foreach (JsonProperty slot in storage.EnumerateObject())
-                    Assert.That(reader.GetStorage(header, address, Eip8347FixtureState.ParseQuantity(slot.Name)), Is.EqualTo(Eip8347FixtureState.ParseQuantity(slot.Value.GetString()!)), $"{name} slot {address}/{slot.Name}");
+            if (account.Storage is not null)
+                foreach ((UInt256 slot, byte[] value) in account.Storage)
+                    Assert.That(reader.GetStorage(header, address, slot), Is.EqualTo(new UInt256(value, isBigEndian: true)), $"{name} slot {address}/{slot}");
         }
     }
 

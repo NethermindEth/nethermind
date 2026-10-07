@@ -9,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.ScopeProvider;

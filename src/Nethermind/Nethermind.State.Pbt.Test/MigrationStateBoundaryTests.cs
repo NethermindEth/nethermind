@@ -22,7 +22,7 @@ public class MigrationStateBoundaryTests
     {
         IPersistence flatPersistence = Substitute.For<IPersistence>();
         IPersistence.IPersistenceReader flatReader = Substitute.For<IPersistence.IPersistenceReader>();
-        flatReader.CurrentState.Returns(new Flat.StateId(7, TestItem.KeccakA.ValueHash256));
+        flatReader.CurrentState.Returns(new StateId(7, TestItem.KeccakA.ValueHash256));
         flatPersistence.CreateReader(Arg.Any<ReaderFlags>()).Returns(flatReader);
         IPbtPersistence pbtPersistence = Substitute.For<IPbtPersistence>();
         IPbtPersistence.IReader pbtReader = Substitute.For<IPbtPersistence.IReader>();

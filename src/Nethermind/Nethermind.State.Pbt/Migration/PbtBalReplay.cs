@@ -10,6 +10,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Migration;

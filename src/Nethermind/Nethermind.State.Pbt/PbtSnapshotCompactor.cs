@@ -1,20 +1,23 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
+using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt;
 
 /// <summary>Merges consecutive canonical snapshot diffs without changing newest-write precedence.</summary>
 public class PbtSnapshotCompactor(
     IPbtResourcePool resourcePool,
-    PbtCompactionSchedule schedule,
+    [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
     PbtSnapshotRepository repository,
     IPbtConfig config,
     ILogManager? logManager = null)

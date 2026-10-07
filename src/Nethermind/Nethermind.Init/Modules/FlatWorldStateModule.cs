@@ -216,7 +216,7 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
         }
     }
 
-    internal class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
+    public class PruningTrieStateAdminRpcModuleStub : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
     }

@@ -86,7 +86,7 @@ public class PbtScopeProviderBenchmark
         _provider = StateBackend switch
         {
             Backend.Pbt => CreatePbtProvider(),
-            Backend.Trie => new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), new BenchFinalizedStateProvider(), LimboLogs.Instance),
+            Backend.Trie => new TrieStoreScopeProvider(new TestRawTrieStore(new MemDb()), new MemDb(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance),
             _ => throw new ArgumentOutOfRangeException(nameof(StateBackend))
         };
 
@@ -120,15 +120,15 @@ public class PbtScopeProviderBenchmark
         PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtRocksDbPersistence persistence = new(_pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool resourcePool = new(config);
-        PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
+        ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
-            config, new BenchFinalizedStateProvider(), persistence, repository, schedule,
+            config, UnavailableStateHeaderProvider.Instance, persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _pbtManager = new PbtDbManager(
-            repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig(), new BenchNoopTrieNodeCache());
+            repository, coordinator, persistence, resourcePool, compactor, new ProcessExitSource(_cts.Token), LimboLogs.Instance, config, new MetricsConfig(), new BenchNoopTrieNodeCache());
         return new PbtScopeProvider(
-            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), PooledRefCountingMemoryProvider.Instance, isReadOnly: false,
+            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, UnavailableStateHeaderProvider.Instance, PooledRefCountingMemoryProvider.Instance, isReadOnly: false,
             config, LimboLogs.Instance);
     }
 
@@ -197,22 +197,6 @@ public class PbtScopeProviderBenchmark
 
     private static Address DeriveAddress(int index) =>
         new(Keccak.Compute(Address.FromNumber((UInt256)(ulong)index).Bytes));
-
-    private sealed class BenchFinalizedStateProvider : IStateHeaderProvider
-    {
-        public ulong FinalizedBlockNumber { get; }
-
-        public BlockHeader? GetFinalizedHeader(ulong blockNumber) => null;
-
-        public BlockHeader? FindParentHeader(BlockHeader target) => null;
-    }
-
-    private sealed class BenchProcessExitSource(CancellationTokenSource cts) : IProcessExitSource
-    {
-        public CancellationToken Token => cts.Token;
-
-        public void Exit(int exitCode) => throw new NotSupportedException();
-    }
 
     private sealed class BenchNoopTrieNodeCache : IPbtTrieNodeCache
     {

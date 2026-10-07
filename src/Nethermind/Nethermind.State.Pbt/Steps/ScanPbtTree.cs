@@ -4,6 +4,7 @@
 using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
+using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Steps;

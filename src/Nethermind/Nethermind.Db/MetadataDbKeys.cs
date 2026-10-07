@@ -29,6 +29,5 @@ namespace Nethermind.Db
         public const int RetiredHistorySliceLogsRetainedFrom = 22;
         public const int RetiredHistorySliceLogsSliceSet = 23;
         public const int AncientBodiesDownloadComplete = 24;
-        public const int PbtCompactionOffset = 25;
     }
 }

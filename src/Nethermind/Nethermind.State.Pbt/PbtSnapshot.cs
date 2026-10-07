@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt;
 

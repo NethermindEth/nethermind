@@ -15,7 +15,6 @@ using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Migration;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Steps;
 
@@ -55,7 +54,7 @@ public class ExportPbtImage(
         await WaitForPersistence(anchorNumber, cancellationToken);
 
         pauseControl.Pause();
-        FlatStateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
         if (persisted.BlockNumber != anchorNumber)
             throw new InvalidOperationException($"Persisted state moved to {persisted} while pinned to the export anchor {anchorNumber}.");
         BlockHeader header = blockTree.FindHeader(anchorNumber, BlockTreeLookupOptions.RequireCanonical)
@@ -74,8 +73,8 @@ public class ExportPbtImage(
     /// fail late, after a long scan, refuse an anchor already behind the node.</remarks>
     private ulong ResolveAnchor()
     {
-        FlatStateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        if (persisted == FlatStateId.PreGenesis)
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        if (persisted == StateId.PreGenesis)
         {
             if (config.MigrationAnchor is null)
                 throw new InvalidConfigurationException(
@@ -94,8 +93,8 @@ public class ExportPbtImage(
 
     private async Task WaitForPersistence(ulong anchorNumber, CancellationToken cancellationToken)
     {
-        FlatStateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        if (persisted != FlatStateId.PreGenesis && persisted.BlockNumber == anchorNumber) return;
+        StateId persisted = persistenceManager.GetCurrentPersistedStateId();
+        if (persisted != StateId.PreGenesis && persisted.BlockNumber == anchorNumber) return;
         if (_logger.IsInfo) _logger.Info($"Waiting for the flat state to be persisted at the EIP-8347 export anchor {anchorNumber}.");
 
         DateTime nextReport = DateTime.UtcNow + ReportInterval;
@@ -103,11 +102,11 @@ public class ExportPbtImage(
         {
             await Task.Delay(PollInterval, cancellationToken);
             persisted = persistenceManager.GetCurrentPersistedStateId();
-            if (persisted != FlatStateId.PreGenesis && persisted.BlockNumber >= anchorNumber) return;
+            if (persisted != StateId.PreGenesis && persisted.BlockNumber >= anchorNumber) return;
             if (DateTime.UtcNow < nextReport) continue;
             nextReport = DateTime.UtcNow + ReportInterval;
             if (_logger.IsInfo)
-                _logger.Info($"EIP-8347 export waiting at persisted block {(persisted == FlatStateId.PreGenesis ? 0 : persisted.BlockNumber)} " +
+                _logger.Info($"EIP-8347 export waiting at persisted block {(persisted == StateId.PreGenesis ? 0 : persisted.BlockNumber)} " +
                     $"of anchor {anchorNumber}; head is {blockTree.Head?.Number}.");
         }
     }

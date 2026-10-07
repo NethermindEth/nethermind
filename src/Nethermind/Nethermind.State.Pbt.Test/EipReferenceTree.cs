@@ -4,7 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
-using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Test;
 /// <summary>Independent rebuild-from-entries oracle for the variable-length EIP-8297 tree.</summary>
 public sealed class EipReferenceTree
 {
-    private readonly SortedDictionary<byte[], byte[]> _entries = new(ByteArrayComparer.Instance);
+    private readonly SortedDictionary<byte[], byte[]> _entries = new(Bytes.Comparer);
 
     /// <summary>Adds or replaces a complete key and its 32-byte value.</summary>
     public void Insert(ReadOnlySpan<byte> key, byte[] value)
@@ -40,7 +40,7 @@ public sealed class EipReferenceTree
     {
         foreach ((byte[] key, byte[]? value) in writes)
         {
-            if (value is null || new ValueHash256(value) == default) Delete(key);
+            if (value is null || value.AsSpan().IsZero()) Delete(key);
             else Insert(key, value);
         }
     }
@@ -120,12 +120,5 @@ public sealed class EipReferenceTree
         byte[] result = new byte[32];
         Blake3.Hasher.Hash(data, result);
         return result;
-    }
-
-    private sealed class ByteArrayComparer : IComparer<byte[]>
-    {
-        public static ByteArrayComparer Instance { get; } = new();
-
-        public int Compare(byte[]? x, byte[]? y) => x.AsSpan().SequenceCompareTo(y);
     }
 }

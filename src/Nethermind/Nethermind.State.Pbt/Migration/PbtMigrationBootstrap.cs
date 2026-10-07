@@ -10,6 +10,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;

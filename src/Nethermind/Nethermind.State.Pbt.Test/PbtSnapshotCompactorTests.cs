@@ -107,5 +107,5 @@ public class PbtSnapshotCompactorTests
         return NewCompactor().Compact(chain);
     }
 
-    private PbtSnapshotCompactor NewCompactor() => new(_pool, new PbtCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config);
+    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config);
 }

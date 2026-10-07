@@ -920,7 +920,7 @@ public class StorageProviderTests(bool useFlat)
     public void Storage_of_a_backend_that_cannot_prove_emptiness_is_still_read()
     {
         using Context ctx = new(useFlat, setInitialState: false);
-        WorldState provider = new(new UnknownEmptinessScopeProvider(ctx.StateProvider.ScopeProvider), LogManager);
+        WorldState provider = new(new WritesInterceptor(ctx.StateProvider.ScopeProvider, new WrittenData(new(), new(), new()), storageRootsAreAuthoritative: false), LogManager);
 
         Hash256 stateRoot;
         using (IDisposable _ = provider.BeginScope(IWorldState.PreGenesis))
@@ -2584,7 +2584,7 @@ public class StorageProviderTests(bool useFlat)
                     new ConcurrentDictionary<StorageCell, byte[]>(),
                     new ConcurrentDictionary<Address, bool>()
                 );
-                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData);
+                scopeProvider = new WritesInterceptor(scopeProvider, WrittenData, storageRootsAreAuthoritative: true);
             }
 
             StateProvider = new WorldState(scopeProvider, LogManager);
@@ -2613,7 +2613,7 @@ public class StorageProviderTests(bool useFlat)
         }
     }
 
-    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData) : IWorldStateScopeProvider
+    private class WritesInterceptor(IWorldStateScopeProvider scopeProvider, WrittenData writtenData, bool storageRootsAreAuthoritative) : IWorldStateScopeProvider
     {
 
         public bool HasRoot(BlockHeader baseBlock) => scopeProvider.HasRoot(baseBlock);
@@ -2628,21 +2628,23 @@ public class StorageProviderTests(bool useFlat)
                 return false;
             }
 
-            scope = new ScopeDecorator(baseScope, writtenData);
+            scope = new ScopeDecorator(baseScope, writtenData, storageRootsAreAuthoritative);
             return true;
         }
 
         public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
         {
-            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData);
+            scope = new ScopeDecorator(scopeProvider.BeginScope(baseBlock, metrics), writtenData, storageRootsAreAuthoritative);
             return true;
         }
 
-        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData) : IWorldStateScopeProvider.IScope
+        private class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope, WrittenData writtenData, bool storageRootsAreAuthoritative) : IWorldStateScopeProvider.IScope
         {
             public void Dispose() => baseScope.Dispose();
 
             public Hash256 RootHash => baseScope.RootHash;
+
+            public bool StorageRootsAreAuthoritative => storageRootsAreAuthoritative;
 
             public void UpdateRootHash() => baseScope.UpdateRootHash();
 
@@ -2718,52 +2720,6 @@ public class StorageProviderTests(bool useFlat)
     {
         Snapshot,
         ResetKeepingBlockChanges,
-    }
-
-    private sealed class UnknownEmptinessScopeProvider(IWorldStateScopeProvider baseProvider) : IWorldStateScopeProvider
-    {
-        public bool HasRoot(BlockHeader baseBlock) => baseProvider.HasRoot(baseBlock);
-
-        public bool HasStateForTargetBlock(BlockHeader targetBlock) => throw new NotSupportedException();
-
-        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope) =>
-            throw new NotSupportedException();
-
-        public bool TryBeginScope(BlockHeader baseBlock, LocalMetrics metrics, out IWorldStateScopeProvider.IScope scope)
-        {
-            scope = new ScopeDecorator(baseProvider.BeginScope(baseBlock, metrics));
-            return true;
-        }
-
-        private sealed class ScopeDecorator(IWorldStateScopeProvider.IScope baseScope) : IWorldStateScopeProvider.IScope
-        {
-            public Hash256 RootHash => baseScope.RootHash;
-
-            public bool StorageRootsAreAuthoritative => false;
-
-            public void UpdateRootHash() => baseScope.UpdateRootHash();
-
-            public Account Get(Address address) => baseScope.Get(address);
-
-            public void HintGet(Address address, Account account) => baseScope.HintGet(address, account);
-
-            public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink sink = null)
-                => baseScope.HintBal(bal, sink);
-
-            public void ApplyBal(ReadOnlyBlockAccessList bal) => baseScope.ApplyBal(bal);
-
-            public IWorldStateScopeProvider.ICodeDb CodeDb => baseScope.CodeDb;
-
-            public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) =>
-                baseScope.CreateStorageTree(address);
-
-            public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum) =>
-                baseScope.StartWriteBatch(estimatedAccountNum);
-
-            public void Commit(ulong blockNumber) => baseScope.Commit(blockNumber);
-
-            public void Dispose() => baseScope.Dispose();
-        }
     }
 
     private sealed class ReadCollectingStorageTracer : IWorldStateTracer

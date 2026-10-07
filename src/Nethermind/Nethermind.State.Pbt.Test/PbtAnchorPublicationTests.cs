@@ -8,9 +8,9 @@ using Nethermind.Config;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.State;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -299,7 +299,7 @@ public class PbtAnchorPublicationTests
             PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
             leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 0), basicData));
             leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
-            leaves.Add(new(PbtStateKey.Storage(address, 100), new ValueHash256(((UInt256)(index + 1)).ToBigEndian())));
+            leaves.Add(new(PbtStateKey.Storage(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
@@ -531,25 +531,22 @@ public class PbtAnchorPublicationTests
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(harness.Anchor.Header)));
             Assert.That(harness.Pbt.Manager.HasStateForBlock(new StateId(harness.Anchor.Header)), Is.True, "the live manager sees the imported anchor");
         }
-        using JsonDocument state = Eip8347FixtureState.LoadAllocation(name);
-        foreach (JsonProperty property in state.RootElement.EnumerateObject())
+        foreach ((Address address, GethGenesisAllocJson expected) in Eip8347FixtureState.LoadAllocation(Eip8347FixtureState.Directory, name))
         {
-            Address address = new(property.Name);
-            JsonElement expected = property.Value;
             Account? account = reader.GetAccount(PbtStateKey.AddressKeyHash(address))?.ToAccount();
-            Assert.That(account, Is.Not.Null, property.Name);
-            byte[] code = expected.TryGetProperty("code", out JsonElement codeJson) ? Bytes.FromHexString(codeJson.GetString()!) : [];
+            Assert.That(account, Is.Not.Null, address.ToString());
+            byte[] code = expected.Code ?? [];
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(account!.Nonce, Is.EqualTo(expected.TryGetProperty("nonce", out JsonElement nonce) ? (ulong)Eip8347FixtureState.ParseQuantity(nonce.GetString()!) : 0UL), property.Name);
-                Assert.That(account.Balance, Is.EqualTo(Eip8347FixtureState.ParseQuantity(expected.GetProperty("balance").GetString()!)), property.Name);
-                Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)), property.Name);
-                if (code.Length != 0) Assert.That(reader.GetCode(account.CodeHash.ValueHash256)?.Code.ToArray(), Is.EqualTo(code), property.Name);
+                Assert.That(account!.Nonce, Is.EqualTo(expected.Nonce ?? 0), address.ToString());
+                Assert.That(account.Balance, Is.EqualTo(expected.Balance), address.ToString());
+                Assert.That(account.CodeHash, Is.EqualTo(Keccak.Compute(code)), address.ToString());
+                if (code.Length != 0) Assert.That(reader.GetCode(account.CodeHash.ValueHash256)?.Code.ToArray(), Is.EqualTo(code), address.ToString());
             }
-            if (!expected.TryGetProperty("storage", out JsonElement storage)) continue;
-            foreach (JsonProperty slot in storage.EnumerateObject())
-                Assert.That(reader.GetSlot(PbtStateKey.Storage(address, Eip8347FixtureState.ParseQuantity(slot.Name))),
-                    Is.EqualTo(EvmWordSlot.FromStripped(Eip8347FixtureState.ParseQuantity(slot.Value.GetString()!).ToBigEndian())), slot.Name);
+            if (expected.Storage is null) continue;
+            foreach ((UInt256 slot, byte[] value) in expected.Storage)
+                Assert.That(reader.GetSlot(PbtStateKey.Storage(address, slot)),
+                    Is.EqualTo(EvmWordSlot.FromStripped(new UInt256(value, isBigEndian: true).ToBigEndian())), slot.ToString());
         }
 
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
@@ -658,7 +655,7 @@ public class PbtAnchorPublicationTests
         public void Dispose() => _database.Dispose();
     }
 
-    private sealed class SyncDb(IDb database, Action sync) : IDb, ISortedKeyValueStore
+    private sealed class SyncDb(IDb database, Action sync) : IDb, ISortedKeyValueStore, IRangeRemovableKeyValueStore
     {
         public byte[]? FirstKey => ((ISortedKeyValueStore)database).FirstKey;
         public byte[]? LastKey => ((ISortedKeyValueStore)database).LastKey;
@@ -675,5 +672,7 @@ public class PbtAnchorPublicationTests
         public void Flush(bool onlyWal = false) => database.Flush(onlyWal);
         public void SyncWal() => sync();
         public void Dispose() { }
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)database).RemoveRange(firstKeyInclusive, lastKeyExclusive);
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)database).ReclaimRange(firstKeyInclusive, lastKeyExclusive);
     }
 }

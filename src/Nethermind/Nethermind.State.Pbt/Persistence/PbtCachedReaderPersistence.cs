@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.Persistence;
 

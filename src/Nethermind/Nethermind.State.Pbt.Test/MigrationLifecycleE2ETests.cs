@@ -23,6 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
@@ -94,7 +95,7 @@ public class MigrationLifecycleE2ETests
         {
             Assert.That(container.Resolve<IFlatDbConfig>().Layout, Is.EqualTo(layout));
             // Flat gets no commits after activation; finalizing the activation persists it up to the activation parent.
-            Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new Flat.StateId(blocks["b3"].Header)).After(10_000, 50));
+            Assert.That(() => FlatState(flatPersistence), Is.EqualTo(new StateId(blocks["b3"].Header)).After(10_000, 50));
         }
 
         // A request spanning activation needs PBT at the activation parent before main processing reaches it; the branch
@@ -132,15 +133,13 @@ public class MigrationLifecycleE2ETests
                 Assert.That(telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(harness.ExpectedShadowRoot(name)), name);
             Assert.That(harness.Reader.HasStateForBlock(blocks[name].Header), Is.True, name);
             harness.AssertAllocation(name);
-            using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(harness.FixtureDirectory, "states", name + ".alloc.json")));
+            Dictionary<Address, GethGenesisAllocJson> allocation = Eip8347FixtureState.LoadAllocation(harness.FixtureDirectory, name);
             IStateReader reader = manager.GlobalStateReader;
             // Probe keys on the losing branch even when their zero values are omitted from the reference allocation.
             Address writer = new("0x1000000000000000000000000000000000000001");
             foreach (UInt256 slot in new UInt256[] { 0, 63, 64, 255, 256 })
             {
-                UInt256 expectedValue = 0;
-                if (allocation.RootElement.TryGetProperty(writer.ToString(), out JsonElement account) && account.TryGetProperty("storage", out JsonElement storage))
-                    foreach (JsonProperty entry in storage.EnumerateObject()) if (Eip8347FixtureState.ParseQuantity(entry.Name) == slot) expectedValue = Eip8347FixtureState.ParseQuantity(entry.Value.GetString()!);
+                UInt256 expectedValue = allocation.GetValueOrDefault(writer)?.Storage?.GetValueOrDefault(slot) is { } value ? new UInt256(value, isBigEndian: true) : 0;
                 Assert.That(reader.GetStorage(blocks[name].Header, writer, slot), Is.EqualTo(expectedValue), $"{name} restored slot {slot}");
             }
         }
@@ -205,7 +204,7 @@ public class MigrationLifecycleE2ETests
         }
     }
 
-    private static Flat.StateId FlatState(IPersistence persistence)
+    private static StateId FlatState(IPersistence persistence)
     {
         using IPersistence.IPersistenceReader reader = persistence.CreateReader();
         return reader.CurrentState;

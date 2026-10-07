@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.State.Flat;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.State.Pbt;

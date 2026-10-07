@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Monitoring.Config;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt;
 

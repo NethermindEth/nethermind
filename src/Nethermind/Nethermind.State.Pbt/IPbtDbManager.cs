@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt;
 

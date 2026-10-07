@@ -21,7 +21,6 @@ using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Steps;
 using NSubstitute;
 using NUnit.Framework;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -49,7 +48,7 @@ public class PbtExportTests
     [Test]
     public void Refuses_an_anchor_the_flat_state_cannot_serve([Values("below-persisted", "nothing-persisted")] string invalid)
     {
-        Harness harness = new() { Persisted = invalid == "below-persisted" ? new FlatStateId(100, Keccak.EmptyTreeHash.ValueHash256) : FlatStateId.PreGenesis };
+        Harness harness = new() { Persisted = invalid == "below-persisted" ? new StateId(100, Keccak.EmptyTreeHash.ValueHash256) : StateId.PreGenesis };
         harness.Config.MigrationAnchor = invalid == "below-persisted" ? 99 : null;
 
         Assert.ThrowsAsync<InvalidConfigurationException>(() => harness.Step().Execute(CancellationToken.None));
@@ -67,9 +66,9 @@ public class PbtExportTests
     [Test]
     public void Pins_the_anchor_then_pauses_processing_once_it_is_persisted([Values] bool anchorAhead)
     {
-        Harness harness = new() { Persisted = new FlatStateId(40, Keccak.EmptyTreeHash.ValueHash256) };
+        Harness harness = new() { Persisted = new StateId(40, Keccak.EmptyTreeHash.ValueHash256) };
         harness.Config.MigrationAnchor = anchorAhead ? 42 : null;
-        harness.ReachedState = new FlatStateId(anchorAhead ? 42UL : 40UL, Keccak.EmptyTreeHash.ValueHash256);
+        harness.ReachedState = new StateId(anchorAhead ? 42UL : 40UL, Keccak.EmptyTreeHash.ValueHash256);
         if (anchorAhead) harness.PollsBeforeReaching = 2;
 
         Assert.ThrowsAsync<InvalidDataException>(() => harness.Step().Execute(CancellationToken.None),
@@ -87,10 +86,10 @@ public class PbtExportTests
         public PbtConfig Config { get; } = new();
         public PbtExportPersistTarget Target { get; }
         public IBlockProcessingPauseControl PauseControl { get; } = Substitute.For<IBlockProcessingPauseControl>();
-        public required FlatStateId Persisted { get; init; }
+        public required StateId Persisted { get; init; }
 
         /// <summary>The state persistence lands on, or null when it never reaches the anchor.</summary>
-        public FlatStateId? ReachedState { get; set; }
+        public StateId? ReachedState { get; set; }
 
         /// <summary>Polls that still report <see cref="Persisted"/>, so the wait is actually exercised.</summary>
         public int PollsBeforeReaching { get; set; }

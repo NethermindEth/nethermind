@@ -3,9 +3,9 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
-using FlatStateId = Nethermind.State.Flat.StateId;
 
 namespace Nethermind.State.Pbt.Mirror;
 
@@ -20,10 +20,10 @@ public class PbtFlatDrivenPersistence(IPersistence inner, Lazy<PbtDbManager> pbt
 {
     public IPersistence.IPersistenceReader CreateReader(ReaderFlags flags = ReaderFlags.None) => inner.CreateReader(flags);
 
-    public IPersistence.IWriteBatch CreateWriteBatch(in FlatStateId from, in FlatStateId to, WriteFlags flags = WriteFlags.None)
+    public IPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, WriteFlags flags = WriteFlags.None)
     {
         // Sync, import, and sentinel state IDs have no PBT chain.
-        if (TryToPbtStateId(in to, out StateId seed)) pbtManager.Value.PersistUpTo(seed);
+        if (to != StateId.PreGenesis && to != StateId.Sync) pbtManager.Value.PersistUpTo(to);
 
         return inner.CreateWriteBatch(in from, in to, flags);
     }
@@ -36,16 +36,4 @@ public class PbtFlatDrivenPersistence(IPersistence inner, Lazy<PbtDbManager> pbt
     }
 
     public void Clear() => inner.Clear();
-
-    private static bool TryToPbtStateId(in FlatStateId flatStateId, out StateId stateId)
-    {
-        if (flatStateId == FlatStateId.PreGenesis || flatStateId == FlatStateId.Sync)
-        {
-            stateId = StateId.PreGenesis;
-            return false;
-        }
-
-        stateId = new StateId(flatStateId.BlockNumber, flatStateId.StateRoot);
-        return true;
-    }
 }

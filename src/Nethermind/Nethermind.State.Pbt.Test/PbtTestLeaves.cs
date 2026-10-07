@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
@@ -46,7 +47,7 @@ internal static class PbtTestLeaves
     }
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
-        into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
+        into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), value.ToValueHash()));
 
     /// <summary>Reads every account preimage and its slot preimages from <paramref name="source"/>.</summary>
     public static List<PbtAccountPreimages> ReadPreimages(Stream source)

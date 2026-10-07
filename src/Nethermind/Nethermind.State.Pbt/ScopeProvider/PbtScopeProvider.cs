@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Flat;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 

@@ -123,7 +123,8 @@ public class WorldStateDbDeciderModuleTests
             container.ResolveKeyed<IDb>(DbNames.BlockInfos).Set(new byte[16], Rlp.Encode(936UL).Bytes);
 
         Assert.That(container.Resolve<IStateBoundary>().BestPersistedState, Is.EqualTo(expected));
-        // IStateBoundary is injected into BlockTree; resolving it verifies that the graph is cycle-free.
+        // IStateBoundary is injected into BlockTree's constructor; resolving the tree proves the
+        // graph stays cycle-free (the full IWorldStateManager graph would resolve the tree back).
         Assert.DoesNotThrow(() => container.Resolve<IBlockTree>());
     }
 
