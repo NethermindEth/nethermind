@@ -715,7 +715,8 @@ public static class FrameTxValidation
                              + RecentRootReference.IntrinsicGas(transaction.RecentRootReferences, spec);
         ulong floorTokens = spec.IsEip7976Enabled ? dataLength * spec.GasCosts.TxDataNonZeroMultiplier : tokens;
         floorGas = spec.IsEip7623Enabled ? mandatoryGas + floorTokens * spec.GasCosts.TotalCostFloorPerToken : 0;
-        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero;
+        intrinsicGas = mandatoryGas + tokens * GasCostOf.TxDataZero
+                       + (spec.IsEip8288Enabled ? Eip8288Dependencies.RecursiveStarkGas(transaction) : 0);
 
         ulong standardGas = intrinsicGas + totalFrameGas;
         if (standardGas < intrinsicGas)
