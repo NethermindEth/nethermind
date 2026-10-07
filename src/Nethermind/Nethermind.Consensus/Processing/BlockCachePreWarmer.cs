@@ -258,7 +258,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         PrewarmingSession session = new(cancellationToken, _logger);
-        CancellationToken token = session.Token;
+        CancellationToken token = session.UntilDrainedToken;
         session.Start(() =>
         {
             using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
@@ -354,10 +354,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
+            // Runs ahead start with the block's own pass and go on until the session is drained before the commit: they are
+            // what the next blocks start from, and the block's transactions ending early would otherwise cut them short.
+            bool runAhead = _lookAheadDepth > 0 && suggestedBlock is not BlockToProduce && ShouldRunAhead();
+            CancellationToken aheadToken = session.UntilDrainedToken;
             session.Start(() =>
             {
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
                 using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
+                using ParallelUnbalancedWork.BackgroundWork? aheadWork = runAhead
+                    ? ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => RunAhead(suggestedBlock, aheadToken))
+                    : null;
                 using ParallelUnbalancedWork.BackgroundWork addressWork = ParallelUnbalancedWork.BackgroundFor(
                     0, 1, HelperOptions, _ => ((IThreadPoolWorkItem)addressWarmer).Execute());
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
@@ -368,13 +375,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     discoveryWork?.WaitForCompletion();
-                    // What is left of the block's execution goes to the blocks queued behind it.
-                    if (_lookAheadDepth > 0 && suggestedBlock is not BlockToProduce && ShouldRunAhead()) RunAhead(suggestedBlock, token);
                 }
                 finally
                 {
                     // Every warm has returned, so nothing queues behind this: the session must not end with discovery still writing.
                     blockState.JoinDiscoveryHandOffs();
+                    // Nor with runs ahead still reading: the caches must describe the parent until the session is drained.
+                    aheadWork?.WaitForCompletion();
                 }
             }, addressWarmer);
             return session;

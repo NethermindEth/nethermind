@@ -15,11 +15,16 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
 {
     private static readonly ParallelOptions CoordinatorOptions = new() { MaxDegreeOfParallelism = 2 };
     private readonly CancellationTokenSource _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+    // Work that may outlast the block's transactions, as runs ahead do, stops only when the session is drained.
+    private readonly CancellationTokenSource _untilDrained = new();
     private ParallelUnbalancedWork.BackgroundWork? _work;
     private IDisposable? _resources;
     private bool _disposed;
 
     internal CancellationToken Token => _cancellation.Token;
+
+    /// <summary>Cancelled only when the session is disposed, not when the block's transactions are done.</summary>
+    internal CancellationToken UntilDrainedToken => _untilDrained.Token;
 
     internal void Start(Action warm, IDisposable resources)
     {
@@ -52,6 +57,7 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
         _disposed = true;
         try
         {
+            _untilDrained.Cancel();
             _cancellation.Cancel();
         }
         finally
@@ -64,7 +70,11 @@ internal sealed class PrewarmingSession(CancellationToken cancellationToken, ILo
             finally
             {
                 try { _resources?.Dispose(); }
-                finally { _cancellation.Dispose(); }
+                finally
+                {
+                    _cancellation.Dispose();
+                    _untilDrained.Dispose();
+                }
             }
         }
     }
