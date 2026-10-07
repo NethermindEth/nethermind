@@ -67,6 +67,18 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private ProcessingLookAhead? _lookAheadSource;
     private ISpecProvider? _specProvider;
     private int _lookAheadDepth;
+    private int _lookAheadConcurrency;
+    // How many runs ahead still held, or no longer held, when their block's own pass reached them; folded into
+    // _aheadHoldRate at each block's start.
+    private int _aheadHeld;
+    private int _aheadStale;
+    private double _aheadHoldRate = 1.0;
+    private int _aheadBlocksSkipped;
+
+    // Below this share of runs ahead still holding, running ahead costs more than it returns.
+    private double _minAheadHoldRate;
+    /// <summary>While running ahead does not pay, one block in this many still runs ahead, to notice when it pays again.</summary>
+    private const int AheadProbeInterval = 8;
     private readonly Dictionary<Hash256, (ulong Number, BlockFootprints Footprints)> _aheadFootprints = [];
     private readonly Lock _aheadLock = new();
     private readonly GroupingScratch _aheadScratch = new();
@@ -132,16 +144,24 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _blockCodeCache = blockCodeCache;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
-        if (lookAhead is not null && specProvider is not null) EnableLookAhead(lookAhead, specProvider, blocksConfig.PreWarmLookAhead);
+        if (lookAhead is not null && specProvider is not null)
+        {
+            EnableLookAhead(lookAhead, specProvider, blocksConfig.PreWarmLookAhead, blocksConfig.PreWarmLookAheadConcurrency,
+                blocksConfig.PreWarmLookAheadMinHoldPercent / 100.0);
+        }
     }
 
     /// <summary>Runs up to <paramref name="depth"/> blocks queued in <paramref name="lookAhead"/> ahead of the one processed.</summary>
-    internal void EnableLookAhead(ProcessingLookAhead lookAhead, ISpecProvider specProvider, int depth)
+    internal void EnableLookAhead(ProcessingLookAhead lookAhead, ISpecProvider specProvider, int depth, int concurrency = 0, double minHoldRate = 0)
     {
         if (!_handoff || depth <= 0) return;
         _lookAheadSource = lookAhead;
         _specProvider = specProvider;
         _lookAheadDepth = depth;
+        // Half the logical processors: runs ahead last as long as the block, and on a sibling hardware thread they would
+        // slow the processing thread down.
+        _lookAheadConcurrency = Math.Clamp(concurrency > 0 ? concurrency : Environment.ProcessorCount / 2 - 1, 1, _concurrencyLevel);
+        _minAheadHoldRate = minHoldRate;
     }
 
     internal BlockCachePreWarmer(
@@ -228,7 +248,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         if (_lookAheadDepth == 0 || parent is null || _concurrencyLevel <= 1 || block is BlockToProduce
-            || cancellationToken.IsCancellationRequested || _lookAheadSource!.FindChild(block) is null)
+            || cancellationToken.IsCancellationRequested || _lookAheadSource!.FindChild(block) is null || !ShouldRunAhead())
         {
             return null;
         }
@@ -253,6 +273,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private BlockFootprints? TakeAheadFootprints(Block block)
     {
         if (_lookAheadDepth == 0 || block.Hash is not Hash256 hash) return null;
+        FoldAheadHoldRate();
         lock (_aheadLock)
         {
             BlockFootprints? footprints = _aheadFootprints.Remove(hash, out (ulong Number, BlockFootprints Footprints) entry) ? entry.Footprints : null;
@@ -260,6 +281,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (footprints is not null) Blockchain.Metrics.PrewarmLookAheadReady += footprints.Count;
             return footprints;
         }
+    }
+
+    /// <summary>Folds what the last block's own pass found of the runs ahead into the running hold rate.</summary>
+    private void FoldAheadHoldRate()
+    {
+        int held = Interlocked.Exchange(ref _aheadHeld, 0);
+        int stale = Interlocked.Exchange(ref _aheadStale, 0);
+        if (held + stale == 0) return;
+        _aheadHoldRate = 0.7 * _aheadHoldRate + 0.3 * held / (held + stale);
+        Blockchain.Metrics.PrewarmLookAheadHoldRate = _aheadHoldRate;
+    }
+
+    /// <summary>Whether to run ahead of this block: while runs ahead mostly stop holding, only now and then.</summary>
+    private bool ShouldRunAhead() => _aheadHoldRate >= _minAheadHoldRate || ++_aheadBlocksSkipped % AheadProbeInterval == 0;
+
+    internal void NoteAheadRun(bool held)
+    {
+        if (held) Interlocked.Increment(ref _aheadHeld);
+        else Interlocked.Increment(ref _aheadStale);
     }
 
     // Under _aheadLock.
@@ -325,7 +365,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         suggestedBlock is BlockToProduce, suggestedBlock.Transactions.Length, token, addressWork);
                     discoveryWork?.WaitForCompletion();
                     // What is left of the block's execution goes to the blocks queued behind it.
-                    if (_lookAheadDepth > 0 && suggestedBlock is not BlockToProduce) RunAhead(suggestedBlock, token);
+                    if (_lookAheadDepth > 0 && suggestedBlock is not BlockToProduce && ShouldRunAhead()) RunAhead(suggestedBlock, token);
                 }
                 finally
                 {
@@ -1457,11 +1497,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
         // A run ahead that still holds on the parent is the run this one would record; its replay keeps the scope in step.
-        if (footprints.Find(txIndex, tx, blockState.Block.Header) is { } ahead && ahead.Matches(recorder))
+        if (footprints.Find(txIndex, tx, blockState.Block.Header) is { } ahead)
         {
-            ahead.Replay(recorder, blockState.Spec);
-            Blockchain.Metrics.PrewarmLookAheadKept++;
-            return TransactionResult.Ok;
+            bool held = ahead.Matches(recorder);
+            blockState.PreWarmer.NoteAheadRun(held);
+            if (held)
+            {
+                ahead.Replay(recorder, blockState.Spec);
+                Blockchain.Metrics.PrewarmLookAheadKept++;
+                return TransactionResult.Ok;
+            }
         }
 
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
@@ -1532,7 +1577,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             ArrayPoolList<WarmupJob> jobs = scratch.Jobs;
             if (jobs.Count == 0) return;
-            ParallelOptions options = new() { MaxDegreeOfParallelism = Math.Min(_concurrencyLevel, jobs.Count), CancellationToken = token };
+            ParallelOptions options = new() { MaxDegreeOfParallelism = Math.Min(_lookAheadConcurrency, jobs.Count), CancellationToken = token };
             ParallelUnbalancedWork.For(0, jobs.Count, options, i => RunJobAhead(jobs[i].Transactions, target, block.Header, spec, footprints, token));
         }
         finally

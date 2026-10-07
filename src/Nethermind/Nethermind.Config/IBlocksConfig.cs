@@ -89,6 +89,16 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Process blocks suggested by sync off the suggesting thread, so download and sender recovery run ahead of processing.", DefaultValue = "false", HiddenFromDocs = true)]
     bool DetachSyncProcessing { get; set; }
 
+    [ConfigItem(Description = "How many threads run queued blocks ahead, 0 for half the logical processors. Requires PreWarmLookAhead.", DefaultValue = "0", HiddenFromDocs = true)]
+    int PreWarmLookAheadConcurrency { get; set; }
+
+    /// <remarks>
+    /// Runs ahead read a state their block's parent may have changed. When fewer than this share still hold at their block's
+    /// own pass, the prewarmer runs ahead only now and then, to notice when it pays again.
+    /// </remarks>
+    [ConfigItem(Description = "The share of runs ahead, in percent, that must still hold for the prewarmer to keep running ahead of every block; 0 to always run ahead. Requires PreWarmLookAhead.", DefaultValue = "30", HiddenFromDocs = true)]
+    int PreWarmLookAheadMinHoldPercent { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

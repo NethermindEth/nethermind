@@ -77,6 +77,10 @@ namespace Nethermind.Config
 
         public bool DetachSyncProcessing { get; set; }
 
+        public int PreWarmLookAheadConcurrency { get; set; }
+
+        public int PreWarmLookAheadMinHoldPercent { get; set; } = 30;
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;

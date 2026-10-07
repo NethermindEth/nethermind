@@ -86,6 +86,10 @@ public static class Metrics
     public static long PrewarmLookAheadReady { get; set; }
 
     [GaugeMetric]
+    [Description("Running share of runs ahead that still held when their block's own pass reached them")]
+    public static double PrewarmLookAheadHoldRate { get; set; }
+
+    [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
 
