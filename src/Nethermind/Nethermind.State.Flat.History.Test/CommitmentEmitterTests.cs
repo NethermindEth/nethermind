@@ -292,6 +292,54 @@ public class CommitmentEmitterTests
             "a block that only touches the top of a large trie must still write an exact row there; a per-block verdict would split the node's history across two chains");
     }
 
+    [TestCase(0, (ushort)0, TestName = "WriteExact_BranchStillRemembered_WritesOnlyChangedChildren")]
+    [TestCase((1 << 14) + 1, (ushort)0b11, TestName = "WriteExact_AfterRememberedBranchesOverflow_WritesFullVector")]
+    public void WriteExact_ExactBranchRewritten_ChangedMaskFollowsWhetherItWasRemembered(int otherTries, ushort expectedChanged)
+    {
+        using (CommitmentEmitter walk = CommitmentEmitter.ForWalk(_historyColumns, Policy, _metadata))
+        {
+            walk.BeginBlock(1);
+            RecordLargeStorageRoot(walk, StorageAccount);
+            walk.CompleteBlock();
+            walk.BeginBlock(2);
+            for (int i = 0; i < otherTries; i++) RecordLargeStorageRoot(walk, ValueKeccak.Compute(BitConverter.GetBytes(i)));
+            walk.CompleteBlock();
+            walk.BeginBlock(3);
+            RecordLargeStorageRoot(walk, StorageAccount);
+            walk.CompleteBlock();
+            walk.FlushOpenWindows();
+        }
+
+        CommitmentStore store = new(_historyColumns.GetColumnDb(FlatHistoryColumns.StorageCommitments), Policy, CommitmentKeyLayout.IdentityLength);
+        Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
+        int prefixLength = CommitmentKeyLayout.WriteScopedPathPrefix(prefix, StorageAccount.Bytes[..CommitmentKeyLayout.IdentityLength], TreePath.Empty, exact: true);
+        byte[] row = store.TryGetExact(prefix[..prefixLength], 3)!;
+        ChildVector carried = ChildVector.Rent();
+        try
+        {
+            ushort presence = ParentRowCodec.Presence(row);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(presence, Is.EqualTo((ushort)0b11));
+                Assert.That(ParentRowCodec.Changed(row), Is.EqualTo(expectedChanged),
+                    "a branch the emitter still remembers writes only its changed children; one it forgot writes every present child, as if it had never been a branch");
+                Assert.That(ParentRowCodec.Fill(row, presence, carried), Is.EqualTo(expectedChanged), "the row carries a reference for exactly the children it marks changed");
+            }
+        }
+        finally
+        {
+            ChildVector.Return(carried);
+        }
+    }
+
+    private static void RecordLargeStorageRoot(CommitmentEmitter emitter, in ValueHash256 account)
+    {
+        emitter.RecordStorageDepthReached(account, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth);
+        ChildVector children = Children(0, 1);
+        emitter.RecordStorageNode(account, TreePath.Empty, BranchRlp.Encode(children));
+        ChildVector.Return(children);
+    }
+
     [Test]
     public void A_commitment_row_scan_is_charged_against_the_proof_budget()
     {
