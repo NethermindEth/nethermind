@@ -1,4 +1,4 @@
-name: Stateless Sepolia tests
+name: Stateless Glamsterdam tests
 
 on:
   schedule:
@@ -45,7 +45,7 @@ jobs:
       matrix: ${{ steps.select.outputs.matrix }}
       selected_count: ${{ steps.select.outputs.selected_count }}
     env:
-      SUMMARY_DIR: /tmp/stateless-devnet
+      SUMMARY_DIR: /tmp/stateless-glamsterdam
     steps:
       - name: Select block batches
         id: select
@@ -115,7 +115,7 @@ jobs:
       max-parallel: 32
       matrix: ${{ fromJSON(needs.select-batches.outputs.matrix) }}
     env:
-      SUMMARY_DIR: /tmp/stateless-devnet-${{ matrix.range }}
+      SUMMARY_DIR: /tmp/stateless-glamsterdam-${{ matrix.range }}
       MATRIX_BATCH_COUNT: ${{ needs.select-batches.outputs.selected_count }}
     steps:
       - name: Check out repository
@@ -326,7 +326,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: stateless-devnet-${{ matrix.range }}-logs
+          name: stateless-glamsterdam-${{ matrix.range }}-logs
           path: |
             ${{ env.SUMMARY_DIR }}/summary.md
             ${{ env.SUMMARY_DIR }}/manifest.json
