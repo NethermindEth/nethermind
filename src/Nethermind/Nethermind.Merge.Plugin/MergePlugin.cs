@@ -183,6 +183,7 @@ public class BaseMergePluginModule : Module
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV4Result?>, GetPayloadV4Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV5Result?>, GetPayloadV5Handler>()
                 .AddSingleton<IAsyncHandler<byte[], GetPayloadV6Result?>, GetPayloadV6Handler>()
+                .AddSingleton<IAsyncHandler<byte[], GetPayloadV7Result?>, GetPayloadV7Handler>()
                 .AddSingleton<NewPayloadHandler>()
                 .Bind<IAsyncHandler<ExecutionPayload, PayloadStatusV1>, NewPayloadHandler>()
                 .Bind<IInclusionListComplianceEvaluator, NewPayloadHandler>()

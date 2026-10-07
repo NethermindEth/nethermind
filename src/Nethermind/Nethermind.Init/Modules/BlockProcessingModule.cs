@@ -22,6 +22,7 @@ using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
@@ -102,6 +103,11 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 (lifetime, worldStateManager, specProvider, blockFinder, txPoolConfig, logManager) => new FrameTxPrefixSimulator(
                     new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
                     blockFinder, specProvider, txPoolConfig, logManager))
+            // Its own code cache for the same reason: the replay materialises code the access list deploys.
+            .AddSingleton<IProfile2EligibilityReplayer, ILifetimeScope, IWorldStateManager, ISpecProvider, IEthereumEcdsa, IBlocksConfig, ILogManager>(
+                (lifetime, worldStateManager, specProvider, ecdsa, blocksConfig, logManager) => new Profile2EligibilityReplayer(
+                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, shareCodeCache: false),
+                    ecdsa, blocksConfig, logManager))
             .Add<BlockchainProcessorFacade>()
 
             .AddSingleton<OverridableEnvFactory>()

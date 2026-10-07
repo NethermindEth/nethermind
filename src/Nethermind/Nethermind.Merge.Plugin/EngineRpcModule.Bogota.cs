@@ -44,22 +44,50 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     private readonly IAsyncHandler<InclusionListExecutionPayloadParams, NewPayloadWithWitnessV1Result> _newPayloadWithWitnessHandlerV6 = newPayloadWithWitnessHandlerV6;
 
+    private readonly IAsyncHandler<byte[], GetPayloadV7Result?> _getPayloadHandlerV7 = getPayloadHandlerV7;
+
+    public Task<ResultWrapper<GetPayloadV7Result?>> engine_getPayloadV7(byte[] payloadId)
+        => _getPayloadHandlerV7.HandleAsync(payloadId);
+
     public Task<ResultWrapper<InclusionListBytes>> engine_getInclusionListV1(Hash256? parentBlockHash = null)
         => getInclusionListTransactionsHandler.Handle(parentBlockHash);
 
-    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions)
-        => NewPayloadWithInclusionList(
+    public Task<ResultWrapper<PayloadStatusV2>> engine_newPayloadV6(ExecutionPayloadV4 executionPayload, Hash256?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot, byte[][]? executionRequests, byte[][]? inclusionListTransactions, byte[][]? inclusionListMembership = null, InclusionListClaim[]? inclusionListClaims = null)
+    {
+        bool membershipRequired = RequiresMembership(_specProvider.GetSpec(executionPayload.BlockNumber, executionPayload.Timestamp));
+        if (ValidateMembershipAndClaims(inclusionListTransactions, inclusionListMembership, inclusionListClaims, membershipRequired) is { } error)
+            return Task.FromResult(ResultWrapper<PayloadStatusV2>.Fail(error, ErrorCodes.InvalidParams));
+
+        executionPayload.InclusionListMembership = inclusionListMembership;
+        executionPayload.InclusionListClaims = inclusionListClaims;
+        return NewPayloadWithInclusionList(
             new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions),
             EngineApiVersions.NewPayload.V6);
+    }
+
+    /// <summary>bogota.md makes <c>inclusionListMembership</c> a positional parameter wherever inclusion lists are.</summary>
+    private static bool RequiresMembership(IReleaseSpec spec) => spec.IsEip7805Enabled;
+
+    /// <summary>bogota.md <c>engine_newPayloadV6</c> point 2; a missing list is left to the aggregate checks.</summary>
+    private static string? ValidateMembershipAndClaims(byte[][]? transactions, byte[][]? membership, InclusionListClaim[]? claims, bool membershipRequired) =>
+        claims is { Length: > Eip8369Constants.MaxInclusionListClaims }
+            ? $"Inclusion list claims exceed the maximum of {Eip8369Constants.MaxInclusionListClaims}"
+            : membership is null
+                ? membershipRequired && transactions is not null ? "Inclusion list membership must be set" : null
+                : transactions is null
+                    ? "Inclusion list membership requires inclusion list transactions"
+                    : InclusionListMembership.Validate(transactions, membership);
 
     public Task<ResultWrapper<NewPayloadWithWitnessV1Result>> engine_newPayloadWithWitnessV6(
         ExecutionPayloadV4 executionPayload,
         Hash256?[] blobVersionedHashes,
         Hash256? parentBeaconBlockRoot,
         byte[][]? executionRequests,
-        byte[][]? inclusionListTransactions)
+        byte[][]? inclusionListTransactions,
+        byte[][]? inclusionListMembership = null,
+        InclusionListClaim[]? inclusionListClaims = null)
         => _newPayloadWithWitnessHandlerV6.HandleAsync(
-            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions));
+            new InclusionListExecutionPayloadParams(executionPayload, blobVersionedHashes, parentBeaconBlockRoot, executionRequests, inclusionListTransactions, inclusionListMembership, inclusionListClaims));
 
     /// <summary>Runs <see cref="NewPayload"/> and maps its result onto the Bogota <see cref="PayloadStatusV2"/> shape.</summary>
     protected async Task<ResultWrapper<PayloadStatusV2>> NewPayloadWithInclusionList(IExecutionPayloadParams executionPayloadParams, int version)
@@ -106,9 +134,17 @@ public partial class EngineRpcModule : IEngineRpcModule
         ForkchoiceStateV1 forkchoiceState,
         PayloadAttributes? payloadAttributes = null,
         BitArray? custodyColumns = null)
-        => ValidateAndApplyCustodyColumns(custodyColumns) is { } error
-            ? Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams))
-            : ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+    {
+        if (ValidateAndApplyCustodyColumns(custodyColumns) is { } error)
+            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(error, ErrorCodes.InvalidParams));
+        // bogota.md engine_forkchoiceUpdatedV5 point 1.1 precedes the fork check.
+        if (payloadAttributes is not null
+            && ValidateMembershipAndClaims(payloadAttributes.InclusionListTransactions, payloadAttributes.InclusionListMembership, null,
+                RequiresMembership(_specProvider.GetSpec(ForkActivation.TimestampOnly(payloadAttributes.Timestamp)))) is { } attributesError)
+            return Task.FromResult(ResultWrapper<ForkchoiceUpdatedV2Result>.Fail(attributesError, MergeErrorCodes.InvalidPayloadAttributes));
+
+        return ForkchoiceUpdatedWithInclusionList(forkchoiceState, payloadAttributes, EngineApiVersions.Fcu.V5);
+    }
 
     /// <summary>Registers any inclusion list for the build, then runs <see cref="ForkchoiceUpdated"/> and maps
     /// its result onto the Bogota <see cref="ForkchoiceUpdatedV2Result"/> shape.</summary>
@@ -127,7 +163,7 @@ public partial class EngineRpcModule : IEngineRpcModule
             }
             else
             {
-                inclusionListTxSource.Set(ilTxs, spec);
+                inclusionListTxSource.Set(ilTxs, spec, payloadAttributes.InclusionListMembership);
             }
         }
 

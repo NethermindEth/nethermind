@@ -140,6 +140,23 @@ public partial struct PayloadAttributesV5Wire : ISszPayloadAttributesWire
     public ulong TargetGasLimit { get; set; }
     // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszInclusionListMembership[]? InclusionListMembership { get; set; }
+}
+
+/// <summary>One entry's EIP-8369 committee membership, an SSZ <c>Bitvector[INCLUSION_LIST_COMMITTEE_SIZE]</c>.</summary>
+/// <remarks>Carried as its serialized bytes, which is all a bitvector of a whole number of bytes is.</remarks>
+[SszContainer(isCollectionItself: true)]
+public partial struct SszInclusionListMembership
+{
+    [SszVector(InclusionListMembership.BytesPerEntry)] public byte[]? Bits { get; set; }
+}
+
+/// <summary>An EIP-8369 builder claim, <c>InclusionListClaimV1</c>.</summary>
+[SszContainer]
+public partial struct InclusionListClaimWire
+{
+    public Hash256 TransactionHash { get; set; }
+    public ulong TransactionIndex { get; set; }
 }
 
 [SszContainer]
@@ -249,6 +266,10 @@ public partial struct NewPayloadV6RequestWire
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
     // Flattened aggregate: the per-member cap would reject aggregates the JSON path accepts.
     [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszTransaction[]? InclusionListTransactions { get; set; }
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public SszInclusionListMembership[]? InclusionListMembership { get; set; }
+    // Decoded past MAX_INCLUSION_LIST_CLAIMS so the engine answers an over-cap list with -32602, as over JSON;
+    // one claim per entry of the aggregate list is the transport's own bound.
+    [SszList(Eip7805Constants.MaxAggregateInclusionListTransactions)] public InclusionListClaimWire[]? InclusionListClaims { get; set; }
 }
 
 [SszContainer]
@@ -331,6 +352,17 @@ public partial struct GetPayloadResponseV6Wire
     public BlobsBundleV2Wire BlobsBundle { get; set; }
     [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
     public bool ShouldOverrideBuilder { get; set; }
+}
+
+[SszContainer]
+public partial struct GetPayloadResponseV7Wire
+{
+    public SszExecutionPayloadV4 ExecutionPayload { get; set; }
+    public UInt256 BlockValue { get; set; }
+    public BlobsBundleV2Wire BlobsBundle { get; set; }
+    [SszList(256)] public SszTransaction[]? ExecutionRequests { get; set; }
+    public bool ShouldOverrideBuilder { get; set; }
+    [SszList(Eip8369Constants.MaxInclusionListClaims)] public InclusionListClaimWire[]? InclusionListClaims { get; set; }
 }
 
 [SszContainer]

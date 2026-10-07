@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -11,6 +12,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Validators;
@@ -57,6 +59,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly IStateReader _stateReader;
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
+    private readonly ulong _focilProfile2MaxVerifyGas;
+    private readonly IProfile2EligibilityReplayer? _profile2Replayer;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -86,7 +90,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        IBlocksConfig blocksConfig,
+        ILogManager logManager,
+        IProfile2EligibilityReplayer? profile2Replayer = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -101,6 +107,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _stateReader = stateReader;
         _specProvider = specProvider;
         _txValidator = txValidator;
+        _focilProfile2MaxVerifyGas = blocksConfig.FocilProfile2MaxVerifyGas;
+        _profile2Replayer = profile2Replayer;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -407,15 +415,42 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool IsVerdictServiceable(Block block) =>
         _stateReader.HasStateForBlock(block.Header) || _blockTree.IsOnMainChainBehindFinalized(block.Header);
 
-    // An absent IL digests to default, matching non-IL cache entries.
+    // An absent IL digests to default, matching non-IL cache entries. The EIP-8369 membership and claims
+    // change the verdict too, so they are digested when present; input without them digests as before.
     private static ValueHash256 ComputeInclusionListDigest(Block block)
     {
         if (block.InclusionListTransactions is not { Length: > 0 } il) return default;
 
-        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(il.Length * Keccak.Size, out byte[] buffer);
-        Span<byte> span = buffer.AsSpan(0, il.Length * Keccak.Size);
+        ushort[] membership = block.InclusionListMembership ?? [];
+        InclusionListClaim[] claims = block.InclusionListClaims ?? [];
+        int size = il.Length * Keccak.Size;
+        if (block.InclusionListMembership is not null || block.InclusionListClaims is not null)
+            size += sizeof(int) * 2 + sizeof(ushort) * membership.Length + claims.Length * (Keccak.Size + sizeof(ulong));
+
+        using ArrayPoolDisposableReturn _ = ArrayPoolDisposableReturn.Rent(size, out byte[] buffer);
+        Span<byte> span = buffer.AsSpan(0, size);
         for (int i = 0; i < il.Length; i++)
             (il[i].Hash ?? Keccak.Zero).Bytes.CopyTo(span.Slice(i * Keccak.Size, Keccak.Size));
+
+        if (size > il.Length * Keccak.Size)
+        {
+            Span<byte> tail = span[(il.Length * Keccak.Size)..];
+            BinaryPrimitives.WriteInt32LittleEndian(tail, block.InclusionListMembership?.Length ?? -1);
+            tail = tail[sizeof(int)..];
+            foreach (ushort mask in membership)
+            {
+                BinaryPrimitives.WriteUInt16LittleEndian(tail, mask);
+                tail = tail[sizeof(ushort)..];
+            }
+            BinaryPrimitives.WriteInt32LittleEndian(tail, block.InclusionListClaims?.Length ?? -1);
+            tail = tail[sizeof(int)..];
+            foreach (InclusionListClaim claim in claims)
+            {
+                (claim.TransactionHash ?? Keccak.Zero).Bytes.CopyTo(tail);
+                BinaryPrimitives.WriteUInt64LittleEndian(tail[Keccak.Size..], claim.TransactionIndex);
+                tail = tail[(Keccak.Size + sizeof(ulong))..];
+            }
+        }
 
         return ValueKeccak.Compute(span);
     }
@@ -458,7 +493,21 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Undecodable entries are dropped rather than failing the answer: a censoring proposer must not be
         // able to escape the check by having one bad entry gossiped into the aggregate.
-        return IsInclusionListSatisfied(block, TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions);
+        Transaction[] inclusionList = TxsDecoder.DecodeTxs(inclusionListTransactions, skipErrors: true).Transactions;
+        // FCU retains only transaction bytes; it cannot reconstruct Profile 2 membership or builder claims.
+        HashSet<Hash256>? includedHashes = null;
+        foreach (Transaction transaction in inclusionList)
+        {
+            if (!transaction.SupportsFrames || Eip8369Profile2.Classify(transaction, _focilProfile2MaxVerifyGas) != Profile2Exclusion.None) continue;
+            if (includedHashes is null)
+            {
+                includedHashes = [];
+                foreach (Transaction included in block.Transactions)
+                    if (included.Hash is { } hash) includedHashes.Add(hash);
+            }
+            if (transaction.Hash is not { } candidateHash || !includedHashes.Contains(candidateHash)) return null;
+        }
+        return IsInclusionListSatisfied(block, inclusionList);
     }
 
     private bool? IsInclusionListSatisfied(Block block, Transaction[] inclusionList)
@@ -469,7 +518,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         SpecificBlockReadOnlyStateProvider state = new(_stateReader, block.Header);
         return spec.IsEip8037Enabled && block.Header.GasUsedPerDimension is null
             ? EvaluateWithUnknownGasDimensions(block, inclusionList, state, spec)
-            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator);
+            : InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, _profile2Replayer);
     }
 
     /// <summary>Answers only when every possible gas-dimension assignment gives the same verdict.</summary>
@@ -477,22 +526,47 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec)
     {
         state = new CachedAccountStateProvider(state);
+        IProfile2EligibilityReplayer? replayer = _profile2Replayer is null ? null : new RequestReplayer(_profile2Replayer);
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
             block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return false;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return false;
 
             block.Header.GasUsedPerDimension = (block.GasUsed, 0);
-            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator)) return null;
+            if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer)) return null;
 
             block.Header.GasUsedPerDimension = (0, block.GasUsed);
-            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator) ? true : null;
+            return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, _focilProfile2MaxVerifyGas, block.InclusionListMembership, block.InclusionListClaims, replayer) ? true : null;
         }
         finally
         {
             // Bounds must never escape as recorded execution totals, including through the payload cache.
             block.Header.GasUsedPerDimension = null;
+        }
+    }
+
+    private sealed class RequestReplayer(IProfile2EligibilityReplayer inner) : IProfile2EligibilityReplayer
+    {
+        private readonly Dictionary<(Transaction Transaction, int Index), bool> _verdicts = [];
+
+        public bool AreSignaturesValid(Transaction transaction, IReleaseSpec spec) => inner.AreSignaturesValid(transaction, spec);
+
+        public bool[] AreEligible(Block block, IReadOnlyList<(Transaction Transaction, int Index)> requests, IReleaseSpec spec)
+        {
+            List<(Transaction Transaction, int Index)> missing = [];
+            foreach ((Transaction transaction, int index) in requests)
+                if (!_verdicts.ContainsKey((transaction, index))) missing.Add((transaction, index));
+
+            if (missing.Count > 0)
+            {
+                bool[] evaluated = inner.AreEligible(block, missing, spec);
+                for (int i = 0; i < missing.Count; i++) _verdicts[missing[i]] = evaluated[i];
+            }
+
+            bool[] verdicts = new bool[requests.Count];
+            for (int i = 0; i < requests.Count; i++) verdicts[i] = _verdicts[requests[i]];
+            return verdicts;
         }
     }
 

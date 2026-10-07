@@ -20,6 +20,7 @@ public class Bogota() : NamedReleaseSpec<Bogota>(Amsterdam.Instance)
         spec.Name = "Bogota";
         spec.IsEip7805Enabled = true;
         spec.EngineApiNewPayloadVersion = EngineApiVersions.NewPayload.V6;
+        spec.EngineApiGetPayloadVersion = EngineApiVersions.GetPayload.V7;
         spec.EngineApiForkchoiceVersion = EngineApiVersions.Fcu.V5;
     }
 }

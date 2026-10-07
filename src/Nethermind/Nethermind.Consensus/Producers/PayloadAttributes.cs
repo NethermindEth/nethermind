@@ -28,6 +28,10 @@ public class PayloadAttributes
 
     public byte[][]? InclusionListTransactions { get; set; }
 
+    /// <summary>The <see cref="Core.InclusionListMembership"/> entry of each of <see cref="InclusionListTransactions"/>,
+    /// or <c>null</c> when none was sent (EIP-8369).</summary>
+    public byte[][]? InclusionListMembership { get; set; }
+
     public ulong? SlotNumber { get; set; }
 
     public ulong? TargetGasLimit { get; set; }
@@ -95,7 +99,8 @@ public class PayloadAttributes
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size) // parent beacon block root
         + (SlotNumber is null ? 0 : sizeof(ulong)) // slot number
         + (TargetGasLimit is null ? 0 : sizeof(ulong)) // target gas limit
-        + (InclusionListTransactions is null ? 0 : Keccak.Size); // inclusion list digest
+        + (InclusionListTransactions is null ? 0 : Keccak.Size) // inclusion list digest
+        + (InclusionListMembership is null ? 0 : Keccak.Size); // inclusion list membership digest
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
     {
@@ -147,6 +152,13 @@ public class PayloadAttributes
         if (InclusionListTransactions is not null)
         {
             ComputeInclusionListDigest(InclusionListTransactions).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
+        // Membership changes the EIP-8369 budget fill and so the claims, which a build of the same list must not share.
+        if (InclusionListMembership is not null)
+        {
+            ComputeInclusionListDigest(InclusionListMembership).BytesAsSpan.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 

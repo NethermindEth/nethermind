@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -48,6 +49,11 @@ namespace Nethermind.Consensus.Producers
 
         public long TxByteLength { get; internal set; }
 
-        public override Block WithReplacedHeader(BlockHeader newHeader) => new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals);
+        /// <summary>Hashes of the EIP-8369 Profile 2 candidates in the build's inclusion list, each of which the
+        /// build answers with a claim when it fails to append one; <c>null</c> when there are none.</summary>
+        public IReadOnlySet<Hash256AsKey>? InclusionListCandidates { get; set; }
+
+        public override Block WithReplacedHeader(BlockHeader newHeader) =>
+            new BlockToProduce(newHeader, Transactions, Uncles, Withdrawals) { InclusionListCandidates = InclusionListCandidates };
     }
 }

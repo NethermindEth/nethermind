@@ -13,5 +13,9 @@ public class GetPayloadV6Result(Block block, UInt256 blockFees, BlobsBundleV2 bl
     public override string ToString() =>
         $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}, ExecutionRequests count : {ExecutionRequests?.Length}}}";
 
-    public override bool ValidateFork(ISpecProvider specProvider) => specProvider.GetSpec(Block.Number, Block.Timestamp).BlockLevelAccessListsEnabled;
+    public override bool ValidateFork(ISpecProvider specProvider)
+    {
+        IReleaseSpec spec = specProvider.GetSpec(Block.Number, Block.Timestamp);
+        return spec.BlockLevelAccessListsEnabled && !spec.IsEip7805Enabled;
+    }
 }

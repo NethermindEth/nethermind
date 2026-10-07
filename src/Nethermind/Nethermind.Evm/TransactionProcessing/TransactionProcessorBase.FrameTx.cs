@@ -634,8 +634,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         try
         {
             using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
+            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
+            ulong maxVerifyGas = prefixTracer?.MaxVerifyGas ?? Eip8141Constants.MaxVerifyGas;
             TransactionResult prepared = PrepareValidationPrefixSimulation(
-                tx, opts, header, spec, in accessTracker,
+                tx, opts, header, spec, in accessTracker, maxVerifyGas, prefixTracer?.RecentRootAnchorSlot,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
             if (!prepared)
             {
@@ -643,7 +645,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             TxFrame[] frames = tx.Frames!;
-            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
@@ -669,7 +670,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 frameContext.CurrentFrameIndex = i;
 
-                TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
+                TxFrame boundedFrame = CapFrameGas(frame, maxVerifyGas - verifyGasUsed, out bool capped);
 
                 Address resolvedTarget = frame.Target ?? sender;
                 Address caller = Eip8141Constants.EntryPointAddress;
@@ -740,6 +741,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         BlockHeader header,
         IReleaseSpec spec,
         in StackAccessTracker accessTracker,
+        ulong maxVerifyGas,
+        ulong? recentRootAnchorSlot,
         out FrameTxContext frameContext,
         out UInt256 effectiveGasPrice,
         out ulong verifyGasUsed)
@@ -765,7 +768,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
         }
-        if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+        if (verifyGasUsed > maxVerifyGas)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
@@ -792,8 +795,9 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
 
         // RECENTROOTREFLOAD reads the envelope on the strength of this check, so it precedes the prefix.
-        // Anchored to the earliest slot the tx could execute in: the head slot is referenceable only from the next.
-        ulong? executionSlot = header.SlotNumber is { } headSlot ? headSlot + 1 : null;
+        // Anchored to the earliest slot the tx could execute in, the head slot being referenceable only from the
+        // next, unless the tracer names the slot: EIP-8369 replay judges the block's own.
+        ulong? executionSlot = recentRootAnchorSlot ?? (header.SlotNumber is { } headSlot ? headSlot + 1 : null);
         return RecentRootReferences.Validate(WorldState, tx.RecentRootReferences, executionSlot, in accessTracker)
             ? TransactionResult.Ok
             : TransactionResult.ErrorType.MalformedTransaction.WithDetail("recent root reference is not committed or out of range");

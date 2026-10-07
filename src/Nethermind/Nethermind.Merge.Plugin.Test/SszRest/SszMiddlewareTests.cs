@@ -113,6 +113,7 @@ public class SszMiddlewareTests
             new GetPayloadSszHandler<GetPayloadDescriptorV4, GetPayloadV4Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV5, GetPayloadV5Result>(_engineModule),
             new GetPayloadSszHandler<GetPayloadDescriptorV6, GetPayloadV6Result>(_engineModule),
+            new GetPayloadSszHandler<GetPayloadDescriptorV7, GetPayloadV7Result>(_engineModule),
 
             new GetInclusionListSszHandler(_engineModule),
 
@@ -1616,7 +1617,7 @@ public class SszMiddlewareTests
     public async Task NewPayloadV6_bogota_routes_to_engine_newPayloadV6()
     {
         _engineModule.engine_newPayloadV6(
-                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>())
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>())
             .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2
             {
                 Status = PayloadStatus.Valid,
@@ -1636,7 +1637,116 @@ public class SszMiddlewareTests
         Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
         Assert.That(ctx.Response.ContentType, Does.Contain(OctetStream));
         await _engineModule.Received(1).engine_newPayloadV6(
-            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>());
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>());
+    }
+
+    private static readonly byte[][] MembershipFixture = [[0x01, 0x00], [0x00, 0x80]];
+    private static readonly InclusionListClaim[] ClaimsFixture = [new(TestItem.KeccakB, 1), new(TestItem.KeccakC, 7)];
+
+    private static NewPayloadV6RequestWire NewPayloadV6WireWithMembershipAndClaims() => new()
+    {
+        ExecutionPayload = new SszExecutionPayloadV4(SszTestData.MakeV4Payload(blockAccessList: [0xc0], slotNumber: 0)),
+        ParentBeaconBlockRoot = TestItem.KeccakA,
+        InclusionListTransactions = [new SszTransaction { Bytes = new byte[] { 0x01 } }, new SszTransaction { Bytes = new byte[] { 0x02 } }],
+        InclusionListMembership = [.. MembershipFixture.Select(static m => new SszInclusionListMembership { Bits = m })],
+        InclusionListClaims = ClaimsFixture.ToWire(),
+    };
+
+    private static bool MembershipMatches(byte[][]? actual) =>
+        actual is { Length: 2 } && actual.Zip(MembershipFixture).All(static p => p.First.AsSpan().SequenceEqual(p.Second));
+
+    /// <summary>SSZ-REST newPayloadV6 carries membership and claims to the engine exactly as JSON does.</summary>
+    [Test]
+    public async Task NewPayloadV6_ssz_carries_membership_and_claims()
+    {
+        _engineModule.engine_newPayloadV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>())
+            .Returns(ResultWrapper<PayloadStatusV2>.Success(new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA, InclusionListSatisfied = true }));
+
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", NewPayloadV6RequestWire.Encode(NewPayloadV6WireWithMembershipAndClaims()), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        await _engineModule.Received(1).engine_newPayloadV6(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(),
+            Arg.Is<byte[][]?>(m => MembershipMatches(m)),
+            Arg.Is<InclusionListClaim[]?>(c => c != null && c.SequenceEqual(ClaimsFixture)));
+    }
+
+    /// <summary>An over-cap claim list decodes over SSZ and reaches the engine, so it is answered as the engine's
+    /// -32602 rather than as an SSZ decode failure.</summary>
+    [Test]
+    public async Task NewPayloadV6_ssz_reports_over_cap_claims_as_invalid_params()
+    {
+        _engineModule.engine_newPayloadV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(),
+                Arg.Is<InclusionListClaim[]?>(c => c != null && c.Length > Eip8369Constants.MaxInclusionListClaims))
+            .Returns(ResultWrapper<PayloadStatusV2>.Fail("Inclusion list claims exceed the maximum", ErrorCodes.InvalidParams));
+
+        NewPayloadV6RequestWire wire = NewPayloadV6WireWithMembershipAndClaims();
+        wire.InclusionListClaims = [.. Enumerable.Repeat(new InclusionListClaimWire { TransactionHash = TestItem.KeccakA }, Eip8369Constants.MaxInclusionListClaims + 1)];
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/payloads", NewPayloadV6RequestWire.Encode(wire), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            // SSZ-REST's rendering of any engine -32602: 400 with the invalid-request problem type and the engine's detail.
+            string body = System.Text.Encoding.UTF8.GetString(ResponseBytes(ctx));
+            Assert.That(ctx.Response.StatusCode, Is.EqualTo(StatusCodes.Status400BadRequest));
+            Assert.That(body, Does.Contain("/engine-api/errors/invalid-request"));
+            Assert.That(body, Does.Contain("Inclusion list claims exceed the maximum"));
+        }
+    }
+
+    /// <summary>SSZ-REST newPayloadWithWitnessV6 carries membership and claims to the engine exactly as JSON does.</summary>
+    [Test]
+    public async Task NewPayloadWithWitnessV6_ssz_carries_membership_and_claims()
+    {
+        _engineModule.engine_newPayloadWithWitnessV6(
+                Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(), Arg.Any<InclusionListClaim[]?>())
+            .Returns(ResultWrapper<NewPayloadWithWitnessV1Result>.Success(NewPayloadWithWitnessV1Result.FromPayloadStatus(
+                new PayloadStatusV1 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }, null)));
+
+        DefaultHttpContext ctx = MakePostContext(WitnessPath, NewPayloadV6RequestWire.Encode(NewPayloadV6WireWithMembershipAndClaims()), fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_newPayloadWithWitnessV6(
+            Arg.Any<ExecutionPayloadV4>(), Arg.Any<Hash256?[]>(), Arg.Any<Hash256?>(), Arg.Any<byte[][]?>(), Arg.Any<byte[][]?>(),
+            Arg.Is<byte[][]?>(m => MembershipMatches(m)),
+            Arg.Is<InclusionListClaim[]?>(c => c != null && c.SequenceEqual(ClaimsFixture)));
+    }
+
+    /// <summary>SSZ-REST forkchoiceUpdatedV5 carries the attributes' membership to the engine.</summary>
+    [Test]
+    public async Task ForkchoiceUpdatedV5_ssz_carries_membership()
+    {
+        _specProvider.GetSpec(Arg.Any<ForkActivation>()).Returns(Bogota.Instance);
+        _engineModule.engine_forkchoiceUpdatedV5(Arg.Any<ForkchoiceStateV1>(), Arg.Any<PayloadAttributes?>(), Arg.Any<BitArray?>())
+            .Returns(ResultWrapper<ForkchoiceUpdatedV2Result>.Success(new ForkchoiceUpdatedV2Result
+            {
+                PayloadStatus = new PayloadStatusV2 { Status = PayloadStatus.Valid, LatestValidHash = TestItem.KeccakA }
+            }));
+
+        byte[] body = ForkchoiceUpdatedV5RequestWire.Encode(new ForkchoiceUpdatedV5RequestWire
+        {
+            ForkchoiceState = new ForkchoiceStateWire { HeadBlockHash = TestItem.KeccakA, SafeBlockHash = TestItem.KeccakB, FinalizedBlockHash = Keccak.Zero },
+            PayloadAttributes =
+            [
+                new PayloadAttributesV5Wire
+                {
+                    Timestamp = 1, PrevRandao = TestItem.KeccakC, SuggestedFeeRecipient = TestItem.AddressA, Withdrawals = [],
+                    ParentBeaconBlockRoot = TestItem.KeccakD, SlotNumber = 1, TargetGasLimit = 30_000_000,
+                    InclusionListTransactions = [new SszTransaction { Bytes = new byte[] { 0x01 } }, new SszTransaction { Bytes = new byte[] { 0x02 } }],
+                    InclusionListMembership = [.. MembershipFixture.Select(static m => new SszInclusionListMembership { Bits = m })],
+                },
+            ],
+            CustodyColumns = [],
+        });
+        DefaultHttpContext ctx = MakePostContext("/engine/v1/forkchoice", body, fork: "bogota");
+        await _middleware.InvokeAsync(ctx);
+
+        await _engineModule.Received(1).engine_forkchoiceUpdatedV5(
+            Arg.Any<ForkchoiceStateV1>(), Arg.Is<PayloadAttributes?>(pa => pa != null && MembershipMatches(pa.InclusionListMembership)), Arg.Any<BitArray?>());
     }
 
     [Test]

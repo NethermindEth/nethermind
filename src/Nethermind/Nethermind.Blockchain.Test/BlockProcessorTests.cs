@@ -1896,7 +1896,7 @@ public partial class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(HoodiSpecProvider.Instance, Substitute.For<ITxValidator>(), new BlocksConfig()),
             LimboLogs.Instance,
             preWarmer);
 
@@ -3545,7 +3545,7 @@ public partial class BlockProcessorTests
             specProvider,
             stateProvider,
             Substitute.For<IBlockhashProvider>(),
-            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>()),
+            new InclusionListSatisfactionChecker(specProvider, Substitute.For<ITxValidator>(), new BlocksConfig()),
             LimboLogs.Instance);
 
         return new(block, stateHeaderProvider.Parent!, balManager, handler, executor, branchProcessor, container);

@@ -183,6 +183,17 @@ public static class SszCodec
             ShouldOverrideBuilder = r.ShouldOverrideBuilder
         }, writer);
 
+    public static int EncodeGetPayloadV7Response(GetPayloadV7Result? r, IBufferWriter<byte> writer)
+        => EncodeToWriter(new GetPayloadResponseV7Wire
+        {
+            ExecutionPayload = new SszExecutionPayloadV4(r!.ExecutionPayload),
+            BlockValue = r.BlockValue,
+            BlobsBundle = r.BlobsBundle.ToWire(),
+            ExecutionRequests = r.ExecutionRequests.ToExecutionRequestsWire(),
+            ShouldOverrideBuilder = r.ShouldOverrideBuilder,
+            InclusionListClaims = r.InclusionListClaims.ToWire()
+        }, writer);
+
     public static byte[][] DecodeGetBlobsRequest(ReadOnlySequence<byte> buf)
     {
         GetBlobsRequestWire.Decode(buf, out GetBlobsRequestWire wire);
@@ -446,6 +457,7 @@ public static class SszCodec
             slotNumber: pa.SlotNumber,
             targetGasLimit: pa.TargetGasLimit);
         attributes.InclusionListTransactions = pa.InclusionListTransactions.ToExecutionRequests();
+        attributes.InclusionListMembership = pa.InclusionListMembership.ToMembership() ?? [];
         return attributes;
     }
 
