@@ -616,8 +616,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     }
 
     // Experiment only: the account the predicted changes make of the pre-block one (storage root left out), null when gone.
-    private static (bool Exists, ulong Nonce, UInt256 Balance, ValueHash256 CodeHash) SimulateAccount(Account? parent, List<PredictedAccountEffect> effects)
+    internal static (bool Exists, ulong Nonce, UInt256 Balance, ValueHash256 CodeHash) SimulateAccount(Account? parent, List<PredictedAccountEffect> effects)
     {
+        // A prediction that does not hold can subtract more than it added: such an account is simply not as predicted.
+        bool unreliable = false;
         bool exists = parent is not null;
         ulong nonce = parent?.Nonce ?? 0;
         UInt256 balance = parent?.Balance ?? UInt256.Zero;
@@ -637,18 +639,21 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         codeHash = Keccak.OfAnEmptyString.ValueHash256;
                     }
 
-                    balance += effect.Value;
+                    unreliable |= UInt256.AddOverflow(balance, effect.Value, out UInt256 sum);
+                    balance = sum;
                     touched = true;
                     break;
                 case PredictedAccountOp.SubtractBalance:
-                    balance -= effect.Value;
+                    if (balance < effect.Value) unreliable = true;
+                    else balance -= effect.Value;
                     touched = true;
                     break;
                 case PredictedAccountOp.IncrementNonce:
-                    nonce += effect.Nonce;
+                    unchecked { nonce += effect.Nonce; }
                     break;
                 case PredictedAccountOp.DecrementNonce:
-                    nonce -= effect.Nonce;
+                    if (nonce < effect.Nonce) unreliable = true;
+                    else nonce -= effect.Nonce;
                     break;
                 case PredictedAccountOp.SetNonce:
                     nonce = effect.Nonce;
@@ -670,7 +675,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         // EIP-158: a touched account left empty is removed.
         if (exists && touched && nonce == 0 && balance.IsZero && codeHash == Keccak.OfAnEmptyString.ValueHash256) exists = false;
-        return (exists, nonce, balance, codeHash);
+        // An unreliable simulation compares unequal to any account: a nonce no account can have.
+        return unreliable ? (true, ulong.MaxValue, UInt256.MaxValue, default) : (exists, nonce, balance, codeHash);
     }
 
     private static bool SameFields((bool Exists, ulong Nonce, UInt256 Balance, ValueHash256 CodeHash) predicted, Account? account) =>
@@ -680,6 +686,19 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     // Experiment only, dry run: compares an account the write batch sets with the prediction, before the bundle takes it.
     private void CompareAccount(AddressAsKey key, Account? account)
+    {
+        // Diagnostics: whatever happens here must not reach the block.
+        try
+        {
+            CompareAccountCore(key, account);
+        }
+        catch (Exception)
+        {
+            Interlocked.Increment(ref PredictedStorageCounters.DryAccountsInexact);
+        }
+    }
+
+    private void CompareAccountCore(AddressAsKey key, Account? account)
     {
         Interlocked.Increment(ref PredictedStorageCounters.DryAccountsTotal);
         if (_batchPredictedAccounts is not { } predicted || !predicted.Remove(key, out List<PredictedAccountEffect>? effects))
@@ -696,10 +715,17 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private void CountAccountLeftovers()
     {
         if (Interlocked.Exchange(ref _batchPredictedAccounts, null) is not { } predicted) return;
-        foreach ((AddressAsKey key, List<PredictedAccountEffect> effects) in predicted)
+        try
         {
-            Account? parent = _snapshotBundle.GetAccount(key);
-            if (!SameFields(SimulateAccount(parent, effects), parent)) Interlocked.Increment(ref PredictedStorageCounters.DryAccountsLeftover);
+            foreach ((AddressAsKey key, List<PredictedAccountEffect> effects) in predicted)
+            {
+                Account? parent = _snapshotBundle.GetAccount(key);
+                if (!SameFields(SimulateAccount(parent, effects), parent)) Interlocked.Increment(ref PredictedStorageCounters.DryAccountsLeftover);
+            }
+        }
+        catch (Exception)
+        {
+            // Diagnostics only.
         }
     }
 

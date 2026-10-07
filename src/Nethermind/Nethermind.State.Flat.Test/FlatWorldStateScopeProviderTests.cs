@@ -918,6 +918,25 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void PredictedAccount_ThatSpendsMoreThanItHasIsNotAsPredictedRatherThanThrowing()
+    {
+        (bool exists, ulong nonce, UInt256 balance, ValueHash256 _) = FlatWorldStateScope.SimulateAccount(new Account(1, 5),
+            [new PredictedAccountEffect(PredictedAccountOp.SubtractBalance, 10, 0, default), new PredictedAccountEffect(PredictedAccountOp.DecrementNonce, 0, 3, default)]);
+
+        Assert.That((exists, nonce, balance), Is.EqualTo((true, ulong.MaxValue, UInt256.MaxValue)));
+    }
+
+    [Test]
+    public void PredictedAccount_FollowsTheChangesInOrder()
+    {
+        (bool exists, ulong nonce, UInt256 balance, ValueHash256 _) = FlatWorldStateScope.SimulateAccount(new Account(1, 5),
+            [new PredictedAccountEffect(PredictedAccountOp.AddBalance, 0x4e4d, 0, default), new PredictedAccountEffect(PredictedAccountOp.SubtractBalance, 4, 0, default),
+             new PredictedAccountEffect(PredictedAccountOp.IncrementNonce, 0, 1, default)]);
+
+        Assert.That((exists, nonce, balance), Is.EqualTo((true, 2UL, (UInt256)(5 + 0x4e4d - 4))));
+    }
+
+    [Test]
     public void PredictedStorage_OnAnExistingTrieReachesTheSameRoot([Values(1, 2, 3, 4)] int seed, [Values] bool deferStorageTrieCommit,
         [Values] bool concurrentWarmup, [Values] bool predict, [Values(-1, 0, 1, 2, 3)] int onlyKind)
     {
