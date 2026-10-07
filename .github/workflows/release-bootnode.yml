@@ -3,6 +3,11 @@ name: Release Bootnode
 on:
   workflow_dispatch:
     inputs:
+      prerelease:
+        description: Mark the GitHub release as a prerelease.
+        required: true
+        type: boolean
+        default: true
       publish_latest:
         description: Also publish Docker latest.
         required: true
@@ -32,6 +37,7 @@ jobs:
       release-name: ${{ steps.version.outputs.release-name }}
       version: ${{ steps.version.outputs.version }}
       package-prefix: ${{ steps.version.outputs.package-prefix }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
       publish-latest: ${{ steps.version.outputs.publish-latest }}
     steps:
       - name: Check out repository
@@ -41,6 +47,7 @@ jobs:
         id: version
         env:
           GH_TOKEN: ${{ github.token }}
+          INPUT_PRERELEASE: ${{ inputs.prerelease }}
           INPUT_PUBLISH_LATEST: ${{ inputs.publish_latest }}
         run: |
           # The same derivation that feeds the image's OCI version label, so the tag and the label
@@ -56,6 +63,11 @@ jobs:
 
           if [[ ! "$version" =~ ^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$ ]] || ! git check-ref-format --allow-onelevel "refs/tags/$release_tag"; then
             echo "Bootnode version '$version' must produce valid Docker and Git tags."
+            exit 1
+          fi
+
+          if [[ "$INPUT_PRERELEASE" == "true" && "$INPUT_PUBLISH_LATEST" == "true" ]]; then
+            echo "::error::A prerelease cannot also be published as latest."
             exit 1
           fi
 
@@ -87,6 +99,7 @@ jobs:
           echo "release-name=$release_name" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "package-prefix=$package_prefix" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$INPUT_PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "publish-latest=$INPUT_PUBLISH_LATEST" >> "$GITHUB_OUTPUT"
           echo "PACKAGE_PREFIX=$package_prefix" >> "$GITHUB_ENV"
 
@@ -167,6 +180,7 @@ jobs:
           RELEASE_TAG: ${{ needs.build.outputs.release-tag }}
           RELEASE_NAME: ${{ needs.build.outputs.release-name }}
           RELEASE_VERSION: ${{ needs.build.outputs.version }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
         run: |
           relnotes=$(cat <<EOF
           # Release notes
@@ -191,6 +205,7 @@ jobs:
               --target "$GITHUB_SHA" \
               -t "$RELEASE_NAME" \
               -d \
+              --prerelease="$PRERELEASE" \
               -F <(printf '%s' "$relnotes")
           fi
 
@@ -227,6 +242,7 @@ jobs:
           gh release edit "$RELEASE_TAG" \
             -t "$RELEASE_NAME" \
             --draft=false \
+            --prerelease="$PRERELEASE" \
             --latest=false
 
   publish-docker:

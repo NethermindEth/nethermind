@@ -378,7 +378,7 @@ public class HistoryWindowPrunerTests
             Assert.That(storageRowsAfterFirstPass, Is.EqualTo(1), "the pass budget is shared, so storage must not start once accounts exhausted it");
             Assert.That(markersAfterFirstPass, Is.EqualTo(1), "nor must the block markers");
             Assert.That(completed, Is.True, "later passes resume every column from its cursor and finish the cycle");
-            Assert.That(passes, Is.EqualTo(4), "one budgeted row per pass across the columns: two accounts, one storage row, one marker");
+            Assert.That(passes, Is.EqualTo(3), "one budgeted row per pass: two accounts, one storage row; the marker range delete takes no budget");
             Assert.That(CountRows(FlatHistoryColumns.AccountHistory), Is.EqualTo(0));
             Assert.That(CountRows(FlatHistoryColumns.StorageHistory), Is.EqualTo(0));
             Assert.That(CountBlockMarkers(), Is.EqualTo(0));
@@ -495,6 +495,102 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    [TestCase(null, 12UL, TestName = "PruneBlockMarkers_WithNoSliceScope_RemovesMarkersBelowTheGlobalFloorOnly")]
+    [TestCase(5UL, 5UL, TestName = "PruneBlockMarkers_WithASliceScopeBelowTheGlobalFloor_KeepsMarkersDownToTheScopeFloor")]
+    public void PruneBlockMarkers_AfterACompletedPass_RemovesOnlyMarkersBelowTheMarkerFloorAndKeepsEveryReservedKey(ulong? scopeFloor, ulong expectedMarkerFloor)
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8: the global floor publishes at 12.
+        // 2. Optionally a slice scope at 5, which must keep its markers down to 5.
+        // 3. A marker sweep cursor left by an older binary that yielded mid-sweep.
+        // 4. One completed pass leaves exactly the markers at or above the marker floor and every reserved key.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        byte[] scopeRecordKey = [.. "history:floor:scope:"u8, .. HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB)];
+        if (scopeFloor is { } floor)
+        {
+            new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), floor);
+        }
+
+        byte[] legacyMarkerCursorKey = "history:prune:cursor:blocks"u8.ToArray();
+        availableBlocks.PutSpan(legacyMarkerCursorKey, BlockKey(3));
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool completed = pruner.RunOnePass(CancellationToken.None);
+
+        List<ulong> markers = [];
+        List<byte[]> reservedKeys = [];
+        foreach (KeyValuePair<byte[], byte[]> entry in availableBlocks.GetAll(ordered: true))
+        {
+            if (entry.Key.Length == sizeof(ulong)) markers.Add(BinaryPrimitives.ReadUInt64BigEndian(entry.Key));
+            else reservedKeys.Add(entry.Key);
+        }
+
+        List<byte[]> expectedReservedKeys =
+        [
+            "history:watermark"u8.ToArray(),
+            "history:format"u8.ToArray(),
+            "history:floor:global"u8.ToArray(),
+            legacyMarkerCursorKey,
+        ];
+        if (scopeFloor is not null) expectedReservedKeys.Add(scopeRecordKey);
+
+        List<ulong> expectedMarkers = [];
+        for (ulong block = expectedMarkerFloor; block <= 20; block++) expectedMarkers.Add(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "precondition: the pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(11), Is.True, "precondition: the global floor published at 12");
+            Assert.That(markers, Is.EqualTo(expectedMarkers),
+                "every marker below the marker floor is gone, including those below the stale cursor, and every marker at or above it stays");
+            Assert.That(reservedKeys, Is.EquivalentTo(expectedReservedKeys),
+                "the reserved keys sort above every marker below the floor, so the marker range never reaches them");
+        }
+    }
+
+    [Test]
+    public void PruneBlockMarkers_WithTheMarkerFloorPinnedByASliceScope_DoesNotDeleteTheSameRangeAgain()
+    {
+        // 1. Markers for blocks 0..20, watermark 20, retention 8, a slice scope pinned at 5: the first cycle deletes
+        //    the markers below 5.
+        // 2. A probe marker is put back at block 2, below the pinned marker floor.
+        // 3. The watermark moves to 21, so the global floor advances while the marker floor stays at 5.
+        // 4. The second cycle must not range-delete [0, 5) again, so the probe survives.
+        IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
+        for (ulong block = 0; block <= 20; block++)
+        {
+            HistoryColumnsWriter.MarkBlockV3(_historyColumns, block, ValueKeccak.Compute(BlockKey(block)));
+        }
+
+        HistoryColumnsWriter.RecordAccountV3(_historyColumns, Address, 0, new Account(0, 0));
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 20);
+        new HistoryAvailability(availableBlocks).PublishScope(HistoryColumnsWriter.ScopeKeyOf(TestItem.AddressB), 5);
+
+        using HistoryWindowPruner pruner = CreatePruner(retentionBlocks: 8);
+        bool firstCycle = pruner.RunOnePass(CancellationToken.None);
+        bool belowScopeFloorDeletedByFirstCycle = availableBlocks.Get(BlockKey(4)) is null;
+
+        availableBlocks.PutSpan(BlockKey(2), ValueKeccak.Compute(BlockKey(2)).Bytes);
+        HistoryColumnsWriter.SetWatermarkV3(_historyColumns, 21);
+        bool secondCycle = pruner.RunOnePass(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(firstCycle, Is.True, "precondition: the first pass must finish a whole cycle");
+            Assert.That(belowScopeFloorDeletedByFirstCycle, Is.True, "precondition: the first cycle deleted the markers below the scope floor");
+            Assert.That(secondCycle, Is.True, "precondition: the second pass must finish a whole cycle");
+            Assert.That(_reader.IsPrunedBelowFloor(12), Is.True, "precondition: the global floor advanced to 13");
+            Assert.That(availableBlocks.Get(BlockKey(2)), Is.Not.Null,
+                "the marker floor did not move, so the second cycle must not issue the same range delete again");
+        }
+    }
+
     private void SeedLongLiveTails()
     {
         foreach (Address address in new[] { Address, SlicedAddress })
@@ -553,6 +649,13 @@ public class HistoryWindowPrunerTests
 
         blocks.Sort();
         return blocks;
+    }
+
+    private static byte[] BlockKey(ulong block)
+    {
+        byte[] key = new byte[sizeof(ulong)];
+        BinaryPrimitives.WriteUInt64BigEndian(key, block);
+        return key;
     }
 
     private void RecordClear(StorageClearStore clears, byte[] accountKey, ulong block)
@@ -625,7 +728,7 @@ public class HistoryWindowPrunerTests
         public void Dispose() { }
     }
 
-    private sealed class NonSeekingDb(IDb inner) : IDb, ISortedKeyValueStore
+    private sealed class NonSeekingDb(IDb inner) : IDb, ISortedKeyValueStore, IRangeRemovableKeyValueStore
     {
         private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
 
@@ -637,6 +740,8 @@ public class HistoryWindowPrunerTests
 
         public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
         public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+        public void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).RemoveRange(firstKeyInclusive, lastKeyExclusive);
+        public void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive) => ((IRangeRemovableKeyValueStore)inner).ReclaimRange(firstKeyInclusive, lastKeyExclusive);
         public string Name => inner.Name;
         public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);

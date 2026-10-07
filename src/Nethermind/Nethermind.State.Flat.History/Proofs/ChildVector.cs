@@ -8,6 +8,7 @@ namespace Nethermind.State.Flat.History.Proofs;
 internal sealed class ChildVector
 {
     public const int SlotSize = Hash256.Size;
+    public const int SerializedLength = BranchRlp.ChildCount * (1 + SlotSize);
     private const int PoolCapacityPerThread = 512;
     [ThreadStatic]
     private static Stack<ChildVector>? t_pool;
@@ -68,6 +69,18 @@ internal sealed class ChildVector
     {
         other._bytes.CopyTo(_bytes.AsSpan());
         other._lengths.CopyTo(_lengths.AsSpan());
+    }
+
+    public void WriteTo(Span<byte> destination)
+    {
+        _lengths.CopyTo(destination);
+        _bytes.CopyTo(destination[BranchRlp.ChildCount..]);
+    }
+
+    public void ReadFrom(ReadOnlySpan<byte> source)
+    {
+        source[..BranchRlp.ChildCount].CopyTo(_lengths);
+        source.Slice(BranchRlp.ChildCount, _bytes.Length).CopyTo(_bytes);
     }
 
     public bool SameChild(int index, ChildVector other) =>

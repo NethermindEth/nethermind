@@ -16,6 +16,7 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.JsonRpc.Modules.Eth
@@ -27,7 +28,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private abstract class TxExecutor<TResult>(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider)
             : ExecutorBase<TResult, TransactionForRpc, Transaction>(blockchainBridge, blockFinder, rpcConfig)
         {
-            protected bool NoBaseFee { get; set; }
+            protected bool NoBaseFee { get; private set; }
             private BlockOverride? _blockOverride;
             private CancellationToken _requestToken;
             protected BlockOverride? BlockOverride => _blockOverride;
@@ -215,50 +216,61 @@ namespace Nethermind.JsonRpc.Modules.Eth
             }
         }
 
-        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, bool optimize)
+        private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, CreateAccessListTxExecutor.FeeDefaults feeDefaults, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
             private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
             private const string ZeroGasPriceAfterLondon = "gasPrice must be non-zero after london fork";
             private const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
 
-            private BigInteger? _feeCapBeyond256Bits;
-
             protected override bool ValidatesFeeCapOrder => false;
 
             // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
             protected override bool AcceptsZeroBlobFeeCap => false;
 
+            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header) =>
+                feeDefaults.Error is { } feeDefaultsError ? feeDefaultsError : base.Prepare(call, header);
+
+            /// <summary>What filling a request's fee defaults found: the rule it broke, and a filled fee cap wider than 256 bits.</summary>
+            public readonly record struct FeeDefaults(string? Error, BigInteger? FeeCapBeyond256Bits);
+
+            /// <summary>Fills the missing half of <paramref name="call"/>'s fee pair against <paramref name="header"/>.</summary>
             /// <remarks>
             /// The fee fields follow the defaults a transaction about to be sent gets, so a malformed pair is reported
             /// with its values in hexadecimal, as the request carried them, rather than failing where the fees are
-            /// applied. A priority fee without a fee cap gets a fee cap of the priority fee plus twice the block's base
-            /// fee. A missing priority fee would be suggested by the fee oracle, so those shapes keep their own handling.
+            /// applied. A request that sets one of the fee cap and priority fee after London gets the other before it
+            /// is priced: a missing priority fee is the node's suggested one, and a missing fee cap is the priority fee
+            /// plus twice the block's base fee. A request with no fee field at all stays unpriced, so a sender that
+            /// cannot afford fees the node would pick can still get its access list.
             /// </remarks>
-            protected override Result<Transaction> Prepare(TransactionForRpc call, BlockHeader header)
+            public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
-                bool isLondon = GetSpec(header).IsEip1559Enabled;
                 if (FeeDefaultsError(call, isLondon) is { } feeDefaultsError)
-                    return feeDefaultsError;
+                    return new FeeDefaults(feeDefaultsError, null);
 
-                Result<Transaction> result = base.Prepare(call, header);
-                if (result.IsError
-                    || !isLondon
-                    || call is not EIP1559TransactionForRpc { GasPrice: null, MaxFeePerGas: null, MaxPriorityFeePerGas: { } priorityFee })
+                // Before London the rules above leave no fee field to fill.
+                if (!isLondon
+                    || call is not EIP1559TransactionForRpc { GasPrice: null } request
+                    || request.MaxFeePerGas is null == request.MaxPriorityFeePerGas is null)
                 {
-                    return result;
+                    return default;
+                }
+
+                UInt256 priorityFee = request.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
+                if (request.MaxFeePerGas is { } feeCap)
+                {
+                    return feeCap < priorityFee
+                        ? new FeeDefaults($"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})", null)
+                        : default;
                 }
 
                 // The fee cap is filled without a bound and applied as its low 256 bits, which then sit below the
                 // priority fee; the error names the transaction with the fee cap it was filled with.
-                BigInteger feeCap = (BigInteger)priorityFee + (BigInteger)header.BaseFeePerGas * 2;
-                Transaction tx = result.Data;
-                tx.DecodedMaxFeePerGas = (UInt256)(feeCap & (BigInteger)UInt256.MaxValue);
-                NoBaseFee = tx.MaxFeePerGas.IsZero && tx.MaxPriorityFeePerGas.IsZero;
-                if (feeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc))
-                    _feeCapBeyond256Bits = feeCap;
-
-                return tx;
+                BigInteger filledFeeCap = (BigInteger)priorityFee + (BigInteger)header.BaseFeePerGas * 2;
+                request.MaxFeePerGas = (UInt256)(filledFeeCap & (BigInteger)UInt256.MaxValue);
+                return filledFeeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc)
+                    ? new FeeDefaults(null, filledFeeCap)
+                    : default;
             }
 
             private static string? FeeDefaultsError(TransactionForRpc call, bool isLondon)
@@ -315,7 +327,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 if (result.InputError)
                 {
-                    Hash256 txHash = _feeCapBeyond256Bits is { } feeCap ? HashWithFeeCap(tx, feeCap) : tx.Hash ?? tx.CalculateHash();
+                    Hash256 txHash = feeDefaults.FeeCapBeyond256Bits is { } feeCap ? HashWithFeeCap(tx, feeCap) : tx.Hash ?? tx.CalculateHash();
                     string wrapped = ErrorWrapper.CreateAccessList(result.Error!, txHash);
                     return ResultWrapper<AccessListResultForRpc?>.Fail(wrapped, ErrorCodes.InvalidInput);
                 }
