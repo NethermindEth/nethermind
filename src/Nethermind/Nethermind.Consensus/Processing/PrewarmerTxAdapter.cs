@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -33,19 +34,28 @@ public class PrewarmerTxAdapter(
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
 
+    private byte _outcome; // BENCH ONLY
+
     public TransactionResult Execute(Transaction transaction, ITxTracer txTracer)
     {
         if (!prewarmerState.IsPrewarmer)
         {
+            long t0 = Stopwatch.GetTimestamp(); // BENCH ONLY
+            _outcome = MainThreadExecDiag.NotTried; // BENCH ONLY
             preWarmer.OnBeforeTxExecution();
             if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
                 && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
+                MainThreadExecDiag.Replayed(Stopwatch.GetElapsedTime(t0).TotalMilliseconds, (long)transaction.SpentGas); // BENCH ONLY
                 return result;
             }
 
             // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
-            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
+            TransactionResult executed = prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites
+                ? ExecuteReportingWrites(transaction, txTracer, committed)
+                : baseAdapter.Execute(transaction, txTracer);
+            MainThreadExecDiag.Executed(_outcome, transaction, Stopwatch.GetElapsedTime(t0).TotalMilliseconds); // BENCH ONLY
+            return executed;
         }
 
         return baseAdapter.Execute(transaction, txTracer);
@@ -67,6 +77,7 @@ public class PrewarmerTxAdapter(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _blockExecutionContext = blockExecutionContext;
+        if (!prewarmerState.IsPrewarmer) MainThreadExecDiag.OnBlock(blockExecutionContext.Header, _logger); // BENCH ONLY
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
 
@@ -75,12 +86,14 @@ public class PrewarmerTxAdapter(
         result = default;
         if (footprint is null)
         {
+            _outcome = MainThreadExecDiag.Missing; // BENCH ONLY
             Tally = Tally with { Missing = Tally.Missing + 1 };
             Blockchain.Metrics.PrewarmHandoffsMissing++;
             return false;
         }
 
         // Any tracer beyond the receipt would miss the execution that does not happen.
+        _outcome = MainThreadExecDiag.Ineligible; // BENCH ONLY
         if (txTracer is not BlockReceiptsTracer { IsTracingOnlyReceipts: true }) return false;
 
         BlockHeader header = _blockExecutionContext.Header;
@@ -90,6 +103,7 @@ public class PrewarmerTxAdapter(
 
         if (!footprint.Matches(worldState))
         {
+            _outcome = MainThreadExecDiag.Rejected; // BENCH ONLY
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;
             return false;
@@ -103,6 +117,7 @@ public class PrewarmerTxAdapter(
         catch (Exception ex)
         {
             worldState.Restore(snapshot);
+            _outcome = MainThreadExecDiag.Failed; // BENCH ONLY
             Blockchain.Metrics.PrewarmHandoffFailures++;
             if (_logger.IsDebug) _logger.Debug($"Executing transaction {tx.Hash}, its pre-warm footprint failed to apply: {ex}");
             return false;
