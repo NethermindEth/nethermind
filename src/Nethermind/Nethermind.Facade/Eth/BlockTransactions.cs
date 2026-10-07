@@ -194,8 +194,7 @@ public sealed class BlockTransactionsConverter : JsonConverter<BlockTransactions
 
     private static TransactionForRpc? TakeReusable(TransactionForRpc?[] reused, BlockTransactions value, int index, out int slot)
     {
-        Type? type = TransactionForRpc.TransactionJsonConverter.GetRegisteredType(value.GetSourceType(index));
-        slot = type is null ? -1 : TransactionForRpc.TransactionJsonConverter.GetRepopulatableSlot(type);
+        slot = TransactionForRpc.TransactionJsonConverter.GetRepopulatableSlot(value.GetSourceType(index));
         return slot >= 0 ? reused[slot] : null;
     }
 

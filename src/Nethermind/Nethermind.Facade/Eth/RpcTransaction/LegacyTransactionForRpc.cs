@@ -16,6 +16,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 [GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class LegacyTransactionForRpc : SignableTransactionForRpc, ITxTyped, IFromTransaction<LegacyTransactionForRpc>, IJsonOnDeserializing, IJsonOnDeserialized
 {
     public static TxType TxType => TxType.Legacy;

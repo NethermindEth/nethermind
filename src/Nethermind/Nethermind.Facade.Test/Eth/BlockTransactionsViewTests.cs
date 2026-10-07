@@ -30,6 +30,34 @@ public class BlockTransactionsViewTests
     private static readonly TransactionForRpcContext Mined = new(BlockchainIds.Mainnet, TestItem.KeccakB, 25_000_000, 7, 1_700_000_000, 10);
 
     [Test]
+    public void Registered_transaction_types_have_distinct_reuse_slots()
+    {
+        int[] slots = DiverseTransactions().Select(static entry => entry.Tx.Type).Distinct()
+            .Select(TransactionForRpc.TransactionJsonConverter.GetRepopulatableSlot).ToArray();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(slots, Is.Unique);
+            Assert.That(slots, Is.All.InRange(0, TransactionForRpc.TransactionJsonConverter.RepopulatableSlotCount - 1));
+        }
+    }
+
+    [Test]
+    public void Derived_transaction_type_does_not_inherit_reuse()
+    {
+        TransactionForRpc.RegisterTransactionType<CustomTransactionForRpc>();
+
+        Assert.That(TransactionForRpc.TransactionJsonConverter.GetRepopulatableSlot(CustomTransactionForRpc.TxType), Is.EqualTo(-1));
+    }
+
+    private sealed class CustomTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<CustomTransactionForRpc>
+    {
+        public new static TxType TxType => (TxType)0x7e;
+
+        public new static CustomTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => new();
+    }
+
+    [Test]
     public void Refilling_an_instance_writes_what_a_fresh_one_writes()
     {
         (string Name, Transaction Tx)[] transactions = DiverseTransactions();

@@ -11,6 +11,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 [GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class EIP1559TransactionForRpc : AccessListTransactionForRpc, IFromTransaction<EIP1559TransactionForRpc>
 {
     public new static TxType TxType => TxType.EIP1559;

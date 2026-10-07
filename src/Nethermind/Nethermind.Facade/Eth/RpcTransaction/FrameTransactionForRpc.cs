@@ -11,6 +11,7 @@ namespace Nethermind.Facade.Eth.RpcTransaction;
 
 /// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and hoisted signature lists.</summary>
 [GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<FrameTransactionForRpc>
 {
     public new static TxType TxType => TxType.FrameTx;

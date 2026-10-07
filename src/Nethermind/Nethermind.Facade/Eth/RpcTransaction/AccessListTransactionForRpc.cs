@@ -10,6 +10,7 @@ using Nethermind.Serialization.Json;
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 [GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<AccessListTransactionForRpc>
 {
     public new static TxType TxType => TxType.AccessList;

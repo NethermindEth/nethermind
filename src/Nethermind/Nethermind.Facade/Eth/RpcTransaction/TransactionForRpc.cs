@@ -166,6 +166,7 @@ public abstract class TransactionForRpc
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
+        private static int _repopulatableSlotCount;
         private readonly GeneratedJsonDispatch _generated = new();
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
@@ -185,25 +186,11 @@ public abstract class TransactionForRpc
         /// <summary>Gets the RPC type registered for <paramref name="txType"/>, or <see langword="null"/> when none is.</summary>
         internal static Type? GetRegisteredType(TxType txType) => _txTypesByType[(byte)txType]?.Type;
 
-        // Only these types override Populate for every property they have; a slot is the index, so the count cannot drift.
-        private static readonly Type[] RepopulatableTypes =
-        [
-            typeof(LegacyTransactionForRpc),
-            typeof(AccessListTransactionForRpc),
-            typeof(EIP1559TransactionForRpc),
-            typeof(BlobTransactionForRpc),
-            typeof(SetCodeTransactionForRpc),
-            typeof(FrameTransactionForRpc),
-        ];
+        /// <summary>The number of slots allocated to registered types that support refilling.</summary>
+        internal static int RepopulatableSlotCount => _repopulatableSlotCount;
 
-        /// <summary>The number of distinct slots <see cref="GetRepopulatableSlot"/> returns.</summary>
-        internal static int RepopulatableSlotCount => RepopulatableTypes.Length;
-
-        /// <summary>
-        /// Gets a slot for instances of exactly <paramref name="type"/> that can be refilled with <see cref="Populate"/> for
-        /// another transaction, or -1 when they cannot.
-        /// </summary>
-        internal static int GetRepopulatableSlot(Type type) => Array.IndexOf(RepopulatableTypes, type);
+        /// <summary>Gets the registered type's refill slot, or -1 when it does not support refilling.</summary>
+        internal static int GetRepopulatableSlot(TxType txType) => _txTypesByType[(byte)txType]?.RepopulatableSlot ?? -1;
 
         internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
@@ -212,10 +199,18 @@ public abstract class TransactionForRpc
                 .Where(p => p.GetCustomAttribute<JsonDiscriminatorAttribute>() is not null)
                 .Select(p => p.Name).ToArray();
 
+            int slot = -1;
+            if (txType.IsDefined(typeof(RepopulatableTransactionAttribute), inherit: false))
+            {
+                slot = GetRepopulatableSlot(T.TxType);
+                if (slot < 0) slot = _repopulatableSlotCount++;
+            }
+
             TxTypeInfo typeInfo = new()
             {
                 TxType = T.TxType,
                 Type = txType,
+                RepopulatableSlot = slot,
                 FromTransactionFunc = T.FromTransaction,
                 DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
@@ -390,6 +385,7 @@ public abstract class TransactionForRpc
         {
             public TxType TxType { get; set; }
             public Type Type { get; set; }
+            public int RepopulatableSlot { get; set; } = -1;
             public FromTransactionFunc FromTransactionFunc { get; set; }
             public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
@@ -409,3 +405,7 @@ public sealed class JsonDiscriminatorAttribute : Attribute
 {
     public JsonDiscriminatorAttribute() { }
 }
+
+/// <summary>Marks an exact RPC transaction type whose Populate implementation resets every field for reuse.</summary>
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+internal sealed class RepopulatableTransactionAttribute : Attribute;
