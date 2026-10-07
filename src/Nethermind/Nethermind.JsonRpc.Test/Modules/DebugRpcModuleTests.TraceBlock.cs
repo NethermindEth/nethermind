@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Concurrent;
 using System.Linq;
 using System.IO.Pipelines;
 using System.Text;
@@ -14,12 +15,17 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Newtonsoft.Json.Linq;
+using Microsoft.ClearScript;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript;
 using NSubstitute;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
@@ -35,10 +41,207 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
+using System.Reflection;
+using JavaScriptContext = Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Context;
+using JavaScriptDb = Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript.Db;
+
 namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase("result", 0)]
+    [TestCase("result", 1)]
+    [TestCase("result", 2)]
+    [TestCase("null", 0)]
+    [TestCase("undefined", 0)]
+    [TestCase("42", 0)]
+    [TestCase("step", 0)]
+    [TestCase("enter", 0)]
+    [TestCase("fault", 0)]
+    [TestCase("fault", 1)]
+    [TestCase("exit", 0)]
+    [TestCase("exit", 1)]
+    [TestCase("postStep", 0)]
+    [TestCase("postStep", 1)]
+    [TestCase("precedence", 0)]
+    [TestCase("precedence", 1)]
+    [TestCase("setup", -1)]
+    [TestCase("missing", -1)]
+    [TestCase("noncallable", -1)]
+    [TestCase("unknown", -1)]
+    [TestCase("syntax", -1)]
+    public async Task Debug_traceBlockByNumber_recovers_js_errors_without_replaying_prefixes(string failure, int failAt)
+    {
+        JsRecoveryObservations observations = new();
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false })
+            .Build(builder => builder.AddSingleton(observations).AddDecorator<ITransactionProcessor, JsRecoveryProcessor>());
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        byte[] runtime = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(1).Op(Instruction.ADD)
+            .PushData(0).Op(Instruction.SSTORE).STOP().Done;
+        await chain.AddBlock(Build.A.Transaction.WithNonce(nonce).WithCode(Prepare.EvmCode.ForInitOf(runtime).Done)
+            .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject);
+        Address contract = observations.Contract = ContractAddress.From(TestItem.AddressB, nonce);
+        ulong firstNonce = nonce + 1;
+        Address failingWrapper = ContractAddress.From(TestItem.AddressB, firstNonce + (ulong)Math.Max(failAt, 0));
+        ulong failingExecutionNonce = firstNonce + (ulong)Math.Max(failAt, 0) + 1;
+        byte[] call = Prepare.EvmCode.Call(contract, 100_000).STOP().Done;
+        byte[] faultingCall = Prepare.EvmCode.Call(contract, 100_000).Op(Instruction.INVALID).Done;
+        Transaction[] transactions = Enumerable.Range(0, 3).Select(index => Build.A.Transaction.WithNonce(firstNonce + (ulong)index)
+            .WithCode(failure == "fault" && index == failAt ? faultingCall : call).WithValue((UInt256)(index + 1)).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        string resultBody = $$"""
+            return {index:ctx.txIndex,storage:toHex(db.getState(toAddress('{{contract}}'),toWord('0x0'))),
+                    nonce:db.getNonce(ctx.from),balance:db.getBalance(ctx.from).toString()};
+            """;
+        string baselineTracer = "{fault:function(){},result:function(ctx,db){" + resultBody + "}}";
+        observations.Enabled = true;
+        string baselineJson = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer = baselineTracer });
+        JToken baseline = JToken.Parse(baselineJson);
+        Assert.That(baseline["error"], Is.Null, baselineJson);
+        JsRecoveryState[] expectedStates = observations.States.ToArray();
+        Assert.That(expectedStates, Has.Length.EqualTo(3));
+        UInt256[] expectedStorage = Enumerable.Range(0, 3)
+            .Select(index => (UInt256)(index + 1 - (failure == "fault" && index >= failAt ? 1 : 0))).ToArray();
+        Assert.That(expectedStates.Select(state => state.Storage), Is.EqualTo(expectedStorage));
+        observations.States.Clear();
+        string tracer = failure switch
+        {
+            "result" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + ")throw Error('result failure');" + resultBody + "}}",
+            "null" or "undefined" or "42" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + ")throw " + failure + ";" + resultBody + "}}",
+            "step" or "postStep" => "{fault:function(){}," + failure + ":function(log,db){if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + ")throw Error('" + failure + " failure');},result:function(ctx,db){" + resultBody + "}}",
+            "enter" => "{fault:function(){},enter:function(frame){if(toHex(frame.getFrom())===toHex(toAddress('" + failingWrapper + "')))throw Error('enter failure');},exit:function(){},result:function(ctx,db){" + resultBody + "}}",
+            "exit" => "{fault:function(){},enter:function(frame){this.fail=toHex(frame.getFrom())===toHex(toAddress('" + failingWrapper + "'));},exit:function(){if(this.fail)throw Error('exit failure');},result:function(ctx,db){" + resultBody + "}}",
+            "fault" => "{fault:function(){throw Error('fault failure');},result:function(ctx,db){" + resultBody + "}}",
+            "precedence" => "{fault:function(){throw Error('later fault failure');},enter:function(){},exit:function(){if(this.fail)throw Error('later exit failure');},step:function(log,db){if(this.fail)throw Error('later step failure');if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){this.fail=true;throw Error('first failure');}},result:function(ctx,db){if(this.fail)throw Error('later result failure');" + resultBody + "}}",
+            "setup" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
+            "missing" => "{fault:function(){}}",
+            "noncallable" => "{fault:function(){},result:42}",
+            "unknown" => "unknown-js-tracer",
+            _ => "{result:}"
+        };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number, new { tracer });
+        JToken actual = JToken.Parse(response);
+        Assert.That(actual["error"], Is.Null, response);
+        JArray entries = (JArray)actual["result"]!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries, Has.Count.EqualTo(3));
+            Assert.That(observations.States.ToArray(), Is.EqualTo(expectedStates), "each transaction executes once with canonical storage, nonce and balance");
+        }
+        for (int index = 0; index < entries.Count; index++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)entries[index]["txHash"], Is.EqualTo(block.Transactions[index].Hash!.ToString()));
+                if (failAt < 0 || index == failAt)
+                {
+                    Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
+                    Assert.That(entries[index]["result"], Is.Null);
+                    if (failure is "fault" or "exit" or "postStep" or "precedence")
+                        Assert.That((string?)entries[index]["error"], Does.Contain(failure == "precedence" ? "first failure" : failure + " failure"));
+                }
+                else Assert.That(JToken.DeepEquals(entries[index], baseline["result"]![index]), Is.True, response);
+            }
+        }
+        observations.Enabled = false;
+        string legacy = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByHash", block.Hash!, new { tracer });
+        Assert.That(JToken.Parse(legacy)["error"], Is.Not.Null, "the recovery flag belongs only to debug_traceBlockByNumber");
+        string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
+            new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
+        Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_recovery_result_ownership([Values] bool transfer)
+    {
+        Transaction[] transactions =
+        [
+            Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject,
+            Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject
+        ];
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        ITxTracer first = Substitute.For<ITxTracer>();
+        ITxTracer second = Substitute.For<ITxTracer>();
+        inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(first, second);
+        List<GethLikeTxTrace> completed = [];
+        IDisposable resource = Substitute.For<IDisposable>();
+        inner.BuildResult().Returns(completed);
+        inner.When(tracer => tracer.EndTxTrace()).Do(_ =>
+        {
+            if (completed.Count != 0) throw new JavaScriptTraceFailure(new ArgumentException("result failed"));
+            completed.Add(new GethLikeTxTrace(resource) { TxHash = transactions[0].Hash });
+        });
+        IReadOnlyCollection<GethLikeTxTrace>? results = null;
+        using (RecoveringJavaScriptBlockTracer tracer = new(() => inner, null))
+        {
+            tracer.StartNewBlockTrace(block);
+            foreach (Transaction transaction in transactions)
+            {
+                using ITxTracer tx = tracer.StartNewTxTrace(transaction);
+                tracer.EndTxTrace();
+            }
+            if (transfer) results = tracer.BuildResult();
+        }
+        first.Received(1).Dispose();
+        second.Received(1).Dispose();
+        ((IDisposable)inner).Received(1).Dispose();
+        if (transfer)
+        {
+            resource.DidNotReceive().Dispose();
+            Assert.That(results!.Last().TraceError, Is.EqualTo("result failed"));
+            foreach (GethLikeTxTrace trace in results!) trace.Dispose();
+        }
+        resource.Received(1).Dispose();
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_recovery_does_not_contain_host_or_cancellation_errors(
+        [Values("construction", "start", "end")] string phase, [Values] bool cancellation)
+    {
+        Exception failure = cancellation ? new OperationCanceledException() : new ScriptEngineException("host failure", new InvalidOperationException("state failed"));
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        inner.BuildResult().Returns(Array.Empty<GethLikeTxTrace>());
+        if (phase == "start") inner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ => throw failure);
+        if (phase == "end") inner.When(tracer => tracer.EndTxTrace()).Do(_ => throw failure);
+        using RecoveringJavaScriptBlockTracer tracer = new(() => phase == "construction" ? throw failure : inner, null);
+        Block block = Build.A.Block.TestObject;
+        Action run = () =>
+        {
+            tracer.StartNewBlockTrace(block);
+            using ITxTracer tx = tracer.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject);
+            tracer.EndTxTrace();
+        };
+        Assert.That(Assert.Catch(run), Is.SameAs(failure));
+    }
+
+    private sealed class JsRecoveryObservations
+    {
+        internal bool Enabled;
+        internal Address Contract = Address.Zero;
+        internal ConcurrentQueue<JsRecoveryState> States { get; } = new();
+    }
+
+    private readonly record struct JsRecoveryState(Hash256? Hash, UInt256 Storage, ulong Nonce, UInt256 Balance);
+
+    private sealed class JsRecoveryProcessor(ITransactionProcessor inner, IWorldState state, JsRecoveryObservations observations) : ITransactionProcessor
+    {
+        public TransactionResult Process(Transaction transaction, ITxTracer txTracer, ExecutionOptions options)
+        {
+            TransactionResult result = inner.Process(transaction, txTracer, options);
+            if (observations.Enabled && transaction.SenderAddress == TestItem.AddressB && !options.HasFlag(ExecutionOptions.Warmup))
+            {
+                state.Get(new StorageCell(observations.Contract, 0), out UInt256 storage);
+                observations.States.Enqueue(new(transaction.Hash, storage, state.GetNonce(TestItem.AddressB), state.GetBalance(TestItem.AddressB)));
+            }
+            return result;
+        }
+        public void SetBlockExecutionContext(BlockHeader blockHeader) => inner.SetBlockExecutionContext(blockHeader);
+        public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext) => inner.SetBlockExecutionContext(in blockExecutionContext);
+    }
+
     [Test]
     public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
     {
@@ -571,13 +774,15 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
-    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer([Values(1, 100, 1000)] int traceCount)
+    public async Task GethLikeTxTraceStreamingResult_WriteToAsync_produces_same_json_as_serializer(
+        [Values(1, 100, 1000)] int traceCount, [Values] bool errors)
     {
         List<GethLikeTxTrace> traces = new(traceCount);
         for (int i = 0; i < traceCount; i++)
         {
             GethLikeTxTrace trace = new();
             trace.TxHash = new Core.Crypto.Hash256(Keccak.Compute(i.ToString()).Bytes);
+            if (errors && i % 2 == 0) trace.TraceError = "tracer failure";
             trace.Entries.Add(new GethTxTraceEntry { ProgramCounter = i, Opcode = "STOP", Gas = 21000, GasCost = 0, Depth = 1 });
             traces.Add(trace);
         }
@@ -592,6 +797,17 @@ public partial class DebugRpcModuleTests
             JsonDocument.Parse(streamedJson).RootElement,
             JsonDocument.Parse(stjJson).RootElement),
             $"Streamed JSON differs from serializer output for {traceCount} traces");
+        using GethLikeTxTraceCollection roundTrip = JsonSerializer.Deserialize<GethLikeTxTraceCollection>(streamedJson, EthereumJsonSerializer.JsonOptions)!;
+        Assert.That(roundTrip.Traces.Select(trace => trace.TraceError), Is.EqualTo(traces.Select(trace => trace.TraceError)));
+        if (errors)
+        {
+            JToken first = JArray.Parse(streamedJson)[0];
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)first["error"], Is.EqualTo("tracer failure"));
+                Assert.That(first["result"], Is.Null);
+            }
+        }
     }
 
     [Test]
@@ -685,4 +901,276 @@ public partial class DebugRpcModuleTests
         }
     }
 
+
+    [Test]
+    public async Task Capture_does_not_mask_opaque_getter_engine_failure()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        ScriptEngineException failure = Assert.Throws<ScriptEngineException>(() =>
+        {
+            using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+                "{fault:function(){},get result(){throw Error('getter failure');}}", true);
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(failure.Message, Does.Contain("script exception is pending"));
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
+    }
+
+    [Test]
+    public async Task Capture_mode_handles_null_only_at_callback_boundaries(
+        [Values("setup", "result", "step", "return")] string callback, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        GethTraceOptions options = new()
+        {
+            CaptureJavaScriptErrors = capture,
+            Tracer = "{fault:function(){},setup:function(){" + (callback == "setup" ? "throw null;" : "")
+                + "},step:function(){" + (callback == "step" ? "throw null;" : "")
+                + "},result:function(){" + (callback == "result" ? "throw null;" : "return null;") + "}}"
+        };
+        GethLikeTxTrace Trace()
+        {
+            using Engine engine = new(Prague.Instance);
+            using GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(chain.MainWorldState),
+                new JavaScriptContext { TxHash = TestItem.KeccakA }, options);
+            if (callback == "step") tracer.SetOperationStack(default);
+            return tracer.BuildResult();
+        }
+        if (capture || callback == "return")
+        {
+            using GethLikeTxTrace result = Trace();
+            Assert.That(result.TraceError is null, Is.EqualTo(callback == "return"));
+        }
+        else Assert.Throws<ScriptEngineException>(() => Trace());
+    }
+
+    [Test]
+    public async Task Result_getter_is_read_once_in_both_modes([Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{reads:0,fault:function(){},get result(){this.reads++;return function(){return this.reads;};}}", capture);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("1"));
+    }
+
+    [Test]
+    public async Task Capture_reads_callbacks_in_geth_order_and_retains_result_replaced_by_setup()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain, """
+            {
+                order:[],
+                get result(){this.order.push('result');return function(){return this.order.join(',');};},
+                get fault(){this.order.push('fault');return function(){};},
+                get step(){this.order.push('step');return function(){};},
+                get enter(){this.order.push('enter');},
+                get exit(){this.order.push('exit');},
+                get postStep(){this.order.push('postStep');},
+                get setup(){this.order.push('setup');return function(){
+                    this.order.push('setup-call');
+                    Object.defineProperty(this,'result',{value:function(){return 'replacement';}});
+                };}
+            }
+            """);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions),
+            Is.EqualTo("\"result,fault,step,enter,exit,postStep,setup,setup-call\""));
+    }
+
+    [Test]
+    public async Task Capture_retains_a_self_replacing_step_callback()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain, """
+            {steps:0,fault:function(){},step:function(){
+                this.steps++;this.step=function(){throw Error('replacement');};
+            },result:function(){return this.steps;}}
+            """);
+        tracer.SetOperationStack(default);
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TraceError, Is.Null);
+            Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("2"));
+        }
+    }
+
+    [Test]
+    public async Task Capture_validates_required_callbacks_and_pair_before_reading_setup([Values("result", "fault", "pair")] string missing)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string properties = missing switch
+        {
+            "result" => "get fault(){throw Error('fault getter should not run');},",
+            "fault" => "result:function(){},",
+            _ => "result:function(){},fault:function(){},enter:function(){},"
+        };
+        string script = "{" + properties + "get setup(){throw Error('setup getter should not run');}}";
+        JavaScriptTraceFailure failure = Assert.Throws<JavaScriptTraceFailure>(() => CreateTracer(engine, chain, script))!;
+        Assert.That(failure.Message, Does.Contain(missing == "pair" ? "both or none" : "required function " + missing));
+    }
+
+    private static GethLikeJavaScriptTxTracer CreateTracer(Engine engine, TestRpcBlockchain chain, string script, bool capture = true) =>
+        new(engine, new JavaScriptDb(chain.MainWorldState), new JavaScriptContext { TxHash = TestItem.KeccakA },
+            new GethTraceOptions { Tracer = script, CaptureJavaScriptErrors = capture });
+
+    [Test]
+    public void Null_throw_is_observed_without_changing_the_exception_value_or_message()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        object receiver = engine.CreateTracer("{result:function(){throw null;}}");
+        using ScriptObject callback = (ScriptObject)((ScriptObject)receiver).GetProperty("result");
+        bool observed = false;
+        ScriptEngineException captured = Assert.Throws<ScriptEngineException>(() =>
+            engine.InvokeCapturingNull(receiver, callback, null, null, false, out observed))!;
+        ScriptEngineException direct = Assert.Throws<ScriptEngineException>(() => ((dynamic)receiver).result(null))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed, Is.True);
+            Assert.That(captured.ScriptExceptionAsObject, Is.Null);
+            Assert.That(captured.Message, Is.EqualTo(direct.Message));
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(captured, observed), Is.True);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(direct), Is.False, "untagged calls retain the conservative classifier");
+        }
+    }
+
+    [Test]
+    public void Null_throw_does_not_mark_later_returned_null_or_host_failure()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        object receiver = engine.CreateTracer("{throwing:function(){throw null;},returned:function(){return null;},host:function(callback){callback();}}");
+        using ScriptObject throwing = (ScriptObject)((ScriptObject)receiver).GetProperty("throwing");
+        using ScriptObject returned = (ScriptObject)((ScriptObject)receiver).GetProperty("returned");
+        using ScriptObject hostCallback = (ScriptObject)((ScriptObject)receiver).GetProperty("host");
+        bool observed = false;
+        Assert.Throws<ScriptEngineException>(() => engine.InvokeCapturingNull(receiver, throwing, null, null, false, out observed));
+        Assert.That(observed, Is.True);
+        object? result = engine.InvokeCapturingNull(receiver, returned, null, null, false, out observed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.Null);
+            Assert.That(observed, Is.False);
+        }
+        Assert.Throws<ScriptEngineException>(() => engine.InvokeCapturingNull(receiver, throwing, null, null, false, out observed));
+        Assert.That(observed, Is.True);
+        Action host = () => throw new InvalidOperationException("host state failed");
+        Exception failure = Assert.Catch(() => engine.InvokeCapturingNull(receiver, hostCallback, host, null, false, out observed))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed, Is.False);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure, observed), Is.False);
+        }
+    }
+
+    [Test]
+    public void Capture_preserves_receiver_getter_count_and_arguments([Values] bool twoArguments)
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        object receiver = engine.CreateTracer("""
+            {reads:0,marker:7,get result(){this.reads++;return function(a,b){
+                return [this.marker,this.reads,arguments.length,a,b].join(':');
+            };}}
+            """);
+        using ScriptObject callback = (ScriptObject)((ScriptObject)receiver).GetProperty("result");
+        object? result = engine.InvokeCapturingNull(receiver, callback, 11, 13, twoArguments, out bool observed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(twoArguments ? "7:1:2:11:13" : "7:1:1:11:"));
+            Assert.That(observed, Is.False);
+        }
+    }
+
+    [Test]
+    public void Hostile_callback_cannot_reach_the_private_null_marker([Values] bool hostFailure)
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        using ScriptObject receiver = (ScriptObject)engine.CreateTracer("""
+            {exposed:false,count:0,result:function hostile(argument){
+                this.count=hostile.arguments.length;
+                const caller=hostile.caller;
+                if(caller){
+                    this.exposed=true;
+                    const args=caller.arguments;
+                    for(let i=0;args && i<args.length;i++){
+                        if(args[i]!==hostile){try{args[i]();}catch(error){}}
+                    }
+                }
+                if(argument==='ordinary')throw Error('ordinary failure');
+                argument();
+            }}
+            """);
+        using ScriptObject callback = (ScriptObject)receiver.GetProperty("result");
+        Action host = () => throw new InvalidOperationException("host failure");
+        object argument = hostFailure ? host : "ordinary";
+        bool observed = false;
+        Exception failure = Assert.Catch(() => engine.InvokeCapturingNull(receiver, callback, argument, null, false, out observed))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(receiver.GetProperty("exposed"), Is.EqualTo(false));
+            Assert.That(receiver.GetProperty("count"), Is.EqualTo(1));
+            Assert.That(observed, Is.False, "caller.arguments must not expose the helper's markNull delegate");
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure, observed), Is.EqualTo(!hostFailure));
+            if (!hostFailure) Assert.That(failure.Message, Does.Contain("ordinary failure"));
+        }
+    }
+
+    [Test]
+    public void Capture_uses_the_original_apply_intrinsic()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        object receiver = engine.CreateTracer("{replace:(Reflect.apply=function(){throw Error('hijacked');}),result:function(){return 42;}}");
+        using ScriptObject callback = (ScriptObject)((ScriptObject)receiver).GetProperty("result");
+        object? result = engine.InvokeCapturingNull(receiver, callback, null, null, false, out bool observed);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(42));
+            Assert.That(observed, Is.False);
+        }
+    }
+
+    [Test]
+    public void Execution_started_alone_never_classifies_an_engine_failure_as_a_script_throw([Values] bool started)
+    {
+        ScriptEngineException exception = CreateException(false, started, null);
+        Assert.That(JavaScriptTraceFailure.IsRecoverable(exception), Is.False);
+    }
+
+    [Test]
+    public void Null_marker_never_overrides_fatal_or_host_failures([Values] bool observedNullThrow)
+    {
+        Exception[] failures =
+        [
+            CreateException(true, true, null),
+            CreateException(true, true, new object()),
+            CreateException(false, true, null, new InvalidOperationException("host failure")),
+            CreateException(false, true, null, new TargetInvocationException(new InvalidOperationException("host failure"))),
+            CreateException(false, true, null, new OperationCanceledException()),
+            new ScriptInterruptedException(),
+            new OperationCanceledException()
+        ];
+        using (Assert.EnterMultipleScope())
+            foreach (Exception failure in failures)
+                Assert.That(JavaScriptTraceFailure.IsRecoverable(failure, observedNullThrow), Is.False, failure.ToString());
+    }
+
+    private static ScriptEngineException CreateException(bool fatal, bool started, object? scriptValue, Exception? inner = null)
+    {
+        ConstructorInfo constructor = typeof(ScriptEngineException).GetConstructor(BindingFlags.Instance | BindingFlags.NonPublic, null,
+            [typeof(string), typeof(string), typeof(string), typeof(int), typeof(bool), typeof(bool), typeof(object), typeof(Exception)], null)!;
+        return (ScriptEngineException)constructor.Invoke(["classifier-test", "failure", "failure", 0, fatal, started, scriptValue, inner]);
+    }
 }

@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using System.Threading;
+using Microsoft.ClearScript;
 using Microsoft.ClearScript.JavaScript;
 using Microsoft.ClearScript.V8;
 using Nethermind.Core.Extensions;
@@ -22,6 +23,7 @@ public class Engine : IDisposable
     private readonly TracerRuntime _runtime;
     private readonly bool _ownsRuntime;
 
+    private ScriptObject? _nullThrowInvoker;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;
@@ -191,7 +193,14 @@ public class Engine : IDisposable
         Interlocked.CompareExchange(ref _currentEngine, null, this);
         try
         {
-            V8Engine.Dispose();
+            try
+            {
+                _nullThrowInvoker?.Dispose();
+            }
+            finally
+            {
+                V8Engine.Dispose();
+            }
         }
         finally
         {
@@ -216,4 +225,37 @@ public class Engine : IDisposable
     /// Creates a JavaScript tracer object from JavaScript code or name
     /// </summary>
     public dynamic CreateTracer(string tracer) => V8Engine.Evaluate(_runtime.GetTracerScript(tracer));
+
+    // Capture the intrinsic before user code runs; strict frames hide the per-call marker from caller introspection.
+    internal void PrepareNullThrowCapture() => _nullThrowInvoker ??= (ScriptObject)V8Engine.Evaluate("""
+        (function () {
+            'use strict';
+            const apply = Reflect.apply;
+            return function (receiver, callback, markNull, first, second, hasSecond) {
+                try {
+                    return apply(callback, receiver, hasSecond ? [first, second] : [first]);
+                } catch (error) {
+                    if (error === null) markNull();
+                    throw error;
+                }
+            };
+        })()
+        """);
+
+    internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond, out bool observedNullThrow)
+    {
+        observedNullThrow = false;
+        bool caughtNull = false;
+        Action markNull = () => caughtNull = true;
+        try
+        {
+            return _nullThrowInvoker!.Invoke(false, receiver, callback, markNull, first, second, hasSecond);
+        }
+        catch
+        {
+            // Publish before rethrow: the caller's exception filter runs before this frame's finally blocks.
+            observedNullThrow = caughtNull;
+            throw;
+        }
+    }
 }

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FastEnumUtility;
+using Microsoft.ClearScript;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
@@ -30,6 +32,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     private readonly CancellationTokenSource _cts;
     private readonly CancellationTokenRegistration _ctsRegistration;
     private bool _disposed;
+    private readonly bool _captureErrors;
+    private readonly Dictionary<TracerFunctions, ScriptObject>? _callbacks;
+    private string? _traceError;
     private Stack<ulong>? _frameGas;
     private Stack<Log.Contract>? _contracts;
     private int _depth = -1;
@@ -52,19 +57,42 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _engine = engine;
         _db = db;
         _ctx = ctx;
-
-        _tracer = engine.CreateTracer(options.Tracer);
-        _functions = GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
-        if (_functions.HasFlag(TracerFunctions.setup))
+        _captureErrors = options.CaptureJavaScriptErrors;
+        if (_captureErrors)
         {
-            _tracer.setup(options.TracerConfig?.ToString() ?? "{}");
+            _callbacks = [];
+            engine.PrepareNullThrowCapture();
         }
 
-        TimeSpan timeout = options.Timeout ?? DefaultTimeout;
-        if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
-            throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
-        _cts = new CancellationTokenSource(timeout);
-        _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+        _tracer = engine.CreateTracer(options.Tracer);
+        try
+        {
+            try
+            {
+                _functions = _captureErrors
+                    ? CaptureFunctions((object)_tracer)
+                    : GetAvailableFunctions(((IDictionary<string, object>)_tracer).Keys);
+            }
+            catch (ArgumentException exception) when (_captureErrors)
+            {
+                throw new JavaScriptTraceFailure(exception);
+            }
+            if (_functions.HasFlag(TracerFunctions.setup))
+            {
+                Invoke(TracerFunctions.setup, options.TracerConfig?.ToString() ?? "{}");
+            }
+
+            TimeSpan timeout = options.Timeout ?? DefaultTimeout;
+            if (timeout <= TimeSpan.Zero || timeout > MaxTimeout)
+                throw new ArgumentOutOfRangeException(nameof(options), timeout, $"Tracer timeout must be between 1ns and {MaxTimeout.TotalMinutes}m.");
+            _cts = new CancellationTokenSource(timeout);
+            _ctsRegistration = _cts.Token.Register(static e => ((Engine)e!).Interrupt(), engine);
+        }
+        catch
+        {
+            DisposeCallbacks();
+            throw;
+        }
     }
 
     public override GethLikeTxTrace BuildResult()
@@ -72,9 +100,27 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         GethLikeTxTrace result = base.BuildResult();
 
         result.TxHash = _ctx.TxHash;
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(_tracer.result(_ctx, _db)) };
-        Dispose();
-
+        if (!_captureErrors)
+        {
+            result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(Invoke(TracerFunctions.result)) };
+            Dispose();
+            return result;
+        }
+        try
+        {
+            object? value = Invoke(TracerFunctions.result);
+            if (_traceError is null)
+                result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(value) };
+        }
+        catch (Exception exception) when (_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception))
+        {
+            _traceError = exception.Message;
+        }
+        finally
+        {
+            Dispose();
+        }
+        result.TraceError = _traceError;
         return result;
     }
 
@@ -131,7 +177,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 _frame.Value = callType == ExecutionType.STATICCALL ? null : value;
                 _frame.Gas = gas;
                 _frame.Type = callType.FastToString();
-                _tracer.enter(_frame);
+                Invoke(TracerFunctions.enter);
                 _frameGas ??= new Stack<ulong>();
                 _frameGas.Push(gas);
             }
@@ -157,7 +203,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         _log.gasCost ??= _log.gas - gas;
         if (_functions.HasFlag(TracerFunctions.postStep))
         {
-            _tracer.postStep(_log, _db);
+            Invoke(TracerFunctions.postStep);
         }
     }
 
@@ -165,7 +211,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     {
         base.ReportOperationError(error);
         _log.error = error.GetEvmExceptionDescription();
-        _tracer.fault(_log, _db);
+        Invoke(TracerFunctions.fault);
     }
 
     public override void ReportActionEnd(ulong gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
@@ -206,7 +252,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             _result.GasUsed = _frameGas.Pop() - gas;
             _result.Output = output.ToArray();
             _result.Error = error;
-            _tracer.exit(_result);
+            Invoke(TracerFunctions.exit);
         }
 
         _depth--;
@@ -240,7 +286,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
-            _tracer.step(_log, _db);
+            Invoke(TracerFunctions.step);
         }
 
         if (_log.op?.Value == Instruction.REVERT)
@@ -253,6 +299,36 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     {
         base.ReportRefund(refund);
         _log.refund += refund;
+    }
+
+    private TracerFunctions CaptureFunctions(object tracer)
+    {
+        TracerFunctions functions = Capture(TracerFunctions.result, required: true) | Capture(TracerFunctions.fault, required: true);
+        functions |= Capture(TracerFunctions.step) | Capture(TracerFunctions.enter) | Capture(TracerFunctions.exit);
+        if (functions.HasFlag(TracerFunctions.enter) != functions.HasFlag(TracerFunctions.exit))
+            throw new ArgumentException("trace object must expose either both or none of enter() and exit()");
+
+        return functions | Capture(TracerFunctions.postStep) | Capture(TracerFunctions.setup);
+
+        TracerFunctions Capture(TracerFunctions function, bool required = false)
+        {
+            string name = FastEnum.GetName(function);
+            if (tracer is ScriptObject script && script.GetProperty(name) is ScriptObject callback
+                && callback is IJavaScriptObject { Kind: JavaScriptObjectKind.Function })
+            {
+                _callbacks!.Add(function, callback);
+                return function;
+            }
+            if (required) throw new ArgumentException($"trace object must expose required function {name}");
+            return TracerFunctions.none;
+        }
+    }
+
+    private void DisposeCallbacks()
+    {
+        if (_callbacks is null) return;
+        foreach (ScriptObject callback in _callbacks.Values) callback.Dispose();
+        _callbacks.Clear();
     }
 
     private static TracerFunctions GetAvailableFunctions(ICollection<string> functions)
@@ -301,12 +377,52 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         {
             try
             {
+                DisposeCallbacks();
                 ((object)_tracer as IDisposable)?.Dispose();
             }
             finally
             {
                 _engine.Dispose();
             }
+        }
+    }
+
+    private object? Invoke(TracerFunctions function, string? config = null)
+    {
+        // A failed JS hook must not abort canonical execution or corrupt later transactions' prestate.
+        if (_traceError is not null) return null;
+        bool observedNullThrow = false;
+        try
+        {
+            if (_captureErrors)
+            {
+                (object? First, object? Second, bool HasSecond) arguments = function switch
+                {
+                    TracerFunctions.setup => (config, null, false),
+                    TracerFunctions.result => (_ctx, _db, true),
+                    TracerFunctions.enter => (_frame, null, false),
+                    TracerFunctions.exit => (_result, null, false),
+                    TracerFunctions.step or TracerFunctions.postStep or TracerFunctions.fault => (_log, _db, true),
+                    _ => throw new ArgumentOutOfRangeException(nameof(function))
+                };
+                return _engine.InvokeCapturingNull((object)_tracer, _callbacks![function], arguments.First, arguments.Second, arguments.HasSecond, out observedNullThrow);
+            }
+            return function switch
+            {
+                TracerFunctions.setup => _tracer.setup(config),
+                TracerFunctions.result => _tracer.result(_ctx, _db),
+                TracerFunctions.enter => _tracer.enter(_frame),
+                TracerFunctions.exit => _tracer.exit(_result),
+                TracerFunctions.step => _tracer.step(_log, _db),
+                TracerFunctions.postStep => _tracer.postStep(_log, _db),
+                TracerFunctions.fault => _tracer.fault(_log, _db),
+                _ => throw new ArgumentOutOfRangeException(nameof(function))
+            };
+        }
+        catch (Exception exception) when (_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        {
+            _traceError = exception.Message;
+            return null;
         }
     }
 

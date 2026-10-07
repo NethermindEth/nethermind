@@ -413,6 +413,8 @@ public class DebugRpcModule(
             return ResultWrapper<IReadOnlyCollection<GethLikeTxTrace>>.Fail("genesis is not traceable", ErrorCodes.InvalidInput);
         }
 
+        if (options?.Tracer is { Length: > 0 }) options = options with { CaptureJavaScriptErrors = true };
+
         if (CanStreamStructLogs(options))
         {
             Block? resolvedBlock = blockFinder.FindBlock(blockNumber);

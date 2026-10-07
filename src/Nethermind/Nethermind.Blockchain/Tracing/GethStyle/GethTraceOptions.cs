@@ -24,6 +24,8 @@ public record GethTraceOptions
 
     public bool EnableReturnData { get; init; }
 
+    internal bool CaptureJavaScriptErrors { get; init; }
+
     public bool DisableStack { get; init; }
 
     /// <summary>

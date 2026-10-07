@@ -6,6 +6,12 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Consensus" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Abi\Nethermind.Abi.csproj" />
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\Nethermind.Db\Nethermind.Db.csproj" />
