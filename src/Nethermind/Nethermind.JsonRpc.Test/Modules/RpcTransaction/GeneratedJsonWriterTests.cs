@@ -190,6 +190,39 @@ public class GeneratedJsonWriterTests
     }
 
     [Test]
+    public void Wrapped_resolvers_fall_back_to_metadata([Values] bool log, [Values] bool modify, [Values(1, 2)] int wrappers)
+    {
+        JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);
+        JsonSerializerOptions control = GeneratedJsonWriters.CreateMetadataOptions(options);
+        for (int i = 0; i < wrappers; i++)
+        {
+            options.TypeInfoResolver = options.TypeInfoResolver!.WithAddedModifier(Modify);
+            control.TypeInfoResolver = control.TypeInfoResolver!.WithAddedModifier(Modify);
+        }
+
+        object value = log
+            ? new FilterLog(3, 25_000_000, 1_700_000_000, TestItem.KeccakA, 2, TestItem.KeccakB, TestItem.AddressA, [1], [TestItem.KeccakC], removed: true)
+            : new BlockForRpc(Blocks().First().Block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
+        Type type = value.GetType();
+        JsonSerializerOptions fallback = GeneratedJsonWriters.CreateMetadataOptions(options);
+        Assert.That(fallback.GetTypeInfo(type).Converter, Is.Not.InstanceOf<IGeneratedJsonWriter>());
+
+        byte[] expected = Serialize(value, type, control);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Serialize(value, type, options), Is.EqualTo(expected));
+            Assert.That(Serialize(null, type, options), Is.EqualTo(Serialize(null, type, control)));
+            Assert.That(ReadOutcome(expected, type, options, control), Is.EqualTo(ReadOutcome(expected, type, control, control)));
+        }
+
+        void Modify(JsonTypeInfo info)
+        {
+            if (modify && info.Kind == JsonTypeInfoKind.Object && info.Properties.Count > 0)
+                info.Properties[0].ShouldSerialize = static (_, _) => false;
+        }
+    }
+
+    [Test]
     public void Converter_for_a_wider_type_uses_the_metadata_path()
     {
         JsonSerializerOptions options = new(EthereumJsonSerializer.JsonOptions);

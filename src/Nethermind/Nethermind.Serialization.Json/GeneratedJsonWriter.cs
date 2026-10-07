@@ -48,7 +48,7 @@ internal sealed class GeneratedJsonWriterResolver<T, TWriter>(Func<JsonSerialize
 
     /// <inheritdoc/>
     public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) =>
-        type == typeof(T) && GeneratedJsonWriters.SupportsOptions(options) && !HasConverterFor(options)
+        type == typeof(T) && !GeneratedJsonWriters.IsMetadataOnly(options) && GeneratedJsonWriters.SupportsOptions(options) && !HasConverterFor(options)
             ? JsonMetadataServices.CreateValueInfo<T>(options, create(options))
             : null;
 
@@ -263,7 +263,26 @@ internal static class GeneratedJsonWriters
             if (chain[i] is IGeneratedJsonWriterResolver) chain.RemoveAt(i);
         }
 
+        // Wrapped resolvers still receive these options, so the marker also disables writers hidden inside them.
+        if (chain.Count > 0 && !IsMetadataOnly(copy)) chain.Add(MetadataOnlyResolver.Instance);
         return copy;
+    }
+
+    internal static bool IsMetadataOnly(JsonSerializerOptions options)
+    {
+        foreach (IJsonTypeInfoResolver resolver in options.TypeInfoResolverChain)
+        {
+            if (resolver is MetadataOnlyResolver) return true;
+        }
+
+        return false;
+    }
+
+    private sealed class MetadataOnlyResolver : IJsonTypeInfoResolver
+    {
+        public static readonly MetadataOnlyResolver Instance = new();
+
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options) => null;
     }
 
     /// <summary>Whether generated writers can honour every write-side setting of <paramref name="options"/>.</summary>
