@@ -11,11 +11,13 @@ using Autofac;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -91,6 +93,42 @@ public class ShiftedReplayTests(IReleaseSpec spec) : PrewarmerHandoffTestBase(sp
             Assert.That(run.StateRoot, Is.Not.EqualTo(executed.StateRoot));
         }
     }
+
+    [Test]
+    public void A_run_ahead_that_reverted_on_a_stale_nonce_is_not_shifted()
+    {
+        // Run ahead on the first block's parent, the guard sees the nonce before the first block bumped it and reverts; it
+        // flagged the slot written, but the revert left nothing to shift, and the real call succeeds.
+        Block first = BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, NonceGuard, data: Word(0)),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei));
+        BlockHeader firstHeader = Seal(ref first, Parent);
+        Block second = BuildBlock(firstHeader, Call(TestItem.PrivateKeyC, 0, NonceGuard, data: Word(1)));
+        ProcessingLookAhead queue = new();
+        PreWarmer.EnableLookAhead(queue, new TestSpecProvider(Spec), depth: 1);
+        queue.Publish(second);
+
+        WarmWithSession(first, Parent);
+        Process(first, ProductionAdapter);
+        PreWarmer.ClearCaches();
+
+        Run executed = Process(second, adapter: null, parent: firstHeader);
+        WarmWithSession(second, firstHeader);
+        (Run run, int shifted) = ProcessShifted(second, firstHeader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(executed.Receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(run.Receipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+            Assert.That(run.Receipts[0].GasUsed, Is.EqualTo(executed.Receipts[0].GasUsed));
+            Assert.That(run.StateRoot, Is.EqualTo(executed.StateRoot));
+            Assert.That(shifted, Is.Zero);
+            Assert.That(run.Tally, Is.EqualTo((0, 1, 0)));
+        }
+    }
+
+    private static byte[] Word(ulong value) => new UInt256(value).ToBigEndian();
 
     private (Run Run, int Shifted) ProcessShifted(Block block, BlockHeader parent)
     {

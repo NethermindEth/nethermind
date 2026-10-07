@@ -60,11 +60,16 @@ internal sealed class TransactionFootprint(
     /// Whether the run holds but for slots it read and then wrote, which have moved since; <paramref name="shifts"/> gets
     /// how far each moved.
     /// </summary>
-    /// <remarks>The run's receipt carries no logs, which could quote the moved values.</remarks>
-    public bool MatchesShifted(IWorldState state, List<SlotShift> shifts)
+    /// <remarks>
+    /// The run succeeded: a revert is what a check on the moved value looks like, and it leaves no write to shift. Its
+    /// receipt carries no logs, which could quote the moved values, and it moves value only between the sender and
+    /// <paramref name="beneficiary"/>: a moved slot that picked who gets paid would otherwise pay the wrong account, and
+    /// leave a later transaction short of funds before the block's roots could tell.
+    /// </remarks>
+    public bool MatchesShifted(IWorldState state, List<SlotShift> shifts, Address? beneficiary)
     {
         shifts.Clear();
-        if (_receipt.Logs.Length > 0) return false;
+        if (!_receipt.Success || _receipt.Logs.Length > 0 || !OnlyPaysBetween(Transaction.SenderAddress, beneficiary)) return false;
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
         {
             if (!account.IsMet(state)) return false;
@@ -74,7 +79,8 @@ internal sealed class TransactionFootprint(
         {
             state.Get(in slot.Cell, out UInt256 value);
             if (value == slot.Value) continue;
-            if (!slot.Written) return false;
+            // A write a reverted frame undid leaves the slot flagged written with nothing to shift.
+            if (!slot.Written || !WritesTo(in slot.Cell)) return false;
             UInt256.Subtract(value, slot.Value, out UInt256 shift);
             shifts.Add(new SlotShift(slot.Cell, shift));
         }
@@ -96,6 +102,38 @@ internal sealed class TransactionFootprint(
 
             effect.Replay(state, spec);
         }
+    }
+
+    private bool WritesTo(in StorageCell cell)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage && effect.Index == cell.Index && effect.Address == cell.Address) return true;
+        }
+
+        return false;
+    }
+
+    private bool OnlyPaysBetween(Address? sender, Address? beneficiary)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            switch (effect.Kind)
+            {
+                case EffectKind.SetStorage:
+                    continue;
+                case EffectKind.AddToBalance or EffectKind.AddToBalanceAndCreateIfNotExists or EffectKind.SubtractFromBalance:
+                    if (effect.Value.IsZero || effect.Address == sender || effect.Address == beneficiary) continue;
+                    return false;
+                case EffectKind.IncrementNonce or EffectKind.SetNonce:
+                    if (effect.Address == sender) continue;
+                    return false;
+                default:
+                    return false;
+            }
+        }
+
+        return true;
     }
 
     private static bool FindShift(List<SlotShift> shifts, Address address, in UInt256 index, out UInt256 shift)

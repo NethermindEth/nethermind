@@ -548,6 +548,9 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Gift = new("0x00000000000000000000000000000000004e4d0a");
     protected static readonly Address ScarcePayer = new("0x00000000000000000000000000000000004e4d0b");
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
+    // v = SLOAD(0); SSTORE(0, v + 1); if (v != CALLDATALOAD(0)) REVERT; STOP - a nonce bumped before the check that uses it.
+    protected static readonly Address NonceGuard = new("0x00000000000000000000000000000000004e4d0d");
+    private static readonly byte[] NonceGuardCode = [0x5F, 0x54, 0x80, 0x60, 0x01, 0x01, 0x5F, 0x55, 0x5F, 0x35, 0x14, 0x60, 0x12, 0x57, 0x5F, 0x5F, 0xFD, 0x00, 0x5B, 0x00];
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -612,6 +615,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             // CALL(GAS, Fresh, 0x4e4d, 0, 0, 0, 0); POP; STOP
             Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
             Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
+            Deploy(worldState, NonceGuard, NonceGuardCode, 0);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);

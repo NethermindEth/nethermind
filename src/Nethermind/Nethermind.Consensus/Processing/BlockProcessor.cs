@@ -108,6 +108,12 @@ public partial class BlockProcessor(
         {
             throw new BlockAccessListSequentialRetryException(ex);
         }
+        // A shifted replay that was wrong can fail a later transaction before the roots are reached; the block is not
+        // judged on this attempt either.
+        catch (InvalidBlockException) when (ShiftedReplay.Used > 0)
+        {
+            throw new ShiftedReplayRetryException(suggestedBlock);
+        }
         catch (BlockAccessListManager.ParallelExecutionException ex) when (
             _balManager.ParallelExecutionEnabled &&
             ex.InnerException is BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)

@@ -1503,7 +1503,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // A run ahead that still holds on the parent is the run this one would record; its replay keeps the scope in step.
         if (footprints.Find(txIndex, tx, blockState.Block.Header) is { } ahead)
         {
-            bool held = blockState.PreWarmer.KeepIfHeld(ahead, recorder, blockState.Spec);
+            bool held = blockState.PreWarmer.KeepIfHeld(ahead, recorder, blockState.Spec, blockState.Block.Header.GasBeneficiary);
             blockState.PreWarmer.NoteAheadRun(held);
             if (held) return TransactionResult.Ok;
         }
@@ -1629,7 +1629,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>Replays <paramref name="footprint"/> into the warm scope if it still holds there, shifted where block processing would shift it.</summary>
-    private bool KeepIfHeld(TransactionFootprint footprint, FootprintRecorder recorder, IReleaseSpec spec)
+    private bool KeepIfHeld(TransactionFootprint footprint, FootprintRecorder recorder, IReleaseSpec spec, Address? beneficiary)
     {
         if (footprint.Matches(recorder))
         {
@@ -1638,7 +1638,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         else
         {
             List<SlotShift> shifts = t_shifts ??= [];
-            if (!_shiftedHold || !footprint.MatchesShifted(recorder, shifts)) return false;
+            if (!_shiftedHold || !footprint.MatchesShifted(recorder, shifts, beneficiary)) return false;
             footprint.ReplayShifted(recorder, spec, shifts);
         }
 
@@ -1655,7 +1655,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (!recorder.AccountExists(sender)) recorder.CreateAccountIfNotExists(sender, UInt256.Zero);
             if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
             // A run of an earlier pass that still holds on this state is the run this one would record.
-            if (footprints.Find(txIndex, tx, header) is { } earlier && KeepIfHeld(earlier, recorder, spec)) return;
+            if (footprints.Find(txIndex, tx, header) is { } earlier && KeepIfHeld(earlier, recorder, spec, header.GasBeneficiary)) return;
 
             if (spec.UseTxAccessLists) recorder.WarmUp(tx.AccessList, token);
             // Nothing overtakes a block that is not processed yet; only the session's end stops the run.

@@ -77,7 +77,7 @@ public class PrewarmerTxAdapter(
         bool shifted = false;
         if (!footprint.Matches(worldState))
         {
-            if (!ShiftedReplay.Allowed || !footprint.MatchesShifted(worldState, _shifts))
+            if (!ShiftedReplay.Allowed || !footprint.MatchesShifted(worldState, _shifts, header.GasBeneficiary))
             {
                 Tally = Tally with { Rejected = Tally.Rejected + 1 };
                 Blockchain.Metrics.PrewarmHandoffsRejected++;
