@@ -609,6 +609,41 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(expectedSubmitted).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
+    // A prefix that approves and then fails a later filter cost the full validation, so its charge must not come back;
+    // a rejection before any validation work (a duplicate) must refund it.
+    [TestCase(true, 2, TestName = "Peer_validation_budget_stays_charged_when_the_pool_rejects_after_validating")]
+    [TestCase(false, 3, TestName = "Peer_validation_budget_refunds_a_rejection_before_validation")]
+    public void Peer_validation_budget_charges_rejections_after_validation(bool validationRan, int expectedSubmitted)
+    {
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(true);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(600_000UL);
+        ITxPool pool = Substitute.For<ITxPool, IRecyclableTxPool>();
+        ((IRecyclableTxPool)pool).SubmitOwnedTx(Arg.Any<Transaction>(), out Arg.Any<bool>(), out Arg.Any<bool>())
+            .Returns(call =>
+            {
+                call[1] = false;
+                call[2] = validationRan;
+                return validationRan ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.AlreadyKnown;
+            });
+        _transactionPool = pool;
+        RecreateHandler();
+
+        Transaction[] transactions =
+        [
+            FrameTx(TestItem.PrivateKeyA, validationGas: 300_000),
+            FrameTx(TestItem.PrivateKeyB, validationGas: 300_000),
+            FrameTx(TestItem.PrivateKeyC, validationGas: 300_000),
+        ];
+        using TransactionsMessage message = new(transactions.ToPooledList());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(message, Eth62MessageCode.Transactions);
+
+        ((IRecyclableTxPool)pool).Received(expectedSubmitted).SubmitOwnedTx(Arg.Any<Transaction>(), out Arg.Any<bool>(), out Arg.Any<bool>());
+    }
+
     // This handler has its own submission loop, so it needs the same stop once an invalid transaction closes the session.
     [Test]
     public void should_stop_submitting_the_rest_of_a_packet_after_an_invalid_transaction_requests_a_disconnect()

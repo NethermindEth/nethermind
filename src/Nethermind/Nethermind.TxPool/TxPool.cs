@@ -34,6 +34,8 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Network")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Test")]
+[assembly: InternalsVisibleTo("DynamicProxyGenAssembly2")]
 
 namespace Nethermind.TxPool
 {
@@ -1521,21 +1523,23 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _);
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _, out _);
 
-        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle)
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan)
         {
             // A derived pool can reimplement ITxPool and retain transactions on rejection.
             if (GetType() != typeof(TxPool))
             {
                 canRecycle = false;
+                frameValidationRan = false;
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
-            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle);
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle, out frameValidationRan);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle)
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, out bool frameValidationRan)
         {
+            frameValidationRan = false;
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
@@ -1627,6 +1631,8 @@ namespace Nethermind.TxPool
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
+
+            frameValidationRan = state.FrameValidationRan;
 
             if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
             {

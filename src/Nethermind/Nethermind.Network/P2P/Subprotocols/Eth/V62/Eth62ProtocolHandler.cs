@@ -371,11 +371,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             }
 
             bool canRecycle = false;
+            bool validationRan = false;
             AcceptTxResult accepted = _txPool is IRecyclableTxPool recyclablePool
-                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle)
+                ? recyclablePool.SubmitOwnedTx(tx, out canRecycle, out validationRan)
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
-            // Only validation that ran and failed stays charged.
-            if (budget is not null && accepted != AcceptTxResult.FrameSimulationFailed) budget.Refund(validationGas);
+            // Validation the pool ran for a transaction it then rejected stays charged, whichever filter rejected it.
+            bool charged = !accepted && (validationRan || accepted == AcceptTxResult.FrameSimulationFailed);
+            if (budget is not null && !charged) budget.Refund(validationGas);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));

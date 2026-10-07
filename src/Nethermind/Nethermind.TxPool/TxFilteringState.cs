@@ -21,6 +21,10 @@ public ref struct TxFilteringState(Transaction tx, IAccountStateProvider account
     /// this node's own concurrent work, so the pool may fetch it again rather than treat it as received.</summary>
     internal bool FrameSimulationYielded { get; set; }
 
+    /// <summary>Set once the pool has spent frame validation work on this transaction: verified its signatures or
+    /// executed its validation prefix. A peer's validation budget stays charged for a rejection after this point.</summary>
+    internal bool FrameValidationRan { get; set; }
+
     /// <summary>Whether a filter has taken this transaction's EIP-8141 paymaster slot and still owes its release.</summary>
     /// <remarks>The slot is counted before the filters that follow can reject, so the pool unwinds it once the
     /// outcome is known rather than leaving the sponsor permanently short.</remarks>

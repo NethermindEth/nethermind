@@ -4588,6 +4588,34 @@ namespace Nethermind.TxPool.Test
                 Is.EqualTo(sponsorCoversMaxCost ? AcceptTxResult.Accepted : AcceptTxResult.FrameTxPayerExposureExceeded));
         }
 
+        // A peer's validation budget stays charged when the pool rejects a transaction after validating it, so a
+        // prefix that approves and then fails a later filter cannot hand the peer its charge back.
+        [TestCase(true, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSignaturesAndSimulation")]
+        [TestCase(false, TestName = "SubmitOwnedTx_ReportsFrameValidationRan_AfterSimulationAlone")]
+        public void SubmitOwnedTx_ReportsFrameValidationRan_ForARejectionAfterSimulationButNotForADuplicate(bool withSignatures)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.AddressD));
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.Zero);
+            Transaction tx = SponsoredFrameTx(TestItem.PrivateKeyA, TestItem.PrivateKeyD);
+            if (!withSignatures)
+            {
+                tx.FrameSignatures = [];
+                tx.Hash = tx.CalculateHash();
+            }
+            EnsureSenderBalance(TestItem.AddressD, MaxCostOf(tx) - 1);
+
+            AcceptTxResult rejected = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForRejected);
+            AcceptTxResult duplicate = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, out _, out bool ranForDuplicate);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(rejected, Is.EqualTo(AcceptTxResult.FrameTxPayerExposureExceeded));
+                Assert.That(ranForRejected, Is.True, "the prefix ran before the exposure filter rejected the transaction");
+                Assert.That(duplicate, Is.EqualTo(AcceptTxResult.AlreadyKnown));
+                Assert.That(ranForDuplicate, Is.False, "a duplicate is turned away before any validation work");
+            }
+        }
+
         [Test]
         public void SubmitTx_UnfundedSender_WithNoPayerResolved_IsRejected()
         {
