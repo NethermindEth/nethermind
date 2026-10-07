@@ -123,7 +123,37 @@ public class HistoryRowScannerTests
     }
 
     [Test]
-    public void BulkReplay_WhenCheckpointSyncFails_RequiresReopenBeforeAdvancing()
+    public void BulkReplay_WhenBlocksCommitAndStorageIsCleaned_DoesNotSyncTheScratchWal()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using FailingWalScratchDb memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        int syncsBeforeReplay = memory.SuccessfulSyncs;
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer =>
+        {
+            writer.Set(TestItem.AddressA, new Account(1, 100));
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(TestItem.AddressA, 1);
+            storage.Set(1, 1);
+        });
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+        CommitScratch(session, second, writer => writer.Set(TestItem.AddressA, null));
+        session.CleanStorage(CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.SuccessfulSyncs, Is.EqualTo(syncsBeforeReplay), "a lost scratch tail only replays blocks whose index rows were synced, so neither the block nor its cleanup syncs");
+            Assert.That(session.CurrentState.BlockNumber, Is.EqualTo(2UL));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty, "precondition: the cleanup ran");
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void BulkReplay_WhenBlockCommitFails_RequiresReopenBeforeAdvancing()
     {
         using TempPath directory = TempPath.GetTempDirectory();
         using FailingWalScratchDb memory = new();
@@ -136,19 +166,15 @@ public class HistoryRowScannerTests
             ImportEmptyState(session);
             session.BeginBlock(next);
             session.StageFinalState(() => new ScratchSnapshot(writer => writer.Set(TestItem.AddressA, new Account(1, 123))));
-            memory.IsWalFailureEnabled = true;
+            memory.IsCommitFailureEnabled = true;
             Assert.Throws<IOException>(session.CommitBlock);
             Assert.That(session.CurrentState.BlockNumber, Is.Zero);
             Assert.Throws<InvalidOperationException>(() => session.BeginBlock(next));
         }
-        Assert.Throws<IOException>(() => new BulkFillSession(factory, code, TestItem.KeccakA, anchor, false));
-        memory.IsWalFailureEnabled = false;
+        memory.IsCommitFailureEnabled = false;
         using BulkFillSession recovered = new(factory, code, TestItem.KeccakA, anchor, false);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(recovered.CurrentState.BlockNumber, Is.EqualTo(1UL));
-            Assert.That(recovered.CreateReader().GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo(new UInt256(123)));
-        }
+        Assert.That(recovered.CurrentState.BlockNumber, Is.Zero);
+        Assert.That(() => recovered.BeginBlock(next), Throws.Nothing);
     }
 
     [Test]
@@ -988,12 +1014,28 @@ public class HistoryRowScannerTests
     private sealed class FailingWalScratchDb : SnapshotableMemColumnsDb<BulkFillScratchState.Columns>, IColumnsDb<BulkFillScratchState.Columns>
     {
         public bool IsWalFailureEnabled { get; set; }
+        public bool IsCommitFailureEnabled { get; set; }
         public int SuccessfulSyncs { get; private set; }
 
         public void SyncWal()
         {
             if (IsWalFailureEnabled) throw new IOException("WAL sync failed");
             SuccessfulSyncs++;
+        }
+
+        public new IColumnsWriteBatch<BulkFillScratchState.Columns> StartWriteBatch() => new FailingCommitBatch(this, base.StartWriteBatch());
+
+        private sealed class FailingCommitBatch(FailingWalScratchDb db, IColumnsWriteBatch<BulkFillScratchState.Columns> batch) : IColumnsWriteBatch<BulkFillScratchState.Columns>
+        {
+            public IWriteBatch GetColumnBatch(BulkFillScratchState.Columns key) => batch.GetColumnBatch(key);
+
+            public void Clear() => batch.Clear();
+
+            public void Dispose()
+            {
+                if (db.IsCommitFailureEnabled) throw new IOException("Batch commit failed");
+                batch.Dispose();
+            }
         }
     }
 
