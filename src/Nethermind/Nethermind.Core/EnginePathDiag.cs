@@ -54,6 +54,11 @@ public static class EnginePathDiag
         internal long UnixUsStart, UnixUsEnd, Bytes, Number = -1;
         internal int Txs, Done, RegionStarted = -1, RegionGc0, RegionGc1, RegionGc2;
         internal long RegionPauseTicks;
+        // BENCH gc-preenter: what the payload found in a pre-entered region (GCKeeper.PreEntryHandOver, 0 = none), ms
+        // since that region was entered (negative: since its entry was queued, still pending) and bytes allocated since.
+        internal int PreEntry;
+        internal double PreEntryMs;
+        internal long PreEntryBytes;
         internal ValueHash256 Hash;
         internal bool Attached;
         internal Record? Linked;
@@ -180,6 +185,9 @@ public static class EnginePathDiag
             r.RegionGc1 = http.RegionGc1;
             r.RegionGc2 = http.RegionGc2;
             r.RegionPauseTicks = http.RegionPauseTicks;
+            r.PreEntry = http.PreEntry;
+            r.PreEntryMs = http.PreEntryMs;
+            r.PreEntryBytes = http.PreEntryBytes;
             http.Linked = r;
         }
 
@@ -231,6 +239,16 @@ public static class EnginePathDiag
         }
     }
 
+    /// <summary>The payload met a pre-entered no-GC region; joining an entered one marks <c>region started=2</c>.</summary>
+    public static void PreEntry(Record? r, int verdict, double sinceEntryMs, long allocatedBytes)
+    {
+        if (r is null) return;
+        r.PreEntry = verdict;
+        r.PreEntryMs = sinceEntryMs;
+        r.PreEntryBytes = allocatedBytes;
+        if (verdict == 1) Volatile.Write(ref r.RegionStarted, 2);
+    }
+
     private static void Set(Record r, P p)
     {
         int i = (int)p;
@@ -280,6 +298,7 @@ public static class EnginePathDiag
         }
 
         sb.Append($" | region started={Volatile.Read(ref r.RegionStarted)} gc={r.RegionGc0}/{r.RegionGc1}/{r.RegionGc2} pause_us={r.RegionPauseTicks / 10}");
+        sb.Append($" pre={r.PreEntry} pre_ms={r.PreEntryMs:F1} pre_mb={r.PreEntryBytes / 1e6:F1}");
         sb.Append(" |");
         for (int i = 0; i < Count; i++)
         {

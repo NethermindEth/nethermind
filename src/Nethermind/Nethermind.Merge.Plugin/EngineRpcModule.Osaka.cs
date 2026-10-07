@@ -18,8 +18,8 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _getPayloadHandlerV5.HandleAsync(payloadId);
 
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV2(byte[][] blobVersionedHashes)
-         => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes));
+         => ThenPrepareNoGCRegion(_getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes)));
 
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV2?>?>> engine_getBlobsV3(byte[][] blobVersionedHashes)
-         => _getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes, true));
+         => ThenPrepareNoGCRegion(_getBlobsHandlerV2.HandleAsync(new(blobVersionedHashes, true)));
 }

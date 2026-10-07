@@ -49,5 +49,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         => _executionGetPayloadBodiesByRangeV2Handler.Handle(start, count);
 
     public Task<ResultWrapper<IReadOnlyList<BlobCellsAndProofs?>?>> engine_getBlobsV4(byte[][] blobVersionedHashes, BitArray indicesBitarray)
-        => _getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray));
+        => ThenPrepareNoGCRegion(_getBlobsHandlerV4.HandleAsync(new(blobVersionedHashes, indicesBitarray)));
 }

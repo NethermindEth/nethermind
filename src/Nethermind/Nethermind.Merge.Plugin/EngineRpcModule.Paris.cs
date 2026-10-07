@@ -78,6 +78,20 @@ public partial class EngineRpcModule : IEngineRpcModule
     }
 
 
+    /// <summary>
+    /// BENCH (bench/gc-preenter): once a getBlobs answer is computed, the payload it precedes (by ~0.1 s on mainnet) is
+    /// near, so the no-GC region is entered now, slightly deferred, and newPayload takes it over instead of entering it
+    /// (and collecting) on its own critical path. The answer itself is returned unchanged.
+    /// </summary>
+    private Task<T> ThenPrepareNoGCRegion<T>(Task<T> response)
+    {
+        if (!_gcKeeper.PreEntryEnabled) return response;
+        if (response.IsCompleted) _gcKeeper.SchedulePrepareNoGCRegion();
+        else response.ContinueWith(static (_, keeper) => ((GCKeeper)keeper!).SchedulePrepareNoGCRegion(), _gcKeeper,
+            CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        return response;
+    }
+
     private async Task EndNoGCRegionAfterCommitAsync(IDisposable region, Hash256 blockHash)
     {
         try

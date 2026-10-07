@@ -11,6 +11,8 @@ internal interface IGcRegionRuntime
     bool IsActive { get; }
     bool TryStart(long totalSize, long lohSize);
     void End();
+    /// <summary>Bytes allocated by the process so far, as cheap as the runtime makes it (not precise).</summary>
+    long AllocatedBytes { get; }
     bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting);
 }
 
@@ -22,6 +24,7 @@ internal sealed class GcRegionRuntime : IGcRegionRuntime
     public bool TryStart(long totalSize, long lohSize) =>
         System.GC.TryStartNoGCRegion(totalSize, lohSize, disallowFullBlockingGC: true);
     public void End() => System.GC.EndNoGCRegion();
+    public long AllocatedBytes => System.GC.GetTotalAllocatedBytes(precise: false);
     /// <summary>Requests a collection through the scheduler, applying the requested compaction policy.</summary>
     /// <remarks>Aggressive GC enables LOH compaction itself (dotnet/runtime v10.0.0, gc.cpp: reason_induced_aggressive).</remarks>
     public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting) =>
