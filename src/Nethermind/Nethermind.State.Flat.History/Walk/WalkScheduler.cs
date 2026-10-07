@@ -211,6 +211,7 @@ internal sealed class WalkJoin(WalkScheduler scheduler)
         if (primary is not null) Volatile.Write(ref _failed, true);
         foreach (WalkFork fork in _forks) fork.Run();
         scheduler.HelpUntilDone(this);
+        _forks.Clear();
 
         Exception? forked = Volatile.Read(ref _failure);
         Exception? failure = primary;
@@ -231,6 +232,7 @@ internal sealed class WalkJoin(WalkScheduler scheduler)
 
     private WalkFork Add(Action work)
     {
+        _forks.RemoveAll(static fork => fork.IsCompleted);
         WalkFork fork = new(this, work);
         _forks.Add(fork);
         Interlocked.Increment(ref _pending);
@@ -240,7 +242,11 @@ internal sealed class WalkJoin(WalkScheduler scheduler)
 
 internal sealed class WalkFork(WalkJoin join, Action work)
 {
+    private Action? _work = work;
     private int _claimed;
+    private int _completed;
+
+    public bool IsCompleted => Volatile.Read(ref _completed) != 0;
 
     public void Run()
     {
@@ -248,7 +254,7 @@ internal sealed class WalkFork(WalkJoin join, Action work)
 
         try
         {
-            work();
+            _work!();
         }
         catch (Exception e)
         {
@@ -256,6 +262,8 @@ internal sealed class WalkFork(WalkJoin join, Action work)
         }
         finally
         {
+            _work = null;
+            Volatile.Write(ref _completed, 1);
             join.Finished();
         }
     }
