@@ -31,6 +31,8 @@ internal static class ConfigEndpoints
         BlockchainIds.Mainnet => "0x00000000219ab540356cBB839Cbe05303d7705Fa",
         BlockchainIds.Hoodi => "0x00000000219ab540356cBB839Cbe05303d7705Fa",
         BlockchainIds.Sepolia => "0x7f02C3E3c98b133055B8B348B2Ac625669Ed295D",
+        BlockchainIds.Gnosis => "0x0B98057eA310F4d31F2a452B414647007d1645d9",
+        BlockchainIds.Chiado => "0xb97036A26259B7147018913bD58a774cf91acf25",
         _ => null,
     };
 
@@ -49,8 +51,8 @@ internal static class ConfigEndpoints
     /// Every key of the consensus-specs v1.7.0-beta.2 mainnet <c>config.yaml</c> and of the presets of phase0 to gloas, as the beacon-APIs
     /// <c>getSpec</c> asks for: numbers as decimal strings, <c>0x</c> values as hex, schedules as arrays. The mainnet
     /// values come from <see cref="SpecValues.Mainnet"/> and the network's own replace them, and the constants of the specs'
-    /// Constants tables come from <see cref="SpecConstants.All"/>; every network runs the
-    /// mainnet preset. <c>SECONDS_PER_SLOT</c>, which that config no longer lists, stays for tooling that still reads it.
+    /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
+    /// no longer lists, stays for tooling that still reads it.
     /// </remarks>
     private static Task Spec(HttpContext c, BeaconApiContext ctx)
     {
@@ -106,6 +108,30 @@ internal static class ConfigEndpoints
 
         switch (chainId)
         {
+            case BlockchainIds.Gnosis:
+            case BlockchainIds.Chiado:
+                bool chiado = chainId == BlockchainIds.Chiado;
+                data["PRESET_BASE"] = "gnosis";
+                data["CONFIG_NAME"] = chiado ? "chiado" : "gnosis";
+                data["MIN_GENESIS_ACTIVE_VALIDATOR_COUNT"] = chiado ? "6000" : "4096";
+                data["MIN_GENESIS_TIME"] = chiado ? "1665396000" : "1638968400";
+                data["GENESIS_DELAY"] = chiado ? "300" : "6000";
+                data["TERMINAL_TOTAL_DIFFICULTY"] = chiado ? "231707791542740786049188744689299064356246512" : "8626000000000000000000058750000000000000000000";
+                data["BASE_REWARD_FACTOR"] = "25";
+                data["EPOCHS_PER_SYNC_COMMITTEE_PERIOD"] = "512";
+                data["MAX_WITHDRAWALS_PER_PAYLOAD"] = "8";
+                data["MAX_VALIDATORS_PER_WITHDRAWALS_SWEEP"] = "8192";
+                data["MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP"] = "6";
+                data["CHURN_LIMIT_QUOTIENT"] = "4096";
+                data["MAX_PER_EPOCH_ACTIVATION_CHURN_LIMIT"] = "2";
+                data["MAX_PER_EPOCH_ACTIVATION_EXIT_CHURN_LIMIT"] = "64000000000";
+                data["SECONDS_PER_ETH1_BLOCK"] = "6";
+                data["ETH1_FOLLOW_DISTANCE"] = "1024";
+                data["MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS"] = "16384";
+                data["MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS"] = "16384";
+                data["MAX_BLOBS_PER_BLOCK"] = "2";
+                data["BLOB_SIDECAR_SUBNET_COUNT_ELECTRA"] = "2";
+                break;
             case BlockchainIds.Hoodi:
                 data["CONFIG_NAME"] = "hoodi";
                 data["MIN_GENESIS_TIME"] = "1742212800";

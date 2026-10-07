@@ -1194,8 +1194,8 @@ public class BlockImporterTests
         Assert.That(failed.Contains(child.Root), Is.True);
     }
 
-    [TestCase(Presets.SlotsPerEpoch + 1, true, TestName = "Block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed")]
-    [TestCase(Presets.SlotsPerEpoch, false, TestName = "Block_refused_after_the_tick_at_the_finalized_slot_is_not_recorded_as_failed")]
+    [TestCase(Presets.DefaultSlotsPerEpoch + 1, true, TestName = "Block_refused_after_the_tick_finalized_a_conflicting_branch_is_recorded_as_failed")]
+    [TestCase(Presets.DefaultSlotsPerEpoch, false, TestName = "Block_refused_after_the_tick_at_the_finalized_slot_is_not_recorded_as_failed")]
     public void Refusal_by_fork_choice_after_the_tick_is_recorded_only_for_a_validation_failure(ulong slot, bool recorded)
     {
         UnsignedChain chain = UnsignedChain.Create();
@@ -1607,7 +1607,7 @@ public class BlockImporterTests
     public async Task Gossip_aggregate_valid_for_head_but_not_target_does_not_charge_the_delivering_peer([Values] bool gloasContainer)
     {
         const ulong epoch = 2;
-        const ulong currentSlot = 3 * Presets.SlotsPerEpoch - 1;
+        ulong currentSlot = 3 * Presets.SlotsPerEpoch - 1;
         UnsignedChain chain = UnsignedChain.Create();
         BlockImporter importer = CreateImporter(chain.Anchor, custody: null, new DataColumnSidecarPool(), importClock: chain.Anchor.ClockAtSlot(currentSlot));
         importer.OnSlotTick(currentSlot);

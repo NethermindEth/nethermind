@@ -168,6 +168,7 @@ jobs:
           - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 3of4 }
           - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Test, chunk: 4of4 }
+          - { runner: ubuntu-latest, project: Nethermind.BeaconChain.Gnosis.Test, chunk: '' }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 1of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 2of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }

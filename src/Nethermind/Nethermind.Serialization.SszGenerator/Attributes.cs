@@ -24,6 +24,7 @@ public class SszFieldAttribute(int index) : Attribute
 public class SszListAttribute(ulong limit) : Attribute
 {
     public ulong Limit { get; } = limit;
+    public ulong AlternateLimit { get; set; }
 }
 
 [AttributeUsage(AttributeTargets.Property)]
@@ -33,6 +34,15 @@ public class SszProgressiveListAttribute : Attribute;
 public class SszVectorAttribute(int length) : Attribute
 {
     public int Length { get; } = length;
+    public int AlternateLength { get; set; }
+}
+
+/// <summary>Selects alternate SSZ dimensions using a static boolean member, fixed before any codec is used.</summary>
+[AttributeUsage(AttributeTargets.Assembly)]
+public class SszPresetAttribute(Type selectorType, string selectorMember) : Attribute
+{
+    public Type SelectorType { get; } = selectorType;
+    public string SelectorMember { get; } = selectorMember;
 }
 
 [AttributeUsage(AttributeTargets.Property)]

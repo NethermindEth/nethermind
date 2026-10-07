@@ -85,5 +85,7 @@ public class BeaconChainSpecTests
         ["Mainnet", BlockchainIds.Mainnet, BeaconChainSpec.Mainnet],
         ["Hoodi", BlockchainIds.Hoodi, BeaconChainSpec.Hoodi],
         ["Sepolia", BlockchainIds.Sepolia, BeaconChainSpec.Sepolia],
+        ["Gnosis", BlockchainIds.Gnosis, BeaconChainSpec.Gnosis],
+        ["Chiado", BlockchainIds.Chiado, BeaconChainSpec.Chiado],
     ];
 }

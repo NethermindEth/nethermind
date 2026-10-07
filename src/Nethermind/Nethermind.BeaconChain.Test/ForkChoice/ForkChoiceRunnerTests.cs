@@ -1149,7 +1149,7 @@ public class ForkChoiceRunnerTests
     public void Gloas_attestation_over_the_indexed_attestation_bound_is_refused_against_a_fulu_target_state()
     {
         const int Bound = Presets.MaxValidatorsPerCommittee * Presets.MaxCommitteesPerSlot;
-        const int ActiveValidators = (Bound + 1) * (int)Presets.SlotsPerEpoch;
+        int ActiveValidators = (Bound + 1) * (int)Presets.SlotsPerEpoch;
         UnsignedChain chain = UnsignedChain.Create();
         BeaconStateFulu anchorState = chain.Anchor.AnchorState;
         Assert.That(anchorState.Slot, Is.Zero, "fixture bug: the vote is for the anchor's own slot, so the target state needs no advance");
@@ -1431,7 +1431,7 @@ public class ForkChoiceRunnerTests
     public void Proposer_of_a_pruned_fork_block_is_kept_until_finality_passes_its_slot()
     {
         const ulong FinalizedEpoch = 9;
-        const ulong FinalizedSlot = FinalizedEpoch * Presets.SlotsPerEpoch;
+        ulong FinalizedSlot = FinalizedEpoch * Presets.SlotsPerEpoch;
         (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
         TickToSlot(runner, FinalizedSlot + 2);
 

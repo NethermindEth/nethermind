@@ -17,7 +17,7 @@ namespace Nethermind.BeaconChain.Test.StateTransition;
 public class SyncCommitteeUpdatesTests
 {
     private const int ValidatorCount = 64;
-    private const ulong Period = Presets.EpochsPerSyncCommitteePeriod;
+    private const ulong Period = 256;
 
     // Active at the last epoch of the period but not the next one, so a committee sampled at the current epoch can pick them.
     private static readonly int[] ExitingAtNextEpoch = [3, 17, 40];

@@ -39,7 +39,7 @@ public class ForkChoiceTests
 
     private const string FabricationSource = "get_proposer_head/pyspec_tests/basic_is_parent_root";
 
-    private const ulong TickAtBlockSlot = (Presets.SlotsPerEpoch + 1) * Presets.SecondsPerSlot;
+    private static readonly ulong TickAtBlockSlot = (Presets.SlotsPerEpoch + 1) * Presets.SecondsPerSlot;
 
     /// <summary>Pins optimistic-only body replay for an EL-INVALID refused block (pyspec helpers/fork_choice.py).</summary>
     /// <remarks>Both paths exclude the invalidated block and refuse its child (specs/bellatrix/optimistic-sync.md).</remarks>

@@ -66,7 +66,7 @@ public sealed class CachedBeaconStateHasher : IBeaconStateHasher
     private const int RootsVectorDepth = Presets.SlotsPerHistoricalRoot == 64 ? 6 : 13;
     private const int RandaoMixesDepth = Presets.EpochsPerHistoricalVector == 64 ? 6 : 16;
     private const ulong SlashingsChunkCount = Presets.EpochsPerSlashingsVector / 4;
-    private const ulong ProposerLookaheadChunkCount = Presets.ProposerLookaheadSlots / 4;
+    private static readonly ulong ProposerLookaheadChunkCount = Presets.ProposerLookaheadSlots / 4;
     private const int JustificationBitsLength = Presets.JustificationBitsLength;
     private const int FieldCount = 38;
     private const int GloasFieldCount = 46;

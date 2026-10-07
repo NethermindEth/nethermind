@@ -118,13 +118,13 @@ public class ConfigSpecEndpointTests
 
         List<string> compared = [];
         List<string> mismatched = [];
-        foreach (FieldInfo constant in typeof(Presets).GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.IsLiteral && f.FieldType != typeof(byte)))
+        foreach (FieldInfo constant in typeof(Presets).GetFields(BindingFlags.Public | BindingFlags.Static).Where(f => f.FieldType == typeof(ulong) || f.FieldType == typeof(int)))
         {
             string key = Regex.Replace(constant.Name, "(?<=[a-z0-9])(?=[A-Z])", "_").ToUpperInvariant();
             if (!data.TryGetValue(key, out string? actual)) continue;
 
             compared.Add(key);
-            string expected = Convert.ToString(constant.GetRawConstantValue(), System.Globalization.CultureInfo.InvariantCulture)!;
+            string expected = Convert.ToString(constant.GetValue(null), System.Globalization.CultureInfo.InvariantCulture)!;
             if (actual != expected) mismatched.Add($"{key}: served {actual}, Presets.{constant.Name} = {expected}");
         }
 
@@ -154,12 +154,28 @@ public class ConfigSpecEndpointTests
         ];
         foreach ((string key, string value) in hoodi) yield return new TestCaseData("hoodi", key, value).SetName($"Hoodi serves its own {key}");
         foreach ((string key, string value) in sepolia) yield return new TestCaseData("sepolia", key, value).SetName($"Sepolia serves its own {key}");
+        foreach (string network in new[] { "gnosis", "chiado" })
+        {
+            foreach ((string key, string value) in new (string, string)[]
+            {
+                ("CONFIG_NAME", network), ("PRESET_BASE", "gnosis"), ("SLOTS_PER_EPOCH", "16"), ("SECONDS_PER_SLOT", "5"),
+                ("SLOT_DURATION_MS", "5000"), ("BASE_REWARD_FACTOR", "25"), ("EPOCHS_PER_SYNC_COMMITTEE_PERIOD", "512"),
+                ("MAX_WITHDRAWALS_PER_PAYLOAD", "8"), ("MAX_PENDING_PARTIALS_PER_WITHDRAWALS_SWEEP", "6"),
+                ("CHURN_LIMIT_QUOTIENT", "4096"), ("MIN_EPOCHS_FOR_DATA_COLUMN_SIDECARS_REQUESTS", "16384"),
+            }) yield return new TestCaseData(network, key, value).SetName($"{network} serves its own {key}");
+        }
     }
 
     [TestCaseSource(nameof(NetworkValues))]
     public async Task Serves_the_values_of_the_network_it_runs_on(string network, string key, string expected)
     {
-        JsonElement served = await ServedSpecAsync(network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia);
+        JsonElement served = await ServedSpecAsync(network switch
+        {
+            "hoodi" => BeaconChainSpec.Hoodi,
+            "gnosis" => BeaconChainSpec.Gnosis,
+            "chiado" => BeaconChainSpec.Chiado,
+            _ => BeaconChainSpec.Sepolia,
+        });
 
         Assert.That(served.GetProperty(key).GetString(), Is.EqualTo(expected));
     }

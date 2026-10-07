@@ -22,7 +22,7 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class DataColumnSidecarPoolStoredRangeRocksDbTests
 {
     private const ulong First = 13_399_995;
-    private const ulong Window = Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests * 32;
+    private const ulong Window = 4096;
     private const ulong Last = First + Window - 1;
     private static readonly BeaconChainSpec Spec = BeaconChainSpec.Mainnet;
 

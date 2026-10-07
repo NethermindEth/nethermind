@@ -245,10 +245,10 @@ public class StateTransitionFoundationTests
 public class ImportHotPathAllocationTests
 {
     private const int ValidatorCount = 131_072;
-    private const int AttestersPerSlot = ValidatorCount / (int)Presets.SlotsPerEpoch;
+    private static readonly int AttestersPerSlot = ValidatorCount / (int)Presets.SlotsPerEpoch;
 
     // Spec get_attesting_indices requires the index list; reward arithmetic must not allocate per credited flag.
-    private const long AttestationBudgetBytes = 6L * AttestersPerSlot * sizeof(ulong);
+    private static readonly long AttestationBudgetBytes = 6L * AttestersPerSlot * sizeof(ulong);
 
     // Spec process_pending_deposits has no pubkey lookup when the queue is empty.
     private const long EmptyDepositQueueBudgetBytes = 64 * 1024;

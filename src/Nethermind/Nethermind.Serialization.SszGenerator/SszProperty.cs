@@ -8,13 +8,13 @@ class SszProperty
     public override string ToString() =>
         $"prop({Kind},{Type},{Name},{(IsVariable ? "v" : "f")})";
 
-    public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop)
+    public static SszProperty From(SemanticModel semanticModel, List<SszType> types, IPropertySymbol prop, bool alternatePreset = false)
     {
         CollectionInfo? collection = GetCollectionInfo(prop.Type, semanticModel.Compilation);
         ITypeSymbol? itemType = collection?.ItemType;
         ImmutableArray<AttributeData> attributes = prop.GetAttributes();
 
-        SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type);
+        SszType type = SszType.From(semanticModel, types, itemType ?? prop.Type, alternatePreset);
 
         SszProperty result = new()
         {
@@ -56,12 +56,16 @@ class SszProperty
             if (vectorAttr is not null)
             {
                 result.Length = vectorAttr.ConstructorArguments.FirstOrDefault().Value as int? ?? 0;
+                if (alternatePreset && vectorAttr.NamedArguments.FirstOrDefault(p => p.Key == nameof(SszVectorAttribute.AlternateLength)).Value.Value is int length)
+                    result.Length = length;
             }
 
             AttributeData? listAttr = GetAttribute(attributes, nameof(SszListAttribute));
             if (listAttr is not null)
             {
                 ulong limit = listAttr.ConstructorArguments.FirstOrDefault().Value as ulong? ?? 0UL;
+                if (alternatePreset && listAttr.NamedArguments.FirstOrDefault(p => p.Key == nameof(SszListAttribute.AlternateLimit)).Value.Value is ulong alternateLimit)
+                    limit = alternateLimit;
                 if (prop.Type.Name == nameof(BitArray) && limit > int.MaxValue)
                 {
                     throw new InvalidOperationException(

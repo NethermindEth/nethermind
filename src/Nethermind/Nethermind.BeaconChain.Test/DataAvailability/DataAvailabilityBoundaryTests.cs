@@ -9,8 +9,8 @@ namespace Nethermind.BeaconChain.Test.DataAvailability;
 
 public class DataAvailabilityBoundaryTests
 {
-    private const ulong Window = Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests;
-    private const ulong BlobWindow = DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests;
+    private const ulong Window = 4096;
+    private const ulong BlobWindow = 4096;
 
     [TestCase(0ul, 0ul, 0ul, TestName = "an_unfilled_window_saturates_at_epoch_zero")]
     [TestCase(Window - 1, 0ul, 0ul, TestName = "one_epoch_short_of_a_full_window_still_saturates")]

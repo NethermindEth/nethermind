@@ -7,7 +7,7 @@ namespace Nethermind.BeaconChain;
 
 public interface IBeaconChainConfig : IConfig
 {
-    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. When enabled, Nethermind follows the beacon chain for the execution layer's configured network without an external consensus client.", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. Supports Mainnet, Sepolia, Hoodi, Gnosis and Chiado, selected by the execution layer's configured network, without an external consensus client.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
     [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from. When unset, defaults to a provider for the network selected via the execution layer's chain id.", DefaultValue = "null")]

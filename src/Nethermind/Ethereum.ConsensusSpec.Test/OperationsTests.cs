@@ -49,7 +49,7 @@ public class OperationsTests
     [TestCase("voluntary_exit", "invalid_validator_already_exited", "already initiated an exit")]
     [TestCase("voluntary_exit", "invalid_validator_not_active", "is not active")]
     [TestCase("voluntary_exit", "invalid_validator_incorrect_validator_index", "is out of range")]
-    [TestCase("voluntary_exit", "invalid_validator_not_active_long_enough", "not been active long enough", Presets.SlotsPerEpoch)]
+    [TestCase("voluntary_exit", "invalid_validator_not_active_long_enough", "not been active long enough", Presets.DefaultSlotsPerEpoch)]
     [TestCase("voluntary_exit", "invalid_validator_exit_in_future", "not valid before epoch")]
     [TestCase("bls_to_execution_change", "invalid_bad_signature", "Invalid BLS to execution change signature")]
     [TestCase("bls_to_execution_change", "invalid_incorrect_from_bls_pubkey", "does not match the withdrawal credentials")]

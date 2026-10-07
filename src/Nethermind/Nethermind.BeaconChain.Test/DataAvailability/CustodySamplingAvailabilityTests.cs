@@ -132,8 +132,8 @@ public class CustodySamplingAvailabilityTests
 
     // Pre-Fulu blocks need blob sidecars, not columns, inside the retention window (deneb/fork-choice.md).
     [TestCase(0UL, false)]
-    [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests, false)]
-    [TestCase(DataAvailabilityBoundary.MinEpochsForBlobSidecarsRequests + 1, true)]
+    [TestCase(4096UL, false)]
+    [TestCase(4096UL + 1, true)]
     public void A_pre_fulu_blob_block_is_unavailable_inside_the_blob_sidecar_window(ulong epochsSinceBlock, bool expected)
     {
         BeaconChainSpec spec = BeaconChainSpec.Mainnet;

@@ -16,6 +16,15 @@ public class GloasForkOverrideTests
     private const ulong OverrideEpoch = 500_000ul;
 
     [Test]
+    public void Gnosis_networks_reject_an_unconfigured_gloas_preset([Values(BlockchainIds.Gnosis, BlockchainIds.Chiado)] ulong chainId)
+    {
+        BeaconChainSpec spec = BeaconChainSpec.ForChainId(chainId);
+        Assert.That(spec.WithGloasForkOverride(null, null), Is.SameAs(spec));
+        Assert.That(spec.WithGloasForkOverride(Presets.FarFutureEpoch, null), Is.SameAs(spec));
+        Assert.Throws<InvalidConfigurationException>(() => spec.WithGloasForkOverride(spec.FuluForkEpoch + 1, "0x07000064"));
+    }
+
+    [Test]
     public void Override_moves_the_fork_and_rotates_the_digest_at_the_new_epoch()
     {
         BeaconChainSpec spec = BeaconChainSpec.Mainnet.WithGloasForkOverride(OverrideEpoch, "0x07000000");

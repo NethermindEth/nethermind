@@ -7,14 +7,16 @@ namespace Nethermind.BeaconChain.Spec;
 /// Preset and configuration constants used by the beacon state transition.
 /// </summary>
 /// <remarks>
-/// Values are sourced from the consensus-specs presets (minimal for the isolated test build)
-/// (<c>presets/mainnet/{phase0,altair,bellatrix,capella,deneb,electra,fulu}.yaml</c>) and the parts
-/// of <c>configs/mainnet.yaml</c> that affect the state transition. Preset constants that only
-/// affect SSZ shapes (list limits, vector lengths) are referenced by the container definitions in
-/// <c>Types/</c>, since the SSZ source generator requires compile-time constants there.
+/// Uses the Ethereum or Gnosis preset selected at startup, or minimal for the isolated test build.
+/// Compile-time default dimensions and alternate dimensions on SSZ attributes generate both codec variants.
+/// Gnosis overrides: https://github.com/gnosischain/specs/tree/045d46d6db96a39b4d91485f9783474c13546ac9/consensus/preset/gnosis.
 /// </remarks>
 public static class Presets
 {
+    static Presets() { }
+
+    internal static readonly bool IsGnosis = BeaconPresetSelection.IsGnosis;
+
 #if MINIMAL_PRESET
     private const bool Minimal = true;
 #else
@@ -25,7 +27,8 @@ public static class Presets
     public const int TargetCommitteeSize = Minimal ? 4 : 128;
     public const int MaxValidatorsPerCommittee = 2048;
     public const int ShuffleRoundCount = Minimal ? 10 : 90;
-    internal const ulong Eth1DataVotesLimit = SlotsPerEpoch * EpochsPerEth1VotingPeriod;
+    internal const ulong DefaultEth1DataVotesLimit = DefaultSlotsPerEpoch * EpochsPerEth1VotingPeriod;
+    internal static ulong Eth1DataVotesLimit => SlotsPerEpoch * EpochsPerEth1VotingPeriod;
     internal const ulong MaxValidatorsPerSlot = (ulong)MaxValidatorsPerCommittee * MaxCommitteesPerSlot;
     public const ulong HysteresisQuotient = 4;
     public const ulong HysteresisDownwardMultiplier = 1;
@@ -53,7 +56,8 @@ public static class Presets
     public const ulong GenesisSlot = 0;
     public const ulong GenesisEpoch = 0;
     public const ulong MinAttestationInclusionDelay = 1;
-    public const ulong SlotsPerEpoch = Minimal ? 8 : 32;
+    internal const ulong DefaultSlotsPerEpoch = Minimal ? 8UL : 32UL;
+    public static readonly ulong SlotsPerEpoch = IsGnosis ? 16UL : DefaultSlotsPerEpoch;
     public const ulong MinSeedLookahead = 1;
     public const ulong MaxSeedLookahead = 4;
     public const ulong EpochsPerEth1VotingPeriod = Minimal ? 4 : 64;
@@ -65,7 +69,7 @@ public static class Presets
     public const ulong EpochsPerSlashingsVector = Minimal ? 64 : 8192;
 
     // Phase0 — rewards and penalties
-    public const ulong BaseRewardFactor = 64;
+    public static readonly ulong BaseRewardFactor = IsGnosis ? 25UL : 64UL;
 
     // Altair — participation flag indices and incentivization weights
     public const int TimelySourceFlagIndex = 0;
@@ -81,15 +85,16 @@ public static class Presets
 
     // Altair — sync committee
     public const int SyncCommitteeSize = Minimal ? 32 : 512;
-    public const ulong EpochsPerSyncCommitteePeriod = Minimal ? 8 : 256;
+    public static readonly ulong EpochsPerSyncCommitteePeriod = Minimal ? 8UL : IsGnosis ? 512UL : 256UL;
 
     // Bellatrix — updated penalty values (still in force for Electra rewards/penalties)
     public const ulong InactivityPenaltyQuotientBellatrix = 16_777_216;
     public const ulong ProportionalSlashingMultiplierBellatrix = 3;
 
     // Capella — withdrawals
-    public const int MaxWithdrawalsPerPayload = Minimal ? 4 : 16;
-    public const int MaxValidatorsPerWithdrawalsSweep = Minimal ? 16 : 16_384;
+    internal const int DefaultMaxWithdrawalsPerPayload = Minimal ? 4 : 16;
+    public static readonly int MaxWithdrawalsPerPayload = IsGnosis ? 8 : DefaultMaxWithdrawalsPerPayload;
+    public static readonly int MaxValidatorsPerWithdrawalsSweep = Minimal ? 16 : IsGnosis ? 8_192 : 16_384;
 
     // Electra — gwei values
     public const ulong MinActivationBalance = 32_000_000_000;
@@ -106,20 +111,23 @@ public static class Presets
     public const int PendingConsolidationsLimit = Minimal ? 64 : 262_144;
 
     // Electra — withdrawals and deposits processing
-    public const int MaxPendingPartialsPerWithdrawalsSweep = Minimal ? 2 : 8;
+    public static readonly int MaxPendingPartialsPerWithdrawalsSweep = Minimal ? 2 : IsGnosis ? 6 : 8;
     public const int MaxPendingDepositsPerEpoch = 16;
     public const ulong UnsetDepositRequestsStartIndex = ulong.MaxValue;
     public const ulong FullExitRequestAmount = 0;
 
     // Fulu — EIP-7917 proposer lookahead
-    public const ulong ProposerLookaheadSlots = (MinSeedLookahead + 1) * SlotsPerEpoch;
+    internal const ulong DefaultProposerLookaheadSlots = (MinSeedLookahead + 1) * DefaultSlotsPerEpoch;
+    public static readonly ulong ProposerLookaheadSlots = (MinSeedLookahead + 1) * SlotsPerEpoch;
 
     // Gloas — misc (specs/gloas/beacon-chain.md "Presets/Misc", fetched from consensus-specs master 2026-09-19)
     public const ulong PtcSize = Minimal ? 16 : 512;
     /// <summary>The <c>BeaconState.builder_pending_payments</c> vector length: <c>2 * SLOTS_PER_EPOCH</c>.</summary>
-    public const ulong BuilderPendingPaymentsLength = 2 * SlotsPerEpoch;
+    internal const ulong DefaultBuilderPendingPaymentsLength = 2 * DefaultSlotsPerEpoch;
+    public static readonly ulong BuilderPendingPaymentsLength = 2 * SlotsPerEpoch;
     /// <summary>The <c>BeaconState.ptc_window</c> vector length: <c>(MIN_SEED_LOOKAHEAD + 2) * SLOTS_PER_EPOCH</c>.</summary>
-    public const ulong PtcWindowLength = (MinSeedLookahead + 2) * SlotsPerEpoch;
+    internal const ulong DefaultPtcWindowLength = (MinSeedLookahead + 2) * DefaultSlotsPerEpoch;
+    public static readonly ulong PtcWindowLength = (MinSeedLookahead + 2) * SlotsPerEpoch;
     /// <summary><c>BUILDER_PAYMENT_THRESHOLD_NUMERATOR</c> / <c>_DENOMINATOR</c>.</summary>
     public const ulong BuilderPaymentThresholdNumerator = 6;
     public const ulong BuilderPaymentThresholdDenominator = 10;
@@ -158,10 +166,10 @@ public static class Presets
     // Config — validator cycle
     public const ulong EjectionBalance = 16_000_000_000;
     public const ulong MinPerEpochChurnLimit = Minimal ? 2 : 4;
-    public const ulong MaxPerEpochActivationChurnLimit = Minimal ? 4 : 8;
-    public const ulong ChurnLimitQuotient = Minimal ? 32 : 65_536;
+    public static readonly ulong MaxPerEpochActivationChurnLimit = Minimal ? 4UL : IsGnosis ? 2UL : 8UL;
+    public static readonly ulong ChurnLimitQuotient = Minimal ? 32UL : IsGnosis ? 4096UL : 65_536UL;
     public const ulong MinPerEpochChurnLimitElectra = Minimal ? 64_000_000_000 : 128_000_000_000;
-    public const ulong MaxPerEpochActivationExitChurnLimit = Minimal ? 128_000_000_000 : 256_000_000_000;
+    public static readonly ulong MaxPerEpochActivationExitChurnLimit = Minimal ? 128_000_000_000UL : IsGnosis ? 64_000_000_000UL : 256_000_000_000UL;
 
     // Gloas - EIP-8061 validator cycle (specs/gloas/beacon-chain.md "Configuration/Validator cycle")
     public const ulong ChurnLimitQuotientGloas = Minimal ? 16UL : 1UL << 15;
@@ -169,7 +177,7 @@ public static class Presets
     public const ulong MaxPerEpochActivationChurnLimitGloas = Minimal ? 128_000_000_000 : 256_000_000_000;
 
     // Config — time parameters
-    public const ulong SecondsPerSlot = Minimal ? 6 : 12;
+    public static readonly ulong SecondsPerSlot = Minimal ? 6UL : IsGnosis ? 5UL : 12UL;
     /// <summary>Phase0 fork-choice <c>INTERVALS_PER_SLOT</c>: a block is timely (proposer boost) when it arrives in the first interval of its slot.</summary>
     public const ulong IntervalsPerSlot = 3;
     public const ulong MinValidatorWithdrawabilityDelay = 256;

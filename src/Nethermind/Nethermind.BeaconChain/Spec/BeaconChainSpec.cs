@@ -41,7 +41,7 @@ public enum BeaconFork
 /// shapes (list limits, vector lengths) live in the container definitions instead, since the
 /// SSZ source generator requires compile-time constants.
 /// </remarks>
-public record BeaconChainSpec
+public partial record BeaconChainSpec
 {
     /// <summary>Configuration copies retain reference identity.</summary>
     public virtual bool Equals(BeaconChainSpec? other) => ReferenceEquals(this, other);
@@ -263,6 +263,8 @@ public record BeaconChainSpec
         BlockchainIds.Mainnet => Mainnet,
         BlockchainIds.Hoodi => Hoodi,
         BlockchainIds.Sepolia => Sepolia,
+        BlockchainIds.Gnosis => Gnosis,
+        BlockchainIds.Chiado => Chiado,
         _ => throw new UnsupportedBeaconNetworkException(chainId),
     };
 
@@ -280,6 +282,9 @@ public record BeaconChainSpec
     public BeaconChainSpec WithGloasForkOverride(ulong? epoch, string? version)
     {
         if (epoch is null && version is null) return this;
+
+        if (ChainId is BlockchainIds.Gnosis or BlockchainIds.Chiado && epoch != Presets.FarFutureEpoch)
+            throw new InvalidConfigurationException("A Gnosis Gloas preset and fork schedule are not configured.", ExitCodes.ConflictingConfigurations);
 
         bool scheduled = GloasForkEpoch != Presets.FarFutureEpoch;
         if (epoch == Presets.FarFutureEpoch && version is null && !scheduled) return this;
@@ -343,6 +348,8 @@ public record BeaconChainSpec
     public static BeaconChainSpec ForGenesisValidatorsRoot(Hash256 genesisValidatorsRoot) =>
         genesisValidatorsRoot == Hoodi.GenesisValidatorsRoot ? Hoodi
         : genesisValidatorsRoot == Sepolia.GenesisValidatorsRoot ? Sepolia
+        : genesisValidatorsRoot == Gnosis.GenesisValidatorsRoot ? Gnosis
+        : genesisValidatorsRoot == Chiado.GenesisValidatorsRoot ? Chiado
 #if MINIMAL_PRESET
         : s_minimalSigningSpec;
 #else

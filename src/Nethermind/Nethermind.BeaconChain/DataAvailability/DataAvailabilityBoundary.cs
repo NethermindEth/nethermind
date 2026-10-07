@@ -20,7 +20,7 @@ namespace Nethermind.BeaconChain.DataAvailability;
 public static class DataAvailabilityBoundary
 {
     /// <summary><c>MIN_EPOCHS_FOR_BLOB_SIDECARS_REQUESTS</c> from deneb/p2p-interface.md, <c>2**12</c> in configs/mainnet.yaml.</summary>
-    public const ulong MinEpochsForBlobSidecarsRequests = 4096;
+    public static ulong MinEpochsForBlobSidecarsRequests => Presets.IsGnosis ? 16384UL : 4096UL;
 
     /// <summary>The first epoch inside the retention window as of <paramref name="currentEpoch"/>; blocks in earlier epochs need no columns.</summary>
     public static ulong Compute(ulong currentEpoch, BeaconChainSpec spec)
