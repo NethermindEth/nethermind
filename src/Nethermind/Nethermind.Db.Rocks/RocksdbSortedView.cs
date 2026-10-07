@@ -7,7 +7,7 @@ using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Rocks;
 
-internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISortedView
+internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : ISeekableSortedView
 {
     private readonly Iterator _iterator = iterator;
     private readonly ReadOptions _readOptions = readOptions;
@@ -40,6 +40,13 @@ internal class RocksdbSortedView(Iterator iterator, ReadOptions readOptions) : I
         {
             _iterator.Next();
         }
+        return _iterator.Valid();
+    }
+
+    public bool SeekTo(ReadOnlySpan<byte> key)
+    {
+        _iterator.Seek(key);
+        _started = true;
         return _iterator.Valid();
     }
 
