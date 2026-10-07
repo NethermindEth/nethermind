@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -12,6 +13,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
 using Nethermind.Trie.Pruning;
@@ -42,11 +44,11 @@ public class HistoryWalkVerifierTests
         _historyColumns.Dispose();
     }
 
-    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition)
+    private HistoryWalkVerifier CreateVerifier(FakeHeaders headers, long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, IColumnsDb<FlatHistoryColumns>? history = null)
     {
         (HistoryAvailability _, HistoryRowFormat rowFormat) =
             HistoryColumnsWriter.CreateSharedFormat(_historyColumns, new FlatDbConfig { HistoryEnabled = true });
-        return new HistoryWalkVerifier(_historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null, _metadata);
+        return new HistoryWalkVerifier(history ?? _historyColumns, headers, rowFormat, rlpWrapSlots: true, LimboLogs.Instance, maxRowsPerPartition, emitterSource: null, _metadata);
     }
 
     private sealed class FakeHeaders : IHistoryHeaderSource
@@ -877,6 +879,93 @@ public class HistoryWalkVerifierTests
         }
     }
 
+    private const long OverflowBudget = 4;
+    private const uint SharedBucket = 0xABCD_0001;
+    private const uint LastBucketOfItsRange = 0xABFF_FFFF;
+    private static readonly UInt256[] BucketSlots = [1, 2, 3, 4, 5, 6];
+    private static readonly (ValueHash256 Path, int Slots)[] BucketContracts =
+    [
+        (PathIn(SharedBucket, 0x11), 6),
+        (PathIn(SharedBucket, 0x22), 6),
+        (PathIn(0xABCD_0002, 0x33), 1),
+        (PathIn(LastBucketOfItsRange, 0x44), 6),
+        (PathIn(0xAC00_0000, 0x55), 1),
+    ];
+
+    private static ValueHash256 PathIn(uint bucket, byte fill)
+    {
+        byte[] bytes = new byte[Hash256.Size];
+        bytes.AsSpan().Fill(fill);
+        BinaryPrimitives.WriteUInt32BigEndian(bytes, bucket);
+        return new ValueHash256(bytes);
+    }
+
+    private FakeHeaders RecordContractsAroundOverflowingBuckets(int corruptedContract = -1)
+    {
+        StateTree[] trees = [new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance), new(new RawScopedTrieStore(new MemDb()), LimboLogs.Instance)];
+        for (int contract = 0; contract < BucketContracts.Length; contract++)
+        {
+            (ValueHash256 path, int slotCount) = BucketContracts[contract];
+            for (ulong block = 0; block <= 1; block++)
+            {
+                (UInt256 Slot, byte[] Value)[] slots = new (UInt256, byte[])[slotCount];
+                for (int i = 0; i < slotCount; i++)
+                {
+                    slots[i] = (BucketSlots[i], [(byte)(0x10 * (block + 1)), (byte)contract, (byte)i]);
+                    byte[] recorded = block == 1 && contract == corruptedContract && i == 0 ? [0xEE] : slots[i].Value;
+                    HistoryColumnsWriter.RecordStorage(_historyColumns, path, BucketSlots[i], block, recorded);
+                }
+
+                Account account = new(block + 1, 50, StorageRootOf(slots), Keccak.OfAnEmptyString);
+                HistoryColumnsWriter.RecordAccount(_historyColumns, path, block, account);
+                trees[block].Set(path.Bytes, new AccountDecoder().EncodeAsBytes(account));
+            }
+        }
+
+        FakeHeaders headers = new();
+        for (int block = 0; block < trees.Length; block++)
+        {
+            trees[block].UpdateRootHash();
+            headers.Roots[(ulong)block] = new ValueHash256(trees[block].RootHash.Bytes);
+        }
+
+        MarkAll(headers);
+        return headers;
+    }
+
+    [Test]
+    public void VerifyRange_WhenStorageBucketsOverflowTheRowBudget_ReadsEachBucketPastTheBudgetOnlyInItsSplitChildren()
+    {
+        FakeHeaders headers = RecordContractsAroundOverflowingBuckets();
+        CountingStorageHistory counting = new(_historyColumns);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, OverflowBudget, counting).VerifyRange(0, 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(verdict.Verified, Is.True,
+                "two contracts sharing an overflowing bucket, the bucket after it, an overflowing last bucket of its range and the first bucket of the next range must all fold back to the recorded roots");
+            Assert.That(verdict.BlocksCompared, Is.EqualTo(2UL));
+            Assert.That(counting.GroupScanRows[SharedBucket], Is.EqualTo(OverflowBudget + 1),
+                "the group scan stops at the row that overflows the budget instead of reading the rest of the bucket to find where the next one starts");
+            Assert.That(counting.GroupScanRows[LastBucketOfItsRange], Is.EqualTo(OverflowBudget + 2),
+                "the same budget plus the bucket's first row, which the fitting group before it reads to learn where it ends");
+            Assert.That(counting.WholeBucketScans.Where(static scan => scan.Bucket is SharedBucket or LastBucketOfItsRange).Select(static scan => scan.Rows), Has.All.LessThanOrEqualTo(OverflowBudget),
+                "an overflowing group goes straight to its slot-nibble children; only the presence probes, which stop at a contract's first row, scan the whole bucket again");
+        }
+    }
+
+    [Test]
+    public void VerifyRange_WhenASlotAroundAnOverflowingBucketIsCorrupt_ReportsItsStorageRootMismatch([Range(0, 4)] int corruptedContract)
+    {
+        FakeHeaders headers = RecordContractsAroundOverflowingBuckets(corruptedContract);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers, OverflowBudget).VerifyRange(0, 1, CancellationToken.None);
+
+        Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (1UL, HistoryWalkMismatchKind.StorageRoot) }),
+            "skipping the rest of an overflowing bucket must not skip a contract sharing it or any bucket after it");
+    }
+
     [Test]
     public void A_windowed_database_is_refused()
     {
@@ -918,6 +1007,91 @@ public class HistoryWalkVerifierTests
             Assert.That(earlierContinues, Is.False, "chunk 1 is not discarded by its own stop, so it reads the header and finds none");
             Assert.That(reads, Is.EqualTo(91), "chunk 1 prefetches its headers up to its end");
             Assert.That(earlier.Stopped, Is.True);
+        }
+    }
+
+    private sealed class CountingStorageHistory(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        private readonly Lock _lock = new();
+
+        public Dictionary<uint, long> GroupScanRows { get; } = [];
+        public List<(uint Bucket, long Rows)> WholeBucketScans { get; } = [];
+
+        public IDb GetColumnDb(FlatHistoryColumns key) =>
+            key == FlatHistoryColumns.StorageHistory ? new CountingDb(inner.GetColumnDb(key), this) : inner.GetColumnDb(key);
+
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+
+        public void Dispose() { }
+
+        public void OnGroupScanRow(ReadOnlySpan<byte> key)
+        {
+            uint bucket = BinaryPrimitives.ReadUInt32BigEndian(key);
+            lock (_lock) GroupScanRows[bucket] = GroupScanRows.GetValueOrDefault(bucket) + 1;
+        }
+
+        public void OnWholeBucketScan(uint bucket, long rows)
+        {
+            lock (_lock) WholeBucketScans.Add((bucket, rows));
+        }
+    }
+
+    private sealed class CountingDb(IDb inner, CountingStorageHistory counts) : IDb, ISortedKeyValueStore
+    {
+        private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
+
+        public byte[]? FirstKey => Sorted.FirstKey;
+        public byte[]? LastKey => Sorted.LastKey;
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None)
+        {
+            // Only the group scan reads with HintReadAhead; a read-ahead change in either scan breaks this split.
+            bool groupScan = (flags & ReadFlags.HintReadAhead) != 0;
+            bool wholeBucket = !groupScan && firstKeyInclusive.Length > sizeof(uint) && lastKeyExclusive.Length > sizeof(uint) + 1
+                && !firstKeyInclusive[sizeof(uint)..].ContainsAnyExcept((byte)0)
+                && !lastKeyExclusive[sizeof(uint)..^1].ContainsAnyExcept((byte)0xFF);
+            uint bucket = wholeBucket ? BinaryPrimitives.ReadUInt32BigEndian(firstKeyInclusive) : 0;
+            return new CountingView(Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags), counts, groupScan, wholeBucket, bucket);
+        }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+        public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+        public string Name => inner.Name;
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+        public IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+
+        public void Dispose() { }
+    }
+
+    private sealed class CountingView(ISortedView inner, CountingStorageHistory counts, bool groupScan, bool wholeBucket, uint bucket) : ISortedView
+    {
+        private long _rows;
+
+        public ReadOnlySpan<byte> CurrentKey => inner.CurrentKey;
+        public ReadOnlySpan<byte> CurrentValue => inner.CurrentValue;
+
+        public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
+
+        public bool MoveNext()
+        {
+            if (!inner.MoveNext()) return false;
+
+            _rows++;
+            if (groupScan) counts.OnGroupScanRow(inner.CurrentKey);
+            return true;
+        }
+
+        public void Dispose()
+        {
+            if (wholeBucket) counts.OnWholeBucketScan(bucket, _rows);
+            inner.Dispose();
         }
     }
 }
