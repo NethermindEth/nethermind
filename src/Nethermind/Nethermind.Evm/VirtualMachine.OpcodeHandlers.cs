@@ -185,7 +185,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BASEFEE] = OpcodeHandler<BlkUInt256Opcode<EvmInstructions.OpBaseFee<TGasPolicy>, TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip4844Enabled)
             lookup[(int)Instruction.BLOBHASH] = OpcodeHandler<BlobHashOpcode<TTracingInst>, TTracingInst, TCancelable>();
-        if (spec.IsEip8141Enabled)
+        if (SpecFlags.Eip8141(spec))
         {
             // APPROVE ends the frame on every path, so it never continues the dispatch chain.
             lookup[(int)Instruction.APPROVE] = TerminatingOpcodeHandler<ApproveOpcode, TTracingInst, TCancelable>();
@@ -198,7 +198,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.SIGPARAM] = OpcodeHandler<SigParamOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.SIGDATACOPY] = OpcodeHandler<SigDataCopyOpcode<TTracingInst>, TTracingInst, TCancelable>();
         }
-        if (spec.IsEip7906Enabled)
+        if (SpecFlags.Eip7906(spec))
         {
             lookup[(int)Instruction.TXTRACE] = OpcodeHandler<TxTraceOpcode<TTracingInst>, TTracingInst, TCancelable>();
             lookup[(int)Instruction.TXDIFF] = OpcodeHandler<TxDiffOpcode<TTracingInst>, TTracingInst, TCancelable>();
@@ -208,7 +208,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             lookup[(int)Instruction.BLOBBASEFEE] = OpcodeHandler<BlobBaseFeeOpcode<TTracingInst>, TTracingInst, TCancelable>();
         if (spec.IsEip7843Enabled)
             lookup[(int)Instruction.SLOTNUM] = OpcodeHandler<SlotNumOpcode<TTracingInst>, TTracingInst, TCancelable>();
-        if (spec.IsEip8141Enabled && spec.IsEip8272Enabled)
+        if (SpecFlags.Eip8141(spec) && spec.IsEip8272Enabled)
             lookup[(int)Instruction.RECENTROOTREFLOAD] = OpcodeHandler<RecentRootRefLoadOpcode<TTracingInst>, TTracingInst, TCancelable>();
 
         lookup[(int)Instruction.POP] = OpcodeHandler<PopOpcode, TTracingInst, TCancelable>();
