@@ -750,7 +750,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
-            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
+            Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
+            AddBlockResult addResult;
+            try
+            {
+                addResult = await suggest.TimeoutOn(timeoutTask);
+            }
+            catch (TimeoutException)
+            {
+                // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
+                // unqueued until the CL re-sends the payload.
+                _ = EnqueueOnceAddedAsync(suggest, block, ilDigest, processingOptions, blockProcessed, workers);
+                throw;
+            }
 
             // A payload sent again while its first copy is between verdict and removal is known, and marked processed
             // only part way through that window. Queued again before the copy is gone it would be skipped as not
@@ -877,6 +889,24 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         bool carriesSameList = (queued?.Digest ?? default) == ilDigest;
         Task inQueue = _processingQueue.WaitUntilRemovedAsync(blockHash, executedOnly: carriesSameList).AsTask();
         return queued is null || carriesSameList ? inQueue : Task.WhenAll(inQueue, queued.Left);
+    }
+
+    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ValueHash256 ilDigest, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    {
+        try
+        {
+            if (await suggest is not AddBlockResult.Added) return;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Suggesting {block.ToString(Block.Format.FullHashAndNumber)} failed after its request timed out: {e}");
+            return;
+        }
+
+        // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
+        QueuedInclusionList queued = new(ilDigest);
+        _queuedInclusionLists[block.Hash!] = queued;
+        await Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
     }
 
     private async Task EnqueueAsync(Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
