@@ -22,7 +22,7 @@ public static class AnchorBatch
     /// <returns>The batch without proofs: they sign it as it is.</returns>
     public static PostBatch Build(ulong rollupId, in ValueHash256 settled, in ValueHash256 last, IReadOnlyList<DaBlock> span, Address[] proofSystems)
     {
-        StateUpdate update = new(rollupId, settled, last, Int256.Int256.Zero);
+        RollupUpdate update = new(rollupId, settled, last, Int256.Int256.Zero);
         ExecutionEntry anchor = new([update], default, [], [], RollingHash.SeedL1(update, default), rollupId, true, []);
         ulong[] indexes = new ulong[proofSystems.Length];
         for (int i = 0; i < indexes.Length; i++)

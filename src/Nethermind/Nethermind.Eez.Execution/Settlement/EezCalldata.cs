@@ -13,13 +13,12 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// </summary>
 public static class EezCalldata
 {
-    public const uint PostAndVerifyBatchSelector = 0xcafef125;
-    public const uint ExecuteIncomingCrossChainCallSelector = 0x8d8461d9;
-    public const uint LoadExecutionTableSelector = 0xb301bc80;
+    public const uint PostAndVerifyBatchSelector = 0xe4a480e4;
+    public const uint ExecuteIncomingCrossChainCallSelector = 0xc3fb5f3d;
+    public const uint LoadExecutionTableSelector = 0xbf2eebd3;
 
     private const int Word = AbiWord.Size;
     private const int SelectorSize = sizeof(uint);
-    private const int IncomingHead = 7 * Word;
     private const int TableHead = 2 * Word;
 
     public static PostBatch DecodePostAndVerifyBatch(ReadOnlySpan<byte> calldata)
@@ -44,48 +43,29 @@ public static class EezCalldata
 
     public static IncomingCrossChainCall DecodeExecuteIncomingCrossChainCall(ReadOnlySpan<byte> calldata)
     {
-        AbiReader reader = new(Parameters(calldata, ExecuteIncomingCrossChainCallSelector));
-        int tail = IncomingHead;
-        reader.ExpectOffset(2 * Word, 0, tail);
-        byte[] data = reader.ReadBytes(tail, out int partSize);
-        tail += partSize;
-        reader.ExpectOffset(5 * Word, 0, tail);
-        L2ExecutionEntry[] entries = EezAbi.ReadDynamicArray(reader, tail, EezAbi.ReadL2ExecutionEntry, out partSize);
-        tail += partSize;
-        reader.ExpectOffset(6 * Word, 0, tail);
-        L2StaticExecutionEntry[] staticEntries = EezAbi.ReadDynamicArray(reader, tail, EezAbi.ReadL2StaticExecutionEntry, out partSize);
-        EnsureConsumed(reader, tail + partSize);
-        IncomingCrossChainCall call = new(reader.ReadAddress(0), reader.ReadUInt256(Word), data, reader.ReadAddress(3 * Word),
-            reader.ReadUInt64(4 * Word), entries, staticEntries);
+        (L2ExecutionEntry[] entries, L2StaticExecutionEntry[] staticEntries) = DecodeTable(calldata, ExecuteIncomingCrossChainCallSelector);
+        IncomingCrossChainCall call = new(entries, staticEntries);
         EnsureCanonical(calldata, EncodeExecuteIncomingCrossChainCall(call));
         return call;
     }
 
-    public static byte[] EncodeExecuteIncomingCrossChainCall(IncomingCrossChainCall call)
-    {
-        int data = IncomingHead;
-        int entries = data + EezAbi.Size(call.Data);
-        int staticEntries = entries + EezAbi.DynamicArraySize(call.Entries, EezAbi.Size);
-        int length = staticEntries + EezAbi.DynamicArraySize(call.StaticEntries, EezAbi.Size);
-        byte[] calldata = new byte[SelectorSize + length];
-        BinaryPrimitives.WriteUInt32BigEndian(calldata, ExecuteIncomingCrossChainCallSelector);
-        AbiWriter writer = new(calldata.AsSpan(SelectorSize));
-        writer.Write(call.Destination);
-        writer.Write(call.Value);
-        writer.WriteOffset(data);
-        writer.Write(call.SourceAddress);
-        writer.Write(call.SourceRollup);
-        writer.WriteOffset(entries);
-        writer.WriteOffset(staticEntries);
-        writer.WriteBytes(call.Data);
-        EezAbi.WriteDynamicArray(ref writer, call.Entries, EezAbi.Size, EezAbi.Write);
-        EezAbi.WriteDynamicArray(ref writer, call.StaticEntries, EezAbi.Size, EezAbi.Write);
-        return calldata;
-    }
+    public static byte[] EncodeExecuteIncomingCrossChainCall(IncomingCrossChainCall call) =>
+        EncodeTable(ExecuteIncomingCrossChainCallSelector, call.Entries, call.StaticEntries);
 
     public static ExecutionTable DecodeLoadExecutionTable(ReadOnlySpan<byte> calldata)
     {
-        AbiReader reader = new(Parameters(calldata, LoadExecutionTableSelector));
+        (L2ExecutionEntry[] entries, L2StaticExecutionEntry[] staticEntries) = DecodeTable(calldata, LoadExecutionTableSelector);
+        ExecutionTable table = new(entries, staticEntries);
+        EnsureCanonical(calldata, EncodeLoadExecutionTable(table));
+        return table;
+    }
+
+    public static byte[] EncodeLoadExecutionTable(ExecutionTable table) => EncodeTable(LoadExecutionTableSelector, table.Entries, table.StaticEntries);
+
+    /// <summary>The <c>(ExecutionEntry[], StaticExecutionEntryL2[])</c> arguments both L2 system calls take.</summary>
+    private static (L2ExecutionEntry[] Entries, L2StaticExecutionEntry[] StaticEntries) DecodeTable(ReadOnlySpan<byte> calldata, uint selector)
+    {
+        AbiReader reader = new(Parameters(calldata, selector));
         int tail = TableHead;
         reader.ExpectOffset(0, 0, tail);
         L2ExecutionEntry[] entries = EezAbi.ReadDynamicArray(reader, tail, EezAbi.ReadL2ExecutionEntry, out int partSize);
@@ -93,23 +73,21 @@ public static class EezCalldata
         reader.ExpectOffset(Word, 0, tail);
         L2StaticExecutionEntry[] staticEntries = EezAbi.ReadDynamicArray(reader, tail, EezAbi.ReadL2StaticExecutionEntry, out partSize);
         EnsureConsumed(reader, tail + partSize);
-        ExecutionTable table = new(entries, staticEntries);
-        EnsureCanonical(calldata, EncodeLoadExecutionTable(table));
-        return table;
+        return (entries, staticEntries);
     }
 
-    public static byte[] EncodeLoadExecutionTable(ExecutionTable table)
+    private static byte[] EncodeTable(uint selector, L2ExecutionEntry[] entries, L2StaticExecutionEntry[] staticEntries)
     {
-        int entries = TableHead;
-        int staticEntries = entries + EezAbi.DynamicArraySize(table.Entries, EezAbi.Size);
-        int length = staticEntries + EezAbi.DynamicArraySize(table.StaticEntries, EezAbi.Size);
+        int entriesOffset = TableHead;
+        int staticEntriesOffset = entriesOffset + EezAbi.DynamicArraySize(entries, EezAbi.Size);
+        int length = staticEntriesOffset + EezAbi.DynamicArraySize(staticEntries, EezAbi.Size);
         byte[] calldata = new byte[SelectorSize + length];
-        BinaryPrimitives.WriteUInt32BigEndian(calldata, LoadExecutionTableSelector);
+        BinaryPrimitives.WriteUInt32BigEndian(calldata, selector);
         AbiWriter writer = new(calldata.AsSpan(SelectorSize));
-        writer.WriteOffset(entries);
-        writer.WriteOffset(staticEntries);
-        EezAbi.WriteDynamicArray(ref writer, table.Entries, EezAbi.Size, EezAbi.Write);
-        EezAbi.WriteDynamicArray(ref writer, table.StaticEntries, EezAbi.Size, EezAbi.Write);
+        writer.WriteOffset(entriesOffset);
+        writer.WriteOffset(staticEntriesOffset);
+        EezAbi.WriteDynamicArray(ref writer, entries, EezAbi.Size, EezAbi.Write);
+        EezAbi.WriteDynamicArray(ref writer, staticEntries, EezAbi.Size, EezAbi.Write);
         return calldata;
     }
 

@@ -67,7 +67,7 @@ public sealed class ResumePointFinder(IEezL1Api l1, IBlockTree blockTree, Addres
         for (int i = blocks.Count - 1; i >= 0; i--)
         {
             EezL1Log log = lastPerBlock[blocks[i]];
-            if (log.Data is not { Length: 32 } || blockTree.FindHeader(new Hash256(log.Data)) is not { } header || !blockTree.IsMainChain(header))
+            if (L1BatchScanner.SettledRootOf(log) is not { } settled || blockTree.FindHeader(new Hash256(settled)) is not { } header || !blockTree.IsMainChain(header))
             {
                 continue;
             }

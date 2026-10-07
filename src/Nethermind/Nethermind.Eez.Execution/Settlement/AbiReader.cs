@@ -45,6 +45,19 @@ internal readonly ref struct AbiReader(ReadOnlySpan<byte> data)
 
     public Int256.Int256 ReadInt256(int position) => new(ReadUInt256(position));
 
+    /// <summary>Reads an <c>int192</c>: the word's top 8 bytes must sign-extend its bit 191.</summary>
+    public Int256.Int256 ReadInt192(int position)
+    {
+        ReadOnlySpan<byte> word = WordAt(position);
+        byte extension = (word[Word - 24] & 0x80) == 0 ? (byte)0x00 : (byte)0xff;
+        if (word[..(Word - 24)].IndexOfAnyExcept(extension) >= 0)
+        {
+            throw new EezAbiException($"Non-canonical int192 at {position}.");
+        }
+
+        return ReadInt256(position);
+    }
+
     /// <summary>Checks that the offset at <paramref name="position"/>, relative to <paramref name="tupleStart"/>, is <paramref name="tail"/>.</summary>
     public void ExpectOffset(int position, int tupleStart, int tail)
     {

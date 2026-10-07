@@ -9,22 +9,22 @@ namespace Nethermind.Eez.Execution.Settlement;
 /// The batch's claimed L2 block hashes must chain from the window's first parent to its last block: every entry
 /// updates the one rollup once, starting where the previous entry ended.
 /// </summary>
-public static class StateUpdateChain
+public static class RollupUpdateChain
 {
     /// <returns>The sole state update of each entry, in entry order.</returns>
     /// <exception cref="EezSettlementException">The updates do not form that chain.</exception>
-    public static StateUpdate[] Verify(PostBatch batch, ulong rollupId, in ValueHash256 windowPreBlockHash, in ValueHash256 windowPostBlockHash)
+    public static RollupUpdate[] Verify(PostBatch batch, ulong rollupId, in ValueHash256 windowPreBlockHash, in ValueHash256 windowPostBlockHash)
     {
         if (batch.Entries.Length == 0)
         {
             throw new EezSettlementException("The batch has no execution entries.");
         }
 
-        StateUpdate[] updates = new StateUpdate[batch.Entries.Length];
+        RollupUpdate[] updates = new RollupUpdate[batch.Entries.Length];
         ValueHash256 previous = windowPreBlockHash;
         for (int i = 0; i < updates.Length; i++)
         {
-            if (batch.Entries[i].StateUpdates is not [{ } update])
+            if (batch.Entries[i].RollupUpdates is not [{ } update])
             {
                 throw new EezSettlementException($"Entry {i} must carry exactly one state update.");
             }
@@ -34,13 +34,13 @@ public static class StateUpdateChain
                 throw new EezSettlementException($"Entry {i} updates rollup {update.RollupId}, not rollup {rollupId}.");
             }
 
-            if (update.CurrentState != previous)
+            if (update.CurrentRoot != previous)
             {
-                throw new EezSettlementException($"Entry {i} starts from {update.CurrentState}, not from {previous}.");
+                throw new EezSettlementException($"Entry {i} starts from {update.CurrentRoot}, not from {previous}.");
             }
 
             updates[i] = update;
-            previous = update.NewState;
+            previous = update.NewRoot;
         }
 
         if (previous != windowPostBlockHash)

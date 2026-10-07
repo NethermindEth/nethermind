@@ -107,8 +107,8 @@ public class SettlementAttributionTests
         const ulong rollup = 1;
         ExecutionEntry[] entries =
         [
-            Entry(new StateUpdate(rollup, A, B, default), new StateUpdate(2, D, D, default)),
-            Entry(new StateUpdate(rollup, B, C, default)),
+            Entry(new RollupUpdate(rollup, A, B, default), new RollupUpdate(2, D, D, default)),
+            Entry(new RollupUpdate(rollup, B, C, default)),
         ];
         PostBatch batch = new([], entries, [], default, default, [], [new RollupProofSystems(rollup, [0])], [], [], [], 0, false);
 
@@ -128,7 +128,7 @@ public class SettlementAttributionTests
     private static SettledRoot Settled(ulong transactionIndex, ulong logIndex, ValueHash256 root, Hash256? blockHash = null) =>
         new(Block, blockHash ?? BlockHash, transactionIndex, logIndex, root);
 
-    private static ExecutionEntry Entry(params StateUpdate[] updates) => new(updates, default, [], [], default, 0, true, []);
+    private static ExecutionEntry Entry(params RollupUpdate[] updates) => new(updates, default, [], [], default, 0, true, []);
 
     private static ValueHash256 Root(byte fill) => new(Enumerable.Repeat(fill, 32).ToArray());
 }

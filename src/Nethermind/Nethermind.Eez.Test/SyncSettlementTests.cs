@@ -291,7 +291,10 @@ public class SyncSettlementTests
         Assert.That((inbound[0].TransactionIndex, inbound[0].Observation.CallHash), Is.EqualTo((2, fixture.Observation.CallHash)));
         Assert.That(outbound, Has.Length.EqualTo(1));
         Assert.That((outbound[0].LoadTransactionIndex, outbound[0].TransactionIndex), Is.EqualTo((0, 1)));
-        Assert.That(EezCalldata.EncodeEntry(outbound[0].DerivedDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.OutboundDaEntry)));
+        Assert.That(EezCalldata.EncodeEntry(outbound[0].BaseDaEntry), Is.EqualTo(EezCalldata.EncodeEntry(fixture.OutboundDaEntry with { ReturnData = [] })),
+            "the L1 entry publishes no result, so the DA entry starts without one");
+        Assert.That(RollingHash.CallEnd(outbound[0].PendingRollingHash, true, fixture.OutboundDaEntry.ReturnData), Is.EqualTo(outbound[0].ClaimedRollingHash),
+            "DA's result closes the rolling hash the L1 entry claims");
         Assert.DoesNotThrow(() => DaVerification.Verify(fixture.Payload(), fixture.Window, outbound, inbound, ChainId, RollupId),
             "the authorized effects are exactly what the DA check consumes");
     }
@@ -402,11 +405,24 @@ public class SyncSettlementTests
     }
 
     [Test]
+    public void Verify_DaResultTheRollingHashDoesNotRecord_Throws()
+    {
+        SyncSettlementFixture fixture = new();
+        byte[] payload = fixture.Payload(actions: [DaAction.FromEntry(fixture.OutboundDaEntry with { ReturnData = [0xcd] }, RollupId), fixture.InboundAction]);
+
+        Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(payload, fixture.Window, fixture.Outbound, fixture.Inbound, ChainId, RollupId))!.Message,
+            Does.Contain("does not record"), "only the result the L1 entry's rolling hash records may be published for the call");
+    }
+
+    [Test]
     public void Verify_AuthorizedEffectsThatCannotBeRebuilt_IsTheCallersFault()
     {
         SyncSettlementFixture fixture = new();
-        AuthorizedOutbound[] outbound = [fixture.Outbound[0] with { DerivedDaEntry = fixture.OutboundDaEntry with { Success = false } }];
-        byte[] payload = fixture.Payload(actions: [DaAction.FromEntry(outbound[0].DerivedDaEntry, RollupId), fixture.InboundAction]);
+        AuthorizedOutbound valid = fixture.Outbound[0];
+        ExecutionEntry failed = valid.BaseDaEntry with { Success = false };
+        AuthorizedOutbound[] outbound =
+            [valid with { BaseDaEntry = failed, ClaimedRollingHash = RollingHash.CallEnd(valid.PendingRollingHash, false, fixture.OutboundDaEntry.ReturnData) }];
+        byte[] payload = fixture.Payload(actions: [DaAction.FromEntry(failed with { ReturnData = fixture.OutboundDaEntry.ReturnData }, RollupId), fixture.InboundAction]);
 
         Assert.That(Assert.Throws<EezSettlementException>(() => DaVerification.Verify(payload, fixture.Window, outbound, fixture.Inbound, ChainId, RollupId))!.Failure,
             Is.EqualTo(EezSettlementFailure.InternalInvariant));
@@ -435,7 +451,7 @@ public class SyncSettlementTests
     private static (BoundEffect[] Effects, SettlingBlock Observed) Bound(SyncSettlementFixture fixture)
     {
         SettlingBlock observed = SettlingBlock.Inspect(fixture.Settling, fixture.SettlingReceipts(), RollupId);
-        (ExecutionEntry outbound, StateUpdate outboundUpdate, ExecutionEntry inbound, StateUpdate inboundUpdate) =
+        (ExecutionEntry outbound, RollupUpdate outboundUpdate, ExecutionEntry inbound, RollupUpdate inboundUpdate) =
             fixture.ClaimedEntries(fixture.Settling.ParentHash!.ValueHash256, Word(3), Word(4));
         return ([new BoundEffect(1, 1, EntryShape.Outbound, outbound, outboundUpdate), new BoundEffect(2, 2, EntryShape.Inbound, inbound, inboundUpdate)], observed);
     }
@@ -475,7 +491,7 @@ public class SyncSettlementTests
     private static TestCaseData[] BadPayloads() =>
     [
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(actions: [f.Actions[0]])), "carries 1 actions") { TestName = "MissingAction" },
-        new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(actions: [f.Actions[1], f.Actions[0]])), "does not rebuild") { TestName = "ActionsSwapped" },
+        new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(actions: [f.Actions[1], f.Actions[0]])), "does not record") { TestName = "ActionsSwapped" },
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(actions: [f.Actions[0], f.InboundAction with { ReturnData = [0xcd] }])), "does not rebuild") { TestName = "ActionClaimsOtherResult" },
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(settlingPublished: [])), "publishes 0 transactions") { TestName = "UserTransactionOmitted" },
         new((Func<SyncSettlementFixture, byte[]>)(static f => f.Payload(settlingPublished: f.SyncTransactions)), "publishes 3 transactions") { TestName = "SystemTransactionsPublished" },

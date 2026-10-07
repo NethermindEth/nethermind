@@ -56,6 +56,23 @@ public class L1BatchScannerTests
         Assert.That(scanned[0].Settlement.Effects, Is.EqualTo(new ProducingSlice(0, claimed.Length - 1)), "the three effects all applied");
     }
 
+    [TestCase(64, true, TestName = "RootThenEtherBalance")]
+    [TestCase(32, false, TestName = "RootOnly")]
+    [TestCase(96, false, TestName = "ExtraWord")]
+    public void SettledRootOf_LogData_ReadsTheRootOnlyFromTheCurrentShape(int length, bool read)
+    {
+        byte[] data = new byte[length];
+        data[31] = 0x42;
+
+        ValueHash256? root = L1BatchScanner.SettledRootOf(new EezL1Log { Data = data });
+
+        Assert.That(root.HasValue, Is.EqualTo(read), "L2ExecutionPerformed carries the new root and then the rollup's ether balance");
+        if (read)
+        {
+            Assert.That(root!.Value.Bytes[31], Is.EqualTo(0x42), "the root is the first word");
+        }
+    }
+
     [Test]
     public async Task FindSettlingBlocks_NodeRefusesTheRange_HalvesUntilItServesIt()
     {
@@ -196,7 +213,7 @@ public class L1BatchScannerTests
     {
         Address = Registry,
         Topics = [L1BatchScanner.L2ExecutionPerformedTopic],
-        Data = root.ToByteArray(),
+        Data = [.. root.ToByteArray(), .. new byte[32]],
         BlockNumber = block,
         BlockHash = BlockHash,
         TransactionHash = transaction,

@@ -342,7 +342,7 @@ public class EezFollowerTests
     {
         Address = Registry,
         Topics = [L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId)],
-        Data = L2(l2Block).Hash!.BytesToArray(),
+        Data = [.. L2(l2Block).Hash!.Bytes, .. new byte[32]],
         BlockNumber = l1Block,
         BlockHash = _l1Chain[l1Block],
         TransactionHash = Keccak.Compute($"tx {l1Block}"),

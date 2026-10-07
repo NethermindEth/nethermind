@@ -39,11 +39,19 @@ public interface IL1BatchScanner
 /// </summary>
 public sealed class L1BatchScanner(IEezL1Api l1, Address registry, ulong rollupId, ILogManager logManager) : IL1BatchScanner
 {
-    public static readonly Hash256 BatchPostedTopic = Keccak.Compute("BatchPosted(uint256)");
-    public static readonly Hash256 L2ExecutionPerformedTopic = Keccak.Compute("L2ExecutionPerformed(uint64,bytes32)");
+    public static readonly Hash256 BatchPostedTopic = Keccak.Compute("BatchPosted(bytes32,uint64[])");
+    public static readonly Hash256 L2ExecutionPerformedTopic = Keccak.Compute("L2ExecutionPerformed(uint64,bytes32,uint256)");
 
     private readonly Hash256 _rollupTopic = RollupTopic(rollupId);
     private readonly ILogger _logger = logManager.GetClassLogger<L1BatchScanner>();
+
+    /// <summary>
+    /// The root an <c>L2ExecutionPerformed</c> log settles: the first of its two data words, the second being the
+    /// rollup's ether balance.
+    /// </summary>
+    /// <returns><see langword="null"/> when the log is not shaped like one.</returns>
+    public static ValueHash256? SettledRootOf(EezL1Log log) =>
+        log.Data is { Length: 2 * Hash256.Size } data ? new ValueHash256(data.AsSpan(0, Hash256.Size)) : default(ValueHash256?);
 
     /// <summary>The indexed <c>rollupId</c> topic of our rollup's <c>L2ExecutionPerformed</c> logs.</summary>
     public static Hash256 RollupTopic(ulong rollupId) => new(new UInt256(rollupId).ToBigEndian());
@@ -71,9 +79,9 @@ public sealed class L1BatchScanner(IEezL1Api l1, Address registry, ulong rollupI
             {
                 EezL1Log log = rootLogs[root];
                 EnsureOnFork(log, first.BlockHash);
-                if (log.Data is { Length: 32 })
+                if (SettledRootOf(log) is { } settled)
                 {
-                    roots.Add(new SettledRoot(log.BlockNumber, log.BlockHash, log.TransactionIndex, log.LogIndex, new ValueHash256(log.Data)));
+                    roots.Add(new SettledRoot(log.BlockNumber, log.BlockHash, log.TransactionIndex, log.LogIndex, settled));
                 }
             }
 

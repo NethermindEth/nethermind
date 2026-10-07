@@ -19,7 +19,7 @@ public static class PostBatchProfile
         Require(batch.ProofSystems is [{ } only] && only == proofSystem, $"the batch must be verified by exactly proof system {proofSystem}");
         Require(batch.RollupIdsWithProofSystems is [{ } rollup] && rollup.RollupId == rollupId && rollup.ProofSystemIndexes is [0],
             $"the batch must settle exactly rollup {rollupId} with proof system indexes [0]");
-        Require(batch.ExpectedStateRoots.Length == 0, "expected state roots must be empty");
+        Require(batch.ExpectedRoots.Length == 0, "expected state roots must be empty");
         for (int i = 0; i < batch.Entries.Length; i++)
         {
             Require(batch.Entries[i].DestinationRollupId == rollupId, $"entry {i} must target rollup {rollupId}");

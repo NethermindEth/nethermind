@@ -29,7 +29,7 @@ public class SettlementChecksTests
         ValueHash256 post = new(oracle.GetProperty("window_post_block_hash").GetString()!);
 
         PostBatchProfile.Validate(batch, RollupId, new Address(oracle.GetProperty("proof_system").GetString()!));
-        StateUpdate[] updates = StateUpdateChain.Verify(batch, RollupId, pre, post);
+        RollupUpdate[] updates = RollupUpdateChain.Verify(batch, RollupId, pre, post);
         BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, [], [], []);
 
         Assert.That(EntryShapes.Classify(batch.Entries[0], updates[0], RollupId), Is.EqualTo(EntryShape.Anchor), "the recorded entry is the canonical anchor");
@@ -55,23 +55,23 @@ public class SettlementChecksTests
     }
 
     [TestCaseSource(nameof(BrokenChains))]
-    public void Verify_UpdatesThatDoNotChainTheWindow_Throw(StateUpdate[][] updates, string rule)
+    public void Verify_UpdatesThatDoNotChainTheWindow_Throw(RollupUpdate[][] updates, string rule)
     {
         ExecutionEntry template = RecordedBatch().Entries[0];
-        PostBatch batch = RecordedBatch() with { Entries = Array.ConvertAll(updates, u => template with { StateUpdates = u }) };
+        PostBatch batch = RecordedBatch() with { Entries = Array.ConvertAll(updates, u => template with { RollupUpdates = u }) };
 
-        Assert.That(Assert.Throws<EezSettlementException>(() => StateUpdateChain.Verify(batch, RollupId, Word(1), Word(3)))!.Message, Does.Contain(rule));
+        Assert.That(Assert.Throws<EezSettlementException>(() => RollupUpdateChain.Verify(batch, RollupId, Word(1), Word(3)))!.Message, Does.Contain(rule));
     }
 
     [Test]
     public void Verify_ChainedUpdates_ReturnsThemInOrder()
     {
         ExecutionEntry template = RecordedBatch().Entries[0];
-        StateUpdate first = Update(1, 2);
-        StateUpdate second = Update(2, 3);
-        PostBatch batch = RecordedBatch() with { Entries = [template with { StateUpdates = [first] }, template with { StateUpdates = [second] }] };
+        RollupUpdate first = Update(1, 2);
+        RollupUpdate second = Update(2, 3);
+        PostBatch batch = RecordedBatch() with { Entries = [template with { RollupUpdates = [first] }, template with { RollupUpdates = [second] }] };
 
-        Assert.That(StateUpdateChain.Verify(batch, RollupId, Word(1), Word(3)), Is.EqualTo(new[] { first, second }));
+        Assert.That(RollupUpdateChain.Verify(batch, RollupId, Word(1), Word(3)), Is.EqualTo(new[] { first, second }));
     }
 
     [TestCaseSource(nameof(Shapes))]
@@ -102,20 +102,20 @@ public class SettlementChecksTests
         Assert.Throws<EezSettlementException>(() => InboundDelivery.Inspect(0, [1, 2, 3], true, RollupId));
 
     [TestCaseSource(nameof(InboundClaims))]
-    public void Authorize_InboundClaim_AcceptsOnlyTheObservedDelivery(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, string? rule)
+    public void Authorize_InboundClaim_AcceptsOnlyTheObservedDelivery(Func<ExecutionEntry, RollupUpdate, (ExecutionEntry, RollupUpdate)> mutate, string? rule)
     {
         (IncomingCrossChainCall call, _) = Delivery(7, [0xab]);
         InboundObservation observation = InboundDelivery.Inspect(7, EezCalldata.EncodeExecuteIncomingCrossChainCall(call), true, RollupId);
-        (ExecutionEntry entry, StateUpdate update) = mutate(InboundEntry(observation, out StateUpdate valid), valid);
+        (ExecutionEntry entry, RollupUpdate update) = mutate(InboundEntry(observation, out RollupUpdate valid), valid);
 
         AssertRule(() => InboundDelivery.Authorize(entry, update, observation, RollupId), rule);
     }
 
     [TestCaseSource(nameof(OutboundClaims))]
-    public void Authorize_OutboundClaim_AcceptsOnlyTheObservedCall(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas, string? rule)
+    public void Authorize_OutboundClaim_AcceptsOnlyTheObservedCall(Func<ExecutionEntry, RollupUpdate, (ExecutionEntry, RollupUpdate)> mutate, ulong eventCallGas, string? rule)
     {
-        ExecutionEntry valid = OutboundEntry(L2Contract, out StateUpdate validUpdate, out _);
-        (ExecutionEntry entry, StateUpdate update) = mutate(valid, validUpdate);
+        ExecutionEntry valid = OutboundEntry(L2Contract, out RollupUpdate validUpdate, out _);
+        (ExecutionEntry entry, RollupUpdate update) = mutate(valid, validUpdate);
         CrossChainCall call = valid.Calls[0];
         ValueHash256 eventHash = CrossChainCallHash.Compute(false, call.SourceAddress, RollupId, call.TargetAddress, 0, call.Value, eventCallGas, call.Data);
 
@@ -123,35 +123,36 @@ public class SettlementChecksTests
     }
 
     [Test]
-    public void AuthorizeOutbound_DerivedDaEntry_DropsStateUpdatesAndTheL1RollingHash()
+    public void AuthorizeOutbound_ValidCall_LeavesTheResultToDa()
     {
-        ExecutionEntry entry = OutboundEntry(L2Contract, out StateUpdate update, out ValueHash256 callHash);
+        ExecutionEntry entry = OutboundEntry(L2Contract, out RollupUpdate update, out ValueHash256 callHash);
 
-        ExecutionEntry derived = OutboundCall.Authorize(entry, update, callHash, 0, RollupId);
+        (ExecutionEntry baseDaEntry, ValueHash256 pending) = OutboundCall.Authorize(entry, update, callHash, 0, RollupId);
 
-        Assert.That(derived, Is.EqualTo(entry with { StateUpdates = [], RollingHash = default }));
+        Assert.That(baseDaEntry, Is.EqualTo(entry with { RollupUpdates = [], RollingHash = default }), "the DA entry drops the updates and the L1 rolling hash");
+        Assert.That(RollingHash.CallEnd(pending, true, PublishedResult), Is.EqualTo(entry.RollingHash), "the call's end, closed with DA's result, is the claimed rolling hash");
     }
 
     [Test]
     public void AuthorizeOutbound_SystemAddressAsSource_Throws()
     {
-        ExecutionEntry entry = OutboundEntry(EezConstants.SystemAddress, out StateUpdate update, out ValueHash256 callHash);
+        ExecutionEntry entry = OutboundEntry(EezConstants.SystemAddress, out RollupUpdate update, out ValueHash256 callHash);
 
         Assert.That(Assert.Throws<EezSettlementException>(() => OutboundCall.Authorize(entry, update, callHash, 0, RollupId))!.Message, Does.Contain("system address"));
     }
 
     [Test]
-    public void Credit_ValueBeyondInt256_Throws() =>
-        Assert.Throws<EezSettlementException>(() => EtherDelta.Credit(UInt256.One << 255));
+    public void Credit_ValueBeyondInt192_Throws() =>
+        Assert.Throws<EezSettlementException>(() => EtherDelta.Credit(UInt256.One << 191));
 
     [Test]
-    public void Debit_LargestInt256_IsItsNegation() =>
-        Assert.That(EtherDelta.Debit((UInt256.One << 255) - 1), Is.EqualTo(new Int256.Int256((UInt256.One << 255) + 1)));
+    public void Debit_LargestInt192_IsItsNegation() =>
+        Assert.That(EtherDelta.Debit((UInt256.One << 191) - 1), Is.EqualTo(new Int256.Int256(UInt256.MaxValue - ((UInt256.One << 191) - 1) + 1)));
 
     [Test]
     public void Bind_AnchorThenEffects_BindsEachEntryToItsTransaction()
     {
-        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
+        (PostBatch batch, RollupUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
         BoundEffect[] effects = EffectBinding.Bind(batch, updates, RollupId, checkpoints, [1, 3], [true, false, true, true]);
 
@@ -163,10 +164,10 @@ public class SettlementChecksTests
     }
 
     [TestCaseSource(nameof(BadBindings))]
-    public void Bind_ClaimsThatDoNotMatchTheSettlingBlock_Throw(Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
+    public void Bind_ClaimsThatDoNotMatchTheSettlingBlock_Throw(Func<(PostBatch, RollupUpdate[], EezTransactionCheckpoint[]), (PostBatch, RollupUpdate[], EezTransactionCheckpoint[])> mutate,
         int[] effectTransactions, bool[] systemTransactions, string rule)
     {
-        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = mutate(EffectBatch());
+        (PostBatch batch, RollupUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = mutate(EffectBatch());
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
             EffectBinding.Bind(batch, updates, RollupId, checkpoints, effectTransactions, systemTransactions))!.Message, Does.Contain(rule));
@@ -175,7 +176,7 @@ public class SettlementChecksTests
     [Test]
     public void Bind_CheckpointsThatDoNotMatchTheEffects_IsTheCallersFault()
     {
-        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
+        (PostBatch batch, RollupUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
             EffectBinding.Bind(batch, updates, RollupId, [checkpoints[0], checkpoints[1], checkpoints[2] with { TransactionIndex = 2 }], [1, 3], [true, false, true, true]))!.Failure,
@@ -185,7 +186,7 @@ public class SettlementChecksTests
     [Test]
     public void Bind_FewerCheckpointsThanEffects_IsTheCallersFault()
     {
-        (PostBatch batch, StateUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
+        (PostBatch batch, RollupUpdate[] updates, EezTransactionCheckpoint[] checkpoints) = EffectBatch();
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
             EffectBinding.Bind(batch, updates, RollupId, checkpoints[..2], [1, 3], [true, false, true, true]))!.Failure,
@@ -196,7 +197,7 @@ public class SettlementChecksTests
     public void Bind_NoEffectsButCheckpoints_Throws()
     {
         PostBatch batch = RecordedBatch();
-        StateUpdate[] updates = [batch.Entries[0].StateUpdates[0]];
+        RollupUpdate[] updates = [batch.Entries[0].RollupUpdates[0]];
 
         Assert.That(Assert.Throws<EezSettlementException>(() =>
             EffectBinding.Bind(batch, updates, RollupId, [new EezTransactionCheckpoint(EezTransactionCheckpoint.PreExecution, Keccak.Zero, Keccak.Zero)], [], []))!.Message,
@@ -211,7 +212,7 @@ public class SettlementChecksTests
         Case(static b => b with { RollupIdsWithProofSystems = [new RollupProofSystems(2, [0])] }, "OtherRollup"),
         Case(static b => b with { RollupIdsWithProofSystems = [new RollupProofSystems(RollupId, [1])] }, "OtherProofSystemIndex"),
         Case(static b => b with { RollupIdsWithProofSystems = [new RollupProofSystems(RollupId, [0]), new RollupProofSystems(RollupId, [0])] }, "TwoRollups"),
-        Case(static b => b with { ExpectedStateRoots = [new ExpectedStateRoot(RollupId, Word(1))] }, "ExpectedStateRoots"),
+        Case(static b => b with { ExpectedRoots = [new ExpectedRoot(RollupId, Word(1))] }, "ExpectedRoots"),
         Case(static b => b with { Entries = [b.Entries[0] with { DestinationRollupId = 2 }] }, "EntryForOtherRollup"),
         Case(static b => b with { StaticEntries = [new StaticExecutionEntry([], Word(1), [], Word(2), RollupId, true, [])] }, "StaticEntries"),
         Case(static b => b with { ImmediateStaticEntryCount = 1 }, "ImmediateStaticEntries"),
@@ -225,8 +226,8 @@ public class SettlementChecksTests
     [
         new(new[] { new[] { Update(1, 2), Update(2, 3) } }, "exactly one state update") { TestName = "TwoUpdatesInOneEntry" },
         new(new[] { new[] { Update(1, 3), Update(1, 3) with { RollupId = 2 } } }, "exactly one state update") { TestName = "ExtraUpdateAfterTheChain" },
-        new(new[] { Array.Empty<StateUpdate>() }, "exactly one state update") { TestName = "NoUpdate" },
-        new(Array.Empty<StateUpdate[]>(), "no execution entries") { TestName = "NoEntries" },
+        new(new[] { Array.Empty<RollupUpdate>() }, "exactly one state update") { TestName = "NoUpdate" },
+        new(Array.Empty<RollupUpdate[]>(), "no execution entries") { TestName = "NoEntries" },
         new(new[] { new[] { Update(9, 3) } }, "starts from") { TestName = "WrongStart" },
         new(new[] { new[] { Update(1, 2) } }, "not at the window's last block") { TestName = "WrongEnd" },
         new(new[] { new[] { Update(1, 2) }, new[] { Update(9, 3) } }, "starts from") { TestName = "BrokenLink" },
@@ -259,21 +260,20 @@ public class SettlementChecksTests
     [
         new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)7, false, "reverted") { TestName = "Reverted" },
         new((Func<IncomingCrossChainCall, IncomingCrossChainCall>)(static c => c), (UInt256)8, true, "native value") { TestName = "NativeValueDiffers" },
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceRollupId = 2 }) with { SourceRollup = 2 }, "does not come from L1", "SourceNotL1"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceRollupId = 2 }), "does not come from L1", "SourceNotL1"),
         BadDelivery(static c => c with { Entries = [] }, "exactly one entry", "NoEntry"),
         BadDelivery(static c => c with { Entries = [c.Entries[0], c.Entries[0]] }, "exactly one entry", "TwoEntries"),
-        BadDelivery(static c => c with { StaticEntries = [new L2StaticExecutionEntry(Word(1), [], Word(2), true, [])] }, "no static entries", "StaticEntry"),
+        BadDelivery(static c => c with { StaticEntries = [new L2StaticExecutionEntry(0, Word(1), [], Word(2), true, [])] }, "no static entries", "StaticEntry"),
         BadDelivery(static c => c with { Entries = [c.Entries[0] with { IncomingCalls = [] }] }, "exactly one incoming call", "NoIncomingCall"),
         BadDelivery(static c => c with { Entries = [c.Entries[0] with { IncomingCalls = [c.Entries[0].IncomingCalls[0], c.Entries[0].IncomingCalls[0]] }] },
             "exactly one incoming call", "TwoIncomingCalls"),
         BadDelivery(static c => c with { Entries = [c.Entries[0] with { Success = false }] }, "must succeed", "EntryFailed"),
         BadDelivery(static c => c with { Entries = [c.Entries[0] with { ExpectedOutgoingCalls = [new ExpectedCall(Word(1), [], Word(2), true, [])] }] },
             "no outgoing calls", "ExpectsOutgoingCalls"),
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { TargetAddress = L1Sender }), "differs from the call in its entry", "DestinationDiffers"),
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Value = 8 }), "differs from the call in its entry", "ValueDiffers"),
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Data = [9] }), "differs from the call in its entry", "DataDiffers"),
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceAddress = L2Contract }), "differs from the call in its entry", "SourceAddressDiffers"),
-        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceRollupId = 2 }), "differs from the call in its entry", "SourceRollupDiffers"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { TargetAddress = L1Sender }), "proxy entry hash", "DestinationNotHashed"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Value = 8 }), "native value", "ValueNotSent"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Data = [9] }), "proxy entry hash", "DataNotHashed"),
+        BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { SourceAddress = L2Contract }), "proxy entry hash", "SourceAddressNotHashed"),
         BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { Gas = 1 }), "flat, mutable", "InnerWithGas"),
         BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { IsStatic = true }), "flat, mutable", "InnerStatic"),
         BadDelivery(static c => WithInner(c, c.Entries[0].IncomingCalls[0] with { RevertNextNCalls = 1 }), "flat, mutable", "InnerRevertingNext"),
@@ -301,7 +301,8 @@ public class SettlementChecksTests
         OutboundClaim(static (e, u) => (e with { Calls = [e.Calls[0] with { SourceRollupId = 2 }] }, u), 0, "must come from rollup", "CallFromOtherRollup"),
         OutboundClaim(static (e, u) => (e with { Calls = [e.Calls[0] with { Data = [9] }] }, u), 0, "different call", "OtherCall"),
         OutboundClaim(static (e, u) => (e with { Calls = [] }, u), 0, "exactly one call", "NoCall"),
-        OutboundClaim(static (e, u) => (e with { ReturnData = [0xcd] }, u), 0, "rolling hash", "ResultNotInRollingHash"),
+        OutboundClaim(static (e, u) => (e with { ReturnData = [0xcd] }, u), 0, "no return data", "ResultOnL1"),
+        OutboundClaim(static (e, u) => (e with { Success = false }, u), 0, "must succeed", "Failed"),
         OutboundClaim(static (e, u) => (e, u with { EtherDelta = new Int256.Int256(3) }), 0, "debited", "CreditedInsteadOfDebited"),
         OutboundClaim(static (e, u) => (e, u with { EtherDelta = Int256.Int256.Zero }), 0, "debited", "NotDebited"),
     ];
@@ -331,9 +332,9 @@ public class SettlementChecksTests
             "moves", "AnchorMovesEther"),
     ];
 
-    private static (PostBatch Batch, StateUpdate[] Updates, EezTransactionCheckpoint[] Checkpoints) EffectBatch()
+    private static (PostBatch Batch, RollupUpdate[] Updates, EezTransactionCheckpoint[] Checkpoints) EffectBatch()
     {
-        StateUpdate[] updates = [Update(1, 2), Update(2, 3), Update(3, 4)];
+        RollupUpdate[] updates = [Update(1, 2), Update(2, 3), Update(3, 4)];
         ExecutionEntry anchor = new([updates[0]], default, [], [], RollingHash.SeedL1([new StateCommitment(RollupId, Word(1))], default), RollupId, true, []);
         ExecutionEntry outbound = new([updates[1]], default, [new CrossChainCall(0, false, 0, L2Contract, RollupId, L1Sender, 0, [])], [], Word(5), RollupId, true, []);
         ExecutionEntry inbound = new([updates[2]], Word(6), [], [], Word(7), RollupId, true, []);
@@ -353,25 +354,27 @@ public class SettlementChecksTests
         ValueHash256 callHash = CrossChainCallHash.Compute(false, L1Sender, 0, L2Contract, RollupId, value, 0, data);
         ValueHash256 rolling = RollingHash.SingleL2Call(callHash, true, returnData);
         L2ExecutionEntry entry = new(callHash, [inner], [], rolling, true, returnData);
-        return (new IncomingCrossChainCall(L2Contract, value, data, L1Sender, 0, [entry], []), callHash);
+        return (new IncomingCrossChainCall([entry], []), callHash);
     }
 
-    private static ExecutionEntry InboundEntry(InboundObservation observation, out StateUpdate update)
+    private static ExecutionEntry InboundEntry(InboundObservation observation, out RollupUpdate update)
     {
         update = Update(1, 2) with { EtherDelta = new Int256.Int256(7) };
         ValueHash256 rolling = RollingHash.SeedL1(update, observation.CallHash);
         return new ExecutionEntry([update], observation.CallHash, [], [], rolling, RollupId, true, observation.ReturnData);
     }
 
-    private static ExecutionEntry OutboundEntry(Address source, out StateUpdate update, out ValueHash256 callHash)
+    /// <summary>The outbound call's result, which only DA publishes; the L1 entry's rolling hash records it.</summary>
+    private static readonly byte[] PublishedResult = [0xee];
+
+    private static ExecutionEntry OutboundEntry(Address source, out RollupUpdate update, out ValueHash256 callHash)
     {
         CrossChainCall call = new(0, false, 0, source, RollupId, L1Sender, 3, [4, 5]);
         update = Update(1, 2) with { EtherDelta = new Int256.Int256(-3) };
         callHash = CrossChainCallHash.Compute(false, source, RollupId, L1Sender, 0, 3, 0, call.Data);
-        byte[] returnData = [0xee];
         ValueHash256 rolling = RollingHash.CallEnd(
-            RollingHash.CallBegin(RollingHash.SeedL1(update, default), callHash), true, returnData);
-        return new ExecutionEntry([update], default, [call], [], rolling, RollupId, true, returnData);
+            RollingHash.CallBegin(RollingHash.SeedL1(update, default), callHash), true, PublishedResult);
+        return new ExecutionEntry([update], default, [call], [], rolling, RollupId, true, []);
     }
 
     private static IncomingCrossChainCall WithInner(IncomingCrossChainCall call, CrossChainCall inner) =>
@@ -382,10 +385,10 @@ public class SettlementChecksTests
     private static TestCaseData BadDelivery(Func<IncomingCrossChainCall, IncomingCrossChainCall> mutate, string rule, string name) =>
         new(mutate, (UInt256)7, true, rule) { TestName = name };
 
-    private static TestCaseData Claim(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, string? rule, string name) =>
+    private static TestCaseData Claim(Func<ExecutionEntry, RollupUpdate, (ExecutionEntry, RollupUpdate)> mutate, string? rule, string name) =>
         new(mutate, rule) { TestName = name };
 
-    private static TestCaseData OutboundClaim(Func<ExecutionEntry, StateUpdate, (ExecutionEntry, StateUpdate)> mutate, ulong eventCallGas, string? rule, string name) =>
+    private static TestCaseData OutboundClaim(Func<ExecutionEntry, RollupUpdate, (ExecutionEntry, RollupUpdate)> mutate, ulong eventCallGas, string? rule, string name) =>
         new(mutate, eventCallGas, rule) { TestName = name };
 
     private static void AssertRule(Action check, string? rule)
@@ -401,13 +404,13 @@ public class SettlementChecksTests
     }
 
     private static TestCaseData Binding(
-        Func<(PostBatch, StateUpdate[], EezTransactionCheckpoint[]), (PostBatch, StateUpdate[], EezTransactionCheckpoint[])> mutate,
+        Func<(PostBatch, RollupUpdate[], EezTransactionCheckpoint[]), (PostBatch, RollupUpdate[], EezTransactionCheckpoint[])> mutate,
         int[] effectTransactions, bool[] systemTransactions, string rule, string name) =>
         new(mutate, effectTransactions, systemTransactions, rule) { TestName = name };
 
-    private static ExecutionEntry Anchor(StateUpdate update) => new([update], default, [], [], RollingHash.SeedL1(update, default), RollupId, true, []);
+    private static ExecutionEntry Anchor(RollupUpdate update) => new([update], default, [], [], RollingHash.SeedL1(update, default), RollupId, true, []);
 
-    private static StateUpdate Update(ulong from, ulong to) => new(RollupId, Word(from), Word(to), Int256.Int256.Zero);
+    private static RollupUpdate Update(ulong from, ulong to) => new(RollupId, Word(from), Word(to), Int256.Int256.Zero);
 
     private static PostBatch RecordedBatch() => EezCalldata.DecodePostAndVerifyBatch(StatelessFixtures.ReadPostBatch(StatelessFixtures.Window84));
 

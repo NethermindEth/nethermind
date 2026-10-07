@@ -7,11 +7,11 @@ namespace Nethermind.Eez.Execution.Settlement;
 
 internal static class EtherDelta
 {
-    private static readonly UInt256 MaxPositive = UInt256.MaxValue >> 1;
+    private static readonly UInt256 MaxPositive = (UInt256.One << 191) - 1;
 
-    /// <exception cref="EezSettlementException"><paramref name="value"/> does not fit an <c>int256</c>.</exception>
+    /// <exception cref="EezSettlementException"><paramref name="value"/> does not fit an <c>int192</c>.</exception>
     public static Int256.Int256 Credit(in UInt256 value) =>
-        value <= MaxPositive ? new Int256.Int256(value) : throw new EezSettlementException($"Value {value} does not fit an int256 ether delta.");
+        value <= MaxPositive ? new Int256.Int256(value) : throw new EezSettlementException($"Value {value} does not fit an int192 ether delta.");
 
     public static Int256.Int256 Debit(in UInt256 value)
     {

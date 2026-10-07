@@ -4,4 +4,4 @@
 namespace Nethermind.Eez.Execution.Settlement;
 
 /// <summary>A settlement entry bound to the transaction of the settling block that produced its effect.</summary>
-public readonly record struct BoundEffect(int EntryIndex, int TransactionIndex, EntryShape Shape, ExecutionEntry Entry, StateUpdate Update);
+public readonly record struct BoundEffect(int EntryIndex, int TransactionIndex, EntryShape Shape, ExecutionEntry Entry, RollupUpdate Update);

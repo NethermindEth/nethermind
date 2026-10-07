@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "protocolCommit": "6fcc90b65063831cb7797e9fa361004064d28f9f",
+  "protocolCommit": "855fe0602484750861b4c31502a1a91355d33ed6",
   "solidityOracle": "contracts/test/PublicInputsHashVectors.t.sol",
   "vectors": [
     {
@@ -31,7 +31,7 @@
     {
       "name": "full_entry_and_calldata_single_rollup_single_ps",
       "entryHashes": [
-        "0x2c4c8cbc9b39743790f04a13406c6c0e3ab6ca0bf5acb3b923f5549d3aabb759"
+        "0x752aa6c5ddc53a6bfdfec261248ee29246f6e831c59d3567d2c22d80dbf93dc1"
       ],
       "staticEntryHashes": [],
       "blobHashes": [],
@@ -50,9 +50,9 @@
       ],
       "proofSystemCount": 1,
       "boundSender": "0x0000000000000000000000000000000000000000",
-      "expectedSharedPublicInput": "0xe5764fb1e66c094d0e624344415ffaf8d42687ef904dc61ea5b587f5d3e8b6a0",
+      "expectedSharedPublicInput": "0x597638a46f222dfe739dea95acb35f302b6339639ff4d707aadc4455ba54fa62",
       "expectedPublicInputsHashes": [
-        "0x122a843ef260afd29aac762668d6f0c0f6f0a19c48734107ba770a8b81e1b8b0"
+        "0x1433641dadf5afe5f9fec99ab1c9e61d1ab2a9c09d091a86d93575aa4f2de850"
       ]
     },
     {

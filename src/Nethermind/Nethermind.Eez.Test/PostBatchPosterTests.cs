@@ -125,7 +125,7 @@ public class PostBatchPosterTests
         _posting.GetReceipt(PostBatch, Arg.Any<CancellationToken>()).Returns(new EezL1Receipt { BlockHash = landedIn, BlockNumber = 11, Status = 1 });
         byte[] stored = storesOurs ? SyncBlock.ToByteArray() : Keccak.Compute("another block").BytesToArray();
         _l1.GetLogs(Registry, L1BatchScanner.L2ExecutionPerformedTopic, L1BatchScanner.RollupTopic(RollupId), 11, 11, Arg.Any<CancellationToken>())
-            .Returns([new EezL1Log { BlockHash = landedIn, BlockNumber = 11, Data = stored }]);
+            .Returns([new EezL1Log { BlockHash = landedIn, BlockNumber = 11, Data = [.. stored, .. new byte[32]] }]);
 
         PostResult result = await Poster().Observe(PostBatch, 11, new BundleTarget(11, 1_000), SyncBlock, CancellationToken.None);
 

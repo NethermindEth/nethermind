@@ -7,10 +7,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Eez.Execution.Settlement;
 
-/// <summary>The move of one rollup from one state to the next, and the ether it gains or loses.</summary>
-public sealed record StateUpdate(ulong RollupId, ValueHash256 CurrentState, ValueHash256 NewState, Int256.Int256 EtherDelta);
+/// <summary>The move of one rollup from one root to the next, and the ether it gains or loses.</summary>
+/// <remarks>The ABI tuple orders it <c>(rollupId, int192 etherDelta, currentRoot, newRoot)</c>.</remarks>
+public sealed record RollupUpdate(ulong RollupId, ValueHash256 CurrentRoot, ValueHash256 NewRoot, Int256.Int256 EtherDelta);
 
-public sealed record ExpectedStateRoot(ulong RollupId, ValueHash256 StateRoot);
+public sealed record ExpectedRoot(ulong RollupId, ValueHash256 Root);
 
 /// <summary>
 /// A cross-chain call as execution tables carry it: <c>L2ToL1Call</c> on L1 and <c>CrossChainCall</c> on L2 share
@@ -38,7 +39,7 @@ public sealed record ExpectedCall(
     byte[] ReturnData);
 
 public sealed record ExecutionEntry(
-    StateUpdate[] StateUpdates,
+    RollupUpdate[] RollupUpdates,
     ValueHash256 ProxyEntryHash,
     CrossChainCall[] Calls,
     ExpectedCall[] ExpectedCalls,
@@ -48,7 +49,7 @@ public sealed record ExecutionEntry(
     byte[] ReturnData);
 
 public sealed record StaticExecutionEntry(
-    ExpectedStateRoot[] ExpectedStateRoots,
+    ExpectedRoot[] ExpectedRoots,
     ValueHash256 ProxyEntryHash,
     CrossChainCall[] Calls,
     ValueHash256 RollingHash,
@@ -60,7 +61,7 @@ public sealed record RollupProofSystems(ulong RollupId, ulong[] ProofSystemIndex
 
 /// <summary>The argument of <c>EEZ.postAndVerifyBatch</c>.</summary>
 public sealed record PostBatch(
-    ExpectedStateRoot[] ExpectedStateRoots,
+    ExpectedRoot[] ExpectedRoots,
     ExecutionEntry[] Entries,
     StaticExecutionEntry[] StaticEntries,
     UInt256 ImmediateEntryCount,
@@ -81,7 +82,9 @@ public sealed record L2ExecutionEntry(
     bool Success,
     byte[] ReturnData);
 
+/// <param name="ExpectedEntryIndex">The index of the execution entry whose call this static read answers.</param>
 public sealed record L2StaticExecutionEntry(
+    UInt256 ExpectedEntryIndex,
     ValueHash256 ProxyEntryHash,
     CrossChainCall[] IncomingCalls,
     ValueHash256 RollingHash,

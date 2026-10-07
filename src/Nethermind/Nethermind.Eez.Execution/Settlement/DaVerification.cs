@@ -84,10 +84,10 @@ public static class DaVerification
             throw new EezSettlementException($"The DA payload publishes {span.Transactions.Length - published} transactions beyond the window.");
         }
 
-        VerifySidecars(decoded.Actions, outbound, inbound, rollupId);
+        ExecutionEntry[] outboundEntries = VerifySidecars(decoded.Actions, outbound, inbound, rollupId);
         if (omitted != 0)
         {
-            VerifySyncBlock(window[^1], settlingTransactions!, outbound, inbound, chainId, rollupId);
+            VerifySyncBlock(window[^1], settlingTransactions!, outbound, outboundEntries, inbound, chainId, rollupId);
         }
     }
 
@@ -120,7 +120,8 @@ public static class DaVerification
         }
     }
 
-    private static void VerifySidecars(DaAction[] actions, AuthorizedOutbound[] outbound, AuthorizedInbound[] inbound, ulong rollupId)
+    /// <returns>Each outbound call's DA entry, with the result DA publishes for it.</returns>
+    private static ExecutionEntry[] VerifySidecars(DaAction[] actions, AuthorizedOutbound[] outbound, AuthorizedInbound[] inbound, ulong rollupId)
     {
         int expected = outbound.Length + inbound.Length;
         if (actions.Length != expected)
@@ -128,23 +129,44 @@ public static class DaVerification
             throw new EezSettlementException($"The DA payload carries {actions.Length} actions, but the batch has {expected} effects.");
         }
 
+        ExecutionEntry[] outboundEntries = new ExecutionEntry[outbound.Length];
         for (int i = 0; i < actions.Length; i++)
         {
-            ExecutionEntry derived = i < outbound.Length ? outbound[i].DerivedDaEntry : inbound[i - outbound.Length].Observation.DerivedDaEntry;
-            if (!EezCalldata.EncodeEntry(actions[i].ToEntry(rollupId)).AsSpan().SequenceEqual(EezCalldata.EncodeEntry(derived)))
+            ExecutionEntry published = actions[i].ToEntry(rollupId);
+            ExecutionEntry derived;
+            if (i < outbound.Length)
+            {
+                AuthorizedOutbound call = outbound[i];
+                derived = call.BaseDaEntry with { ReturnData = published.ReturnData };
+                if (RollingHash.CallEnd(call.PendingRollingHash, call.BaseDaEntry.Success, published.ReturnData) != call.ClaimedRollingHash)
+                {
+                    throw new EezSettlementException($"DA action {i} publishes a result the entry's rolling hash does not record.");
+                }
+
+                outboundEntries[i] = derived;
+            }
+            else
+            {
+                derived = inbound[i - outbound.Length].Observation.DerivedDaEntry;
+            }
+
+            if (!EezCalldata.EncodeEntry(published).AsSpan().SequenceEqual(EezCalldata.EncodeEntry(derived)))
             {
                 throw new EezSettlementException($"DA action {i} does not rebuild the entry of its effect.");
             }
         }
+
+        return outboundEntries;
     }
 
-    private static void VerifySyncBlock(Block block, byte[][] encoded, AuthorizedOutbound[] outbound, AuthorizedInbound[] inbound, ulong chainId, ulong rollupId)
+    private static void VerifySyncBlock(Block block, byte[][] encoded, AuthorizedOutbound[] outbound, ExecutionEntry[] outboundEntries, AuthorizedInbound[] inbound,
+        ulong chainId, ulong rollupId)
     {
         int firstSystem = outbound.Length > 0 ? outbound[0].LoadTransactionIndex : inbound[0].TransactionIndex;
         (ExecutionEntry, byte[])[] outboundInputs = new (ExecutionEntry, byte[])[outbound.Length];
         for (int i = 0; i < outbound.Length; i++)
         {
-            outboundInputs[i] = (outbound[i].DerivedDaEntry, encoded[outbound[i].TransactionIndex]);
+            outboundInputs[i] = (outboundEntries[i], encoded[outbound[i].TransactionIndex]);
         }
 
         ExecutionEntry[] inboundEntries = new ExecutionEntry[inbound.Length];

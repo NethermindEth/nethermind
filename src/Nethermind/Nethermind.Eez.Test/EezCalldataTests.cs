@@ -21,15 +21,15 @@ public class EezCalldataTests
     private const string Call = "(uint16,bool,uint64,address,uint64,address,uint256,bytes)";
     private const string ExpectedCall = "(bytes32," + Call + "[],bytes32,bool,bytes)";
     private const string L2Entry = "(bytes32," + Call + "[]," + ExpectedCall + "[],bytes32,bool,bytes)";
-    private const string L2StaticEntry = "(bytes32," + Call + "[],bytes32,bool,bytes)";
-    private const string Entry = "((uint64,bytes32,bytes32,int256)[],bytes32," + Call + "[]," + ExpectedCall + "[],bytes32,uint64,bool,bytes)";
+    private const string L2StaticEntry = "(uint256,bytes32," + Call + "[],bytes32,bool,bytes)";
+    private const string Entry = "((uint64,int192,bytes32,bytes32)[],bytes32," + Call + "[]," + ExpectedCall + "[],bytes32,uint64,bool,bytes)";
     private const string StaticEntry = "((uint64,bytes32)[],bytes32," + Call + "[],bytes32,uint64,bool,bytes)";
 
     [TestCase(EezCalldata.PostAndVerifyBatchSelector,
         "postAndVerifyBatch(((uint64,bytes32)[]," + Entry + "[]," + StaticEntry + "[],uint256,uint256,address[],(uint64,uint64[])[],uint256[],bytes,bytes[],uint64,bool))",
         TestName = "PostAndVerifyBatch")]
     [TestCase(EezCalldata.ExecuteIncomingCrossChainCallSelector,
-        "executeIncomingCrossChainCall(address,uint256,bytes,address,uint64," + L2Entry + "[]," + L2StaticEntry + "[])",
+        "executeIncomingCrossChainCall(" + L2Entry + "[]," + L2StaticEntry + "[])",
         TestName = "ExecuteIncomingCrossChainCall")]
     [TestCase(EezCalldata.LoadExecutionTableSelector, "loadExecutionTable(" + L2Entry + "[]," + L2StaticEntry + "[])", TestName = "LoadExecutionTable")]
     public void Selector_MatchesTheSignatureTheTypesDescribe(uint selector, string signature) =>
@@ -52,7 +52,7 @@ public class EezCalldataTests
         Assert.That(hashes[0], Is.EqualTo(new ValueHash256(oracle.GetProperty("public_inputs_hash").GetString()!)),
             "decoding, entry hashing and public-input hashing reproduce the hash the signer signed on the devnet");
         Assert.That(batch.Entries[0].RollingHash,
-            Is.EqualTo(RollingHash.SeedL1([new StateCommitment(1, batch.Entries[0].StateUpdates[0].CurrentState)], default)),
+            Is.EqualTo(RollingHash.SeedL1([new StateCommitment(1, batch.Entries[0].RollupUpdates[0].CurrentRoot)], default)),
             "an anchor entry's rolling hash is the L1 seed of its state update with no proxy entry");
     }
 
@@ -64,11 +64,11 @@ public class EezCalldataTests
     [Test]
     public void EntryHash_PinnedEntries_MatchTheContract()
     {
-        ExecutionEntry entry = new([new StateUpdate(1, Word(0x1111), Word(0x2222), Int256.Int256.Zero)], Word(0x3333), [], [], Word(0x4444), 1, true,
+        ExecutionEntry entry = new([new RollupUpdate(1, Word(0x1111), Word(0x2222), Int256.Int256.Zero)], Word(0x3333), [], [], Word(0x4444), 1, true,
             [0xde, 0xad, 0xbe, 0xef]);
-        StaticExecutionEntry staticEntry = new([new ExpectedStateRoot(1, Word(0x1111))], Word(0x5555), [], Word(0x6666), 1, true, [0xca, 0xfe]);
+        StaticExecutionEntry staticEntry = new([new ExpectedRoot(1, Word(0x1111))], Word(0x5555), [], Word(0x6666), 1, true, [0xca, 0xfe]);
 
-        Assert.That(EezCalldata.EntryHash(entry), Is.EqualTo(new ValueHash256("0x2c4c8cbc9b39743790f04a13406c6c0e3ab6ca0bf5acb3b923f5549d3aabb759")),
+        Assert.That(EezCalldata.EntryHash(entry), Is.EqualTo(new ValueHash256("0x752aa6c5ddc53a6bfdfec261248ee29246f6e831c59d3567d2c22d80dbf93dc1")),
             "an entry hash is keccak256 of the abi-encoded entry, leading offset word included");
         Assert.That(EezCalldata.StaticEntryHash(staticEntry), Is.EqualTo(new ValueHash256("0x1a63bcaad1cc1d18331cee8e48f0074de3a9f1f887255d3dfdf44f62a08036c3")),
             "a static entry hash is keccak256 of the abi-encoded static entry");
@@ -80,10 +80,10 @@ public class EezCalldataTests
         CrossChainCall call = new(2, true, 7, new Address("0x00000000000000000000000000000000000000bb"), 3, new Address("0x00000000000000000000000000000000000000aa"),
             UInt256.MaxValue, [1, 2, 3]);
         PostBatch batch = new(
-            [new ExpectedStateRoot(4, Word(0x10))],
-            [new ExecutionEntry([new StateUpdate(1, Word(1), Word(2), new Int256.Int256(-5))], Word(3), [call],
+            [new ExpectedRoot(4, Word(0x10))],
+            [new ExecutionEntry([new RollupUpdate(1, Word(1), Word(2), new Int256.Int256(-5))], Word(3), [call],
                 [new ExpectedCall(Word(4), [call, call], Word(5), false, [9])], Word(6), 1, false, new byte[33])],
-            [new StaticExecutionEntry([new ExpectedStateRoot(1, Word(7))], Word(8), [call], Word(9), 1, true, [])],
+            [new StaticExecutionEntry([new ExpectedRoot(1, Word(7))], Word(8), [call], Word(9), 1, true, [])],
             5, 6,
             [new Address("0x00000000000000000000000000000000000000cc")],
             [new RollupProofSystems(1, [0, 2])],
@@ -97,8 +97,28 @@ public class EezCalldataTests
         PostBatch decoded = EezCalldata.DecodePostAndVerifyBatch(encoded);
 
         Assert.That(EezCalldata.EncodePostAndVerifyBatch(decoded), Is.EqualTo(encoded), "decoding then encoding reproduces the calldata");
-        Assert.That(decoded.Entries[0].StateUpdates[0].EtherDelta, Is.EqualTo(new Int256.Int256(-5)), "a negative ether delta survives as two's complement");
+        Assert.That(decoded.Entries[0].RollupUpdates[0].EtherDelta, Is.EqualTo(new Int256.Int256(-5)), "a negative ether delta survives as two's complement");
         Assert.That(decoded.Entries[0].ExpectedCalls[0].Calls, Has.Length.EqualTo(2), "nested dynamic arrays decode in order");
+    }
+
+    [TestCase("00000000000000007fffffffffffffffffffffffffffffffffffffffffffffff", null, TestName = "LargestPositive")]
+    [TestCase("ffffffffffffffff800000000000000000000000000000000000000000000000", null, TestName = "SmallestNegative")]
+    [TestCase("0000000000000001800000000000000000000000000000000000000000000000", "int192", TestName = "PositiveBeyondTheWidth")]
+    [TestCase("ffffffffffffffff7fffffffffffffffffffffffffffffffffffffffffffffff", "int192", TestName = "NegativeNotSignExtended")]
+    public void ReadInt192_Word_AcceptsOnlyASignExtendedValue(string word, string? rule)
+    {
+        byte[] data = Convert.FromHexString(word);
+
+        Action read = () => new AbiReader(data).ReadInt192(0);
+
+        if (rule is null)
+        {
+            Assert.That(read, Throws.Nothing, "an ether delta within int192 decodes");
+        }
+        else
+        {
+            Assert.That(read, Throws.TypeOf<EezAbiException>().With.Message.Contains(rule), "a word whose top bytes do not sign-extend bit 191 is not canonical");
+        }
     }
 
     [Test]
@@ -106,8 +126,8 @@ public class EezCalldataTests
     {
         CrossChainCall call = new(0, false, 0, new Address("0x00000000000000000000000000000000000000bb"), 0, EezConstants.Eezl2Address, 1, [4, 5]);
         L2ExecutionEntry entry = new(Word(1), [call], [new ExpectedCall(Word(2), [call], Word(3), true, [6])], Word(4), true, [7]);
-        L2StaticExecutionEntry staticEntry = new(Word(5), [call], Word(6), false, []);
-        IncomingCrossChainCall incoming = new(new Address("0x00000000000000000000000000000000000000dd"), 3, [8, 9], call.SourceAddress, 0, [entry], [staticEntry]);
+        L2StaticExecutionEntry staticEntry = new(1, Word(5), [call], Word(6), false, []);
+        IncomingCrossChainCall incoming = new([entry], [staticEntry]);
         ExecutionTable table = new([entry, entry], [staticEntry]);
 
         byte[] incomingCalldata = EezCalldata.EncodeExecuteIncomingCrossChainCall(incoming);

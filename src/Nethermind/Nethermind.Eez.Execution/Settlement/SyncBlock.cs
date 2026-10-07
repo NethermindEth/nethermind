@@ -58,7 +58,7 @@ public static class SyncBlock
             ValueHash256 rollingHash = RollingHash.SingleL2Call(callHash, true, entry.ReturnData);
             CrossChainCall incoming = new(0, false, 0, outer.SourceAddress, outer.SourceRollupId, outer.TargetAddress, outer.Value, outer.Data);
             L2ExecutionEntry delivery = new(callHash, [incoming], [], rollingHash, true, entry.ReturnData);
-            IncomingCrossChainCall call = new(outer.TargetAddress, outer.Value, outer.Data, outer.SourceAddress, outer.SourceRollupId, [delivery], []);
+            IncomingCrossChainCall call = new([delivery], []);
             transactions.Add(Encode(chainId, NextNonce(ref nonce), outer.Value, EezCalldata.EncodeExecuteIncomingCrossChainCall(call)));
         }
 

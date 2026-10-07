@@ -73,7 +73,11 @@ public sealed class SyncSettlementFixture
 
     public Block[] Window => [PrecedingBlock, Settling];
 
-    public AuthorizedOutbound[] Outbound => [new(0, 1, OutboundDaEntry)];
+    /// <summary>The outbound entry's rolling hash up to its call's begin, which DA's result closes.</summary>
+    public static ValueHash256 PendingRollingHash => Keccak.Compute("outbound call begin").ValueHash256;
+
+    public AuthorizedOutbound[] Outbound =>
+        [new(0, 1, OutboundDaEntry with { ReturnData = [] }, PendingRollingHash, RollingHash.CallEnd(PendingRollingHash, true, OutboundDaEntry.ReturnData))];
 
     public AuthorizedInbound[] Inbound => [new(2, Observation)];
 
@@ -94,15 +98,15 @@ public sealed class SyncSettlementFixture
     ];
 
     /// <summary>The L1 entries the batch claims for the two effects, chained after an anchor ending at <paramref name="anchorEnd"/>.</summary>
-    public (ExecutionEntry Outbound, StateUpdate OutboundUpdate, ExecutionEntry Inbound, StateUpdate InboundUpdate) ClaimedEntries(in ValueHash256 anchorEnd,
+    public (ExecutionEntry Outbound, RollupUpdate OutboundUpdate, ExecutionEntry Inbound, RollupUpdate InboundUpdate) ClaimedEntries(in ValueHash256 anchorEnd,
         in ValueHash256 outboundEnd, in ValueHash256 inboundEnd)
     {
-        StateUpdate outboundUpdate = new(RollupId, anchorEnd, outboundEnd, new Int256.Int256(-3));
+        RollupUpdate outboundUpdate = new(RollupId, anchorEnd, outboundEnd, new Int256.Int256(-3));
         ValueHash256 outboundRolling = RollingHash.CallEnd(
             RollingHash.CallBegin(RollingHash.SeedL1([new StateCommitment(RollupId, anchorEnd)], default), EventCallHash), true, OutboundDaEntry.ReturnData);
-        ExecutionEntry outbound = OutboundDaEntry with { StateUpdates = [outboundUpdate], RollingHash = outboundRolling };
+        ExecutionEntry outbound = OutboundDaEntry with { RollupUpdates = [outboundUpdate], RollingHash = outboundRolling, ReturnData = [] };
 
-        StateUpdate inboundUpdate = new(RollupId, outboundEnd, inboundEnd, new Int256.Int256(7));
+        RollupUpdate inboundUpdate = new(RollupId, outboundEnd, inboundEnd, new Int256.Int256(7));
         ValueHash256 inboundRolling = RollingHash.SeedL1([new StateCommitment(RollupId, outboundEnd)], Observation.CallHash);
         ExecutionEntry inbound = new([inboundUpdate], Observation.CallHash, [], [], inboundRolling, RollupId, true, Observation.ReturnData);
         return (outbound, outboundUpdate, inbound, inboundUpdate);
