@@ -244,6 +244,21 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         }
     }
 
+    [Test]
+    public void A_senders_later_transaction_is_checked_against_the_slot_its_earlier_one_did_not_write([Values] bool writesBeforeReverting)
+    {
+        // A's two transactions are warmed in one scope: the swap passes the gate on the parent state and debits slot 1, and
+        // the spend runs on that debit. The block funds the gate first, so the swap reverts, and the spend must not be
+        // replayed on a debit that was never made.
+        Address swap = writesBeforeReverting ? SwapThenCheck : CheckThenSwap;
+        (_, int rejected, _) = Handoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyB, 0, Gate, 1.Wei),
+            Call(TestItem.PrivateKeyA, 0, swap),
+            Call(TestItem.PrivateKeyA, 1, swap, data: [2]))).Tally;
+
+        Assert.That(rejected, Is.EqualTo(2));
+    }
+
     private Hash256 DestroyThenRedeploy(bool handoff)
     {
         Block destroy = BuildBlock(
@@ -267,6 +282,29 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
         Block redeploy = BuildBlock(first, Call(TestItem.PrivateKeyB, 1, Factory, gasLimit: 300_000));
         BlockHeader second = Processed(redeploy, Process(redeploy, adapter: null, first).StateRoot);
         return Process(BuildBlock(second, Call(TestItem.PrivateKeyD, 1, Child, data: [1])), adapter: null, second).StateRoot;
+    }
+}
+
+/// <summary>Without EIP-3607 block processing reads no account of a transaction before matching its footprint.</summary>
+[TestFixture]
+public class PrewarmerHandoffWithoutSenderCodeCheckTests() : PrewarmerHandoffTestBase(WithoutEip3607())
+{
+    [Test]
+    public void A_transaction_ahead_of_its_senders_nonce_is_executed_rather_than_replayed()
+    {
+        Run run = Handoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Transfer(TestItem.PrivateKeyD, 1, TestItem.AddressB, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei)));
+
+        Assert.That((bool)run.Results[1], Is.False);
+    }
+
+    private static IReleaseSpec WithoutEip3607()
+    {
+        ReleaseSpec spec = ((ReleaseSpec)Osaka.Instance).Clone();
+        spec.IsEip3607Enabled = false;
+        return spec;
     }
 }
 
@@ -550,6 +588,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
+    // Without balance at the parent; a transaction that funds it closes the gate the two swaps below check.
+    protected static readonly Address Gate = new("0x00000000000000000000000000000000004e4d0d");
+    protected static readonly Address SwapThenCheck = new("0x00000000000000000000000000000000004e4d0e");
+    protected static readonly Address CheckThenSwap = new("0x00000000000000000000000000000000004e4d0f");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
 
     private IContainer _container = null!;
@@ -612,6 +654,10 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             // CALL(GAS, Fresh, 0x4e4d, 0, 0, 0, 0); POP; STOP
             Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
             Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
+            Deploy(worldState, SwapThenCheck, GatedSwapCode(writeFirst: true), 0);
+            Deploy(worldState, CheckThenSwap, GatedSwapCode(writeFirst: false), 0);
+            worldState.Set(new StorageCell(SwapThenCheck, 1), 100);
+            worldState.Set(new StorageCell(CheckThenSwap, 1), 100);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
@@ -635,6 +681,18 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             state.CreateAccount(address, balance);
             state.InsertCode(address, Keccak.Compute(code), code, Spec);
         }
+    }
+
+    /// <summary>
+    /// Without call data, a swap: SSTORE(1, SLOAD(1) - 25), and REVERT if <see cref="Gate"/> has a balance, in the order
+    /// <paramref name="writeFirst"/> gives. With call data, a later spend: SSTORE(1, SLOAD(1) - 4).
+    /// </summary>
+    private static byte[] GatedSwapCode(bool writeFirst)
+    {
+        byte[] debit = [0x60, 0x19, 0x60, 0x01, 0x54, 0x03, 0x60, 0x01, 0x55];
+        byte[] gate = [0x73, .. Gate.Bytes, 0x31, 0x60, 0x27, 0x57];
+        return [0x36, 0x60, 0x2B, 0x57, .. writeFirst ? debit : gate, .. writeFirst ? gate : debit,
+            0x00, 0x5B, 0x5F, 0x5F, 0xFD, 0x5B, 0x60, 0x04, 0x60, 0x01, 0x54, 0x03, 0x60, 0x01, 0x55, 0x00];
     }
 
     [TearDown]
