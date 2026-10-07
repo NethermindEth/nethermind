@@ -44,6 +44,7 @@ public class ArchiveProofTests
     private static readonly Address Contract = TestItem.AddressA;
     private static readonly Address Absent = TestItem.AddressF;
     private static readonly UInt256[] ContractSlots = [1, 2, 300, 40000];
+    private const long WarmProofAllocationCeiling = 3 * 1024;
 
     private SnapshotableMemColumnsDb<FlatDbColumns> _flatDb = null!;
     private SnapshotableMemColumnsDb<FlatHistoryColumns> _historyColumns = null!;
@@ -577,13 +578,101 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void ProofOfAccountWithoutStorage_WithStorageKeysRequested_MatchesTheTrie()
+    {
+        BuildCommitments();
+
+        foreach (ulong block in (ulong[])[1, 65, Blocks])
+        {
+            AssertProofMatchesTheTrie(_accounts[7], block, ContractSlots);
+            AssertProofMatchesTheTrie(Absent, block, ContractSlots);
+        }
+    }
+
+    [Test]
+    public void ProofOfContract_WithAbsentSlots_MatchesTheTrie()
+    {
+        BuildCommitments();
+
+        AssertProofMatchesTheTrie(Contract, Blocks, [ContractSlots[0], 5, 41000, ContractSlots[3], 7]);
+    }
+
+    [TestCase(false, TestName = "ProofThroughExtensionAndInlineNodes_FromRowsAlone_MatchesTheTrie")]
+    [TestCase(true, TestName = "ProofThroughExtensionAndInlineNodes_FromCommitments_MatchesTheTrie")]
+    public void ProofThroughExtensionAndInlineNodes_MatchesTheTrie(bool buildCommitments)
+    {
+        Address crafted = TestItem.AddressE;
+        ValueHash256 underExtensionLow = SlotUnderSharedPrefix(0x01);
+        ValueHash256 underExtensionHigh = SlotUnderSharedPrefix(0x12);
+        ValueHash256 elsewhere = new(Bytes.FromHexString("0x" + new string('5', 64)));
+        ulong block = Blocks + 1;
+        _chain.AddBlock(block, builder => builder
+            .SetStorage(crafted, underExtensionLow, [0x01])
+            .SetStorage(crafted, underExtensionHigh, [0x02])
+            .SetStorage(crafted, elsewhere, [0x03]));
+        _chain.PublishWatermark();
+        if (buildCommitments) BuildCommitments();
+
+        ValueHash256[] slots =
+        [
+            underExtensionLow,
+            underExtensionHigh,
+            elsewhere,
+            SlotUnderSharedPrefix(0x13),
+            SlotUnderSharedPrefix(0x21),
+            new(Bytes.FromHexString("0x" + new string('a', 60) + "b000")),
+        ];
+
+        Assert.That(_chain.ExpectedProof(crafted, block, slots).StorageProofs![0].Proof, Has.Length.EqualTo(2),
+            "the root branch and the extension are hashed; the branch below the extension and its leaves are inline");
+        AssertProofMatchesTheTrie(crafted, block, slots);
+    }
+
+    [Test]
+    public void CollectProof_WhenStateRootIsCached_AllocatesOnlyForThePathItWalks()
+    {
+        BuildCommitments();
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId head = _chain.StateIdAt(Blocks);
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, diagnostics: null);
+        AccountProofCollector collector = new(Contract, ContractSlots);
+
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        source.CollectProof(collector, head, diagnostics: null);
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+
+        Assert.That(allocated, Is.LessThan(WarmProofAllocationCeiling),
+            "a warm proof follows only the key's path; no node objects are built for the siblings of each branch on it");
+    }
+
+    [Test]
+    public void CollectProof_WhenThePathIsInTheNodeCache_CountsEveryLookupAsACacheHit()
+    {
+        BuildCommitments();
+        ArchiveProofSource source = CreateSource(_policy);
+        StateId head = _chain.StateIdAt(Blocks);
+        VisitingStats cold = new();
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, cold);
+        VisitingStats warm = new();
+
+        source.CollectProof(new AccountProofCollector(Contract, ContractSlots), head, warm);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cold.CacheHits, Is.LessThan(cold.NodeLookups), "a cold proof rebuilds nodes from rows");
+            Assert.That(warm.NodeLookups, Is.EqualTo(cold.NodeLookups));
+            Assert.That(warm.CacheHits, Is.EqualTo(warm.NodeLookups), "every node of a warm proof is served by the node cache");
+        }
+    }
+
+    [Test]
     public void A_covered_height_is_served_within_a_budget_too_small_for_a_root_rebuild()
     {
         BuildCommitments();
         AccountProof expected = _chain.ExpectedProof(Contract, 9, ContractSlots);
 
         AccountProofCollector collector = new(Contract, ContractSlots);
-        CreateSource(TestPolicy, maxScannedRows: 1500).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null);
+        CreateSource(TestPolicy, maxScannedRows: 1500).CollectProof(collector, _chain.StateIdAt(9), diagnostics: null);
         AccountProof actual = collector.BuildResult();
 
         Assert.That(actual.Proof,
@@ -665,7 +754,7 @@ public class ArchiveProofTests
         BuildCommitments();
 
         AccountProofCollector collector = new(_accounts[3], Array.Empty<UInt256>());
-        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).RunTreeVisitor(collector, _chain.StateIdAt(9), visitingOptions: null, diagnostics: null),
+        Assert.That(() => CreateSource(TestPolicy, maxScannedRows: 1).CollectProof(collector, _chain.StateIdAt(9), diagnostics: null),
             Throws.InstanceOf<StateUnavailableException>(),
             "commitment rows are charged against the same budget as history rows, so a budget of one row cannot walk even the root's chain and must fail closed");
     }
@@ -1439,7 +1528,7 @@ public class ArchiveProofTests
         const ulong block = 10;
 
         ResolutionBudget clean = new(maxScannedRows: 0);
-        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        byte[] cleanRlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, clean, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         int child = Keccak.Compute(accounts[0].Bytes).Bytes[1] & 0x0F;
         ulong window = policy.WindowAtOrBelow(block) + 1;
@@ -1466,7 +1555,7 @@ public class ArchiveProofTests
         ChildVector.Return(references);
 
         ResolutionBudget truncated = new(maxScannedRows: 0);
-        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        byte[] rlp = new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, policy), block, truncated, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1520,12 +1609,12 @@ public class ArchiveProofTests
         Hash256 expected = parentView.Hash.ToCommitment();
         parentView.Release();
         ResolutionBudget oneRebuild = new(maxScannedRows: 0);
-        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected);
+        new HistoricalTrieNodeBuilder(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, oneRebuild, fanOut: 1, cache: null).LoadRlp(parent, expected, out _);
 
         ResolutionBudget budget = new(maxScannedRows: oneRebuild.ScannedRows + oneRebuild.ScannedRows / 2 + 1);
         HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(accountRows, rowFormat, commitments, CommitmentDepthPolicy.Default), 10, budget, fanOut: 1, cache: null);
 
-        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
+        Assert.That(() => builder.LoadRlp(parent, TestItem.KeccakA, out _), Throws.InstanceOf<StateUnavailableException>().With.Message.Contains("instead of the"),
             "the checkpoint path already rebuilt this node from rows before the hash check failed; rebuilding it again reads the same rows a second time and turns a real mismatch into a misleading budget refusal");
     }
 
@@ -2111,15 +2200,22 @@ public class ArchiveProofTests
     private AccountProof ProveFromArchive(ArchiveProofSource source, Address address, ulong block, params UInt256[] storageKeys)
     {
         AccountProofCollector collector = new(address, storageKeys);
-        source.RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
+        source.CollectProof(collector, _chain.StateIdAt(block), diagnostics: null);
         return collector.BuildResult();
     }
 
-    private void AssertProofMatchesTheTrie(Address address, ulong block, params UInt256[] storageKeys)
-    {
-        AccountProof expected = _chain.ExpectedProof(address, block, storageKeys);
-        AccountProof actual = ProveFromArchive(address, block, storageKeys);
+    private void AssertProofMatchesTheTrie(Address address, ulong block, params UInt256[] storageKeys) =>
+        AssertProofsMatch(ProveFromArchive(address, block, storageKeys), _chain.ExpectedProof(address, block, storageKeys), address, block);
 
+    private void AssertProofMatchesTheTrie(Address address, ulong block, ValueHash256[] hashedSlots)
+    {
+        AccountProofCollector collector = new(address.ToAccountPath.Bytes, hashedSlots);
+        CreateSource(_policy).CollectProof(collector, _chain.StateIdAt(block), diagnostics: null);
+        AssertProofsMatch(collector.BuildResult(), _chain.ExpectedProof(address, block, hashedSlots), address, block);
+    }
+
+    private static void AssertProofsMatch(AccountProof actual, AccountProof expected, Address address, ulong block)
+    {
         using (Assert.EnterMultipleScope())
         {
             Assert.That(actual.Proof,
@@ -2129,17 +2225,21 @@ public class ArchiveProofTests
             Assert.That(actual.Nonce, Is.EqualTo(expected.Nonce));
             Assert.That(actual.StorageRoot, Is.EqualTo(expected.StorageRoot));
             Assert.That(actual.CodeHash, Is.EqualTo(expected.CodeHash));
+            Assert.That(actual.StorageProofs!, Has.Length.EqualTo(expected.StorageProofs!.Length));
 
-            for (int i = 0; i < storageKeys.Length; i++)
+            for (int i = 0; i < expected.StorageProofs.Length; i++)
             {
-                Assert.That(actual.StorageProofs![i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs![i].Value!.Value),
-                    $"slot {storageKeys[i]} must hold its block-{block} value");
+                Assert.That(actual.StorageProofs[i].Value!.Value, Is.SequenceEqualTo(expected.StorageProofs[i].Value!.Value),
+                    $"storage key {i} must hold its block-{block} value");
                 Assert.That(actual.StorageProofs[i].Proof,
-                    Is.EqualTo(expected.StorageProofs![i].Proof),
-                    $"the storage path proven for slot {storageKeys[i]} at block {block} must be the one the full trie holds");
+                    Is.EqualTo(expected.StorageProofs[i].Proof),
+                    $"the storage path proven for storage key {i} at block {block} must be the one the full trie holds");
             }
         }
     }
+
+    private static ValueHash256 SlotUnderSharedPrefix(byte lastByte) =>
+        new(Bytes.FromHexString("0x" + new string('a', 62) + lastByte.ToString("x2")));
 
     private static Address[] BuildAddresses(int count)
     {
