@@ -20,6 +20,7 @@
 
   <ItemGroup>
     <None Include="..\Nethermind.Stateless.ZiskGuest\substitutions.xml" Link="ZiskGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\Nethermind.Stateless.OpenVMGuest\substitutions.xml" Link="OpenVMGuest.substitutions.xml" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <Target Name="RequireZkEvm" BeforeTargets="PrepareForBuild" Condition="'$(EnableZkEvm)' != 'true'">
