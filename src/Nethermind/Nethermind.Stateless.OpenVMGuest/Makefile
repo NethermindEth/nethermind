@@ -9,6 +9,9 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := openvm
 
+# The division hint is a phantom instruction no compiler emits.
+GUEST_OBJECTS := divrem_hint.o
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. OpenVM publishes no image and `cargo openvm run` only takes
