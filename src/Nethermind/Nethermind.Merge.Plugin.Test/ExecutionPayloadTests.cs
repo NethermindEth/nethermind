@@ -312,6 +312,25 @@ public class ExecutionPayloadTests
     }
 
     [Test]
+    public void Preparation_hashes_the_root_inline_once_the_transactions_are_decoded([Values] bool decoded)
+    {
+        byte[][] rlps = EncodeTxs(count: 64);
+        ExecutionPayload payload = new() { Transactions = rlps };
+        if (decoded) Assert.That(payload.TryGetTransactions().IsError, Is.False);
+
+        using ExecutionPayloadPreparation preparation = new(payload);
+        bool inBackground = preparation.ComputesRootInBackground;
+        Result<Block> block = preparation.TryGetBlock();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(inBackground, Is.EqualTo(!decoded && !Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor));
+            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+            Assert.That(payload.TransactionsRoot, Is.SameAs(block.Data.Header.TxRoot));
+        }
+    }
+
+    [Test]
     public void Preparation_recomputes_tx_root_when_transactions_change([Values] bool decoded)
     {
         byte[][] originalRlps = EncodeTxs(count: 64);

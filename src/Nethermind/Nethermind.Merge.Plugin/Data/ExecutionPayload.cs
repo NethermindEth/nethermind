@@ -262,6 +262,9 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     protected Transaction[]? _transactions = null;
 
+    /// <summary>Whether <see cref="TryGetTransactions"/> has already decoded <see cref="Transactions"/>.</summary>
+    internal bool HasDecodedTransactions => _transactions is not null;
+
     internal Hash256? TransactionsRoot { get; set; }
 
     /// <summary>

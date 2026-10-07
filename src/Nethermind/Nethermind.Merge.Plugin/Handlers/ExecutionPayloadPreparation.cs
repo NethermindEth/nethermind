@@ -26,11 +26,18 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
 
     public ParallelUnbalancedWork.WorkerGroup Workers { get; } = new(RuntimeInformation.ProcessorCount);
 
+    /// <summary>Whether the transactions-trie root is being computed by a background worker.</summary>
+    internal bool ComputesRootInBackground => _txRootWork is not null;
+
     public ExecutionPayloadPreparation(ExecutionPayload payload)
     {
         _payload = payload;
         _encodedTransactions = payload.Transactions;
-        if (payload.TransactionsRoot is null && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor)
+        // The background root is there to run alongside the decode. Transactions already decoded - by the parameter
+        // checks of engine_newPayloadV3 and later - leave nothing to overlap, and handing the hashing to a worker then
+        // only adds its wake-up and the join: TryGetBlock hashes them inline instead.
+        if (payload.TransactionsRoot is null && !payload.HasDecodedTransactions
+            && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor)
         {
             using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
             _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
