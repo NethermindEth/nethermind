@@ -15,6 +15,18 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth;
 public class PooledTransactionRequestsTests
 {
     [Test]
+    public void Unused_tracker_can_be_disposed_before_first_request()
+    {
+        TrackingPool pool = new();
+        using PooledTransactionRequests requests = new(2048, pool);
+        Assert.That(requests.TryClaim(1, out _), Is.False);
+        requests.Dispose();
+        requests.Add(1, [TestItem.KeccakA.ValueHash256]);
+        Assert.That(requests.TryClaim(1, out _), Is.False);
+        Assert.That(pool.Count, Is.Zero);
+    }
+
+    [Test]
     public void Snapshot_survives_source_disposal_and_tracker_disposal([Values(0, 1, 16, 17, 256)] int count)
     {
         TrackingPool pool = new();

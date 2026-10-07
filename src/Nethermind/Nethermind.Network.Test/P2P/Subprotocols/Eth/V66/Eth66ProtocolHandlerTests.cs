@@ -500,6 +500,70 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public async Task Concurrent_reserve_release_and_rollback_preserve_capacity()
+        {
+            const int workers = 8;
+            const int peers = 4;
+            RecordingBackgroundTaskScheduler scheduler = new();
+            using CompositeDisposable held = [];
+            for (int i = 0; i < 3; i++)
+                new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(held);
+            using InboundTransactionBudget.Reservation blockedSlot = new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!;
+            using Barrier start = new(workers, _ => blockedSlot.Dispose());
+            InboundTransactionBudget[] budgets = new InboundTransactionBudget[peers];
+            for (int i = 0; i < peers; i++) budgets[i] = new(scheduler);
+            int[] peerBytes = new int[peers];
+            int sharedBytes = 0;
+
+            await Task.WhenAll(Enumerable.Range(0, workers).Select(worker => Task.Factory.StartNew(() =>
+            {
+                int peer = worker % peers;
+                InboundTransactionBudget budget = budgets[peer];
+                using InboundTransactionBudget.Reservation? rejected = budget.TryReserve(InboundTransactionBudget.MinimumCharge, out bool sharedLimitExceeded);
+                Assert.That(start.SignalAndWait(TimeSpan.FromSeconds(30)), Is.True);
+                Assert.That(rejected, Is.Null);
+                Assert.That(sharedLimitExceeded, Is.True);
+
+                for (int i = 0; i < 2000; i++)
+                {
+                    int charge = InboundTransactionBudget.PeerLimit / (2 + (i + worker) % 3);
+                    using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(charge);
+                    if (reservation is null) continue;
+                    int peerTotal = Interlocked.Add(ref peerBytes[peer], charge);
+                    int sharedTotal = Interlocked.Add(ref sharedBytes, charge);
+                    try
+                    {
+                        Assert.That(peerTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        Assert.That(sharedTotal, Is.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                        Thread.Yield();
+                    }
+                    finally
+                    {
+                        Interlocked.Add(ref sharedBytes, -charge);
+                        Interlocked.Add(ref peerBytes[peer], -charge);
+                    }
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
+
+            held.Dispose();
+            using CompositeDisposable recovered = [];
+            foreach (InboundTransactionBudget budget in budgets)
+            {
+                InboundTransactionBudget.Reservation? reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+                Assert.That(reservation, Is.Not.Null);
+                reservation!.AddTo(recovered);
+                using InboundTransactionBudget.Reservation? peerExcess = budget.TryReserve(1, out bool sharedLimitExceeded);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(peerExcess, Is.Null);
+                    Assert.That(sharedLimitExceeded, Is.False);
+                }
+            }
+            using InboundTransactionBudget.Reservation? excess = new InboundTransactionBudget(scheduler).TryReserve(1);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
         public void Shared_budget_rejection_rolls_back_peer_charge()
         {
             RecordingBackgroundTaskScheduler scheduler = new();

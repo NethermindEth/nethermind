@@ -14,8 +14,9 @@ internal sealed class PooledTransactionRequests : IDisposable
 {
     private readonly Lock _lock = new();
     private readonly ArrayPool<ValueHash256> _pool;
-    private readonly Dictionary<long, int> _indices;
-    private readonly Entry[] _entries;
+    private readonly int _capacity;
+    private readonly Dictionary<long, int> _indices = [];
+    private Entry[] _entries = [];
     private int _allocated;
     private int _free = -1;
     private int _first = -1;
@@ -26,8 +27,7 @@ internal sealed class PooledTransactionRequests : IDisposable
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(capacity);
         _pool = pool ?? ArrayPool<ValueHash256>.Shared;
-        _indices = new(capacity);
-        _entries = new Entry[capacity];
+        _capacity = capacity;
     }
 
     internal void Add(long id, ReadOnlySpan<ValueHash256> hashes)
@@ -35,6 +35,11 @@ internal sealed class PooledTransactionRequests : IDisposable
         lock (_lock)
         {
             if (_disposed) return;
+            if (_entries.Length == 0)
+            {
+                _indices.EnsureCapacity(_capacity);
+                _entries = new Entry[_capacity];
+            }
             if (_indices.TryGetValue(id, out int existing)) Remove(existing).Dispose();
             else if (_indices.Count == _entries.Length) Remove(_first).Dispose();
 

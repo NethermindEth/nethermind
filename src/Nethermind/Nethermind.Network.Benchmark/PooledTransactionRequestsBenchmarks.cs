@@ -44,3 +44,16 @@ public class PooledTransactionRequestsBenchmarks
     [GlobalCleanup]
     public void Cleanup() => _requests.Dispose();
 }
+
+[MemoryDiagnoser]
+public class PooledTransactionRequestsConstructionBenchmarks
+{
+    [Benchmark(Baseline = true)]
+    public ClockCache<long, ValueHash256[]> CreateClockCache() => new(2048, lockPartition: 1);
+
+    [Benchmark]
+    public void CreateAndDisposeTracker()
+    {
+        using PooledTransactionRequests requests = new(2048);
+    }
+}
