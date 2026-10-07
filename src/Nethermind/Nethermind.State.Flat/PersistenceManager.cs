@@ -592,7 +592,6 @@ public class PersistenceManager(
         if (compactLength != _compactSize && _logger.IsTrace) _logger.Trace($"Persisting non compacted state of length {compactLength}");
 
         Snapshot? reverseDiff = null;
-        IPersistence.IPersistenceReader? oldStateReader = null;
         if (_earlyPersist)
         {
             if (HasIrreversibleSelfDestruct(snapshot))
@@ -606,10 +605,18 @@ public class PersistenceManager(
             }
             else
             {
-                // The reader sees the pre-batch state for the whole batch, so old values can be captured
-                // next to each overwriting write.
-                oldStateReader = persistence.CreateReader();
                 reverseDiff = resourcePool.CreateSnapshot(from: snapshot.To, to: snapshot.From, ResourcePool.Usage.ReverseDiff);
+                try
+                {
+                    // Captured before the write batch opens, so the reader sees exactly the pre-persist state.
+                    using IPersistence.IPersistenceReader oldStateReader = persistence.CreateReader();
+                    CaptureReverseDiff(snapshot, oldStateReader, reverseDiff.Content);
+                }
+                catch
+                {
+                    reverseDiff.Dispose();
+                    throw;
+                }
             }
         }
 
@@ -629,20 +636,12 @@ public class PersistenceManager(
 
             foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts)
             {
-                if (reverseDiff is not null) reverseDiff.Content.Accounts[kv.Key] = oldStateReader!.GetAccount(kv.Key.Key);
-
                 batch.SetAccount(kv.Key.Key, kv.Value);
             }
 
             foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages)
             {
                 (Address addr, UInt256 slot) = kv.Key.Key;
-
-                if (reverseDiff is not null)
-                {
-                    UInt256 oldValue = default;
-                    reverseDiff.Content.Storages[kv.Key] = oldStateReader!.TryGetSlot(addr, slot, ref oldValue) ? oldValue : null;
-                }
 
                 batch.SetStorage(addr, slot, kv.Value);
             }
@@ -657,14 +656,6 @@ public class PersistenceManager(
 
                 // TODO: Need to double check this case. Does it need a rewrite or not?
                 if (node.IsHashOnlyPlaceholder()) continue;
-
-                if (reverseDiff is not null)
-                {
-                    // A node absent at the old state is never reached when traversing from an old
-                    // root, so absent keys need no marker.
-                    byte[]? oldRlp = oldStateReader!.TryLoadStateRlp(path, ReadFlags.None);
-                    if (oldRlp is not null) reverseDiff.Content.StateNodes[new HashedKey<TreePath>(path)] = CreateOldStateNode(oldRlp);
-                }
 
                 stateNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
@@ -683,12 +674,6 @@ public class PersistenceManager(
                 // TODO: Need to double check this case. Does it need a rewrite or not?
                 if (node.IsHashOnlyPlaceholder()) continue;
 
-                if (reverseDiff is not null)
-                {
-                    byte[]? oldRlp = oldStateReader!.TryLoadStorageRlp(address, path, ReadFlags.None);
-                    if (oldRlp is not null) reverseDiff.Content.StorageNodes[new HashedKey<(Hash256, TreePath)>((address, path))] = CreateOldStateNode(oldRlp);
-                }
-
                 storageNodesSize += node.FullRlp.Length;
                 // Note: Even if the node already marked as persisted, we still re-persist it
                 batch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
@@ -703,10 +688,6 @@ public class PersistenceManager(
         {
             reverseDiff?.Dispose();
             throw;
-        }
-        finally
-        {
-            oldStateReader?.Dispose();
         }
 
         // Registered only after the batch commits so a reader can never see the diff alongside the old
@@ -730,6 +711,83 @@ public class PersistenceManager(
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// Records into <paramref name="reverseDiff"/> the value every key written by <paramref name="snapshot"/>
+    /// holds in <paramref name="oldStateReader"/>, so applying the diff on top of the new state yields the old one.
+    /// </summary>
+    /// <remarks>
+    /// The point reads run in parallel. Absent accounts and slots get a null marker; a trie node absent at the
+    /// old state is never reached when traversing from an old root, so it needs none. Trie-node dictionaries are
+    /// not thread-safe, so old nodes are read into an indexed buffer and inserted afterwards.
+    /// </remarks>
+    private static void CaptureReverseDiff(Snapshot snapshot, IPersistence.IPersistenceReader oldStateReader, SnapshotContent reverseDiff)
+    {
+        using ArrayPoolList<HashedKey<Address>> accounts = new(snapshot.AccountsCount);
+        foreach (KeyValuePair<HashedKey<Address>, Account?> kv in snapshot.Accounts) accounts.Add(kv.Key);
+
+        using ArrayPoolList<HashedKey<(Address, UInt256)>> slots = new(snapshot.StoragesCount);
+        foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> kv in snapshot.Storages) slots.Add(kv.Key);
+
+        using ArrayPoolList<HashedKey<TreePath>> statePaths = new(snapshot.StateNodesCount);
+        foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> kvp in snapshot.StateNodes)
+        {
+            if (!kvp.Value.IsHashOnlyPlaceholder()) statePaths.Add(kvp.Key);
+        }
+
+        using ArrayPoolList<HashedKey<(Hash256, TreePath)>> storagePaths = new(snapshot.StorageNodesCount);
+        foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> kvp in snapshot.StorageNodes)
+        {
+            if (!kvp.Value.IsHashOnlyPlaceholder()) storagePaths.Add(kvp.Key);
+        }
+
+        using ArrayPoolList<TrieNode?> oldStateNodes = new(statePaths.Count, statePaths.Count);
+        using ArrayPoolList<TrieNode?> oldStorageNodes = new(storagePaths.Count, storagePaths.Count);
+
+        int slotsStart = accounts.Count;
+        int stateNodesStart = slotsStart + slots.Count;
+        int storageNodesStart = stateNodesStart + statePaths.Count;
+        using (ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount))
+        {
+            ParallelUnbalancedWork.For(0, storageNodesStart + storagePaths.Count, i =>
+            {
+                if (i < slotsStart)
+                {
+                    HashedKey<Address> account = accounts[i];
+                    reverseDiff.Accounts[account] = oldStateReader.GetAccount(account.Key);
+                }
+                else if (i < stateNodesStart)
+                {
+                    HashedKey<(Address, UInt256)> slot = slots[i - slotsStart];
+                    UInt256 oldValue = default;
+                    reverseDiff.Storages[slot] = oldStateReader.TryGetSlot(slot.Key.Item1, slot.Key.Item2, ref oldValue) ? oldValue : null;
+                }
+                else if (i < storageNodesStart)
+                {
+                    int index = i - stateNodesStart;
+                    byte[]? oldRlp = oldStateReader.TryLoadStateRlp(statePaths[index].Key, ReadFlags.None);
+                    if (oldRlp is not null) oldStateNodes[index] = CreateOldStateNode(oldRlp);
+                }
+                else
+                {
+                    int index = i - storageNodesStart;
+                    (Hash256 address, TreePath path) = storagePaths[index].Key;
+                    byte[]? oldRlp = oldStateReader.TryLoadStorageRlp(address, path, ReadFlags.None);
+                    if (oldRlp is not null) oldStorageNodes[index] = CreateOldStateNode(oldRlp);
+                }
+            });
+        }
+
+        for (int i = 0; i < statePaths.Count; i++)
+        {
+            if (oldStateNodes[i] is { } node) reverseDiff.StateNodes[statePaths[i]] = node;
+        }
+
+        for (int i = 0; i < storagePaths.Count; i++)
+        {
+            if (oldStorageNodes[i] is { } node) reverseDiff.StorageNodes[storagePaths[i]] = node;
+        }
     }
 
     private static TrieNode CreateOldStateNode(byte[] rlp) =>
