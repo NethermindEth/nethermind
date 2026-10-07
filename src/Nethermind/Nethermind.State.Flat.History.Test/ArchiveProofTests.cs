@@ -1718,6 +1718,45 @@ public class ArchiveProofTests
     }
 
     [Test]
+    public void Proof_AtAHeightWhoseStateRootIsCached_PrefetchesTheUncachedRestOfItsPath()
+    {
+        _policy = EpochPolicy;
+        Address quiet = TestItem.AddressD;
+        UInt256[] slots = AddQuietContract(quiet);
+        BuildCommitments();
+        ArchiveProofSource source = CreateSource(_policy);
+        Address first = _accounts[3];
+        ValueHash256 firstPath = Keccak.Compute(first.Bytes).ValueHash256;
+        Address second = _accounts.First(account => !SharesNibbles(Keccak.Compute(account.Bytes).ValueHash256, firstPath, nibbles: 1));
+
+        ProveFromArchive(source, first, 300);
+        long afterFirst = source.PrefetchedPaths;
+        ProveFromArchive(source, first, 300);
+        long afterRepeat = source.PrefetchedPaths;
+        AccountProof secondProof = ProveFromArchive(source, second, 300);
+        long afterSecond = source.PrefetchedPaths;
+        ProveFromArchive(source, quiet, 300, slots[..2]);
+        long afterFirstSlots = source.PrefetchedPaths;
+        AccountProof otherSlotsProof = ProveFromArchive(source, quiet, 300, slots[2..4]);
+        long afterOtherSlots = source.PrefetchedPaths;
+        ProveFromArchive(source, quiet, 300, slots[2..4]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(afterFirst, Is.GreaterThan(0), "precondition: the first proof at a height finds nothing cached and prefetches its whole path");
+            Assert.That(afterRepeat, Is.EqualTo(afterFirst), "a repeated proof walks a fully cached path and prefetches nothing");
+            Assert.That(afterSecond, Is.GreaterThan(afterRepeat),
+                "an account under another root child shares only the cached root with the first proof, so the levels below it are prefetched rather than resolved one by one on the way down");
+            Assert.That(afterFirstSlots, Is.GreaterThan(afterSecond), "the first slot proof of a contract finds its storage trie uncached and prefetches the slot paths");
+            Assert.That(afterOtherSlots, Is.GreaterThan(afterFirstSlots),
+                "other slots of a contract whose storage root is already cached still prefetch the storage levels the earlier slots did not cache");
+            Assert.That(source.PrefetchedPaths, Is.EqualTo(afterOtherSlots), "repeating the slots of the last proof prefetches nothing");
+            Assert.That(secondProof.Proof, Is.EqualTo(_chain.ExpectedProof(second, 300).Proof), "the prefetched levels are verified against their parents like any other node");
+            AssertStorageProofsMatch(otherSlotsProof, _chain.ExpectedProof(quiet, 300, slots[2..4]), "the prefetched storage levels are verified against their parents like any other node");
+        }
+    }
+
+    [Test]
     public void A_rebuilt_subtree_serves_the_levels_below_it()
     {
         _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, 2, 2, 0, 0, 1, 1);
@@ -2165,10 +2204,13 @@ public class ArchiveProofTests
 
     private AccountProof ProveFromArchive(Address address, ulong block, params UInt256[] storageKeys) => ProveFromArchive(address, block, maxScannedRows: 0, storageKeys);
 
-    private AccountProof ProveFromArchive(Address address, ulong block, long maxScannedRows, params UInt256[] storageKeys)
+    private AccountProof ProveFromArchive(Address address, ulong block, long maxScannedRows, params UInt256[] storageKeys) =>
+        ProveFromArchive(CreateSource(_policy, maxScannedRows), address, block, storageKeys);
+
+    private AccountProof ProveFromArchive(ArchiveProofSource source, Address address, ulong block, params UInt256[] storageKeys)
     {
         AccountProofCollector collector = new(address, storageKeys);
-        CreateSource(_policy, maxScannedRows).RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
+        source.RunTreeVisitor(collector, _chain.StateIdAt(block), visitingOptions: null, diagnostics: null);
         return collector.BuildResult();
     }
 
