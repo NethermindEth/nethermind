@@ -31,8 +31,8 @@ using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.SszRest;
 using Nethermind.Merge.Plugin.SszRest.Handlers;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.Specs.Forks;
@@ -244,15 +244,12 @@ public class SszMiddlewareTests
 
         IReleaseSpec spec = specProvider.GetSpec(new ForkActivation(MainnetSpecProvider.ParisBlockNumber + 1, timestamp));
 
-        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork).IgnoreCase);
+        Assert.That(SszRestPaths.GetEngineApiForkName(spec), Is.EqualTo(expectedFork));
     }
 
-    private static readonly IReleaseSpec[] EngineApiForks =
-        [Paris.Instance, Shanghai.Instance, Cancun.Instance, Prague.Instance, Osaka.Instance, BPO1.Instance, Amsterdam.Instance, Bogota.Instance];
-
-    [Test]
-    public void GetEngineApiForkName_resolves_decorated_spec_like_its_fork([ValueSource(nameof(EngineApiForks))] IReleaseSpec fork) =>
-        Assert.That(SszRestPaths.GetEngineApiForkName(new ReleaseSpecDecorator(fork)), Is.EqualTo(SszRestPaths.GetEngineApiForkName(fork)));
+    [TestCaseSource(nameof(NamedReleaseEngineApiForkCases))]
+    public void GetEngineApiForkName_resolves_decorated_spec(IReleaseSpec fork, string expectedFork) =>
+        Assert.That(SszRestPaths.GetEngineApiForkName(new ReleaseSpecDecorator(fork)), Is.EqualTo(expectedFork));
 
     // The coverage above only means something if this hand-built set matches what production registers.
     [Test]
