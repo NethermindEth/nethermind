@@ -1619,8 +1619,9 @@ namespace Nethermind.TxPool
                     accepted = AddCore(tx, ref state, startBroadcast);
                 }
 
-                // Validation that ran and still ended in a rejection is the peer's to pay, whichever step rejected it.
-                if (shares is not null && !accepted && state.FrameValidationRan)
+                // Validation that ran and still ended in a rejection is the peer's to pay, whichever step rejected it,
+                // unless this node deferred it for a bound of its own: that load is the node's, not the peer's.
+                if (shares is not null && !accepted && accepted != AcceptTxResult.FrameSimulationDeferred && state.FrameValidationRan)
                 {
                     shares.Charge(peer!, headGeneration, Stopwatch.GetTimestamp() - validationStarted);
                 }

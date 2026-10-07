@@ -4620,6 +4620,28 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // Under spam an attacker spends the per-head budget, and honest transactions are deferred after their
+        // signatures verified; charging that to the honest peer would hand the attacker its share too.
+        [Test]
+        public void SubmitOwnedTx_DeferralForTheNodesOwnBound_IsNotChargedToThePeer()
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.RejectIndeterminate("validation-prefix simulation budget exhausted for this head"),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = true });
+            object peer = new();
+            // One gas below its entry charge, so the native shortcut declines it and it reaches the simulator.
+            Transaction tx = SignedFrameTx([
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
+            ]);
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, peer, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.FrameSimulationDeferred));
+                Assert.That(_txPool.PeerValidationShares!.SpentTicks(peer), Is.Zero);
+            }
+        }
+
         [Test]
         public void SubmitOwnedTx_PeerThatSpentItsShare_IsDroppedBeforeValidation()
         {
