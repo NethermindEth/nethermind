@@ -57,7 +57,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
-    private readonly CommittedStorageWrites? committedWrites = prewarmerState.IsPrewarmer ? null : prewarmerState.CommittedWrites;
+    private readonly CommittedStorageWrites? committedWrites = prewarmerState.CommittedWrites;
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);

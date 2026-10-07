@@ -60,7 +60,8 @@ public class PrewarmerTxAdapter(
         }
         finally
         {
-            if (committed.End() is { } writes) preWarmer.ReportExecutedWrites(writes);
+            // Reported also when there are none: the writes its footprint predicted were not made.
+            preWarmer.ReportExecutedWrites(committed.End());
         }
     }
 
@@ -128,6 +129,7 @@ public class PrewarmerTxAdapter(
 
         Tally = Tally with { Replayed = Tally.Replayed + 1 };
         Blockchain.Metrics.PrewarmHandoffs++;
+        if (footprint.Refreshed) Blockchain.Metrics.PrewarmRefreshesTakenOver++;
         result = footprint.Result;
         return true;
     }

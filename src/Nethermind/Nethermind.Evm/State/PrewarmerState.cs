@@ -23,22 +23,24 @@ public interface IPrewarmerState
     bool IsPrewarmer { get; }
 
     /// <summary>The storage writes the main world state commits while block processing collects them; none for populators.</summary>
-    CommittedStorageWrites? CommittedWrites => null;
+    internal CommittedStorageWrites? CommittedWrites => null;
 }
 
 /// <inheritdoc cref="IPrewarmerState"/>
 public sealed class PrewarmerState(PreBlockCaches caches, bool isPrewarmer) : IPrewarmerState
 {
+    private readonly CommittedStorageWrites? _committedWrites = isPrewarmer ? null : new();
+
     public PreBlockCaches Caches => caches;
     public bool IsPrewarmer => isPrewarmer;
-    public CommittedStorageWrites? CommittedWrites { get; } = isPrewarmer ? null : new();
+    CommittedStorageWrites? IPrewarmerState.CommittedWrites => _committedWrites;
 }
 
 /// <summary>
 /// The slots a transaction's commit changes, at the values it leaves them, while block processing collects them.
 /// </summary>
 /// <remarks>Used by the block-processing thread only: it starts and ends the collection around a transaction it executes.</remarks>
-public sealed class CommittedStorageWrites
+internal sealed class CommittedStorageWrites
 {
     private List<(StorageCell Cell, UInt256 Value)>? _writes;
     private bool _collecting;

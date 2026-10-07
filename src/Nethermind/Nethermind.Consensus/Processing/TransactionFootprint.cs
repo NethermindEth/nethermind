@@ -32,6 +32,9 @@ internal sealed class TransactionFootprint(
 
     public Transaction Transaction { get; } = transaction;
 
+    /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
+    public bool Refreshed { get; init; }
+
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
     public ref readonly TransactionResult Result => ref _result;
