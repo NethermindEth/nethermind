@@ -22,7 +22,7 @@ internal sealed class IdleStorageApplier
     // Settable for tests.
     // Experiment only: NETHERMIND_EXP_IDLE_GAP_MS overrides the gap, 0 applying early on back-to-back blocks too.
     internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(
-        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_IDLE_GAP_MS"), out int gapMs) && gapMs >= 0 ? gapMs : 250);
+        int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_IDLE_GAP_MS"), out int gapMs) && gapMs >= 0 ? gapMs : 0);
 
     private static readonly Lock InstanceLock = new();
     private static IdleStorageApplier? _instance;
