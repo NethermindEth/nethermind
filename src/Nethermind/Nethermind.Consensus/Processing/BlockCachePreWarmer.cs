@@ -237,7 +237,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         if (PredictsStorageRoots && !token.IsCancellationRequested) PredictStorageRoots(footprints, token);
                     }
                     discoveryWork?.WaitForCompletion();
-                    if (PredictedStorageCounters.DryRun && footprints is not null && RewarmCounters.Enabled)
+                    if ((PredictedStorageCounters.DryRun || PredictsStorageRoots) && footprints is not null && RewarmCounters.Enabled)
                     {
                         // Experiment only: what the sweepers stored since is folded in again before the write batches close the predictions.
                         blockState.JoinDiscoveryHandOffs();
@@ -941,7 +941,16 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <summary>Experiment only: build storage trees from the block's footprints once its warm pass ends; off unless NETHERMIND_EXP_FOOTPRINT_ROOTS=1 (it breaks the state root on block-tree review re-runs).</summary>
     private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") != "0";
 
+    // Folds run one at a time, so a later fold's predictions are never overwritten by an earlier one's.
+    private readonly Lock _foldLock = new();
+
     private void PredictStorageRoots(BlockFootprints footprints, CancellationToken token)
+    {
+        if (_preBlockCaches?.MainScope is null) return;
+        using (_foldLock.EnterScope()) FoldStorageRoots(footprints, token);
+    }
+
+    private void FoldStorageRoots(BlockFootprints footprints, CancellationToken token)
     {
         if (_preBlockCaches?.MainScope is not { } mainScope) return;
 
@@ -2481,6 +2490,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 // The jobs are all handed out: from here the sweepers take what this worker leaves idle.
                 queue.BlockState.Footprints?.MarkJobsExhausted();
                 preWarmer.StartRewarm(queue.BlockState);
+                // Experiment only: the first worker to run dry builds the predicted storage from what is stored so far; later folds update it.
+                if (PredictsStorageRoots && queue.BlockState.Footprints is { } stored && stored.TryClaimEarlyFold() && !token.IsCancellationRequested)
+                {
+                    preWarmer.PredictStorageRoots(stored, token);
+                }
 
                 if (far) return;
 

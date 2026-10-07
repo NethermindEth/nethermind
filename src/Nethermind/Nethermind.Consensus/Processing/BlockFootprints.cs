@@ -27,6 +27,11 @@ internal sealed class BlockFootprints(Block block)
 
     public void MarkJobsExhausted() => Interlocked.CompareExchange(ref JobsExhaustedAt, System.Diagnostics.Stopwatch.GetTimestamp(), 0);
 
+    private int _earlyFold;
+
+    /// <summary>Experiment only: whether this caller folds the footprints into predicted storage first; only the first does.</summary>
+    public bool TryClaimEarlyFold() => Interlocked.Exchange(ref _earlyFold, 1) == 0;
+
     // Where each position stands with the re-warm: never marked, marked, taken by a sweeper, passed by block
     // processing before a sweeper took it, or stored from a re-warm and not marked since.
     private const int Unmarked = 0, Marked = 1, Taken = 2, Passed = 3, RewarmStored = 4;

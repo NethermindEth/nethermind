@@ -560,6 +560,28 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 return;
             }
 
+            // A later fold updates the tree an earlier one built, out of the scope while it does so: a write batch that finds no
+            // prediction writes the account in full. A slot the fold no longer predicts needs its pre-block value back, so then
+            // the tree is built again from the base root.
+            if (Volatile.Read(ref _predictedStorages) is { } offered && offered.TryRemove(address, out PredictedStorage? previous)
+                && previous.Tree is { } previousTree && previous.BaseRoot == baseRoot && TryUpdatePrediction(previous, previousTree, writes))
+            {
+                lock (_predictionsLock)
+                {
+                    if (_predictionsClosed)
+                    {
+                        Interlocked.Increment(ref PredictedStorageCounters.Late);
+                        return;
+                    }
+
+                    offered[address] = previous;
+                }
+
+                Interlocked.Increment(ref PredictedStorageCounters.Built);
+                Interlocked.Add(ref PredictedStorageCounters.BuiltWrites, writes.Count);
+                return;
+            }
+
             StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_snapshotBundle, address.ToAccountPath.ToHash256()), _logManager);
             // Resetting the objects loads the base root: without it the tree starts empty and holds the predicted slots only.
             tree.SetRootHash(baseRoot, true);
@@ -601,6 +623,37 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             Interlocked.Add(ref PredictedStorageCounters.BuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - start);
             _snapshotBundle.ReleaseReadOnlyBundleLease();
         }
+    }
+
+    // Applies what changed since the prediction was built; false when a predicted slot dropped out.
+    [SkipLocalsInit]
+    private static bool TryUpdatePrediction(PredictedStorage previous, StorageTree tree, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes)
+    {
+        Dictionary<UInt256, UInt256> applied = previous.Applied;
+        if (writes.Count < applied.Count) return false;
+        HashSet<UInt256> written = new(writes.Count);
+        foreach ((UInt256 slot, UInt256 _) in writes) written.Add(slot);
+        foreach (UInt256 slot in applied.Keys)
+        {
+            if (!written.Contains(slot)) return false;
+        }
+
+        using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(writes.Count);
+        Unsafe.SkipInit(out EvmWord word);
+        ValueHash256 key = default;
+        foreach ((UInt256 slot, UInt256 value) in writes)
+        {
+            if (applied.TryGetValue(slot, out UInt256 current) && current == value) continue;
+            bool isZero = value.IsZero;
+            StorageTree.ComputeKeyWithLookup(slot, ref key);
+            entries.Add(StorageTree.CreateBulkSetEntry(key, isZero ? StorageTree.ZeroBytes : value.ToMinimalBigEndian(ref word), isZero));
+            applied[slot] = value;
+        }
+
+        if (entries.Count == 0) return true;
+        tree.BulkSet(entries, PatriciaTree.Flags.DoNotParallelize);
+        tree.UpdateRootHash(canBeParallel: false);
+        return true;
     }
 
     private ConcurrentDictionary<AddressAsKey, PredictedStorage> InitializePredictedStorages()

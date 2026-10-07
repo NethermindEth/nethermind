@@ -919,7 +919,7 @@ public class FlatWorldStateScopeProviderTests
 
     [Test]
     public void PredictedStorage_OnAnExistingTrieReachesTheSameRoot([Values(1, 2, 3, 4)] int seed, [Values] bool deferStorageTrieCommit,
-        [Values] bool concurrentWarmup, [Values] bool predict, [Values(-1, 0, 1, 2, 3)] int onlyKind)
+        [Values] bool concurrentWarmup, [Values] bool predict, [Values(-1, 0, 1, 2, 3)] int onlyKind, [Values(0, 1, 2)] int earlierFold)
     {
         const int baseSlots = 300;
         Address address = TestItem.AddressA;
@@ -988,6 +988,16 @@ public class FlatWorldStateScopeProviderTests
         }
 
         long adopted = PredictedStorageCounters.Adopted;
+        if (predict && earlierFold > 0 && predicted.Count > 1)
+        {
+            // An earlier fold saw part of the block: half the predictions, a third of them at other values; the second
+            // kind also predicted a slot the later fold drops, which rebuilds the tree from the base root.
+            List<(UInt256 Slot, UInt256 Value)> partial = [];
+            for (int i = 0; i < predicted.Count / 2; i++) partial.Add(i % 3 == 0 ? (predicted[i].Slot, predicted[i].Value + 7) : predicted[i]);
+            if (earlierFold == 2) partial.Add(((UInt256)(baseSlots + 1000), 0x4e4d));
+            scope.HintPredictedStorage(address, partial);
+        }
+
         if (concurrentWarmup)
         {
             // The predicted build runs off the block thread, while the trie warmer walks the account's paths.
