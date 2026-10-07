@@ -2,22 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac;
 using BenchmarkDotNet.Attributes;
-using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -120,10 +120,8 @@ public class SubroutineBenchmarks
         .Done;
 
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-    private IVirtualMachine _eip7979Vm = null!;
-    private IVirtualMachine _plainVm = null!;
-    private IWorldState _stateProvider = null!;
-    private IDisposable _stateScope = null!;
+    private BenchmarkEnvironment _eip7979Env = null!;
+    private BenchmarkEnvironment _plainEnv = null!;
     private CodeInfo _callReturnLoopPush2 = null!;
     private CodeInfo _callReturnLoopPush1 = null!;
     private CodeInfo _recursiveCallTree = null!;
@@ -134,16 +132,8 @@ public class SubroutineBenchmarks
     [GlobalSetup]
     public void GlobalSetup()
     {
-        IReleaseSpec eip7979Spec = new OverridableReleaseSpec(Bogota.Instance) { IsEip7979Enabled = true };
-        IReleaseSpec plainSpec = Bogota.Instance;
-
-        _stateProvider = TestWorldStateFactory.CreateForTest();
-        _stateScope = _stateProvider.BeginScope(IWorldState.PreGenesis);
-        _stateProvider.CreateAccount(Address.Zero, 1000.Ether);
-        _stateProvider.Commit(plainSpec);
-
-        _eip7979Vm = CreateVirtualMachine(eip7979Spec);
-        _plainVm = CreateVirtualMachine(plainSpec);
+        _eip7979Env = new BenchmarkEnvironment(new OverridableReleaseSpec(Bogota.Instance) { IsEip7979Enabled = true }, _header);
+        _plainEnv = new BenchmarkEnvironment(Bogota.Instance, _header);
 
         _callReturnLoopPush2 = new CodeInfo(CallReturnLoopPush2);
         _callReturnLoopPush1 = new CodeInfo(CallReturnLoopPush1);
@@ -154,50 +144,54 @@ public class SubroutineBenchmarks
 
         for (int i = 0; i < WorkloadWarmupTransactions; i++)
         {
-            (IVirtualMachine vm, CodeInfo codeInfo) = (i % 8) switch
+            (BenchmarkEnvironment env, CodeInfo codeInfo) = (i % 8) switch
             {
-                0 => (_eip7979Vm, _callReturnLoopPush2),
-                1 => (_eip7979Vm, _callReturnLoopPush1),
-                2 => (_eip7979Vm, _recursiveCallTree),
-                3 => (_eip7979Vm, _squareCallSub),
-                4 => (_eip7979Vm, _squareJump),
-                5 => (_plainVm, _squareJump),
-                6 => (_eip7979Vm, _computeLoop),
-                _ => (_plainVm, _computeLoop),
+                0 => (_eip7979Env, _callReturnLoopPush2),
+                1 => (_eip7979Env, _callReturnLoopPush1),
+                2 => (_eip7979Env, _recursiveCallTree),
+                3 => (_eip7979Env, _squareCallSub),
+                4 => (_eip7979Env, _squareJump),
+                5 => (_plainEnv, _squareJump),
+                6 => (_eip7979Env, _computeLoop),
+                _ => (_plainEnv, _computeLoop),
             };
-            Execute(vm, codeInfo);
+            Execute(env, codeInfo);
         }
     }
 
     [GlobalCleanup]
-    public void GlobalCleanup() => _stateScope.Dispose();
+    public void GlobalCleanup()
+    {
+        _eip7979Env?.Dispose();
+        _plainEnv?.Dispose();
+    }
 
     [Benchmark]
-    public void CallReturnLoop_Push2() => Execute(_eip7979Vm, _callReturnLoopPush2);
+    public void CallReturnLoop_Push2() => Execute(_eip7979Env, _callReturnLoopPush2);
 
     [Benchmark]
-    public void CallReturnLoop_Push1() => Execute(_eip7979Vm, _callReturnLoopPush1);
+    public void CallReturnLoop_Push1() => Execute(_eip7979Env, _callReturnLoopPush1);
 
     [Benchmark]
-    public void RecursiveCallTree_Depth12() => Execute(_eip7979Vm, _recursiveCallTree);
+    public void RecursiveCallTree_Depth12() => Execute(_eip7979Env, _recursiveCallTree);
 
     [Benchmark]
-    public void Square_CallSub() => Execute(_eip7979Vm, _squareCallSub);
+    public void Square_CallSub() => Execute(_eip7979Env, _squareCallSub);
 
     /// <summary>The JUMP-synthesized SQUARE on an EIP-7979 spec: measures what the subroutine paths cost plain jumps.</summary>
     [Benchmark]
-    public void Square_Jump() => Execute(_eip7979Vm, _squareJump);
+    public void Square_Jump() => Execute(_eip7979Env, _squareJump);
 
     /// <summary>The JUMP-synthesized SQUARE with EIP-7979 off.</summary>
     [Benchmark(Baseline = true)]
-    public void Square_Jump_Eip7979Off() => Execute(_plainVm, _squareJump);
+    public void Square_Jump_Eip7979Off() => Execute(_plainEnv, _squareJump);
 
     /// <summary>A loop with no subroutines on an EIP-7979 spec: measures what the subroutine paths cost plain pushes.</summary>
     [Benchmark]
-    public void ComputeLoop_Eip7979On() => Execute(_eip7979Vm, _computeLoop);
+    public void ComputeLoop_Eip7979On() => Execute(_eip7979Env, _computeLoop);
 
     [Benchmark]
-    public void ComputeLoop_Eip7979Off() => Execute(_plainVm, _computeLoop);
+    public void ComputeLoop_Eip7979Off() => Execute(_plainEnv, _computeLoop);
 
     /// <summary>Pushes the iteration counter and opens the loop body at <see cref="LoopStart"/>.</summary>
     private static Prepare BeginLoop() => Prepare.EvmCode.PushData(Iterations).Op(Instruction.JUMPDEST);
@@ -215,15 +209,7 @@ public class SubroutineBenchmarks
     /// <summary>A two-byte immediate, since <see cref="Prepare.PushData(int)"/> picks the narrowest PUSH.</summary>
     private static byte[] Push2(int value) => [(byte)(value >> 8), (byte)value];
 
-    private IVirtualMachine CreateVirtualMachine(IReleaseSpec spec)
-    {
-        EthereumVirtualMachine vm = new(new TestBlockhashProvider(), MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
-        vm.SetBlockExecutionContext(new BlockExecutionContext(_header, spec));
-        vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, new EthereumCodeInfoRepository(_stateProvider), null, 0));
-        return vm;
-    }
-
-    private void Execute(IVirtualMachine vm, CodeInfo codeInfo)
+    private static void Execute(BenchmarkEnvironment env, CodeInfo codeInfo)
     {
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             executingAccount: Address.Zero,
@@ -239,13 +225,47 @@ public class SubroutineBenchmarks
             ExecutionType.TRANSACTION,
             environment,
             new StackAccessTracker(),
-            _stateProvider.TakeSnapshot()))
+            env.State.TakeSnapshot()))
         {
-            TransactionSubstate substate = vm.ExecuteTransaction<OffFlag>(vmState, _stateProvider, NullTxTracer.Instance);
+            TransactionSubstate substate = env.Vm.ExecuteTransaction<OffFlag>(vmState, env.State, NullTxTracer.Instance);
             if (substate.EvmExceptionType != EvmExceptionType.None)
                 throw new InvalidOperationException($"Benchmark bytecode halted with {substate.EvmExceptionType}");
         }
 
-        _stateProvider.Reset();
+        env.State.Reset();
+    }
+
+    /// <summary>A production-wired virtual machine and world state for one spec, with a funded <see cref="Address.Zero"/>.</summary>
+    private sealed class BenchmarkEnvironment : IDisposable
+    {
+        private readonly IContainer _container;
+        private readonly ILifetimeScope _processingScope;
+        private readonly IDisposable _stateScope;
+
+        public IWorldState State { get; }
+        public IVirtualMachine Vm { get; }
+
+        public BenchmarkEnvironment(IReleaseSpec spec, BlockHeader header)
+        {
+            _container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule(spec))
+                .Build();
+            IWorldStateScopeProvider scopeProvider = _container.Resolve<IWorldStateManager>().GlobalWorldState;
+            _processingScope = _container.BeginLifetimeScope(builder => builder.AddSingleton(scopeProvider));
+            State = _processingScope.Resolve<IWorldState>();
+            Vm = _processingScope.Resolve<IVirtualMachine>();
+            _stateScope = State.BeginScope(IWorldState.PreGenesis);
+            State.CreateAccount(Address.Zero, 1000.Ether);
+            State.Commit(spec);
+            Vm.SetBlockExecutionContext(new BlockExecutionContext(header, spec));
+            Vm.SetTxExecutionContext(new TxExecutionContext(Address.Zero, _processingScope.Resolve<ICodeInfoRepository>(), null, 0));
+        }
+
+        public void Dispose()
+        {
+            _stateScope.Dispose();
+            _processingScope.Dispose();
+            _container.Dispose();
+        }
     }
 }
