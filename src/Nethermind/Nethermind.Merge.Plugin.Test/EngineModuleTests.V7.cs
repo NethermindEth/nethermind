@@ -722,7 +722,7 @@ public partial class EngineModuleTests
         ConcurrentDictionary<Hash256, byte> pruned = new();
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned,
-            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)),
+            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))),
             Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
@@ -741,21 +741,10 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
         pruned[block.BlockHash] = 0;
 
-        // Holds the processing thread between the re-execution's verdict and its commit.
-        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
-        {
-            if (e.BlockHash == block.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
-        };
+        TaskCompletionSource commit = HoldCommit(chain, block.BlockHash);
 
         Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using (Assert.EnterMultipleScope())
-        {
-            ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
-                new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
-            Assert.That(toBlock.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.BlockHash));
-        }
+        MoveHeadBeforeCommit(chain, block.BlockHash);
 
         // A different list misses the (block, IL) cache; release the commit once the re-send waits on it or answers.
         Transaction censoredTx = Build.A.Transaction
@@ -1168,7 +1157,7 @@ public partial class EngineModuleTests
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 30_000 },
-            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
 
@@ -1235,7 +1224,7 @@ public partial class EngineModuleTests
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadBlockProcessingTimeout = 3_000 },
-            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)));
+            configurer: builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))));
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Block parent = chain.BlockTree.Head!;
         byte[][] inclusionList = [Rlp.Encode(BuildInclusionListTransfer()).Bytes];
@@ -1447,8 +1436,9 @@ public partial class EngineModuleTests
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = newPayloadCacheSize },
             configurer: builder => builder
                 .WithGenesisPostProcessor((genesis, _) => genesis.Header.GasLimit = gasLimit)
+                // Every handler resolves its own decorated reader, so all share the first one's count.
                 .AddDecorator<IStateReader>((_, reader) =>
-                    accountReader = new AccountReadCountingStateReader(reader, TestItem.AddressC)));
+                    accountReader ??= new AccountReadCountingStateReader(reader, TestItem.AddressC)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // A transaction of its own, so the block's execution dimension outgrows its state dimension.
