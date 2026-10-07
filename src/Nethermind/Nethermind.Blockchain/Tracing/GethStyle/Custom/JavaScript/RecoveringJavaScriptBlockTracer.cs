@@ -23,6 +23,12 @@ internal sealed class RecoveringJavaScriptBlockTracer(Func<IBlockTracer<GethLike
 
     public void StartNewBlockTrace(Block block)
     {
+        Dispose();
+        _constructionError = null;
+        _transactionError = null;
+        _transactionHash = null;
+        _outcomes.Clear();
+        _result = null;
         try
         {
             _inner = createTracer();
@@ -91,14 +97,21 @@ internal sealed class RecoveringJavaScriptBlockTracer(Func<IBlockTracer<GethLike
 
     public void Dispose()
     {
+        IBlockTracer<GethLikeTxTrace>? inner = _inner;
+        _inner = null;
         try
         {
-            if (_result is null && _inner is not null)
-                foreach (GethLikeTxTrace trace in _inner.BuildResult()) trace.Dispose();
+            if (_result is null)
+            {
+                if (inner is not null)
+                    foreach (GethLikeTxTrace trace in inner.BuildResult()) trace.Dispose();
+                foreach (GethLikeTxTrace? trace in _outcomes) trace?.Dispose();
+            }
         }
         finally
         {
-            (_inner as IDisposable)?.Dispose();
+            _outcomes.Clear();
+            (inner as IDisposable)?.Dispose();
         }
     }
 }

@@ -61,6 +61,8 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
         if (_captureErrors)
         {
             _callbacks = [];
+            _log.stack = new Log.Stack(default, engine);
+            _log.memory.InputErrorEngine = engine;
             engine.PrepareNullThrowCapture();
         }
 
@@ -282,7 +284,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-        _log.stack = new Log.Stack(stack);
+        _log.stack = new Log.Stack(stack, _captureErrors ? _engine : null);
 
         if (_functions.HasFlag(TracerFunctions.step))
         {
@@ -405,7 +407,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                     TracerFunctions.step or TracerFunctions.postStep or TracerFunctions.fault => (_log, _db, true),
                     _ => throw new ArgumentOutOfRangeException(nameof(function))
                 };
-                return _engine.InvokeCapturingNull((object)_tracer, _callbacks![function], arguments.First, arguments.Second, arguments.HasSecond, out observedNullThrow);
+                object? value = _engine.InvokeCapturingNull((object)_tracer, _callbacks![function], arguments.First, arguments.Second, arguments.HasSecond, out observedNullThrow);
+                _engine.ThrowIfInputFailed();
+                return value;
             }
             return function switch
             {
@@ -419,9 +423,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
                 _ => throw new ArgumentOutOfRangeException(nameof(function))
             };
         }
-        catch (Exception exception) when (_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))
+        catch (Exception exception) when (_captureErrors
+            && (_engine.TryGetInputError(exception, out string? inputError, observedNullThrow)
+                || JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow)))
         {
-            _traceError = exception.Message;
+            _engine.ThrowIfInterrupted();
+            _traceError = inputError ?? exception.Message;
             return null;
         }
     }

@@ -28,6 +28,8 @@ public class Engine : IDisposable
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;
+    private int _externalInterruptRequested;
+    private JavaScriptInputException? _inputError;
 
     [ThreadStatic] private static Engine? _currentEngine;
 
@@ -163,6 +165,7 @@ public class Engine : IDisposable
     /// </summary>
     public void Interrupt()
     {
+        Interlocked.Exchange(ref _externalInterruptRequested, 1);
         if (Volatile.Read(ref _disposed) != 0)
         {
             return;
@@ -262,6 +265,39 @@ public class Engine : IDisposable
             observer.CaughtNull = false;
             Interlocked.CompareExchange(ref _availableNullThrowObserver, observer, null);
         }
+    }
+
+    /// <remarks>
+    /// Callers must return without accessing the invalid input; V8 may deliver the interruption at a later safepoint.
+    /// </remarks>
+    internal JavaScriptInputException AbortInput(string message)
+    {
+        _inputError ??= new JavaScriptInputException(message);
+        V8Engine.Interrupt();
+        return _inputError;
+    }
+
+    internal void ThrowIfInputFailed()
+    {
+        ThrowIfInterrupted();
+        if (_inputError is { } error) throw error;
+    }
+
+    internal void ThrowIfInterrupted()
+    {
+        if (Volatile.Read(ref _externalInterruptRequested) != 0)
+            throw new ScriptInterruptedException("Script execution interrupted");
+    }
+
+    internal bool TryGetInputError(Exception exception, out string? message, bool observedNullThrow = false)
+    {
+        message = null;
+        // V8 uses the same interruption exception for input aborts and external requests; external requests take precedence.
+        if (_inputError is null || Volatile.Read(ref _externalInterruptRequested) != 0
+            || (!JavaScriptTraceFailure.IsInputFailure(exception, _inputError)
+                && !JavaScriptTraceFailure.IsRecoverable(exception, observedNullThrow))) return false;
+        message = _inputError.Message;
+        return true;
     }
 
     private sealed class NullThrowObserver

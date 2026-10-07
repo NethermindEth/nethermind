@@ -65,6 +65,14 @@ public partial class DebugRpcModuleTests
     [TestCase("postStep", 1)]
     [TestCase("precedence", 0)]
     [TestCase("precedence", 1)]
+    [TestCase("stack-input", 0)]
+    [TestCase("stack-input", 1)]
+    [TestCase("slice-input", 0)]
+    [TestCase("slice-input", 1)]
+    [TestCase("uint-input", 0)]
+    [TestCase("uint-input", 1)]
+    [TestCase("slice-padding", 0)]
+    [TestCase("slice-padding", 1)]
     [TestCase("setup", -1)]
     [TestCase("missing", -1)]
     [TestCase("noncallable", -1)]
@@ -106,6 +114,14 @@ public partial class DebugRpcModuleTests
             .Select(index => (UInt256)(index + 1 - (failure == "fault" && index >= failAt ? 1 : 0))).ToArray();
         Assert.That(expectedStates.Select(state => state.Storage), Is.EqualTo(expectedStorage));
         observations.States.Clear();
+        string? invalidRead = failure switch
+        {
+            "stack-input" => "log.stack.peek(-1)",
+            "slice-input" => "log.memory.slice(-1,1)",
+            "uint-input" => "log.memory.getUint(-1)",
+            "slice-padding" => "log.memory.slice(0,1048577)",
+            _ => null
+        };
         string tracer = failure switch
         {
             "result" => "{fault:function(){},result:function(ctx,db){if(ctx.txIndex===" + failAt + ")throw Error('result failure');" + resultBody + "}}",
@@ -115,6 +131,7 @@ public partial class DebugRpcModuleTests
             "exit" => "{fault:function(){},enter:function(frame){this.fail=toHex(frame.getFrom())===toHex(toAddress('" + failingWrapper + "'));},exit:function(){if(this.fail)throw Error('exit failure');},result:function(ctx,db){" + resultBody + "}}",
             "fault" => "{fault:function(){throw Error('fault failure');},result:function(ctx,db){" + resultBody + "}}",
             "precedence" => "{fault:function(){throw Error('later fault failure');},enter:function(){},exit:function(){if(this.fail)throw Error('later exit failure');},step:function(log,db){if(this.fail)throw Error('later step failure');if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){this.fail=true;throw Error('first failure');}},result:function(ctx,db){if(this.fail)throw Error('later result failure');" + resultBody + "}}",
+            _ when invalidRead is not null => "{fault:function(){},step:function(log,db){if(db.getNonce(toAddress('" + TestItem.AddressB + "'))===" + failingExecutionNonce + "){try{" + invalidRead + ";}catch(e){}throw Error('input abort was swallowed');}},result:function(ctx,db){" + resultBody + "}}",
             "setup" => "{fault:function(){},setup:function(){throw Error('setup failure');},result:function(){return {};}}",
             "missing" => "{fault:function(){}}",
             "noncallable" => "{fault:function(){},result:42}",
@@ -139,6 +156,16 @@ public partial class DebugRpcModuleTests
                 {
                     Assert.That((string?)entries[index]["error"], Is.Not.Null.And.Not.Empty, response);
                     Assert.That(entries[index]["result"], Is.Null);
+                    if (invalidRead is not null)
+                    {
+                        string expectedError = failure switch
+                        {
+                            "stack-input" => "tracer accessed out of bound stack",
+                            "slice-padding" => "reached limit for padding memory slice",
+                            _ => "tracer accessed out of bound memory"
+                        };
+                        Assert.That((string?)entries[index]["error"], Does.Contain(expectedError).And.Not.Contain("input abort was swallowed"));
+                    }
                     if (failure is "fault" or "exit" or "postStep" or "precedence")
                         Assert.That((string?)entries[index]["error"], Does.Contain(failure == "precedence" ? "first failure" : failure + " failure"));
                 }
@@ -151,6 +178,194 @@ public partial class DebugRpcModuleTests
         string native = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceBlockByNumber", block.Number,
             new { tracer = "callTracer", tracerConfig = new { onlyTopCall = "not-a-boolean" } });
         Assert.That(JToken.Parse(native)["error"], Is.Not.Null, "native tracer failures remain top-level");
+    }
+
+    [Test]
+    public async Task JavaScript_log_input_errors_are_uncatchable_only_in_capture_mode(
+        [Values("stack.peek(-1)", "stack.peek(2147483647)", "memory.slice(-1,1)", "memory.slice(1,0)",
+            "memory.getUint(-1)", "memory.getUint(0)", "memory.getUint(2147483647)")] string read, [Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},step:function(log){try{log." + read + ";}catch(e){this.caught=true;}},result:function(){return this.caught===true;}}", capture);
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        if (capture) Assert.That(result.TraceError, Does.Contain("tracer accessed out of bound"));
+        else
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TraceError, Is.Null);
+                Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("true"));
+            }
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_log_valid_bounds_preserve_values([Values] bool capture)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        string equalBounds = capture
+            ? "if(log.memory.slice(-1,-1).length!==0 || log.memory.slice(2147483648,2147483648).length!==0)throw Error('equal bounds');"
+            : "";
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain, """
+            {fault:function(){},step:function(log){
+                if(log.stack.peek(0).toString()!=='3' || log.memory.getUint(0).toString()!=='7')throw Error('word');
+                if(log.memory.slice(0,32).length!==32 || log.memory.slice(32,33)[0]!==0 || log.memory.slice(0,0).length!==0)throw Error('slice');
+            """ + equalBounds + "},result:function(){return true;}}", capture);
+        byte[] memory = new byte[32];
+        memory[^1] = 7;
+        byte[] stack = new byte[32];
+        stack[^1] = 3;
+        tracer.SetOperationMemory(new TraceMemory(32, memory));
+        tracer.SetOperationStack(new TraceStack(stack));
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TraceError, Is.Null);
+            Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("true"));
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_log_memory_padding_limit([Values(0, 32)] int memorySize, [Values(0, 1)] int excess)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        int end = memorySize + MemorySizes.MiB + excess;
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},step:function(log){this.first=log.memory.slice(0,1)[0];this.bytes=log.memory.slice(" + (end - 1) + "," + end + ");},result:function(){return {length:this.bytes.length,first:this.first,last:this.bytes[0]};}}");
+        byte[] memory = new byte[memorySize];
+        if (memorySize != 0) memory[0] = 7;
+        tracer.SetOperationMemory(new TraceMemory((ulong)memorySize, memory));
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            if (excess != 0)
+            {
+                Assert.That(result.TraceError, Is.EqualTo("reached limit for padding memory slice: 1048577"));
+                Assert.That(result.CustomTracerResult, Is.Null);
+            }
+            else
+            {
+                Assert.That(result.TraceError, Is.Null);
+                JToken payload = JToken.Parse(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions));
+                Assert.That((int?)payload["length"], Is.EqualTo(1));
+                Assert.That((int?)payload["first"], Is.EqualTo(memorySize == 0 ? 0 : 7));
+                Assert.That((int?)payload["last"], Is.EqualTo(0));
+            }
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_public_interrupt_escapes_full_tracer_recovery(
+        [Values] bool inputError, [Values("throw Error('later JS failure');", "throw null;", "return 1;")] string completion)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        bool actionCompleted = false;
+        Action interrupt = () =>
+        {
+            if (inputError) engine.AbortInput("invalid API input");
+            engine.Interrupt();
+            actionCompleted = true;
+        };
+        using (ScriptObject installer = (ScriptObject)engine.CreateTracer("{install:function(action){globalThis.interruptForTest=action;}}"))
+            installer.InvokeMethod("install", interrupt);
+        using GethLikeJavaScriptTxTracer txTracer = CreateTracer(engine, chain,
+            "{fault:function(){},result:function(){interruptForTest();" + completion + "}}");
+        Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        List<GethLikeTxTrace> completed = [];
+        inner.StartNewTxTrace(transaction).Returns(txTracer);
+        inner.BuildResult().Returns(completed);
+        inner.When(tracer => tracer.EndTxTrace()).Do(_ => completed.Add(txTracer.BuildResult()));
+        using RecoveringJavaScriptBlockTracer tracer = new(() => inner, null);
+        tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(transaction).TestObject);
+        using ITxTracer active = tracer.StartNewTxTrace(transaction);
+        ScriptInterruptedException failure = Assert.Throws<ScriptInterruptedException>(() => tracer.EndTxTrace())!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actionCompleted, Is.True, "both requests must be recorded before returning to JS");
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+            Assert.That(completed, Is.Empty, "neither tracer layer may turn cancellation into an error entry");
+        }
+    }
+
+    [Test]
+    public void JavaScript_input_abort_never_overrides_public_interrupt([Values(0, 1, 2)] int externalOrder)
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        using ScriptObject receiver = (ScriptObject)engine.CreateTracer("{result:function(action){try{action();}catch(e){}return 'swallowed';}}");
+        using ScriptObject callback = (ScriptObject)receiver.GetProperty("result");
+        bool reached = false;
+        bool completed = false;
+        JavaScriptInputException? ownedInput = null;
+        Action abort = () =>
+        {
+            reached = true;
+            if (externalOrder == 1) engine.Interrupt();
+            ownedInput = engine.AbortInput("invalid API input");
+            if (externalOrder == 2) engine.Interrupt();
+        };
+        Exception failure = Assert.Catch(() =>
+        {
+            engine.InvokeCapturingNull(receiver, callback, abort, null, false, out _);
+            engine.ThrowIfInputFailed();
+            completed = true;
+        })!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reached, Is.True);
+            Assert.That(completed, Is.False, "the input failure must survive JS try/catch");
+            Assert.That(engine.TryGetInputError(failure, out _), Is.EqualTo(externalOrder == 0));
+            Assert.That(engine.TryGetInputError(new JavaScriptInputException("foreign input marker"), out _), Is.False);
+            Assert.That(engine.TryGetInputError(new ArgumentOutOfRangeException("host state"), out _), Is.False);
+            Assert.That(engine.TryGetInputError(new ScriptEngineException("host", new ArgumentOutOfRangeException("state")), out _), Is.False);
+            Assert.That(ownedInput, Is.Not.Null);
+            Assert.That(engine.TryGetInputError(CreateException(true, true, null, ownedInput), out _), Is.False);
+            Assert.That(engine.TryGetInputError(new OperationCanceledException(), out _), Is.False);
+        }
+        engine.Interrupt();
+        Assert.That(engine.TryGetInputError(failure, out _), Is.False);
+    }
+
+    [Test]
+    public void JavaScript_input_abort_stops_a_loop_after_js_catch()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        using ScriptObject receiver = (ScriptObject)engine.CreateTracer("{result:function(action){try{action();}catch(e){}while(true){}}}");
+        using ScriptObject callback = (ScriptObject)receiver.GetProperty("result");
+        using CancellationTokenSource watchdog = new(TimeSpan.FromSeconds(5));
+        using CancellationTokenRegistration registration = watchdog.Token.Register(engine.Interrupt);
+        Action abort = () => engine.AbortInput("invalid API input");
+        Exception failure = Assert.Catch(() => engine.InvokeCapturingNull(receiver, callback, abort, null, false, out _))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engine.TryGetInputError(failure, out string? message), Is.True);
+            Assert.That(message, Is.EqualTo("invalid API input"));
+        }
+    }
+
+    [Test]
+    public void JavaScript_host_argument_errors_remain_unrecoverable()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        using ScriptObject receiver = (ScriptObject)engine.CreateTracer("{result:function(action){action();}}");
+        using ScriptObject callback = (ScriptObject)receiver.GetProperty("result");
+        Action host = () => throw new ArgumentOutOfRangeException("state");
+        Exception failure = Assert.Catch(() => engine.InvokeCapturingNull(receiver, callback, host, null, false, out _))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(engine.TryGetInputError(failure, out _), Is.False);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure), Is.False);
+        }
     }
 
     [Test]
@@ -195,6 +410,64 @@ public partial class DebugRpcModuleTests
             foreach (GethLikeTxTrace trace in results!) trace.Dispose();
         }
         resource.Received(1).Dispose();
+    }
+
+    [Test]
+    public void Debug_traceBlockByNumber_recovery_adapter_can_be_reused([Values] bool constructionError, [Values] bool transfer)
+    {
+        Transaction firstTransaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Transaction secondTransaction = Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject;
+        IBlockTracer<GethLikeTxTrace> firstInner = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        IBlockTracer<GethLikeTxTrace> secondInner = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        IDisposable firstResource = Substitute.For<IDisposable>();
+        IDisposable secondResource = Substitute.For<IDisposable>();
+        firstInner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+        secondInner.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+        firstInner.BuildResult().Returns(constructionError ? Array.Empty<GethLikeTxTrace>()
+            : new[] { new GethLikeTxTrace(firstResource) { TxHash = firstTransaction.Hash } });
+        secondInner.BuildResult().Returns(new[] { new GethLikeTxTrace(secondResource) { TxHash = secondTransaction.Hash } });
+        int created = 0;
+        IReadOnlyCollection<GethLikeTxTrace>? firstResult = null;
+        IReadOnlyCollection<GethLikeTxTrace> secondResult;
+        using (RecoveringJavaScriptBlockTracer tracer = new(() => ++created == 1
+            ? constructionError ? throw new JavaScriptTraceFailure(new ArgumentException("first construction failed")) : firstInner
+            : secondInner, null))
+        {
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(firstTransaction).TestObject);
+            using (tracer.StartNewTxTrace(firstTransaction)) tracer.EndTxTrace();
+            if (transfer) firstResult = tracer.BuildResult();
+            tracer.StartNewBlockTrace(Build.A.Block.WithTransactions(secondTransaction).TestObject);
+            if (!constructionError)
+            {
+                ((IDisposable)firstInner).Received(1).Dispose();
+                if (transfer) firstResource.DidNotReceive().Dispose();
+                else firstResource.Received(1).Dispose();
+            }
+            using (tracer.StartNewTxTrace(secondTransaction)) tracer.EndTxTrace();
+            secondResult = tracer.BuildResult();
+            Assert.That(secondResult, Has.Count.EqualTo(1));
+            Assert.That(secondResult.Single().TxHash, Is.EqualTo(secondTransaction.Hash));
+            Assert.That(secondResult.Single().TraceError, Is.Null);
+            if (firstResult is not null)
+            {
+                Assert.That(firstResult.Single().TxHash, Is.EqualTo(firstTransaction.Hash));
+                Assert.That(firstResult.Single().TraceError, Is.EqualTo(constructionError ? "first construction failed" : null));
+            }
+            tracer.Dispose();
+            tracer.Dispose();
+        }
+        Assert.That(created, Is.EqualTo(2));
+        ((IDisposable)firstInner).Received(constructionError ? 0 : 1).Dispose();
+        ((IDisposable)secondInner).Received(1).Dispose();
+        secondResource.DidNotReceive().Dispose();
+        foreach (GethLikeTxTrace trace in secondResult) trace.Dispose();
+        if (firstResult is not null)
+        {
+            firstResource.DidNotReceive().Dispose();
+            foreach (GethLikeTxTrace trace in firstResult) trace.Dispose();
+        }
+        if (!constructionError) firstResource.Received(1).Dispose();
+        secondResource.Received(1).Dispose();
     }
 
     [Test]

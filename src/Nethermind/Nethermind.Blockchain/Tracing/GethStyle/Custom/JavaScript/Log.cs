@@ -47,19 +47,50 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
         public readonly struct Stack(TraceStack items)
         {
             private readonly TraceStack _items = items;
+            private readonly Engine? _inputErrorEngine;
+
+            internal Stack(TraceStack items, Engine? inputErrorEngine) : this(items) => _inputErrorEngine = inputErrorEngine;
 
             public int length() => _items.Count;
-            public IJavaScriptObject peek(int index) => new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+            public IJavaScriptObject peek(int index)
+            {
+                if (_inputErrorEngine is not null && (index < 0 || index >= _items.Count))
+                {
+                    _inputErrorEngine.AbortInput($"tracer accessed out of bound stack: size {_items.Count}, index {index}");
+                    return null!;
+                }
+                return new BigInteger(_items[^(index + 1)].Span, true, true).ToBigInteger();
+            }
         }
 
         public class Memory
         {
             public TraceMemory MemoryTrace;
+            internal Engine? InputErrorEngine { get; set; }
 
             public int length() => (int)MemoryTrace.Size;
 
             public ITypedArray<byte> slice(long start, long end)
             {
+                if (InputErrorEngine is not null)
+                {
+                    if (start == end) return Array.Empty<byte>().ToTypedScriptArray();
+                    if (start < 0 || end < start)
+                    {
+                        InputErrorEngine.AbortInput($"tracer accessed out of bound memory: offset {start}, end {end}");
+                        return null!;
+                    }
+                    if ((ulong)end > MemoryTrace.Size && (ulong)end - MemoryTrace.Size > MemorySizes.MiB)
+                    {
+                        InputErrorEngine.AbortInput($"reached limit for padding memory slice: {(ulong)end - MemoryTrace.Size}");
+                        return null!;
+                    }
+                    if (end > Array.MaxLength)
+                    {
+                        InputErrorEngine.AbortInput($"tracer accessed out of bound memory: offset {start}, end {end}");
+                        return null!;
+                    }
+                }
                 if (start < 0 || end < start || end > Array.MaxLength)
                 {
                     throw new ArgumentOutOfRangeException(nameof(start), $"tracer accessed out of bound memory: offset {start}, end {end}");
@@ -71,7 +102,15 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                     .ToTypedScriptArray();
             }
 
-            public IJavaScriptObject getUint(int offset) => MemoryTrace.GetUint(offset).ToBigInteger();
+            public IJavaScriptObject getUint(int offset)
+            {
+                if (InputErrorEngine is not null && (offset < 0 || (ulong)offset + EvmPooledMemory.WordSize > MemoryTrace.Size))
+                {
+                    InputErrorEngine.AbortInput($"tracer accessed out of bound memory: available {MemoryTrace.Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
+                    return null!;
+                }
+                return MemoryTrace.GetUint(offset).ToBigInteger();
+            }
         }
 
         public struct Contract(Address caller, Address address, UInt256 value, ReadOnlyMemory<byte>? input)
