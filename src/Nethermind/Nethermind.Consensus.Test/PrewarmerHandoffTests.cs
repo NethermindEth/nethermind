@@ -592,6 +592,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address Gate = new("0x00000000000000000000000000000000004e4d0d");
     protected static readonly Address SwapThenCheck = new("0x00000000000000000000000000000000004e4d0e");
     protected static readonly Address CheckThenSwap = new("0x00000000000000000000000000000000004e4d0f");
+    // Probe: without call data SSTORE(0, 0); with call data SSTORE(1, SLOAD(0)). Slot 0 holds 0x4e4d at the parent.
+    protected static readonly Address Zeroer = new("0x00000000000000000000000000000000004e4d10");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
 
     private IContainer _container = null!;
@@ -658,6 +660,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, CheckThenSwap, GatedSwapCode(writeFirst: false), 0);
             worldState.Set(new StorageCell(SwapThenCheck, 1), 100);
             worldState.Set(new StorageCell(CheckThenSwap, 1), 100);
+            Deploy(worldState, Zeroer, [0x36, 0x60, 0x08, 0x57, 0x5F, 0x5F, 0x55, 0x00, 0x5B, 0x5F, 0x54, 0x60, 0x01, 0x55, 0x00], 0);
+            worldState.Set(new StorageCell(Zeroer, 0), 0x4e4d);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
@@ -705,13 +709,13 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected sealed record Run(Hash256 StateRoot, TxReceipt[] Receipts, TransactionResult[] Results, (int Replayed, int Rejected, int Missing) Tally);
 
     /// <summary>Processes the block by execution, then warmed and handed off, and requires the same results, root and receipts.</summary>
-    protected Run Handoff(Block block, IBlockTracer? otherTracer = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer);
+    protected Run Handoff(Block block, IBlockTracer? otherTracer = null, Action<IWorldState>? beforeTransactions = null) => Handoff(block, PreWarmer, ProductionAdapter, otherTracer, beforeTransactions);
 
-    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null)
+    protected Run Handoff(Block block, BlockCachePreWarmer preWarmer, PrewarmerTxAdapter adapter, IBlockTracer? otherTracer = null, Action<IWorldState>? beforeTransactions = null)
     {
-        Run executed = Process(block, adapter: null);
+        Run executed = Process(block, adapter: null, beforeTransactions: beforeTransactions);
         RunPreWarmCaches(preWarmer, block);
-        Run run = Process(block, adapter, otherTracer: otherTracer);
+        Run run = Process(block, adapter, otherTracer: otherTracer, beforeTransactions: beforeTransactions);
 
         using (Assert.EnterMultipleScope())
         {
@@ -735,7 +739,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     }
 
     /// <param name="adapter">The adapter that hands off; without one the block is executed.</param>
-    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null)
+    protected Run Process(Block block, PrewarmerTxAdapter? adapter, BlockHeader? parent = null, IBlockTracer? otherTracer = null, Action<IWorldState>? beforeTransactions = null)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         Block processing = new(block.Header.CloneForProcessing(), block.Body);
@@ -743,6 +747,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
         using (worldState.BeginScope(parent ?? Parent))
         {
             ITransactionProcessorAdapter transactions = (ITransactionProcessorAdapter?)adapter ?? new ExecuteTransactionProcessorAdapter(ProcessingScope.Resolve<ITransactionProcessor>());
+            beforeTransactions?.Invoke(worldState);
             BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(otherTracer ?? NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(processing);
