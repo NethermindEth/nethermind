@@ -5,10 +5,13 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
 /// <summary>JSON-RPC view of an EIP-8141 frame transaction: the EIP-1559 fee fields plus the frame and hoisted signature lists.</summary>
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction<FrameTransactionForRpc>
 {
     public new static TxType TxType => TxType.FrameTx;
@@ -45,8 +48,11 @@ public class FrameTransactionForRpc : EIP1559TransactionForRpc, IFromTransaction
     public FrameTransactionForRpc() { }
 
     public FrameTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         NonceKeys = transaction.NonceKeys;
         Frames = FrameForRpc.FromFrames(transaction.Frames);
         Signatures = FrameSignatureForRpc.FromSignatures(transaction.FrameSignatures);
