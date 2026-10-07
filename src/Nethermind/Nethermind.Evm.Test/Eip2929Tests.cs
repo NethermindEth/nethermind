@@ -92,6 +92,38 @@ namespace Nethermind.Evm.Test
             return result.GasSpent;
         }
 
+        /// <remarks>The reverted or halted sub call reads the balance of account F; the caller's read of it must still pay cold.</remarks>
+        [Test]
+        public void Account_warmed_in_a_reverted_sub_call_is_cold_again([Values] bool outOfGas)
+        {
+            ulong gasWhenSubCallTouchesTheAccount = GasOfBalanceAfterRevertedSubCall(TestItem.AddressD, TestItem.AddressF, outOfGas);
+            ulong gasWhenSubCallTouchesAnotherAccount = GasOfBalanceAfterRevertedSubCall(TestItem.AddressE, TestItem.AddressC, outOfGas);
+
+            Assert.That(gasWhenSubCallTouchesTheAccount, Is.EqualTo(gasWhenSubCallTouchesAnotherAccount),
+                "the reverted sub call must not leave the caller's account warm");
+        }
+
+        private ulong GasOfBalanceAfterRevertedSubCall(Address subCall, Address touched, bool outOfGas)
+        {
+            Prepare subCallCode = Prepare.EvmCode.PushData(touched).Op(Instruction.BALANCE).Op(Instruction.POP);
+            if (!outOfGas) subCallCode.PushData(0).PushData(0).Op(Instruction.REVERT);
+            TestState.CreateAccount(subCall, 1.Ether);
+            TestState.InsertCode(subCall, subCallCode.Done, Spec);
+
+            // A cold BALANCE costs 2600: the out-of-gas sub call halts on the charge.
+            byte[] code = Prepare.EvmCode
+                .DelegateCall(subCall, outOfGas ? 1000 : 50_000)
+                .Op(Instruction.POP)
+                .PushData(TestItem.AddressF)
+                .Op(Instruction.BALANCE)
+                .Op(Instruction.POP)
+                .Done;
+
+            TestAllTracerWithOutput result = Execute(code);
+            Assert.That(result.StatusCode, Is.EqualTo(StatusCode.Success), "precondition: only the sub call fails");
+            return result.GasSpent;
+        }
+
         private sealed class StorageObservationTracer(bool storage) : TestAllTracerWithOutput
         {
             public override bool IsTracingInstructions => false;

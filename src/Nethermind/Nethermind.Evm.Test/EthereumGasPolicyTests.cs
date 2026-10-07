@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -85,6 +86,90 @@ public class EthereumGasPolicyTests
             Assert.That(tracker.IsCold(in otherAddressSameSlot), Is.True);
             Assert.That(tracker.IsCold(in warm), Is.False, "still warm after the misses");
         }
+    }
+
+    /// <summary>Returning a tracker to the pool must drop its warm addresses, as it drops its warm cells.</summary>
+    [Test]
+    public void Pooled_reset_drops_warm_addresses()
+    {
+        object returnedState;
+        using (StackAccessTracker first = new())
+        {
+            returnedState = first.AccessedAddresses;
+            Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
+        }
+
+        using StackAccessTracker second = new();
+        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
+        Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
+    }
+
+    [Test]
+    public void Address_warm_up_matches_by_value_in_insertion_order()
+    {
+        using StackAccessTracker tracker = new();
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True);
+
+        Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
+        Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm");
+        Assert.That(tracker.AccessedAddresses.Select(static key => key.Value), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+    }
+
+    [Test]
+    public void Null_address_warm_up_keeps_set_semantics()
+    {
+        using StackAccessTracker tracker = new();
+
+        Assert.That(tracker.WarmUp((Address)null!), Is.True, "first access is cold");
+        Assert.That(tracker.WarmUp((Address)null!), Is.False, "the repeat is warm");
+        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a warm null does not make an address warm");
+    }
+
+    /// <summary>
+    /// Unwinding nested frames one at a time keeps each parent's accesses and drops the unwound frame's, unless
+    /// access is traced, when every access stays warm so the generated access list covers it.
+    /// </summary>
+    /// <remarks>Each frame holds its own copy of the tracker over one shared state, as the VM's frames do.</remarks>
+    [Test]
+    public void Nested_frame_restore_preserves_parent_accesses([Values(1, 4, 16)] int depth, [Values] bool tracing)
+    {
+        using StackAccessTracker parent = new(tracing);
+        parent.WarmUp(TestItem.AddressA);
+        StackAccessTracker[] frames = new StackAccessTracker[depth];
+        Address[] addresses = new Address[depth];
+        StorageCell[] cells = new StorageCell[depth];
+        for (int level = 0; level < depth; level++)
+        {
+            byte[] bytes = new byte[20];
+            bytes[19] = (byte)(level + 1);
+            addresses[level] = new Address(bytes);
+            cells[level] = new StorageCell(addresses[level], (UInt256)(uint)level);
+            frames[level] = parent;
+            frames[level].TakeSnapshot();
+            Assert.That(frames[level].WarmUp(addresses[level]), Is.True);
+            Assert.That(frames[level].WarmUp(addresses[level]), Is.False);
+            Assert.That(frames[level].WarmUp(in cells[level]), Is.True);
+            Assert.That(frames[level].WarmUp(in cells[level]), Is.False);
+        }
+
+        for (int level = depth - 1; level >= 0; level--)
+        {
+            frames[level].Restore();
+            for (int entry = 0; entry < depth; entry++)
+            {
+                bool expectedCold = !tracing && entry >= level;
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(parent.IsCold(addresses[entry]), Is.EqualTo(expectedCold), $"address {entry}, restored level {level}");
+                    Assert.That(parent.IsCold(in cells[entry]), Is.EqualTo(expectedCold), $"cell {entry}, restored level {level}");
+                }
+            }
+            Assert.That(parent.WarmUp(TestItem.AddressA), Is.False);
+        }
+
+        Assert.That(parent.WarmUp(addresses[^1]), Is.EqualTo(!tracing));
+        Assert.That(parent.WarmUp(in cells[^1]), Is.EqualTo(!tracing));
     }
 
     [Test]
