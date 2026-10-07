@@ -3,6 +3,7 @@
 
 using System.Threading.Channels;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -314,19 +315,30 @@ public class FlatTrieVerifier
     /// Phase 1 of preimage mode: spools every flat account keyed by its address hash, without reading the trie.
     /// </summary>
     /// <remarks>
-    /// The account iterator's upper bound is exclusive, so the all-0xFF address is skipped; if it exists in the trie,
-    /// it is reported as missing in flat.
+    /// The account iterator's upper bound is exclusive, so the all-0xFF address, which holds a balance on mainnet, is
+    /// read with a point lookup instead.
     /// </remarks>
     private void SpoolPreimageAccounts(IPersistence.IPersistenceReader reader, SortedSpool accounts, CancellationToken cancellationToken)
     {
         using SortedSpool.Writer writer = accounts.CreateWriter();
         long spooled = 0;
-        using IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue);
-        while (flatIter.MoveNext())
+        using (IPersistence.IFlatIterator flatIter = reader.CreateAccountIterator(ValueKeccak.Zero, ValueKeccak.MaxValue))
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            SpoolPreimageAccount(writer, flatIter.CurrentKey, flatIter.CurrentValue);
-            if (++spooled % AccountSpoolLogInterval == 0 && _logger.IsInfo) _logger.Info($"Sorting flat accounts: {spooled:N0} read");
+            while (flatIter.MoveNext())
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                SpoolPreimageAccount(writer, flatIter.CurrentKey, flatIter.CurrentValue);
+                if (++spooled % AccountSpoolLogInterval == 0 && _logger.IsInfo) _logger.Info($"Sorting flat accounts: {spooled:N0} read");
+            }
+        }
+
+        Address lastAddress = new("0xffffffffffffffffffffffffffffffffffffffff");
+        if (reader.GetAccount(lastAddress) is { } lastAccount)
+        {
+            ValueHash256 lastAddressKey = ValueKeccak.Zero;
+            lastAddress.Bytes.CopyTo(lastAddressKey.BytesAsSpan);
+            using ArrayPoolSpan<byte> lastAccountRlp = AccountDecoder.Slim.EncodeToArrayPoolSpan(lastAccount);
+            SpoolPreimageAccount(writer, lastAddressKey, lastAccountRlp);
         }
     }
 

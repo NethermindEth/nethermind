@@ -227,12 +227,12 @@ public class FlatTrieVerifierTests(FlatLayout layout)
     [Test]
     public void Verify_AccountsAtAddressRangeEdges_Match()
     {
-        // Edges of the preimage key range; the all-0xFF address itself is skipped by the iterator's exclusive upper bound.
+        // Edges of the preimage key range; the all-0xFF address sits on the iterator's exclusive upper bound.
         (Address address, Account account)[] accounts =
         [
             (new Address("0x0000000000000000000000000000000000000000"), new Account(1, 100)),
-            (new Address("0x2000000000000000000000000000000000000000"), new Account(2, 200)),
-            (new Address("0xfffffffffffffffffffffffffffffffffffffffe"), new Account(3, 300)),
+            (new Address("0xfffffffffffffffffffffffffffffffffffffffe"), new Account(2, 200)),
+            (new Address("0xffffffffffffffffffffffffffffffffffffffff"), new Account(3, 300)),
         ];
         foreach ((Address address, Account account) in accounts) _stateTree.Set(address, account);
         _stateTree.Commit();
