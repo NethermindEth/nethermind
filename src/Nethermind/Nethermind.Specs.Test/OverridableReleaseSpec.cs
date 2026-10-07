@@ -71,6 +71,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip7976Enabled { get; set; } = spec.IsEip7976Enabled;
         public bool IsEip7981Enabled { get; set; } = spec.IsEip7981Enabled;
         public bool IsEip8131Enabled { get; set; } = spec.IsEip8131Enabled;
+        public bool IsEip8279Enabled { get; set; } = spec.IsEip8279Enabled;
         public bool IsEip7918Enabled { get; set; } = spec.IsEip7918Enabled;
         public bool IsEip7883Enabled { get; set; } = spec.IsEip7883Enabled;
         public bool IsEip7934Enabled { get; set; } = spec.IsEip7934Enabled;
@@ -136,6 +137,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip3298Enabled { get; set; } = spec.IsEip3298Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
 

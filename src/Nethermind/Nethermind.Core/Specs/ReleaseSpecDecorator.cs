@@ -100,6 +100,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip7976Enabled => spec.IsEip7976Enabled;
     public virtual bool IsEip7981Enabled => spec.IsEip7981Enabled;
     public virtual bool IsEip8131Enabled => spec.IsEip8131Enabled;
+    public virtual bool IsEip8279Enabled => spec.IsEip8279Enabled;
     public virtual bool ValidateChainId => spec.ValidateChainId;
     public virtual ulong TargetBlobCount => spec.TargetBlobCount;
     public virtual ulong MaxBlobCount => spec.MaxBlobCount;
@@ -127,6 +128,7 @@ public class ReleaseSpecDecorator(IReleaseSpec spec) : IReleaseSpec
     public virtual bool IsEip8246Enabled => spec.IsEip8246Enabled;
     public virtual bool IsEip8253Enabled => spec.IsEip8253Enabled;
     public virtual bool IsEip2780Enabled => spec.IsEip2780Enabled;
+    public virtual bool IsEip3298Enabled => spec.IsEip3298Enabled;
     public virtual bool IsEip8024Enabled => spec.IsEip8024Enabled;
     public SpecGasCosts GasCosts => spec.GasCosts;
 }

@@ -73,6 +73,7 @@ not_published=(
   Dockerfile.pgo                                  # collect-pgo-profile.yml, throwaway pgo-<run id> tag
   scripts/build/Dockerfile                        # builds the release packages, the image is not pushed
   scripts/build/deb/Dockerfile                    # builds the .deb, the image is not pushed
+  src/Nethermind/Nethermind.Eez.Attester/Dockerfile  # EEZ attester, built by the operators who run it, never pushed
   src/Nethermind/Nethermind.Runner/Dockerfile     # Visual Studio's debug container
   src/Nethermind/Nethermind.Test.Runner/Dockerfile
   tools/EngineApiProxy/Dockerfile                 # built in run-e2e-tests.yml, never pushed

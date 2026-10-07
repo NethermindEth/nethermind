@@ -457,8 +457,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// </summary>
         /// <remarks>
         /// Compilers return from an internal function with either: both leave the word the call pushed below the top,
-        /// its return address, on top for the JUMP. Every other case, a short stack or gas included, runs the first
-        /// opcode alone through its own handler.
+        /// its return address, on top for the JUMP. A destination inside the code that the bitmap does not hold yet runs
+        /// the first opcode here and goes to <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/> for the JUMP;
+        /// every other case, a short stack or gas included, runs the first opcode alone through its own handler.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -481,8 +482,19 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ref ulong destination = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 2));
                 nuint target = (nuint)destination;
                 if ((Unsafe.Add(ref destination, 1) | Unsafe.Add(ref destination, 2) | Unsafe.Add(ref destination, 3)) == 0 &&
-                    target < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(target))
+                    target < (nuint)stack.CodeLength)
                 {
+                    if (!stack.IsAnalyzedJumpDestination(target))
+                    {
+                        // Straight to the analysis, which the JUMP handler would only reach after repeating these tests.
+                        TFirst.Apply(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), ref ip);
+                        head += TFirst.Growth;
+                        gas += JumpGasCost.GasCost + JumpDestGasCost.GasCost;
+                        ip = ref Unsafe.Add(ref ip, 1);
+                        nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
+                        return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
+                    }
+
                     // SWAP1 leaves the old top where the JUMP pops the destination from under it.
                     if (TFirst.Growth == 0)
                         CopyWord(ref Unsafe.Add(ref destination, LimbsPerWord), ref destination);

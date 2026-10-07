@@ -49,16 +49,26 @@ public partial class EthRpcModuleTests
 
     [TestCase(LockedAccount, null, TestName = "WrongAccount")]
     [TestCase(null, "from", TestName = "FromMissing")]
-    public async Task SignTransaction_WhenSenderNotUnlocked_ReturnsAuthError(string? fromOverride, string? omitField)
+    public async Task SignTransaction_WhenSenderNotHeld_ReturnsUnknownAccount(string? fromOverride, string? omitField)
     {
-        // Missing-from defaults to Address.Zero; both paths fail the IsUnlocked check with the same response.
+        // Missing-from defaults to Address.Zero, which no wallet holds.
         TransactionForRpc rpcTx = BuildTx(TxType.Legacy, omitField, fromOverride);
         string response = await SignTransaction(rpcTx);
 
         Assert.That(response, Does.Contain($"\"code\":{ErrorCodes.InvalidInput}"),
             "wallet lookup failure surfaces as -32000 to align with keystore error handling");
-        Assert.That(response, Does.Contain("authentication needed: password or unlock"),
+        Assert.That(response, Does.Contain("unknown account"),
             "wording must match keystore error so tools that text-match keep working");
+    }
+
+    [TestCase("gas", "gas not specified", TestName = "GasMissingFromUnknownAccount")]
+    [TestCase("gasPrice", FeeFieldsMissingMessage, TestName = "FeesMissingFromUnknownAccount")]
+    [TestCase("nonce", "nonce not specified", TestName = "NonceMissingFromUnknownAccount")]
+    public async Task SignTransaction_WhenRequiredFieldMissing_ReportsItBeforeTheAccount(string omitField, string expectedMessage)
+    {
+        string response = await SignTransaction(BuildTx(TxType.Legacy, omitField, LockedAccount));
+
+        Assert.That(response, Does.Contain(expectedMessage));
     }
 
     [Test]
