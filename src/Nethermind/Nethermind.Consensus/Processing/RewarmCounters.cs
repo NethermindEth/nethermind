@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.Processing;
 internal static class RewarmCounters
 {
     /// <summary>Settable for tests.</summary>
-    public static bool Enabled { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_EXP_REWARM") != "0";
+    public static bool Enabled { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_EXP_REWARM") == "1";
 
     /// <summary>How many sweepers a block starts once its warm pass has handed out its jobs; NETHERMIND_EXP_REWARM_SWEEPERS overrides.</summary>
     public static int Sweepers { get; } = int.TryParse(Environment.GetEnvironmentVariable("NETHERMIND_EXP_REWARM_SWEEPERS"), out int sweepers) && sweepers > 0
