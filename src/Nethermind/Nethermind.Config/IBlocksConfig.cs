@@ -99,6 +99,16 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The share of runs ahead, in percent, that must still hold for the prewarmer to keep running ahead of every block; 0 to always run ahead. Requires PreWarmLookAhead.", DefaultValue = "30", HiddenFromDocs = true)]
     int PreWarmLookAheadMinHoldPercent { get; set; }
 
+    /// <summary>Whether sync takes over pre-warm runs whose read-modify-written slots moved, checked by the block's roots.</summary>
+    /// <remarks>
+    /// A counter every transaction bumps makes every run but the first stale. Replaying such a run with its writes shifted by
+    /// how far the slot moved is right whenever the transaction did not branch on the value; the block's state and receipts
+    /// roots tell whether it did, and a block they reject is processed again without shifting. Only for blocks sync
+    /// suggests, whose headers are authenticated by the beacon chain.
+    /// </remarks>
+    [ConfigItem(Description = "During sync, take over pre-warm runs whose read-modify-written slots moved, verified by the block's roots.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool ShiftedSyncReplay { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

@@ -74,6 +74,14 @@ public static class Metrics
     public static long PrewarmHandoffFailures { get; set; }
 
     [CounterMetric]
+    [Description("Transactions taken over from a pre-warm run with its read-modify-written slots shifted")]
+    public static long PrewarmHandoffsShifted { get; set; }
+
+    [CounterMetric]
+    [Description("Blocks processed again because their roots rejected shifted replays")]
+    public static long ShiftedReplayRetries { get; set; }
+
+    [CounterMetric]
     [Description("Transactions of a queued block the prewarmer ran ahead while an earlier block was processed")]
     public static long PrewarmLookAheadRuns { get; set; }
 

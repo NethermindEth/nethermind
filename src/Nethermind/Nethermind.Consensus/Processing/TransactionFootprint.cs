@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -55,6 +56,63 @@ internal sealed class TransactionFootprint(
         return true;
     }
 
+    /// <summary>
+    /// Whether the run holds but for slots it read and then wrote, which have moved since; <paramref name="shifts"/> gets
+    /// how far each moved.
+    /// </summary>
+    /// <remarks>The run's receipt carries no logs, which could quote the moved values.</remarks>
+    public bool MatchesShifted(IWorldState state, List<SlotShift> shifts)
+    {
+        shifts.Clear();
+        if (_receipt.Logs.Length > 0) return false;
+        foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
+        {
+            if (!account.IsMet(state)) return false;
+        }
+
+        foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
+        {
+            state.Get(in slot.Cell, out UInt256 value);
+            if (value == slot.Value) continue;
+            if (!slot.Written) return false;
+            UInt256.Subtract(value, slot.Value, out UInt256 shift);
+            shifts.Add(new SlotShift(slot.Cell, shift));
+        }
+
+        return shifts.Count > 0;
+    }
+
+    /// <summary>Replays the run with every write to a slot in <paramref name="shifts"/> moved by that slot's shift.</summary>
+    public void ReplayShifted(IWorldState state, IReleaseSpec spec, List<SlotShift> shifts)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage && FindShift(shifts, effect.Address, in effect.Index, out UInt256 shift))
+            {
+                UInt256.Add(effect.Value, shift, out UInt256 shifted);
+                state.Set(new StorageCell(effect.Address, in effect.Index), in shifted);
+                continue;
+            }
+
+            effect.Replay(state, spec);
+        }
+    }
+
+    private static bool FindShift(List<SlotShift> shifts, Address address, in UInt256 index, out UInt256 shift)
+    {
+        foreach (SlotShift candidate in shifts)
+        {
+            if (candidate.Cell.Index == index && candidate.Cell.Address == address)
+            {
+                shift = candidate.Shift;
+                return true;
+            }
+        }
+
+        shift = default;
+        return false;
+    }
+
     public void Replay(IWorldState state, IReleaseSpec spec)
     {
         foreach (ref readonly StateEffect effect in effects.AsSpan())
@@ -63,6 +121,8 @@ internal sealed class TransactionFootprint(
         }
     }
 }
+
+internal readonly record struct SlotShift(StorageCell Cell, UInt256 Shift);
 
 internal readonly struct FootprintReceipt(bool success, Address recipient, in GasConsumed gas, LogEntry[] logs, string? error)
 {

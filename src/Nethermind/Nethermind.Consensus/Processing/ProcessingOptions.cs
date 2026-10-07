@@ -62,6 +62,14 @@ namespace Nethermind.Consensus.Processing
         ForceSequentialBlockAccessList = 1 << 9,
 
         /// <summary>
+        /// The block's header is authenticated, as a block sync downloads under a beacon-verified header chain is, so a
+        /// transaction may be taken over from a pre-warm run whose read-modify-written slots moved since it ran, with
+        /// the writes shifted by how far each slot moved. Only the block's roots can tell whether that held, so a block
+        /// whose roots do not match is processed again without it.
+        /// </summary>
+        ShiftedReplay = 1 << 10,
+
+        /// <summary>
         /// Processing options for engine_NewPayload
         /// </summary>
         EthereumMerge = MarkAsProcessed | DoNotUpdateHead | IgnoreParentNotOnMainChain

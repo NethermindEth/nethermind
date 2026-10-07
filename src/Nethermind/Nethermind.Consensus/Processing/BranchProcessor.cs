@@ -33,6 +33,10 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
 
+    // Blocks processed without shifted replays after one whose roots rejected them.
+    private const int ShiftedReplayCooldownBlocks = 32;
+    private int _shiftedReplayCooldown;
+
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
     public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
@@ -144,6 +148,12 @@ public class BranchProcessor(
                 ProcessingOptions blockOptions = blockTracer == NullBlockTracer.Instance
                     ? options
                     : options | ProcessingOptions.ForceSequentialBlockAccessList;
+                // A tracer sees transactions execute, which a replay skips.
+                if (blockTracer != NullBlockTracer.Instance || _shiftedReplayCooldown > 0)
+                {
+                    if (_shiftedReplayCooldown > 0) _shiftedReplayCooldown--;
+                    blockOptions &= ~ProcessingOptions.ShiftedReplay;
+                }
                 Block processedBlock;
                 TxReceipt[] receipts;
                 try
@@ -161,6 +171,18 @@ public class BranchProcessor(
                     worldStateCloser = BeginTargetScope(suggestedBlock);
                     ProcessingOptions retryOptions = blockOptions | ProcessingOptions.ForceSequentialBlockAccessList;
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, retryOptions, blockTracer, spec, token);
+                }
+                catch (ShiftedReplayRetryException) when (worldStateCloser is not null)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Processing {suggestedBlock.ToString(Block.Format.Short)} again without shifted replays.");
+                    Blockchain.Metrics.ShiftedReplayRetries++;
+                    _shiftedReplayCooldown = ShiftedReplayCooldownBlocks;
+                    CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
+                    DrainAndClear(ref prewarming);
+
+                    worldStateCloser.Dispose();
+                    worldStateCloser = BeginTargetScope(suggestedBlock);
+                    (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions & ~ProcessingOptions.ShiftedReplay, blockTracer, spec, token);
                 }
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)

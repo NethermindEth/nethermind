@@ -81,6 +81,8 @@ namespace Nethermind.Config
 
         public int PreWarmLookAheadMinHoldPercent { get; set; } = 30;
 
+        public bool ShiftedSyncReplay { get; set; }
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;

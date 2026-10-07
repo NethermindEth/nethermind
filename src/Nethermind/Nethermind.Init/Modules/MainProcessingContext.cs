@@ -51,7 +51,8 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                     StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump,
                     ProcessingCores = blocksConfig.ProcessingCores,
-                    DetachSuggestedBlocks = blocksConfig.DetachSyncProcessing
+                    DetachSuggestedBlocks = blocksConfig.DetachSyncProcessing,
+                    ShiftedReplayOfSuggestedBlocks = blocksConfig.ShiftedSyncReplay
                 })
                 .AddScoped<BlockchainProcessor>()
                 .Bind<IBlockchainProcessor, BlockchainProcessor>()

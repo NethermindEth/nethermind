@@ -88,10 +88,19 @@ public partial class BlockProcessor(
         Block block = PrepareBlockForProcessing(suggestedBlock);
         TxReceipt[] receipts;
         bool processed = false;
+        ShiftedReplay.Allowed = options.ContainsFlag(ProcessingOptions.ShiftedReplay) && !options.ContainsFlag(ProcessingOptions.NoValidation);
+        ShiftedReplay.Used = 0;
         try
         {
             receipts = ProcessBlock(block, blockTracer, options, spec, token);
             processed = true;
+            // Only the roots can tell whether a shifted replay held; a block they reject is not judged on this attempt.
+            if (ShiftedReplay.Used > 0 && !blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out _))
+            {
+                block.DisposeAccountChanges();
+                throw new ShiftedReplayRetryException(suggestedBlock);
+            }
+
             ValidateProcessedBlock(suggestedBlock, options, block, receipts);
             _blockTransactionsExecutor.PublishTransactionProcessedEvents();
         }
@@ -107,6 +116,7 @@ public partial class BlockProcessor(
         }
         finally
         {
+            ShiftedReplay.Allowed = false;
             _blockTransactionsExecutor.ClearTransactionProcessedEvents();
             if (!processed) block.DisposeAccountChanges();
         }

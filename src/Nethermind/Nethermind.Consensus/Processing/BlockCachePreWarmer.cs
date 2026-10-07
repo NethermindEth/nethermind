@@ -74,6 +74,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private int _aheadStale;
     private double _aheadHoldRate = 1.0;
     private int _aheadBlocksSkipped;
+    // Whether block processing takes shifted replays, so a run whose read-modify-written slots moved still holds.
+    private bool _shiftedHold;
+    [ThreadStatic] private static List<SlotShift>? t_shifts;
 
     // Below this share of runs ahead still holding, running ahead costs more than it returns.
     private double _minAheadHoldRate;
@@ -144,6 +147,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _blockCodeCache = blockCodeCache;
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
+        _shiftedHold = blocksConfig.ShiftedSyncReplay;
         if (lookAhead is not null && specProvider is not null)
         {
             EnableLookAhead(lookAhead, specProvider, blocksConfig.PreWarmLookAhead, blocksConfig.PreWarmLookAheadConcurrency,
@@ -1499,14 +1503,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // A run ahead that still holds on the parent is the run this one would record; its replay keeps the scope in step.
         if (footprints.Find(txIndex, tx, blockState.Block.Header) is { } ahead)
         {
-            bool held = ahead.Matches(recorder);
+            bool held = blockState.PreWarmer.KeepIfHeld(ahead, recorder, blockState.Spec);
             blockState.PreWarmer.NoteAheadRun(held);
-            if (held)
-            {
-                ahead.Replay(recorder, blockState.Spec);
-                Blockchain.Metrics.PrewarmLookAheadKept++;
-                return TransactionResult.Ok;
-            }
+            if (held) return TransactionResult.Ok;
         }
 
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
@@ -1629,7 +1628,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
     }
 
-    private static void RunTransactionAhead(IReadOnlyTxProcessingScope scope, FootprintRecorder recorder, Transaction tx, int txIndex, BlockHeader header,
+    /// <summary>Replays <paramref name="footprint"/> into the warm scope if it still holds there, shifted where block processing would shift it.</summary>
+    private bool KeepIfHeld(TransactionFootprint footprint, FootprintRecorder recorder, IReleaseSpec spec)
+    {
+        if (footprint.Matches(recorder))
+        {
+            footprint.Replay(recorder, spec);
+        }
+        else
+        {
+            List<SlotShift> shifts = t_shifts ??= [];
+            if (!_shiftedHold || !footprint.MatchesShifted(recorder, shifts)) return false;
+            footprint.ReplayShifted(recorder, spec, shifts);
+        }
+
+        Blockchain.Metrics.PrewarmLookAheadKept++;
+        return true;
+    }
+
+    private void RunTransactionAhead(IReadOnlyTxProcessingScope scope, FootprintRecorder recorder, Transaction tx, int txIndex, BlockHeader header,
         IReleaseSpec spec, BlockFootprints footprints, CancellationToken token)
     {
         try
@@ -1638,12 +1655,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (!recorder.AccountExists(sender)) recorder.CreateAccountIfNotExists(sender, UInt256.Zero);
             if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
             // A run of an earlier pass that still holds on this state is the run this one would record.
-            if (footprints.Find(txIndex, tx, header) is { } earlier && earlier.Matches(recorder))
-            {
-                earlier.Replay(recorder, spec);
-                Blockchain.Metrics.PrewarmLookAheadKept++;
-                return;
-            }
+            if (footprints.Find(txIndex, tx, header) is { } earlier && KeepIfHeld(earlier, recorder, spec)) return;
 
             if (spec.UseTxAccessLists) recorder.WarmUp(tx.AccessList, token);
             // Nothing overtakes a block that is not processed yet; only the session's end stops the run.

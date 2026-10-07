@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -30,6 +31,7 @@ public class PrewarmerTxAdapter(
 {
     private readonly ILogger _logger = logManager.GetClassLogger<PrewarmerTxAdapter>();
     private BlockExecutionContext _blockExecutionContext;
+    private readonly List<SlotShift> _shifts = [];
 
     internal (int Replayed, int Rejected, int Missing) Tally { get; private set; }
 
@@ -72,17 +74,32 @@ public class PrewarmerTxAdapter(
         // The pre-execution checks a warm run skips: the gas left in the block, and a sender with code (EIP-3607).
         if (tx.GasLimit > header.GasLimit - header.GasUsed || worldState.IsInvalidContractSender(spec, tx.SenderAddress!)) return false;
 
+        bool shifted = false;
         if (!footprint.Matches(worldState))
         {
-            Tally = Tally with { Rejected = Tally.Rejected + 1 };
-            Blockchain.Metrics.PrewarmHandoffsRejected++;
-            return false;
+            if (!ShiftedReplay.Allowed || !footprint.MatchesShifted(worldState, _shifts))
+            {
+                Tally = Tally with { Rejected = Tally.Rejected + 1 };
+                Blockchain.Metrics.PrewarmHandoffsRejected++;
+                return false;
+            }
+
+            shifted = true;
         }
 
         Snapshot snapshot = worldState.TakeSnapshot();
         try
         {
-            footprint.Replay(worldState, spec);
+            if (shifted)
+            {
+                footprint.ReplayShifted(worldState, spec, _shifts);
+                ShiftedReplay.Used++;
+                Blockchain.Metrics.PrewarmHandoffsShifted++;
+            }
+            else
+            {
+                footprint.Replay(worldState, spec);
+            }
         }
         catch (Exception ex)
         {

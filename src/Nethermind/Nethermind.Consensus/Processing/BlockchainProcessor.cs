@@ -349,6 +349,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             options |= ProcessingOptions.StoreReceipts;
         }
 
+        if (_options.ShiftedReplayOfSuggestedBlocks)
+        {
+            options |= ProcessingOptions.ShiftedReplay;
+        }
+
         if (blockEventArgs.Block is not null)
         {
             if (!_options.DetachSuggestedBlocks)
@@ -987,5 +992,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         /// <summary>Whether blocks suggested by the block tree, as sync's are, are processed off the suggesting thread.</summary>
         public bool DetachSuggestedBlocks { get; set; }
+
+        /// <summary>Whether blocks suggested by the block tree are processed with <see cref="ProcessingOptions.ShiftedReplay"/>.</summary>
+        public bool ShiftedReplayOfSuggestedBlocks { get; set; }
     }
 }
