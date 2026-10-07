@@ -14,17 +14,21 @@ internal static class BulkFillStorageCleanup
 {
     /// <summary>Each account's marker is removed in the batch with its last slot deletions, so a cleanup a crash cuts
     /// short leaves the marker in place and is finished by the cleanup that runs before replay resumes. Nothing outside
-    /// the scratch depends on how far a cleanup got, so it is never synced.</summary>
+    /// the scratch depends on how far a cleanup got, so it is never synced. Each lookup starts past the last cleaned
+    /// marker rather than at the start of the column, so it does not walk the tombstones the earlier markers left;
+    /// nothing writes a marker while the cleanup runs.</summary>
     public static void Run(IColumnsDb<Columns> db, CancellationToken token)
     {
+        Span<byte> lower = stackalloc byte[Hash256.Size + 1];
         Span<byte> upper = stackalloc byte[Hash256.Size + 1];
         upper.Fill(0xFF);
+        int lowerLength = 0;
         while (true)
         {
             token.ThrowIfCancellationRequested();
             ValueHash256 address;
             ulong clearedAt;
-            using (ISortedView clears = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Clears)).GetViewBetween([], upper))
+            using (ISortedView clears = ((ISortedKeyValueStore)db.GetColumnDb(Columns.Clears)).GetViewBetween(lower[..lowerLength], upper))
             {
                 if (!clears.MoveNext()) return;
                 if (clears.CurrentKey.Length != Hash256.Size || clears.CurrentValue.Length != sizeof(ulong))
@@ -32,6 +36,9 @@ internal static class BulkFillStorageCleanup
                 address = new ValueHash256(clears.CurrentKey);
                 clearedAt = BinaryPrimitives.ReadUInt64BigEndian(clears.CurrentValue);
             }
+            address.Bytes.CopyTo(lower);
+            lower[^1] = 0;
+            lowerLength = lower.Length;
             CleanAccount(db, address, clearedAt, token);
         }
     }

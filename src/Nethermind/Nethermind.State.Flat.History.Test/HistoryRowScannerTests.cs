@@ -264,6 +264,60 @@ public class HistoryRowScannerTests
     }
 
     [Test]
+    public void BulkReplay_WhenSeveralAccountsAreCleared_CleansEveryMarkerInOnePass()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        Address[] cleared = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer =>
+        {
+            foreach (Address address in cleared.Append(TestItem.AddressE))
+            {
+                writer.Set(address, new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 3);
+                for (uint slot = 0; slot < 3; slot++) storage.Set(slot, 1);
+            }
+        });
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+        CommitScratch(session, second, writer =>
+        {
+            foreach (Address address in cleared)
+            {
+                writer.Set(address, address == TestItem.AddressB ? null : new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 1);
+                storage.Clear();
+                storage.Set(7, 2);
+            }
+        });
+
+        session.CleanStorage(CancellationToken.None);
+
+        BulkFillStateReader reader = session.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Address address in cleared)
+            {
+                UInt256 oldValue = default;
+                UInt256 newValue = default;
+                reader.TryGetSlot(address, 0, ref oldValue);
+                reader.TryGetSlot(address, 7, ref newValue);
+                Assert.That(oldValue, Is.EqualTo(UInt256.Zero), address.ToString());
+                Assert.That(newValue, Is.EqualTo(address == TestItem.AddressB ? UInt256.Zero : new UInt256(2)), address.ToString());
+            }
+            UInt256 untouched = default;
+            reader.TryGetSlot(TestItem.AddressE, 0, ref untouched);
+            Assert.That(untouched, Is.EqualTo(UInt256.One));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Count(), Is.EqualTo(cleared.Length - 1 + 3));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty);
+        }
+    }
+
+    [Test]
     public void BulkReplay_WhenReleased_CanBootstrapAgainWithoutOldRows([Values] bool rocks)
     {
         using TempPath directory = TempPath.GetTempDirectory();
@@ -431,6 +485,54 @@ public class HistoryRowScannerTests
         WrongBalance,
         MalformedAccountRow,
         MalformedSlotRow
+    }
+
+    [Test]
+    public void ScratchVerification_WhenASlotHasNoLiveAccount_RefusesUnlessTheSlotIsDead(
+        [Values] bool rlpWrapped,
+        [Values] bool orphanSortsFirst,
+        [Values] SlotOwner owner)
+    {
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> source = new();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> scratch = new();
+        HistoryRowFormat format = HistoryColumnsWriter.CreateSharedFormat(source, new FlatDbConfig()).RowFormat;
+        byte[] liveBytes = Keccak.Compute("scratch account").BytesToArray();
+        liveBytes[0] = 0x80;
+        byte[] orphanBytes = (byte[])liveBytes.Clone();
+        orphanBytes[0] = orphanSortsFirst ? (byte)0x00 : (byte)0xFF;
+        ValueHash256 live = new(liveBytes);
+        ValueHash256 orphan = new(orphanBytes);
+        ValueHash256 slot = Keccak.Compute("scratch slot").ValueHash256;
+        using MemDb storageDb = new();
+        StorageTree storageTree = new(new RawScopedTrieStore(storageDb), LimboLogs.Instance);
+        storageTree.Set(slot.Bytes, new byte[] { 0x81, 0x80 });
+        storageTree.UpdateRootHash();
+        byte[] accountRow = AccountDecoder.Slim.EncodeAsBytes(new Account(1, 2, storageTree.RootHash, Keccak.OfAnEmptyString));
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, live.Bytes, 5, accountRow);
+        RecordScanSlot(source, live, slot, 5, new UInt256(128), rlpWrapped);
+        RecordScanSlot(source, orphan, slot, 3, owner == SlotOwner.NoneWithZeroedSlot ? UInt256.Zero : new UInt256(7), rlpWrapped);
+        if (owner is SlotOwner.DeletedAccount or SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.AccountHistory), FlatHistoryColumns.AccountHistory, orphan.Bytes, 4, []);
+        if (owner == SlotOwner.DeletedAccountClearedAfterSlot)
+            RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageClears), FlatHistoryColumns.StorageClears, orphan.Bytes, 4, []);
+        using MemDb accountsDb = new();
+        StateTree accountsTree = new(new RawScopedTrieStore(accountsDb), LimboLogs.Instance);
+        AccountRowRlp.Set(accountsTree, live, accountRow);
+        accountsTree.UpdateRootHash();
+        BulkFillScratchState state = new(scratch, Keccak.EmptyTreeHash, 8);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(state.ImportPage(Store(source, column), format, column, 10, CancellationToken.None).Complete, Is.True);
+
+        if (owner is SlotOwner.None or SlotOwner.DeletedAccount)
+            Assert.Throws<ScratchStateUnusableException>(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None),
+                "a replay reads a slot without its account, so a re-created account would start from the stale value");
+        else
+        {
+            Assert.DoesNotThrow(() => state.VerifyAnchor(accountsTree.RootHash, rlpWrapped, CancellationToken.None));
+            UInt256 value = UInt256.MaxValue;
+            new BulkFillStateReader(scratch, new StateId(10, accountsTree.RootHash), rlpWrapped).TryGetStorageRaw(orphan, slot, ref value);
+            Assert.That(value, Is.EqualTo(UInt256.Zero));
+        }
     }
 
     [Test]
@@ -817,6 +919,15 @@ public class HistoryRowScannerTests
         else source.PutSpan(rowKey, value);
     }
 
+    private static void RecordScanSlot(IColumnsDb<FlatHistoryColumns> source, in ValueHash256 address, in ValueHash256 slot, ulong block, in UInt256 value, bool rlpWrapped)
+    {
+        Span<byte> storageKey = stackalloc byte[BaseFlatPersistence.StorageKeyLength];
+        BaseFlatPersistence.EncodeStorageKeyHashedWithShortPrefix(storageKey, address, slot);
+        Span<byte> encoded = stackalloc byte[BaseFlatPersistence.RlpSlotValueBufferSize];
+        int length = value.IsZero ? 0 : BaseFlatPersistence.EncodeSlotValue(value, rlpWrapped, encoded);
+        RecordScanRow(source.GetColumnDb(FlatHistoryColumns.StorageHistory), FlatHistoryColumns.StorageHistory, storageKey, block, encoded[..length]);
+    }
+
     private static ISortedKeyValueStore Store(IColumnsDb<FlatHistoryColumns> columns, FlatHistoryColumns column) => (ISortedKeyValueStore)columns.GetColumnDb(column);
 
     private static void RecordStorage(IColumnsDb<FlatHistoryColumns> columns, in ValueHash256 identity, in ValueHash256 slot, ulong block, ReadOnlySpan<byte> rawValue)
@@ -855,5 +966,13 @@ public class HistoryRowScannerTests
                 batch.Dispose();
             }
         }
+    }
+
+    public enum SlotOwner
+    {
+        None,
+        NoneWithZeroedSlot,
+        DeletedAccount,
+        DeletedAccountClearedAfterSlot
     }
 }
