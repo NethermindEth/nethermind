@@ -20,8 +20,10 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// <remarks>
 /// <see cref="HandlerPrefix"/> decodes transactions before computing their trie root inline.
 /// <see cref="HandlerPrefixWithEarlyRoot"/> overlaps root computation with decoding through
-/// the same preparation object used by <c>NewPayloadHandler.HandleAsync</c>. Transactions are
-/// real signed EIP-1559 transactions with a mainnet-like calldata mix, not opaque blobs,
+/// the same preparation object used by <c>NewPayloadHandler.HandleAsync</c>.
+/// <see cref="ParamsDecodeThenPreparation"/> and <see cref="PreparationThenParamsDecode"/> mirror
+/// <c>engine_newPayloadV3</c>+, whose parameter checks decode the transactions before the handler runs.
+/// Transactions are real signed EIP-1559 transactions with a mainnet-like calldata mix, not opaque blobs,
 /// so decode and trie-leaf costs are honest.
 /// </remarks>
 [MemoryDiagnoser]
@@ -91,6 +93,26 @@ public class NewPayloadPrefixBenchmarks
         _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
         using ExecutionPayloadPreparation preparation = new(_payload);
         return preparation.TryGetBlock().Data!;
+    }
+
+    [Benchmark(Description = "params decode, then preparation + TryGetBlock")]
+    public Block ParamsDecodeThenPreparation()
+    {
+        // engine_newPayloadV3+ order before the module started the preparation: ValidateParams decodes first.
+        _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
+        _payload.TryGetTransactions();
+        using ExecutionPayloadPreparation preparation = new(_payload);
+        using (preparation.Workers.Enter()) return preparation.TryGetBlock().Data!;
+    }
+
+    [Benchmark(Description = "preparation, params decode, TryGetBlock")]
+    public Block PreparationThenParamsDecode()
+    {
+        // engine_newPayloadV3+ order with the module starting the preparation before ValidateParams decodes.
+        _payload.Transactions = _encodedTransactions; // resets the decoded-transactions memo
+        using ExecutionPayloadPreparation preparation = new(_payload);
+        using (preparation.Workers.Enter()) _payload.TryGetTransactions();
+        using (preparation.Workers.Enter()) return preparation.TryGetBlock().Data!;
     }
 
     private static Transaction[] BuildTransactions(int count)

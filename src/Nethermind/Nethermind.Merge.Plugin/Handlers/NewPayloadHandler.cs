@@ -125,12 +125,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="request">The execution payload to process.</param>
     /// <returns></returns>
-    public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
+    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request) => HandleAsync(request, preparation: null);
+
+    /// <inheritdoc cref="HandleAsync(ExecutionPayload)"/>
+    /// <param name="request">The execution payload to process.</param>
+    /// <param name="preparation">A preparation of <paramref name="request"/> the caller started earlier and disposes;
+    /// <c>null</c> to start one here.</param>
+    internal async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request, ExecutionPayloadPreparation? preparation)
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        using ExecutionPayloadPreparation preparation = new(request);
+        using ExecutionPayloadPreparation? ownPreparation = preparation is null ? new(request) : null;
+        preparation ??= ownPreparation!;
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
