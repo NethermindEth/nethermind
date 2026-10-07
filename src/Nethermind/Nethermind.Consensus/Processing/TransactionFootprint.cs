@@ -39,6 +39,11 @@ internal sealed class TransactionFootprint(
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
 
+    /// <summary>The slots the run read, at the values it read.</summary>
+    public ReadOnlySpan<SlotPrecondition> Slots => slots;
+
+    public ReadOnlySpan<StateEffect> Effects => effects;
+
     public bool Matches(IWorldState state)
     {
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())

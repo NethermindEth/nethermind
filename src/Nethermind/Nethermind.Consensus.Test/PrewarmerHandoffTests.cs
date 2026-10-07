@@ -87,15 +87,26 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     public void A_senders_later_transaction_replays_after_its_earlier_one_was_executed()
     {
         (int replayed, int rejected, _) = Handoff(BuildBlock(
-            Call(TestItem.PrivateKeyA, 0, Counter),
-            Call(TestItem.PrivateKeyB, 0, Counter),
-            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressC, 1.Wei))).Tally;
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, BalanceReader),
+            Transfer(TestItem.PrivateKeyB, 1, TestItem.AddressD, 1.Wei))).Tally;
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(replayed, Is.EqualTo(2));
             Assert.That(rejected, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void Transactions_that_read_a_slot_an_earlier_one_writes_are_refreshed_and_taken_over()
+    {
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Call(TestItem.PrivateKeyD, 0, Counter))).Tally;
+
+        Assert.That((replayed, rejected), Is.EqualTo((3, 0)));
     }
 
     [Test]
@@ -426,6 +437,125 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         int hasCode = Array.FindIndex(map.InterfaceMethods, m => m.Name == nameof(IAccountStateProvider.HasCode));
         Assert.That(map.TargetMethods[hasCode].DeclaringType, Is.EqualTo(typeof(FootprintRecorder)));
     }
+
+    [Test]
+    public void The_writes_of_a_transaction_block_processing_executes_reach_the_footprints()
+    {
+        UInt256 paidTo;
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent)) paidTo = worldState.GetBalance(TestItem.AddressC);
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 0x4e4d),
+            Call(TestItem.PrivateKeyB, 0, BalanceReader),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+
+        RunPreWarmCaches(PreWarmer, block);
+        Assert.That(Process(block, ProductionAdapter).Tally.Rejected, Is.EqualTo(1), "the balance read is executed");
+
+        BlockFootprints footprints = PreWarmer.Footprints!;
+        footprints.ApplyExecuted();
+        Assert.That(footprints.ValueBefore(new StorageCell(BalanceReader, 0), 2), Is.EqualTo(paidTo + 0x4e4d));
+    }
+
+    [Test]
+    public void Writes_block_processing_reports_invalidate_the_footprints_that_read_other_values([Values] bool sameValue)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
+
+        footprints.QueueExecuted(0, [(cell, sameValue ? (UInt256)0x4e4d : 2 * 0x4e4d)]);
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False, "queued writes count once they are applied");
+        footprints.ApplyExecuted();
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.EqualTo(!sameValue));
+        if (!sameValue) Assert.That(position, Is.EqualTo(2));
+    }
+
+    [Test]
+    public void A_footprint_reading_what_an_earlier_one_writes_otherwise_is_invalidated_once_both_are_stored([Values] bool readerFirst)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        TransactionFootprint writer = Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]);
+        TransactionFootprint reader = Footprint(txs[1], reads: [(cell, 0x4e4d)]);
+
+        footprints.Store(readerFirst ? 1 : 0, readerFirst ? reader : writer);
+        footprints.Store(readerFirst ? 0 : 1, readerFirst ? writer : reader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(1));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
+        }
+    }
+
+    [Test]
+    public void Invalidated_footprints_block_processing_has_reached_are_dropped()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(3);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, 0x4e4d)]));
+        footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(2));
+            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+        }
+    }
+
+    [Test]
+    public void A_slot_too_many_transactions_touch_is_no_longer_indexed()
+    {
+        int writers = BlockFootprints.MaxIndexedPerSlot + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(writers + 1);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        for (int i = 0; i < writers; i++) footprints.Store(i, Footprint(txs[i], writes: [(cell, (UInt256)(i + 1))]));
+        TransactionFootprint reader = Footprint(txs[writers], reads: [(cell, 0x4e4d)]);
+        footprints.Store(writers, reader);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False);
+            Assert.That(footprints.ReadsUnindexedSlot(reader), Is.True);
+            Assert.That(footprints.ValueBefore(cell, writers), Is.Null);
+        }
+    }
+
+    [Test]
+    public void A_block_takes_at_most_its_refreshes()
+    {
+        int readers = BlockFootprints.MaxRefreshesPerBlock + 4;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1);
+        footprints.Store(0, Footprint(txs[0], writes: [.. Enumerable.Range(0, readers).Select(static i => (new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)0x4e4d))]));
+        for (int i = 1; i <= readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(new StorageCell(TestItem.AddressC, (UInt256)(i - 1)), UInt256.Zero)]));
+
+        int taken = 0;
+        while (footprints.TryTakeInvalidated(-1, out _)) taken++;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(taken, Is.EqualTo(BlockFootprints.MaxRefreshesPerBlock));
+            Assert.That(footprints.HasWork, Is.False);
+        }
+    }
+
+    private static (BlockFootprints Footprints, Transaction[] Transactions) Footprints(int count)
+    {
+        Transaction[] txs = new Transaction[count];
+        for (int i = 0; i < count; i++) txs[i] = Build.A.Transaction.WithNonce((ulong)i).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        return (new BlockFootprints(Build.A.Block.WithTransactions(txs).TestObject), txs);
+    }
+
+    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
+        new(tx, [],
+            [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
+            [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Address = write.Cell.Address, Index = write.Cell.Index, Value = write.Value })],
+            default, default, default);
 
     [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()

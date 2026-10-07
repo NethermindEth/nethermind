@@ -43,9 +43,25 @@ public class PrewarmerTxAdapter(
             {
                 return result;
             }
+
+            // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
+            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
         }
 
         return baseAdapter.Execute(transaction, txTracer);
+    }
+
+    private TransactionResult ExecuteReportingWrites(Transaction transaction, ITxTracer txTracer, CommittedStorageWrites committed)
+    {
+        committed.Begin();
+        try
+        {
+            return baseAdapter.Execute(transaction, txTracer);
+        }
+        finally
+        {
+            if (committed.End() is { } writes) preWarmer.ReportExecutedWrites(writes);
+        }
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)

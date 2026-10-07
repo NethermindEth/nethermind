@@ -57,6 +57,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+    private readonly CommittedStorageWrites? committedWrites = prewarmerState.IsPrewarmer ? null : prewarmerState.CommittedWrites;
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
@@ -114,7 +115,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode, committedWrites);
     }
 
     private sealed class ScopeWrapper(
@@ -126,7 +127,8 @@ public class PrewarmerScopeProvider(
         LocalMetrics metrics,
         Hash256? baseStateRoot,
         ICodeCache? codeCache,
-        bool prefetchCode) : IWorldStateScopeProvider.IScope
+        bool prefetchCode,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -196,7 +198,7 @@ public class PrewarmerScopeProvider(
             bool bypassCache = preBlockCaches.BypassesStorageCache(address);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address, bypassCache)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache);
+                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache, committedWrites);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -500,7 +502,8 @@ public class PrewarmerScopeProvider(
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics,
-        bool bypassCache) : IWorldStateScopeProvider.IStorageTree
+        bool bypassCache,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
@@ -543,8 +546,14 @@ public class PrewarmerScopeProvider(
 
         public void HintSet(in UInt256 index, in UInt256 value)
         {
-            if (isPrewarmer) baseStorageTree.HintSet(in index);
-            else baseStorageTree.HintSet(in index, in value);
+            if (isPrewarmer)
+            {
+                baseStorageTree.HintSet(in index);
+                return;
+            }
+
+            committedWrites?.Add(address, in index, in value);
+            baseStorageTree.HintSet(in index, in value);
         }
 
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
