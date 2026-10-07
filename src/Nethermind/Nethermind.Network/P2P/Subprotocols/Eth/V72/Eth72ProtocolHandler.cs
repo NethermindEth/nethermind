@@ -188,7 +188,8 @@ public class Eth72ProtocolHandler(
                         return true;
                     }
 
-                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
+                    if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions))
+                        return true;
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {

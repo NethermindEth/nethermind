@@ -5,6 +5,7 @@ using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -33,6 +34,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
+        private readonly ClockCache<long, byte> _pooledTransactionRequests = new(2048, lockPartition: 1);
+
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, IByteArrayList> _nodeDataRequests66;
@@ -91,7 +94,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                            throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage)}.");
+                        if (!_pooledTransactionRequests.Delete(requestId))
+                        {
+                            ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage)} response ignored", size);
+                            return true;
+                        }
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg))
+                            return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg.EthMessage);
                     }
@@ -170,6 +181,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
         protected void ThrowIfReceiptsUnexpected(IByteBuffer content) =>
             ThrowIfReceiptsExceedRequest(content, 1, _receiptsRequests66.GetPendingRequest(content).EthMessage);
+
+        private protected override void TrackPooledTransactionRequest(P2PMessage message)
+        {
+            if (message is GetPooledTransactionsMessage request)
+                _pooledTransactionRequests.Set(request.RequestId, 0);
+        }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);
 
