@@ -15,7 +15,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
-    IPersistence persistence,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -23,6 +22,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     IStateHeaderProvider stateHeaderProvider,
+    FlatTrieVerifier trieVerifier,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -35,8 +35,6 @@ public class FlatWorldStateManager(
         stateHeaderProvider,
         logManager,
         isReadOnly: false);
-
-    private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
 
     private SnapFlatStateServer? _snapServer;
 
@@ -65,7 +63,7 @@ public class FlatWorldStateManager(
         overridableWorldScopeFactory();
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) =>
-        _trieVerifier.Verify(stateAtBlock, cancellationToken);
+        trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 

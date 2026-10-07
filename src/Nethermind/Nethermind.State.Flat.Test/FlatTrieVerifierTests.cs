@@ -224,6 +224,29 @@ public class FlatTrieVerifierTests(FlatLayout layout)
         AssertAccountStats(verifier, accountCount: 3, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
     }
 
+    [Test]
+    public void Verify_AccountsAtAddressRangeEdges_Match()
+    {
+        // Edges of the preimage key range; the all-0xFF address itself is skipped by the iterator's exclusive upper bound.
+        (Address address, Account account)[] accounts =
+        [
+            (new Address("0x0000000000000000000000000000000000000000"), new Account(1, 100)),
+            (new Address("0x2000000000000000000000000000000000000000"), new Account(2, 200)),
+            (new Address("0xfffffffffffffffffffffffffffffffffffffffe"), new Account(3, 300)),
+        ];
+        foreach ((Address address, Account account) in accounts) _stateTree.Set(address, account);
+        _stateTree.Commit();
+        Hash256 stateRoot = _stateTree.RootHash;
+
+        WriteAccountsToFlat(accounts, new StateId(1, stateRoot));
+
+        using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
+        FlatTrieVerifier verifier = new(_logManager);
+        verifier.Verify(reader, _trieStore, stateRoot, CancellationToken.None);
+
+        AssertAccountStats(verifier, accountCount: 3, mismatched: 0, missingInFlat: 0, missingInTrie: 0);
+    }
+
     [TestCase(1UL, 100UL, 1UL, 200UL, Description = "Mismatched balance")]
     [TestCase(5UL, 100UL, 10UL, 100UL, Description = "Mismatched nonce")]
     public void Verify_MismatchedAccount_DetectsMismatch(ulong trieNonce, ulong trieBalance, ulong flatNonce, ulong flatBalance)

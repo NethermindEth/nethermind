@@ -10,10 +10,10 @@ namespace Nethermind.State.Flat.Collections;
 /// <summary>Collects storage slots keyed by raw slot and replays them ordered by slot hash, the order of a storage trie's leaves.</summary>
 /// <remarks>
 /// The first <see cref="MaxInMemoryEntries"/> slots are buffered in memory; past that, all of them are spilled into a
-/// <see cref="SortedSpool"/> under a fresh temp directory, so memory stays bounded however large the storage is.
+/// <see cref="SortedSpool"/> under a fresh subdirectory of the given directory, so memory stays bounded however large the storage is.
 /// Add every slot, call <see cref="CompleteAdding"/> once, then iterate with <see cref="MoveNext"/>.
 /// </remarks>
-internal sealed class HashSortedSlotPool(ILogManager logManager, CancellationToken cancellationToken) : IDisposable
+internal sealed class HashSortedSlotPool(string directory, ILogManager logManager, CancellationToken cancellationToken) : IDisposable
 {
     private const int SpoolBufferBytes = 64 * 1024 * 1024;
     private const int SlotLength = 32;
@@ -94,7 +94,7 @@ internal sealed class HashSortedSlotPool(ILogManager logManager, CancellationTok
 
     private void Spill(ArrayPoolList<Entry> entries)
     {
-        _spoolDirectory = Directory.CreateTempSubdirectory("nethermind-slot-pool-").FullName;
+        _spoolDirectory = Directory.CreateDirectory(Path.Combine(directory, Guid.NewGuid().ToString("N"))).FullName;
         _spool = new SortedSpool(_spoolDirectory, SpoolBufferBytes, writerCount: 1, logManager, cancellationToken);
         _writer = _spool.CreateWriter();
         foreach (Entry entry in entries.AsSpan()) Write(entry);
