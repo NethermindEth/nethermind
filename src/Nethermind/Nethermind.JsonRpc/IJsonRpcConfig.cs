@@ -173,7 +173,7 @@ public interface IJsonRpcConfig : IConfig
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
-    /// <summary>Maximum time, in milliseconds, that a gated EVM-executing request may wait for an execution slot. Defaults to 500 ms; 0 or less disables queueing.</summary>
+    /// <summary>Maximum time, in milliseconds, that a gated EVM-executing request may wait for an execution slot. Defaults to 100 ms; 0 or less disables queueing.</summary>
     [ConfigItem(
         Description = """
             The max time, in milliseconds, an `eth_simulateV1` request, or an `eth_call`, `eth_estimateGas` or
@@ -189,7 +189,7 @@ public interface IJsonRpcConfig : IConfig
             A request keeps its slot until it completes (up to `Timeout`), so `EthModuleConcurrentInstances` concurrent long
             calls, such as large `eth_simulateV1`, make every other such request wait or be rejected.
             """,
-        DefaultValue = "500")]
+        DefaultValue = "100")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
 
     /// <summary>Maximum number of gated EVM-executing requests waiting for an execution slot. Defaults to 500; 0 or less removes the limit.</summary>

@@ -57,7 +57,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public int? TraceModuleConcurrentInstances { get; set; } = null;
     public int TraceBlockParallelism { get; set; } = 4;
     public int? EthModuleConcurrentInstances { get; set; } = null;
-    public int EvmExecutionMaxQueueWaitMs { get; set; } = 500;
+    public int EvmExecutionMaxQueueWaitMs { get; set; } = 100;
     public int EvmExecutionQueueLimit { get; set; } = 500;
     public string JwtSecretFile { get; set; } = null;
     public bool UnsecureDevNoRpcAuthentication { get; set; }

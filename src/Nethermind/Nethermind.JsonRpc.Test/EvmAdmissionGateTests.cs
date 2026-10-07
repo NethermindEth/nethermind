@@ -29,6 +29,10 @@ public class EvmAdmissionGateTests
             Is.EqualTo(expected ?? Environment.ProcessorCount));
 
     [Test]
+    public void Wait_budget_defaults_to_100_ms() =>
+        Assert.That(new EvmAdmissionGate(new JsonRpcConfig()).Budget, Is.EqualTo(TimeSpan.FromMilliseconds(100)));
+
+    [Test]
     public async Task Released_slot_passes_to_a_waiter_without_exceeding_the_permits()
     {
         EvmAdmissionGate gate = CreateGate(permits: 2);
