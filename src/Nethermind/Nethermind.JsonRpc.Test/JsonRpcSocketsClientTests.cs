@@ -788,13 +788,20 @@ public class JsonRpcSocketsClientTests
 
             Task receiver = StartReceiver(pair.Listener, jsonRpcProcessor, pair.Cts.Token, new JsonRpcConfig().IpcProcessingConcurrency);
             await using IpcSocketMessageStream sendStream = new(pair.SendSocket);
-            await sendStream.WriteAsync("slow"u8.ToArray(), pair.Cts.Token);
-            await sendStream.WriteEndOfMessageAsync();
-            await sendStream.WriteAsync("fast"u8.ToArray(), pair.Cts.Token);
-            await sendStream.WriteEndOfMessageAsync();
+            bool answered;
+            try
+            {
+                await sendStream.WriteAsync("slow"u8.ToArray(), pair.Cts.Token);
+                await sendStream.WriteEndOfMessageAsync();
+                await sendStream.WriteAsync("fast"u8.ToArray(), pair.Cts.Token);
+                await sendStream.WriteEndOfMessageAsync();
 
-            bool answered = await Task.WhenAny(fastAnswered.Task, Task.Delay(TimeSpan.FromSeconds(10))) == fastAnswered.Task;
-            releaseSlow.SetResult();
+                answered = await Task.WhenAny(fastAnswered.Task, Task.Delay(TimeSpan.FromSeconds(10))) == fastAnswered.Task;
+            }
+            finally
+            {
+                releaseSlow.TrySetResult();
+            }
 
             Assert.That(answered, Is.True, "a slow request must not block a later request on the same connection");
 

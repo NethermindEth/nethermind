@@ -55,9 +55,16 @@ public class JsonRpcWebSocketsModuleTests
 
         await using (WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: true, engine: true), processor.Processor, cts.Token))
         {
-            await connection.SendAsync("slow", cts.Token);
-            await connection.SendAsync("fast", cts.Token);
-            fastSent.SetResult();
+            try
+            {
+                await connection.SendAsync("slow", cts.Token);
+                await connection.SendAsync("fast", cts.Token);
+            }
+            finally
+            {
+                fastSent.TrySetResult();
+            }
+
             await Task.WhenAll(processor.SlowAnswered, processor.FastAnswered).WaitAsync(cts.Token);
         }
 
@@ -76,11 +83,18 @@ public class JsonRpcWebSocketsModuleTests
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
         await using WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: false, engine: false), processor.Processor, cts.Token);
-        await connection.SendAsync("slow", cts.Token);
-        await connection.SendAsync("fast", cts.Token);
-        Assert.That(async () => await processor.FastAnswered.WaitAsync(cts.Token), Throws.Nothing,
-            "a slow request must not block a later request on a public connection");
-        releaseSlow.SetResult();
+        try
+        {
+            await connection.SendAsync("slow", cts.Token);
+            await connection.SendAsync("fast", cts.Token);
+            Assert.That(async () => await processor.FastAnswered.WaitAsync(cts.Token), Throws.Nothing,
+                "a slow request must not block a later request on a public connection");
+        }
+        finally
+        {
+            releaseSlow.TrySetResult();
+        }
+
         await processor.SlowAnswered.WaitAsync(cts.Token);
     }
 

@@ -9,6 +9,7 @@ using System.Net.WebSockets;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Facade.Filters;
 using Nethermind.Blockchain.Find;
@@ -17,6 +18,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core.Timers;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
@@ -1488,7 +1490,11 @@ namespace Nethermind.JsonRpc.Test.Modules
             factory
                 .CreateSubscription(Arg.Any<IJsonRpcDuplexClient>(), Arg.Any<string>(), Arg.Any<string?>())
                 .Returns(ci => subscription = new TrackingSubscription((IJsonRpcDuplexClient)ci[0]));
-            SubscriptionManager manager = new(factory, LimboLogs.Instance);
+            using IContainer container = new ContainerBuilder()
+                .AddModule(new TestNethermindModule())
+                .AddSingleton<ISubscriptionFactory>(factory)
+                .Build();
+            ISubscriptionManager manager = container.Resolve<ISubscriptionManager>();
 
             IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
             client.Id.Returns("late-subscriber");
@@ -1496,13 +1502,12 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             string subscriptionId = manager.AddSubscription(client, "test");
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(subscription!.Disposed, Is.EqualTo(clientClosed),
-                    "a subscription registered after its client closed is disposed at once; an open client's is kept");
-                Assert.That(manager.RemoveSubscription(client, subscriptionId), Is.EqualTo(!clientClosed),
-                    "only an open client's subscription is still registered");
-            }
+            Assert.That(subscription!.Disposed, Is.EqualTo(clientClosed),
+                "a subscription registered after its client closed is disposed at once; an open client's is kept");
+
+            bool removed = manager.RemoveSubscription(client, subscriptionId);
+            Assert.That(removed, Is.EqualTo(!clientClosed),
+                "only an open client's subscription is still registered");
         }
 
         private sealed class NoopSubscription(IJsonRpcDuplexClient jsonRpcDuplexClient) : Subscription(jsonRpcDuplexClient, MaxQueuedBlocks)
