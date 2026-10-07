@@ -1,4 +1,4 @@
-name: Stateless glamsterdam-devnet tests
+name: Stateless Sepolia tests
 
 on:
   schedule:
@@ -13,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  CATALOG_ROOT: https://pub-760ad8b3dd9547539f829c1ea30f18b5.r2.dev/devnets/glamsterdam-devnet-8
+  CATALOG_ROOT: https://pub-afa6b160acfb4919bda1d0e2a00b5b77.r2.dev/testnets/sepolia
 
 jobs:
   build:
@@ -66,9 +66,9 @@ jobs:
           # into at most that many chunks and let each job process a chunk.
           MAX_JOBS = 256
 
-          # Per-batch time budget; the job timeout scales with the chunk size but is
-          # capped at GitHub's 360-minute hosted-runner limit.
-          MINUTES_PER_BATCH = 60
+          # Per-block time budget; the job timeout scales with the chunk's block count
+          # but is capped at GitHub's 360-minute hosted-runner limit.
+          MINUTES_PER_BLOCK = 3
           MAX_TIMEOUT_MINUTES = 360
 
           batches_path, output_path = sys.argv[1:]
@@ -85,7 +85,7 @@ jobs:
               "include": [
                   {
                       "range": f"{chunk[0]['batchStartBlock']}-{chunk[-1]['batchEndBlock']}",
-                      "timeout": min(MAX_TIMEOUT_MINUTES, len(chunk) * MINUTES_PER_BATCH),
+                      "timeout": min(MAX_TIMEOUT_MINUTES, sum(batch["artifactCount"] for batch in chunk) * MINUTES_PER_BLOCK),
                       "batches": [
                           {"path": batch["path"], "sha256": batch["sha256"]}
                           for batch in chunk
@@ -224,6 +224,7 @@ jobs:
               input_byte_length="$(jq -r '.statelessInputByteLength // empty' <<< "$artifact")"
               artifact_path="$(jq -r '.archivePath' <<< "$artifact")"
               block_json="$batch_dir/$artifact_path"
+              payload_json="$SUMMARY_DIR/block-$block_number.payload.json"
               input_hex_file="$SUMMARY_DIR/block-$block_number.hex"
               raw_input_file="$SUMMARY_DIR/block-$block_number.raw.ssz"
               input_file="$guest_dir/bin/$block_number.ssz"
@@ -239,13 +240,21 @@ jobs:
                 continue
               fi
 
-              if ! jq -er 'to_entries | if length != 1 then empty else .[0].value.blocks | if length != 1 then empty else .[0].statelessInputBytes // empty end end' "$block_json" > "$input_hex_file"; then
-                record_failure "$block_number" "$block_hash" "unsupported EEST fixture shape or missing statelessInputBytes"
+              if ! jq -ec 'to_entries | if length != 1 then empty else .[0].value.engineNewPayloads | if length != 1 then empty else .[0] end end' "$block_json" > "$payload_json"; then
+                record_failure "$block_number" "$block_hash" "unsupported EEST engine fixture shape"
                 continue
               fi
 
+              jq -r '.statelessInputBytes // empty' "$payload_json" > "$input_hex_file"
+              expected_output_hex="$(jq -r '.statelessOutputBytes // empty' "$payload_json" | sed 's/^0x//' | tr 'A-F' 'a-f')"
+
               if [ ! -s "$input_hex_file" ]; then
                 record_failure "$block_number" "$block_hash" "statelessInputBytes is missing"
+                continue
+              fi
+
+              if [ -z "$expected_output_hex" ]; then
+                record_failure "$block_number" "$block_hash" "statelessOutputBytes is missing"
                 continue
               fi
 
@@ -279,12 +288,14 @@ jobs:
                 record_failure "$block_number" "$block_hash" "no encoded output found"
               elif [ "${output_hex:64:2}" != "01" ]; then
                 record_failure "$block_number" "$block_hash" "stateless result was not successful"
+              elif [ "$output_hex" != "$expected_output_hex" ]; then
+                record_failure "$block_number" "$block_hash" "output $output_hex does not match statelessOutputBytes $expected_output_hex"
               else
                 echo "| $block_number | \`$block_hash\` | passed |" >> "$summary"
                 passed=$((passed + 1))
               fi
 
-              rm -f "$input_file" "$raw_input_file" "$input_hex_file"
+              rm -f "$input_file" "$raw_input_file" "$input_hex_file" "$payload_json"
             done < <(jq -c '.artifacts[]' "$batch_manifest")
 
             rm -rf "$archive" "$batch_dir"
