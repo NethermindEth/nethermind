@@ -50,6 +50,8 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
 
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
+    private IWriteBatch? _accountBatch;
+    private IWriteBatch? _storageBatch;
     private int _rowsInBatch;
     private ulong _block;
     private bool _haveBlock;
@@ -364,7 +366,7 @@ public sealed class CommitmentEmitter : IDisposable
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = key.WritePrefix(prefix, exact: false);
         CommitmentStore store = Store(key);
-        IWriteBatch batch = GetBatch(key.IsStorage ? FlatHistoryColumns.StorageCommitments : FlatHistoryColumns.AccountCommitments);
+        IWriteBatch batch = GetBatch(key);
         Span<byte> existing = store.GetExactSpan(prefix[..prefixLength], window);
         try
         {
@@ -475,22 +477,26 @@ public sealed class CommitmentEmitter : IDisposable
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = key.WritePrefix(prefix, exact);
-        Store(key).Write(prefix[..prefixLength], suffix, row, GetBatch(key.IsStorage ? FlatHistoryColumns.StorageCommitments : FlatHistoryColumns.AccountCommitments));
+        Store(key).Write(prefix[..prefixLength], suffix, row, GetBatch(key));
         if (++_rowsInBatch >= MaxRowsPerBatch) CommitBatch();
     }
 
     private CommitmentStore Store(in NodePathKey key) => key.IsStorage ? _storages : _accounts;
 
-    private IWriteBatch GetBatch(FlatHistoryColumns column)
+    private IWriteBatch GetBatch(in NodePathKey key)
     {
         _batch ??= _history.StartWriteBatch();
-        return _batch.GetColumnBatch(column);
+        return key.IsStorage
+            ? _storageBatch ??= _batch.GetColumnBatch(FlatHistoryColumns.StorageCommitments)
+            : _accountBatch ??= _batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments);
     }
 
     private void CommitBatch()
     {
         _batch?.Dispose();
         _batch = null;
+        _accountBatch = null;
+        _storageBatch = null;
         _rowsInBatch = 0;
     }
 
