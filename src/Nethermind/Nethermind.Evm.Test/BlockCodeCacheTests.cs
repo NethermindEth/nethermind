@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
@@ -176,6 +177,33 @@ public class BlockCodeCacheTests
     }
 
     [Test]
+    public void Past_the_cap_code_is_evicted_by_its_latest_use()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
+        CodeInfo[] codes;
+        using (cache.BeginTransaction()) codes = Load(cache, count: 10);
+
+        ValueHash256 reused = Hash(0);
+        using (cache.BeginTransaction()) cache.Get(in reused);
+
+        CodeInfo[] next;
+        using (cache.BeginTransaction()) next = Load(cache, count: 1, first: 10);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 10; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), i == 1 ? Is.Null : Is.SameAs(codes[i]), $"code {i}");
+            }
+
+            ValueHash256 nextHash = Hash(10);
+            Assert.That(cache.Get(in nextHash), Is.SameAs(next[0]));
+            Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge));
+        }
+    }
+
+    [Test]
     public void A_limited_view_shares_the_block_but_stops_taking_code_in_at_its_own_limit()
     {
         BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
@@ -199,6 +227,23 @@ public class BlockCodeCacheTests
 
         view.ClearBlock();
         Assert.That(cache.Get(in executedHash), Is.Null);
+    }
+
+    [Test]
+    public void Code_of_a_block_cleared_while_a_transaction_runs_is_not_kept_alive()
+    {
+        BlockCodeCache cache = new(NoopCodeCache.Instance);
+        WeakReference code;
+        using (cache.BeginTransaction())
+        {
+            code = LoadUnreferenced(cache);
+            cache.ClearBlock();
+        }
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        GC.Collect();
+        Assert.That(code.IsAlive, Is.False);
     }
 
     [Test]
@@ -234,6 +279,9 @@ public class BlockCodeCacheTests
 
         return codes;
     }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static WeakReference LoadUnreferenced(BlockCodeCache cache) => new(Load(cache, count: 1)[0]);
 
     private static ValueHash256 Hash(int i) => ValueKeccak.Compute(BitConverter.GetBytes(i));
 }

@@ -68,13 +68,7 @@ public sealed class BlockCodeCache : ICodeCache
     /// <remarks>Code loaded outside a transaction, as warming does, is kept too, but gives way to a transaction's code past the cap.</remarks>
     public TransactionScope BeginTransaction()
     {
-        long transaction;
-        lock (_retained.Running)
-        {
-            transaction = Interlocked.Increment(ref _lastTransaction);
-            _retained.Running.Add(transaction);
-        }
-
+        long transaction = Interlocked.Increment(ref _lastTransaction);
         long previous = _currentTransaction;
         _currentTransaction = transaction;
         return new TransactionScope(this, transaction, previous, (_stamped ??= []).Count);
@@ -111,12 +105,12 @@ public sealed class BlockCodeCache : ICodeCache
             return;
         }
 
-        Entry entry = new(codeHash, codeInfo, charge, transaction);
+        Entry entry = new(codeHash, codeInfo, charge, transaction, _retained.Block);
         loaded = _retained.Code.GetOrAdd(codeHash, entry);
         if (ReferenceEquals(loaded, entry))
         {
             Interlocked.Add(ref _retained.Bytes, charge);
-            if (transaction == 0) _retained.Evictable.Enqueue(entry);
+            if (transaction == 0) _retained.Enqueue(entry);
             else _stamped!.Add(entry);
         }
         else
@@ -138,8 +132,8 @@ public sealed class BlockCodeCache : ICodeCache
     /// <summary>Drops the code kept for the block, for every view of it.</summary>
     public void ClearBlock()
     {
+        _retained.ClearEvictable();
         _retained.Code.Clear();
-        _retained.Evictable.Clear();
         Volatile.Write(ref _retained.Bytes, 0);
     }
 
@@ -152,18 +146,8 @@ public sealed class BlockCodeCache : ICodeCache
     private void EndTransaction(long transaction, long previous, int firstStamp)
     {
         _currentTransaction = previous;
-        lock (_retained.Running)
-        {
-            _retained.Running.Remove(transaction);
-        }
-
-        // Queued only once the transaction is no longer running, so a sweep cannot skip them for good.
         List<Entry> stamped = _stamped!;
-        for (int i = firstStamp; i < stamped.Count; i++)
-        {
-            _retained.Evictable.Enqueue(stamped[i]);
-        }
-
+        _retained.Enqueue(stamped, firstStamp, transaction);
         stamped.RemoveRange(firstStamp, stamped.Count - firstStamp);
     }
 
@@ -185,11 +169,12 @@ public sealed class BlockCodeCache : ICodeCache
         public void Dispose() => _cache.EndTransaction(_transaction, _previous, _firstStamp);
     }
 
-    private sealed class Entry(in ValueHash256 hash, CodeInfo code, long charge, long transaction)
+    private sealed class Entry(in ValueHash256 hash, CodeInfo code, long charge, long transaction, int block)
     {
         public readonly ValueHash256 Hash = hash;
         public readonly CodeInfo Code = code;
         public readonly long Charge = charge;
+        public readonly int Block = block;
 
         /// <summary>The latest transaction to use the code, or 0 if only code outside a transaction has.</summary>
         public long Transaction = transaction;
@@ -198,40 +183,91 @@ public sealed class BlockCodeCache : ICodeCache
     private sealed class Retained
     {
         public readonly ConcurrentDictionary<ValueHash256, Entry> Code = new();
-        public readonly HashSet<long> Running = [];
 
-        /// <summary>Entries loaded outside a transaction, and those a finished transaction stamped, oldest first.</summary>
+        /// <summary>Entries with the stamp each had when its user finished, or 0 when loaded outside a transaction, oldest first from <see cref="_evictableHead"/>.</summary>
         /// <remarks>
-        /// Every entry whose latest user is not running is queued, so a sweep can drop the ones it finds in use: their
-        /// user queues them again when it finishes. Each stamp is thus visited once, however many sweeps run.
+        /// A copy whose stamp is still the entry's latest has no running user, as only finished transactions queue
+        /// copies. A later stamp makes the copy stale, and the later user queues its own when it finishes, so each stamp
+        /// is visited once however many sweeps run, and code is evicted by its latest use. The list keeps its storage
+        /// across blocks, so queuing allocates nothing once it has grown to a block's stamps.
         /// </remarks>
-        public readonly ConcurrentQueue<Entry> Evictable = new();
+        private readonly List<(Entry Entry, long Stamp)> _evictable = [];
 
         private readonly Lock _sweepLock = new();
+        private int _evictableHead;
+        private int _block;
         public long Bytes;
 
-        /// <summary>Evicts queued entries whose latest recorded user is not running, oldest first, until <paramref name="charge"/> fits.</summary>
+        /// <summary>The number of times the block's code was cleared.</summary>
+        public int Block => Volatile.Read(ref _block);
+
+        /// <summary>Queues an entry loaded outside a transaction.</summary>
+        public void Enqueue(Entry entry)
+        {
+            lock (_evictable)
+            {
+                _evictable.Add((entry, 0));
+            }
+        }
+
+        /// <summary>Queues the entries a finished transaction stamped from <paramref name="first"/> on.</summary>
+        public void Enqueue(List<Entry> stamped, int first, long transaction)
+        {
+            if (first == stamped.Count) return;
+            lock (_evictable)
+            {
+                for (int i = first; i < stamped.Count; i++)
+                {
+                    // An entry of a block cleared while the transaction ran is gone already; queuing it would only keep it alive.
+                    if (stamped[i].Block == _block) _evictable.Add((stamped[i], transaction));
+                }
+            }
+        }
+
+        public void ClearEvictable()
+        {
+            lock (_evictable)
+            {
+                _block++;
+                _evictable.Clear();
+                _evictableHead = 0;
+            }
+        }
+
+        private bool TryDequeue(out (Entry Entry, long Stamp) queued)
+        {
+            lock (_evictable)
+            {
+                if (_evictableHead == _evictable.Count)
+                {
+                    queued = default;
+                    return false;
+                }
+
+                queued = _evictable[_evictableHead];
+                _evictable[_evictableHead++] = default;
+                if (_evictableHead == _evictable.Count)
+                {
+                    _evictable.Clear();
+                    _evictableHead = 0;
+                }
+
+                return true;
+            }
+        }
+
+        /// <summary>Evicts queued entries whose latest user has finished, oldest first, until <paramref name="charge"/> fits.</summary>
         /// <returns>Whether <paramref name="charge"/> now fits under <paramref name="maxBytes"/>.</returns>
         public bool TryMakeRoom(long charge, long maxBytes)
         {
-            if (Evictable.IsEmpty || !_sweepLock.TryEnter()) return false;
+            if (!_sweepLock.TryEnter()) return false;
             try
             {
-                // Transactions are numbered under this lock, so every one up to lastTransaction is in the snapshot or has
-                // finished, and later ones are kept. A hit can still stamp an entry after the loop reads it; that entry is
-                // evicted and its transaction reloads it once.
-                long lastTransaction;
-                HashSet<long> running;
-                lock (Running)
+                // A hit can still stamp an entry after the loop reads it; that entry is evicted and its transaction reloads it once.
+                while (Volatile.Read(ref Bytes) + charge > maxBytes && TryDequeue(out (Entry Entry, long Stamp) queued))
                 {
-                    lastTransaction = Volatile.Read(ref _lastTransaction);
-                    running = [.. Running];
-                }
-
-                while (Volatile.Read(ref Bytes) + charge > maxBytes && Evictable.TryDequeue(out Entry? entry))
-                {
-                    long transaction = entry.Transaction;
-                    if (transaction <= lastTransaction && !running.Contains(transaction) && Code.TryRemove(new KeyValuePair<ValueHash256, Entry>(entry.Hash, entry)))
+                    Entry entry = queued.Entry;
+                    if (entry.Transaction == queued.Stamp && Code.TryRemove(new KeyValuePair<ValueHash256, Entry>(entry.Hash, entry)))
                     {
                         Interlocked.Add(ref Bytes, -entry.Charge);
                     }
