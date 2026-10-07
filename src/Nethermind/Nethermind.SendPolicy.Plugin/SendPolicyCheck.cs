@@ -33,7 +33,7 @@ public static class SendPolicyCheck
         AuthorizationTuple? guardedDelegation = GuardedDelegation(tx, rules);
         if (!senderGuarded && guardedDelegation is null) return null;
         if (rules.Error is not null) return rules.Error;
-        if (guardedDelegation is not null && !rules.Grants.Contains(guardedDelegation.CodeAddress))
+        if (guardedDelegation is not null && !MayReceiveDelegation(guardedDelegation.CodeAddress, rules))
             return $"delegation of {guardedDelegation.Authority} to {guardedDelegation.CodeAddress} needs 'grant {guardedDelegation.CodeAddress}'";
         return senderGuarded ? SenderRefusal(tx, rules) : null;
     }
@@ -45,15 +45,22 @@ public static class SendPolicyCheck
         foreach (AuthorizationTuple tuple in tx.AuthorizationList)
         {
             if (tuple.Authority is null || !rules.GuardedSenders.Contains(tuple.Authority)) continue;
-            if (!rules.Grants.Contains(tuple.CodeAddress)) return tuple;
+            if (!MayReceiveDelegation(tuple.CodeAddress, rules)) return tuple;
             firstGuarded ??= tuple;
         }
 
         return firstGuarded;
     }
 
+    /// <remarks>
+    /// EIP-7702: a delegation to the zero address clears the account's code, so it only revokes.
+    /// </remarks>
+    private static bool MayReceiveDelegation(Address code, SendPolicyRules rules) =>
+        code == Address.Zero || rules.Grants.Contains(code);
+
     private static string? SenderRefusal(Transaction tx, SendPolicyRules rules)
     {
+        if (tx.SupportsFrames) return "frame transaction is not allowed";
         if (tx.To is null) return "contract creation is not allowed";
         if (tx.SupportsBlobs) return "blob transaction is not allowed";
         UInt256 feeCeiling = FeeCeiling(tx);

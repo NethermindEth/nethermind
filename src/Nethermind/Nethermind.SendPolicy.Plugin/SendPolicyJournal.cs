@@ -14,8 +14,9 @@ namespace Nethermind.SendPolicy.Plugin;
 /// <remarks>
 /// One line per accepted transaction: <c>&lt;unix seconds&gt; &lt;sender&gt; &lt;nonce&gt; &lt;max outflow wei&gt;</c>.
 /// Transactions of one sender with the same nonce count once, at the largest of their outflows, because at most
-/// one of them can be included. Transactions submitted elsewhere are not known. Safe to call from concurrent
-/// JSON-RPC requests.
+/// one of them can be included. Transactions submitted elsewhere are not known. Nothing is recorded while the
+/// rules have no <c>cap</c>, and entries older than the cap period are dropped, so a cap added or lengthened
+/// later counts only what is still kept. Safe to call from concurrent JSON-RPC requests.
 /// </remarks>
 public sealed class SendPolicyJournal
 {
@@ -23,7 +24,9 @@ public sealed class SendPolicyJournal
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly Lock _lock = new();
-    private readonly List<Entry> _entries = [];
+    private readonly List<Entry> _committed = [];
+    private readonly List<Entry> _reserved = [];
+    private int _staleLines;
     private string? _error;
 
     public SendPolicyJournal(ISendPolicyConfig config, ITimestamper timestamper, ILogManager logManager)
@@ -33,7 +36,7 @@ public sealed class SendPolicyJournal
         _logger = logManager.GetClassLogger<SendPolicyJournal>();
         try
         {
-            if (File.Exists(_path)) _entries.AddRange(File.ReadLines(_path).Where(static line => line.Length > 0).Select(Entry.Parse));
+            if (File.Exists(_path)) _committed.AddRange(File.ReadLines(_path).Where(static line => line.Length > 0).Select(Entry.Parse));
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or FormatException or ArgumentException or OverflowException)
         {
@@ -46,23 +49,23 @@ public sealed class SendPolicyJournal
     /// </summary>
     /// <param name="nonce">The nonce, or <c>null</c> when the node has not assigned it yet.</param>
     /// <param name="enforce">Whether a transaction over the cap is left uncounted.</param>
-    /// <param name="entry">The counted transaction, to pass to <see cref="Commit"/> or <see cref="Release"/>.</param>
+    /// <param name="entry">The counted transaction, to pass to <see cref="Commit"/> or <see cref="Release"/>; <c>null</c> when nothing was counted.</param>
     /// <returns>The reason the cap refuses the transaction, or <c>null</c>.</returns>
     public string? Reserve(Address sender, ulong? nonce, UInt256 outflow, (UInt256 MaxWei, ulong Seconds)? cap, bool enforce, out Entry? entry)
     {
+        entry = null;
+        if (cap is not { } limit) return null;
         ulong now = _timestamper.UnixTime.Seconds;
+        ulong since = now > limit.Seconds ? now - limit.Seconds : 0;
         lock (_lock)
         {
+            if (_error is null) Forget(since);
             string? refusal = null;
-            if (cap is { } limit)
-            {
-                if (_error is not null) refusal = $"journal unusable ({_error})";
-                else if (Submitted(sender, now > limit.Seconds ? now - limit.Seconds : 0, nonce, outflow) is { } submitted && submitted > limit.MaxWei)
-                    refusal = $"over 'cap {limit.MaxWei} {limit.Seconds}': {submitted} wei with this transaction";
-            }
+            if (_error is not null) refusal = $"journal unusable ({_error})";
+            else if (Submitted(sender, since, nonce, outflow) is { } submitted && submitted > limit.MaxWei)
+                refusal = $"over 'cap {limit.MaxWei} {limit.Seconds}': {submitted} wei with this transaction";
 
-            entry = refusal is null || !enforce ? new Entry(now, sender, nonce, outflow) : null;
-            if (entry is not null) _entries.Add(entry);
+            if (refusal is null || !enforce) _reserved.Add(entry = new Entry(now, sender, nonce, outflow));
             return refusal;
         }
     }
@@ -72,7 +75,8 @@ public sealed class SendPolicyJournal
         Entry committed = entry with { Nonce = nonce };
         lock (_lock)
         {
-            _entries[_entries.FindIndex(e => ReferenceEquals(e, entry))] = committed;
+            _reserved.Remove(entry);
+            _committed.Add(committed);
             try
             {
                 File.AppendAllLines(_path, [committed.ToString()]);
@@ -86,7 +90,24 @@ public sealed class SendPolicyJournal
 
     public void Release(Entry entry)
     {
-        lock (_lock) _entries.RemoveAt(_entries.FindIndex(e => ReferenceEquals(e, entry)));
+        lock (_lock) _reserved.Remove(entry);
+    }
+
+    private void Forget(ulong since)
+    {
+        _staleLines += _committed.RemoveAll(entry => entry.Time < since);
+        if (_staleLines <= _committed.Count) return;
+        try
+        {
+            string rewritten = _path + ".tmp";
+            File.WriteAllLines(rewritten, _committed.Select(static entry => entry.ToString()));
+            File.Move(rewritten, _path, overwrite: true);
+            _staleLines = 0;
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+        {
+            Fail(e);
+        }
     }
 
     private UInt256 Submitted(Address sender, ulong since, ulong? nonce, UInt256 outflow)
@@ -95,7 +116,7 @@ public sealed class SendPolicyJournal
         UInt256 total = UInt256.Zero;
         if (nonce is { } own) byNonce[own] = outflow;
         else total = outflow;
-        foreach (Entry entry in _entries)
+        foreach (Entry entry in _committed.Concat(_reserved))
         {
             if (entry.Time < since || entry.Sender != sender) continue;
             if (entry.Nonce is not { } entryNonce) total = Sum(total, entry.Outflow);

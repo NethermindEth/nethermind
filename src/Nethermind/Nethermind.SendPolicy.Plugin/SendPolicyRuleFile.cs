@@ -11,8 +11,8 @@ namespace Nethermind.SendPolicy.Plugin;
 /// Serves the current rules from <see cref="ISendPolicyConfig.RulesPath"/>.
 /// </summary>
 /// <remarks>
-/// The file is parsed again whenever its write time or length changes, so an edit takes effect on the next
-/// send without a restart. Safe to call from concurrent JSON-RPC requests.
+/// The file must be usable when the node starts. It is parsed again whenever its write time or length changes,
+/// so an edit takes effect on the next send without a restart. Safe to call from concurrent JSON-RPC requests.
 /// </remarks>
 public sealed class SendPolicyRuleFile
 {
@@ -21,12 +21,15 @@ public sealed class SendPolicyRuleFile
     private readonly Lock _reloadLock = new();
     private volatile Loaded? _loaded;
 
+    /// <exception cref="InvalidConfigurationException">The path is not set, or the file cannot be read or parsed.</exception>
     public SendPolicyRuleFile(ISendPolicyConfig config, ILogManager logManager)
     {
         if (string.IsNullOrWhiteSpace(config.RulesPath))
             throw new InvalidConfigurationException($"{nameof(ISendPolicyConfig.RulesPath)} must be set when SendPolicy is enabled.", ExitCodes.ConflictingConfigurations);
         _path = config.RulesPath;
         _logger = logManager.GetClassLogger<SendPolicyRuleFile>();
+        if (Current.Error is { } error)
+            throw new InvalidConfigurationException($"SendPolicy rules at {_path}: {error}", ExitCodes.ConflictingConfigurations);
     }
 
     public SendPolicyRules Current

@@ -4,6 +4,7 @@
 using Autofac;
 using Autofac.Core;
 using Nethermind.Api.Extensions;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.TxPool;
 
@@ -23,5 +24,22 @@ public class SendPolicyModule : Module
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<SendPolicyRuleFile>()
         .AddSingleton<SendPolicyJournal>()
-        .AddDecorator<ITxSender, SendPolicyTxSender>();
+        .AddDecorator<ITxSender, SendPolicyTxSender>()
+        .AddStep(typeof(LoadSendPolicyRules));
+}
+
+/// <summary>
+/// Stops the node at startup when the rule file is unusable.
+/// </summary>
+/// <remarks>
+/// Without it the file is first read when a JSON-RPC module is created, which is after the node has started.
+/// </remarks>
+[RunnerStepDependencies]
+public class LoadSendPolicyRules(SendPolicyRuleFile ruleFile) : IStep
+{
+    public Task Execute(CancellationToken cancellationToken)
+    {
+        _ = ruleFile;
+        return Task.CompletedTask;
+    }
 }

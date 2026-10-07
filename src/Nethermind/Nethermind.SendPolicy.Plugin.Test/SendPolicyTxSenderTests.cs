@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Autofac.Core;
+using Nethermind.Api.Steps;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
@@ -74,6 +76,8 @@ public class SendPolicyTxSenderTests
         yield return Case("owner delegating itself to unlisted code", () => Delegate(Owner, Owner, Unlisted), $"delegation of {Owner.Address} to {Unlisted}");
         yield return Case("stranger carrying the owner's delegation to granted code", () => Delegate(Stranger, Owner, Spender), null);
         yield return Case("stranger delegating itself", () => Delegate(Stranger, Stranger, Unlisted), null);
+        yield return Case("stranger carrying the owner's delegation to the zero address", () => Delegate(Stranger, Owner, Address.Zero), null);
+        yield return Case("owner frame transaction", () => Build.A.Transaction.WithType(TxType.FrameTx).WithSenderAddress(Owner.Address).TestObject, "frame transaction is not allowed");
     }
 
     [TestCaseSource(nameof(Sends))]
@@ -198,14 +202,63 @@ public class SendPolicyTxSenderTests
     }
 
     [Test]
+    public async Task Cap_counts_sends_whose_nonce_the_node_assigns()
+    {
+        using TempPath rules = WriteRules([.. Rules, $"cap {OneEther + 2 * FeeCeiling} 3600"]);
+        ITxSender inner = Substitute.For<ITxSender>();
+        ulong nextNonce = 0;
+        inner.SendTransaction(default!, default).ReturnsForAnyArgs(call =>
+        {
+            call.Arg<Transaction>().Nonce = nextNonce++;
+            return new ValueTask<(Hash256, AcceptTxResult?)>((Keccak.Zero, AcceptTxResult.Accepted));
+        });
+        SendPolicyTxSender sender = CreateSender(inner, RulesFile(rules));
+        AcceptTxResult? last = null;
+
+        for (int i = 0; i < 3; i++) (_, last) = await sender.SendTransaction(Send(Owner, Friend, OneEther / 2), TxHandlingOptions.ManagedNonce);
+
+        Assert.That(last?.ToString(), Does.Contain("over 'cap"));
+    }
+
+    [Test]
+    public async Task Journal_drops_sends_older_than_the_period()
+    {
+        using TempPath rules = WriteRules([.. Rules, $"cap {OneEther} 3600"]);
+        ManualTimestamper clock = new();
+        SendPolicyTxSender sender = CreateSender(AcceptingSender(), RulesFile(rules), clock: clock);
+        await sender.SendTransaction(Send(Owner, Friend, 1, nonce: 0), TxHandlingOptions.None);
+        await sender.SendTransaction(Send(Owner, Friend, 1, nonce: 1), TxHandlingOptions.None);
+
+        clock.UtcNow += TimeSpan.FromSeconds(3601);
+        await sender.SendTransaction(Send(Owner, Friend, 1, nonce: 2), TxHandlingOptions.None);
+
+        Assert.That(File.ReadAllLines(RulesFile(rules) + ".journal"), Has.Length.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Journal_is_not_written_without_a_cap()
+    {
+        using TempPath rules = WriteRules(Rules);
+
+        await CreateSender(AcceptingSender(), RulesFile(rules)).SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+
+        Assert.That(File.Exists(RulesFile(rules) + ".journal"), Is.False);
+    }
+
+    [Test]
     public async Task Cap_refuses_when_the_journal_is_unusable()
     {
         using TempPath rules = WriteRules([.. Rules, $"cap {OneEther} 3600"]);
-        File.WriteAllLines(RulesFile(rules) + ".journal", ["not a journal line"]);
+        string[] journal = [$"1 {Owner.Address} 0 1", "not a journal line"];
+        File.WriteAllLines(RulesFile(rules) + ".journal", journal);
 
         (Hash256 _, AcceptTxResult? result) = await CreateSender(AcceptingSender(), RulesFile(rules)).SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
 
-        Assert.That(result?.ToString(), Does.Contain("journal unusable"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result?.ToString(), Does.Contain("journal unusable"));
+            Assert.That(File.ReadAllLines(RulesFile(rules) + ".journal"), Is.EqualTo(journal));
+        }
     }
 
     [TestCase("bogus 0x01")]
@@ -217,6 +270,22 @@ public class SendPolicyTxSenderTests
     [TestCase("from not-an-address")]
     public void Parse_rejects_a_malformed_line_and_names_it(string line) =>
         Assert.That(() => SendPolicyRules.Parse(["# header", line]), Throws.TypeOf<FormatException>().With.Message.StartsWith("line 2:"));
+
+    [TestCase("fee 1", "fee 2")]
+    [TestCase("cap 1 1", "cap 2 2")]
+    [TestCase("to 0x00000000000000000000000000000000000000aa 5", "token 0x00000000000000000000000000000000000000aa")]
+    [TestCase("token 0x00000000000000000000000000000000000000aa", "to 0x00000000000000000000000000000000000000aa 5")]
+    public void Parse_rejects_a_second_rule_for_the_same_subject(string first, string second) =>
+        Assert.That(() => SendPolicyRules.Parse([first, second]), Throws.TypeOf<FormatException>().With.Message.StartsWith("line 2:"));
+
+    [Test]
+    public void Rule_file_must_be_usable_at_startup([Values] bool exists)
+    {
+        using TempPath rules = WriteRules(["bogus"]);
+        SendPolicyConfig config = new() { Enabled = true, RulesPath = exists ? RulesFile(rules) : RulesFile(rules) + ".missing" };
+
+        Assert.That(() => new SendPolicyRuleFile(config, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>().With.Message.Contains("rule file unusable"));
+    }
 
     [Test]
     public void Rule_file_requires_a_path() =>
@@ -230,18 +299,29 @@ public class SendPolicyTxSenderTests
     public void Module_decorates_the_node_tx_sender()
     {
         using TempPath rules = WriteRules(Rules);
-        ITxSender inner = AcceptingSender();
-        using IContainer container = new ContainerBuilder()
-            .AddSingleton(inner)
-            .AddModule(new SendPolicyModule())
-            .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = RulesFile(rules) })
-            .AddSingleton<IEthereumEcdsa>(Ecdsa)
-            .AddSingleton<ITimestamper>(Timestamper.Default)
-            .AddSingleton<ILogManager>(LimboLogs.Instance)
-            .Build();
+        using IContainer container = BuildNode(RulesFile(rules));
 
         Assert.That(container.Resolve<ITxSender>(), Is.TypeOf<SendPolicyTxSender>());
     }
+
+    [Test]
+    public void Module_startup_step_fails_on_an_unusable_rule_file()
+    {
+        using TempPath rules = WriteRules(["bogus"]);
+        using IContainer container = BuildNode(RulesFile(rules));
+        Type step = container.Resolve<IEnumerable<StepInfo>>().Single().StepType;
+
+        Assert.That(() => container.Resolve(step), Throws.TypeOf<DependencyResolutionException>().With.InnerException.InnerException.TypeOf<InvalidConfigurationException>());
+    }
+
+    private static IContainer BuildNode(string rulesPath) => new ContainerBuilder()
+        .AddSingleton(AcceptingSender())
+        .AddModule(new SendPolicyModule())
+        .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = rulesPath })
+        .AddSingleton<IEthereumEcdsa>(Ecdsa)
+        .AddSingleton<ITimestamper>(Timestamper.Default)
+        .AddSingleton<ILogManager>(LimboLogs.Instance)
+        .Build();
 
     private static TestCaseData Case(string name, Func<Transaction> build, string? expectedRefusal) =>
         new TestCaseData(build, expectedRefusal).SetName(name);
