@@ -32,6 +32,8 @@ namespace Nethermind.JsonRpc.Data;
 // debug_ types
 [JsonSerializable(typeof(GethLikeTxTrace))]
 [JsonSerializable(typeof(GethTraceOptions))]
+[JsonSerializable(typeof(Modules.DebugModule.TraceChainBlock))]
+[JsonSerializable(typeof(Modules.DebugModule.TraceChainOptions))]
 // trace_ types
 [JsonSerializable(typeof(ParityLikeTxTrace))]
 // payloads method signatures do not name

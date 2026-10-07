@@ -27,7 +27,7 @@ internal sealed class GethLikeBlockCallDeadlineTracer : IBlockTracer<GethLikeTxT
     {
         _options = options;
         _deadline = new(external, clock);
-        try { _inner = factory(options with { ExecutionCancellation = _deadline.Token }); }
+        try { _inner = factory(options with { ExecutionCancellation = new GethTraceCancellation { Token = _deadline.Token } }); }
         catch { _deadline.Dispose(); throw; }
     }
     internal CancellationToken Token => _deadline.Token;

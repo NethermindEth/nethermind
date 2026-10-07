@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -34,6 +35,42 @@ namespace Nethermind.JsonRpc.Test.Modules;
 public class BoundedModulePoolTests
 {
     private BoundedModulePool<IEthRpcModule> _modulePool = null!;
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Subscription_rental_ignores_request_timeout_but_preserves_queue_limit(bool cancel)
+    {
+        IRpcModuleFactory<IEthRpcModule> factory = Substitute.For<IRpcModuleFactory<IEthRpcModule>>();
+        factory.Create().Returns(_ => Substitute.For<IEthRpcModule>());
+        BoundedModulePool<IEthRpcModule> pool = new(factory, 1, 0, new RpcLimits(queuedLimit: 1));
+        IEthRpcModule? held = await pool.GetModule(false);
+        IRpcModule? acquired = null;
+        using CancellationTokenSource cancellation = new();
+        Task<IRpcModule> waiting = ((IExclusiveRpcModulePool)pool).RentExclusive(cancellation.Token).AsTask();
+        try
+        {
+            Assert.That(waiting.IsCompleted, Is.False);
+            Assert.That(async () => await pool.GetModule(false), Throws.TypeOf<LimitExceededException>());
+            if (cancel)
+            {
+                cancellation.Cancel();
+                Assert.That(async () => await waiting, Throws.InstanceOf<OperationCanceledException>());
+                Assert.That(async () => await pool.GetModule(false), Throws.TypeOf<ModuleRentalTimeoutException>());
+            }
+            else
+            {
+                pool.ReturnModule(held);
+                held = null;
+                acquired = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+            }
+        }
+        finally
+        {
+            cancellation.Cancel();
+            if (held is not null) pool.ReturnModule(held);
+            if (acquired is not null) pool.ReturnModule((IEthRpcModule)acquired);
+        }
+    }
 
     [SetUp]
     public Task Initialize()

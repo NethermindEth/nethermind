@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
 using Nethermind.Core.Collections;
+using Nethermind.JsonRpc.Modules.DebugModule;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -91,7 +92,10 @@ namespace Nethermind.JsonRpc.Modules
             lock (_updateRegistrationsLock)
             {
                 Dictionary<string, ResolvedMethodInfo> methodsByName = new(_methods, StringComparer.Ordinal);
-                KeyValuePair<string, ResolvedMethodInfo>[] methods = GetMethods<T>(moduleType).ToArray();
+                IEnumerable<KeyValuePair<string, ResolvedMethodInfo>> moduleMethods = GetMethods<T>(moduleType);
+                if (typeof(T) == typeof(IDebugRpcModule) && pool is IExclusiveRpcModulePool { SupportsExclusiveRental: true })
+                    moduleMethods = moduleMethods.Concat(GetMethods<IDebugSubscriptionRpcModule>(moduleType));
+                KeyValuePair<string, ResolvedMethodInfo>[] methods = moduleMethods.ToArray();
                 Func<bool, ValueTask<IRpcModule>> rentModule = canBeShared => RentModule(pool, canBeShared);
                 Action<IRpcModule> returnModule = m => pool.ReturnModule((T)m);
 

@@ -10,6 +10,8 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Tracing;
+using Nethermind.Blockchain.Find;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -39,6 +41,77 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(null, false)]
+    [TestCase("callTracer", false)]
+    [TestCase("{fault:function(){},result:function(ctx){return {index:ctx.txIndex,gas:ctx.gasUsed};}}", false)]
+    [TestCase("{fault:function(){},result:function(ctx){if(ctx.txIndex==1)throw new Error('chain failure');return {index:ctx.txIndex};}}", true)]
+    [TestCase("noopTracer", false, "9223372036854775807ns")]
+    [TestCase("noopTracer", true, "0", "execution timeout")]
+    [TestCase("{fault:function(){},result:function(){return {};}}", true, "0", "execution timeout")]
+    [TestCase("callTracer", true, "bad", "time: invalid duration \"bad\"")]
+    [TestCase("noopTracer", true, "bad", "time: invalid duration \"bad\"")]
+    [TestCase("noopTracer", true, "1", "time: missing unit in duration \"1\"")]
+    [TestCase("{fault:function(){}}", true, "bad", "trace object must expose a function result()")]
+    [TestCase("{result:function(){return {};}}", true, "bad", "trace object must expose a function fault()")]
+    public async Task TraceChain_real_block_matches_block_trace(string? tracer, bool tracerError, string? timeout = null, string? firstError = null)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = false }).Build();
+        ulong first = chain.BlockTree.Head!.Number;
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head.Header, TestItem.AddressB);
+        Transaction[] transactions = Enumerable.Range(0, 3).Select(index => Build.A.Transaction
+            .WithCode(Prepare.EvmCode.PushData(index).PushData(0).Op(Instruction.MSTORE).Return(32, 0).Done)
+            .WithNonce(nonce + (ulong)index).WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject).ToArray();
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(3));
+        IDebugRpcModule module = chain.DebugRpcModule;
+        JToken? expected = tracerError ? null : JToken.Parse(await RpcTest.TestSerializedRequest(module, "debug_traceBlockByHash", block.Hash!, new { tracer }))["result"]!;
+        if (!tracerError) Assert.That((JArray)expected!, Has.Count.EqualTo(3));
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("real-chain-client");
+        string? notification = null;
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            notification = RpcTest.SerializeResponse(call.Arg<JsonRpcResult>().Response);
+            return Task.FromResult(0);
+        });
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", new BlockParameter(first), new BlockParameter(block.Number), JsonSerializer.Deserialize<TraceChainOptions>(JsonSerializer.Serialize(new { tracer, timeout }), EthereumJsonSerializer.JsonOptions));
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        try
+        {
+            response.TakeActivation().Activate();
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(notification, Is.Not.Null);
+            JToken actual = JToken.Parse(notification!)["params"]!["result"]!["traces"]!;
+            if (tracerError)
+            {
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That((JArray)actual, Has.Count.EqualTo(3));
+                    if (firstError is not null)
+                    {
+                        Assert.That((string?)actual[0]?["error"], Is.EqualTo(firstError), notification);
+                        Assert.That(actual[1]!.Type, Is.EqualTo(JTokenType.Null), notification);
+                    }
+                    else
+                    {
+                        Assert.That((int?)actual[0]?["result"]?["index"], Is.Zero, notification);
+                        Assert.That((string?)actual[1]?["error"], Does.Contain("chain failure"), notification);
+                    }
+                    Assert.That(actual[2]!.Type, Is.EqualTo(JTokenType.Null), notification);
+                }
+            }
+            else Assert.That(JToken.DeepEquals(actual, expected), Is.True, notification);
+        }
+        finally
+        {
+            response.Subscription.Abort();
+        }
+    }
+
     [Test]
     public async Task Debug_traceBlock_SuppliedBody_DoesNotUseIndexedHeaderState()
     {

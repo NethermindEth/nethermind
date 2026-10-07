@@ -117,33 +117,90 @@ public class GethTraceDeadlineTests
     }
 
     [Test]
-    public void Shared_deadline_interrupts_an_executing_js_callback()
+    public void Shared_deadline_interrupts_an_executing_js_callback([Values] bool cloneOptions)
     {
         ManualClock clock = new();
         using GethTraceDeadline deadline = new(clock: clock);
         IWorldState state = Substitute.For<IWorldState>();
         state.GetNonce(Arg.Any<Address>()).Returns(_ => { clock.Advance(TimeSpan.FromSeconds(1)); return 0UL; });
         Engine engine = new(Cancun.Instance);
-        using GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(state), new Context(), new GethTraceOptions
+        GethTraceCancellation cancellation = new();
+        GethTraceOptions options = new()
         {
-            ExecutionCancellation = deadline.Token,
+            ExecutionCancellation = cancellation,
             Tracer = "{fault:function(){},result:function(ctx,db){db.getNonce('0x0000000000000000000000000000000000000001');for(var i=0;i<100000;i++){}return {};}}"
-        });
+        };
+        if (cloneOptions) options = options with { DisableStack = true };
+        cancellation.Token = deadline.Token;
+        using GethLikeJavaScriptTxTracer tracer = new(engine, new JavaScriptDb(state), new Context(), options);
         deadline.Start(TimeSpan.FromSeconds(1));
         Assert.That(() => tracer.BuildResult(), Throws.InstanceOf<ScriptInterruptedException>());
         Assert.That(deadline.Expired, Is.True);
     }
 
     [Test]
-    public void Failed_js_construction_releases_external_cancellation_registration()
+    public void Already_cancelled_execution_does_not_construct_js_tracer()
+    {
+        using CancellationTokenSource external = new();
+        external.Cancel();
+        using Engine engine = new(Cancun.Instance);
+        Assert.That(() => new GethLikeJavaScriptTxTracer(engine, new JavaScriptDb(Substitute.For<IWorldState>()), new Context(), new GethTraceOptions
+        {
+            ExecutionCancellation = new GethTraceCancellation { Token = external.Token },
+            Tracer = "(()=>{throw Error('must not execute');})()"
+        }), Throws.InstanceOf<OperationCanceledException>());
+    }
+
+    [Test]
+    public async Task External_cancellation_interrupts_js_construction([Values] bool setup)
+    {
+        using CancellationTokenSource external = new();
+        using Engine engine = new(Cancun.Instance);
+        TaskCompletionSource entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        dynamic hooks = engine.CreateTracer("{hooks: globalThis.cancellationTest = {}}").hooks;
+        hooks.started = new Action(() => entered.TrySetResult());
+        string script = setup
+            ? "{fault:function(){},result:function(){return {};},setup:function(){cancellationTest.started();while(true){}}}"
+            : "{fault:function(){},result:function(){return {};},value:(()=>{cancellationTest.started();while(true){}})()}";
+        Task<Exception?> construction = Task.Run(() =>
+        {
+            try
+            {
+                using (new GethLikeJavaScriptTxTracer(engine, new JavaScriptDb(Substitute.For<IWorldState>()), new Context(), new GethTraceOptions
+                {
+                    ExecutionCancellation = new GethTraceCancellation { Token = external.Token },
+                    Tracer = script
+                }))
+                {
+                    return (Exception?)null;
+                }
+            }
+            catch (Exception exception) { return exception; }
+        });
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            external.Cancel();
+            Assert.That(await construction.WaitAsync(TimeSpan.FromSeconds(5)), Is.InstanceOf<ScriptInterruptedException>());
+        }
+        finally
+        {
+            engine.Interrupt();
+            await construction.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+    }
+
+    [TestCase("{fault:function(){}}")]
+    [TestCase("{fault:function(){},result:function(){return {};},setup:function(){throw Error('setup failed');}}")]
+    public void Failed_js_construction_releases_external_cancellation_registration(string script)
     {
         using CancellationTokenSource external = new();
         using Engine engine = new(Cancun.Instance);
         Assert.That(() => new GethLikeJavaScriptTxTracer(engine, new JavaScriptDb(Substitute.For<IWorldState>()), new Context(), new GethTraceOptions
         {
-            ExecutionCancellation = external.Token,
-            Tracer = "{fault:function(){}}"
-        }), Throws.TypeOf<ArgumentException>());
+            ExecutionCancellation = new GethTraceCancellation { Token = external.Token },
+            Tracer = script
+        }), script == "{fault:function(){}}" ? Throws.TypeOf<ArgumentException>() : Throws.InstanceOf<Exception>());
         external.Cancel();
         Assert.That(() => engine.CreateTracer("{fault:function(){},result:function(){return {};}}"), Throws.Nothing);
     }

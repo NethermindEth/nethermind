@@ -65,10 +65,11 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITraceOperati
         _ctx = ctx;
 
         _deadline = options.ExecutionCancellation is null ? new GethTraceDeadline() : null;
-        CancellationToken token = _executionToken = options.ExecutionCancellation ?? _deadline!.Token;
+        CancellationToken token = _executionToken = options.ExecutionCancellation?.Token ?? _deadline!.Token;
         try
         {
             _ctsRegistration = token.Register(static e => ((Engine)e!).Interrupt(), engine);
+            token.ThrowIfCancellationRequested();
             Engine.CurrentEngine = _engine;
             _tracer = engine.CreateTracer(options.Tracer);
             _functions = GetAvailableFunctions((object)_tracer);

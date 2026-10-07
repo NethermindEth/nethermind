@@ -5,6 +5,8 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Pipelines;
+using System.Text;
+using Nethermind.JsonRpc.WebSockets;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -24,12 +26,18 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.Modules;
+using Nethermind.Core.Memory;
+using Nethermind.Serialization.Json;
+using System.IO.Abstractions;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -51,10 +59,10 @@ public class DebugModuleTests
     private readonly IBlockchainBridge _blockchainBridge = Substitute.For<IBlockchainBridge>();
     private readonly MemDb _blocksDb = new();
 
-    private DebugRpcModule CreateModule() => new(
+    private DebugRpcModule CreateModule(IJsonRpcConfig? config = null) => new(
         LimboLogs.Instance,
         _debugBridge,
-        _jsonRpcConfig,
+        config ?? _jsonRpcConfig,
         _specProvider,
         _blockchainBridge,
         new BlocksConfig(),
@@ -465,6 +473,686 @@ public class DebugModuleTests
             Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
             Arg.Is<GethTraceOptions>(o => o.StateOverrides == options.StateOverrides), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
         _blockchainBridge.Received(1).HasStateForBlock(validated.Header);
+    }
+
+    [Test]
+    public async Task TraceChain_orders_results_skips_empty_intermediate_blocks_and_keeps_terminal([Values] bool tracerError, [Values] bool useTags)
+    {
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        IJsonRpcConfig config = Substitute.For<IJsonRpcConfig>();
+        config.Timeout.Returns(1);
+        DebugRpcModule module = CreateTraceChainModule(manager, config);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("trace-chain-client");
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        SetUpTraceChain();
+        List<string> notifications = [];
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(call =>
+        {
+            notifications.Add(RpcTest.SerializeResponse(call.Arg<JsonRpcResult>().Response));
+            return Task.FromResult(0);
+        });
+        List<ulong> replayed = [];
+        module.TraceChainReplay = (block, _, _) =>
+        {
+            replayed.Add(block.Number);
+            return tracerError && block.Number == 1
+                ? [new TraceChainTransaction(block.Transactions[0].Hash!, null, "tracer failed"), null]
+                : ChainTraces(block);
+        };
+
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", useTags ? BlockParameter.Earliest : new BlockParameter(0UL), useTags ? BlockParameter.Latest : new BlockParameter(4UL));
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        Assert.That(notifications, Is.Empty);
+        response.TakeActivation().Activate();
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        _ = config.DidNotReceive().Timeout;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(notifications, Has.Count.EqualTo(3));
+            Assert.That(replayed, Is.EqualTo(new ulong[] { 1, 2, 3, 4 }));
+        }
+        ulong[] expectedBlocks = [1, 3, 4];
+        for (int index = 0; index < notifications.Count; index++)
+        {
+            using JsonDocument notification = JsonDocument.Parse(notifications[index]);
+            JsonElement root = notification.RootElement;
+            JsonElement payload = root.GetProperty("params");
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(root.GetProperty("method").GetString(), Is.EqualTo("debug_subscription"));
+                Assert.That(root.TryGetProperty("id", out _), Is.False);
+                Assert.That(payload.GetProperty("subscription").GetString(), Is.EqualTo(response.Data));
+                Assert.That(payload.GetProperty("result").GetProperty("block").GetString(), Is.EqualTo($"0x{expectedBlocks[index]:x}"));
+            }
+            if (index == 0 && tracerError)
+            {
+                JsonElement traces = payload.GetProperty("result").GetProperty("traces");
+                Assert.That(traces[0].GetProperty("error").GetString(), Is.EqualTo("tracer failed"));
+                Assert.That(traces[1].ValueKind, Is.EqualTo(JsonValueKind.Null));
+            }
+        }
+        using ResultWrapper<bool> removed = ((IDebugSubscriptionRpcModule)module).debug_unsubscribe(response.Data);
+        Assert.That(removed.Data, Is.True, "completed subscriptions remain explicitly unsubscribable");
+    }
+
+    [Test]
+    public async Task TraceChain_releases_block_lease_to_queued_debug_request(
+        [Values("unsubscribe", "disconnect", "completion", "callback")] string finish, [Values] bool invalidTimeout)
+    {
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        SetUpTraceChain();
+        List<ulong> replayed = [];
+        int disposedTraces = 0;
+        TaskCompletionSource resultsDisposed = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource callbackEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using ManualResetEventSlim releaseCallback = new();
+        CancellationTokenRegistration registration = default;
+        IDisposable traceResource = Substitute.For<IDisposable>();
+        traceResource.When(resource => resource.Dispose()).Do(_ =>
+        {
+            if (Interlocked.Increment(ref disposedTraces) == 2) resultsDisposed.TrySetResult();
+        });
+        int replayedWhenNormalRequest = -1;
+        int disposedWhenNormalRequest = -1;
+        _blockFinder.FindHeader(TestItem.KeccakD).Returns(_ =>
+        {
+            replayedWhenNormalRequest = replayed.Count;
+            disposedWhenNormalRequest = Volatile.Read(ref disposedTraces);
+            return (BlockHeader?)null;
+        });
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(_ =>
+        {
+            DebugRpcModule module = CreateTraceChainModule(manager);
+            module.TraceChainReplay = (block, _, token) =>
+            {
+                if (finish == "callback") registration = token.Register(() =>
+                {
+                    callbackEntered.TrySetResult();
+                    releaseCallback.Wait(TimeSpan.FromSeconds(10));
+                });
+                replayed.Add(block.Number);
+                return block.Transactions.Select(tx => (TraceChainTransaction?)new TraceChainTransaction(
+                    tx.Hash!, new GethLikeTxTrace(traceResource) { TxHash = tx.Hash }, null)).ToArray();
+            };
+            return module;
+        });
+        ObservedExclusivePool pool = new(new BoundedModulePool<IDebugRpcModule>(factory, 1, 10_000));
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        RpcModuleProvider provider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register(pool);
+        using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("lease-client");
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allowSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            sending.TrySetResult();
+            await allowSend.Task.WaitAsync(call.Arg<CancellationToken>());
+            return 0;
+        });
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_subscribe", "traceChain", "0x0", "0x4",
+            new { timeout = invalidTimeout ? "bad" : null }), context);
+        string id = RpcTest.AssertSuccess<string>(response);
+        IDebugRpcModule beforeAck = await pool.GetModule(false);
+        pool.ReturnModule(beforeAck);
+        using TraceChainSubscription subscription = ((PendingTraceChainResponse)response).TakeActivation();
+        try
+        {
+            subscription.Activate();
+            await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task<JsonRpcResponse> waiting = service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("debug_traceBlockByHash", TestItem.KeccakD), context).AsTask();
+            await pool.QueuedRentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(waiting.IsCompleted, Is.False);
+            Assert.That(replayed, Is.EqualTo(new ulong[] { 1 }), "the next block must wait for the previous send");
+            IJsonRpcDuplexClient otherClient = Substitute.For<IJsonRpcDuplexClient>();
+            otherClient.Id.Returns("other-client");
+            using JsonRpcContext otherContext = new(RpcEndpoint.Ws, otherClient);
+            using JsonRpcResponse denied = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), otherContext);
+            Assert.That(RpcTest.AssertSuccess<bool>(denied), Is.False);
+            if (finish == "disconnect") client.Closed += Raise.Event<EventHandler>(client, EventArgs.Empty);
+            else if (finish is "unsubscribe" or "callback")
+            {
+                using JsonRpcResponse unsubscribe = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_unsubscribe", id), context);
+                Assert.That(RpcTest.AssertSuccess<bool>(unsubscribe), Is.True);
+            }
+            else allowSend.SetResult();
+            if (finish == "callback")
+            {
+                await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                await resultsDisposed.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                Assert.That(waiting.IsCompleted, Is.False, "the block rental outlives cancellation callbacks even after result disposal");
+                releaseCallback.Set();
+            }
+            using JsonRpcResponse normalResponse = await waiting.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(RpcTest.AssertError(normalResponse).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+                Assert.That(replayedWhenNormalRequest, Is.EqualTo(1), "an already queued request runs before the next block");
+                Assert.That(disposedWhenNormalRequest, Is.EqualTo(2), "block results are disposed before returning the rental");
+            }
+            if (finish == "completion")
+                await subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            releaseCallback.Set();
+            manager.RemoveClientSubscriptions(client);
+            await subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            registration.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_completed_block_callbacks_are_unlinked_before_module_reuse()
+    {
+        SetUpTraceChain();
+        DebugRpcModule module = CreateTraceChainModule();
+        int oldBlockCallbacks = 0;
+        int currentBlockCallbacks = 0;
+        CancellationToken oldBlockToken = default;
+        CancellationToken currentBlockToken = default;
+        CancellationTokenRegistration oldRegistration = default;
+        CancellationTokenRegistration currentRegistration = default;
+        module.TraceChainReplay = (block, _, token) =>
+        {
+            if (block.Number == 1)
+            {
+                oldBlockToken = token;
+                oldRegistration = token.Register(() => Interlocked.Increment(ref oldBlockCallbacks));
+            }
+            else if (block.Number == 3)
+            {
+                currentBlockToken = token;
+                currentRegistration = token.Register(() => Interlocked.Increment(ref currentBlockCallbacks));
+            }
+            return ChainTraces(block);
+        };
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("per-block-callback-client");
+        TaskCompletionSource laterSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int sends = 0;
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            if (Interlocked.Increment(ref sends) == 2)
+            {
+                laterSend.SetResult();
+                await Task.Delay(Timeout.Infinite, call.Arg<CancellationToken>());
+            }
+            return 0;
+        });
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", new BlockParameter(0UL), new BlockParameter(4UL));
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        try
+        {
+            response.TakeActivation().Activate();
+            await laterSend.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            using ResultWrapper<bool> unsubscribe = ((IDebugSubscriptionRpcModule)module).debug_unsubscribe(response.Data);
+            Assert.That(unsubscribe.Data, Is.True);
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(oldBlockCallbacks, Is.Zero);
+                Assert.That(oldBlockToken.IsCancellationRequested, Is.False);
+                Assert.That(currentBlockCallbacks, Is.EqualTo(1));
+                Assert.That(currentBlockToken.IsCancellationRequested, Is.True);
+            }
+        }
+        finally
+        {
+            response.Subscription.Abort();
+            await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            oldRegistration.Dispose();
+            currentRegistration.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_batch_registers_without_holding_exclusive_rentals([Values] bool secondSubscription)
+    {
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        SetUpTraceChain();
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(_ => CreateTraceChainModule(manager));
+        BoundedModulePool<IDebugRpcModule> pool = new(factory, 1, 0);
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        IFileSystem fileSystem = Substitute.For<IFileSystem>();
+        RpcModuleProvider provider = new(fileSystem, config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register(pool);
+        using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
+        JsonRpcProcessor processor = new(service, config, fileSystem, LimboLogs.Instance);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("batch-lease-client");
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        using MemoryMessageStream stream = new();
+        using SocketSendLock sendLock = new();
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), null, sendLock, context);
+        TaskCompletionSource<bool> notifiedAfterBatch = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(_ =>
+        {
+            byte[] bytes = stream.ToArray();
+            notifiedAfterBatch.TrySetResult(bytes.Length >= 2 && bytes[^2] == (byte)']' && bytes[^1] == (byte)'\n');
+            return Task.FromResult(0);
+        });
+        using JsonRpcResponse control = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("debug_traceBlockByHash", TestItem.KeccakD), context);
+        Assert.That(RpcTest.AssertError(control).Code, Is.EqualTo(ErrorCodes.ResourceNotFound), "exclusive rental works before the batch");
+        string second = secondSubscription
+            ? """{"jsonrpc":"2.0","id":2,"method":"debug_subscribe","params":["traceChain","0x0","0x4"]}"""
+            : $$"""{"jsonrpc":"2.0","id":2,"method":"debug_traceBlockByHash","params":["{{TestItem.KeccakD}}"]}""";
+        string batch = """[{"jsonrpc":"2.0","id":1,"method":"debug_subscribe","params":["traceChain","0x0","0x4"]},""" + second + "]";
+        try
+        {
+            await processor.ProcessAsync(Encoding.UTF8.GetBytes(batch), context, sink,
+                new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument));
+            using JsonDocument response = JsonDocument.Parse(stream.ToArray());
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.RootElement.GetArrayLength(), Is.EqualTo(2));
+                Assert.That(response.RootElement[0].GetProperty("result").GetString(), Does.StartWith("0x"));
+                if (secondSubscription)
+                    Assert.That(response.RootElement[1].GetProperty("result").GetString(), Does.StartWith("0x"));
+                else
+                    Assert.That(response.RootElement[1].GetProperty("error").GetProperty("code").GetInt32(), Is.EqualTo(ErrorCodes.ResourceNotFound));
+            }
+            Assert.That(await notifiedAfterBatch.Task.WaitAsync(TimeSpan.FromSeconds(5)), Is.True,
+                "no producer may start before the complete batch acknowledgement");
+        }
+        finally
+        {
+            manager.RemoveClientSubscriptions(client);
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_cancelled_pending_rental_frees_queue_capacity(
+        [Values("beforeAck", "firstRental", "nextRental")] string stage)
+    {
+        bool acknowledge = stage != "beforeAck";
+        bool afterFirstBlock = stage == "nextRental";
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        SetUpTraceChain();
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(_ => CreateTraceChainModule(manager));
+        BoundedModulePool<IDebugRpcModule> bounded = new(factory, 1, 10_000, new RpcLimits(queuedLimit: 1, sharedLimit: 1));
+        ObservedExclusivePool pool = new(bounded);
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        RpcModuleProvider provider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register<IDebugRpcModule>(pool);
+        using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("saturated-pool-client");
+        TaskCompletionSource sending = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource allowSend = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        client.SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>()).Returns(async call =>
+        {
+            sending.TrySetResult();
+            await allowSend.Task.WaitAsync(call.Arg<CancellationToken>());
+            return 0;
+        });
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        IDebugRpcModule? held = afterFirstBlock ? null : await pool.GetModule(false);
+        try
+        {
+            using JsonRpcResponse response = await service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("debug_subscribe", "traceChain", "0x0", "0x4"), context);
+            RpcTest.AssertSuccess(response);
+            PendingTraceChainResponse pending = (PendingTraceChainResponse)response;
+            Assert.That(pool.RentalStarted.Task.IsCompleted, Is.False, "no exclusive rental before acknowledgement");
+            if (acknowledge)
+            {
+                pending.TakeActivation().Activate();
+                if (afterFirstBlock)
+                {
+                    await sending.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                    Task<IDebugRpcModule> normalRental = pool.GetModule(false);
+                    Assert.That(normalRental.IsCompleted, Is.False);
+                    allowSend.SetResult();
+                    held = await normalRental.WaitAsync(TimeSpan.FromSeconds(5));
+                    await pool.NextRentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                }
+                else await pool.RentalStarted.Task.WaitAsync(TimeSpan.FromSeconds(5));
+                using JsonRpcResponse unsubscribe = await service.SendRequestAsync(
+                    RpcTest.BuildJsonRequest("debug_unsubscribe", pending.Data), context);
+                Assert.That(RpcTest.AssertSuccess<bool>(unsubscribe), Is.True);
+            }
+            else response.Dispose();
+            await pending.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(pool.RentalStarted.Task.IsCompleted, Is.EqualTo(acknowledge));
+
+            Task<JsonRpcResponse> normal = service.SendRequestAsync(
+                RpcTest.BuildJsonRequest("debug_traceBlockByHash", TestItem.KeccakD), context).AsTask();
+            Assert.That(normal.IsCompleted, Is.False, "the cancelled subscription must not consume the only queue slot");
+            pool.ReturnModule(held!);
+            held = null;
+            using JsonRpcResponse normalResponse = await normal.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.That(RpcTest.AssertError(normalResponse).Code, Is.EqualTo(ErrorCodes.ResourceNotFound));
+            Assert.That(pool.ReturnCount, Is.EqualTo(afterFirstBlock ? 5 : acknowledge ? 4 : 3));
+        }
+        finally
+        {
+            manager.RemoveClientSubscriptions(client);
+            if (held is not null) pool.ReturnModule(held);
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_cancellation_between_rental_and_transfer_returns_module_once()
+    {
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        SetUpTraceChain();
+        bool replayed = false;
+        IRpcModuleFactory<IDebugRpcModule> factory = Substitute.For<IRpcModuleFactory<IDebugRpcModule>>();
+        factory.Create().Returns(_ =>
+        {
+            DebugRpcModule module = CreateTraceChainModule(manager);
+            module.TraceChainReplay = (block, _, _) => { replayed = true; return ChainTraces(block); };
+            return module;
+        });
+        ObservedExclusivePool pool = new(new BoundedModulePool<IDebugRpcModule>(factory, 1, 0));
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        RpcModuleProvider provider = new(Substitute.For<IFileSystem>(), config, new EthereumJsonSerializer(), LimboLogs.Instance);
+        provider.Register<IDebugRpcModule>(pool);
+        using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("transfer-client");
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        using JsonRpcResponse response = await service.SendRequestAsync(
+            RpcTest.BuildJsonRequest("debug_subscribe", "traceChain", "0x0", "0x4"), context);
+        RpcTest.AssertSuccess(response);
+        PendingTraceChainResponse pending = (PendingTraceChainResponse)response;
+        pool.BeforeTransfer = pending.Subscription.Abort;
+        pending.TakeActivation().Activate();
+        await pending.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayed, Is.False);
+            Assert.That(pool.ReturnCount, Is.EqualTo(2), "one shared registration return and one exclusive rental return");
+        }
+        IDebugRpcModule available = await pool.GetModule(false);
+        pool.ReturnModule(available);
+    }
+
+    private sealed class ObservedExclusivePool(BoundedModulePool<IDebugRpcModule> inner) : IRpcModulePool<IDebugRpcModule>, IExclusiveRpcModulePool
+    {
+        internal TaskCompletionSource RentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource QueuedRentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource NextRentalStarted { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _exclusiveRentals;
+        internal Action? BeforeTransfer { get; set; }
+        internal int ReturnCount;
+        public IRpcModuleFactory<IDebugRpcModule> Factory => inner.Factory;
+        public bool SupportsExclusiveRental => true;
+        public Task<IDebugRpcModule> GetModule(bool canBeShared)
+        {
+            Task<IDebugRpcModule> rental = inner.GetModule(canBeShared);
+            if (!canBeShared && !rental.IsCompleted) QueuedRentalStarted.TrySetResult();
+            return rental;
+        }
+        public void ReturnModule(IDebugRpcModule module)
+        {
+            Interlocked.Increment(ref ReturnCount);
+            inner.ReturnModule(module);
+        }
+        public ValueTask<IRpcModule> RentExclusive(CancellationToken cancellationToken)
+        {
+            ValueTask<IRpcModule> rental = ((IExclusiveRpcModulePool)inner).RentExclusive(cancellationToken);
+            if (rental.IsCompletedSuccessfully) BeforeTransfer?.Invoke();
+            RentalStarted.TrySetResult();
+            if (Interlocked.Increment(ref _exclusiveRentals) == 2) NextRentalStarted.TrySetResult();
+            return rental;
+        }
+    }
+
+    [Test]
+    public void TraceChain_rejects_invalid_ranges_and_subscription_names(
+        [Values("traceChain", "unknown")] string name, [Values(0UL, 4UL, 5UL)] ulong start)
+    {
+        DebugRpcModule module = CreateTraceChainModule();
+        SetUpTraceChain();
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("range-client");
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using ResultWrapper<string> response = ((IDebugSubscriptionRpcModule)module).debug_subscribe(name, new BlockParameter(start), new BlockParameter(0UL));
+        Assert.That(response.Result.ResultType, Is.EqualTo(ResultType.Failure));
+    }
+
+    [Test]
+    public void TraceChain_unknown_subscription_matches_reference_error()
+    {
+        DebugRpcModule module = CreateTraceChainModule();
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using ResultWrapper<string> response = ((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("unknown", new BlockParameter(0UL), new BlockParameter(1UL));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.ErrorCode, Is.EqualTo(ErrorCodes.MethodNotFound));
+            Assert.That(response.Result.Error, Is.EqualTo("no \"unknown\" subscription in debug namespace"));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_missing_block_or_parent_state_stops_and_releases([Values] bool missingBlock)
+    {
+        DebugRpcModule module = CreateTraceChainModule();
+        SetUpTraceChain();
+        if (missingBlock) _blockFinder.FindBlock(new BlockParameter(1UL)).ReturnsNull();
+        else _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(false);
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("missing-state-client");
+        using JsonRpcContext context = new(RpcEndpoint.IPC, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", new BlockParameter(0UL), new BlockParameter(4UL));
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        response.TakeActivation().Activate();
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        await client.DidNotReceive().SendJsonRpcResult(Arg.Any<JsonRpcResult>(), Arg.Any<CancellationToken>());
+        response.Subscription.Abort();
+    }
+
+    [Test]
+    public void TraceChain_options_ignore_call_only_fields_without_deserializing_them()
+    {
+        const string json = """
+            {"enableMemory":true,"disableStack":true,"disableStorage":true,"enableReturnData":true,
+             "limit":123,"tracer":"callTracer","timeout":"2s","tracerConfig":{"onlyTopCall":true},
+             "txIndex":"invalid","stateOverrides":123,"blockOverrides":false,"noBaseFee":true,
+             "txHash":"not-a-hash","logIndex":[],"streamMode":"invalid","disableMemory":true}
+            """;
+        TraceChainOptions parsed = JsonSerializer.Deserialize<TraceChainOptions>(json, EthereumJsonSerializer.JsonOptions)!;
+        GethTraceOptions options = parsed.ToTraceOptions();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.EnableMemory, Is.True);
+            Assert.That(options.DisableStack, Is.True);
+            Assert.That(options.DisableStorage, Is.True);
+            Assert.That(options.EnableReturnData, Is.True);
+            Assert.That(options.Limit, Is.EqualTo(123));
+            Assert.That(options.Tracer, Is.EqualTo("callTracer"));
+            Assert.That(parsed.ParseTimeout(), Is.EqualTo(TimeSpan.FromSeconds(2)));
+            Assert.That(options.Timeout, Is.Null);
+            Assert.That(options.TracerConfig!.Value.GetProperty("onlyTopCall").GetBoolean(), Is.True);
+            Assert.That(options.TxHash, Is.Null);
+            Assert.That(options.StateOverrides, Is.Null);
+            Assert.That(options.BlockOverrides, Is.Null);
+            Assert.That(options.NoBaseFee, Is.False);
+            Assert.That(options.LogIndex, Is.Null);
+            Assert.That(options.StreamMode, Is.Null);
+        }
+    }
+
+    [TestCase("0", 0L)]
+    [TestCase("1ns", 0L)]
+    [TestCase("-1ns", 0L)]
+    [TestCase("1.5s", 15000000L)]
+    [TestCase("1m2s", 620000000L)]
+    [TestCase("9223372036854775807ns", 92233720368547758L)]
+    [TestCase("-9223372036854775808ns", -92233720368547758L)]
+    public void TraceChain_duration_uses_go_units_and_range(string text, long ticks) =>
+        Assert.That(new TraceChainOptions { Timeout = text }.ParseTimeout().Ticks, Is.EqualTo(ticks));
+
+    [TestCase("00:00:01", "time: unknown unit \":\" in duration \"00:00:01\"")]
+    [TestCase("9223372036854775808ns", "time: invalid duration \"9223372036854775808ns\"")]
+    [TestCase("bad", "time: invalid duration \"bad\"")]
+    [TestCase("1", "time: missing unit in duration \"1\"")]
+    public void TraceChain_duration_rejects_non_go_formats(string text, string error) =>
+        Assert.That(() => new TraceChainOptions { Timeout = text }.ParseTimeout(), Throws.TypeOf<FormatException>().With.Message.EqualTo(error));
+
+    [Test]
+    public void TraceChain_block_tracer_preserves_results_and_stops_at_first_error([Values(-1, 0, 1)] int failAt)
+    {
+        Block block = Build.A.Block.WithTransactions(
+            Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject,
+            Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject,
+            Build.A.Transaction.WithHash(TestItem.KeccakC).TestObject).TestObject;
+        List<GethLikeTxTrace> traces = [];
+        List<IDisposable> resources = [];
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.BuildResult().Returns(traces);
+        int index = 0;
+        inner.When(t => t.EndTxTrace()).Do(_ =>
+        {
+            if (index == failAt) throw new InvalidOperationException("tracer failed");
+            IDisposable resource = Substitute.For<IDisposable>();
+            resources.Add(resource);
+            traces.Add(new GethLikeTxTrace(resource) { TxHash = block.Transactions[index++].Hash });
+        });
+        TraceChainTransaction?[] result;
+        using (TraceChainBlockTracer tracer = new(block, inner))
+        {
+            Exception? failure = null;
+            foreach (Transaction transaction in block.Transactions)
+            {
+                tracer.StartNewTxTrace(transaction);
+                try { tracer.EndTxTrace(); }
+                catch (InvalidOperationException exception) { failure = exception; break; }
+            }
+            result = tracer.TakeResult(failure);
+        }
+        Assert.That(result, Has.Length.EqualTo(3));
+        if (failAt >= 0)
+        {
+            Assert.That(result[failAt]!.Error, Is.EqualTo("tracer failed"));
+            Assert.That(result.Skip(failAt + 1), Is.All.Null);
+        }
+        inner.Received(failAt < 0 ? 3 : failAt + 1).StartNewTxTrace(Arg.Any<Transaction>());
+        foreach (IDisposable resource in resources) resource.DidNotReceive().Dispose();
+        foreach (TraceChainTransaction? trace in result) trace?.Result?.Dispose();
+        foreach (IDisposable resource in resources) resource.Received(1).Dispose();
+    }
+
+    [Test]
+    public void TraceChain_aborted_block_disposes_completed_results()
+    {
+        IDisposable resource = Substitute.For<IDisposable>();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.BuildResult().Returns(new[] { new GethLikeTxTrace(resource) });
+        new TraceChainBlockTracer(Build.A.Block.TestObject, inner).Dispose();
+        resource.Received(1).Dispose();
+    }
+
+    [TestCase("0", false)]
+    [TestCase("1h", false)]
+    [TestCase("bad", true)]
+    [TestCase("1", true)]
+    public void TraceChain_transaction_timeout_preserves_tracer_ownership(string timeout, bool invalid)
+    {
+        Transaction transaction = Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject;
+        Block block = Build.A.Block.WithTransactions(transaction).TestObject;
+        ITxTracer owned = Substitute.For<ITxTracer>();
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        inner.StartNewTxTrace(transaction).Returns(owned);
+        using (TraceChainBlockTracer tracer = new(block, inner, new TraceChainOptions { Timeout = timeout }))
+        {
+            if (invalid)
+            {
+                Assert.Throws<FormatException>(() => tracer.StartNewTxTrace(transaction));
+            }
+            else
+            {
+                using (tracer.StartNewTxTrace(transaction))
+                {
+                    owned.DidNotReceive().Dispose();
+                    if (timeout == "0") Assert.Throws<OperationCanceledException>(() => tracer.EndTxTrace());
+                    else tracer.EndTxTrace();
+                }
+            }
+            Assert.That(tracer.TransactionTimedOut, Is.EqualTo(timeout == "0"));
+        }
+        owned.Received(1).Dispose();
+    }
+
+    [Test]
+    public async Task TraceChain_refetches_blocks_by_number_after_acknowledgement()
+    {
+        DebugRpcModule module = CreateTraceChainModule();
+        Block[] original = SetUpTraceChain();
+        IJsonRpcDuplexClient client = Substitute.For<IJsonRpcDuplexClient>();
+        client.Id.Returns("reorg-client");
+        using JsonRpcContext context = new(RpcEndpoint.Ws, client);
+        Assert.That(JsonRpcContext.Current.Value, Is.SameAs(context));
+        using PendingTraceChainResponse response = (PendingTraceChainResponse)((IDebugSubscriptionRpcModule)module)
+            .debug_subscribe("traceChain", new BlockParameter(0UL), new BlockParameter(1UL));
+        Block replacement = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(original[0].Header).WithHash(TestItem.KeccakD).TestObject)
+            .WithTransactions(original[1].Transactions).TestObject;
+        _blockFinder.FindBlock(new BlockParameter(1UL)).Returns(replacement);
+        Block? replayed = null;
+        module.TraceChainReplay = (block, _, _) => { replayed = block; return ChainTraces(block); };
+        RpcTest.ConfigureTraceChainRental(response.Subscription, module);
+        response.TakeActivation().Activate();
+        await response.Subscription.Completion.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(replayed, Is.SameAs(replacement));
+        response.Subscription.Abort();
+    }
+
+    private DebugRpcModule CreateTraceChainModule(SubscriptionManager? manager = null, IJsonRpcConfig? config = null)
+    {
+        DebugRpcModule module = CreateModule(config);
+        module.TraceChainSubscriptions = manager ?? new SubscriptionManager(new SubscriptionFactory(), LimboLogs.Instance);
+        module.TraceChainReplay = static (block, _, _) => ChainTraces(block);
+        return module;
+    }
+
+    private static TraceChainTransaction?[] ChainTraces(Block block) => block.Transactions
+        .Select(tx => (TraceChainTransaction?)new TraceChainTransaction(tx.Hash!, new GethLikeTxTrace { TxHash = tx.Hash }, null)).ToArray();
+
+    private Block[] SetUpTraceChain()
+    {
+        Block[] blocks = new Block[5];
+        for (int index = 0; index < blocks.Length; index++)
+        {
+            Transaction[] transactions = index == 1
+                ? [Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject, Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject]
+                : index == 3 ? [Build.A.Transaction.WithHash(TestItem.KeccakC).TestObject] : [];
+            BlockHeader header = index == 0
+                ? Build.A.BlockHeader.WithNumber(0).TestObject
+                : Build.A.BlockHeader.WithParent(blocks[index - 1].Header).TestObject;
+            Block block = blocks[index] = Build.A.Block.WithHeader(header).WithTransactions(transactions).TestObject;
+            _blockFinder.FindBlock(new BlockParameter((ulong)index)).Returns(block);
+            _blockFinder.FindHeader(block.Hash!, BlockTreeLookupOptions.None, block.Number).Returns(block.Header);
+        }
+        _blockFinder.FindBlock(BlockParameter.Earliest).Returns(blocks[0]);
+        _blockFinder.FindBlock(BlockParameter.Latest).Returns(blocks[^1]);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        return blocks;
     }
 
     [Test]

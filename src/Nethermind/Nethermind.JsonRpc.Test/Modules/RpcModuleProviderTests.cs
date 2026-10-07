@@ -12,10 +12,12 @@ using System.Text.Json.Serialization.Metadata;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Proof;
 using Nethermind.Logging;
@@ -54,6 +56,56 @@ public class RpcModuleProviderTests
         _moduleProvider = CreateProvider(jsonRpcConfig);
         _moduleProvider.Register(new SingletonModulePool<IProofRpcModule>(Substitute.For<IProofRpcModule>(), false));
         Assert.That(_moduleProvider.Check("proof_call", _context), Is.EqualTo(ModuleResolution.Disabled));
+    }
+
+    [Test]
+    public void TraceChain_registration_requires_debug_and_duplex_transport(
+        [Values] bool debugEnabled, [Values(RpcEndpoint.Http, RpcEndpoint.Ws, RpcEndpoint.IPC)] RpcEndpoint endpoint)
+    {
+        RpcModuleProvider provider = CreateProvider(new JsonRpcConfig { EnabledModules = debugEnabled ? [ModuleType.Debug] : [ModuleType.Subscribe] });
+        provider.Register(new BoundedModulePool<IDebugRpcModule>(Substitute.For<IRpcModuleFactory<IDebugRpcModule>>(), 1, 0));
+        using JsonRpcContext context = new(endpoint);
+        ModuleResolution expected = endpoint == RpcEndpoint.Http ? ModuleResolution.EndpointDisabled
+            : debugEnabled ? ModuleResolution.Enabled : ModuleResolution.Disabled;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Check("debug_subscribe", context, out _, out _), Is.EqualTo(expected));
+            Assert.That(provider.Check("debug_unsubscribe", context, out _, out _), Is.EqualTo(expected));
+            Assert.That(provider.Check("debug_traceChain", context, out _, out _), Is.EqualTo(ModuleResolution.Unknown));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_does_not_require_plugins_to_implement_internal_interface()
+    {
+        JsonRpcConfig config = new() { EnabledModules = [ModuleType.Debug] };
+        RpcModuleProvider provider = CreateProvider(config);
+        provider.Register(new SingletonModulePool<IDebugRpcModule>(Substitute.For<IDebugRpcModule>(), true));
+        using GCKeeper keeper = new(NoGCStrategy.Instance, LimboLogs.Instance);
+        JsonRpcService service = new(provider, LimboLogs.Instance, config, keeper);
+        using JsonRpcContext context = new(RpcEndpoint.Ws, Substitute.For<IJsonRpcDuplexClient>());
+        using JsonRpcResponse response = await service.SendRequestAsync(RpcTest.BuildJsonRequest("debug_subscribe", "traceChain", "0x0", "0x1"), context);
+        Assert.That(RpcTest.AssertError(response).Code, Is.EqualTo(ErrorCodes.MethodNotFound));
+    }
+
+    [Test]
+    public void TraceChain_lazy_pool_requires_explicit_safe_rental_capability([Values] bool supportsRental)
+    {
+        bool created = false;
+        LazyModulePool<IDebugRpcModule> pool = new(new Lazy<IRpcModulePool<IDebugRpcModule>>(() =>
+        {
+            created = true;
+            return new BoundedModulePool<IDebugRpcModule>(Substitute.For<IRpcModuleFactory<IDebugRpcModule>>(), 1, 0);
+        }))
+        { SupportsExclusiveRental = supportsRental };
+        RpcModuleProvider provider = CreateProvider(new JsonRpcConfig { EnabledModules = [ModuleType.Debug] });
+        provider.Register<IDebugRpcModule>(pool);
+        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Check("debug_subscribe", context, out _, out _), Is.EqualTo(supportsRental ? ModuleResolution.Enabled : ModuleResolution.Unknown));
+            Assert.That(created, Is.False, "capability discovery must not preload environments");
+        }
     }
 
     [Test]

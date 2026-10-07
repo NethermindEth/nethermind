@@ -44,13 +44,14 @@ public record GethTraceOptions
 
     private TimeSpan? _timeout;
     internal string? TimeoutText { get; init; }
-    internal CancellationToken? ExecutionCancellation { get; init; }
 
     public TimeSpan? Timeout
     {
         get => TimeoutText is { } text ? GoTraceDuration.Parse(text) : _timeout;
         init { _timeout = value; TimeoutText = null; }
     }
+
+    internal GethTraceCancellation? ExecutionCancellation { get; init; }
 
     public string Tracer { get; init; }
 
@@ -142,4 +143,10 @@ public record GethTraceOptions
         public override void Write(Utf8JsonWriter writer, long value, JsonSerializerOptions options) =>
             writer.WriteNumberValue(value);
     }
+}
+
+/// <summary>Shares the current transaction cancellation across tracer option clones.</summary>
+internal sealed class GethTraceCancellation
+{
+    internal CancellationToken Token { get; set; }
 }

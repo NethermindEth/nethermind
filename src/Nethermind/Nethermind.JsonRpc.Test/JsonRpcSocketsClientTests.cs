@@ -15,9 +15,12 @@ using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.WebSockets;
 using Nethermind.Core.Memory;
 using Nethermind.Logging;
@@ -68,6 +71,273 @@ public class JsonRpcSocketsClientTests
 
         Assert.That(response.AsSpan().Count((byte)'\n'), Is.EqualTo(1));
         Assert.That(fixture.Sink.BytesWritten, Is.EqualTo(response.Length));
+    }
+
+    [Test]
+    public async Task TraceChain_activates_only_after_complete_acknowledgement([Values] bool batch)
+    {
+        using SocketSinkFixture socket = CreateSocketSink();
+        bool completeAcknowledgement = false;
+        using PendingChainFixture pending = new(_ =>
+        {
+            byte[] bytes = socket.Stream.ToArray();
+            completeAcknowledgement = bytes.Length > 0 && bytes[^1] == (byte)'\n';
+            return Task.CompletedTask;
+        });
+        if (batch)
+        {
+            await socket.Sink.BeginBatchAsync(CancellationToken.None);
+            await socket.Sink.WriteBatchItemAsync(pending.Response, default, CancellationToken.None);
+            pending.Response.Dispose();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(pending.Started.Task.IsCompleted, Is.False);
+                Assert.That(pending.Released.Task.IsCompleted, Is.False);
+            }
+            await socket.Sink.EndBatchAsync(CancellationToken.None);
+        }
+        else
+        {
+            await socket.Sink.WriteSingleAsync(pending.Response, default, CancellationToken.None);
+            pending.Response.Dispose();
+        }
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completeAcknowledgement, Is.True);
+            Assert.That(pending.ReturnCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_failed_or_abandoned_batch_never_activates([Values] bool failNextItem)
+    {
+        using SocketSinkFixture socket = CreateSocketSink();
+        using PendingChainFixture pending = new(_ => Task.CompletedTask);
+        await socket.Sink.BeginBatchAsync(CancellationToken.None);
+        await socket.Sink.WriteBatchItemAsync(pending.Response, default, CancellationToken.None);
+        pending.Response.Dispose();
+        if (failNextItem)
+        {
+            using JsonRpcSuccessResponse failed = new() { Result = new FlushingStreamable(0, new InvalidOperationException("failed item")) };
+            Assert.CatchAsync(async () => await socket.Sink.WriteBatchItemAsync(failed, default, CancellationToken.None));
+        }
+        socket.Sink.Dispose();
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Started.Task.IsCompleted, Is.False);
+            Assert.That(pending.ReturnCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_cancelled_before_activation_returns_lease_once(
+        [Values("response", "disconnect", "unsubscribe")] string cancellation)
+    {
+        using PendingChainFixture pending = new(_ => Task.CompletedTask);
+        switch (cancellation)
+        {
+            case "response": pending.Response.Dispose(); break;
+            case "disconnect": pending.Client.Closed += Raise.Event<EventHandler>(pending.Client, EventArgs.Empty); break;
+            default: pending.Manager.RemoveSubscription(pending.Client, pending.Response.Data); break;
+        }
+        pending.Response.Subscription.Activate();
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        pending.Response.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Started.Task.IsCompleted, Is.False);
+            Assert.That(pending.ReturnCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_cancellation_does_not_release_a_still_executing_module()
+    {
+        TaskCompletionSource exit = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationToken replayToken = default;
+        using PendingChainFixture pending = new(token =>
+        {
+            replayToken = token;
+            return exit.Task;
+        });
+        pending.Response.TakeActivation().Activate();
+        await pending.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        pending.Response.Subscription.Abort();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(replayToken.IsCancellationRequested, Is.True);
+            Assert.That(pending.Released.Task.IsCompleted, Is.False);
+        }
+        exit.SetResult();
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(pending.ReturnCount, Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task TraceChain_failed_single_acknowledgement_never_activates()
+    {
+        using FailingMessageStream stream = new() { Failure = new IOException("failed acknowledgement") };
+        using SocketSendLock sendLock = new();
+        using JsonRpcContext context = new(RpcEndpoint.Ws);
+        using SocketJsonRpcResponseSink<FailingMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), null, sendLock, context);
+        using PendingChainFixture pending = new(_ => Task.CompletedTask);
+        Assert.CatchAsync(async () => await sink.WriteSingleAsync(pending.Response, default, CancellationToken.None));
+        pending.Response.Dispose();
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(pending.Started.Task.IsCompleted, Is.False);
+    }
+
+    [Test]
+    public async Task TraceChain_disconnect_after_batch_item_prevents_activation()
+    {
+        using SocketSinkFixture socket = CreateSocketSink();
+        using PendingChainFixture pending = new(_ => Task.CompletedTask);
+        await socket.Sink.BeginBatchAsync(CancellationToken.None);
+        await socket.Sink.WriteBatchItemAsync(pending.Response, default, CancellationToken.None);
+        pending.Response.Dispose();
+        pending.Client.Closed += Raise.Event<EventHandler>(pending.Client, EventArgs.Empty);
+        await socket.Sink.EndBatchAsync(CancellationToken.None);
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(pending.Started.Task.IsCompleted, Is.False);
+    }
+
+    [Test]
+    public async Task TraceChain_closed_before_lease_transfer_returns_late_lease()
+    {
+        using PendingChainFixture pending = new(_ => Task.CompletedTask, attachLease: false);
+        pending.Client.Closed += Raise.Event<EventHandler>(pending.Client, EventArgs.Empty);
+        pending.AttachLease();
+        pending.Response.Subscription.Activate();
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(pending.Started.Task.IsCompleted, Is.False);
+            Assert.That(pending.ReturnCount, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_ack_and_notification_use_socket_serialization(
+        [Values(RpcEndpoint.Ws, RpcEndpoint.IPC)] RpcEndpoint endpoint, [Values] bool batch)
+    {
+        using MemoryMessageStream stream = new();
+        using TestClient<MemoryMessageStream> client = new(stream, endpoint);
+        using SocketSendLock sendLock = new();
+        using JsonRpcContext context = new(endpoint, client.Client);
+        using SocketJsonRpcResponseSink<MemoryMessageStream> sink = new(stream, new NullJsonRpcLocalStats(), null, sendLock, context);
+        SubscriptionManager manager = new(new SubscriptionFactory(), LimboLogs.Instance);
+        TaskCompletionSource released = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using TraceChainSubscription subscription = new(client.Client, manager, LimboLogs.Instance.GetClassLogger<JsonRpcSocketsClientTests>(),
+            (notification, token) => notification.SendAsync(new TraceChainBlock(1, TestItem.KeccakA,
+                [new TraceChainTransaction(TestItem.KeccakB, new GethLikeTxTrace { Gas = 21_000 }, null)]), token));
+        manager.AddSubscription(subscription);
+        subscription.OwnLease(() => released.SetResult());
+        using PendingTraceChainResponse response = new(subscription) { Data = subscription.Id, Id = 7 };
+        if (batch)
+        {
+            await sink.BeginBatchAsync(CancellationToken.None);
+            await sink.WriteBatchItemAsync(response, default, CancellationToken.None);
+            response.Dispose();
+            await sink.EndBatchAsync(CancellationToken.None);
+        }
+        else await sink.WriteSingleAsync(response, default, CancellationToken.None);
+        await released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        string[] messages = Encoding.UTF8.GetString(stream.ToArray()).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+        Assert.That(messages, Has.Length.EqualTo(2));
+        using JsonDocument acknowledgement = JsonDocument.Parse(messages[0]);
+        using JsonDocument notification = JsonDocument.Parse(messages[1]);
+        JsonElement ack = batch ? acknowledgement.RootElement[0] : acknowledgement.RootElement;
+        JsonElement payload = notification.RootElement.GetProperty("params");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ack.GetProperty("id").GetInt32(), Is.EqualTo(7));
+            Assert.That(ack.GetProperty("result").GetString(), Is.EqualTo(subscription.Id));
+            Assert.That(notification.RootElement.GetProperty("method").GetString(), Is.EqualTo("debug_subscription"));
+            Assert.That(notification.RootElement.TryGetProperty("id", out _), Is.False);
+            Assert.That(payload.GetProperty("subscription").GetString(), Is.EqualTo(subscription.Id));
+            Assert.That(payload.GetProperty("result").GetProperty("block").GetString(), Is.EqualTo("0x1"));
+            Assert.That(payload.GetProperty("result").GetProperty("traces")[0].GetProperty("result").GetProperty("gas").GetInt32(), Is.EqualTo(21_000));
+        }
+    }
+
+    [Test]
+    public async Task TraceChain_cancellation_callbacks_run_without_the_lifecycle_lock()
+    {
+        using ManualResetEventSlim releaseCallback = new();
+        TaskCompletionSource callbackEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource exitReplay = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        CancellationTokenRegistration registration = default;
+        using PendingChainFixture pending = new(token =>
+        {
+            registration = token.Register(() =>
+            {
+                callbackEntered.TrySetResult();
+                releaseCallback.Wait(TimeSpan.FromSeconds(10));
+            });
+            return exitReplay.Task;
+        });
+        try
+        {
+            pending.Response.TakeActivation().Activate();
+            await pending.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task disposing = Task.Run(pending.Response.Subscription.Abort);
+            await callbackEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            bool disposed = await Task.Run(() => pending.Response.Subscription.IsDisposed).WaitAsync(TimeSpan.FromSeconds(5));
+            await disposing.WaitAsync(TimeSpan.FromSeconds(5));
+            exitReplay.SetResult();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(disposed, Is.True);
+                Assert.That(pending.Released.Task.IsCompleted, Is.False, "CTS and lease outlive cancellation callbacks");
+            }
+        }
+        finally
+        {
+            releaseCallback.Set();
+            exitReplay.TrySetResult();
+        }
+        await pending.Released.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        registration.Dispose();
+        Assert.That(pending.ReturnCount, Is.EqualTo(1));
+    }
+
+    private sealed class PendingChainFixture : IDisposable
+    {
+        internal IJsonRpcDuplexClient Client { get; } = Substitute.For<IJsonRpcDuplexClient>();
+        internal SubscriptionManager Manager { get; } = new(new SubscriptionFactory(), LimboLogs.Instance);
+        internal TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal TaskCompletionSource Released { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        internal PendingTraceChainResponse Response { get; }
+        internal int ReturnCount;
+
+        internal PendingChainFixture(Func<CancellationToken, Task> produce, bool attachLease = true)
+        {
+            Client.Id.Returns(Guid.NewGuid().ToString());
+            TraceChainSubscription subscription = new(Client, Manager, LimboLogs.Instance.GetClassLogger<PendingChainFixture>(), async (_, token) =>
+            {
+                Task producing = produce(token);
+                Started.SetResult();
+                await producing;
+            });
+            Manager.AddSubscription(subscription);
+            Response = new PendingTraceChainResponse(subscription) { Data = subscription.Id, Id = 1 };
+            if (attachLease) AttachLease();
+        }
+
+        internal void AttachLease() => Response.Subscription.OwnLease(() =>
+        {
+            Interlocked.Increment(ref ReturnCount);
+            Released.TrySetResult();
+        });
+
+        public void Dispose()
+        {
+            Response.Dispose();
+            Response.Subscription.Abort();
+            Manager.RemoveClientSubscriptions(Client);
+        }
     }
 
     [TestCase(RpcEndpoint.Ws, true)]
