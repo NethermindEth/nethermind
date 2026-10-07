@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -22,6 +23,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -66,6 +68,8 @@ public class ArchiveProofTests
     [TearDown]
     public void TearDown()
     {
+        _container?.Dispose();
+        _container = null;
         _reclaimer?.Dispose();
         foreach (CommitmentMetadata metadata in _metadatas) metadata.Dispose();
         _metadatas.Clear();
@@ -1988,6 +1992,7 @@ public class ArchiveProofTests
     private int _recentEpochs;
     private int _fineEpochs;
     private CommitmentReclaimer? _reclaimer;
+    private IContainer? _container;
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
 
@@ -2053,14 +2058,23 @@ public class ArchiveProofTests
 
     private void CaptureAtTheTip()
     {
-        FlatDbConfig config = new() { HistoryEnabled = true, ArchiveProofBuildEnabled = true };
-        (HistoryAvailability _, HistoryRowFormat rowFormat) = HistoryColumnsWriter.CreateSharedFormat(_historyColumns, config);
-        CommitmentMetadata metadata = Metadata(_policy);
-        ArchiveProofSettings settings = new(config, rowFormat, LimboLogs.Instance);
-        _reclaimer?.Dispose();
-        _reclaimer = new CommitmentReclaimer(_historyColumns, _policy, metadata, settings, LimboLogs.Instance);
-        ResourcePool pool = new(new FlatDbConfig { CompactSize = 16 });
-        using ForwardCommitmentCapture capture = new(_historyColumns, _policy, metadata, settings, _reclaimer, LimboLogs.Instance);
+        FlatDbConfig config = new()
+        {
+            Enabled = true,
+            HistoryEnabled = true,
+            ArchiveProofBuildEnabled = true,
+            CompactSize = 16
+        };
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<CommitmentDepthPolicy>(_policy);
+        builder.RegisterInstance(_historyColumns)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        _container?.Dispose();
+        _container = builder.Build();
+        IResourcePool pool = _container.Resolve<IResourcePool>();
+        ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
         for (ulong block = 0; block <= _chain.Head; block++)
         {
             using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv);
