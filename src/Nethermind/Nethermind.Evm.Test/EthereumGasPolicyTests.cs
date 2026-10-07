@@ -354,10 +354,10 @@ public class EthereumGasPolicyTests
         spec.ClearReceivedCalls();
         bool actual = (eip3860, eip8038) switch
         {
-            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
-            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On>>(ref specializedGas, spec, eip8037, create2, words),
-            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (true, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OnFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, true) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038On, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
+            (false, false) => ChargeCreate<EvmInstructions.CreateSpec<OffFlag, OffFlag, OffFlag, Eip8038Off, OffFlag>>(ref specializedGas, spec, eip8037, create2, words),
         };
 
         using (Assert.EnterMultipleScope())

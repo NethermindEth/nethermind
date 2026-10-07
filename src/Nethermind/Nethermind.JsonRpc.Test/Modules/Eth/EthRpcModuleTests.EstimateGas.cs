@@ -1503,6 +1503,37 @@ public partial class EthRpcModuleTests
         Assert.That(serialized, Is.EqualTo(expectedJson));
     }
 
+    [TestCase(true, 10UL * Eip8279Constants.StorageKeyBytes, TestName = "EIP-8279: estimate and simulate cover the runtime block access list floor")]
+    [TestCase(false, 0UL, TestName = "EIP-8279 disabled: estimate and simulate use the static content floor")]
+    public async Task Eth_estimateGas_and_simulate_runtime_bal_floor(bool eip8279, ulong meteredBytes)
+    {
+        OverridableReleaseSpec spec = new(Bogota.Instance) { IsEip8131Enabled = true, IsEip8279Enabled = eip8279 };
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+
+        // Ten cold SLOADs under a calldata-bound floor: each meters 32 bytes, so only the floor grows.
+        Prepare code = Prepare.EvmCode;
+        for (int i = 0; i < 10; i++) code.PushData(i).Op(Instruction.SLOAD).Op(Instruction.POP);
+        Address contract = new("0xc200000000000000000000000000000000000000");
+        Transaction tx = Build.A.Transaction
+            .WithTo(contract)
+            .WithGasLimit(1_000_000)
+            .WithData(new byte[10_000])
+            .SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        EIP1559TransactionForRpc transaction = new(tx, new(tx.ChainId ?? BlockchainIds.Mainnet));
+        transaction.GasPrice = null;
+        object? stateOverride = JsonSerializer.Deserialize<object>($$$"""{"{{{contract}}}":{"code":"{{{code.STOP().Done.ToHexString(true)}}}"}}""");
+
+        string estimate = await ctx.Test.TestEthRpc("eth_estimateGas", transaction, "latest", stateOverride);
+        string simulate = await ctx.Test.TestEthRpc("eth_simulateV1", new { blockStateCalls = new[] { new { stateOverrides = stateOverride, calls = new[] { transaction } } } });
+
+        string expected = (IntrinsicGasCalculator.Calculate(tx, spec).FloorGas + meteredBytes * Eip8131Constants.FloorGasPerByte).ToHexString(true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(JToken.Parse(estimate)["result"]?.Value<string>(), Is.EqualTo(expected), estimate);
+            Assert.That(JToken.Parse(simulate)["result"]?[0]?["calls"]?[0]?["gasUsed"]?.Value<string>(), Is.EqualTo(expected), simulate);
+        }
+    }
+
     [Test]
     public async Task Eth_estimateGas_gas_hint_above_eip8037_total_cap_returns_estimate()
     {

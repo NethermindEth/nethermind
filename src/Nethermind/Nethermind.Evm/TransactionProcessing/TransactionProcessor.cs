@@ -163,6 +163,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
         private readonly bool _parallel;
+        private BalDataMeter? _balDataMeter;
         private ulong _blockCumulativeExecutionGas;
         private ulong _blockCumulativeStateGas;
         private TracerFlags _tracerFlags;
@@ -395,7 +396,11 @@ namespace Nethermind.Evm.TransactionProcessing
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
                 SuppressLogs = !_tracerFlags.IsCollectingLogs && !_tracerFlags.IsTracingLogs,
-                MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory
+                MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory,
+                // EIP-8279: system calls have no floor to settle against, so they are not metered.
+                BalDataMeter = spec.IsEip8279Enabled && !tx.IsSystem()
+                    ? (_balDataMeter ??= new()).Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
+                    : null,
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
@@ -1558,7 +1563,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1579,11 +1584,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled)
             {
                 // Preserve the top-frame authorization state gas folded into the execution baseline.
-                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong), postIntrinsicStateReservoir);
             }
             else
             {
-                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong);
+                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong));
             }
             goto Complete;
         CompleteWithoutFrame:
@@ -1596,6 +1601,11 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             return statusCode;
         }
+
+        /// <summary>The floor to settle an executed transaction against: the static floor extended by EIP-8279's metered bytes.</summary>
+        /// <remarks>Metered bytes are never rewound, so the extension applies whether execution succeeded, reverted or halted.</remarks>
+        private ulong ExecutedFloorGas(ulong staticFloorGas) =>
+            VirtualMachine.TxExecutionContext.BalDataMeter?.FloorGas ?? staticFloorGas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
@@ -1783,6 +1793,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TGasPolicy gasAfterCodeDeposit = unspentGas;
             if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost))
+                return false;
+
+            // EIP-8279: the deployed code joins the block access list once its deposit is paid for.
+            if (VirtualMachine.TxExecutionContext.BalDataMeter?.TryMeter((ulong)code.Length) == false)
                 return false;
 
             _codeInfoRepository.InsertCode(code, codeOwner, spec);
