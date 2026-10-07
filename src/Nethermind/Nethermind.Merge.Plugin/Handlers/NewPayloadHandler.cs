@@ -913,7 +913,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         }
 
         // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
-        _queuedInclusionLists[block.Hash!] = queued;
+        _queuedInclusionLists.TryAdd(block.Hash!, queued);
         await Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
     }
 
