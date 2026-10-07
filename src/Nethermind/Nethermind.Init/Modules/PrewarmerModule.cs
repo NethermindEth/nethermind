@@ -76,7 +76,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>();
 
             // Experiment only: attributes the storage writes of executed transactions for the handoff diagnostics.
-            if (HandoffDiagnostics.Enabled) builder.AddDecorator<IWorldState>(static (_, inner) => new HandoffWriteObserver(inner));
+            if (HandoffDiagnostics.ObservesWrites) builder.AddDecorator<IWorldState>(static (_, inner) => new HandoffWriteObserver(inner));
 
             if (blocksConfig.PrecompileCacheMaxKilobytes > 0)
             {

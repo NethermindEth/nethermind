@@ -1025,7 +1025,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     Rewarm(env ??= _envPool.Get(), blockState, footprints, position, token);
                 }
 
-                if (footprints.WarmPassEnded && !footprints.HasStale) return;
+                // With the feedback on, block processing marks readers stale until it reaches the last transaction.
+                int mainThread = MainThreadTxIndex;
+                bool awaitingFeedback = RewarmCounters.Feedback && mainThread >= 0 && mainThread < footprints.Count - 1;
+                if (footprints.WarmPassEnded && !footprints.HasStale && !awaitingFeedback) return;
                 footprints.WaitForStale(StaleWait, token);
             }
         }
@@ -1100,6 +1103,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             Interlocked.Add(ref RewarmCounters.Ticks, Stopwatch.GetTimestamp() - start);
         }
     }
+
+    /// <summary>Experiment only: the storage writes of the transaction the main thread just executed.</summary>
+    internal void ReportExecutedWrites(List<(StorageCell Cell, UInt256 Value)> writes) =>
+        Volatile.Read(ref _footprints)?.ApplyExecuted(_mainThreadTxIndex, writes);
 
     /// <summary>Experiment only: what the run of the transaction the main thread just started came to.</summary>
     internal int FootprintStatus(Transaction tx) => Volatile.Read(ref _footprints)?.Status(_mainThreadTxIndex, tx) ?? HandoffDiagnostics.OtherTransaction;
