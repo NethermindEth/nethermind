@@ -283,6 +283,7 @@ namespace Nethermind.Consensus.Processing
 
             void IThreadPoolWorkItem.Execute()
             {
+                EnginePathDiag.Mark(blockHash, EnginePathDiag.P.RecoveryStart);
                 try
                 {
                     using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
@@ -311,6 +312,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
+                    EnginePathDiag.Mark(blockHash, EnginePathDiag.P.RecoveryEnd);
                     lock (_gate)
                     {
                         _completed = true;

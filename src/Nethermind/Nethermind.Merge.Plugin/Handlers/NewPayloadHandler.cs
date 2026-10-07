@@ -103,6 +103,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _txValidator = txValidator;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
+        EnginePathDiag.SetLogger(_logger);
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = TimeSpan.FromMilliseconds(mergeConfig.NewPayloadBlockProcessingTimeout);
         if (mergeConfig.NewPayloadCacheSize > 0)
@@ -129,13 +130,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+        EnginePathDiag.Attach(request.BlockHash, (long)request.BlockNumber, request.Transactions?.Length ?? 0);
 
         using ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            EnginePathDiag.Mark(EnginePathDiag.P.Decoded);
             if (!decodingResult.IsError) StartSenderRecovery(request);
+            EnginePathDiag.Mark(EnginePathDiag.P.RecoveryQueued);
         }
         if (decodingResult.IsError)
         {
@@ -152,6 +156,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _lastBlockNumber = block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
         }
+        EnginePathDiag.Mark(EnginePathDiag.P.Logged);
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
         // below come from TryGetBlock, which derives them from the payload's own body, so a matching header hash
@@ -701,6 +706,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private async Task<(ValidationResult, string?)> ValidateBlockAndProcess(Block block, BlockHeader parent, ProcessingOptions processingOptions, long deadline, ParallelUnbalancedWork.WorkerGroup workers)
     {
+        EnginePathDiag.Mark(EnginePathDiag.P.Checked);
         ValueHash256 ilDigest = ComputeInclusionListDigest(block);
 
         ValidationCompletion? completion = null;
@@ -740,6 +746,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
+        EnginePathDiag.Mark(EnginePathDiag.P.BlockValidated);
         ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
         completion = blockProcessed;
 
@@ -753,6 +760,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             try
             {
                 addResult = await suggest.TimeoutOn(timeoutTask);
+                EnginePathDiag.Mark(EnginePathDiag.P.Suggested);
             }
             catch (TimeoutException)
             {
@@ -820,8 +828,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
+                EnginePathDiag.Mark(EnginePathDiag.P.EnqueueQueued);
                 _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                EnginePathDiag.Mark(EnginePathDiag.P.Resumed);
             }
             else
             {
@@ -855,6 +865,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     private void GetProcessingQueueOnBlockExecuted(object? o, BlockVerdictEventArgs e)
     {
+        EnginePathDiag.Verdict(e.BlockHash);
         // Left in place rather than taken: the request has its answer but not its cache entry yet, and a commit
         // that fails next needs the completion to stop that entry from standing.
         if (!_blockValidationTasks.TryGetValue(e.BlockHash, out ValidationCompletion? blockProcessed)) return;
@@ -895,8 +906,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         try
         {
+            EnginePathDiag.Mark(block.Hash, EnginePathDiag.P.EnqueueStart);
             ValueTask enqueue;
-            using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
+            using (workers.Enter())
+            {
+                EnginePathDiag.Mark(block.Hash, EnginePathDiag.P.WorkersEntered);
+                enqueue = _processingQueue.Enqueue(block, processingOptions);
+            }
             await enqueue;
         }
         catch (Exception e)

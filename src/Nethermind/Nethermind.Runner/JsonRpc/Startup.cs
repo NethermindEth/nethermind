@@ -454,6 +454,7 @@ public class Startup : IStartup
     internal async Task ProcessJsonRpcRequestCoreAsync(HttpContext ctx, JsonRpcUrl jsonRpcUrl)
     {
         long startTime = _jsonRpcLocalStats.IsEnabled ? Stopwatch.GetTimestamp() : 0;
+        if (jsonRpcUrl.IsAuthenticated) Nethermind.Core.EnginePathDiag.BeginHttp();
 
         if (_jsonRpcProcessor.ProcessExit.IsCancellationRequested)
         {
@@ -467,6 +468,7 @@ public class Startup : IStartup
             return;
         }
 
+        Nethermind.Core.EnginePathDiag.Mark(Nethermind.Core.EnginePathDiag.P.Authenticated);
         if (jsonRpcUrl.MaxRequestBodySize is not null)
         {
             IHttpMaxRequestBodySizeFeature? maxRequestBodySizeFeature = ctx.Features.Get<IHttpMaxRequestBodySizeFeature>();
@@ -483,6 +485,8 @@ public class Startup : IStartup
         try
         {
             await CollectHttpRequestBodyAsync(ctx, contentLength, effectiveMaxRequestBodySize, collectedBody, ctx.RequestAborted);
+            Nethermind.Core.EnginePathDiag.Mark(Nethermind.Core.EnginePathDiag.P.BodyRead);
+            Nethermind.Core.EnginePathDiag.Bytes(collectedBody.BytesRead);
             using JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
             responseSink = new HttpJsonRpcResponseSink(ctx, jsonRpcUrl, _jsonRpcConfig, _jsonRpcLocalStats, _logger, startTime);
 
@@ -492,6 +496,7 @@ public class Startup : IStartup
                 responseSink,
                 new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
                 ctx.RequestAborted);
+            Nethermind.Core.EnginePathDiag.Mark(Nethermind.Core.EnginePathDiag.P.ProcessReturned);
         }
         catch (Exception e) when (responseSink is { BytesWritten: > 0 })
         {
@@ -535,6 +540,7 @@ public class Startup : IStartup
                     await responseSink.CompleteAsync(ctx.RequestAborted);
                 }
 
+                Nethermind.Core.EnginePathDiag.EndHttp();
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
             }
             finally

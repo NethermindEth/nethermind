@@ -637,6 +637,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         {
             using ParallelUnbalancedWork.WorkerScope workers = (work.Workers ?? new(Environment.ProcessorCount)).Enter();
             BlockRef blockRef = work.Reference;
+            EnginePathDiag.Mark(blockRef.BlockHash, EnginePathDiag.P.LoopTake);
             try
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
@@ -756,9 +757,11 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         using ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
+        EnginePathDiag.StopwatchStart(suggestedBlock.Hash);
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
         _stopwatch.Stop();
+        EnginePathDiag.StopwatchStop(suggestedBlock.Hash);
         if (processedBlocks is null)
         {
             return null;

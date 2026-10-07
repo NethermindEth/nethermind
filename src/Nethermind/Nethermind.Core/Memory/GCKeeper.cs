@@ -97,6 +97,7 @@ public class GCKeeper : IDisposable
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
+        region.Diag = EnginePathDiag.Current;
         lock (_lock)
         {
             if (_disposed) return region;
@@ -144,6 +145,7 @@ public class GCKeeper : IDisposable
     private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC) : IDisposable, IThreadPoolWorkItem
     {
         private readonly Lock _stateLock = new();
+        internal EnginePathDiag.Record? Diag;
         private bool _released;
         private bool _starting;
         private const int MaxLeases = 2;
@@ -192,6 +194,7 @@ public class GCKeeper : IDisposable
             }
 
             bool started = false;
+            EnginePathDiag.RegionEntry(Diag, start: true);
             try
             {
                 started = keeper._runtime.TryStart(_defaultSize, _lohSize);
@@ -206,6 +209,7 @@ public class GCKeeper : IDisposable
                 if (keeper._logger.IsError) keeper._logger.Error("No-GC region entry failed.", e);
             }
 
+            EnginePathDiag.RegionEntry(Diag, start: false, started);
             lock (_stateLock)
             {
                 _starting = false;

@@ -93,6 +93,7 @@ public partial class EngineRpcModule : IEngineRpcModule
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
         _engineRequestsTracker.OnNewPayloadCalled();
+        EnginePathDiag.Mark(EnginePathDiag.P.ModuleEntry);
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
@@ -124,15 +125,19 @@ public partial class EngineRpcModule : IEngineRpcModule
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
 
+        EnginePathDiag.Mark(EnginePathDiag.P.LockWait);
         if (await _locker.WaitAsync(LockTimeout))
         {
+            EnginePathDiag.Mark(EnginePathDiag.P.Locked);
             long startTime = Stopwatch.GetTimestamp();
             try
             {
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
+                EnginePathDiag.Mark(EnginePathDiag.P.RegionQueued);
                 try
                 {
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    EnginePathDiag.Mark(EnginePathDiag.P.ModuleReturn);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);
