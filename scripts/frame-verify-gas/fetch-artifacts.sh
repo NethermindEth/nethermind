@@ -5,13 +5,17 @@
 set -uo pipefail
 
 readonly REPO=NethermindEth/frame-verify-gas
-readonly LABELS=(236k 300k 500k soispoke)
+readonly LABELS=(250k 300k 400k 500k soispoke)
+# The soispoke/minimal-shielded-pool commit whose verifier sweep-soispoke must carry. The other sweeps
+# are synthetic ceiling controls; this one stands in for a real pool, so a release built from another
+# upstream commit would measure a different profile under the same label.
+readonly SOISPOKE_COMMIT=6dedda193bf09c9d80cd89b3dc23eccf580d1026
 readonly MAX_EXPANDED_BYTES=$((16 * 1024 * 1024))
 
 version="${REQUESTED_VERSION:-}"
 version="${version//[[:space:]]/}"
 if [[ -z "${version}" ]]; then
-  echo "::error::groth16_artifacts_version is empty. Supply a ${REPO} release tag, e.g. v1.0.0."
+  echo "::error::groth16_artifacts_version is empty. Supply a published ${REPO} release tag (vMAJOR.MINOR.PATCH)."
   exit 1
 fi
 if [[ ! "${version}" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
@@ -144,6 +148,20 @@ for label in "${LABELS[@]}"; do
   done
 done
 
+if ! python3 -c '
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        commit = json.load(f).get("commit")
+except (OSError, ValueError) as e:
+    sys.exit(f"sweep-soispoke/provenance.json is missing or unparsable ({type(e).__name__})")
+if commit != sys.argv[2]:
+    sys.exit(f"sweep-soispoke/provenance.json names upstream commit {commit!r}, not {sys.argv[2]}")
+' "${artifacts}/sweep-soispoke/provenance.json" "${SOISPOKE_COMMIT}" 2>"${work}/fetch.err"; then
+  echo "::error::Release ${version} of ${REPO} does not carry the pinned soispoke verifier: $(paste -sd ' ' "${work}/fetch.err")"
+  exit 1
+fi
+
 if ! python3 "$(dirname "${BASH_SOURCE[0]}")/check-verifiers.py" "${artifacts}" "${LABELS[@]}"; then
   echo "::error::The plausibility heuristic in scripts/frame-verify-gas/check-verifiers.py rejected release ${version}; see the errors above."
   exit 1
@@ -157,6 +175,7 @@ if ! {
   echo "GROTH16_ARTIFACTS_SHA256SUMS=${sums}"
   echo "GROTH16_ARTIFACTS_VERSION=${version}"
   echo "GROTH16_ARTIFACTS_SHA256SUMS_DIGEST=${digest}"
+  echo "GROTH16_SOISPOKE_COMMIT=${SOISPOKE_COMMIT}"
 } >> "${GITHUB_ENV}"; then
   echo "::error::Failed to write artifact paths to GITHUB_ENV; the measurement step would otherwise run without FRAME_GROTH16_ARTIFACTS set and self-ignore the privacy cases silently."
   exit 1
