@@ -63,8 +63,6 @@ public class WorldStateManager : IWorldStateManager
 
     public IWorldStateScopeProvider CreateResettableWorldState() => new TrieStoreScopeProvider(_readOnlyTrieStore, _readaOnlyCodeCb, _stateHeaderProvider, _logManager);
 
-    public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateResettableWorldState();
-
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => _readOnlyTrieStore;
 
     public IOverridableWorldScope CreateOverridableWorldScope() => new OverridableWorldStateManager(_dbProvider, _readOnlyTrieStore, _stateHeaderProvider, _logManager);

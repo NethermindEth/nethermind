@@ -94,9 +94,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<BlockProcessor.IBlockProductionTransactionPicker, ISpecProvider, IBlocksConfig>((specProvider, blocksConfig) =>
                 new BlockProcessor.BlockProductionTransactionPicker(specProvider, blocksConfig.BlockProductionMaxTxKilobytes))
             .AddSingleton<IReadOnlyTxProcessingEnvFactory, AutoReadOnlyTxProcessingEnvFactory>()
-            .AddSingleton<IShareableTxProcessorSource, ILifetimeScope, IWorldStateManager, ISpecProvider>(
-                (lifetime, worldStateManager, specProvider) => new ShareableTxProcessingSource(
-                    new AutoReadOnlyTxProcessingEnvFactory(lifetime, worldStateManager, specProvider, forReadOnlyQueries: true)))
+            .AddSingleton<IShareableTxProcessorSource, ShareableTxProcessingSource>()
 
             // Its own env with its own code cache: a deploy frame in a validation prefix deposits code, nothing
             // journals the process-wide cache, and the prefix is rolled back — including when it is rejected.

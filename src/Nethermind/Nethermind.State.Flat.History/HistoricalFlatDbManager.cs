@@ -33,6 +33,9 @@ public sealed class HistoricalFlatDbManager(
         Unavailable
     }
 
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         HistoricalReadMode mode = Classify(baseBlock);

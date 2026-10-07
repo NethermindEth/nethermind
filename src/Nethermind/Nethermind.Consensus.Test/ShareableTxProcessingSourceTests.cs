@@ -87,6 +87,21 @@ public class ShareableTxProcessingSourceTests
     }
 
     [Test]
+    public void Build_FactoryDecoratorWithoutQueryOverload_StillCreatesTheEnvs()
+    {
+        LegacyFactoryDecorator decorator = null!;
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddDecorator<IReadOnlyTxProcessingEnvFactory>((_, inner) => decorator = new LegacyFactoryDecorator(inner))
+            .Build();
+
+        using IShareableTxProcessorSource source = container.Resolve<IShareableTxProcessorSource>();
+        source.Build(IWorldState.PreGenesis).Dispose();
+
+        Assert.That(decorator.CreateCalls, Is.EqualTo(1), "the shareable source must reach a registered factory decorator");
+    }
+
+    [Test]
     public void OnSubsequentBuild_GiveDifferentWorldState()
     {
         IReadOnlyTxProcessingScope scope1 = _shareableSource.Build(IWorldState.PreGenesis);
@@ -113,5 +128,16 @@ public class ShareableTxProcessingSourceTests
         spy.CreateResettableWorldState().Returns(_ => inner.CreateResettableWorldState());
         spy.CreateReadOnlyQueryWorldState().Returns(_ => inner.CreateReadOnlyQueryWorldState());
         return spy;
+    }
+
+    private sealed class LegacyFactoryDecorator(IReadOnlyTxProcessingEnvFactory inner) : IReadOnlyTxProcessingEnvFactory
+    {
+        public int CreateCalls { get; private set; }
+
+        public IReadOnlyTxProcessorSource Create()
+        {
+            CreateCalls++;
+            return inner.Create();
+        }
     }
 }

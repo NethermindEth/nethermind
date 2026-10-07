@@ -27,7 +27,7 @@ public interface IWorldStateManager
     /// Like <see cref="CreateResettableWorldState"/>, for read-only queries whose results never feed block processing.
     /// A backend may tune its reads for them.
     /// </summary>
-    IWorldStateScopeProvider CreateReadOnlyQueryWorldState();
+    IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateResettableWorldState();
 
     IOverridableWorldScope CreateOverridableWorldScope();
 

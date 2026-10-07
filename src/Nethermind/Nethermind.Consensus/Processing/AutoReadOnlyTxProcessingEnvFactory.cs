@@ -16,21 +16,17 @@ namespace Nethermind.Consensus.Processing;
 
 /// <param name="shareCodeCache">When false the env gets its own <see cref="ICodeCache"/> rather than the
 /// process-wide one, which nothing journals, so a rolled-back deposit cannot outlive its scope.</param>
-/// <param name="forReadOnlyQueries">When true the envs read state through
-/// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/>; only for envs that serve queries and never feed
-/// block processing.</param>
-public class AutoReadOnlyTxProcessingEnvFactory(
-    ILifetimeScope parentLifetime,
-    IWorldStateManager worldStateManager,
-    ISpecProvider specProvider,
-    bool shareCodeCache = true,
-    bool forReadOnlyQueries = false) : IReadOnlyTxProcessingEnvFactory
+public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, IWorldStateManager worldStateManager, ISpecProvider specProvider, bool shareCodeCache = true) : IReadOnlyTxProcessingEnvFactory
 {
     // A validation prefix touches few distinct hashes, and overflow only costs a re-read; an env without a
     // cache at all would re-copy the whole bytecode on every EXTCODE*/CALL* the prefix runs.
     private const int IsolatedCodeCacheCapacity = 512;
 
-    public IReadOnlyTxProcessorSource Create()
+    public IReadOnlyTxProcessorSource Create() => Create(forReadOnlyQueries: false);
+
+    /// <param name="forReadOnlyQueries">When true the envs read state through
+    /// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/>.</param>
+    public IReadOnlyTxProcessorSource Create(bool forReadOnlyQueries)
     {
         IWorldStateScopeProvider worldState = forReadOnlyQueries
             ? worldStateManager.CreateReadOnlyQueryWorldState()

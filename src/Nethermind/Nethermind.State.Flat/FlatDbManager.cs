@@ -277,6 +277,9 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
     public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");

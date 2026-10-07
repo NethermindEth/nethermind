@@ -15,6 +15,9 @@ namespace Nethermind.Core.Test.Modules;
 /// <param name="flatDbManager"></param>
 internal class FlatDbManagerTestCompat(IFlatDbManager flatDbManager) : IFlatDbManager
 {
+    public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(stateId, usage, filterInMemorySlotReads: false);
+
     public SnapshotBundle GatherSnapshotBundle(in StateId stateId, ResourcePool.Usage usage, bool filterInMemorySlotReads) =>
         flatDbManager.GatherSnapshotBundle(NormalizeState(stateId), usage, filterInMemorySlotReads);
 
