@@ -26,6 +26,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 RUN dotnet tool install -g dotnet-dump && \
   dotnet tool install -g dotnet-gcdump && \
   dotnet tool install -g dotnet-trace && \
+  dotnet tool install -g dotnet-counters && \
   dotnet tool install -g JetBrains.dotTrace.GlobalTools
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-resolute
