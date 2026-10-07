@@ -34,6 +34,9 @@ public sealed class BlockCodeCache : ICodeCache
     /// <summary>The transaction executing on this thread, or 0 outside one.</summary>
     [ThreadStatic] private static long _currentTransaction;
 
+    /// <summary>The entries the transactions executing on this thread stamped, in order.</summary>
+    [ThreadStatic] private static List<Entry>? _stamped;
+
     private static long _lastTransaction;
 
     private readonly ICodeCache _inner;
@@ -74,7 +77,7 @@ public sealed class BlockCodeCache : ICodeCache
 
         long previous = _currentTransaction;
         _currentTransaction = transaction;
-        return new TransactionScope(this, transaction, previous);
+        return new TransactionScope(this, transaction, previous, (_stamped ??= []).Count);
     }
 
     public CodeInfo? Get(in ValueHash256 codeHash)
@@ -108,11 +111,13 @@ public sealed class BlockCodeCache : ICodeCache
             return;
         }
 
-        Entry entry = new(codeInfo, charge, transaction);
+        Entry entry = new(codeHash, codeInfo, charge, transaction);
         loaded = _retained.Code.GetOrAdd(codeHash, entry);
         if (ReferenceEquals(loaded, entry))
         {
             Interlocked.Add(ref _retained.Bytes, charge);
+            if (transaction == 0) _retained.Evictable.Enqueue(entry);
+            else _stamped!.Add(entry);
         }
         else
         {
@@ -123,13 +128,18 @@ public sealed class BlockCodeCache : ICodeCache
     private static void Record(Entry entry)
     {
         long transaction = _currentTransaction;
-        if (transaction != 0 && entry.Transaction != transaction) entry.Transaction = transaction;
+        if (transaction != 0 && entry.Transaction != transaction)
+        {
+            entry.Transaction = transaction;
+            _stamped!.Add(entry);
+        }
     }
 
     /// <summary>Drops the code kept for the block, for every view of it.</summary>
     public void ClearBlock()
     {
         _retained.Code.Clear();
+        _retained.Evictable.Clear();
         Volatile.Write(ref _retained.Bytes, 0);
     }
 
@@ -139,13 +149,22 @@ public sealed class BlockCodeCache : ICodeCache
         _inner.Clear();
     }
 
-    private void EndTransaction(long transaction, long previous)
+    private void EndTransaction(long transaction, long previous, int firstStamp)
     {
         _currentTransaction = previous;
         lock (_retained.Running)
         {
             _retained.Running.Remove(transaction);
         }
+
+        // Queued only once the transaction is no longer running, so a sweep cannot skip them for good.
+        List<Entry> stamped = _stamped!;
+        for (int i = firstStamp; i < stamped.Count; i++)
+        {
+            _retained.Evictable.Enqueue(stamped[i]);
+        }
+
+        stamped.RemoveRange(firstStamp, stamped.Count - firstStamp);
     }
 
     public readonly struct TransactionScope : IDisposable
@@ -153,19 +172,22 @@ public sealed class BlockCodeCache : ICodeCache
         private readonly BlockCodeCache _cache;
         private readonly long _transaction;
         private readonly long _previous;
+        private readonly int _firstStamp;
 
-        internal TransactionScope(BlockCodeCache cache, long transaction, long previous)
+        internal TransactionScope(BlockCodeCache cache, long transaction, long previous, int firstStamp)
         {
             _cache = cache;
             _transaction = transaction;
             _previous = previous;
+            _firstStamp = firstStamp;
         }
 
-        public void Dispose() => _cache.EndTransaction(_transaction, _previous);
+        public void Dispose() => _cache.EndTransaction(_transaction, _previous, _firstStamp);
     }
 
-    private sealed class Entry(CodeInfo code, long charge, long transaction)
+    private sealed class Entry(in ValueHash256 hash, CodeInfo code, long charge, long transaction)
     {
+        public readonly ValueHash256 Hash = hash;
         public readonly CodeInfo Code = code;
         public readonly long Charge = charge;
 
@@ -177,18 +199,22 @@ public sealed class BlockCodeCache : ICodeCache
     {
         public readonly ConcurrentDictionary<ValueHash256, Entry> Code = new();
         public readonly HashSet<long> Running = [];
+
+        /// <summary>Entries loaded outside a transaction, and those a finished transaction stamped, oldest first.</summary>
+        /// <remarks>
+        /// Every entry whose latest user is not running is queued, so a sweep can drop the ones it finds in use: their
+        /// user queues them again when it finishes. Each stamp is thus visited once, however many sweeps run.
+        /// </remarks>
+        public readonly ConcurrentQueue<Entry> Evictable = new();
+
         private readonly Lock _sweepLock = new();
         public long Bytes;
 
-        /// <summary>The transactions running at the last sweep, if it evicted nothing.</summary>
-        /// <remarks>Until one of them finishes, another sweep could only evict what a later transaction took over by a hit.</remarks>
-        private HashSet<long>? _fruitlessSweep;
-
-        /// <summary>Evicts entries whose latest recorded user is not running, unless no transaction running at the last fruitless sweep has finished since.</summary>
+        /// <summary>Evicts queued entries whose latest recorded user is not running, oldest first, until <paramref name="charge"/> fits.</summary>
         /// <returns>Whether <paramref name="charge"/> now fits under <paramref name="maxBytes"/>.</returns>
         public bool TryMakeRoom(long charge, long maxBytes)
         {
-            if (!_sweepLock.TryEnter()) return false;
+            if (Evictable.IsEmpty || !_sweepLock.TryEnter()) return false;
             try
             {
                 // Transactions are numbered under this lock, so every one up to lastTransaction is in the snapshot or has
@@ -198,23 +224,19 @@ public sealed class BlockCodeCache : ICodeCache
                 HashSet<long> running;
                 lock (Running)
                 {
-                    if (_fruitlessSweep?.IsSubsetOf(Running) == true) return false;
                     lastTransaction = Volatile.Read(ref _lastTransaction);
                     running = [.. Running];
                 }
 
-                bool evicted = false;
-                foreach (KeyValuePair<ValueHash256, Entry> pair in Code)
+                while (Volatile.Read(ref Bytes) + charge > maxBytes && Evictable.TryDequeue(out Entry? entry))
                 {
-                    long transaction = pair.Value.Transaction;
-                    if (transaction <= lastTransaction && !running.Contains(transaction) && Code.TryRemove(pair))
+                    long transaction = entry.Transaction;
+                    if (transaction <= lastTransaction && !running.Contains(transaction) && Code.TryRemove(new KeyValuePair<ValueHash256, Entry>(entry.Hash, entry)))
                     {
-                        Interlocked.Add(ref Bytes, -pair.Value.Charge);
-                        evicted = true;
+                        Interlocked.Add(ref Bytes, -entry.Charge);
                     }
                 }
 
-                _fruitlessSweep = evicted ? null : running;
                 return Volatile.Read(ref Bytes) + charge <= maxBytes;
             }
             finally

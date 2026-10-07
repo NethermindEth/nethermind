@@ -88,14 +88,14 @@ public class BlockCodeCacheTests
             }
         })
         { IsBackground = true };
-        concurrentTransaction.Start();
-        Assert.That(loaded.Wait(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction started");
-
         CodeInfo[] codes;
         CodeInfo[] afterFinish;
-        using (cache.BeginTransaction())
+        concurrentTransaction.Start();
+        try
         {
-            try
+            Assert.That(loaded.Wait(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction started");
+
+            using (cache.BeginTransaction())
             {
                 codes = Load(cache, count: 10, first: 4);
                 // Not looking up the concurrent transaction's code here: a hit would make it this transaction's too.
@@ -109,14 +109,16 @@ public class BlockCodeCacheTests
 
                     Assert.That(cache.Bytes, Is.EqualTo(10 * LargeCodeCharge), "the concurrent transaction's code kept");
                 }
-            }
-            finally
-            {
-                finish.Set();
-            }
 
-            Assert.That(concurrentTransaction.Join(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction finished");
-            afterFinish = Load(cache, count: 4, first: 14);
+                finish.Set();
+                Assert.That(concurrentTransaction.Join(TimeSpan.FromSeconds(10)), Is.True, "concurrent transaction finished");
+                afterFinish = Load(cache, count: 4, first: 14);
+            }
+        }
+        finally
+        {
+            finish.Set();
+            concurrentTransaction.Join();
         }
 
         using (Assert.EnterMultipleScope())
@@ -132,7 +134,7 @@ public class BlockCodeCacheTests
     }
 
     [Test]
-    public void Past_the_cap_code_a_running_transaction_hit_is_kept()
+    public void Past_the_cap_code_a_running_transaction_hit_is_kept_until_it_finishes()
     {
         BlockCodeCache cache = new(NoopCodeCache.Instance, maxBytes: 10 * LargeCodeCharge);
         CodeInfo[] warmed = Load(cache, count: 4);
@@ -155,6 +157,20 @@ public class BlockCodeCacheTests
             {
                 ValueHash256 hash = Hash(i);
                 Assert.That(cache.Get(in hash), i < 4 ? Is.SameAs(warmed[i]) : i < 10 ? Is.SameAs(codes[i - 4]) : Is.Null, $"code {i}");
+            }
+        }
+
+        CodeInfo[] next;
+        using (cache.BeginTransaction()) next = Load(cache, count: 4, first: 14);
+
+        using (Assert.EnterMultipleScope())
+        {
+            for (int i = 0; i < 4; i++)
+            {
+                ValueHash256 hash = Hash(i);
+                Assert.That(cache.Get(in hash), Is.Null, $"warmed code {i} after the transaction finished");
+                hash = Hash(14 + i);
+                Assert.That(cache.Get(in hash), Is.SameAs(next[i]), $"code {14 + i}");
             }
         }
     }
