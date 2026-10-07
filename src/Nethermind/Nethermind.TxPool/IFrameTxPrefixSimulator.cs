@@ -27,6 +27,11 @@ public interface IFrameTxPrefixSimulator
     /// <param name="preempt">Checked at entry and polled with <paramref name="token"/>; once it returns true the
     /// simulation does not start or stops, and the result is a node-bound rejection.</param>
     FrameTxSimulationResult Simulate(Transaction tx, bool signaturesPreValidated = false, bool local = false, CancellationToken token = default, Func<bool>? preempt = null);
+
+    /// <summary>Whether the current head's gossip simulation budget is already spent, read without the lock.</summary>
+    /// <remarks>Advisory: lets admission defer before work the simulation would waste. <see cref="Simulate"/> stays
+    /// the authoritative check.</remarks>
+    bool IsHeadBudgetSpent => false;
 }
 
 /// <summary>How far a validation-prefix simulation got.</summary>

@@ -219,6 +219,8 @@ public sealed class FrameTxPrefixSimulator(
     private static bool IsNodeFault(Exception e) =>
         e is IInternalNethermindException or StateUnavailableException or ObjectDisposedException or IOException;
 
+    public bool IsHeadBudgetSpent => blockFinder.Head?.Header is { } head && !HasHeadBudgetHint(head);
+
     /// <summary>Lock-free read of the per-head budget, used only to shed before contending for the lock.</summary>
     /// <remarks>Advisory, and not one-sided: a stale read can cost an extra simulation or shed one the
     /// authoritative check would have admitted, both within one head transition. That check stays final.</remarks>
