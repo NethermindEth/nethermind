@@ -4,7 +4,6 @@
 using System.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.State.Flat.History.Walk;
@@ -18,11 +17,11 @@ public sealed class CommitmentEmitter : IDisposable
     public const int WalkMaxOpenWindowNodes = 50_000;
     private const int TipExactBranchEntries = 1 << 18;
     private const int WalkExactBranchEntriesCeiling = 1 << 14;
+    private const int InitialExactBranchEntries = 1 << 10;
     private const int ShallowStorageSnapshotDepth = 1;
     private const int MaxRowsPerBatch = 65_536;
     private const int WindowFlushChunk = 256;
     private const int EmptyRecord = -1;
-    private const int MaxSpareWindowsCeiling = 1 << 12;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly CommitmentDepthPolicy _policy;
@@ -30,8 +29,6 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly CommitmentStore _storages;
     private readonly CommitmentMetadata _metadata;
     private readonly object _windowWriteLock;
-    private readonly int _maxSpareWindows;
-    private readonly Stack<WindowState> _spareWindows = new();
     private readonly int _maxOpenWindowNodes;
     private readonly bool _respectFloors;
     private readonly bool _deepStorageSnapshots;
@@ -42,14 +39,19 @@ public sealed class CommitmentEmitter : IDisposable
     private readonly HashSet<NodePathKey> _blockDirtyChildren = [];
     private readonly Dictionary<ValueHash256, int> _blockStorageMaxDepth = [];
     private readonly Dictionary<ValueHash256, int> _blockTrieDepths = [];
-    private readonly ClockCache<NodePathKey, bool> _exactBranches;
-    private readonly Dictionary<NodePathKey, WindowState> _windows = [];
+    private readonly HashSet<NodePathKey> _exactBranches;
+    private readonly int _maxExactBranches;
+    private readonly Dictionary<NodePathKey, int> _windows = [];
+    private readonly WindowSlab _windowSlab = new();
+    private readonly ChildVector _latest = ChildVector.Rent();
     private readonly ChildVector _children = ChildVector.Rent();
     private readonly ChildVector _merged = ChildVector.Rent();
     private bool _disposed;
     private readonly byte[] _rowBuffer = new byte[ParentRowCodec.MaxBranchRowLength];
 
     private IColumnsWriteBatch<FlatHistoryColumns>? _batch;
+    private IWriteBatch? _accountBatch;
+    private IWriteBatch? _storageBatch;
     private int _rowsInBatch;
     private ulong _block;
     private bool _haveBlock;
@@ -60,9 +62,9 @@ public sealed class CommitmentEmitter : IDisposable
     private CommitmentEmitter(IColumnsDb<FlatHistoryColumns> history, CommitmentDepthPolicy policy, CommitmentMetadata metadata, int maxOpenWindowNodes, int exactBranchEntries, bool respectFloors, bool deepStorageSnapshots)
     {
         _deepStorageSnapshots = deepStorageSnapshots;
-        _exactBranches = new ClockCache<NodePathKey, bool>(exactBranchEntries);
+        _exactBranches = new HashSet<NodePathKey>(Math.Min(exactBranchEntries, InitialExactBranchEntries));
+        _maxExactBranches = exactBranchEntries;
         _respectFloors = respectFloors;
-        _maxSpareWindows = Math.Min(maxOpenWindowNodes, MaxSpareWindowsCeiling);
         _history = history;
         _policy = policy;
         _metadata = metadata;
@@ -248,12 +250,12 @@ public sealed class CommitmentEmitter : IDisposable
 
         _disposed = true;
         CommitBatch();
-        foreach (WindowState state in _windows.Values) state.Release();
         _windows.Clear();
-        while (_spareWindows.TryPop(out WindowState? spare)) spare.Release();
+        _windowSlab.Dispose();
         _blockArena.Dispose();
         ChildVector.Return(_children);
         ChildVector.Return(_merged);
+        ChildVector.Return(_latest);
     }
 
     private void Record(in NodePathKey key, ReadOnlySpan<byte> rlp, ushort? changed)
@@ -279,48 +281,55 @@ public sealed class CommitmentEmitter : IDisposable
 
     private void WriteExact(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)
     {
-        bool isBranch = false;
         if (isEmpty)
         {
             int length = ParentRowCodec.EncodeEmpty(_block, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
+            _exactBranches.Remove(key);
         }
         else if (BranchRlp.TryReadChildren(rlp, _children))
         {
-            isBranch = true;
             ushort presence = _children.Presence;
-            bool wasBranch = _exactBranches.TryGet(key, out bool previous) && previous;
+            bool wasBranch = _exactBranches.Contains(key);
             ushort changed = _policy.IsFullVectorBlock(_block) || !wasBranch ? presence : ChangedChildren(key, _children);
             int length = ParentRowCodec.EncodeBranch(_block, presence, changed, _children, _rowBuffer);
             Write(key, exact: true, _block, _rowBuffer.AsSpan(0, length));
+            if (!wasBranch) RememberExactBranch(key);
         }
         else
         {
             WriteWhole(key, exact: true, _block, rlp);
+            _exactBranches.Remove(key);
         }
+    }
 
-        _exactBranches.Set(key, isBranch);
+    private void RememberExactBranch(in NodePathKey key)
+    {
+        // Forgetting only makes the next row of a forgotten node a full vector, so a whole clear is always safe.
+        if (_exactBranches.Count >= _maxExactBranches) _exactBranches.Clear();
+        _exactBranches.Add(key);
     }
 
     private void Accumulate(in NodePathKey key, ReadOnlySpan<byte> rlp, bool isEmpty)
     {
-        if (!_windows.TryGetValue(key, out WindowState? state))
+        if (!_windows.TryGetValue(key, out int slot))
         {
-            state = _spareWindows.TryPop(out WindowState? spare) ? spare : new WindowState();
-            _windows[key] = state;
+            slot = _windowSlab.Allocate();
+            _windows[key] = slot;
         }
 
+        ref WindowHeader state = ref _windowSlab.Header(slot);
         state.LastBlock = _block;
 
         if (isEmpty)
         {
-            state.SetEmpty();
+            _windowSlab.SetEmpty(slot);
             return;
         }
 
         if (!BranchRlp.TryReadChildren(rlp, _children))
         {
-            state.SetWhole(rlp);
+            _windowSlab.SetWhole(slot, rlp);
             return;
         }
 
@@ -328,13 +337,13 @@ public sealed class CommitmentEmitter : IDisposable
         ushort changed = ChangedChildren(key, _children);
         if (state.Kind is WindowKind.Whole or WindowKind.Empty) changed |= presence;
 
-        state.SetBranch(_children, presence, changed);
+        _windowSlab.SetBranch(slot, _children, presence, changed);
     }
 
     private void FlushWindows(ulong window)
     {
-        using ArrayPoolList<KeyValuePair<NodePathKey, WindowState>> pending = new(_windows.Count);
-        foreach (KeyValuePair<NodePathKey, WindowState> entry in _windows) pending.Add(entry);
+        using ArrayPoolList<KeyValuePair<NodePathKey, int>> pending = new(_windows.Count);
+        foreach (KeyValuePair<NodePathKey, int> entry in _windows) pending.Add(entry);
         for (int start = 0; start < pending.Count; start += WindowFlushChunk)
         {
             int end = Math.Min(pending.Count, start + WindowFlushChunk);
@@ -345,33 +354,25 @@ public sealed class CommitmentEmitter : IDisposable
             }
         }
 
-        foreach (KeyValuePair<NodePathKey, WindowState> entry in pending)
-        {
-            if (_spareWindows.Count >= _maxSpareWindows)
-            {
-                entry.Value.Release();
-                continue;
-            }
-
-            entry.Value.Recycle();
-            _spareWindows.Push(entry.Value);
-        }
-
         _windows.Clear();
+        _windowSlab.Reset();
     }
 
-    private void MergeWrite(in NodePathKey key, WindowState state, ulong window)
+    private void MergeWrite(in NodePathKey key, int slot, ulong window)
     {
+        ref WindowHeader state = ref _windowSlab.Header(slot);
+        if (state.Kind == WindowKind.Branch) _windowSlab.ReadLatest(slot, _latest);
+
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = key.WritePrefix(prefix, exact: false);
         CommitmentStore store = Store(key);
-        IWriteBatch batch = GetBatch(key.IsStorage ? FlatHistoryColumns.StorageCommitments : FlatHistoryColumns.AccountCommitments);
+        IWriteBatch batch = GetBatch(key);
         Span<byte> existing = store.GetExactSpan(prefix[..prefixLength], window);
         try
         {
             if (state.Kind == WindowKind.Branch && existing.Length > 0 && ParentRowCodec.IsBranchRow(existing))
             {
-                int length = MergeBranch(existing, state, window, _merged, _rowBuffer);
+                int length = MergeBranch(existing, state, _latest, window, _merged, _rowBuffer);
                 store.Write(prefix[..prefixLength], window, _rowBuffer.AsSpan(0, length), batch);
                 return;
             }
@@ -385,11 +386,12 @@ public sealed class CommitmentEmitter : IDisposable
             store.Release(existing);
         }
 
-        WriteState(store, prefix[..prefixLength], window, state, batch);
+        WriteState(store, prefix[..prefixLength], window, slot, batch);
     }
 
-    private void WriteState(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong window, WindowState state, IWriteBatch batch)
+    private void WriteState(CommitmentStore store, ReadOnlySpan<byte> prefix, ulong window, int slot, IWriteBatch batch)
     {
+        ref WindowHeader state = ref _windowSlab.Header(slot);
         bool full = _policy.IsFullVectorWindow(window);
         switch (state.Kind)
         {
@@ -399,7 +401,7 @@ public sealed class CommitmentEmitter : IDisposable
             case WindowKind.Whole:
                 {
                     byte[] row = ArrayPool<byte>.Shared.Rent(ParentRowCodec.WholeNodeRowLength(state.WholeLength));
-                    int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, state.Whole, row);
+                    int length = ParentRowCodec.EncodeWholeNode(state.LastBlock, _windowSlab.Whole(slot), row);
                     store.Write(prefix, window, row.AsSpan(0, length), batch);
                     ArrayPool<byte>.Shared.Return(row);
                     break;
@@ -407,14 +409,14 @@ public sealed class CommitmentEmitter : IDisposable
             default:
                 {
                     ushort changed = full ? (ushort)(state.Presence | state.Changed) : state.Changed;
-                    int length = ParentRowCodec.EncodeBranch(state.LastBlock, state.Presence, changed, state.Latest, _rowBuffer);
+                    int length = ParentRowCodec.EncodeBranch(state.LastBlock, state.Presence, changed, _latest, _rowBuffer);
                     store.Write(prefix, window, _rowBuffer.AsSpan(0, length), batch);
                     break;
                 }
         }
     }
 
-    private int MergeBranch(ReadOnlySpan<byte> existing, WindowState state, ulong window, ChildVector merged, Span<byte> row)
+    private int MergeBranch(ReadOnlySpan<byte> existing, in WindowHeader state, ChildVector latest, ulong window, ChildVector merged, Span<byte> row)
     {
         bool full = _policy.IsFullVectorWindow(window);
         bool existingNewer = ParentRowCodec.LastBlock(existing) > state.LastBlock;
@@ -430,13 +432,13 @@ public sealed class CommitmentEmitter : IDisposable
             ParentRowCodec.Fill(existing, existingChanged, merged);
             for (int index = 0; index < BranchRlp.ChildCount; index++)
             {
-                if (((existingChanged >> index) & 1) == 0 && state.Latest.IsPresent(index)) merged.Set(index, state.Latest[index]);
+                if (((existingChanged >> index) & 1) == 0 && latest.IsPresent(index)) merged.Set(index, latest[index]);
             }
         }
         else
         {
             presence = state.Presence;
-            merged.CopyFrom(state.Latest);
+            merged.CopyFrom(latest);
         }
 
         ushort written = full ? (ushort)(presence | changed) : changed;
@@ -475,98 +477,27 @@ public sealed class CommitmentEmitter : IDisposable
     {
         Span<byte> prefix = stackalloc byte[CommitmentKeyLayout.MaxKeyLength];
         int prefixLength = key.WritePrefix(prefix, exact);
-        Store(key).Write(prefix[..prefixLength], suffix, row, GetBatch(key.IsStorage ? FlatHistoryColumns.StorageCommitments : FlatHistoryColumns.AccountCommitments));
+        Store(key).Write(prefix[..prefixLength], suffix, row, GetBatch(key));
         if (++_rowsInBatch >= MaxRowsPerBatch) CommitBatch();
     }
 
     private CommitmentStore Store(in NodePathKey key) => key.IsStorage ? _storages : _accounts;
 
-    private IWriteBatch GetBatch(FlatHistoryColumns column)
+    private IWriteBatch GetBatch(in NodePathKey key)
     {
         _batch ??= _history.StartWriteBatch();
-        return _batch.GetColumnBatch(column);
+        return key.IsStorage
+            ? _storageBatch ??= _batch.GetColumnBatch(FlatHistoryColumns.StorageCommitments)
+            : _accountBatch ??= _batch.GetColumnBatch(FlatHistoryColumns.AccountCommitments);
     }
 
     private void CommitBatch()
     {
         _batch?.Dispose();
         _batch = null;
+        _accountBatch = null;
+        _storageBatch = null;
         _rowsInBatch = 0;
-    }
-
-    private enum WindowKind : byte
-    {
-        Unknown,
-        Branch,
-        Whole,
-        Empty,
-    }
-
-    private sealed class WindowState
-    {
-        private byte[]? _whole;
-        private bool _released;
-
-        public WindowKind Kind;
-        public ulong LastBlock;
-        public ushort Presence;
-        public ushort Changed;
-        public int WholeLength;
-        public readonly ChildVector Latest = ChildVector.Rent();
-
-        public ReadOnlySpan<byte> Whole => _whole.AsSpan(0, WholeLength);
-
-        public void SetEmpty()
-        {
-            Kind = WindowKind.Empty;
-            Presence = 0;
-            WholeLength = 0;
-        }
-
-        public void SetWhole(ReadOnlySpan<byte> rlp)
-        {
-            Kind = WindowKind.Whole;
-            Presence = 0;
-            if (_whole is null || _whole.Length < rlp.Length)
-            {
-                if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
-                _whole = ArrayPool<byte>.Shared.Rent(rlp.Length);
-            }
-
-            rlp.CopyTo(_whole);
-            WholeLength = rlp.Length;
-        }
-
-        public void SetBranch(ChildVector children, ushort presence, ushort changed)
-        {
-            Kind = WindowKind.Branch;
-            WholeLength = 0;
-            Presence = presence;
-            Changed |= changed;
-            Latest.CopyFrom(children);
-        }
-
-        public void Recycle()
-        {
-            Kind = default;
-            LastBlock = 0;
-            Presence = 0;
-            Changed = 0;
-            WholeLength = 0;
-            Latest.Clear();
-            if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
-            _whole = null;
-        }
-
-        public void Release()
-        {
-            if (_released) return;
-
-            _released = true;
-            if (_whole is not null) ArrayPool<byte>.Shared.Return(_whole);
-            _whole = null;
-            ChildVector.Return(Latest);
-        }
     }
 
     internal readonly struct NodePathKey : IEquatable<NodePathKey>

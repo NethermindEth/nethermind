@@ -213,7 +213,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <remarks>
         /// Compilers branch on nearly every comparison they emit, so fusing saves the comparison its result slot and
         /// the push its dispatch. The fused step charges every opcode it covers; with too little gas for all of them,
-        /// or a branch it cannot take in line, the comparison runs alone and the opcodes after it run as they would.
+        /// or a branch it cannot take in line, the comparison runs alone and the opcodes after it run as they would. A
+        /// taken branch into the code that the bitmap does not hold yet runs the opcodes before the JUMPI and goes to
+        /// <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>.
         /// A short stack or gas runs the shared handler of the comparison instead, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
@@ -229,6 +231,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte bottom)
             where TCondition : struct, IStackCondition
         {
+            nuint analyzed;
+            nint skipped;
             if (head >= TCondition.Inputs && TryCharge(ref gas, VeryLowGasCost.GasCost))
             {
                 // Addressed off the head: keeps the handler frameless.
@@ -258,8 +262,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             ulong takenGas = VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (gas >= takenGas && destination < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(destination))
+                            if (gas >= takenGas && destination < (nuint)stack.CodeLength)
                             {
+                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                {
+                                    analyzed = destination;
+                                    skipped = 1 + 3;
+                                    gas -= VeryLowGasCost.GasCost;
+                                    goto AnalyzeBranch;
+                                }
+
                                 head -= TCondition.Inputs;
                                 gas -= takenGas;
                                 ip = ref Unsafe.Add(ref code, (nint)destination + 1);
@@ -288,8 +300,16 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                             {
                                 ulong takenGas = 2 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                                 nuint destination = ReadBigEndianUInt16(inverted >> 8);
-                                if (gas >= takenGas && destination < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(destination))
+                                if (gas >= takenGas && destination < (nuint)stack.CodeLength)
                                 {
+                                    if (!stack.IsAnalyzedJumpDestination(destination))
+                                    {
+                                        analyzed = destination;
+                                        skipped = 1 + 1 + 3;
+                                        gas -= 2 * VeryLowGasCost.GasCost;
+                                        goto AnalyzeBranch;
+                                    }
+
                                     head -= TCondition.Inputs;
                                     gas -= takenGas;
                                     ip = ref Unsafe.Add(ref code, (nint)destination + 1);
@@ -318,6 +338,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Dispatch:
             nint next = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
+
+        AnalyzeBranch:
+            // A taken branch to a destination not analyzed yet: the opcodes before the JUMPI run here, leaving it a condition
+            // of 1 and its destination, and the JUMPI goes straight to the analysis.
+            ref ulong taken = ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - TCondition.Inputs));
+            SetWord(ref taken, 1);
+            SetWord(ref Unsafe.Add(ref taken, LimbsPerWord), analyzed);
+            head += 2 - TCondition.Inputs;
+            ip = ref Unsafe.Add(ref ip, skipped);
+            nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
         }
 
         /// <summary>A comparison of the words on top of the stack, as <see cref="ExecuteCondition{TCondition}"/> runs it.</summary>
@@ -781,8 +812,10 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// A contract's dispatcher compares the selector against each function's in turn, so this sequence runs once per
         /// function it passes; fused, it compares the top word with the selector in place and leaves the stack as it
         /// found it. The fused step charges every opcode it covers; with too little gas for all of them, too little room
-        /// for the two pushes, or a branch it cannot take in line, DUP1 runs alone. A short stack or gas, or a full one,
-        /// runs the shared DUP1 handler instead.
+        /// for the two pushes, or a branch it cannot take in line, DUP1 runs alone. A match whose destination the bitmap
+        /// does not hold yet runs the opcodes before the JUMPI and goes to
+        /// <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>. A short stack or gas, or a full one, runs the
+        /// shared DUP1 handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -825,8 +858,21 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                         {
                             ulong takenGas = 3 * VeryLowGasCost.GasCost + JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                             nuint destination = ReadBigEndianUInt16(branch >> 8);
-                            if (gas >= takenGas && destination < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(destination))
+                            if (gas >= takenGas && destination < (nuint)stack.CodeLength)
                             {
+                                if (!stack.IsAnalyzedJumpDestination(destination))
+                                {
+                                    // Straight to the analysis: the opcodes before the JUMPI leave it a condition of 1 and its destination.
+                                    ref ulong taken = ref Unsafe.Add(ref top, LimbsPerWord);
+                                    SetWord(ref taken, 1);
+                                    SetWord(ref Unsafe.Add(ref taken, LimbsPerWord), destination);
+                                    head += 2;
+                                    gas -= 3 * VeryLowGasCost.GasCost;
+                                    ip = ref Unsafe.Add(ref ip, 10);
+                                    nint analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
+                                    return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
+                                }
+
                                 gas -= takenGas;
                                 ip = ref Unsafe.Add(ref code, (nint)destination + 1);
                                 goto Dispatch;
@@ -1159,8 +1205,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <summary>PUSH2, fused with a JUMP or JUMPI after it whenever <see cref="EvmInstructions.InstructionPush2{TGasPolicy, TTracingInst}"/> would fuse them.</summary>
         /// <remarks>
         /// Fuses on the same conditions: a destination the incremental bitmap already holds, or a zero JUMPI
-        /// condition that never reads it. Every case that could fault - short gas, a full stack or a fused jump's
-        /// condition missing - runs the shared PUSH2 handler instead.
+        /// condition that never reads it. A taken jump into the code that the bitmap does not hold yet pushes and goes
+        /// to <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/>. Every case that could fault - short gas, a
+        /// full stack or a fused jump's condition missing - runs the shared PUSH2 handler instead.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -1182,13 +1229,20 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte opcode = ref ip;
             nuint value = ReadBigEndianUInt16(Unsafe.ReadUnaligned<ushort>(ref Unsafe.Add(ref opcode, 1)));
             byte following = Unsafe.Add(ref opcode, 3);
+            nint analyze;
             if (following == (byte)Instruction.JUMP)
             {
-                if (value < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(value))
+                if (value < (nuint)stack.CodeLength)
                 {
                     ulong fusedGas = JumpGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (gas < fusedGas)
                         goto Refund;
+
+                    if (!stack.IsAnalyzedJumpDestination(value))
+                    {
+                        analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OffFlag>);
+                        goto Analyze;
+                    }
 
                     gas -= fusedGas;
                     ip = ref Unsafe.Add(ref code, (nint)value + 1);
@@ -1214,11 +1268,17 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     goto Dispatch;
                 }
 
-                if (value < (nuint)stack.CodeLength && stack.IsAnalyzedJumpDestination(value))
+                if (value < (nuint)stack.CodeLength)
                 {
                     ulong takenGas = JumpIGasCost.GasCost + JumpDestGasCost.GasCost;
                     if (gas < takenGas)
                         goto Refund;
+
+                    if (!stack.IsAnalyzedJumpDestination(value))
+                    {
+                        analyze = Entry(&ExecuteJumpToUnanalyzedDestination<OnFlag>);
+                        goto Analyze;
+                    }
 
                     head--;
                     gas -= takenGas;
@@ -1236,6 +1296,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         Dispatch:
             nint target = handlers[PairAt(ref ip)];
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, target);
+
+        Analyze:
+            // Straight to the analysis, which the jump handler would only reach after repeating the tests passed here.
+            SetWord(ref Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head)), value);
+            ip = ref Unsafe.Add(ref ip, 3);
+            head++;
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, analyze);
 
         Refund:
             gas += pushGas;
@@ -1330,7 +1397,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, next);
             }
 
-            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag>, OffFlag, OffFlag, OnFlag>);
+            nint shared = Entry(&ExecuteOpcode<SLoadOpcode<OffFlag, Eip8038Off, OnFlag, OffFlag>, OffFlag, OffFlag, OnFlag>);
             return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
         }
 
@@ -2202,8 +2269,9 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         /// <see cref="ExecuteJumpIfToAnalyzedDestination"/>, for a taken jump whose destination the bitmap does not hold yet.
         /// </summary>
         /// <remarks>
-        /// Entered only from there, with the stack, gas, condition and range checks passed. Most destinations are
-        /// proven by the 32 bytes before them, which takes no call, so this handler has no frame either; the rest go to
+        /// Entered only from there and from the guest handlers that fuse a jump with the opcodes before it, with the stack,
+        /// gas, condition and range checks passed. Most destinations are proven by the 32 bytes before them, which takes
+        /// no call, so this handler has no frame either; the rest go to
         /// <see cref="ExecuteJumpToScannedDestination{TConditional}"/>.
         /// </remarks>
         [SkipLocalsInit]
@@ -2236,8 +2304,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The rest of <see cref="ExecuteJumpToUnanalyzedDestination{TConditional}"/> for a destination a single look-back cannot decide.</summary>
         /// <remarks>
-        /// Analyzing the destination needs a call, so this handler has a frame and the handlers before it do not pay
-        /// for it. An invalid destination runs the shared jump handler, which faults on it.
+        /// The analysis is inlined here and needs callee-saved registers, so this handler has a frame and the handlers
+        /// before it do not pay for it. An invalid destination runs the shared jump handler, which faults on it.
         /// </remarks>
         [SkipLocalsInit]
         [MethodImpl(MethodImplOptions.NoInlining)]
@@ -2252,14 +2320,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             ref byte bottom)
             where TConditional : struct, IFlag
         {
-            int target = (int)Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
-            bool valid = stack.AnalyzeJumpDestination(target);
-            // Reloaded rather than held across the call, where each would take a callee-saved register.
-            handlers = state.OpcodeHandlers;
-            code = ref stack.Code;
-            bottom = ref stack.Bottom;
-            if (valid)
+            nint target = (nint)Unsafe.As<byte, ulong>(ref SlotAt(ref bottom, head - 1));
+            if (stack.AnalyzeJumpDestination(target, ref code))
             {
+                // Reloaded rather than held across the inlined analysis, which needs the callee-saved registers.
+                handlers = state.OpcodeHandlers;
+                code = ref stack.Code;
+                bottom = ref stack.Bottom;
                 head -= TConditional.IsActive ? 2 : 1;
                 gas -= JumpAndJumpDestGas<TConditional>();
                 ip = ref Unsafe.Add(ref code, target + 1);
@@ -2270,7 +2337,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
             nint shared = TConditional.IsActive
                 ? Entry(&ExecuteJumpIfOpcode<OffFlag, OffFlag>)
                 : Entry(&ExecuteOpcode<JumpOpcode<OffFlag>, OffFlag, OffFlag, OnFlag>);
-            return TailDispatch(ref stack, gas, ref state, ref ip, head, handlers, ref code, ref bottom, shared);
+            return TailDispatch(ref stack, gas, ref state, ref ip, head, state.OpcodeHandlers, ref stack.Code, ref stack.Bottom, shared);
         }
 
         /// <summary>The charge of a taken JUMP, or with <typeparamref name="TConditional"/> a taken JUMPI, and the JUMPDEST it lands on.</summary>
