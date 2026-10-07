@@ -36,6 +36,8 @@ internal static partial class SpecFlags
 
     public static bool Eip8038(IReleaseSpec spec) => spec.IsEip8038Enabled;
 
+    public static bool Eip8279(IReleaseSpec spec) => spec.IsEip8279Enabled;
+
     public static bool NetGasMetering(IReleaseSpec spec) => spec.UseNetGasMetering;
 
     // The type parameter is the EIP-8038 flag the table has already chosen. A build whose fork range

@@ -62,9 +62,9 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
             WriteMemoryBlob(writer, mem);
         }
 
-        if (value.Stack is { Length: > 0 } stack)
+        writer.WritePropertyName("stack");
+        if (value.Stack is ReadOnlyMemory<byte> stack)
         {
-            writer.WritePropertyName("stack");
             writer.WriteStartArray();
 
             ReadOnlySpan<byte> stackSpan = stack.Span;
@@ -74,6 +74,10 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
                     zeroPadded: false, addHexPrefix: true);
 
             writer.WriteEndArray();
+        }
+        else
+        {
+            writer.WriteNullValue();
         }
 
         writer.WritePropertyName("depth");
@@ -93,13 +97,15 @@ internal class GethLikeTxTraceJsonLinesConverter : JsonConverter<GethTxFileTrace
 
         writer.WriteEndObject();
 
-        // Before writing a new line, flush and reset the writer
-        // to avoid adding comma (depth tracking)
+        WriteLineEnd(writer);
+    }
+
+    internal static void WriteLineEnd(Utf8JsonWriter writer)
+    {
+        // Reset between JSON values to avoid inserting commas into the line stream.
         writer.Flush();
         writer.Reset();
-        writer.WriteRawValue(Environment.NewLine, true);
-        // After writing the new line, flush and reset the writer again
-        // to avoid adding comma on writer reuse
+        writer.WriteRawValue("\n", true);
         writer.Flush();
         writer.Reset();
     }
