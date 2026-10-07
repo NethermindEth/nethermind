@@ -29,7 +29,7 @@ public sealed class PeerValidationGasBudget
 
     /// <param name="maxVerifyGas">The pool's <c>MAX_VERIFY_GAS</c>; a transaction above it is rejected before any
     /// validation runs, so it is never charged. <c>0</c> when the pool lifts the limit.</param>
-    /// <param name="timestamp">Clock in <see cref="Stopwatch"/> ticks; the wall clock when omitted.</param>
+    /// <param name="timestamp">Clock in <see cref="Stopwatch"/> ticks; <see cref="Stopwatch.GetTimestamp"/> when omitted.</param>
     public PeerValidationGasBudget(ulong gasPerSecond, ulong maxVerifyGas, Func<long>? timestamp = null)
     {
         ArgumentOutOfRangeException.ThrowIfZero(gasPerSecond);
