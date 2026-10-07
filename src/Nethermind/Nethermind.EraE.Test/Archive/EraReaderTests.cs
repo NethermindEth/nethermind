@@ -8,7 +8,10 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.EraE.Archive;
 using AccumulatorCalculator = Nethermind.Era1.AccumulatorCalculator;
 using EraException = Nethermind.Era1.Exceptions.EraException;
+using Nethermind.Core.Specs;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.EraE.Test.Archive;
@@ -97,6 +100,18 @@ internal class EraReaderTests
         using EraReader sut = new(file.FilePath);
 
         Assert.That(() => sut.ReadAccumulatorRoot(), Throws.TypeOf<EraException>());
+    }
+
+    /// <remarks>EIP-7668 activates by timestamp, so a number-only spec lookup would expect 256-byte receipt blooms.</remarks>
+    [Test]
+    public async Task VerifyContent_resolves_timestamp_activated_receipt_rules([Values] bool eip7668)
+    {
+        IReleaseSpec postFork = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        CustomSpecProvider specProvider = new(((ForkActivation)0, Bogota.Instance), (new ForkActivation(0, 1), postFork));
+        using TestEraFile file = await TestEraFile.Create(preMergeCount: 0, postMergeCount: 2, specProvider);
+        using EraReader sut = new(file.FilePath);
+
+        Assert.That(async () => await sut.VerifyContent(specProvider, Always.Valid), Throws.Nothing);
     }
 
     [Test]

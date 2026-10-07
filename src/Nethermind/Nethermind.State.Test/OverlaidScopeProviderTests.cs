@@ -172,4 +172,124 @@ public class OverlaidScopeProviderTests
             _innerTree.Received(1).Get(Arg.Any<UInt256>(), out Arg.Any<UInt256>());
         }
     }
+
+    [TestCase(1, 7, TestName = "SlotThePrefixWrote")]
+    [TestCase(2, 5, TestName = "SlotOnlyTheParentStateHolds")]
+    [TestCase(3, 99, TestName = "SlotTheParentStateDoesNotAnswer")]
+    public void AStorageRead_WithAParentState_AnswersPrefixThenParentStateThenScope(int index, int expected)
+    {
+        ParentStateOverlay parent = new();
+        _slot.Arm(new FixedOverlay(), Substitute.For<IDisposable>(), new BlockReadCache(), parent);
+        IWorldStateScopeProvider.IStorageTree tree = _scope.CreateStorageTree(TestItem.AddressA);
+
+        tree.Get((UInt256)index, out UInt256 first);
+        tree.Get((UInt256)index, out UInt256 second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo((UInt256)expected), "the prefix answers first, then the earlier blocks, then the scope");
+            Assert.That(second, Is.EqualTo((UInt256)expected), "a read the cache answers is the read the layers behind it gave");
+        }
+    }
+
+    [Test]
+    public void AStorageRead_RepeatedInTheBlock_AsksTheParentStateOnce()
+    {
+        ParentStateOverlay parent = new();
+        BlockReadCache cache = new();
+        IWorldStateScopeProvider.IStorageTree tree = _scope.CreateStorageTree(TestItem.AddressA);
+
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, parent);
+        tree.Get(2, out UInt256 first);
+        tree.Get(3, out UInt256 untouched);
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, parent);
+        tree.Get(2, out UInt256 second);
+        tree.Get(3, out UInt256 untouchedAgain);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo((UInt256)5));
+            Assert.That(second, Is.EqualTo((UInt256)5), "the next transaction of the block reads the cached parent value");
+            Assert.That(untouched, Is.EqualTo((UInt256)99));
+            Assert.That(untouchedAgain, Is.EqualTo((UInt256)99));
+            Assert.That(parent.StorageProbes, Is.EqualTo(2), "one walk of the earlier blocks per slot per block, not one per read");
+            _innerTree.Received(1).Get(Arg.Any<UInt256>(), out Arg.Any<UInt256>());
+        }
+    }
+
+    [Test]
+    public void ACachedSlot_NeverHoldsWhatThePrefixWrote()
+    {
+        ParentStateOverlay parent = new();
+        BlockReadCache cache = new();
+        IWorldStateScopeProvider.IStorageTree tree = _scope.CreateStorageTree(TestItem.AddressA);
+
+        _slot.Arm(new FixedOverlay(), Substitute.For<IDisposable>(), cache, parent);
+        tree.Get(1, out UInt256 written);
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, parent);
+        tree.Get(1, out UInt256 beforeTheWrite);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(written, Is.EqualTo((UInt256)7), "precondition: the prefix that wrote the slot answers it");
+            Assert.That(beforeTheWrite, Is.EqualTo((UInt256)6), "a transaction ahead of the write reads the parent value, not the prefix's");
+        }
+    }
+
+    [Test]
+    public void AnAccount_RepeatedInTheBlock_AsksTheParentStateOnce_AndStaysUnderThePrefix()
+    {
+        ParentStateOverlay parent = new();
+        BlockReadCache cache = new();
+        IStateReadOverlay writing = Substitute.For<IStateReadOverlay>();
+        writing.TryGetAccount(TestItem.AddressA, Arg.Any<Account>(), out Arg.Any<Account>())
+            .Returns(c => { c[2] = ((Account)c[1]).WithChangedNonce(9); return true; });
+
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), cache, parent);
+        Account first = _scope.Get(TestItem.AddressA);
+        _slot.Arm(writing, Substitute.For<IDisposable>(), cache, parent);
+        Account second = _scope.Get(TestItem.AddressA);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.SameAs(ParentStateOverlay.Account), "the earlier blocks answer ahead of the scope");
+            Assert.That(second.Balance, Is.EqualTo(ParentStateOverlay.Account.Balance), "the prefix is laid over the cached parent account");
+            Assert.That(second.Nonce, Is.EqualTo(9UL), "the prefix still answers in front of the cache");
+            Assert.That(parent.AccountProbes, Is.EqualTo(1), "one walk of the earlier blocks per account per block, not one per read");
+            _inner.Received(1).Get(TestItem.AddressA);
+        }
+    }
+
+    [Test]
+    public void AStorageRoot_IsNotEmpty_WhenOnlyTheParentStateHoldsSlots()
+    {
+        _slot.Arm(Substitute.For<IStateReadOverlay>(), Substitute.For<IDisposable>(), new BlockReadCache(), new ParentStateOverlay());
+
+        Assert.That(_scope.CreateStorageTree(TestItem.AddressA).RootHash, Is.Not.EqualTo(Keccak.EmptyTreeHash),
+            "an empty root would make the storage provider skip the tree, and the earlier blocks' slots with it");
+    }
+
+    private sealed class ParentStateOverlay : IStateReadOverlay
+    {
+        public static readonly Account Account = new(3, 30, TestItem.KeccakA, TestItem.KeccakB);
+
+        public int AccountProbes { get; private set; }
+        public int StorageProbes { get; private set; }
+
+        public bool TryGetAccount(Address address, Account underlying, out Account overlaid)
+        {
+            AccountProbes++;
+            overlaid = address == TestItem.AddressA ? Account : null;
+            return address == TestItem.AddressA;
+        }
+
+        public bool TryGetStorage(Address address, in UInt256 index, out UInt256 value)
+        {
+            StorageProbes++;
+            value = index == 1 ? (UInt256)6 : (UInt256)5;
+            return address == TestItem.AddressA && index < 3;
+        }
+
+        public bool HasStorage(Address address) => address == TestItem.AddressA;
+    }
 }
