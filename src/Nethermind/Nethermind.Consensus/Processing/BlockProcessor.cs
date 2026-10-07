@@ -70,9 +70,13 @@ public partial class BlockProcessor(
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; } = new();
 
-    internal sealed class BlockAccessListSequentialRetryException(
-        BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException blockAccessListException)
-        : InvalidBlockException(blockAccessListException.InvalidBlock, blockAccessListException.Message, blockAccessListException);
+    /// <summary>Requests a fresh parent-state scope and ordinary sequential execution.</summary>
+    public sealed class BlockAccessListSequentialRetryException(BlockHeader block, string message, Exception? innerException = null)
+        : InvalidBlockException(block, message, innerException)
+    {
+        internal BlockAccessListSequentialRetryException(BlockAccessListBasedWorldState.InvalidBlockLevelAccessListException exception)
+            : this(exception.InvalidBlock, exception.Message, exception) { }
+    }
 
     public event Action? TransactionsExecuted;
 
