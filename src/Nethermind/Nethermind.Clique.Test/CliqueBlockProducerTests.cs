@@ -39,6 +39,13 @@ public class CliqueBlockProducerTests
         private readonly ILogManager _logManager = LimboLogs.Instance;
         private readonly ILogger _logger;
         private static readonly ITimestamper _timestamper = Timestamper.Default;
+        // Pinned to Sepolia's latest scheduled fork, so scheduling a fork (not the wall clock) moves the suite onto it.
+        private static readonly TestSpecProvider _specProvider = new(SepoliaSpecProvider.Instance.GetFinalSpec())
+        {
+            GenesisSpec = SepoliaSpecProvider.Instance.GenesisSpec,
+            ChainId = BlockchainIds.Sepolia,
+            NetworkId = BlockchainIds.Sepolia
+        };
         private readonly CliqueConfig _cliqueConfig;
         private readonly EthereumEcdsa _ethereumEcdsa = new(BlockchainIds.Sepolia);
         private readonly Dictionary<PrivateKey, ILogManager> _logManagers = [];
@@ -78,7 +85,7 @@ public class CliqueBlockProducerTests
                 .AddModule(new TestNethermindModule())
                 .AddModule(new CliqueModule())
                 .AddSingleton<IBlockValidator>(Always.Valid)
-                .AddSingleton<ISpecProvider>(SepoliaSpecProvider.Instance)
+                .AddSingleton<ISpecProvider>(_specProvider)
                 .AddSingleton<CliqueChainSpecEngineParameters>(new CliqueChainSpecEngineParameters()
                 {
                     Epoch = _cliqueConfig.Epoch,
@@ -97,16 +104,15 @@ public class CliqueBlockProducerTests
 
             _containers[privateKey] = container;
 
-            SepoliaSpecProvider testnetSpecProvider = SepoliaSpecProvider.Instance;
-            IReleaseSpec finalSpec = testnetSpecProvider.GetFinalSpec();
+            IReleaseSpec finalSpec = _specProvider.GetFinalSpec();
 
             IWorldState stateProvider = container.Resolve<IMainProcessingContext>().WorldState;
             using (stateProvider.BeginScope(IWorldState.PreGenesis))
             {
                 stateProvider.CreateAccount(TestItem.PrivateKeyD.Address, 100.Ether);
-                TestBlockchain.DeployRequestPredeploys(stateProvider, finalSpec, testnetSpecProvider.GenesisSpec);
+                TestBlockchain.DeployRequestPredeploys(stateProvider, finalSpec, _specProvider.GenesisSpec);
 
-                stateProvider.Commit(testnetSpecProvider.GenesisSpec);
+                stateProvider.Commit(_specProvider.GenesisSpec);
                 stateProvider.CommitTree(0);
                 _genesis.Header.StateRoot = _genesis3Validators.Header.StateRoot = stateProvider.StateRoot;
             }
@@ -143,7 +149,7 @@ public class CliqueBlockProducerTests
                 new CryptoRandom(),
                 snapshotManager,
                 container.Resolve<ISealer>(),
-                new TargetAdjustedGasLimitCalculator(testnetSpecProvider, new BlocksConfig()),
+                new TargetAdjustedGasLimitCalculator(_specProvider, new BlocksConfig()),
                 MainnetSpecProvider.Instance,
                 _cliqueConfig,
                 nodeLogManager);
