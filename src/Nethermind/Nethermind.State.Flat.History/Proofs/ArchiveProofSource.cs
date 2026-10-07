@@ -54,33 +54,20 @@ public sealed class ArchiveProofSource(
     public bool TryRunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
-        if (treeVisitor is not AccountProofCollector || !CanServe(stateId)) return false;
+        if (treeVisitor is not AccountProofCollector collector || !CanServe(stateId)) return false;
 
-        RunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics);
+        CollectProof(collector, stateId, diagnostics);
         return true;
     }
 
-    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
-        where TCtx : struct, INodeContext<TCtx>
+    internal void CollectProof(AccountProofCollector collector, in StateId stateId, VisitingStats? diagnostics)
     {
-        AccountProofCollector? collector = visitor as AccountProofCollector;
-        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector?.CancellationToken ?? default);
+        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector.CancellationToken);
+        ulong block = stateId.BlockNumber;
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        ArchiveProofTrieStore store = collector is not null
-            ? CreatePrefetchedStore(collector, stateId.StateRoot, stateId.BlockNumber, budget, minEpoch)
-            : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
-        PatriciaTree tree = new(store, logManager);
-        tree.Accept(visitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
-    }
-
-    private ArchiveProofTrieStore CreatePrefetchedStore(AccountProofCollector collector, ValueHash256 stateRoot, ulong block, ResolutionBudget budget, ulong minEpoch)
-    {
-        HistoricalTrieNodeBuilder accounts = CreateAccountBuilder(block, budget, minEpoch);
         ValueHash256 identity = collector.HashedAddress;
-        HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
-        ArchiveProofTrieStore storageStore = new(storage, storageResolverFactory: null);
-
-        int accountDepth = _nodeCache.Value.FirstUncachedDepth(stateRoot, identity, out _);
+        HistoricalTrieNodeBuilder accounts = CreateAccountBuilder(block, budget, minEpoch);
+        int accountDepth = _nodeCache.Value.FirstUncachedDepth(stateId.StateRoot, identity, out _);
         if (accountDepth != ArchiveProofNodeCache.PathCached)
         {
             HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work = [];
@@ -88,22 +75,18 @@ public sealed class ArchiveProofSource(
             Prefetch(work, accounts.FanOutOptions);
         }
 
+        if (!ArchiveProofPathWalker.TryProveAccount(collector, accounts, stateId.StateRoot, diagnostics, out AccountStruct account)) return;
+
         ValueHash256[] slots = collector.GetHashedStorageKeys();
-        bool storagePrefetched = false;
-        return new ArchiveProofTrieStore(
-            accounts,
-            accountPath =>
-            {
-                if (accountPath != identity) return new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null);
+        if (slots.Length == 0 || !account.HasStorage) return;
 
-                if (slots.Length > 0 && !storagePrefetched)
-                {
-                    storagePrefetched = true;
-                    PrefetchStorage(storage, stateRoot, identity, slots);
-                }
+        HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
+        PrefetchStorage(storage, stateId.StateRoot, identity, slots);
 
-                return storageStore;
-            });
+        for (int index = 0; index < slots.Length; index++)
+        {
+            ArchiveProofPathWalker.ProveSlot(collector, storage, account.StorageRoot, slots[index], index, diagnostics);
+        }
     }
 
     private void PrefetchStorage(HistoricalTrieNodeBuilder storage, in ValueHash256 stateRoot, in ValueHash256 identity, ValueHash256[] slots)
@@ -160,9 +143,4 @@ public sealed class ArchiveProofSource(
     private ulong DroppedThrough() => metadata.DroppedThroughEpoch;
 
     private ulong DemotedThrough() => metadata.DemotedThroughEpoch;
-
-    private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget, ulong minEpoch) =>
-        new(
-            CreateAccountBuilder(block, budget, minEpoch),
-            accountPath => new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null));
 }

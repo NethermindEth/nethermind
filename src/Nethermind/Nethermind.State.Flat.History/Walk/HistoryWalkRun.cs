@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Buffers.Binary;
-using System.Runtime.ExceptionServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -33,6 +31,7 @@ internal sealed class HistoryWalkRun
     private readonly ulong _checkpointBlocks;
     private readonly int _checkpointGroups;
     private readonly long _minRowsToBorrow;
+    private readonly Action? _onStorageChild;
     private readonly Action<int, ulong>? _onCheckpoint;
     private readonly Action<int>? _onItemDone;
     private readonly CancellationToken _token;
@@ -46,7 +45,7 @@ internal sealed class HistoryWalkRun
     private readonly AccountSubtreeReplayer _accounts;
     private readonly StorageSubtreeReplayer _storages;
     private readonly SubtreeCombiner _combiner;
-    private WalkSlots _slots = null!;
+    private WalkScheduler _scheduler = null!;
 
     public HistoryWalkRun(
         IColumnsDb<FlatHistoryColumns> history,
@@ -64,12 +63,14 @@ internal sealed class HistoryWalkRun
         Action<int, ulong>? onCheckpoint,
         Action<int>? onItemDone,
         CancellationToken token,
-        long minRowsToBorrow = DefaultMinRowsToBorrowASlot)
+        long minRowsToBorrow = DefaultMinRowsToBorrowASlot,
+        Action? onStorageChild = null)
     {
         _history = history;
         _checkpointBlocks = checkpointBlocks;
         _checkpointGroups = checkpointGroups;
         _minRowsToBorrow = minRowsToBorrow;
+        _onStorageChild = onStorageChild;
         _onCheckpoint = onCheckpoint;
         _onItemDone = onItemDone;
         _accountHistory = (ISortedKeyValueStore)history.GetColumnDb(FlatHistoryColumns.AccountHistory);
@@ -146,12 +147,12 @@ internal sealed class HistoryWalkRun
             }
 
             byte firstByte = (byte)range;
-            partitions.Add(() => WithSlot(() =>
+            partitions.Add(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                 ProcessStorageRange(firstByte, storageItem, found);
                 CompleteItem(storageItem, found);
-            }));
+            });
         }
 
         for (int accountItem = 0; accountItem < AccountPartitions; accountItem++)
@@ -165,20 +166,20 @@ internal sealed class HistoryWalkRun
 
             TreePath prefix = AccountPartitionPrefix(accountItem);
             int item = accountItem;
-            partitions.Add(() => WithSlot(() =>
+            partitions.Add(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
                 ProcessAccountPartition(prefix, item, found, new StoragePresenceProbe(_storageHistory, _logger, _token));
                 CompleteItem(item, found);
-            }));
+            });
         }
 
         if (resuming && _logger.IsInfo) _logger.Info($"History walk resuming: {previouslyCompleted} of {WorkItems} subtrees were finished before the restart, {partitions.Count} remain.");
         using (_progress)
-        using (_slots = new WalkSlots(Math.Max(1, workers)))
         {
             _progress.Start();
-            RunParallel(partitions, workers);
+            _scheduler = new WalkScheduler(workers, _token);
+            _scheduler.Run(partitions);
 
             if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
             using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger, _token);
@@ -207,69 +208,12 @@ internal sealed class HistoryWalkRun
         return TreePath.FromNibble(nibbles);
     }
 
-    private void WithSlot(Action item)
-    {
-        _slots.Take(_token);
-        try
-        {
-            item();
-        }
-        finally
-        {
-            _slots.Return();
-        }
-    }
-
     private void CompleteItem(int item, MismatchSink found)
     {
         _metadata.MarkWalkItemDone(item, found.Encode());
         _sink.AddRange(found);
         _progress.Completed(item);
         _onItemDone?.Invoke(item);
-    }
-
-    private void RunParallel(List<Action> items, int workers)
-    {
-        ConcurrentQueue<Action> queue = new(items);
-        bool failed = false;
-        Task[] runners = new Task[Math.Max(1, workers)];
-        for (int i = 0; i < runners.Length; i++)
-        {
-            runners[i] = Task.Factory.StartNew(() =>
-            {
-                while (!Volatile.Read(ref failed) && queue.TryDequeue(out Action? item))
-                {
-                    _token.ThrowIfCancellationRequested();
-                    try
-                    {
-                        item();
-                    }
-                    catch
-                    {
-                        Volatile.Write(ref failed, true);
-                        throw;
-                    }
-                }
-            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-        }
-
-        try
-        {
-            Task.WaitAll(runners);
-        }
-        catch (AggregateException e)
-        {
-            Exception first = e.InnerExceptions[0];
-            foreach (Exception inner in e.InnerExceptions)
-            {
-                if (inner is OperationCanceledException) continue;
-
-                first = inner;
-                break;
-            }
-
-            ExceptionDispatchInfo.Capture(first).Throw();
-        }
     }
 
     private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found, in StoragePresenceProbe probe)
@@ -343,7 +287,7 @@ internal sealed class HistoryWalkRun
 
         StorageGroupFrontier frontier = new(found, _checkpointGroups, prefix => Checkpoint(item, prefix, found, pending: null));
         MismatchBudget budget = new(Math.Max(0, MismatchSink.MaxRecordedPerItem - found.Count));
-        BorrowedWork borrowed = new(_slots);
+        WalkJoin join = new(_scheduler);
         Exception? failure = null;
         try
         {
@@ -353,15 +297,21 @@ internal sealed class HistoryWalkRun
                 try
                 {
                     _token.ThrowIfCancellationRequested();
-                    borrowed.ThrowIfFailed();
+                    join.ThrowIfFailed();
                     MismatchSink groupFound = new(MismatchSink.MaxRecordedPerItem, budget);
                     long sequence = frontier.Issue(BinaryPrimitives.ReadUInt32BigEndian(group.Prefix), groupFound);
                     Action replay = () =>
                     {
+                        if (join.Failed)
+                        {
+                            group.Rows.Dispose();
+                            return;
+                        }
+
                         ReplayGroup(group, item, groupFound);
                         frontier.Complete(sequence);
                     };
-                    owned = (group.Outcome != ScanOutcome.Fits || group.Rows.Count >= _minRowsToBorrow) && borrowed.TryStart(replay);
+                    owned = (group.Outcome != ScanOutcome.Fits || group.Rows.Count >= _minRowsToBorrow) && join.TryFork(replay);
                     if (owned) return;
 
                     owned = true;
@@ -378,7 +328,7 @@ internal sealed class HistoryWalkRun
             failure = e;
         }
 
-        borrowed.Finish(failure);
+        join.Join(failure);
         _token.ThrowIfCancellationRequested();
     }
 
@@ -435,19 +385,23 @@ internal sealed class HistoryWalkRun
     {
         HashSet<ValueHash256>[] seenPerChild = new HashSet<ValueHash256>[BranchRlp.ChildCount];
         MismatchSink[] foundPerChild = new MismatchSink[BranchRlp.ChildCount];
-        BorrowedWork borrowed = new(_slots);
+        WalkJoin join = new(_scheduler);
         Exception? failure = null;
         try
         {
             for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
             {
-                _token.ThrowIfCancellationRequested();
-                borrowed.ThrowIfFailed();
                 HashSet<ValueHash256> seen = seenPerChild[nibble] = [];
-                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem, found.Budget);
+                MismatchSink childFound = foundPerChild[nibble] = new MismatchSink(MismatchSink.MaxRecordedPerItem);
                 TreePath child = slotPrefix.Append(nibble);
-                Action replay = () => ProcessStoragePartition(storagePrefix, child, clears, seen, item, childFound);
-                if (!borrowed.TryStart(replay)) replay();
+                join.Fork(() =>
+                {
+                    if (join.Failed) return;
+
+                    _token.ThrowIfCancellationRequested();
+                    _onStorageChild?.Invoke();
+                    ProcessStoragePartition(storagePrefix, child, clears, seen, item, childFound);
+                });
             }
         }
         catch (Exception e)
@@ -455,7 +409,7 @@ internal sealed class HistoryWalkRun
             failure = e;
         }
 
-        borrowed.Finish(failure);
+        join.Join(failure);
 
         HashSet<ValueHash256> all = [];
         foreach (HashSet<ValueHash256> seen in seenPerChild) all.UnionWith(seen);
