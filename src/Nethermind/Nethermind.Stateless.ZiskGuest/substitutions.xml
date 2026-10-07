@@ -14,6 +14,11 @@
       <method signature="System.Object ChangeType(System.Object,System.Type)" body="remove" />
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
+    <!-- The crash-info blob is for a debugger reading a dump; the guest has neither, and a fail-fast exits
+         the same way without it. -->
+    <type fullname="System.RuntimeExceptionHelpers">
+      <method signature="System.Void SerializeCrashInfo(System.Runtime.RhFailFastReason,System.String,System.Exception)" body="stub" />
+    </type>
   </assembly>
   <assembly fullname="Nethermind.Evm">
     <!-- Only ZisK's runtime exports the arith256 routines behind DIV, MOD, ADDMOD and MULMOD, so the
@@ -42,6 +47,21 @@
     <!-- ZisK lowers Zbb's rev8 to one native instruction, so byte swaps take ReverseEndianness. -->
     <type fullname="Nethermind.Core.Extensions.ZkEvmBitOperations">
       <method signature="System.Boolean get_HasByteReverse()" body="stub" value="true" />
+    </type>
+    <!-- Only a virtual ToString() reaches these, and the guest stringifies a block, header, transaction or
+         signature solely into a failure message it never publishes; the formatting closure (DateTime, time
+         zones, number formats) is ~180 KB of code. Stubs cannot return a string, so they throw instead. -->
+    <type fullname="Nethermind.Core.Block">
+      <method signature="System.String ToString(Nethermind.Core.Block/Format)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.BlockHeader">
+      <method signature="System.String ToString(System.String)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.Transaction">
+      <method signature="System.String ToString(System.String)" body="remove" />
+    </type>
+    <type fullname="Nethermind.Core.Crypto.Signature">
+      <method signature="System.String ToString()" body="remove" />
     </type>
   </assembly>
 </linker>
