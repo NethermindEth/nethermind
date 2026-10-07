@@ -15,13 +15,13 @@ public static partial class Merkle
 {
     /// <summary>Hashes the 64-byte concatenation of two chunks with SHA-256 into <paramref name="parent"/>, which may alias either chunk.</summary>
     /// <remarks>
-    /// ZisK's SHA-256 compression precompile when the ZisK guest switches on <see cref="ZiskSha256FFlag"/>, and
-    /// the SHA-256 accelerator every zkVM provides otherwise.
+    /// The zkVM's SHA-256 compression when the ZisK guest switches on <see cref="ZiskSha256FFlag"/> or the OpenVM
+    /// guest <see cref="OpenVmSha256Flag"/>, and the SHA-256 accelerator every zkVM provides otherwise.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void HashPair(in UInt256 left, in UInt256 right, out UInt256 parent)
     {
-        if (!ZiskSha256FFlag.IsActive)
+        if (!ZiskSha256FFlag.IsActive && !OpenVmSha256Flag.IsActive)
         {
             HashPairWithSha256(in left, in right, out parent);
             return;
@@ -53,7 +53,7 @@ public static partial class Merkle
     private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent) =>
         HashPair(in left, in right, out parent);
 
-    /// <summary>Hashes the 64-byte concatenation of two chunks with ZisK's SHA-256 compression precompile.</summary>
+    /// <summary>Hashes the 64-byte concatenation of two chunks with the zkVM's SHA-256 compression.</summary>
     /// <remarks>
     /// A 64-byte message is exactly one block, and the block after it is always the same padding, so the
     /// generic hash's alignment check, padding logic and result copies all drop out. Chunks that already lie
@@ -87,27 +87,50 @@ public static partial class Merkle
                 parameters.Input = (ulong*)&block;
             }
 
-            Sha256F(&parameters);
+            Compress(&parameters);
         }
 
         parameters.Input = (ulong*)Unsafe.AsPointer(ref MemoryMarshal.GetReference(Sha256PaddingOf64ByteMessage));
-        Sha256F(&parameters);
+        Compress(&parameters);
 
         parent = new UInt256(ToDigestWord(state.Word0), ToDigestWord(state.Word1), ToDigestWord(state.Word2), ToDigestWord(state.Word3));
     }
 
+    /// <summary>Compresses the block <paramref name="parameters"/> names into its state.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static unsafe void Compress(Sha256FParameters* parameters)
+    {
+        if (OpenVmSha256Flag.IsActive)
+            OpenVmSha256Compress(parameters->State, parameters->Input, parameters->State);
+        else
+            Sha256F(parameters);
+    }
+
     /// <summary>Two state words of the precompile, native 32-bit words packed low first, as the digest's next eight bytes.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static ulong ToDigestWord(ulong state) => BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(state), 32);
+    private static ulong ToDigestWord(ulong state) =>
+        OpenVmSha256Flag.IsActive ? SwapBytesInHalves(state) : BitOperations.RotateRight(BinaryPrimitives.ReverseEndianness(state), 32);
+
+    /// <summary>Reverses the bytes of each 32-bit half of <paramref name="x"/>.</summary>
+    /// <remarks>
+    /// <see cref="ToDigestWord"/> for a zkVM without <c>rev8</c>, where reversing the whole word is a long software
+    /// sequence. The masked halves are disjoint, so they are added rather than or-ed: OpenVM's add rows are narrower.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static ulong SwapBytesInHalves(ulong x)
+    {
+        x = ((x & 0x00FF00FF00FF00FFUL) << 8) + ((x >> 8) & 0x00FF00FF00FF00FFUL);
+        return ((x & 0x0000FFFF0000FFFFUL) << 16) + ((x >> 16) & 0x0000FFFF0000FFFFUL);
+    }
 
     /// <summary>The SHA-256 initial hash value (FIPS 180-4 5.3.3) in the precompile's state layout.</summary>
-    private static ReadOnlySpan<ulong> Sha256InitialState =>
+    internal static ReadOnlySpan<ulong> Sha256InitialState =>
     [
         0xbb67ae85_6a09e667UL, 0xa54ff53a_3c6ef372UL, 0x9b05688c_510e527fUL, 0x5be0cd19_1f83d9abUL
     ];
 
     /// <summary>The block that pads a 64-byte message (FIPS 180-4 5.1.1): the 0x80 marker and the 512-bit length.</summary>
-    private static ReadOnlySpan<ulong> Sha256PaddingOf64ByteMessage =>
+    internal static ReadOnlySpan<ulong> Sha256PaddingOf64ByteMessage =>
     [
         0x80UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0UL, 0x0002_0000_0000_0000UL
     ];
@@ -121,6 +144,11 @@ public static partial class Merkle
     /// </remarks>
     [DllImport("__Internal", EntryPoint = "syscall_sha256_f", ExactSpelling = true), SuppressGCTransition]
     private static extern unsafe void Sha256F(Sha256FParameters* parameters);
+
+    /// <summary>OpenVM's SHA-256 compression of one block into <paramref name="output"/>, which may alias <paramref name="state"/>.</summary>
+    /// <remarks>Takes the state in the layout of <see cref="Sha256F"/>, and every operand 8-byte aligned.</remarks>
+    [DllImport("__Internal", EntryPoint = "zkvm_sha256_compress", ExactSpelling = true), SuppressGCTransition]
+    private static extern unsafe void OpenVmSha256Compress(ulong* state, ulong* input, ulong* output);
 
     private unsafe struct Sha256FParameters
     {

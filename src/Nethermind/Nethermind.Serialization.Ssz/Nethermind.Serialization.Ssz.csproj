@@ -7,6 +7,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Core.ZkEvm.Test" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Nethermind.Numerics.Int256" />
     <PackageReference Include="Nethermind.Zkvm.Abstractions" Condition="'$(EnableZkEvm)' == 'true'" />
   </ItemGroup>
