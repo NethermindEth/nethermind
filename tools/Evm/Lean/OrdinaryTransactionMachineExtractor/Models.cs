@@ -247,6 +247,7 @@ internal sealed record SourceFile(
 
 internal sealed record CompilerClosure(
     MetadataReference[] References,
+    string[] ReferenceAssemblyNames,
     CompilerReferenceIdentity[] Identities,
     string InventorySha256,
     string AggregateSha256);

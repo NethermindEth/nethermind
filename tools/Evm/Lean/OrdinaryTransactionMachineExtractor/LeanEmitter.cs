@@ -192,7 +192,7 @@ internal static class LeanEmitter
         Line("def gasTotalsObservationMatches (actual expected : TerminalGasTotals) : Bool :=");
         Line("  actual.executionGas == expected.executionGas && actual.stateGas == expected.stateGas");
         Line();
-        Line("def freshSequentialTracer (seed : TracerSeed) (headerGasUsed : Nat) : TerminalState :=");
+        Line("def freshSequentialTracer (_seed : TracerSeed) (headerGasUsed : Nat) : TerminalState :=");
         Line("  { receipts := []");
         Line("    gasHistory := []");
         Line("    cumulativeReceiptGas := 0");
@@ -309,7 +309,7 @@ internal static class LeanEmitter
         Line("  state.receipts.map (fun receipt => receipt.gasUsedTotal)");
         Line();
         Line("def sequentialIndexInvariant (state : TerminalState) : Prop :=");
-        Line("  state.receiptIndices = List.range state.receipts.length");
+        Line("  receiptIndices state = List.range state.receipts.length");
         Line();
         Line("def gasHistoryLengthsMatch (state : TerminalState) : Prop :=");
         Line("  state.receipts.length = state.gasHistory.length");

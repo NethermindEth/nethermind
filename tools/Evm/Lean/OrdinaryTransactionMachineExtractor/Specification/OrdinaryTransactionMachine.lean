@@ -158,6 +158,6 @@ def gasHistoryLengthsMatch (state : State) : Prop :=
   state.receipts.length = state.gasHistory.length
 
 def sequentialIndexInvariant (state : State) : Prop :=
-  state.receiptIndices = List.range state.receipts.length
+  receiptIndices state = List.range state.receipts.length
 
 end OrdinaryTransactionMachineExtractor.Specification

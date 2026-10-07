@@ -1,7 +1,7 @@
 {
   "schemaVersion": 2,
   "count": 434,
-  "aggregateSha256": "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553",
+  "aggregateSha256": "c40ab4f52dc087a0032f89e29ac615bc9935ceb993d5a04d6d2f310221dcd0b4",
   "references": [
     {
       "path": "platform/Microsoft.CSharp.dll",
@@ -1294,7 +1294,7 @@
     {
       "path": "src/Nethermind/artifacts/bin/Nethermind.Init/release/Nethermind.Evm.dll",
       "assemblyName": "Nethermind.Evm",
-      "sha256": "13c7ba774f4c93da4e38384902fbfd679dce5be1d15ace35beda005b30e52dfe",
+      "sha256": "3c2ea6a1b0b554b4d64499df76a167239686823ab1544b031710a89725018b2d",
       "mvid": "c63d05f4-7340-4653-a704-da5523999f73",
       "selected": true
     },
@@ -2603,7 +2603,7 @@
     {
       "path": "tools/artifacts/bin/Evm/release/Nethermind.Evm.dll",
       "assemblyName": "Nethermind.Evm",
-      "sha256": "13c7ba774f4c93da4e38384902fbfd679dce5be1d15ace35beda005b30e52dfe",
+      "sha256": "3c2ea6a1b0b554b4d64499df76a167239686823ab1544b031710a89725018b2d",
       "mvid": "c63d05f4-7340-4653-a704-da5523999f73",
       "selected": false
     },

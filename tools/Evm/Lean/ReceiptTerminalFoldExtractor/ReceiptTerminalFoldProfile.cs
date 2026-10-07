@@ -66,9 +66,9 @@ internal static class ReceiptTerminalFoldProfile
     private const int CompilerReferenceInventorySchemaVersion = 2;
     private const int CompilerReferenceInventoryCount = 434;
     private const string CompilerReferenceInventoryAggregateSha256 =
-        "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553";
+        "c40ab4f52dc087a0032f89e29ac615bc9935ceb993d5a04d6d2f310221dcd0b4";
     private const string CompilerReferenceInventorySha256 =
-        "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3";
+        "7d4df3b19459b35639054645df2739dd06967518ace574b6085677ed6e42b43c";
     private const int SourcePinsSchemaVersion = 3;
 
     private static readonly SourceIdentity[] LeanDependencyPins =

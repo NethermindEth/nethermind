@@ -59,7 +59,7 @@ public sealed class ReceiptTerminalFoldExtractorTests
             Assert.That(references, Has.Count.GreaterThan(0));
             Assert.That(referenceCount, Is.EqualTo(434));
             Assert.That(referenceCount, Is.EqualTo(references.Count));
-            Assert.That(referenceAggregate, Is.EqualTo("e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553"));
+            Assert.That(referenceAggregate, Is.EqualTo("c40ab4f52dc087a0032f89e29ac615bc9935ceb993d5a04d6d2f310221dcd0b4"));
             Assert.That(actualReferences, Is.EqualTo(expectedReferences));
             Assert.That(names, Does.Contain("Nethermind.Int256"));
             Assert.That(names, Does.Contain("Collections.Pooled"));

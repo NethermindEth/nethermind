@@ -78,13 +78,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "Checked ordinary-machine artifacts failed validation." }
 
     dotnet test --project $testProject -c $Configuration -p:SaveDiskSpace=true `
-        -p:TreatWarningsAsErrors=true --no-build -- --minimum-expected-tests 115 --no-ansi --progress off
+        -p:TreatWarningsAsErrors=true --no-build -- --minimum-expected-tests 116 --no-ansi --progress off
     if ($LASTEXITCODE -ne 0) { throw "Ordinary-machine tests failed." }
 
     Push-Location $package
     try {
         lake --wfail build
         if ($LASTEXITCODE -ne 0) { throw "Lean package build failed." }
+        # The direct per-file checks below do not emit object files, so materialize
+        # every checked module (plus its sibling-package imports) up front.
+        lake --wfail build OrdinaryTransactionMachineExtractor.Generated.OrdinaryTransactionMachine OrdinaryTransactionMachineExtractor.Specification.OrdinaryTransactionMachine OrdinaryTransactionMachineExtractor.Specification.TransactionState OrdinaryTransactionMachineExtractor.Specification.Economics OrdinaryTransactionMachineExtractor.Specification.ExecutionBoundary OrdinaryTransactionMachineExtractor.Refinement.OrdinaryTransactionMachine OrdinaryTransactionMachineExtractor.Vectors.OrdinaryTransactionMachineVectors
+        if ($LASTEXITCODE -ne 0) { throw "Lean sibling dependency build failed." }
         foreach ($leanFile in @(
             "Generated\OrdinaryTransactionMachine.lean",
             "Specification\OrdinaryTransactionMachine.lean",

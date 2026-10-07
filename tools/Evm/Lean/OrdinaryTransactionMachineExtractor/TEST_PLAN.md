@@ -31,7 +31,7 @@ The test vectors cover:
   type argument, a fluent generic type-argument alias, and redirected fluent and ordinary
   invocation targets.
 
-The current serialized test gate requires at least 115 discovered NUnit cases. An unmutated
+The current serialized test gate requires at least 116 discovered NUnit cases. An unmutated
 `ExtractForTest` baseline must complete before the exact identity mutations are meaningful; each
 identity mutation asserts its full, anchor-specific diagnostic so an earlier binder cannot mask
 the intended constructor, enum, base, fluent, generic-argument, or invocation gate. The proof-shape

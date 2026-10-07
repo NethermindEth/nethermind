@@ -24,7 +24,7 @@ public sealed class ExtractorTests
             Assert.That(lean, Does.Contain("def onlyOkTerminal"));
             Assert.That(lean, Does.Contain("def freshSequentialTracer"));
             Assert.That(lean, Does.Contain("freshSequentialTracer input.tracerSeed input.block.headerGasUsed"));
-            Assert.That(lean, Does.Contain("state.currentIndex := 0"));
+            Assert.That(lean, Does.Contain("currentIndex := 0"));
             Assert.That(lean, Does.Contain("gasHistory := []"));
             Assert.That(lean, Does.Contain("cumulativeReceiptGas := 0"));
             Assert.That(lean, Does.Contain("def receiptObservationMatches"));
@@ -109,6 +109,7 @@ public sealed class ExtractorTests
             Assert.That(source, Does.Contain("block.transactionsExecuted"));
             Assert.That(source, Does.Contain("block.postCommit"));
             Assert.That(source, Does.Contain("RequirePostDominates(processBlock, transactionsExecuted, blockFold"));
+            Assert.That(source, Does.Contain("BindInvocationStatement"));
             Assert.That(source, Does.Contain("RequirePostDominates(processBlock, blockPostCommit, transactionsExecuted"));
         }
     }
@@ -181,7 +182,7 @@ public sealed class ExtractorTests
             Assert.That(verify, Does.Contain("$scratchGeneratedSecond"));
             Assert.That(verify, Does.Contain("Two-run generated artifact mismatch"));
             Assert.That(verify, Does.Contain("Assert-ByteIdentical $freshPath $freshSecondPath"));
-            Assert.That(verify, Does.Contain("--minimum-expected-tests 115"));
+            Assert.That(verify, Does.Contain("--minimum-expected-tests 116"));
             Assert.That(verify, Does.Contain("Specification\\TransactionState.lean"));
             Assert.That(verify, Does.Contain("Specification\\Economics.lean"));
             Assert.That(verify, Does.Contain("Specification\\ExecutionBoundary.lean"));
@@ -211,6 +212,25 @@ public sealed class ExtractorTests
             Assert.That(source, Does.Contain("TransactionResult.Equals"));
             Assert.That(pins, Does.Contain("\"count\": 434"));
             Assert.That(pins, Does.Contain("aggregateSha256"));
+        }
+    }
+
+    [Test]
+    public void InlineIL_shim_is_byte_pinned_and_layout_constrained()
+    {
+        string source = Read("Extractor.cs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(source, Does.Contain("InlineILShimSource"));
+            Assert.That(source, Does.Contain("OrdinaryMachineInlineILShim.cs"));
+            Assert.That(source, Does.Contain("public static void EnsureLocal<T>(in T value)"));
+            Assert.That(source, Does.Contain("public static void Push<T>(T value)"));
+            Assert.That(source, Does.Contain("public static global::System.Exception Unreachable()"));
+            Assert.That(source, Does.Contain("public static void Ldarg(string name)"));
+            Assert.That(source, Does.Contain("public static void Calli(StandAloneMethodSig signature)"));
+            Assert.That(source, Does.Contain("params TypeRef[] parameterTypes"));
+            Assert.That(source, Does.Contain("where T : allows ref struct"));
+            Assert.That(source, Does.Not.Contain("namespace InlineIL\n {\n"), "shim must stay a single flat namespace");
         }
     }
 
@@ -250,7 +270,7 @@ public sealed class ExtractorTests
 
         ExtractionException exception = Assert.Throws<ExtractionException>(() =>
             Extractor.ValidateCompilerReferencesForTest(root, altered))!;
-        Assert.That(exception.Message, Does.Contain("compiler/reference"), mutation);
+        Assert.That(exception.Message, Does.Contain("compiler/reference").IgnoreCase, mutation);
     }
 
     [Test]
@@ -260,8 +280,8 @@ public sealed class ExtractorTests
         string pins = Read("MACHINE_SOURCE_PINS.json");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(source, Does.Contain("IsBlockProcessorPartial"));
-            Assert.That(source, Does.Contain("IsBlockAccessListManagerPartial"));
+            Assert.That(source, Does.Contain("CompilationGroups"));
+            Assert.That(source, Does.Contain("OwningAssemblyName"));
             Assert.That(source, Does.Contain("ReceiptTerminalFoldExtractor/SOURCE_PINS.json"));
             Assert.That(source, Does.Contain("ValidateReceiptTerminalSourcePins"));
             Assert.That(source, Does.Contain("ReadPinnedReceiptBytes"));
@@ -358,7 +378,7 @@ public sealed class ExtractorTests
     }
 
     [Test]
-    public void Source_pin_and_manifest_drafts_are_valid_json_and_mark_reemit_boundary()
+    public void Source_pin_and_manifest_closure_is_byte_identical_and_promoted()
     {
         using JsonDocument pins = JsonDocument.Parse(File.ReadAllBytes(PathFrom("MACHINE_SOURCE_PINS.json")));
         string manifest = Read("Generated", "OrdinaryTransactionMachine.source-manifest.json");
@@ -366,9 +386,14 @@ public sealed class ExtractorTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(pins.RootElement.GetProperty("status").GetString(), Is.EqualTo("ordinary-machine-static-draft"));
-            Assert.That(pins.RootElement.GetProperty("sources").GetArrayLength(), Is.EqualTo(50));
-            Assert.That(manifest, Does.Contain("static-draft"));
-            Assert.That(manifest, Does.Contain("re-emit"));
+            Assert.That(pins.RootElement.GetProperty("sources").GetArrayLength(), Is.EqualTo(332));
+            foreach (JsonElement entry in pins.RootElement.GetProperty("sources").EnumerateArray())
+            {
+                Assert.That(entry.GetProperty("path").GetString(), Does.StartWith("src/Nethermind/"),
+                    "pinned sources must stay inside the admitted project layout");
+            }
+            Assert.That(manifest, Does.Contain("bounded-source-extraction-and-refinement-only"));
+            Assert.That(manifest, Does.Not.Contain("static-draft-reemit-required"));
             Assert.That(File.Exists(PathFrom("SOURCE_PINS.json")), Is.False,
                 "MACHINE_SOURCE_PINS.json must remain the sole local source authority");
             Assert.That(project, Does.Not.Contain("SOURCE_PINS.json"));
@@ -477,7 +502,7 @@ public sealed class ExtractorTests
     [TestCase("tracer-success-forward-order", "Nested-tracer forwarding must precede current-tracer forwarding")]
     [TestCase("tracer-gas-update-conditional", "cumulative gas update must be unconditional")]
     [TestCase("tracer-receipt-index", "current transaction index")]
-    [TestCase("tracer-start-order", "set CurrentTx before the current tracer")]
+    [TestCase("tracer-start-order", "StartNewTxTrace must set CurrentTx before invoking the wrapped tracer")]
     [TestCase("tracer-end-order", "forward before incrementing the receipt index")]
     [TestCase("tracer-end-index", "Expected one post-increment")]
     [TestCase("tracer-end-index-conditional", "increment the receipt index unconditionally")]
@@ -492,7 +517,7 @@ public sealed class ExtractorTests
     [TestCase("di-decorator", "Expected invocation")]
     [TestCase("di-manager", "Expected invocation")]
     [TestCase("di-order", "direct executor registration must precede")]
-    [TestCase("di-validation-module", "standard block-validation module registration changed")]
+    [TestCase("di-validation-module", "Expected invocation AddSingleton<IBlockValidationModule,StandardBlockValidationModule> for di.validationModule, found 0")]
     [TestCase("fast-path-code-overridable", "simple-transfer candidate guards changed")]
     [TestCase("fast-path-authorization-list", "simple-transfer candidate guards changed")]
     [TestCase("fast-path-force-disabled", "simple-transfer candidate guards changed")]
@@ -506,13 +531,13 @@ public sealed class ExtractorTests
     [TestCase("executor-adapter-tracer", "direct executor no longer forwards the exact transaction")]
     [TestCase("di-adapter-factory", "Expected invocation")]
     [TestCase("di-adapter-route", "standard transaction adapter registration changed")]
-    [TestCase("di-adapter-construction", "Expected one ExecuteTransactionProcessorAdapter object creation")]
+    [TestCase("di-adapter-construction", "Constructor identity mismatch for ExecuteTransactionProcessorAdapter in CreateExecuteAdapter for di.createExecuteAdapter")]
     [TestCase("block-executor-capture", "Field initializer _blockTransactionsExecutor")]
     [TestCase("decorator-inner-parameter", "parameter inner")]
     [TestCase("decorator-bal-parameter", "parameter balManager")]
     [TestCase("direct-adapter-parameter", "parameter transactionProcessor")]
     [TestCase("execute-processor-parameter", "parameter transactionProcessor")]
-    [TestCase("block-context-route", "BlockProcessor no longer forwards the exact constructed block execution context")]
+    [TestCase("block-context-route", "Expected invocation 0 of ProcessBlock.CreateBlockExecutionContext for block.createContext, found 0")]
     [TestCase("execute-adapter-context", "execute adapter no longer forwards the exact block execution context")]
     [TestCase("direct-executor-context", "direct executor no longer forwards the exact block execution context")]
     [TestCase("decorator-context-bal", "Expected invocation")]
@@ -521,7 +546,7 @@ public sealed class ExtractorTests
     [TestCase("bal-context-store", "BAL manager no longer retains the exact block execution context")]
     [TestCase("nested-forward-guard", "nested receipt-forwarding guard changed")]
     [TestCase("current-forward-guard", "current transaction receipt-forwarding guard changed")]
-    [TestCase("exact-base-virtual", "Source-member identity mismatch")]
+    [TestCase("exact-base-virtual", "Source-member identity ledger does not exactly cover")]
     [TestCase("conditional-start", "StartNewBlockTrace must dominate")]
     [TestCase("conditional-precommit", "pre-transaction CommitState boundary must dominate")]
     [TestCase("early-return-after-fold-before-callback", "TransactionsExecuted must postdominate")]
@@ -932,7 +957,7 @@ public sealed class ExtractorTests
                 source = ReadSource(root, relativePath);
                 return (relativePath, ReplaceOnce(source,
                     "IBlockAccessListManager balManager,",
-                    "BlockAccessListManager balManager,"));
+                    "IBlockAccessListManager? balManager,"));
             case "direct-adapter-parameter":
                 relativePath = ExecutorPath;
                 source = ReadSource(root, relativePath);
@@ -956,13 +981,13 @@ public sealed class ExtractorTests
                 source = ReadSource(root, relativePath);
                 return (relativePath, ReplaceOnce(source,
                     "transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);",
-                    "transactionProcessor.SetBlockExecutionContext(blockExecutionContext.Header);"));
+                    "transactionProcessor.SetBlockExecutionContext(default(BlockExecutionContext));"));
             case "direct-executor-context":
                 relativePath = ExecutorPath;
                 source = ReadSource(root, relativePath);
                 return (relativePath, ReplaceOnce(source,
                     "transactionProcessor.SetBlockExecutionContext(in blockExecutionContext);",
-                    "transactionProcessor.SetBlockExecutionContext(blockExecutionContext.Header);"));
+                    "transactionProcessor.SetBlockExecutionContext(default(BlockExecutionContext));"));
             case "decorator-context-bal":
                 relativePath = ParallelExecutorPath;
                 source = ReadSource(root, relativePath);

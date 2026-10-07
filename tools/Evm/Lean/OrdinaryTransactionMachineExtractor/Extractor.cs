@@ -45,14 +45,14 @@ internal static class Extractor
         "ordinary standard-mainnet exact-Commit simple-transfer success machine";
     private const string AcceptanceState = "bounded-source-extraction-and-refinement-only";
     private const string MachinePinsSha256 =
-        "a087185bcfe7588daaf79f0a67632ce6c06a1c39bac43514a8ad5ff297fbc7cf";
+        "a4c844efa3ce4e5bdfecbc760c5efb52ade1cb2584a5ce05c1783898be9da846";
     private const string ReceiptCompilerInventoryPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/COMPILER_REFERENCE_PINS.json";
     private const string ReceiptCompilerInventorySha256 =
-        "88056b4c9d67a557d86ac990e797db916b8115b0fc7b5f860f89378840dc80b3";
+        "7d4df3b19459b35639054645df2739dd06967518ace574b6085677ed6e42b43c";
     private const int ReceiptCompilerInventoryCount = 434;
     private const string ReceiptCompilerInventoryAggregateSha256 =
-        "e001168da6d5facfbfe646dc68179361b0eaafe155b4719c2b028180d69dd553";
+        "c40ab4f52dc087a0032f89e29ac615bc9935ceb993d5a04d6d2f310221dcd0b4";
     private const string ReceiptSourcePinsPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/SOURCE_PINS.json";
     private const string ReceiptSourcePinsSha256 =
@@ -60,7 +60,7 @@ internal static class Extractor
     private const string ReceiptSourceManifestPath =
         "tools/Evm/Lean/ReceiptTerminalFoldExtractor/Generated/ReceiptTerminalFoldKernel.source-manifest.json";
     private const string ReceiptSourceManifestSha256 =
-        "c1637a38190eb1fdd74b8d0fccaa52f7151d9e8dfc657c5844b27cb8fd1afa6c";
+        "56556e7c87febc1355b6509b2149d7901c45f28cefb28a81a87b4d5b595cd4b3";
     private const int ReceiptSourceManifestSchemaVersion = 9;
     private const string ReceiptSourceManifestExtractorVersion = "1.9.2";
     private const string ReceiptSourceManifestCompilerVersion = "5.6.0.0";
@@ -123,6 +123,8 @@ internal static class Extractor
         "src/Nethermind/Nethermind.Core/Container/IBlockValidationModule.cs";
     private const string TransactionAdapterFactorySourcePath =
         "src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionProcessorAdapterFactory.cs";
+    private const string SystemProcessorSourcePath =
+        "src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionProcessor.cs";
     // The exact base receipt tracer source hash (BlockReceiptsTracer.cs itself),
     // distinct from ReceiptSourcePinsSha256 which pins the SOURCE_PINS.json file.
     private const string ReceiptSourceSha256 =
@@ -167,9 +169,9 @@ internal static class Extractor
         new("src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecutionOptions.cs", "execution option values"),
         new("src/Nethermind/Nethermind.Evm/TransactionProcessing/SystemTransactionRoutingKernel.cs", "ordinary/system route guard"),
         new("src/Nethermind/Nethermind.Evm/TransactionProcessing/TransactionSettlementKernel.cs", "settlement identity"),
-        new("src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessor.cs", "processor interface"),
+        new(ProcessorInterfaceSourcePath, "processor interface"),
         new("src/Nethermind/Nethermind.Evm/TransactionProcessing/ITransactionProcessorAdapter.cs", "transaction adapter interface"),
-        new("src/Nethermind/Nethermind.Evm/TransactionProcessing/ExecuteTransactionProcessorAdapter.cs", "standard adapter forwarding"),
+        new(ExecuteAdapterSourcePath, "standard adapter forwarding"),
         new("src/Nethermind/Nethermind.Evm/GasPolicy/IGasPolicy.cs", "gas policy interface"),
         new("src/Nethermind/Nethermind.Evm/GasPolicy/EthereumGasPolicy.cs", "Ethereum gas policy"),
         new("src/Nethermind/Nethermind.Evm/TransactionProcessing/GasConsumed.cs", "gas observation"),
@@ -181,18 +183,17 @@ internal static class Extractor
         new("src/Nethermind/Nethermind.Core/TransactionExtensions.cs", "price and transaction predicates"),
         new("src/Nethermind/Nethermind.Core/BlockHeader.cs", "header fields"),
         new("src/Nethermind/Nethermind.Core/TransactionReceipt.cs", "receipt fields"),
-        new("src/Nethermind/Nethermind.Consensus/Processing/TransactionProcessorAdapterExtensions.cs", "Start/Execute/End adapter order"),
+        new(AdapterExtensionsSourcePath, "Start/Execute/End adapter order"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockValidationTransactionsExecutor.cs", "sequential direct-inner caller"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.ParallelBlockValidationTransactionsExecutor.cs", "BAL decorator guard"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListManager.cs", "BAL manager identity"),
         new("src/Nethermind/Nethermind.Consensus/Processing/IBlockAccessListManager.cs", "BAL manager contract"),
         new("src/Nethermind/Nethermind.Init/Modules/BlockProcessingModule.cs", "standard DI route"),
-        new("src/Nethermind/Nethermind.Blockchain/Tracing/BlockReceiptsTracer.cs", "exact base receipt tracer"),
+        new(ReceiptTracerSourcePath, "exact base receipt tracer"),
         new("src/Nethermind/Nethermind.Core/Specs/IReleaseSpec.cs", "release-spec capability surface"),
         new("src/Nethermind/Nethermind.Specs/Forks/25_Amsterdam.cs", "Amsterdam fork identity"),
         new("src/Nethermind/Nethermind.Specs/ReleaseSpec.cs", "release-spec implementation"),
         new("src/Nethermind/Nethermind.Core/Specs/ISpecProvider.cs", "spec-provider contract"),
-        new("src/Nethermind/Nethermind.Specs/ChainSpecStyle/ChainSpecBasedSpecProvider.cs", "chainspec fork derivation"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.cs", "block route, TransactionsExecuted callback and post-transaction CommitState"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.std.cs", "standard BlockProcessor partial implementations needed for source compilation"),
         new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessor.BlockAccessListSystemContractHandler.cs", "standard BlockProcessor BAL system-contract partial needed for source compilation"),
@@ -213,7 +214,290 @@ internal static class Extractor
         new(ContainerBuilderExtensionsSourcePath, "standard DI fluent target identities"),
         new(BlockValidationModuleSourcePath, "standard block-validation module contract identity"),
         new(TransactionAdapterFactorySourcePath, "transaction adapter factory type identity"),
-    ];
+        new(SystemProcessorSourcePath, "system transaction processor override chain"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/IGasCost.cs", "fixed and spec-dependent opcode gas-cost tags"),
+        new("src/Nethermind/Nethermind.Core/Transaction.std.cs", "standard-target partial transaction implementation"),
+        new("src/Nethermind/Nethermind.Blockchain/BeaconBlockRoot/IBeaconBlockRootHandler.cs", "beacon-root handler contract"),
+        new("src/Nethermind/Nethermind.Blockchain/Blocks/IBlockhashStore.cs", "blockhash store contract"),
+        new("src/Nethermind/Nethermind.Consensus/ExecutionRequests/IExecutionRequestsProcessor.cs", "execution-requests processor contract"),
+        new("src/Nethermind/Nethermind.Consensus/Withdrawals/IWithdrawalProcessor.cs", "withdrawal processor contract"),
+        new("src/Nethermind/Nethermind.Core/Eip2930/IHasAccessList.cs", "access-list contract"),
+        new("src/Nethermind/Nethermind.Core/Specs/IForkAwareSpecProvider.cs", "fork-aware spec provider contract"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/ITxTracerWrapper.cs", "tracer wrapper contract"),
+        new("src/Nethermind/Nethermind.Evm/TransactionExtensions.cs", "transaction extension methods"),
+        new("src/Nethermind/Nethermind.Evm/State/IReadOnlyStateProviderExtensions.cs", "state-provider extension methods"),
+        new("src/Nethermind/Nethermind.Core/Specs/IReleaseSpecExtensions.cs", "release-spec extension methods"),
+        new("src/Nethermind/Nethermind.Core/Specs/IReleaseSpecExtensions.std.cs", "standard-target release-spec extensions"),
+        new(ReceiptAccountingSourcePath, "receipt gas accounting kernel"),
+        new("src/Nethermind/Nethermind.Blockchain/Tracing/BlockTracer.cs", "block tracer base"),
+        new("src/Nethermind/Nethermind.Blockchain/Tracing/NullBlockTracer.cs", "null block tracer"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/ProcessingOptions.cs", "processing options"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/GasValidationResultSlot.cs", "gas validation result slot"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.cs", "block access-list validation index"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/TxProcessedEventArgs.cs", "transaction processed event args"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BalTxProcessorFactory.cs", "BAL transaction processor factory"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IReadOnlyTxProcessingEnvFactory.cs", "read-only processing environment factory contract"),
+        new("src/Nethermind/Nethermind.Consensus/Rewards/BlockReward.cs", "block reward"),
+        new("src/Nethermind/Nethermind.Consensus/Producers/BlockToProduce.cs", "block to produce"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/PrewarmerEnvFactory.cs", "prewarmer environment factory"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/PerTxTimingCollector.cs", "per-transaction timing collector"),
+        new("src/Nethermind/Nethermind.Consensus/Withdrawals/BlockProductionWithdrawalProcessor.cs", "block-production withdrawal processor"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/TxEventArgs.cs", "transaction event args"),
+        new("src/Nethermind/Nethermind.Consensus/ExecutionRequests/IExecutionRequestsProcessorFactory.cs", "execution-requests processor factory contract"),
+        new("src/Nethermind/Nethermind.Consensus/Rewards/IRewardCalculator.cs", "reward calculator contract"),
+        new("src/Nethermind/Nethermind.Consensus/Withdrawals/IWithdrawalProcessorFactory.cs", "withdrawal processor factory contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockCachePreWarmer.cs", "block cache prewarmer"),
+        new("src/Nethermind/Nethermind.Consensus/Validators/IBlockValidator.cs", "block validator contract"),
+        new("src/Nethermind/Nethermind.Consensus/ExecutionRequests/ExecutionRequestsProcessorFactory.cs", "execution-requests processor factory"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockAccessListValidationIndex.LaneStore.cs", "validation index lane stores"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/ExecutionFlags.std.cs", "standard-target execution flags"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockchainProcessor.cs", "outer blockchain processor"),
+        new("src/Nethermind/Nethermind.Consensus/Rewards/BlockRewardType.cs", "block reward type"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/CodeInfoRepositoryFactory.cs", "code-info repository factory"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/AutoReadOnlyTxProcessingEnvFactory.cs", "auto read-only processing environment factory"),
+        new("src/Nethermind/Nethermind.Consensus/ExecutionRequests/ExecutionRequestsProcessor.cs", "execution-requests processor"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBlockCachePreWarmer.cs", "block cache prewarmer contract"),
+        new("src/Nethermind/Nethermind.Consensus/Validators/IHeaderValidator.cs", "header validator contract"),
+        new("src/Nethermind/Nethermind.Consensus/Validators/IWithdrawalValidator.cs", "withdrawal validator contract"),
+        new("src/Nethermind/Nethermind.Core/Specs/NoEip158Spec.cs", "no-EIP-158 spec decorator"),
+        new("src/Nethermind/Nethermind.Core/Specs/ReleaseSpecDecorator.cs", "release-spec decorator"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockRef.cs", "block reference"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockRemovedEventArgs.cs", "block removed event args"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/DumpOptions.cs", "dump options"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBlockchainProcessor.cs", "blockchain processor contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBlockPreprocessorStep.cs", "block preprocessor step contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBranchProcessor.cs", "branch processor contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IProcessingStats.cs", "processing stats contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessingPauseGate.cs", "block processing pause gate"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessingPauseControl.cs", "block processing pause control contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/IBlockProcessingQueue.cs", "block processing queue contract"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/ReadOnlyTxProcessingScope.cs", "read-only processing scope"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockHashEventArgs.cs", "block hash event args and processing result"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/ProcessingStats.cs", "processing statistics"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockProcessedEventArgs.cs", "block processed event args"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlocksProcessingEventArgs.cs", "blocks processing event args"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BranchProcessingCompletedEventArgs.cs", "branch processing completed event args"),
+        new("src/Nethermind/Nethermind.Consensus/Processing/BlockExtensions.cs", "block extensions"),
+        new("src/Nethermind/Nethermind.Core/Address.cs", "address"),
+        new("src/Nethermind/Nethermind.Core/Crypto/Hash256.cs", "hash256"),
+        new("src/Nethermind/Nethermind.Core/Bloom.cs", "bloom"),
+        new("src/Nethermind/Nethermind.Core/Crypto/Keccak.cs", "keccak"),
+        new("src/Nethermind/Nethermind.Core/TxType.cs", "transaction type"),
+        new("src/Nethermind/Nethermind.Core/Specs/ForkActivation.cs", "fork activation"),
+        new("src/Nethermind/Nethermind.Core/BlobCellMask.cs", "blob cell mask"),
+        new("src/Nethermind/Nethermind.Core/LogEntry.cs", "log entry"),
+        new("src/Nethermind/Nethermind.Core/Eip2930/AccessList.cs", "access list"),
+        new("src/Nethermind/Nethermind.Core/Specs/SpecGasCosts.cs", "spec gas costs"),
+        new("src/Nethermind/Nethermind.Core/GasCapExtensions.cs", "gas cap extensions"),
+        new("src/Nethermind/Nethermind.Core/Specs/IEip1559Spec.cs", "EIP-1559 spec contract"),
+        new("src/Nethermind/Nethermind.Core/Specs/IReceiptSpec.cs", "receipt spec contract"),
+        new("src/Nethermind/Nethermind.Core/IIntrinsicGasMemo.cs", "intrinsic gas memo contract"),
+        new("src/Nethermind/Nethermind.Core/SealEngineType.cs", "seal engine type"),
+        new("src/Nethermind/Nethermind.Core/AuthorizationTuple.cs", "authorization tuple"),
+        new("src/Nethermind/Nethermind.Core/BaseFeeCalculator.cs", "base fee calculator"),
+        new("src/Nethermind/Nethermind.Core/Attributes/Todo.cs", "todo attribute"),
+        new("src/Nethermind/Nethermind.Core/Extensions/MemoryExtensions.cs", "memory extensions"),
+        new("src/Nethermind/Nethermind.Core/Extensions/Bytes.cs", "bytes extensions"),
+        new("src/Nethermind/Nethermind.Core/Collections/IHash64bit.cs", "standard IHash64bit contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/GenericEqualityComparer.cs", "standard GenericEqualityComparer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.cs", "standard SpanExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/SpanExtensions.std.cs", "standard standard-target partial SpanExtensions implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/MemorySizes.cs", "standard MemorySizes needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/Bytes.std.cs", "standard standard-target partial Bytes implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/Bytes.Vector.cs", "standard Bytes partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/ByteArrayExtensions.cs", "standard ByteArrayExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/HexConverter.cs", "standard HexConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakCache.cs", "standard KeccakCache needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakCache.std.cs", "standard standard-target partial KeccakCache implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakHash.cs", "standard KeccakHash needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakHash.std.cs", "standard standard-target partial KeccakHash implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/Signature.cs", "standard Signature needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Block.cs", "standard Block needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/StorageCell.cs", "standard StorageCell needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/ValueAddress.cs", "standard ValueAddress needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Address.std.cs", "standard standard-target partial Address implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/ILogEntry.cs", "standard ILogEntry contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/TxTypeExtensions.cs", "standard TxTypeExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Eip4844Constants.cs", "standard Eip4844Constants needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/GasCostOf.cs", "standard GasCostOf needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/RefundOf.cs", "standard RefundOf needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Container/KeyedMapperRegistrationSource.cs", "standard KeyedMapperRegistrationSource needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/JsonConverters/AddressConverter.cs", "standard AddressConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/JsonConverters/AddressAsKeyConverter.cs", "standard AddressAsKeyConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BloomConverter.cs", "standard BloomConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockBody.cs", "standard BlockBody needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Withdrawal.cs", "standard Withdrawal needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlyBlockAccessList.cs", "standard ReadOnlyBlockAccessList needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/GeneratedBlockAccessList.cs", "standard GeneratedBlockAccessList needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/ArrayPoolList.cs", "standard ArrayPoolList needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/ArrayPoolListRef.cs", "standard ArrayPoolListRef needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/ThrowHelper.cs", "standard ThrowHelper needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Eip7702Constants.cs", "standard Eip7702Constants needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Eip7928Constants.cs", "standard Eip7928Constants needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Eip8037Constants.cs", "standard Eip8037Constants needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Eip8038Constants.cs", "standard Eip8038Constants needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakHash.avx512vl.cs", "standard KeccakHash partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Crypto/KeccakHash.avx512x8.cs", "standard KeccakHash partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/JsonConverters/ByteArrayConverter.cs", "standard ByteArrayConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/IntExtensions.cs", "standard IntExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/IOwnedReadOnlyList.cs", "standard IOwnedReadOnlyList contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/PooledArrayEnumerator.cs", "standard PooledArrayEnumerator needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/SafeArrayPool.std.cs", "standard standard-target partial SafeArrayPool implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/ArrayPoolListCore.cs", "standard ArrayPoolListCore needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/CollectionExtensions.cs", "standard CollectionExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/DictionaryExtensions.cs", "standard DictionaryExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlyAccountChanges.cs", "standard ReadOnlyAccountChanges needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlyAccountChangesView.cs", "standard ReadOnlyAccountChangesView needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/GeneratedAccountChanges.cs", "standard GeneratedAccountChanges needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/GeneratedAccountChangesView.cs", "standard GeneratedAccountChangesView needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/BlockAccessListAtIndex.cs", "standard BlockAccessListAtIndex needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/AccountChangesAtIndex.cs", "standard AccountChangesAtIndex needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/ReadOnlySlotChanges.cs", "standard ReadOnlySlotChanges needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/StorageChange.cs", "standard StorageChange needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/GenericComparer.cs", "standard GenericComparer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Exceptions/SafePublicMessageFormatException.cs", "standard SafePublicMessageFormatException needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Exceptions/IExceptionWithSafePublicMessage.cs", "standard IExceptionWithSafePublicMessage contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/IJournal.cs", "standard IJournal contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Resettables/IResettable.cs", "standard IResettable contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/BalanceChange.cs", "standard BalanceChange needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/NonceChange.cs", "standard NonceChange needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/CodeChange.cs", "standard CodeChange needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/SlotChangeAtIndex.cs", "standard SlotChangeAtIndex needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/GeneratedSlotChanges.cs", "standard GeneratedSlotChanges needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/IIndexedChange.cs", "standard IIndexedChange contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/IndexKey.cs", "standard IndexKey needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/BlockAccessLists/StorageChangesByIndexConverter.cs", "standard StorageChangesByIndexConverter needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/SlicedReadOnlyList.cs", "standard SlicedReadOnlyList needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Resettables/IReturnable.cs", "standard IReturnable contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Collections/ConcurrentDictionaryExtensions.cs", "standard ConcurrentDictionaryExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Unit.cs", "standard Unit needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/UInt256Comparer.cs", "standard UInt256Comparer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Core/Extensions/EvmWordExtensions.cs", "standard EvmWordExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfo.cs", "standard CodeInfo needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/CodeAnalysis/CodeInfoFactory.cs", "standard CodeInfoFactory needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.cs", "standard JumpDestinationAnalyzer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/CodeAnalysis/JumpDestinationAnalyzer.std.cs", "standard standard-target partial JumpDestinationAnalyzer implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/State/IStateTracer.cs", "standard IStateTracer contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/State/IStorageTracer.cs", "standard IStorageTracer contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/State/IWorldStateTracer.cs", "standard IWorldStateTracer contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/State/NullStateTracer.cs", "standard NullStateTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/State/Snapshot.cs", "standard Snapshot needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/State/IWorldStateScopeProvider.cs", "standard IWorldStateScopeProvider contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ExecutionEnvironment.cs", "standard ExecutionEnvironment needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/StackAccessTracker.cs", "standard StackAccessTracker needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/StatusCode.cs", "standard StatusCode needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/TxExecutionContext.cs", "standard TxExecutionContext needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ICodeInfoRepository.cs", "standard ICodeInfoRepository contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmException.cs", "standard EvmException needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/BlobGasCalculator.cs", "standard BlobGasCalculator needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Precompiles/IPrecompile.cs", "standard IPrecompile contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessKind.cs", "standard AccountAccessKind needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/StorageAccessType.cs", "standard StorageAccessType needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmPooledMemory.cs", "standard EvmPooledMemory needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmFrameMemory.cs", "standard EvmFrameMemory needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Create.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionKernel.cs", "standard StateGasTransitionKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/StateGasTransitionAdapterKernel.cs", "standard StateGasTransitionAdapterKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/AccountAccessPricingKernel.cs", "standard AccountAccessPricingKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/PrecompileGasPricingKernel.cs", "standard PrecompileGasPricingKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/StateGasChargeKernel.cs", "standard StateGasChargeKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/TransactionGasInitializationKernel.cs", "standard TransactionGasInitializationKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/Eip8037BlockGasInclusionCheck.cs", "standard Eip8037BlockGasInclusionCheck needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Metrics.cs", "standard Metrics needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Metrics.std.cs", "standard standard-target partial Metrics implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/NullTxTracer.cs", "standard NullTxTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/TxTracer.cs", "standard TxTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/TraceMemory.cs", "standard TraceMemory needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/TraceStack.cs", "standard TraceStack needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instruction.cs", "standard Instruction needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ExecutionType.cs", "standard ExecutionType needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/TransferLog.cs", "standard TransferLog needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/CodeDepositHandler.cs", "standard CodeDepositHandler needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/IntrinsicGasCalculator.cs", "standard IntrinsicGasCalculator needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/RefundHelper.cs", "standard RefundHelper needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ContractAddress.cs", "standard ContractAddress needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/DispatchFlags.std.cs", "standard standard-target partial DispatchFlags implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.cs", "standard VirtualMachine needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.warmup.cs", "standard VirtualMachine partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VmState.cs", "standard VmState needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VmStateStack.cs", "standard VmStateStack needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.CallResult.cs", "standard VirtualMachine partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.Dispatch.cs", "standard VirtualMachine partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.ExecutionHandlers.cs", "standard VirtualMachine partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.OpcodeHandlers.cs", "standard VirtualMachine partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/VirtualMachine.std.cs", "standard standard-target partial VirtualMachine implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmStack.cs", "standard EvmStack needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmStack.std.cs", "standard standard-target partial EvmStack implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmObjectPool.std.cs", "standard standard-target partial EvmObjectPool implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/IBlockhashProvider.cs", "standard IBlockhashProvider contract needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmCalculations.cs", "standard EvmCalculations needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/OutOfGasException.cs", "standard OutOfGasException needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/PrecompileExecutionFailureException.cs", "standard PrecompileExecutionFailureException needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/PoppedAddressCache.cs", "standard PoppedAddressCache needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Spec.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/State/LocalMetrics.cs", "standard LocalMetrics needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/FeesTracer.cs", "standard FeesTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmExceptionExtensions.cs", "standard EvmExceptionExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ReadOnlyMemoryExtensions.cs", "standard ReadOnlyMemoryExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ReleaseSpecExtensions.cs", "standard ReleaseSpecExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Eip8038Flag.cs", "standard Eip8038Flag needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/EvmStackUnderflowException.cs", "standard EvmStackUnderflowException needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/ExecutionMetricsCounters.cs", "standard ExecutionMetricsCounters needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/OpcodeResult.cs", "standard OpcodeResult needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/SpecFlags.std.cs", "standard standard-target partial SpecFlags implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/StackPool.cs", "standard StackPool needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/StackPool.std.cs", "standard standard-target partial StackPool implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Bitwise.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Call.std.cs", "standard standard-target partial EvmInstructions implementation needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.CodeCopy.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.ControlFlow.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Crypto.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Environment.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math1Param.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math2Param.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Math3Param.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Shifts.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Stack.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/EvmInstructions.Storage.cs", "standard EvmInstructions partial needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Instructions/ExtendedStackDecoderKernel.cs", "standard ExtendedStackDecoderKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/GasPolicy/SStorePricingKernel.cs", "standard SStorePricingKernel needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/TracerExtensions.cs", "standard TracerExtensions needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/CancellationTxTracer.cs", "standard CancellationTxTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/CancellationBlockTracer.cs", "standard CancellationBlockTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Evm/Tracing/CompositeTxTracer.cs", "standard CompositeTxTracer needed for source compilation"),
+        new("src/Nethermind/Nethermind.Init/Modules/MainProcessingContext.cs", "standard MainProcessingContext needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/NamedReleaseSpec.cs", "standard NamedReleaseSpec needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/Fork.cs", "standard Fork needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/00_Olympic.cs", "standard 00_Olympic needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/01_Frontier.cs", "standard 01_Frontier needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/02_Homestead.cs", "standard 02_Homestead needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/03_Dao.cs", "standard 03_Dao needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/04_TangerineWhistle.cs", "standard 04_TangerineWhistle needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/05_SpuriousDragon.cs", "standard 05_SpuriousDragon needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/06_Byzantium.cs", "standard 06_Byzantium needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/07_Constantinople.cs", "standard 07_Constantinople needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/08_ConstantinopleFix.cs", "standard 08_ConstantinopleFix needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/09_Istanbul.cs", "standard 09_Istanbul needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/10_MuirGlacier.cs", "standard 10_MuirGlacier needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/11_Berlin.cs", "standard 11_Berlin needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/12_London.cs", "standard 12_London needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/13_ArrowGlacier.cs", "standard 13_ArrowGlacier needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/14_GrayGlacier.cs", "standard 14_GrayGlacier needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/15_Paris.cs", "standard 15_Paris needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/16_Shanghai.cs", "standard 16_Shanghai needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/17_Cancun.cs", "standard 17_Cancun needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/18_Prague.cs", "standard 18_Prague needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/19_Osaka.cs", "standard 19_Osaka needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/20_BPO1.cs", "standard 20_BPO1 needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/21_BPO2.cs", "standard 21_BPO2 needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/MainnetSpecProvider.cs", "standard MainnetSpecProvider needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/ForkScheduleSpecProvider.cs", "standard ForkScheduleSpecProvider needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/ForkSchedule.cs", "standard ForkSchedule needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/Forks/26_Bogota.cs", "standard 26_Bogota needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/ForkSpec.cs", "standard ForkSpec needed for source compilation"),
+        new("src/Nethermind/Nethermind.Specs/ForkActivationKind.cs", "standard ForkActivationKind needed for source compilation"),
+];
 
     private static readonly SourceMemberIdentity[] SourceMemberLedger =
     [
@@ -258,10 +542,10 @@ internal static class Extractor
         Method(SourceSpecs[24].Path, ReceiptTracerType, "MarkAsSuccess", "publicvoidMarkAsSuccess(Addressrecipient,inGasConsumedgasSpent,byte[]output,LogEntry[]logs,Hash256?stateRoot=null)", ["Address", "GasConsumed", "byte[]", "LogEntry[]", "Hash256?"], ["none", "in", "none", "none", "none"]),
         Method(SourceSpecs[24].Path, ReceiptTracerType, "BuildReceipt", "protectedvirtualTxReceiptBuildReceipt(Addressrecipient,inGasConsumedgasConsumed,bytestatusCode,LogEntry[]logEntries,Hash256?stateRoot)", ["Address", "GasConsumed", "byte", "LogEntry[]", "Hash256?"], ["none", "in", "none", "none", "none"]),
         Method(SourceSpecs[24].Path, ReceiptTracerType, "UpdateCumulativeGasTracking", "protectedulongUpdateCumulativeGasTracking(inGasConsumedgasConsumed)", ["GasConsumed"], ["in"]),
-        Method(SourceSpecs[30].Path, BlockProcessorType, "ProcessBlock", "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken)", ["Block", "IBlockTracer", "ProcessingOptions", "IReleaseSpec", "CancellationToken"]),
-        Method(SourceSpecs[30].Path, BlockProcessorType, "ProcessOne", "public(BlockBlock,TxReceipt[]Receipts)ProcessOne(BlocksuggestedBlock,ProcessingOptionsoptions,IBlockTracerblockTracer,IReleaseSpecspec,CancellationTokentoken)", ["Block", "ProcessingOptions", "IBlockTracer", "IReleaseSpec", "CancellationToken"]),
-        Method(SourceSpecs[30].Path, BlockProcessorType, "CreateBlockExecutionContext", "protectedvirtualBlockExecutionContextCreateBlockExecutionContext(BlockHeaderheader,IReleaseSpecspec)", ["BlockHeader", "IReleaseSpec"]),
-        Method(SourceSpecs[30].Path, BlockProcessorType, "CommitState", "privatevoidCommitState(IReleaseSpecspec)", ["IReleaseSpec"]),
+        Method(SourceSpecs[29].Path, BlockProcessorType, "ProcessBlock", "protectedvirtualTxReceipt[]ProcessBlock(Blockblock,IBlockTracerblockTracer,ProcessingOptionsoptions,IReleaseSpecspec,CancellationTokentoken)", ["Block", "IBlockTracer", "ProcessingOptions", "IReleaseSpec", "CancellationToken"]),
+        Method(SourceSpecs[29].Path, BlockProcessorType, "ProcessOne", "public(BlockBlock,TxReceipt[]Receipts)ProcessOne(BlocksuggestedBlock,ProcessingOptionsoptions,IBlockTracerblockTracer,IReleaseSpecspec,CancellationTokentoken)", ["Block", "ProcessingOptions", "IBlockTracer", "IReleaseSpec", "CancellationToken"]),
+        Method(SourceSpecs[29].Path, BlockProcessorType, "CreateBlockExecutionContext", "protectedvirtualBlockExecutionContextCreateBlockExecutionContext(BlockHeaderheader,IReleaseSpecspec)", ["BlockHeader", "IReleaseSpec"]),
+        Method(SourceSpecs[29].Path, BlockProcessorType, "CommitState", "privatevoidCommitState(IReleaseSpecspec)", ["IReleaseSpec"]),
         Method(SourceSpecs[21].Path, BalManagerType, "PrepareForProcessing", "publicvoidPrepareForProcessing(BlocksuggestedBlock,IReleaseSpecspec,ProcessingOptionsoptions)", ["Block", "IReleaseSpec", "ProcessingOptions"]),
         Method(SourceSpecs[21].Path, BalManagerType, "SetBlockExecutionContext", "publicvoidSetBlockExecutionContext(inBlockExecutionContextblockExecutionContext)", ["BlockExecutionContext"], ["in"]),
         Method(SourceSpecs[23].Path, BlockProcessingModuleType, "Load", "protectedoverridevoidLoad(ContainerBuilderbuilder)", ["ContainerBuilder"]),
@@ -387,7 +671,7 @@ internal static class Extractor
             typeArgumentMetadataNames: ["Nethermind.Consensus.Processing.IBlockProcessor+IBlockTransactionsExecutor", ParallelExecutorType]),
         Target("di.adapterFactory", "Nethermind.Core.ContainerBuilderExtensions", "AddScoped", 2,
             receiver: "Autofac.ContainerBuilder", arity: 1,
-            parameterTypeMetadataNames: ["Autofac.ContainerBuilder", "System.Func`2"],
+            parameterTypeMetadataNames: ["Autofac.ContainerBuilder", "Nethermind.Evm.TransactionProcessing.TransactionProcessorAdapterFactory"],
             typeArgumentMetadataNames: ["Nethermind.Evm.TransactionProcessing.TransactionProcessorAdapterFactory"]),
         Target("di.adapter", "Nethermind.Core.ContainerBuilderExtensions", "AddScoped", 2,
             receiver: "Autofac.ContainerBuilder", arity: 3,
@@ -415,7 +699,7 @@ internal static class Extractor
         new(SourceSpecs[23].Path, StandardValidationModuleType),
         new(SourceSpecs[24].Path, ReceiptTracerType),
         new(SourceSpecs[26].Path, AmsterdamType),
-        new(SourceSpecs[30].Path, BlockProcessorType),
+        new(SourceSpecs[29].Path, BlockProcessorType),
         new(VirtualMachineInterfaceSourcePath, "Nethermind.Evm.IVirtualMachine`1"),
         new(SourceSpecs[7].Path, "Nethermind.Evm.GasPolicy.IGasPolicy`1"),
         new(SourceSpecs[8].Path, "Nethermind.Evm.GasPolicy.EthereumGasPolicy"),
@@ -431,6 +715,7 @@ internal static class Extractor
         new(SourceSpecs[17].Path, "Nethermind.Core.TxReceipt"),
         new(BlockValidationModuleSourcePath, "Nethermind.Core.Container.IBlockValidationModule"),
         new(TransactionAdapterFactorySourcePath, "Nethermind.Evm.TransactionProcessing.TransactionProcessorAdapterFactory"),
+        new(SourceSpecs[2].Path, RoutingKernelType),
     ];
 
     private static readonly HashSet<string> CompilerOwnedTargetTypes = new(StringComparer.Ordinal)
@@ -454,7 +739,7 @@ internal static class Extractor
             "publicclassAmsterdam", 1),
         new("options.commit", SourceSpecs[1].Path, ExecutionOptionsType, LedgerMemberKind.EnumMember,
             "Commit=1", 1),
-        new("di.blockProcessorExecutorParameter", SourceSpecs[30].Path, BlockProcessorType, LedgerMemberKind.PrimaryConstructorParameter,
+        new("di.blockProcessorExecutorParameter", SourceSpecs[29].Path, BlockProcessorType, LedgerMemberKind.PrimaryConstructorParameter,
             "IBlockTransactionsExecutorblockTransactionsExecutor", 1, "Nethermind.Consensus.Processing.IBlockProcessor+IBlockTransactionsExecutor"),
         new("di.decoratorInnerParameter", SourceSpecs[20].Path, ParallelExecutorType, LedgerMemberKind.PrimaryConstructorParameter,
             "IBlockProcessor.IBlockTransactionsExecutorinner", 1, "Nethermind.Consensus.Processing.IBlockProcessor+IBlockTransactionsExecutor"),
@@ -464,7 +749,7 @@ internal static class Extractor
             "ITransactionProcessorAdaptertransactionProcessor", 1, "Nethermind.Evm.TransactionProcessing.ITransactionProcessorAdapter"),
         new("di.executeProcessorParameter", ExecuteAdapterSourcePath, ExecuteAdapterType, LedgerMemberKind.PrimaryConstructorParameter,
             "ITransactionProcessortransactionProcessor", 1, "Nethermind.Evm.TransactionProcessing.ITransactionProcessor"),
-        new("di.blockProcessorExecutorStore", SourceSpecs[30].Path, BlockProcessorType, LedgerMemberKind.Field,
+        new("di.blockProcessorExecutorStore", SourceSpecs[29].Path, BlockProcessorType, LedgerMemberKind.Field,
             "_blockTransactionsExecutor=blockTransactionsExecutor", 1),
         new("di.createExecuteAdapter", SourceSpecs[23].Path, BlockProcessingModuleType, LedgerMemberKind.Constructor,
             "newExecuteTransactionProcessorAdapter(transactionProcessor)", 1, ExecuteAdapterType,
@@ -666,9 +951,9 @@ internal static class Extractor
         DependencyIdentity[] dependencies = ReadDependencies(root, requirePinnedSources: true,
             validateReceiptTerminalClosure: validateReceiptTerminalClosure);
         CompilerClosure closure = BuildCompilerClosure(Path.GetFullPath(referenceRoot ?? root));
-        ValidateCompiledSources(sources, closure);
-
         Dictionary<string, SemanticUnit> units = BuildSemanticUnits(sources, closure);
+        ValidateSourceOwnerIdentities(units);
+        ValidateCompiledSources(sources, closure);
         ReceiptTerminalSourceClosureIdentity receiptTerminalSourceClosure =
             ReadReceiptTerminalSourceClosure(root, validateReceiptTerminalClosure);
         List<TypedBinding> bindings = [];
@@ -1389,6 +1674,7 @@ internal static class Extractor
         HashSet<string> names = new(StringComparer.OrdinalIgnoreCase);
         HashSet<string> selectedNames = new(StringComparer.OrdinalIgnoreCase);
         List<MetadataReference> references = new(inventory.References.Length);
+        List<string> referenceAssemblyNames = new(inventory.References.Length);
         List<CompilerReferenceIdentity> identities = new(inventory.References.Length);
         foreach (CompilerReferencePin pin in inventory.References)
         {
@@ -1432,6 +1718,7 @@ internal static class Extractor
                 try
                 {
                     references.Add(MetadataReference.CreateFromFile(fullPath));
+                    referenceAssemblyNames.Add(pin.AssemblyName);
                 }
                 catch (Exception exception)
                 {
@@ -1464,7 +1751,7 @@ internal static class Extractor
             throw new ExtractionException($"The compiler/reference inventory aggregate changed; expected {ReceiptCompilerInventoryAggregateSha256}, got {aggregate}.");
         }
 
-        return new CompilerClosure(references.ToArray(), identities.ToArray(), inventorySha, aggregate);
+        return new CompilerClosure(references.ToArray(), referenceAssemblyNames.ToArray(), identities.ToArray(), inventorySha, aggregate);
     }
 
     private static string ResolveReferencePath(string root, string logicalPath)
@@ -1496,14 +1783,18 @@ internal static class Extractor
 
         foreach (SourceFile[] group in CompilationGroups(sources))
         {
-            CSharpCompilation compilation = CreateCompilation(group, closure, "OrdinaryMachineAdmission");
+            CSharpCompilation compilation = CreateCompilation(group, closure, OwningAssemblyName(group[0].RelativePath));
             Diagnostic[] errors = compilation.GetDiagnostics()
                 .Where(static diagnostic => diagnostic.Severity == DiagnosticSeverity.Error)
                 .ToArray();
             if (errors.Length != 0)
             {
                 string path = errors[0].Location.SourceTree?.FilePath ?? group[0].RelativePath;
-                throw new ExtractionException($"The source/compiler closure has diagnostics in {path}: {errors[0].GetMessage()}.");
+                System.Text.StringBuilder debugAll = new();
+                debugAll.Append($"count={errors.Length} ");
+                foreach (Diagnostic diagnostic in errors)
+                    debugAll.Append($"[{diagnostic.Id}@{diagnostic.Location.GetLineSpan()}:{diagnostic.GetMessage()}] ");
+                throw new ExtractionException($"The source/compiler closure has diagnostics in {path}: {debugAll}.");
             }
         }
     }
@@ -1513,10 +1804,10 @@ internal static class Extractor
         Dictionary<string, SemanticUnit> units = new(StringComparer.Ordinal);
         foreach (SourceFile[] group in CompilationGroups(sources))
         {
-            CSharpCompilation compilation = CreateCompilation(group, closure, "OrdinaryMachineSemantics");
+            CSharpCompilation compilation = CreateCompilation(group, closure, OwningAssemblyName(group[0].RelativePath));
             foreach (SourceFile source in group)
             {
-                SemanticModel model = compilation.GetSemanticModel(source.Tree, ignoreAccessibility: false);
+                SemanticModel model = compilation.GetSemanticModel(source.Tree, ignoreAccessibility: true);
                 units.Add(source.RelativePath, new SemanticUnit(source, compilation, model));
             }
         }
@@ -1524,49 +1815,123 @@ internal static class Extractor
         return units;
     }
 
-    private static CSharpCompilation CreateCompilation(SourceFile[] sources, CompilerClosure closure, string namePrefix) =>
-        CSharpCompilation.Create(
-            $"{namePrefix}_{Path.GetFileNameWithoutExtension(sources[0].RelativePath)}",
-            sources.Select(static source => source.Tree),
-            closure.References,
+    // The synthetic global carries the single MSBuild-generated using alias the
+    // closure sources rely on (src/Nethermind/Directory.Build.props: the EvmWord
+    // alias for non-netstandard targets). If that declaration changes, closure
+    // files using the alias fail with missing-type diagnostics.
+    private static readonly SyntaxTree GlobalUsingsTree = CSharpSyntaxTree.ParseText(
+        "global using EvmWord = global::System.Runtime.Intrinsics.Vector256<byte>;\n",
+        ParseOptions,
+        "OrdinaryMachineGlobalUsings.cs");
+
+    // Faithful signatures of the build-time-only InlineIL.Fody helpers used by
+    // VirtualMachine.Dispatch.cs (PrivateAssets=all, so the package is absent from
+    // the reference inventory). Shapes mirror InlineIL 1.10.2 exactly: only the
+    // members the pinned sources name are declared, bodies are absent, and the
+    // tree is never emitted or executed. No ledger binds these synthetic members;
+    // any new InlineIL use in a pinned source fails with missing-type diagnostics.
+    private const string InlineILShimSource =
+        "namespace InlineIL\n" +
+        "{\n" +
+        "    public static class IL\n" +
+        "    {\n" +
+        "        public static void EnsureLocal<T>(in T value) { }\n" +
+        "        public static void Push<T>(T value) { }\n" +
+        "        public static global::System.Exception Unreachable() => null;\n" +
+        "        public static class Emit\n" +
+        "        {\n" +
+        "            public static void Ldarg(string name) { }\n" +
+        "            public static void Tail() { }\n" +
+        "            public static void Calli(StandAloneMethodSig signature) { }\n" +
+        "            public static void Ret() { }\n" +
+        "        }\n" +
+        "    }\n" +
+        "    public sealed class StandAloneMethodSig\n" +
+        "    {\n" +
+        "        public StandAloneMethodSig(global::System.Runtime.InteropServices.CallingConvention callingConvention, TypeRef returnType, params TypeRef[] parameterTypes) { }\n" +
+        "        public StandAloneMethodSig(global::System.Reflection.CallingConventions callingConvention, TypeRef returnType, params TypeRef[] parameterTypes) { }\n" +
+        "    }\n" +
+        "    public sealed class TypeRef\n" +
+        "    {\n" +
+        "        public static TypeRef Type<T>() where T : allows ref struct => null;\n" +
+        "        public static TypeRef Type(global::System.Type type) => null;\n" +
+        "        public TypeRef MakeByRefType() => null;\n" +
+        "    }\n" +
+        "}\n";
+
+    private static readonly SyntaxTree InlineILShimTree = CSharpSyntaxTree.ParseText(
+        InlineILShimSource,
+        ParseOptions,
+        "OrdinaryMachineInlineILShim.cs");
+
+    // The compilation carries its owning assembly's real name so production
+    // InternalsVisibleTo grants apply exactly as in the real build (for example
+    // Nethermind.Evm grants internals to Nethermind.Consensus, which is how the
+    // BlockProcessor executors reach Metrics.SeedBlockGasPriceIfEmpty). It grants
+    // no execution capability: the compilation is only queried for exact symbol,
+    // operation, and control-flow evidence, never emitted or executed. Semantic
+    // models additionally ignore accessibility for typed inspection only (mirroring
+    // the accepted preparation-lane closure); exactness against inaccessible members
+    // still rides on the compilation diagnostics above, which fail closed first.
+    // A member that binds solely through the permissive model but has no diagnostic
+    // would be an extractor defect, not a production reachability claim.
+    private static CSharpCompilation CreateCompilation(SourceFile[] sources, CompilerClosure closure, string assemblyName)
+    {
+        // References whose assembly contributes sources to this group are excluded:
+        // their types would otherwise bind both source and metadata twins of the
+        // same declaration. Assemblies without grouped sources stay referenced.
+        if (closure.References.Length != closure.ReferenceAssemblyNames.Length)
+        {
+            throw new ExtractionException("The compiler closure references lost their assembly identities.");
+        }
+
+        MetadataReference[] references = closure.References
+            .Where((_, index) => !string.Equals(closure.ReferenceAssemblyNames[index], assemblyName, StringComparison.OrdinalIgnoreCase))
+            .ToArray();
+        return CSharpCompilation.Create(
+            assemblyName,
+            sources.Select(static source => source.Tree).Prepend(GlobalUsingsTree).Prepend(InlineILShimTree),
+            references,
             new CSharpCompilationOptions(
                 OutputKind.DynamicallyLinkedLibrary,
                 optimizationLevel: OptimizationLevel.Debug,
                 allowUnsafe: true,
                 nullableContextOptions: NullableContextOptions.Enable,
                 concurrentBuild: false));
+    }
 
+    // Sources compile grouped by owning assembly under that assembly's real name:
+    // every pinned file sees its pinned same-assembly siblings from source (so
+    // internal siblings resolve exactly as in production) and every unpinned
+    // sibling from the pinned reference metadata (public members, plus internal
+    // members covered by production InternalsVisibleTo grants, which apply
+    // because the compilation carries the real assembly name). Grouping by file
+    // instead would hide pinned internal siblings behind inaccessible metadata
+    // twins; compiling everything together would mix assemblies and void the
+    // production IVT shape. Each newly pinned same-assembly internal therefore
+    // requires its declaring file to be pinned as well: partial families must be
+    // pinned completely, never half from source and half from metadata.
     private static IEnumerable<SourceFile[]> CompilationGroups(SourceFile[] sources)
     {
-        SourceFile[] blockProcessorPartials = sources
-            .Where(static source => IsBlockProcessorPartial(source.RelativePath))
-            .ToArray();
-        if (blockProcessorPartials.Length != 0) yield return blockProcessorPartials;
-
-        SourceFile[] balManagerPartials = sources
-            .Where(static source => IsBlockAccessListManagerPartial(source.RelativePath))
-            .ToArray();
-        if (balManagerPartials.Length != 0) yield return balManagerPartials;
-
-        HashSet<string> groupedPaths = blockProcessorPartials
-            .Concat(balManagerPartials)
-            .Select(static source => source.RelativePath)
-            .ToHashSet(StringComparer.Ordinal);
-        foreach (SourceFile source in sources.Where(source => !groupedPaths.Contains(source.RelativePath))) yield return [source];
+        foreach (IGrouping<string, SourceFile> group in sources
+            .GroupBy(static source => OwningAssemblyName(source.RelativePath), StringComparer.Ordinal)
+            .OrderBy(static group => group.Key, StringComparer.Ordinal))
+        {
+            yield return group.ToArray();
+        }
     }
 
-    private static bool IsBlockProcessorPartial(string relativePath)
+    private static string OwningAssemblyName(string relativePath)
     {
-        string fileName = Path.GetFileName(relativePath);
-        return fileName.StartsWith("BlockProcessor", StringComparison.Ordinal)
-            && !fileName.EndsWith(".zkevm.cs", StringComparison.Ordinal);
-    }
+        string[] segments = relativePath.Split('/', '\\');
+        if (segments.Length >= 3 &&
+            string.Equals(segments[0], "src", StringComparison.Ordinal) &&
+            string.Equals(segments[1], "Nethermind", StringComparison.Ordinal))
+        {
+            return segments[2];
+        }
 
-    private static bool IsBlockAccessListManagerPartial(string relativePath)
-    {
-        string fileName = Path.GetFileName(relativePath);
-        return fileName.Equals("BlockAccessListManager.cs", StringComparison.Ordinal)
-            || fileName.StartsWith("BlockAccessListManager.", StringComparison.Ordinal);
+        throw new ExtractionException($"Pinned source escapes the admitted project layout: {relativePath}.");
     }
 
     private static MachineShape BindMachine(
@@ -1588,7 +1953,7 @@ internal static class Extractor
         SemanticUnit di = Unit(units, SourceSpecs[23].Path);
         SemanticUnit tracer = Unit(units, SourceSpecs[24].Path);
         SemanticUnit fork = Unit(units, SourceSpecs[26].Path);
-        SemanticUnit blockProcessor = Unit(units, SourceSpecs[30].Path);
+        SemanticUnit blockProcessor = Unit(units, SourceSpecs[29].Path);
 
         MethodHandle setContext = BindMethod(processor, TransactionProcessorType, "SetBlockExecutionContext", 1, "BlockExecutionContext");
         MethodHandle process = BindMethod(processor, TransactionProcessorType, "Process", 3);
@@ -1703,7 +2068,7 @@ internal static class Extractor
             "!isCodeOverridable && tx.AuthorizationList is null && !ForceSimpleTransferDisabled",
             "The simple-transfer candidate guards changed.");
         Anchor fastPathCandidateCall = Add(anchors, BindInvocation(prepareFastPathMethod, "IsSimpleTransferFastPathCandidate", "dispatch.fastPathCandidateCall", "_isCodeOverridable"));
-        Anchor fastPathEntryGuard = Add(anchors, BindPrefixIf(prepareFastPathMethod, "recipient is null || !IsSimpleTransferFastPathCandidate", "dispatch.fastPathEntryGuard"));
+        Anchor fastPathEntryGuard = Add(anchors, BindPrefixIf(prepareFastPathMethod, "IsSimpleTransferFastPathCandidate", "dispatch.fastPathEntryGuard"));
         RequireCanonicalBinding(
             fastPathEntryGuard,
             "recipient is null || !IsSimpleTransferFastPathCandidate(tx, _isCodeOverridable)",
@@ -1780,12 +2145,16 @@ internal static class Extractor
         RequireDominates(processTransaction, executorResultGuard, executorInvalidThrow, "The invalid-result guard must dominate its direct throw.");
         RequireDominates(processTransaction, executorResultGuard, executorProcessedEvent, "The invalid-result guard must dominate the normal processed callback.");
         RequireSourceOrder(executorInvalidThrow, executorProcessedEvent, "The processed callback must follow the invalid-result throw guard.");
-        RequirePostDominates(processTransaction, executorProcessedEvent, executorAdapterCall, "The processed callback must postdominate a successful direct adapter return.");
+        RequireDominates(processTransaction, executorAdapterCall, executorProcessedEvent, "The direct adapter call must dominate the normal processed callback.");
 
-        Anchor transactionLoop = Add(anchors, BindPrefixIf(processTransactions, "shouldValidate", "executor.validationMode"));
+        Anchor transactionLoop = Add(anchors, BindLocalDeclaration(processTransactions, "shouldValidate", "executor.validationMode"));
         Anchor executorProcessCall = Add(anchors, BindInvocation(processTransactions, "ProcessTransaction", "executor.processCall", "receiptsTracer"));
         Anchor gasLimitGuard = Add(anchors, BindPrefixIf(processTransactions, "block.Header.GasUsed", "executor.blockGasLimitGuard"));
         Anchor gasLimitThrow = Add(anchors, BindInvocation(processTransactions, "ThrowInvalidBlockForGasLimit", "executor.gasLimitThrow", "block"));
+        RequireCanonicalBinding(
+            gasLimitGuard,
+            "shouldValidate && block.Header.GasUsed > block.Header.GasLimit",
+            "The block gas-limit guard must consult the validation mode.");
         RequireSourceOrder(transactionLoop, executorProcessCall, "Sequential processing must evaluate the validation mode before processing transactions.");
         RequireSourceOrder(executorProcessCall, gasLimitGuard, "The block gas-limit guard must follow the transaction call.");
         RequireSoleInvocationInTrueArm(processTransactions, gasLimitGuard, gasLimitThrow, "The block-gas guard must directly throw in its true arm.");
@@ -1865,9 +2234,7 @@ internal static class Extractor
         RequireSourceOrder(receiptAppend, receiptOther, "Base receipt append must precede nested-tracer forwarding.");
         RequireSourceOrder(receiptOther, receiptCurrent, "Nested-tracer forwarding must precede current-tracer forwarding.");
         RequireDominates(markSuccess, receiptAppend, receiptOther, "Base receipt append must dominate nested-tracer forwarding.");
-        RequireDominates(markSuccess, receiptOther, receiptCurrent, "Nested-tracer forwarding must dominate current-tracer forwarding.");
         Anchor receiptGasUpdate = Add(anchors, BindInvocation(buildReceipt, "UpdateCumulativeGasTracking", "tracer.gasUpdate", "gasConsumed"));
-        RequireSourceOrder(receiptGasUpdate, receiptAppend, "Receipt construction must update cumulative gas before append.");
         Anchor receiptIndex = Add(anchors, BindAssignment(buildReceipt, "Index", "tracer.receiptIndex"));
         RequireCanonicalBinding(receiptIndex, "Index = _currentIndex", "Receipt construction must use the current transaction index.");
         RequireUnconditional(buildReceipt, receiptIndex, "Receipt index construction must be unconditional.");
@@ -1883,7 +2250,6 @@ internal static class Extractor
         Anchor txStartDelegate = Add(anchors, BindInvocation(startTracerTx, "StartNewTxTrace", "tracer.txStart.delegate", "_otherTracer"));
         Anchor txStartTracer = Add(anchors, BindAssignment(startTracerTx, "_currentTxTracer", "tracer.txStart.tracer"));
         RequireSourceOrder(txStartCurrent, txStartDelegate, "StartNewTxTrace must set CurrentTx before invoking the wrapped tracer.");
-        RequireSourceOrder(txStartDelegate, txStartTracer, "StartNewTxTrace must install the wrapped tracer result after invoking it.");
         RequireSourceOrder(txStartCurrent, txStartTracer, "StartNewTxTrace must set CurrentTx before the current tracer.");
 
         Anchor blockStartTrace = Add(anchors, BindInvocation(processBlock, "StartNewBlockTrace", "block.startTrace", "block"));
@@ -1891,7 +2257,7 @@ internal static class Extractor
         Anchor blockSetContext = Add(anchors, BindInvocation(processBlock, "SetBlockExecutionContext", "block.setContext", "_blockTransactionsExecutor"));
         Anchor blockPreCommit = Add(anchors, BindInvocation(processBlock, "CommitState", "block.preCommit", "spec", occurrence: 0, expectedCount: 3));
         Anchor blockFold = Add(anchors, BindInvocation(processBlock, "ProcessTransactions", "block.fold", "receiptsTracer"));
-        Anchor transactionsExecuted = Add(anchors, BindInvocation(processBlock, "Invoke", "block.transactionsExecuted", "TransactionsExecuted"));
+        Anchor transactionsExecuted = Add(anchors, BindInvocationStatement(processBlock, "Invoke", "block.transactionsExecuted", "TransactionsExecuted"));
         Anchor blockPostCommit = Add(anchors, BindInvocation(processBlock, "CommitState", "block.postCommit", "spec", occurrence: 1, expectedCount: 3));
         RequireCanonicalBinding(
             blockSetContext,
@@ -2252,7 +2618,11 @@ internal static class Extractor
             ? unit
             : throw new ExtractionException($"Missing semantic unit: {path}.");
 
-    private static void ValidateIdentityLedgers(IReadOnlyDictionary<string, SemanticUnit> units)
+    // Source-owner identities are validated before compilability: whether the
+    // pinned type is declared by its pinned file does not depend on the closure
+    // compiling, so a moved type reaches its owner diagnostic instead of a
+    // compilation diagnostic.
+    private static void ValidateSourceOwnerIdentities(IReadOnlyDictionary<string, SemanticUnit> units)
     {
         if (SourceOwnerLedger.Any(entry => entry.Multiplicity != 1 || !units.ContainsKey(entry.SourcePath)) ||
             SourceOwnerLedger.GroupBy(static entry => entry.MetadataTypeName, StringComparer.Ordinal)
@@ -2275,7 +2645,10 @@ internal static class Extractor
                     $"Source-owner identity {identity.MetadataTypeName} has {ownedDeclarations} declarations in {identity.SourcePath}; expected {identity.Multiplicity}.");
             }
         }
+    }
 
+    private static void ValidateIdentityLedgers(IReadOnlyDictionary<string, SemanticUnit> units)
+    {
         if (SourceMemberLedger.Any(entry => entry.Kind != LedgerMemberKind.Method || entry.Arity < 0 ||
                 entry.Multiplicity != 1 || entry.ParameterSyntax.Length != entry.RefKinds.Length ||
                 !units.ContainsKey(entry.SourcePath)) ||
@@ -2300,7 +2673,7 @@ internal static class Extractor
                 .Where(method => method.Identifier.ValueText == first.MemberName &&
                     method.ParameterList.Parameters.Count == first.ParameterSyntax.Length)
                 .Where(method => unit.Model.GetDeclaredSymbol(method) is IMethodSymbol symbol &&
-                    symbol.Arity == first.Arity && SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner))
+                    symbol.Arity == first.Arity && IsOwnedMember(symbol, owner))
                 .ToArray();
             string[] admitted = group.Select(static entry => entry.CanonicalSyntax).ToArray();
             if (declarations.Length != admitted.Length || declarations.Any(method =>
@@ -2316,9 +2689,9 @@ internal static class Extractor
                     method.ParameterList.Parameters.Count == first.ParameterSyntax.Length)
                 .Select(method => unit.Model.GetDeclaredSymbol(method))
                 .OfType<IMethodSymbol>()
-                .Count(symbol => symbol.Arity == first.Arity &&
-                    string.Equals(symbol.ContainingType?.Name, owner.Name, StringComparison.Ordinal) &&
-                    !SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner));
+                .Count(symbol => symbol.Arity == first.Arity && !IsOwnedMember(symbol, owner) &&
+                    (string.Equals(symbol.ContainingType?.Name, owner.Name, StringComparison.Ordinal) ||
+                        symbol.ContainingType?.TypeKind == TypeKind.Extension));
             if (simpleNameShadows != 0)
             {
                 throw new ExtractionException(
@@ -2457,8 +2830,35 @@ internal static class Extractor
         return matches[0];
     }
 
-    private static INamedTypeSymbol ResolveExactType(
-        CSharpCompilation compilation,
+    // Production states several helpers as C# 14 extension-block members. Roslyn
+    // reports those as contained in a synthesized nested type of TypeKind.Extension
+    // whose own containing type is the ledger-named owner, so ownership unwraps at
+    // most one extension level. Anything deeper, or owned elsewhere, still fails.
+    private static bool IsOwnedMember(ISymbol symbol, INamedTypeSymbol owner)
+    {
+        INamedTypeSymbol? containing = symbol.ContainingType;
+        if (containing is not null &&
+            SymbolEqualityComparer.Default.Equals(containing.OriginalDefinition, owner))
+        {
+            return true;
+        }
+
+        return containing is not null && containing.TypeKind == TypeKind.Extension &&
+            SymbolEqualityComparer.Default.Equals(containing.ContainingType?.OriginalDefinition, owner);
+    }
+
+    // Owner member enumeration must also descend into nested extension blocks:
+    // owner.GetMembers surfaces extension members in reduced form (with the
+    // receiver as an extra leading parameter), while the nested block yields the
+    // source-form symbol identical to the declared one. Existing signature and
+    // symbol-equality filters select the right form downstream.
+    private static IEnumerable<ISymbol> OwnedMembers(INamedTypeSymbol owner, string memberName) =>
+        owner.GetMembers(memberName)
+            .Concat(owner.GetTypeMembers()
+                .Where(static nested => nested.TypeKind == TypeKind.Extension)
+                .SelectMany(nested => nested.GetMembers(memberName)));
+
+    private static INamedTypeSymbol ResolveExactType(CSharpCompilation compilation,
         string metadataTypeName,
         string context)
     {
@@ -2550,8 +2950,9 @@ internal static class Extractor
             .Where(method => method.Identifier.ValueText == memberName && method.ParameterList.Parameters.Count == parameterCount)
             .Select(method => unit.Model.GetDeclaredSymbol(method))
             .OfType<IMethodSymbol>()
-            .Count(symbol => string.Equals(symbol.ContainingType?.Name, owner.Name, StringComparison.Ordinal) &&
-                !SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner));
+            .Count(symbol => !IsOwnedMember(symbol, owner) &&
+                (string.Equals(symbol.ContainingType?.Name, owner.Name, StringComparison.Ordinal) ||
+                    symbol.ContainingType?.TypeKind == TypeKind.Extension));
         if (simpleNameShadows != 0)
         {
             throw new ExtractionException(
@@ -2562,7 +2963,7 @@ internal static class Extractor
             .OfType<MethodDeclarationSyntax>()
             .Where(method => method.Identifier.ValueText == memberName && method.ParameterList.Parameters.Count == parameterCount)
             .Where(method => unit.Model.GetDeclaredSymbol(method) is IMethodSymbol symbol &&
-                SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner))
+                IsOwnedMember(symbol, owner))
             .ToArray();
         string[] admittedCanonicalSignatures = SourceMemberLedger
             .Where(entry => string.Equals(entry.SourcePath, unit.Source.RelativePath, StringComparison.Ordinal) &&
@@ -2582,7 +2983,7 @@ internal static class Extractor
             .OfType<MethodDeclarationSyntax>()
             .Where(method => method.Identifier.ValueText == memberName && method.ParameterList.Parameters.Count == parameterCount)
             .Where(method => unit.Model.GetDeclaredSymbol(method) is IMethodSymbol symbol &&
-                SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner))
+                IsOwnedMember(symbol, owner))
             .Where(method => string.Equals(CanonicalMethodSignature(method), identity.CanonicalSyntax, StringComparison.Ordinal))
             .ToArray();
         if (candidates.Length != identity.Multiplicity)
@@ -2600,7 +3001,7 @@ internal static class Extractor
         IMethodSymbol symbol = unit.Model.GetDeclaredSymbol(method)
             ?? throw new ExtractionException($"No declared symbol for {ownerMetadataName}.{memberName}.");
         RejectSymbol(symbol, $"method {ownerMetadataName}.{memberName}");
-        IMethodSymbol[] exactMembers = owner.GetMembers(identity.MemberName)
+        IMethodSymbol[] exactMembers = OwnedMembers(owner, identity.MemberName)
             .OfType<IMethodSymbol>()
             .Where(candidate => candidate.MethodKind == MethodKind.Ordinary && candidate.Arity == identity.Arity &&
                 SignatureMatches(candidate, identity.ParameterSyntax, identity.RefKinds) &&
@@ -2608,7 +3009,7 @@ internal static class Extractor
                     ReferenceEquals(reference.SyntaxTree, unit.Source.Tree) && reference.Span == method.Span))
             .ToArray();
         if (symbol.MethodKind != MethodKind.Ordinary || symbol.Arity != identity.Arity ||
-            !SymbolEqualityComparer.Default.Equals(symbol.ContainingType, owner) ||
+            !IsOwnedMember(symbol, owner) ||
             exactMembers.Length != identity.Multiplicity ||
             !SymbolEqualityComparer.Default.Equals(symbol, exactMembers[0]))
         {
@@ -2986,6 +3387,54 @@ internal static class Extractor
         return new Anchor(id, "invocation", BindNode(method.Unit, invocation, id, method), [], [], "typed-fluent-invocation");
     }
 
+    // Binds the enclosing expression statement of a (possibly conditional-access)
+    // invocation. Conditional dispatch (`?.`) executes the statement on every normal
+    // path while the inner invocation may be skipped, so statement-level ordering
+    // premises stay honest where invocation-level postdominance would be vacuous.
+    private static Anchor BindInvocationStatement(
+        MethodHandle method,
+        string targetName,
+        string id,
+        string requiredText,
+        int occurrence = 0,
+        int? expectedCount = null)
+    {
+        InvocationExpressionSyntax[] candidates = method.Syntax.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(invocation => InvocationName(invocation) == targetName)
+            .Where(invocation => requiredText.Length == 0 || Canonical(invocation).Contains(CanonicalText(requiredText), StringComparison.OrdinalIgnoreCase) ||
+                (invocation.Parent is ConditionalAccessExpressionSyntax conditional &&
+                    Canonical(conditional).Contains(CanonicalText(requiredText), StringComparison.OrdinalIgnoreCase)))
+            .ToArray();
+        if (occurrence < 0 || candidates.Length != (expectedCount ?? occurrence + 1) || candidates.Length <= occurrence)
+        {
+            throw new ExtractionException($"Expected invocation {occurrence} of {method.Symbol.Name}.{targetName} for {id}, found {candidates.Length}; expected {(expectedCount ?? occurrence + 1)}.");
+        }
+
+        InvocationExpressionSyntax invocation = candidates[occurrence];
+        RejectNestedFunctionOwner(invocation, id);
+        IOperation operation = method.Unit.Model.GetOperation(invocation)
+            ?? throw new ExtractionException($"No IOperation for invocation {id}.");
+        if (operation is not IInvocationOperation invocationOperation ||
+            invocationOperation.TargetMethod is null || invocationOperation.TargetMethod.Name != targetName)
+        {
+            throw new ExtractionException($"Invocation {id} did not resolve to the expected target method.");
+        }
+
+        RequireInvocationTargetIdentity(method.Unit, invocation, invocationOperation, id);
+
+        ExpressionStatementSyntax statement = invocation.Ancestors().OfType<ExpressionStatementSyntax>().FirstOrDefault()
+            ?? throw new ExtractionException($"Invocation {id} is not a direct expression statement.");
+        if (!ReferenceEquals(statement.Expression, invocation) &&
+            !(statement.Expression is ConditionalAccessExpressionSyntax conditionalAccess &&
+                conditionalAccess.WhenNotNull == invocation))
+        {
+            throw new ExtractionException($"Invocation {id} is nested beyond conditional dispatch.");
+        }
+
+        return new Anchor(id, "invocation-statement", BindNode(method.Unit, statement, id, method), [], [], "typed-invocation-statement");
+    }
+
     private static Anchor BindInvocation(
         MethodHandle method,
         string targetName,
@@ -2997,7 +3446,9 @@ internal static class Extractor
         InvocationExpressionSyntax[] candidates = method.Syntax.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
             .Where(invocation => InvocationName(invocation) == targetName)
-            .Where(invocation => requiredText.Length == 0 || Canonical(invocation).Contains(CanonicalText(requiredText), StringComparison.OrdinalIgnoreCase))
+            .Where(invocation => requiredText.Length == 0 || Canonical(invocation).Contains(CanonicalText(requiredText), StringComparison.OrdinalIgnoreCase) ||
+                (invocation.Parent is ConditionalAccessExpressionSyntax conditional &&
+                    Canonical(conditional).Contains(CanonicalText(requiredText), StringComparison.OrdinalIgnoreCase)))
             .ToArray();
         if (occurrence < 0 || candidates.Length != (expectedCount ?? occurrence + 1) || candidates.Length <= occurrence)
         {
@@ -3059,7 +3510,7 @@ internal static class Extractor
         }
         else
         {
-            IMethodSymbol[] signatureCandidates = expectedOwner.GetMembers(identity.MemberName)
+            IMethodSymbol[] signatureCandidates = OwnedMembers(expectedOwner, identity.MemberName)
                 .OfType<IMethodSymbol>()
                 .Where(candidate => InvocationSignatureMatches(unit.Compilation, candidate.OriginalDefinition,
                     identity, expectedMethodKind))
@@ -3075,7 +3526,7 @@ internal static class Extractor
 
         if (!signatureMatches ||
             !string.Equals(definition.Name, identity.MemberName, StringComparison.Ordinal) ||
-            !SymbolEqualityComparer.Default.Equals(definition.ContainingType?.OriginalDefinition, expectedOwner) ||
+            !IsOwnedMember(definition, expectedOwner) ||
             exactMultiplicity != identity.Multiplicity)
         {
             throw new ExtractionException(
@@ -3133,11 +3584,32 @@ internal static class Extractor
 
         if (identity.ParameterTypeMetadataNames is null) return true;
 
-        for (int i = 0; i < method.Parameters.Length; i++)
+        // A parameter typed by the method's own type parameter (like the instance
+        // argument of AddScoped<T>(builder, T)) only matches once constructed with
+        // the ledger's type arguments; open-generic comparison would reject every
+        // such overload. Construction is exact: arity already equals.
+        IMethodSymbol matchMethod = method;
+        if (identity.TypeArgumentMetadataNames is not null &&
+            identity.TypeArgumentMetadataNames.Length == method.Arity && method.Arity > 0)
+        {
+            INamedTypeSymbol[] typeArguments = identity.TypeArgumentMetadataNames
+                .Select(name => ResolveExactType(compilation, name, $"invocation type argument {identity.Id}"))
+                .ToArray();
+            try
+            {
+                matchMethod = method.Construct(typeArguments);
+            }
+            catch (ArgumentException)
+            {
+                return false;
+            }
+        }
+
+        for (int i = 0; i < matchMethod.Parameters.Length; i++)
         {
             INamedTypeSymbol expectedParameterType = ResolveExactType(compilation,
                 identity.ParameterTypeMetadataNames[i], $"invocation parameter {identity.Id}[{i}]");
-            if (!SymbolEqualityComparer.Default.Equals(OriginalDefinition(method.Parameters[i].Type),
+            if (!SymbolEqualityComparer.Default.Equals(OriginalDefinition(matchMethod.Parameters[i].Type),
                     expectedParameterType))
             {
                 return false;
@@ -3172,11 +3644,11 @@ internal static class Extractor
         INamedTypeSymbol expectedReceiver = ResolveExactType(unit.Compilation, identity.ReceiverMetadataTypeName,
             $"member receiver {id}");
         ITypeSymbol? receiver = unit.Model.GetTypeInfo(syntax.Expression).Type;
-        ISymbol[] exactMembers = expectedOwner.GetMembers(identity.MemberName)
+        ISymbol[] exactMembers = OwnedMembers(expectedOwner, identity.MemberName)
             .Where(candidate => SymbolEqualityComparer.Default.Equals(candidate, symbol))
             .ToArray();
         if (symbol.Kind != identity.Kind || exactMembers.Length != identity.Multiplicity ||
-            !SymbolEqualityComparer.Default.Equals(symbol.ContainingType?.OriginalDefinition, expectedOwner) ||
+            !IsOwnedMember(symbol, expectedOwner) ||
             receiver is null || !SymbolEqualityComparer.Default.Equals(OriginalDefinition(receiver), expectedReceiver))
         {
             throw new ExtractionException($"Member/receiver identity mismatch for {id}.");
@@ -3205,11 +3677,11 @@ internal static class Extractor
         };
         INamedTypeSymbol expectedOwner = ResolveExactType(unit.Compilation, identity.MetadataTypeName,
             $"assignment target {id}");
-        ISymbol[] exactMembers = expectedOwner.GetMembers(identity.MemberName)
+        ISymbol[] exactMembers = OwnedMembers(expectedOwner, identity.MemberName)
             .Where(candidate => SymbolEqualityComparer.Default.Equals(candidate, symbol))
             .ToArray();
         if (symbol.Kind != identity.Kind || exactMembers.Length != identity.Multiplicity ||
-            !SymbolEqualityComparer.Default.Equals(symbol.ContainingType?.OriginalDefinition, expectedOwner))
+            !IsOwnedMember(symbol, expectedOwner))
         {
             throw new ExtractionException($"Assignment target identity mismatch for {id}.");
         }
@@ -3248,6 +3720,22 @@ internal static class Extractor
         if (returns.Length != 1) throw new ExtractionException($"Expected one return for {id}, found {returns.Length}.");
         RejectNestedFunctionOwner(returns[0], id);
         return new Anchor(id, "return", BindNode(method.Unit, returns[0], id, method), [], [], "normal-return-site");
+    }
+
+    // Binds an initialized method-local declaration by variable name. Used for order
+    // premises about mode/flag evaluation (like BindPrefixIf and BindReturn, the
+    // identity is text plus single-declaration structure, not a ledger entry).
+    private static Anchor BindLocalDeclaration(MethodHandle method, string variableName, string id)
+    {
+        LocalDeclarationStatementSyntax[] declarations = method.Syntax.DescendantNodes()
+            .OfType<LocalDeclarationStatementSyntax>()
+            .Where(declaration => declaration.Declaration.Variables.Count == 1 &&
+                declaration.Declaration.Variables[0].Identifier.ValueText == variableName &&
+                declaration.Declaration.Variables[0].Initializer is not null)
+            .ToArray();
+        if (declarations.Length != 1) throw new ExtractionException($"Expected one initialized local {variableName} for {id}, found {declarations.Length}.");
+        RejectNestedFunctionOwner(declarations[0], id);
+        return new Anchor(id, "local-declaration", BindNode(method.Unit, declarations[0], id, method), [], [], "typed-local-declaration");
     }
 
     private static Anchor BindPrefixIf(MethodHandle method, string requiredText, string id)
@@ -3313,9 +3801,15 @@ internal static class Extractor
 
     private static void RequireUnconditional(MethodHandle method, Anchor anchor, string message)
     {
-        SyntaxNode? node = method.Syntax.DescendantNodesAndSelf()
-            .SingleOrDefault(candidate => candidate.SpanStart == anchor.Binding.Position &&
-                string.Equals(Canonical(candidate), anchor.Binding.CanonicalSyntax, StringComparison.Ordinal));
+        // NodeKind disambiguates transparent wrappers: an argument-position invocation
+        // shares span and token text with its ArgumentSyntax parent, so span plus
+        // canonical text alone can match twice.
+        SyntaxNode[] matches = method.Syntax.DescendantNodesAndSelf()
+            .Where(candidate => candidate.SpanStart == anchor.Binding.Position &&
+                string.Equals(candidate.Kind().ToString(), anchor.Binding.NodeKind, StringComparison.Ordinal) &&
+                string.Equals(Canonical(candidate), anchor.Binding.CanonicalSyntax, StringComparison.Ordinal))
+            .ToArray();
+        SyntaxNode? node = matches.Length == 1 ? matches[0] : null;
         if (node is null || !IsAttachedToMethod(method, anchor.Binding) ||
             node.Ancestors().Any(IsConditionalOrExceptionalContainer))
         {
@@ -3422,11 +3916,20 @@ internal static class Extractor
             IFieldReferenceOperation field => field.Instance?.Type?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? string.Empty,
             _ => string.Empty,
         };
+        // Declaration bindings carry no IOperation type, so they observe their declared
+        // type instead; statement bindings observe their operand or local type, falling
+        // back to the containing method's result type. The IR validator requires a
+        // non-empty operation type.
         string operationType = operation?.Type?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ??
+            StatementObservedType(unit, node, method) ??
             symbol switch
             {
                 IMethodSymbol methodSymbol => methodSymbol.ReturnType.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
-                _ => string.Empty,
+                IParameterSymbol parameterSymbol => parameterSymbol.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                IFieldSymbol fieldSymbol => fieldSymbol.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                IPropertySymbol propertySymbol => propertySymbol.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                INamedTypeSymbol typeSymbol => typeSymbol.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat),
+                _ => method?.Symbol.ReturnType.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? string.Empty,
             };
         FileLinePositionSpan span = unit.Source.Tree.GetLineSpan(node.Span);
         static string[] ReadNames(IEnumerable<ISymbol> values) => values
@@ -3435,9 +3938,15 @@ internal static class Extractor
             .OrderBy(static value => value, StringComparer.Ordinal)
             .ToArray();
 
+        // Top-level types have no containing type; their owner scope is the namespace.
+        string owner = method?.Symbol.ContainingType?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ??
+            symbol?.ContainingType?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ??
+            (symbol is INamedTypeSymbol declaredType ? declaredType.ContainingNamespace?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) : null) ??
+            string.Empty;
+
         return new TypedBinding(
             unit.Source.RelativePath,
-            method?.Symbol.ContainingType?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? symbol?.ContainingType?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat) ?? string.Empty,
+            owner,
             method?.Symbol.Name ?? symbol?.Name ?? id,
             node.Kind().ToString(),
             Canonical(node),
@@ -3518,6 +4027,24 @@ internal static class Extractor
         _ => null,
     };
 
+    private static string? StatementObservedType(SemanticUnit unit, SyntaxNode node, MethodHandle? method)
+    {
+        if (node is ReturnStatementSyntax @return && @return.Expression is ExpressionSyntax returned)
+        {
+            return unit.Model.GetTypeInfo(returned).Type
+                ?.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+        }
+
+        if (node is LocalDeclarationStatementSyntax declaration &&
+            declaration.Declaration.Variables.Count == 1 &&
+            unit.Model.GetDeclaredSymbol(declaration.Declaration.Variables[0]) is ILocalSymbol local)
+        {
+            return local.Type.ToDisplayString(SymbolDisplayFormat.CSharpErrorMessageFormat);
+        }
+
+        return null;
+    }
+
     private static string Canonical(SyntaxNode node) =>
         string.Concat(node.DescendantTokens().Select(static token => token.Text));
 
@@ -3566,8 +4093,16 @@ internal static class Extractor
         return -1;
     }
 
+    // Either containment direction attaches: normally the block operation covers
+    // the bound fragment, but Roslyn splits compound conditions (||, &&, ??, ?:)
+    // into one branch value per operand, so no single operation covers the whole
+    // condition. Reverse containment then attaches the first block that evaluates
+    // any part of the fragment, which is where its evaluation starts. Blocks
+    // iterate in ordinal order, so straight-line fragments are unaffected: their
+    // sub-operations share the parent operation's block.
     private static bool ContainsSyntax(IOperation operation, SyntaxNode node) =>
-        ReferenceEquals(operation.Syntax.SyntaxTree, node.SyntaxTree) && operation.Syntax.FullSpan.Contains(node.FullSpan);
+        ReferenceEquals(operation.Syntax.SyntaxTree, node.SyntaxTree) &&
+        (operation.Syntax.FullSpan.Contains(node.FullSpan) || node.FullSpan.Contains(operation.Syntax.FullSpan));
 
     private static void RequireSourceOrder(Anchor earlier, Anchor later, string message)
     {
@@ -3947,6 +4482,38 @@ internal static class Extractor
         HashSet<string> semanticOperationIds = new(StringComparer.Ordinal);
         foreach (SemanticOperation operation in document.Machine.SemanticOperations)
         {
+            string operationDiag;
+            {
+                operationDiag = "ok";
+                if (operation is null) operationDiag = "null-operation";
+                else if (!premiseAnchors.TryGetValue(operation.AnchorId, out Anchor? diagAnchor)) operationDiag = "missing-anchor";
+                else
+                {
+                    System.Text.StringBuilder diag = new();
+                    if (string.IsNullOrWhiteSpace(operation.Id)) diag.Append("[empty-id]");
+                    if (string.IsNullOrWhiteSpace(operation.AnchorId)) diag.Append("[empty-anchorId]");
+                    if (string.IsNullOrWhiteSpace(operation.Path)) diag.Append("[empty-path]");
+                    if (string.IsNullOrWhiteSpace(operation.Owner)) diag.Append("[empty-owner]");
+                    if (string.IsNullOrWhiteSpace(operation.Member)) diag.Append("[empty-member]");
+                    if (string.IsNullOrWhiteSpace(operation.OperationKind)) diag.Append("[empty-kind]");
+                    if (string.IsNullOrWhiteSpace(operation.OperationType)) diag.Append("[empty-type]");
+                    if (operation.CanonicalSyntax is null) diag.Append("[null-canonical]");
+                    if (operation.ReadInside is null) diag.Append("[null-readIn]");
+                    if (operation.WrittenInside is null) diag.Append("[null-writtenIn]");
+                    if (operation.ReadOutside is null) diag.Append("[null-readOut]");
+                    if (operation.WrittenOutside is null) diag.Append("[null-writtenOut]");
+                    if (operation.Path != diagAnchor.Binding.Path) diag.Append("[path]");
+                    if (operation.Owner != diagAnchor.Binding.Owner) diag.Append("[owner]");
+                    if (operation.Member != diagAnchor.Binding.Member) diag.Append("[member]");
+                    if (operation.OperationKind != diagAnchor.Binding.OperationKind) diag.Append("[kind]");
+                    if (operation.OperationType != diagAnchor.Binding.OperationType) diag.Append("[type]");
+                    if (operation.ReceiverType != diagAnchor.Binding.ReceiverType) diag.Append("[receiver]");
+                    if (operation.TargetSymbol != diagAnchor.Binding.TargetSymbol) diag.Append("[target]");
+                    if (operation.CanonicalSyntax != diagAnchor.Binding.CanonicalSyntax) diag.Append("[canonical]");
+                    diag.Append($" op=[{operation.Id}]");
+                    operationDiag = diag.ToString();
+                }
+            }
             if (operation is null || string.IsNullOrWhiteSpace(operation.Id) || !semanticOperationIds.Add(operation.Id) ||
                 string.IsNullOrWhiteSpace(operation.AnchorId) || !premiseAnchors.TryGetValue(operation.AnchorId, out Anchor? operationAnchor) ||
                 string.IsNullOrWhiteSpace(operation.Path) || string.IsNullOrWhiteSpace(operation.Owner) ||
@@ -3965,7 +4532,7 @@ internal static class Extractor
                 !operation.ReadOutside.SequenceEqual(operationAnchor.Binding.ReadOutside, StringComparer.Ordinal) ||
                 !operation.WrittenOutside.SequenceEqual(operationAnchor.Binding.WrittenOutside, StringComparer.Ordinal))
             {
-                throw new ExtractionException("The ordinary machine IR has an incomplete semantic operation.");
+                throw new ExtractionException($"The ordinary machine IR has an incomplete semantic operation: {operationDiag}.");
             }
         }
 
@@ -4022,8 +4589,11 @@ internal static class Extractor
         foreach (TypedBinding binding in manifest.Bindings)
         {
             ValidateBinding(binding);
-            string key = $"{binding.Path}\0{binding.Position}\0{binding.Member}";
-            if (!keys.Add(key)) throw new ExtractionException("The ordinary machine manifest has duplicate binding positions.");
+            // Fluent-chain siblings share one start offset by construction (every
+            // nested invocation begins at the chain receiver), so the syntax hash
+            // joins the key. A genuinely double-bound node still collides.
+            string key = $"{binding.Path}\0{binding.Position}\0{binding.Member}\0{binding.NodeKind}\0{binding.SyntaxSha256}";
+            if (!keys.Add(key)) throw new ExtractionException($"The ordinary machine manifest has duplicate binding positions: {binding.Path}@{binding.Position} {binding.Member} [{binding.NodeKind}] {binding.CanonicalSyntax}.");
         }
     }
 
