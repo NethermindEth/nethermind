@@ -97,7 +97,7 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                 }
 
                 int length = (int)(end - start);
-                return MemoryTrace.Slice((int)start, length)
+                return MemoryTrace.Slice((int)start, length, limit: InputErrorEngine is null)
                     .ToArray()
                     .ToTypedScriptArray();
             }
@@ -109,7 +109,9 @@ namespace Nethermind.Blockchain.Tracing.GethStyle.Custom.JavaScript
                     InputErrorEngine.AbortInput($"tracer accessed out of bound memory: available {MemoryTrace.Size}, offset {offset}, size {EvmPooledMemory.WordSize}");
                     return null!;
                 }
-                return MemoryTrace.GetUint(offset).ToBigInteger();
+                return (InputErrorEngine is null
+                    ? MemoryTrace.GetUint(offset)
+                    : new BigInteger(MemoryTrace.Slice(offset, EvmPooledMemory.WordSize, limit: false), true, true)).ToBigInteger();
             }
         }
 

@@ -229,16 +229,23 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    [Test]
-    public async Task JavaScript_log_memory_padding_limit([Values(0, 32)] int memorySize, [Values(0, 1)] int excess)
+    [TestCase(0, 0, 0)]
+    [TestCase(0, 0, 1)]
+    [TestCase(32, 32, 0)]
+    [TestCase(32, 32, 1)]
+    [TestCase(32, 0, 0)]
+    [TestCase(32, 0, 1)]
+    [TestCase(32, 16, 0)]
+    [TestCase(32, 16, 1)]
+    public async Task JavaScript_log_memory_padding_limit(int memorySize, int backingSize, int excess)
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
         using Engine engine = new(Prague.Instance);
         int end = memorySize + MemorySizes.MiB + excess;
         using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
             "{fault:function(){},step:function(log){this.first=log.memory.slice(0,1)[0];this.bytes=log.memory.slice(" + (end - 1) + "," + end + ");},result:function(){return {length:this.bytes.length,first:this.first,last:this.bytes[0]};}}");
-        byte[] memory = new byte[memorySize];
-        if (memorySize != 0) memory[0] = 7;
+        byte[] memory = new byte[backingSize];
+        if (backingSize != 0) memory[0] = 7;
         tracer.SetOperationMemory(new TraceMemory((ulong)memorySize, memory));
         tracer.SetOperationStack(default);
         using GethLikeTxTrace result = tracer.BuildResult();
@@ -254,9 +261,27 @@ public partial class DebugRpcModuleTests
                 Assert.That(result.TraceError, Is.Null);
                 JToken payload = JToken.Parse(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions));
                 Assert.That((int?)payload["length"], Is.EqualTo(1));
-                Assert.That((int?)payload["first"], Is.EqualTo(memorySize == 0 ? 0 : 7));
+                Assert.That((int?)payload["first"], Is.EqualTo(backingSize == 0 ? 0 : 7));
                 Assert.That((int?)payload["last"], Is.EqualTo(0));
             }
+        }
+    }
+
+    [Test]
+    public async Task JavaScript_log_word_reads_use_logical_memory_size(
+        [Values(MemorySizes.MiB - 32, MemorySizes.MiB)] int offset, [Values(0, 32)] int backingSize)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        using Engine engine = new(Prague.Instance);
+        using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+            "{fault:function(){},step:function(log){this.word=log.memory.getUint(" + offset + ").toString();},result:function(){return this.word;}}");
+        tracer.SetOperationMemory(new TraceMemory((ulong)offset + EvmPooledMemory.WordSize, new byte[backingSize]));
+        tracer.SetOperationStack(default);
+        using GethLikeTxTrace result = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TraceError, Is.Null);
+            Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("\"0\""));
         }
     }
 
