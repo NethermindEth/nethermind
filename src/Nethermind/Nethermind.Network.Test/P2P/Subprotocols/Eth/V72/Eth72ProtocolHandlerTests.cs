@@ -578,70 +578,27 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
-    // Three 300k transactions against a one-second bucket; the later ones arrive before it refills.
-    [TestCase(600_000UL, 0UL, false, 2, TestName = "Peer_validation_budget_drops_frame_txs_once_failing_validation_spends_it")]
-    [TestCase(600_000UL, 0UL, true, 3, TestName = "Peer_validation_budget_refunds_admitted_frame_txs")]
-    [TestCase(0UL, 0UL, false, 3, TestName = "Peer_validation_budget_off_submits_every_frame_tx")]
-    [TestCase(200_000UL, 0UL, false, 1, TestName = "Peer_validation_budget_below_one_tx_still_admits_one_per_refill")]
-    [TestCase(300_000UL, 200_000UL, false, 3, TestName = "Peer_validation_budget_leaves_txs_above_max_verify_gas_to_the_pool")]
-    public void Peer_validation_budget_bounds_failing_frame_tx_validation(ulong gasPerSecond, ulong maxVerifyGas, bool admitted, int expectedSubmitted)
+    // The pool charges a peer's share of the per-head validation time to whoever submits, so the handler must
+    // identify itself; a share the pool reports spent counts towards this peer's flood limits.
+    [Test]
+    public void Frame_txs_are_submitted_as_this_peer_for_its_validation_share()
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
         _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(gasPerSecond);
-        _txPoolConfig.FrameTxMaxVerifyGas.Returns(maxVerifyGas);
-        RecreateHandler();
-        _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(admitted ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed);
-
-        Transaction[] transactions =
-        [
-            FrameTx(TestItem.PrivateKeyA, validationGas: 300_000),
-            FrameTx(TestItem.PrivateKeyB, validationGas: 300_000),
-            FrameTx(TestItem.PrivateKeyC, validationGas: 300_000),
-        ];
-        using TransactionsMessage message = new(transactions.ToPooledList());
-
-        HandleIncomingStatusMessage();
-        HandleZeroMessage(message, Eth62MessageCode.Transactions);
-
-        _transactionPool.Received(expectedSubmitted).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
-    }
-
-    // A prefix that approves and then fails a later filter cost the full validation, so its charge must not come back;
-    // a rejection before any validation work (a duplicate) must refund it.
-    [TestCase(true, 2, TestName = "Peer_validation_budget_stays_charged_when_the_pool_rejects_after_validating")]
-    [TestCase(false, 3, TestName = "Peer_validation_budget_refunds_a_rejection_before_validation")]
-    public void Peer_validation_budget_charges_rejections_after_validation(bool validationRan, int expectedSubmitted)
-    {
-        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
-        spec.IsEip8141Enabled.Returns(true);
-        _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(600_000UL);
         ITxPool pool = Substitute.For<ITxPool, IRecyclableTxPool>();
-        ((IRecyclableTxPool)pool).SubmitOwnedTx(Arg.Any<Transaction>(), out Arg.Any<bool>(), out Arg.Any<bool>())
-            .Returns(call =>
-            {
-                call[1] = false;
-                call[2] = validationRan;
-                return validationRan ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.AlreadyKnown;
-            });
+        ((IRecyclableTxPool)pool).SubmitOwnedTx(Arg.Any<Transaction>(), Arg.Any<object?>(), out Arg.Any<bool>())
+            .Returns(AcceptTxResult.FramePeerValidationBudgetSpent);
         _transactionPool = pool;
         RecreateHandler();
 
-        Transaction[] transactions =
-        [
-            FrameTx(TestItem.PrivateKeyA, validationGas: 300_000),
-            FrameTx(TestItem.PrivateKeyB, validationGas: 300_000),
-            FrameTx(TestItem.PrivateKeyC, validationGas: 300_000),
-        ];
+        Transaction[] transactions = [FrameTx(TestItem.PrivateKeyA), FrameTx(TestItem.PrivateKeyB)];
         using TransactionsMessage message = new(transactions.ToPooledList());
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth62MessageCode.Transactions);
 
-        ((IRecyclableTxPool)pool).Received(expectedSubmitted).SubmitOwnedTx(Arg.Any<Transaction>(), out Arg.Any<bool>(), out Arg.Any<bool>());
+        ((IRecyclableTxPool)pool).Received(transactions.Length).SubmitOwnedTx(Arg.Any<Transaction>(), _handler, out Arg.Any<bool>());
     }
 
     // This handler has its own submission loop, so it needs the same stop once an invalid transaction closes the session.
@@ -5401,13 +5358,6 @@ public class Eth72ProtocolHandlerTests
         .WithGasLimit(100_000)
         .WithTo(TestItem.AddressB)
         .SignedAndResolved(signer).TestObject;
-
-    private static Transaction FrameTx(PrivateKey signer, ulong validationGas)
-    {
-        Transaction tx = FrameTx(signer);
-        tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, validationGas, value: default, Array.Empty<byte>())];
-        return tx;
-    }
 
     private static void AssertCustodyRequest(
         (Hash256 Hash, BlobCellMask CellMask) request,

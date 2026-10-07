@@ -149,6 +149,10 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxSimulationDeferred;
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were dropped unvalidated because the sending peer had spent its share of the per-head validation time on rejected transactions.")]
+        public static long PendingTransactionsFramePeerShareSpent;
+
+        [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions admitted with an unresolved payer because their validation prefix could not be simulated. A rising count means payer exposure is no longer being accounted for.")]
         public static long PendingTransactionsFrameTxSimulationUndecided;
 

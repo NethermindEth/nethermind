@@ -115,6 +115,9 @@ namespace Nethermind.TxPool
         // Publish the spec and its epoch through one reference so readers cannot combine different observations.
         private HeadSpecObservation? _headSpecObservation;
         private long _headGeneration;
+        private readonly PeerValidationShares? _peerValidationShares;
+
+        internal PeerValidationShares? PeerValidationShares => _peerValidationShares;
         private long _forkStateVersion;
         private int _consecutiveRevalidationAbandonments;
         private int _consecutiveMarkerPublicationDeferrals;
@@ -198,6 +201,9 @@ namespace Nethermind.TxPool
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
             _txPoolConfig = txPoolConfig;
+            _peerValidationShares = txPoolConfig.FrameTxPeerSimulationFairShare && txPoolConfig.FrameTxSimulationBudgetPerHeadMs > 0
+                ? new PeerValidationShares(txPoolConfig.FrameTxSimulationBudgetPerHeadMs * Stopwatch.Frequency / 1000)
+                : null;
             _specChangeTxValidator = specChangeTxValidator ?? throw new ArgumentNullException(nameof(specChangeTxValidator));
             _specChangeValidationFingerprint = (specChangeTxValidator as ISpecChangeTxValidator)?.PersistenceFingerprint;
             _specChangeValidationStorage = txPoolConfig.BlobsSupport.IsPersistentStorage()
@@ -1523,23 +1529,21 @@ namespace Nethermind.TxPool
         }
 
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
-            => SubmitTx(tx, handlingOptions, ownsTransaction: false, out _, out _);
+            => SubmitTx(tx, handlingOptions, ownsTransaction: false, peer: null, out _);
 
-        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan)
+        AcceptTxResult IRecyclableTxPool.SubmitOwnedTx(Transaction tx, object? peer, out bool canRecycle)
         {
             // A derived pool can reimplement ITxPool and retain transactions on rejection.
             if (GetType() != typeof(TxPool))
             {
                 canRecycle = false;
-                frameValidationRan = false;
                 return ((ITxPool)this).SubmitTx(tx, TxHandlingOptions.None);
             }
-            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, out canRecycle, out frameValidationRan);
+            return SubmitTx(tx, TxHandlingOptions.None, ownsTransaction: true, peer, out canRecycle);
         }
 
-        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, out bool canRecycle, out bool frameValidationRan)
+        private AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions, bool ownsTransaction, object? peer, out bool canRecycle)
         {
-            frameValidationRan = false;
             canRecycle = ownsTransaction && handlingOptions == TxHandlingOptions.None;
             if (!canRecycle)
                 PooledBlobBuffers.Disown(tx);
@@ -1554,6 +1558,17 @@ namespace Nethermind.TxPool
             {
                 PooledBlobBuffers.Return(tx);
                 return AcceptTxResult.Syncing;
+            }
+
+            // Only a frame transaction from a peer draws on a share; the head is read once, so the check and the
+            // charge below land on the same one.
+            PeerValidationShares? shares = peer is not null && tx.SupportsFrames ? _peerValidationShares : null;
+            long headGeneration = Volatile.Read(ref _headGeneration);
+            if (shares is not null && !shares.HasShare(peer!, headGeneration))
+            {
+                Metrics.PendingTransactionsFramePeerShareSpent++;
+                PooledBlobBuffers.Return(tx);
+                return AcceptTxResult.FramePeerValidationBudgetSpent;
             }
 
             Metrics.PendingTransactionsReceived++;
@@ -1596,11 +1611,18 @@ namespace Nethermind.TxPool
                 // Observation and insertion share the head lock so an A -> B -> A transition cannot cross a validation publish unseen.
                 ObserveHeadSpec(headSpec);
                 state = new(tx, _accounts, headSpec);
+                long validationStarted = Stopwatch.GetTimestamp();
                 accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
                 if (accepted)
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
+                }
+
+                // Validation that ran and still ended in a rejection is the peer's to pay, whichever step rejected it.
+                if (shares is not null && !accepted && state.FrameValidationRan)
+                {
+                    shares.Charge(peer!, headGeneration, Stopwatch.GetTimestamp() - validationStarted);
                 }
                 else
                 {
@@ -1631,8 +1653,6 @@ namespace Nethermind.TxPool
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
-
-            frameValidationRan = state.FrameValidationRan;
 
             if (state.FrameSimulationYielded && _retryCache.TryDefer(tx.Hash!))
             {

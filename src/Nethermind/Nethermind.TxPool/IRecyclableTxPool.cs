@@ -14,9 +14,9 @@ internal interface IRecyclableTxPool
     /// A true <paramref name="canRecycle"/> means no transaction reference escaped submission.
     /// The caller must finish reading the transaction before returning it to its object pool.
     /// </remarks>
-    AcceptTxResult SubmitOwnedTx(Transaction tx, out bool canRecycle) => SubmitOwnedTx(tx, out canRecycle, out _);
+    AcceptTxResult SubmitOwnedTx(Transaction tx, out bool canRecycle) => SubmitOwnedTx(tx, peer: null, out canRecycle);
 
-    /// <param name="frameValidationRan">Whether the pool spent frame validation work on the transaction, verifying
-    /// its signatures or executing its validation prefix, whatever the result.</param>
-    AcceptTxResult SubmitOwnedTx(Transaction tx, out bool canRecycle, out bool frameValidationRan);
+    /// <param name="peer">The sending peer, compared by reference, whose share of the per-head frame validation
+    /// time pays for a frame transaction rejected after validation; <see langword="null"/> exempts it.</param>
+    AcceptTxResult SubmitOwnedTx(Transaction tx, object? peer, out bool canRecycle);
 }
