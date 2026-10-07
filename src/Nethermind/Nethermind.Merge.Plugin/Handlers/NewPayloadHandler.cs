@@ -760,7 +760,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
                 // unqueued until the CL re-sends the payload.
-                _ = EnqueueOnceAddedAsync(suggest, block, ilDigest, processingOptions, blockProcessed, workers);
+                QueuedInclusionList queued = new(ilDigest);
+                _queuedInclusionLists.TryAdd(block.Hash!, queued);
+                _ = EnqueueOnceAddedAsync(suggest, block, queued, processingOptions, blockProcessed, workers);
                 throw;
             }
 
@@ -891,20 +893,26 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return queued is null || carriesSameList ? inQueue : Task.WhenAll(inQueue, queued.Left);
     }
 
-    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ValueHash256 ilDigest, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
+        bool added = false;
         try
         {
-            if (await suggest is not AddBlockResult.Added) return;
+            added = await suggest is AddBlockResult.Added;
         }
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Suggesting {block.ToString(Block.Format.FullHashAndNumber)} failed after its request timed out: {e}");
+        }
+
+        if (!added)
+        {
+            _queuedInclusionLists.TryRemove(new KeyValuePair<Hash256, QueuedInclusionList>(block.Hash!, queued));
+            queued.MarkLeft();
             return;
         }
 
         // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
-        QueuedInclusionList queued = new(ilDigest);
         _queuedInclusionLists[block.Hash!] = queued;
         await Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
     }

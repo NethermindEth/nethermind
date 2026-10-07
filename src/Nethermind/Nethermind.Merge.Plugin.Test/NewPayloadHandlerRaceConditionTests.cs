@@ -591,6 +591,135 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
+    [Test, MaxTime(30_000)]
+    public async Task ValidateBlockAndProcess_waits_for_a_copy_with_another_inclusion_list_whose_request_timed_out_in_suggest()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource<AddBlockResult> timedOutSuggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<AddBlockResult> resentSuggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int suggests = 0;
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                if (!firstEnqueued.TrySetResult()) secondEnqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 3_000,
+            configure: (blockTree, _) => blockTree
+                .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ => new ValueTask<AddBlockResult>((Interlocked.Increment(ref suggests) == 1 ? timedOutSuggest : resentSuggest).Task)));
+
+        ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
+
+        Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
+        resentSuggest.SetResult(AddBlockResult.AlreadyKnown);
+
+        try
+        {
+            Task queuedBeforeTheFirstCopy = await Task.WhenAny(firstEnqueued.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            Assert.That(queuedBeforeTheFirstCopy, Is.Not.SameAs(firstEnqueued.Task), "the re-submission must wait for the copy the timed-out request is still to queue");
+        }
+        finally
+        {
+            timedOutSuggest.TrySetResult(AddBlockResult.Added);
+        }
+
+        await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
+    [Test, MaxTime(30_000)]
+    public async Task ValidateBlockAndProcess_keeps_waiting_for_a_queued_copy_when_a_request_with_another_inclusion_list_times_out_in_suggest()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource<AddBlockResult> timedOutSuggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource queuedCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int suggests = 0;
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, false).Returns(_ => new ValueTask(queuedCopyRemoved.Task));
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                if (!firstEnqueued.TrySetResult()) secondEnqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 3_000,
+            configure: (blockTree, _) => blockTree
+                .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ => Interlocked.Increment(ref suggests) switch
+                {
+                    1 => ValueTask.FromResult(AddBlockResult.Added),
+                    2 => new ValueTask<AddBlockResult>(timedOutSuggest.Task),
+                    _ => ValueTask.FromResult(AddBlockResult.AlreadyKnown)
+                }));
+
+        ExecutionPayloadV3 queuedPayload = ExecutionPayloadV3.Create(block);
+        queuedPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+        ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
+        resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
+
+        Task<ResultWrapper<PayloadStatusV1>> queuedRequest = handler.HandleAsync(queuedPayload);
+        await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the second request gives up while its suggest is still pending");
+
+        Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
+
+        try
+        {
+            Task queuedBesideTheCopy = await Task.WhenAny(secondEnqueued.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
+            Assert.That(queuedBesideTheCopy, Is.Not.SameAs(secondEnqueued.Task), "the re-submission must still wait for the queued copy carrying another list");
+        }
+        finally
+        {
+            timedOutSuggest.TrySetResult(AddBlockResult.AlreadyKnown);
+            queuedCopyRemoved.TrySetResult();
+        }
+
+        await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
     /// <summary>
     /// The verdict is published before the block is committed, so a commit that then fails races the request's own
     /// cache write. Whichever of the two lands first, the answer must not stay cached: a block that never committed
