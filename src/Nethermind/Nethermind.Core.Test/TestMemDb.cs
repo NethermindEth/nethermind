@@ -128,7 +128,7 @@ public class TestMemDb : MemDb, ITunableDb, ISortedKeyValueStore
         return new FakeSortedView(sortedValue);
     }
 
-    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISortedView
+    private class FakeSortedView(ArrayPoolList<(byte[], byte[]?)> list) : ISeekableSortedView
     {
         private int idx = -1;
 

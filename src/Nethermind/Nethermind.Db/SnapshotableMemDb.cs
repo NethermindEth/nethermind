@@ -534,7 +534,7 @@ namespace Nethermind.Db
         /// Sorted view iterator for a range of keys.
         /// Uses GetViewBetween for efficient range queries instead of scanning from the beginning.
         /// </summary>
-        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISortedView
+        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISeekableSortedView
         {
             private readonly SnapshotableMemDb _db = db;
             private readonly int _version = version;

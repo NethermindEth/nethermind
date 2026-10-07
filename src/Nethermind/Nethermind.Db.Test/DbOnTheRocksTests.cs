@@ -1793,7 +1793,7 @@ namespace Nethermind.Db.Test
                 _db[[b]] = [b];
             }
 
-            using ISortedView view = ((ISortedKeyValueStore)_db).GetViewBetween([1], [7]);
+            using ISeekableSortedView view = (ISeekableSortedView)((ISortedKeyValueStore)_db).GetViewBetween([1], [7]);
 
             Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
             Assert.That(view.SeekTo([4]), Is.True, "a key at or after 4 remains below the upper bound");

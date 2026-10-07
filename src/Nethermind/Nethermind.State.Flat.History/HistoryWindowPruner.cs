@@ -442,10 +442,10 @@ public sealed class HistoryWindowPruner(
                     Metrics.FlatHistoryPrunedRows++;
                     sinceFlush = FlushBatchIfNeeded(column, ref batch, sinceFlush);
                 }
-                else if (++liveRowsInGroup == LiveRowsBeforeSkip)
+                else if (++liveRowsInGroup == LiveRowsBeforeSkip && view is ISeekableSortedView seekable)
                 {
                     currentGroupKey.CopyTo(pastGroupKey);
-                    hasRow = view.SeekTo(pastGroupKey);
+                    hasRow = seekable.SeekTo(pastGroupKey);
                     continue;
                 }
 

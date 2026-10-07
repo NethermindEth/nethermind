@@ -216,15 +216,18 @@ namespace Nethermind.Core
     public interface ISortedView : IDisposable
     {
         public bool StartBefore(ReadOnlySpan<byte> value);
+        public bool MoveNext();
+        public ReadOnlySpan<byte> CurrentKey { get; }
+        public ReadOnlySpan<byte> CurrentValue { get; }
+    }
 
+    /// <summary>A sorted view that can reposition within its bounds.</summary>
+    public interface ISeekableSortedView : ISortedView
+    {
         /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
         /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
         /// remains below the view's upper bound.</summary>
         public bool SeekTo(ReadOnlySpan<byte> key);
-
-        public bool MoveNext();
-        public ReadOnlySpan<byte> CurrentKey { get; }
-        public ReadOnlySpan<byte> CurrentValue { get; }
     }
 
     [Flags]

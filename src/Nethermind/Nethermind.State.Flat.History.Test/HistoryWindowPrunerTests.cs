@@ -477,6 +477,24 @@ public class HistoryWindowPrunerTests
         }
     }
 
+    [Test]
+    public void RunOnePass_ViewThatCannotSeek_ReadsEveryLiveRowAndDeletesExactlyTheDeadRows()
+    {
+        SeedLongLiveTails();
+        using HistoryWindowPruner pruner = CreateLongLiveTailPruner(new NonSeekingHistoryColumns(_historyColumns));
+        CountingBudget budget = new();
+
+        bool completed = pruner.RunOnePass(CancellationToken.None, budget);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(completed, Is.True, "an unlimited budget finishes the cycle in one pass");
+            AssertOnlyLiveTailRowsSurvive();
+            Assert.That(budget.Checks, Is.EqualTo(2 * (LongTailDeadBlocks.Length + (int)(LongTailWatermark - LongTailGeneralFloor)) + SlicedRowsBelowGeneralFloor.Length),
+                "a view without ISeekableSortedView falls back to reading every row of the account sweep");
+        }
+    }
+
     private void SeedLongLiveTails()
     {
         foreach (Address address in new[] { Address, SlicedAddress })
@@ -501,10 +519,10 @@ public class HistoryWindowPrunerTests
     }
 
     // General floor 100 - 40 = 60; the slice keeps 70 blocks, so its own floor is 30.
-    private HistoryWindowPruner CreateLongLiveTailPruner()
+    private HistoryWindowPruner CreateLongLiveTailPruner(IColumnsDb<FlatHistoryColumns>? prunerHistory = null)
     {
         HistoryWindowPruner pruner = CreatePruner(retentionBlocks: LongTailWatermark - LongTailGeneralFloor,
-            configure: config => config.HistorySliceAddresses = $"{SlicedAddress}:70");
+            configure: config => config.HistorySliceAddresses = $"{SlicedAddress}:70", prunerHistory: prunerHistory);
         pruner.ReconcileSliceScopes();
         return pruner;
     }
@@ -543,7 +561,8 @@ public class HistoryWindowPrunerTests
         clears.RecordClear(block, accountKey, batch.GetColumnBatch(FlatHistoryColumns.StorageClears));
     }
 
-    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null, HistoryScopeGate? scopeGate = null)
+    private HistoryWindowPruner CreatePruner(ulong retentionBlocks, int passBudgetSeconds = 30, Action<FlatDbConfig>? configure = null, HistoryScopeGate? scopeGate = null,
+        IColumnsDb<FlatHistoryColumns>? prunerHistory = null)
     {
         FlatDbConfig config = new()
         {
@@ -558,7 +577,7 @@ public class HistoryWindowPrunerTests
         _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
         _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
         return new HistoryWindowPruner(
-            _writer, _historyColumns, config,
+            _writer, prunerHistory ?? _historyColumns, config,
             scopeGate ?? new HistoryScopeGate(),
             availability, rowFormat,
             LimboLogs.Instance,
@@ -592,6 +611,51 @@ public class HistoryWindowPrunerTests
                 return false;
             }
         }
+    }
+
+    private sealed class NonSeekingHistoryColumns(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>
+    {
+        public IDb GetColumnDb(FlatHistoryColumns key) => new NonSeekingDb(inner.GetColumnDb(key));
+        public IColumnsWriteBatch<FlatHistoryColumns> StartWriteBatch() => inner.StartWriteBatch();
+        public IEnumerable<FlatHistoryColumns> ColumnKeys => inner.ColumnKeys;
+        public IColumnDbSnapshot<FlatHistoryColumns> CreateSnapshot() => inner.CreateSnapshot();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+        public void SyncWal() => inner.SyncWal();
+
+        public void Dispose() { }
+    }
+
+    private sealed class NonSeekingDb(IDb inner) : IDb, ISortedKeyValueStore
+    {
+        private ISortedKeyValueStore Sorted => (ISortedKeyValueStore)inner;
+
+        public byte[]? FirstKey => Sorted.FirstKey;
+        public byte[]? LastKey => Sorted.LastKey;
+
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            new ForwardOnlyView(Sorted.GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags));
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+        public void Set(scoped ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => inner.Set(key, value, flags);
+        public string Name => inner.Name;
+        public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => inner[keys];
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => inner.GetAll(ordered);
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => inner.GetAllKeys(ordered);
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => inner.GetAllValues(ordered);
+        public IWriteBatch StartWriteBatch() => inner.StartWriteBatch();
+        public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
+
+        public void Dispose() { }
+    }
+
+    /// <summary>A view as implemented before <see cref="ISeekableSortedView"/> existed.</summary>
+    private sealed class ForwardOnlyView(ISortedView inner) : ISortedView
+    {
+        public bool StartBefore(ReadOnlySpan<byte> value) => inner.StartBefore(value);
+        public bool MoveNext() => inner.MoveNext();
+        public ReadOnlySpan<byte> CurrentKey => inner.CurrentKey;
+        public ReadOnlySpan<byte> CurrentValue => inner.CurrentValue;
+        public void Dispose() => inner.Dispose();
     }
 
     private static byte[] AccountKey()

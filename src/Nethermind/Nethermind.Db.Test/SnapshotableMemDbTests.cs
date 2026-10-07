@@ -284,7 +284,7 @@ namespace Nethermind.Db.Test
 
             memDb.Remove([4]);
 
-            using ISortedView view = memDb.GetViewBetween([1], [7]);
+            using ISeekableSortedView view = (ISeekableSortedView)memDb.GetViewBetween([1], [7]);
 
             Assert.That(view.MoveNext(), Is.True, "precondition: the view starts on its first key");
             Assert.That(view.SeekTo([4]), Is.True, "a live key at or after 4 remains below the upper bound");
