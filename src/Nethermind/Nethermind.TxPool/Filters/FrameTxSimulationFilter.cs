@@ -63,6 +63,7 @@ internal sealed class FrameTxSimulationFilter(
                     return AcceptTxResult.FrameSimulationDeferred.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationDeferred);
                 }
 
+                state.FrameValidationRan = true;
                 Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationFailed);
                 if (logger.IsTrace) logger.Trace($"Skipped adding frame transaction {tx.Hash}, validation-prefix simulation rejected it: {result.Reason}.");
                 return AcceptTxResult.FrameSimulationFailed.WithMessage(result.Reason ?? TxPoolErrorMessages.FrameSimulationFailed);
@@ -86,6 +87,7 @@ internal sealed class FrameTxSimulationFilter(
                     state.CodeDependenciesReserved = recorded;
                 }
 
+                state.FrameValidationRan = true;
                 tx.PayerAddress = result.Payer;
                 if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
                 return AcceptTxResult.Accepted;
