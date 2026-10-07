@@ -2,18 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -396,6 +399,16 @@ public class HistoryWalkVerifierTests
             Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (0UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
                 "the probe must look past every foreign row in the shared bucket before it accepts that the account has slot history");
         }
+    }
+
+    [Test]
+    public void SlotPresence_PastTheOldCutoff_DoesNotAcceptForeignRows()
+    {
+        using ForeignRows rows = new(BucketOwner.ToAccountPath, 1_000_001);
+        StoragePresenceProbe probe = new(rows,
+            LimboLogs.Instance.GetClassLogger<HistoryWalkVerifierTests>(), CancellationToken.None);
+
+        Assert.That(probe.HasSlotRows(BucketMate.ToAccountPath), Is.False);
     }
 
     [Test]
@@ -931,5 +944,42 @@ public class HistoryWalkVerifierTests
             () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null, _metadata),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
+    }
+
+    private sealed class ForeignRows(ValueHash256 identity, int count) : TestMemDb, ISortedKeyValueStore
+    {
+        ISortedView ISortedKeyValueStore.GetViewBetween(
+            ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive,
+            ReadFlags flags) => new View(identity, count);
+
+        private sealed class View(ValueHash256 identity, int count) : ISortedView
+        {
+            private readonly byte[] _key = MakeKey(identity);
+            private int _row;
+
+            public bool MoveNext()
+            {
+                if (_row == count) return false;
+
+                int offset = BasePersistence.StoragePrefixPortion + Hash256.Size - sizeof(int);
+                BinaryPrimitives.WriteInt32BigEndian(_key.AsSpan(offset, sizeof(int)), ++_row);
+                return true;
+            }
+
+            public ReadOnlySpan<byte> CurrentKey => _key;
+            public ReadOnlySpan<byte> CurrentValue => ReadOnlySpan<byte>.Empty;
+            public bool StartBefore(ReadOnlySpan<byte> value) => throw new NotSupportedException();
+            public void Dispose() { }
+
+            private static byte[] MakeKey(in ValueHash256 identity)
+            {
+                byte[] key = new byte[BaseFlatPersistence.StorageKeyLength + sizeof(ulong)];
+                int prefix = BasePersistence.StoragePrefixPortion;
+                identity.Bytes[..prefix].CopyTo(key);
+                identity.Bytes.Slice(prefix, BaseFlatPersistence.AccountKeyLength - prefix)
+                    .CopyTo(key.AsSpan(prefix + Hash256.Size));
+                return key;
+            }
+        }
     }
 }
