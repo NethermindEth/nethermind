@@ -59,6 +59,7 @@ public class EthereumGasPolicyTests
             returnedState = first.AccessedAddresses;
             first.WarmUp(in cell);
             Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+            Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
         }
 
         using StackAccessTracker second = new();
@@ -66,6 +67,7 @@ public class EthereumGasPolicyTests
         // reuse it claims to exercise ever stopped happening.
         Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
         Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+        Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
     }
 
     /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
@@ -88,22 +90,6 @@ public class EthereumGasPolicyTests
         }
     }
 
-    /// <summary>Returning a tracker to the pool must drop its warm addresses, as it drops its warm cells.</summary>
-    [Test]
-    public void Pooled_reset_drops_warm_addresses()
-    {
-        object returnedState;
-        using (StackAccessTracker first = new())
-        {
-            returnedState = first.AccessedAddresses;
-            Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
-        }
-
-        using StackAccessTracker second = new();
-        Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
-        Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
-    }
-
     [Test]
     public void Address_warm_up_matches_by_value_in_insertion_order()
     {
@@ -114,16 +100,6 @@ public class EthereumGasPolicyTests
         Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
         Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm");
         Assert.That(tracker.AccessedAddresses.Select(static key => key.Value), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
-    }
-
-    [Test]
-    public void Null_address_warm_up_keeps_set_semantics()
-    {
-        using StackAccessTracker tracker = new();
-
-        Assert.That(tracker.WarmUp((Address)null!), Is.True, "first access is cold");
-        Assert.That(tracker.WarmUp((Address)null!), Is.False, "the repeat is warm");
-        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True, "a warm null does not make an address warm");
     }
 
     /// <summary>

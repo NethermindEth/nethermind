@@ -14,15 +14,25 @@ namespace Nethermind.Core.Test.Collections
     {
         private static JournalSet<int> CreateJournalSet() => new(EqualityComparer<int>.Default);
 
+        /// <remarks>2000 newer items grow the set several times past the snapshot, so the restore removes items that the growth rehashed.</remarks>
         [Test]
-        public void Can_restore_snapshot()
+        public void Can_restore_snapshot([Values(10, 2000)] int newerItems)
         {
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.AddRange(Enumerable.Range(0, 10));
             int snapshot = journalSet.TakeSnapshot();
-            journalSet.AddRange(Enumerable.Range(10, 10));
+            journalSet.AddRange(Enumerable.Range(10, newerItems));
             journalSet.Restore(snapshot);
-            Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
+                Assert.That(Enumerable.Range(0, 10).All(item => journalSet.Contains(item)), Is.True, "the older items stay");
+                Assert.That(Enumerable.Range(10, newerItems).Any(item => journalSet.Contains(item)), Is.False, "the newer items are gone");
+            }
+
+            Assert.That(journalSet.Add(10 + newerItems / 2), Is.True, "a dropped item adds again");
+            Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
         }
 
         [Test]
@@ -138,27 +148,6 @@ namespace Nethermind.Core.Test.Collections
 
             Assert.That(journalSet, Is.Empty);
             Assert.That(journalSet.Contains(item), Is.False);
-        }
-
-        /// <remarks>The set grows several times past the snapshot, so the restore removes items that the growth rehashed.</remarks>
-        [Test]
-        public void Restore_across_growth_drops_only_the_newer_items()
-        {
-            JournalSet<int> journalSet = CreateJournalSet();
-            journalSet.AddRange(Enumerable.Range(0, 5));
-            int snapshot = journalSet.TakeSnapshot();
-            journalSet.AddRange(Enumerable.Range(5, 2000));
-            journalSet.Restore(snapshot);
-
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 5)));
-                Assert.That(Enumerable.Range(0, 5).All(item => journalSet.Contains(item)), Is.True, "the older items stay");
-                Assert.That(Enumerable.Range(5, 2000).Any(item => journalSet.Contains(item)), Is.False, "the newer items are gone");
-            }
-
-            Assert.That(journalSet.Add(1000), Is.True, "a dropped item adds again");
-            Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
         }
 
         /// <remarks>A weak hash puts many items in one bucket, so removals by restore and clear run through long collision chains.</remarks>
