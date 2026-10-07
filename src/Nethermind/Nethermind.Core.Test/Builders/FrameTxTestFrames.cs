@@ -81,6 +81,21 @@ public static class FrameTxTestFrames
         return new TxFrameSignature(TxFrameSignature.SchemeSecp256k1, key.Address, digest, raw);
     }
 
+    /// <summary>New entries with the same content, as a node holds after decoding a gossiped transaction.</summary>
+    /// <remarks>An entry caches its recovered signer, so transactions sharing entries pay for each recovery only
+    /// once; a measurement that charges recovery per transaction must give each one its own.</remarks>
+    public static TxFrameSignature[] Fresh(TxFrameSignature[] entries)
+    {
+        TxFrameSignature[] copies = new TxFrameSignature[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            TxFrameSignature entry = entries[i];
+            copies[i] = new TxFrameSignature(entry.Scheme, entry.Signer, entry.Msg, entry.Signature);
+        }
+
+        return copies;
+    }
+
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>
         new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 

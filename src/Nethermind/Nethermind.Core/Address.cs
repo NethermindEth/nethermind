@@ -30,10 +30,11 @@ namespace Nethermind.Core
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(default(ValueAddress));
-        public static Address MaxValue { get; } = new("0xffffffffffffffffffffffffffffffffffffffff");
+        // Byte literals rather than hex parsing: keeps the class preinitializable by ILC (no class-constructor check per use).
+        public static Address MaxValue { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
         public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
-        public static Address SystemUser { get; } = new(SystemUserHex);
+        public static Address SystemUser { get; } = new((ReadOnlySpan<byte>)[0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xfe]);
 
         private readonly ValueAddress _bytes;
 
