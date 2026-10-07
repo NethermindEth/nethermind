@@ -253,11 +253,25 @@ public class DebugBridge : IDebugBridge
     /// Blocks before EIP-7928 activation have no access lists, so the sync stops at the activation and the progress it
     /// leaves there does not bound how deep the chain can be rewound or deleted.
     /// </remarks>
-    private ulong? LowestRequiredBlockAccessListNumber =>
-        _syncPointers.LowestInsertedBlockAccessListBlockNumber is { } lowest and > 0 &&
-        _blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { BlockAccessListHash: null }
-            ? null
-            : _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+    private ulong? LowestRequiredBlockAccessListNumber
+    {
+        get
+        {
+            ulong? progress = _syncPointers.LowestInsertedBlockAccessListBlockNumber;
+            if (progress is not { } lowest || lowest == 0) return progress;
+            if (_blockTree.FindHeader(lowest, BlockTreeLookupOptions.RequireCanonical) is { } canonical)
+                return canonical.BlockAccessListHash is null ? null : progress;
+
+            // Rewind clears canonical markers above the head; every retained candidate must prove the floor is pre-fork.
+            if (_blockTree.Head is not { } head || lowest <= head.Number ||
+                _blockTree.FindLevel(lowest)?.BlockInfos is not { Length: > 0 } candidates)
+                return progress;
+            foreach (BlockInfo candidate in candidates)
+                if (_blockTree.FindHeader(candidate.BlockHash, blockNumber: lowest) is not { BlockAccessListHash: null })
+                    return progress;
+            return null;
+        }
+    }
 
     private bool CanRewindChain()
     {
