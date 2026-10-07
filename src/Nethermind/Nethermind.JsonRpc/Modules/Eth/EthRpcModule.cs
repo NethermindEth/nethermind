@@ -689,9 +689,20 @@ public partial class EthRpcModule(
         ExecuteWithFrameGas(new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider),
             transactionCall, blockParameter, stateOverride, blockOverride);
 
-    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true) =>
-        ExecuteWithFrameGas(new CreateAccessListTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, optimize),
-            transactionCall, blockParameter, stateOverride);
+    public virtual ResultWrapper<AccessListResultForRpc?> eth_createAccessList(SignableTransactionForRpc transactionCall, BlockParameter? blockParameter = null, Dictionary<Address, AccountOverride>? stateOverride = null, bool optimize = true)
+    {
+        // The fees are filled once, against the header the call then runs on, before anything prices the request.
+        SearchResult<BlockHeader> search = _blockFinder.SearchForHeader(blockParameter);
+        CreateAccessListTxExecutor.FeeDefaults feeDefaults = search.IsError
+            ? default
+            : CreateAccessListTxExecutor.FillFeeDefaults(transactionCall, search.Object!, _specProvider.GetSpec(search.Object!).IsEip1559Enabled, _gasPriceOracle);
+        CreateAccessListTxExecutor executor = new(_blockchainBridge, _blockFinder, _rpcConfig, _specProvider, feeDefaults, optimize);
+
+        // A request whose fees are rejected gets that error as it would with explicit frame limits.
+        return feeDefaults.Error is null
+            ? ExecuteWithFrameGas(executor, transactionCall, blockParameter, stateOverride, searchResult: search)
+            : executor.ExecuteTx(transactionCall, blockParameter, stateOverride, searchResult: search);
+    }
 
     public ResultWrapper<BlockForRpc> eth_getBlockByHash(Hash256 blockHash, bool returnFullTransactionObjects) => GetBlock(new BlockParameter(blockHash), returnFullTransactionObjects);
 
