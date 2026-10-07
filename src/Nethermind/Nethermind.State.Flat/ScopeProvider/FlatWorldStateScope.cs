@@ -561,7 +561,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             }
 
             StorageTree tree = new(new StorageTrieStoreWarmerAdapter(_snapshotBundle, address.ToAccountPath.ToHash256()), _logManager);
-            tree.SetRootHash(baseRoot, false);
+            // Resetting the objects loads the base root: without it the tree starts empty and holds the predicted slots only.
+            tree.SetRootHash(baseRoot, true);
 
             Dictionary<UInt256, UInt256> applied = new(writes.Count);
             using ArrayPoolListRef<PatriciaTree.BulkSetEntry> entries = new(writes.Count);

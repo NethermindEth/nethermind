@@ -918,6 +918,129 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void PredictedStorage_OnAnExistingTrieReachesTheSameRoot([Values(1, 2, 3, 4)] int seed, [Values] bool deferStorageTrieCommit,
+        [Values] bool concurrentWarmup, [Values] bool predict, [Values(-1, 0, 1, 2, 3)] int onlyKind)
+    {
+        const int baseSlots = 300;
+        Address address = TestItem.AddressA;
+        Random random = new(seed);
+        Dictionary<UInt256, UInt256> state = [];
+
+        // Block 1 in a scope of its own builds the account's trie, which the next scope reads as persisted state.
+        using TestContext first = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit });
+        first.PersistenceReader.GetAccount(address).Returns(new Account(1, 1));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = first.Scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, baseSlots);
+            for (int slot = 0; slot < baseSlots; slot++)
+            {
+                UInt256 value = (UInt256)random.Next(1, int.MaxValue);
+                state[(UInt256)slot] = value;
+                storageBatch.Set((UInt256)slot, value);
+            }
+        }
+
+        first.Scope.Commit(1);
+        Snapshot persisted = first.LastCommittedSnapshot!;
+
+        using TestContext second = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false, DeferStorageTrieCommit = deferStorageTrieCommit });
+        second.AddSnapshot(content =>
+        {
+            foreach (KeyValuePair<HashedKey<Address>, Account?> account in persisted.Accounts) content.Accounts[account.Key] = account.Value;
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> slot in persisted.Storages) content.Storages[slot.Key] = slot.Value;
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in persisted.StorageNodes) content.StorageNodes[node.Key] = node.Value;
+            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> node in persisted.StateNodes) content.StateNodes[node.Key] = node.Value;
+        });
+        FlatWorldStateScope scope = second.Scope;
+        Assert.That(scope.Get(address)!.StorageRoot, Is.Not.EqualTo(Keccak.EmptyTreeHash));
+
+        // Block 2: what the block ends with, against a prediction that is partly right, partly another value, partly a
+        // write the block never makes (at the kept value or not), with insertions and deletions on both sides.
+        Dictionary<UInt256, UInt256> final = new(state);
+        List<(UInt256 Slot, UInt256 Value)> predicted = [];
+        for (int slot = 0; slot < baseSlots + 100; slot++)
+        {
+            UInt256 key = (UInt256)slot;
+            state.TryGetValue(key, out UInt256 before);
+            int kind = random.Next(8);
+            if (onlyKind >= 0 && kind != onlyKind && kind < 5) kind = 7;
+            UInt256 written = random.Next(4) == 0 ? UInt256.Zero : (UInt256)random.Next(1, int.MaxValue);
+            switch (kind)
+            {
+                case 0: // written as predicted
+                    final[key] = written;
+                    predicted.Add((key, written));
+                    break;
+                case 1: // written, predicted at another value
+                    final[key] = written;
+                    predicted.Add((key, written + 1));
+                    break;
+                case 2: // predicted, never written, at another value
+                    predicted.Add((key, before + 1));
+                    break;
+                case 3: // predicted at the value the slot keeps
+                    predicted.Add((key, before));
+                    break;
+                case 4: // written, not predicted
+                    final[key] = written;
+                    break;
+            }
+        }
+
+        long adopted = PredictedStorageCounters.Adopted;
+        if (concurrentWarmup)
+        {
+            // The predicted build runs off the block thread, while the trie warmer walks the account's paths.
+            FlatStorageTree storage = (FlatStorageTree)scope.CreateStorageTree(address);
+            using CancellationTokenSource stop = new();
+            Task warming = Task.Run(() =>
+            {
+                int i = 0;
+                while (!stop.IsCancellationRequested)
+                {
+                    // Balanced as the warmer's queueing does: every warm-up lowers the scope's outstanding count.
+                    scope.IncrementOutstandingWarmups();
+                    storage.WarmUpStorageTrie((UInt256)(i++ % (baseSlots + 100)), scope.HintSequenceId);
+                }
+            });
+            Task.Run(() =>
+            {
+                if (predict) scope.HintPredictedStorage(address, predicted);
+                else Thread.Sleep(5);
+            }).Wait();
+            stop.Cancel();
+            warming.Wait();
+        }
+        else if (predict)
+        {
+            scope.HintPredictedStorage(address, predicted);
+        }
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, final.Count);
+            // As the storage provider flushes: only the slots whose value the block changed.
+            foreach ((UInt256 slot, UInt256 value) in final)
+            {
+                state.TryGetValue(slot, out UInt256 before);
+                if (value != before) storageBatch.Set(slot, value);
+            }
+        }
+
+        if (predict && predicted.Count > 0) Assert.That(PredictedStorageCounters.Adopted, Is.GreaterThan(adopted));
+        scope.Commit(2);
+
+        StorageTree expectedTree = new(new RawScopedTrieStore(new TestMemDb()), LimboLogs.Instance);
+        foreach ((UInt256 slot, UInt256 value) in final)
+        {
+            if (!value.IsZero) expectedTree.Set(slot, value.ToMinimalBigEndian());
+        }
+
+        expectedTree.UpdateRootHash();
+        Assert.That(scope.Get(address)!.StorageRoot, Is.EqualTo(expectedTree.RootHash));
+    }
+
+    [Test]
     public void PredictedStorage_TheNextBlockOfTheScopeReachesTheSameRoot([Values] bool deferStorageTrieCommit)
     {
         const int slotCount = 64;
