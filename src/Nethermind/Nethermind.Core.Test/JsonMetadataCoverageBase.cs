@@ -141,9 +141,14 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
 
     // No code that serializes can declare a compiler-generated or another library's non-public type, so such a type is always a runtime type.
     // The dispatch frames prove nothing once the JIT inlines them, which optimized code may do at any point in a run.
-    private static bool IsUnnameable(Type type) =>
-        type.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
-        !type.Assembly.GetName().Name!.StartsWith("Nethermind", StringComparison.Ordinal);
+    // A public generic over a non-public type, such as a list of an internal type, can still be declared, so only the definition counts.
+    internal static bool IsUnnameable(Type type)
+    {
+        Type definition = type.IsGenericType ? type.GetGenericTypeDefinition() : type;
+        return !definition.IsVisible &&
+            (definition.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
+             !definition.Assembly.GetName().Name!.StartsWith("Nethermind", StringComparison.Ordinal));
+    }
 
     private static bool IsTestOwned(Type type) =>
         type.Assembly.GetName().Name!.EndsWith(".Test", StringComparison.Ordinal) ||

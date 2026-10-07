@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules.Trace;
@@ -28,7 +29,10 @@ public class JsonMetadataCoverageTests
     {
         Assert.That(type.IsVisible, Is.False, "precondition: only a non-public collection may fall back to its interface");
 
-        Assert.That(() => EthereumJsonSerializer.JsonOptions.TryGetTypeInfo(type, out JsonTypeInfo? _), Throws.Nothing,
+        Assert.That(() => FreshOptions().TryGetTypeInfo(type, out JsonTypeInfo? _), Throws.Nothing,
             "the serializer writes such a value through its covered interface, so the coverage check must not report it");
     }
+
+    // The shared options cache every type they resolve, so an earlier test could otherwise answer without asking the coverage check.
+    private static JsonSerializerOptions FreshOptions() => new(EthereumJsonSerializer.JsonOptions);
 }
