@@ -719,6 +719,7 @@ public class DebugRpcModule(
         }
         catch (Exception e)
         {
+            if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
             // A partial file would make every retry on the same path fail with "would overwrite".
             try
             {
@@ -728,7 +729,6 @@ public class DebugRpcModule(
             {
                 if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to remove partial file {file}: {cleanupError.Message}");
             }
-            if (_logger.IsWarn) _logger.Warn($"{nameof(debug_getBadBlocks)} failed to write {file}: {e.Message}");
             return ResultWrapper<IEnumerable<BadBlock>>.Fail(e.Message, ErrorCodes.Default);
         }
 
