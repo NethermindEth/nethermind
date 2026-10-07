@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
@@ -13,15 +14,24 @@ namespace Nethermind.Core.Test.Collections
     {
         private static JournalSet<int> CreateJournalSet() => new(EqualityComparer<int>.Default);
 
+        /// <remarks>2000 newer items grow the set several times past the snapshot, so the restore removes items that the growth rehashed.</remarks>
         [Test]
-        public void Can_restore_snapshot()
+        public void Can_restore_snapshot([Values(10, 2000)] int newerItems)
         {
             JournalSet<int> journalSet = CreateJournalSet();
             journalSet.AddRange(Enumerable.Range(0, 10));
             int snapshot = journalSet.TakeSnapshot();
-            journalSet.AddRange(Enumerable.Range(10, 10));
+            journalSet.AddRange(Enumerable.Range(10, newerItems));
             journalSet.Restore(snapshot);
-            Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
+                Assert.That(Enumerable.Range(0, 10).All(item => journalSet.Contains(item)), Is.True, "the older items stay");
+                Assert.That(Enumerable.Range(10, newerItems).Any(item => journalSet.Contains(item)), Is.False, "the newer items are gone");
+                Assert.That(journalSet.Add(10 + newerItems / 2), Is.True, "a dropped item adds again");
+                Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
+            }
         }
 
         [Test]
@@ -137,6 +147,106 @@ namespace Nethermind.Core.Test.Collections
 
             Assert.That(journalSet, Is.Empty);
             Assert.That(journalSet.Contains(item), Is.False);
+        }
+
+        /// <remarks>A weak hash puts many items in one bucket, so removals by restore and clear run through long collision chains.</remarks>
+        [Test]
+        public void Matches_a_reference_journal_under_random_adds_restores_and_clears([Values(1, 3, 64, int.MaxValue)] int distinctHashes)
+        {
+            Random random = new(distinctHashes);
+            JournalSet<int> journalSet = new(new ModuloComparer(distinctHashes));
+            List<int> expected = [];
+            Stack<int> snapshots = new();
+            const int keys = 400;
+
+            for (int step = 0; step < 20_000; step++)
+            {
+                int roll = random.Next(100);
+                if (roll < 70)
+                {
+                    int item = random.Next(keys);
+                    Assert.That(journalSet.Add(item), Is.EqualTo(!expected.Contains(item)), $"Add({item}) at step {step}");
+                    if (!expected.Contains(item)) expected.Add(item);
+                }
+                else if (roll < 82)
+                {
+                    snapshots.Push(journalSet.TakeSnapshot());
+                }
+                else if (roll < 97)
+                {
+                    if (snapshots.Count == 0) continue;
+                    int snapshot = snapshots.Pop();
+                    journalSet.Restore(snapshot);
+                    expected.RemoveRange(snapshot + 1, expected.Count - snapshot - 1);
+                }
+                else
+                {
+                    journalSet.Clear();
+                    expected.Clear();
+                    snapshots.Clear();
+                }
+
+                Assert.That(journalSet.Count, Is.EqualTo(expected.Count), $"Count at step {step}");
+                if (step % 97 == 0)
+                {
+                    Assert.That(journalSet, Is.EqualTo(expected), $"insertion order at step {step}");
+                    for (int key = 0; key < keys; key++)
+                    {
+                        Assert.That(journalSet.Contains(key), Is.EqualTo(expected.Contains(key)), $"Contains({key}) at step {step}");
+                    }
+                }
+            }
+        }
+
+        /// <remarks>The first clear empties a large set wholesale; the second removes its few items one by one.</remarks>
+        [Test]
+        public void Dense_then_sparse_clear_keeps_add_and_restore_working()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange(Enumerable.Range(0, 10_000));
+            journalSet.Clear();
+
+            journalSet.AddRange([10_000, 10_001, 10_002]);
+            journalSet.Clear();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.Empty);
+                Assert.That(journalSet.Contains(10_001), Is.False);
+                Assert.That(Enumerable.Range(0, 10_000).Any(item => journalSet.Contains(item)), Is.False);
+            }
+
+            journalSet.AddRange(Enumerable.Range(0, 100));
+            int snapshot = journalSet.TakeSnapshot();
+            journalSet.AddRange(Enumerable.Range(50, 100));
+            journalSet.Restore(snapshot);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 100)));
+                Assert.That(journalSet.Contains(120), Is.False);
+            }
+        }
+
+        [Test]
+        public void Restore_beyond_the_current_position_throws_and_changes_nothing()
+        {
+            JournalSet<int> journalSet = CreateJournalSet();
+            journalSet.AddRange([1, 2, 3]);
+
+            Assert.That(() => journalSet.Restore(3), Throws.InvalidOperationException);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(journalSet, Is.EqualTo([1, 2, 3]));
+                Assert.That(journalSet.Contains(2), Is.True);
+            }
+        }
+
+        private sealed class ModuloComparer(int distinctHashes) : EqualityComparer<int>
+        {
+            public override bool Equals(int x, int y) => x == y;
+            public override int GetHashCode(int obj) => obj % distinctHashes;
         }
     }
 }
