@@ -187,7 +187,7 @@ public class HistoryRowScannerTests
             Assert.That(reader.GetAccount(TestItem.AddressA)?.Balance, Is.EqualTo(commit ? new UInt256(123) : (UInt256?)null));
             Assert.That(slot, Is.EqualTo(commit ? new UInt256(99) : UInt256.Zero));
             Assert.That(code.GetAllKeys(), Is.Empty, "scratch code must not leak into the live code database");
-            if (commit) Assert.That(reopened.GetCode(codeHash), Is.EqualTo(bytecode));
+            if (commit) Assert.That(reopened.GetCode(codeHash), Is.SequenceEqualTo(bytecode));
             else Assert.Throws<InvalidDataException>(() => reopened.GetCode(codeHash));
         }
     }
@@ -233,6 +233,60 @@ public class HistoryRowScannerTests
             Assert.That(oldValue, Is.EqualTo(UInt256.Zero));
             Assert.That(newValue, Is.EqualTo(deleted ? UInt256.Zero : new UInt256(2)));
             Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Count(), Is.EqualTo(deleted ? 0 : 1));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty);
+        }
+    }
+
+    [Test]
+    public void BulkReplay_WhenSeveralAccountsAreCleared_CleansEveryMarkerInOnePass()
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<BulkFillScratchState.Columns> memory = new();
+        using MemDb code = new();
+        BlockHeader anchor = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject.Header;
+        using BulkFillSession session = new(new ScratchDbFactory(directory.Path, memory, false), code, TestItem.KeccakA, anchor, false);
+        ImportEmptyState(session);
+        Address[] cleared = [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC, TestItem.AddressD];
+        BlockHeader first = Build.A.Block.WithNumber(1).WithParentHash(anchor.Hash!).TestObject.Header;
+        CommitScratch(session, first, writer =>
+        {
+            foreach (Address address in cleared.Append(TestItem.AddressE))
+            {
+                writer.Set(address, new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 3);
+                for (uint slot = 0; slot < 3; slot++) storage.Set(slot, 1);
+            }
+        });
+        BlockHeader second = Build.A.Block.WithNumber(2).WithParentHash(first.Hash!).TestObject.Header;
+        CommitScratch(session, second, writer =>
+        {
+            foreach (Address address in cleared)
+            {
+                writer.Set(address, address == TestItem.AddressB ? null : new Account(1, 100));
+                using IWorldStateScopeProvider.IStorageWriteBatch storage = writer.CreateStorageWriteBatch(address, 1);
+                storage.Clear();
+                storage.Set(7, 2);
+            }
+        });
+
+        session.CleanStorage(CancellationToken.None);
+
+        BulkFillStateReader reader = session.CreateReader();
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (Address address in cleared)
+            {
+                UInt256 oldValue = default;
+                UInt256 newValue = default;
+                reader.TryGetSlot(address, 0, ref oldValue);
+                reader.TryGetSlot(address, 7, ref newValue);
+                Assert.That(oldValue, Is.EqualTo(UInt256.Zero), address.ToString());
+                Assert.That(newValue, Is.EqualTo(address == TestItem.AddressB ? UInt256.Zero : new UInt256(2)), address.ToString());
+            }
+            UInt256 untouched = default;
+            reader.TryGetSlot(TestItem.AddressE, 0, ref untouched);
+            Assert.That(untouched, Is.EqualTo(UInt256.One));
+            Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Storage).GetAllKeys().Count(), Is.EqualTo(cleared.Length - 1 + 3));
             Assert.That(memory.GetColumnDb(BulkFillScratchState.Columns.Clears).GetAllKeys(), Is.Empty);
         }
     }
@@ -670,11 +724,11 @@ public class HistoryRowScannerTests
         else
             Assert.Throws<IOException>(() => scanner.ReadPage(cursor, 1, fail, cancellation.Token));
 
-        Assert.That(cursor.Key.ToArray(), Is.EqualTo(original), "failure must not mutate the caller's durable checkpoint");
+        Assert.That(cursor.Key, Is.SequenceEqualTo(original), "failure must not mutate the caller's durable checkpoint");
         int replayed = 0;
         HistoricalStateScan.Page retry = scanner.ReadPage(cursor, 2, (_, _, value) =>
         {
-            Assert.That(value.ToArray(), Is.EqualTo(new byte[] { 2 }), "retry must not skip the staged but uncommitted row");
+            Assert.That(value, Is.SequenceEqualTo(new byte[] { 2 }), "retry must not skip the staged but uncommitted row");
             replayed++;
         }, CancellationToken.None);
         using (Assert.EnterMultipleScope())

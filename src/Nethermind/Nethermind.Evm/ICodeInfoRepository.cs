@@ -26,6 +26,14 @@ public interface ICodeInfoRepository
     /// <summary>Resolves the precompile at <paramref name="codeSource"/>, or null when <paramref name="vmSpec"/> enables none there.</summary>
     /// <remarks>Records no account access, so unlike <see cref="GetCachedCodeInfo"/> it creates no EIP-7928 entry.</remarks>
     IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec);
+
+    /// <summary>Resolves the code an EIP-7702 delegation to <paramref name="target"/> executes.</summary>
+    /// <remarks>
+    /// Empty for a precompile, which must not execute via delegation. Callers ask this rather than
+    /// <see cref="GetCachedCodeInfo"/>, which cannot tell the lookup from a direct call, so a repository that
+    /// places precompiles at other addresses (a state override moving one) can keep them from running here.
+    /// </remarks>
+    CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec);
     void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     void SetDelegation(Address codeSource, Address authority, IReleaseSpec spec);
     bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress);
@@ -38,7 +46,7 @@ public interface ICodeInfoRepository
     {
         if (Eip7702Constants.IsDelegatedCode(code))
         {
-            address = new Address(code[Eip7702Constants.DelegationHeader.Length..]);
+            address = new Address(code[Eip7702Constants.DelegationHeaderLength..]);
             return true;
         }
 

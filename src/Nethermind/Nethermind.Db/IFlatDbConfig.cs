@@ -100,7 +100,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Number of most recent commitment epochs to keep the per-block rows for. Older epochs keep only their checkpoint rows: proofs there are still served and still verified, rebuilt from the window rows, which costs about a second instead of a hundred milliseconds and is most of the column's size. 0 keeps the per-block rows for every epoch.", DefaultValue = "0")]
     int ArchiveProofFineEpochs { get; set; }
 
-    [ConfigItem(Description = "Import from pruning trie state db", DefaultValue = "false")]
+    [ConfigItem(Description = "Import from pruning trie state db. When enabled, the node runs the import and exits instead of starting, as with the `import-flat-db` command, and fails if there is nothing to import. Remove the setting once the import has finished.", DefaultValue = "false")]
     bool ImportFromPruningTrieState { get; set; }
 
     [ConfigItem(Description = "Delete the patricia-trie state DB on start once the flat DB owns the state, reclaiming its disk space. The kept trie is what a switch back to the patricia backend restarts from, replaying from the conversion block, so this is irreversible: switching back afterwards requires a resync.", DefaultValue = "false")]
@@ -117,6 +117,9 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Max reorg depth — the force-persist backstop used when EnableLongFinality is off: once the in-memory depth exceeds it while finality is stalled, persistence is forced to bound memory.", DefaultValue = "256")]
     ulong MaxReorgDepth { get; set; }
+
+    [ConfigItem(Description = "Byte budget for the in-memory snapshot window. When positive and the estimated in-memory snapshot bytes exceed it, conversion to the persisted-snapshot tier is attempted and persistence is forced even when finality stalls, always leaving at least MinReorgDepth blocks above the persisted base — bounding memory by size rather than block count, so heavy blocks shrink the retained window instead of exhausting memory. Only in-memory snapshots are flushed for byte pressure, so with EnableLongFinality the persisted-snapshot tier is kept and the in-memory window does not shrink below MaxInMemoryBaseSnapshotCount blocks once that tier holds the oldest state. 0 disables.", DefaultValue = "0")]
+    ulong MaxInMemorySnapshotBytes { get; set; }
 
     [ConfigItem(Description = "Minimum reorg depth", DefaultValue = "128")]
     ulong MinReorgDepth { get; set; }
@@ -138,6 +141,12 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Verify with trie", DefaultValue = "false")]
     bool VerifyWithTrie { get; set; }
+
+    [ConfigItem(Description = "Only hash the storage tries before a block is reported valid, and write their nodes when the block commits, as the state trie already does. `false` writes each storage trie's nodes before the block is reported valid.", DefaultValue = "true")]
+    bool DeferStorageTrieCommit { get; set; }
+
+    [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
+    bool ApplyStorageWritesOnIdleThread { get; set; }
 
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
@@ -168,6 +177,11 @@ public interface IFlatDbConfig : IConfig
 
     [ConfigItem(Description = "Bits per key for the per-snapshot in-memory bloom filter. One unified filter covers address/slot/self-destruct keys plus state-trie and storage-trie node paths. Higher = lower false-positive rate but more RAM. 0 disables the filter (lookups behave as full sweeps).", DefaultValue = "14.0")]
     double PersistedSnapshotBloomBitsPerKey { get; set; }
+
+    /// <summary>Gets or sets the bits per storage key in the in-memory snapshot filter used by read-only execution.</summary>
+    /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
+    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
+    double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]
     int WarmReadConcurrency { get; set; }

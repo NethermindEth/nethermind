@@ -37,6 +37,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public Task HintBal(ReadOnlyBlockAccessList bal)
         => State.HintBal(bal);
 
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+        => State.ApplyBal(bal);
+
     public bool HasStateForBlock(BlockHeader? baseBlock)
         => State.HasStateForBlock(baseBlock);
 
@@ -52,10 +55,10 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual ref readonly ValueHash256 GetCodeHash(Address address)
         => ref State.GetCodeHash(address);
 
-    public virtual byte[]? GetCode(Address address)
+    public virtual ReadOnlyMemory<byte> GetCode(Address address)
         => State.GetCode(address);
 
-    public virtual byte[]? GetCode(in ValueHash256 codeHash)
+    public virtual ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         => State.GetCode(in codeHash);
 
     public virtual bool IsContract(Address address)
@@ -163,6 +166,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
 
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
+
+    public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
+        => State.NoteMinimumBalance(address, in minimum);
 
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();

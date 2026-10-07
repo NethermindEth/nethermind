@@ -12,6 +12,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -74,14 +75,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
+            TxPoolConfig txPoolConfig = new();
             _txPool = new TxPool.TxPool(_ethereumEcdsa,
                 new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(specProvider), _blockTree, stateProvider) { HasSynced = true },
-                new TxPoolConfig(),
+                txPoolConfig,
                 new TxValidator(specProvider.ChainId),
                 new SpecChangeTxValidator(specProvider.ChainId),
                 LimboLogs.Instance,
-                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer());
+                new TransactionComparerProvider(specProvider, _blockTree).GetDefaultComparer(),
+                TestFrameTxWidthLedger.For(txPoolConfig));
 
             _receiptStorage = new InMemoryReceiptStorage();
 

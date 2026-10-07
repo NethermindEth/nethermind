@@ -67,8 +67,13 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             .AddDecorator<IBlockValidator, SimulateBlockValidatorProxy>()
             .AddDecorator<ITransactionProcessor.IBlobBaseFeeCalculator, BlobBaseFeeOverrideCalculatorDecorator>()
             .AddDecorator<IBlockProcessor.IBlockTransactionsExecutor, SimulateBlockValidationTransactionsExecutor>()
-            .Intercept<ITransactionProcessor>(SkipSenderCodeCheckTransactionProcessorFactory.Apply)
-            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderCodeCheckTransactionProcessorFactory(inner))
+            .Intercept<ITransactionProcessor>(SkipSenderChecksTransactionProcessorFactory.Apply)
+            .AddDecorator<ITransactionProcessorFactory>(static (_, inner) => new SkipSenderChecksTransactionProcessorFactory(inner))
+            .AddDecorator<CodeInfoRepositoryFactory>(static (ctx, inner) =>
+            {
+                CodeOverrideStore overrides = ctx.Resolve<CodeOverrideStore>();
+                return worldState => new MovedPrecompileCodeInfoRepository(inner(worldState), worldState, overrides);
+            })
             .AddScoped<TransactionProcessorAdapterFactory, SimulateRequestState>(static state =>
                 txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
@@ -125,7 +130,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             specProvider,
             new SyncConfig(),
             NullStateBoundary.Instance,
-            new BlockTreeLogHider(logManager));
+            new BlockTreeLogHider(logManager),
+            new BlockTreeMutationLock());
     }
 
     private class BlockTreeLogHider(ILogManager baseLogManager) : ILogManager

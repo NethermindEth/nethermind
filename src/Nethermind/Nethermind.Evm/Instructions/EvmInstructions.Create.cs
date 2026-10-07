@@ -127,6 +127,9 @@ public static partial class EvmInstructions
         // This guard ensures we do not create nested contract calls beyond EVM limits.
         if (env.CallDepth >= MaxCallDepth)
         {
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.CallDepthExceeded);
+
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
@@ -137,8 +140,12 @@ public static partial class EvmInstructions
 
         // Check that the executing account has sufficient balance to transfer the specified value.
         UInt256 balance = state.GetBalance(env.ExecutingAccount);
+        if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
+            if (!TEip8037.IsActive && vm.IsTracingActions)
+                TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.NotEnoughBalance);
+
             vm.ReturnDataBuffer = default;
             return stack.PushZero<TTracingInst, OnFlag>();
         }
@@ -171,12 +178,8 @@ public static partial class EvmInstructions
         if (chargeCreateStateGas && !TGasPolicy.TryConsumeCreateStateGas(ref gas))
             goto OutOfGas;
 
-        // Get remaining gas for the create operation.
-        ulong gasAvailable = TGasPolicy.GetRemainingGas(in gas);
-
-        // End tracing if enabled, prior to switching to the new call frame.
         if (TTracingInst.IsActive)
-            vm.EndInstructionTrace(gasAvailable);
+            vm.EndInstructionTrace(TGasPolicy.GetRemainingGas(in gas));
 
         // EIP-150: forward all remaining gas (capped at 63/64) to the creation frame.
         if (!TSpec.TryReserveChildGas<TGasPolicy>(ref gas, spec, out ulong callGas))
@@ -188,9 +191,6 @@ public static partial class EvmInstructions
         // Take a snapshot of the current state. This allows the state to be reverted if contract creation fails.
         Snapshot snapshot = state.TakeSnapshot();
 
-        // Analyze and compile the initialization code.
-        CodeInfo? codeInfo = CodeInfoFactory.CreateCodeInfo(initCode);
-
         // EIP-684: if the account already exists with code or a non-zero nonce, the creation fails.
         // Collision behaves as an immediate exceptional halt - burned callGas counts as block_execution.
         if (isNonZeroAccount)
@@ -200,8 +200,18 @@ public static partial class EvmInstructions
                 vm.CreditStateGasRefund<TEip8037>(ref gas, TGasPolicy.GetCreateStateCost());
             }
 
+            if (vm.IsTracingActions)
+                vm.TxTracer.ReportRejectedAction(callGas, 0, value, env.ExecutingAccount, contractAddress, initCode, TOpCreate.ExecutionType, EvmExceptionType.TransactionCollision);
+
             vm.ReturnDataBuffer = default;
-            return stack.PushZero<TTracingInst, OnFlag>();
+            EvmExceptionType pushResult = stack.PushZero<TTracingInst, OnFlag>();
+
+            // The instruction trace ended before the creation's gas was reserved and the 0 was pushed, and the
+            // collision consumed that gas.
+            if (TTracingInst.IsActive)
+                vm.TxTracer.ReportGasUpdateForVmTrace(0, TGasPolicy.GetRemainingGas(in gas));
+
+            return pushResult;
         }
 
         state.ClearStorage(contractAddress);
@@ -212,7 +222,8 @@ public static partial class EvmInstructions
         // Construct a new execution environment for the contract creation call.
         // This environment sets up the call frame for executing the contract's initialization code.
         ExecutionEnvironment callEnv = ExecutionEnvironment.Rent(
-            codeInfo: codeInfo,
+            vm.EnvironmentCache,
+            codeInfo: new CodeInfo(initCode),
             executingAccount: contractAddress,
             caller: env.ExecutingAccount,
             codeSource: null,
@@ -222,6 +233,7 @@ public static partial class EvmInstructions
 
         // Rent a new frame to run the initialization code in the new execution environment.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
+            vm.FrameCache,
             gas: TGasPolicy.CreateChildFrameGas(ref gas, callGas),
             outputDestination: 0,
             outputLength: 0,
@@ -243,5 +255,33 @@ public static partial class EvmInstructions
     StaticCallViolation:
         return EvmExceptionType.StaticCallViolation;
 
+    }
+
+    /// <summary>
+    /// Reports a creation that failed its depth or balance precheck as an action that entered no frame, with the
+    /// gas it would have forwarded, which returns at once. Only used before EIP-8037, which moves the precheck into
+    /// the creating operation, so the creation has no frame of its own.
+    /// </summary>
+    /// <remarks>
+    /// See the <c>CREATE</c>/<c>CREATE2</c> paragraph of
+    /// <see href="https://eips.ethereum.org/EIPS/eip-8037#gas-accounting-for-new-accounts">EIP-8037, gas accounting for new accounts</see>.
+    /// </remarks>
+    /// <param name="gas">A copy of the caller's gas, before any is reserved for the creation.</param>
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static void TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(
+        VirtualMachine<TGasPolicy> vm,
+        TGasPolicy gas,
+        in UInt256 value,
+        in UInt256 initCodePosition,
+        in UInt256 initCodeLength,
+        EvmExceptionType error)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCreate : struct, IOpCreate
+        where TSpec : struct, ICreateSpec
+    {
+        TSpec.TryReserveChildGas<TGasPolicy>(ref gas, vm.Spec, out ulong callGas);
+        // The creation already paid to expand memory over its init code.
+        vm.VmState.Memory.TryLoad(in initCodePosition, in initCodeLength, out ReadOnlyMemory<byte> initCode);
+        vm.TxTracer.ReportRejectedAction(callGas, callGas, value, vm.VmState.Env.ExecutingAccount, null, initCode, TOpCreate.ExecutionType, error);
     }
 }

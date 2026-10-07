@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Threading;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -39,6 +40,74 @@ namespace Nethermind.Network.Test
             await using Context ctx = new();
             ctx.PeerManager.Start();
             await ctx.PeerManager.StopAsync();
+        }
+
+        [Test]
+        public async Task Filtered_candidates_back_off_without_delaying_other_peers([Values(1, 4)] int parallelism, [Values] bool isStatic)
+        {
+            const int candidates = 8;
+            ManualTimeProvider timeProvider = new();
+            await using Context ctx = new(parallelism, maxActivePeers: candidates + 1, timeProvider: timeProvider);
+            ctx.NetworkConfig.PeersUpdateInterval = 10;
+            ctx.RlpxPeer.UseRecentIpFilter();
+            Assert.That(ctx.RlpxPeer.ShouldContact(IPAddress.Parse("52.141.78.53")), Is.True);
+            foreach (NetworkNode node in ctx.CreateNodes(candidates)) ctx.PeerPool.GetOrAdd(new Node(node, isStatic));
+            ctx.PeerManager.Start();
+
+            int initialChecks = ctx.RlpxPeer.ShouldContactCallsCount;
+            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+            await Task.Delay(200);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(ctx.RlpxPeer.ShouldContactCallsCount, Is.LessThanOrEqualTo(initialChecks + candidates * 2));
+                Assert.That(ctx.RlpxPeer.ConnectAsyncCallsCount, Is.Zero);
+            }
+
+            NetworkNode eligible = new(ctx.GenerateEnode().Replace("52.141.78.53", "52.141.78.54"));
+            ctx.PeerPool.GetOrAdd(eligible);
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromSeconds(5));
+            Assert.That(ctx.PeerPool.ActivePeers.ContainsKey(eligible.NodeId), Is.True);
+
+            ctx.RlpxPeer.UseRecentIpFilter();
+            timeProvider.AdvanceAndFireTimer(TimeSpan.FromSeconds(1));
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(2, TimeSpan.FromSeconds(5));
+        }
+
+        [Test]
+        public async Task Filtered_static_candidates_do_not_repeat_selection([Values] bool staticOnly)
+        {
+            int selections = 0;
+            Node node = new(TestItem.PublicKeyB, "52.141.78.53", 30303, isStatic: true);
+            Peer peer = new(node, Substitute.For<INodeStats>());
+            ConcurrentDictionary<PublicKeyAsKey, Peer> peers = new();
+            if (!staticOnly) peers.TryAdd(node.Id, peer);
+
+            IPeerPool peerPool = Substitute.For<IPeerPool>();
+            peerPool.Peers.Returns(_ =>
+            {
+                Interlocked.Increment(ref selections);
+                return peers;
+            });
+            peerPool.ActivePeers.Returns(new ConcurrentDictionary<PublicKeyAsKey, Peer>());
+            peerPool.StaticPeers.Returns(new[] { peer });
+            IRlpxHost rlpxHost = Substitute.For<IRlpxHost>();
+            ManualTimeProvider timeProvider = new();
+            NetworkConfig config = new() { MaxActivePeers = 2, NumConcurrentOutgoingConnects = 1, PeersUpdateInterval = 10 };
+            PeerManager manager = new(rlpxHost, peerPool, Substitute.For<INodeStatsManager>(), config,
+                new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), LimboLogs.Instance, timeProvider);
+
+            manager.Start();
+            try
+            {
+                Assert.That(() => Volatile.Read(ref selections), Is.GreaterThan(0).After(5000, 10));
+                await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromSeconds(5));
+                await Task.Delay(200);
+                Assert.That(Volatile.Read(ref selections), Is.LessThanOrEqualTo(4));
+            }
+            finally
+            {
+                await manager.StopAsync();
+            }
         }
 
         [Test]
@@ -509,8 +578,6 @@ namespace Nethermind.Network.Test
             ctx.PeerManager.Start();
             Session session1 = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance,
                 LimboLogs.Instance);
-            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
-            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
 
             session1.RemoteHost = "1.2.3.4";
             session1.RemotePort = 12345;
@@ -519,15 +586,7 @@ namespace Nethermind.Network.Test
                     ? (shouldLose ? TestItem.PublicKeyB : TestItem.PublicKeyC)
                     : (shouldLose ? TestItem.PublicKeyC : TestItem.PublicKeyB);
 
-            void EnsureSession(ISession? session)
-            {
-                if (session is null) return;
-                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
-                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
-            }
-
             bool expectedOutSessionClosing = firstDirection == ConnectionDirection.In ? shouldLose : !shouldLose;
-            bool expectedInSessionClosing = !expectedOutSessionClosing;
 
             if (firstDirection == ConnectionDirection.In)
             {
@@ -550,22 +609,141 @@ namespace Nethermind.Network.Test
                 ctx.RlpxPeer.CreateIncoming(session1);
             }
 
+            AssertAgreedOnSessionToDisconnect(ctx, expectedOutSessionClosing);
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task Will_agree_on_which_session_to_disconnect_when_incoming_arrives_while_dialing([Values] bool keepIn)
+        {
+            PublicKey remoteNodeId = keepIn ? TestItem.PublicKeyB : TestItem.PublicKeyC;
+            Session incoming = new(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+            {
+                RemoteHost = "1.2.3.4",
+                RemotePort = 12345,
+                RemoteNodeId = remoteNodeId
+            };
+
+            await using Context ctx = new();
+            bool injected = false;
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsTrace.Returns(true);
+            // Traced after the dial activates the peer but before it marks the peer as awaiting the connection.
+            underlyingLogger
+                .When(static logger => logger.Trace(Arg.Is<string>(static text => text.StartsWith("CONNECTING TO"))))
+                .Do(_ =>
+                {
+                    ctx.RlpxPeer.CreateIncoming(incoming);
+                    injected = true;
+                });
+            ILogger logger = new(underlyingLogger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<PeerManager>().Returns(logger);
+            ctx.CreatePeerManager(logManager);
+
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+            ctx.TestNodeSource.AddNode(new Node(remoteNodeId, incoming.RemoteHost, incoming.RemotePort));
+
+            // The mock announces the dialed session, and the peer manager attaches it, before the connect is counted.
+            await ctx.RlpxPeer.WaitForConnectCallsAsync(1, TimeSpan.FromMilliseconds(_delayLonger));
+            Assert.That(injected, Is.True, "the incoming session was not injected into the dial window");
+
+            Peer activePeer = ctx.PeerManager.ActivePeers.Single();
+            InitializeSessions(activePeer);
+            Assert.That(HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing: keepIn), Is.True);
+            Assert.That(ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1));
+        }
+
+        [Test]
+        [NonParallelizable]
+        public async Task Will_agree_on_which_session_to_disconnect_when_incoming_and_outgoing_attach_concurrently()
+        {
+            // No hook exists between the attach check and the attach, so the race is run many times over.
+            const int attempts = 100;
+            await using Context ctx = new(parallelism: 1, maxActivePeers: attempts);
+            Session? incoming = null;
+            Task incomingAdded = Task.CompletedTask;
+            using Barrier start = new(2);
+            InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
+            underlyingLogger.IsTrace.Returns(true);
+            // Releases the incoming session together with the dial's own session.
+            underlyingLogger
+                .When(static logger => logger.Trace(Arg.Is<string>(static text => text.StartsWith("CONNECTING TO"))))
+                .Do(_ =>
+                {
+                    Session session = incoming!;
+                    Volatile.Write(ref incomingAdded, Task.Run(() =>
+                    {
+                        start.SignalAndWait();
+                        ctx.RlpxPeer.CreateIncoming(session);
+                    }));
+                    start.SignalAndWait();
+                });
+            ILogger logger = new(underlyingLogger);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            logManager.GetClassLogger<PeerManager>().Returns(logger);
+            ctx.CreatePeerManager(logManager);
+
+            ctx.PeerPool.Start();
+            ctx.PeerManager.Start();
+
+            for (int attempt = 0; attempt < attempts; attempt++)
+            {
+                PublicKey remoteNodeId = new PrivateKeyGenerator().Generate().PublicKey;
+                incoming = new Session(30303, Substitute.For<IChannel>(), NullDisconnectsAnalyzer.Instance, LimboLogs.Instance)
+                {
+                    RemoteHost = "1.2.3.4",
+                    RemotePort = 12345,
+                    RemoteNodeId = remoteNodeId
+                };
+                ctx.TestNodeSource.AddNode(new Node(remoteNodeId, incoming.RemoteHost, incoming.RemotePort));
+                await ctx.RlpxPeer.WaitForConnectCallsAsync(attempt + 1, TimeSpan.FromMilliseconds(_delayLonger));
+                await Volatile.Read(ref incomingAdded);
+
+                Peer peer = ctx.PeerManager.ActivePeers.Single(p => p.Node.Id == remoteNodeId);
+                InitializeSessions(peer);
+                Assert.That(peer.InSession is not null && peer.OutSession is not null && peer.InSession.IsClosing != peer.OutSession.IsClosing,
+                    Is.True, $"attempt {attempt}: exactly one direction must be disconnected");
+            }
+        }
+
+        private void AssertAgreedOnSessionToDisconnect(Context ctx, bool expectedOutSessionClosing)
+        {
             Assert.That(() =>
             {
                 Peer? activePeer = ctx.PeerManager.ActivePeers.SingleOrDefault();
                 if (activePeer is null) return false;
 
-                EnsureSession(activePeer.OutSession);
-                EnsureSession(activePeer.InSession);
-
-                return activePeer.OutSession is not null
-                    && activePeer.InSession is not null
-                    && activePeer.OutSession.IsClosing == expectedOutSessionClosing
-                    && activePeer.InSession.IsClosing == expectedInSessionClosing;
+                InitializeSessions(activePeer);
+                return HasAgreedOnSessionToDisconnect(activePeer, expectedOutSessionClosing);
             }, Is.True.After(_delayLonger, 20));
 
             Assert.That(() => ctx.PeerManager.ActivePeers.Count, Is.EqualTo(1).After(_delay, 10));
         }
+
+        /// <summary>Completes the handshake and P2P init, which is when a session's deferred disconnect takes effect.</summary>
+        private static void InitializeSessions(Peer peer)
+        {
+            PacketSender packetSender = new(Substitute.For<IMessageSerializationService>(), LimboLogs.Instance, TimeSpan.Zero);
+            IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
+
+            void EnsureSession(ISession? session)
+            {
+                if (session is null) return;
+                if (session.State < SessionState.HandshakeComplete) session.Handshake(session.Node.Id);
+                if (session.State < SessionState.Initialized) session.Init(5, context, packetSender);
+            }
+
+            EnsureSession(peer.OutSession);
+            EnsureSession(peer.InSession);
+        }
+
+        private static bool HasAgreedOnSessionToDisconnect(Peer peer, bool expectedOutSessionClosing) =>
+            peer.OutSession is not null
+            && peer.InSession is not null
+            && peer.OutSession.IsClosing == expectedOutSessionClosing
+            && peer.InSession.IsClosing != expectedOutSessionClosing;
 
         private void HandshakeOnCreate(object sender, SessionEventArgs e) => e.Session.Handshake(e.Session.RemoteNodeId);
 
@@ -977,9 +1155,11 @@ namespace Nethermind.Network.Test
             public IStaticNodesManager StaticNodesManager { get; }
             public TestNodeSource TestNodeSource { get; }
             public List<Session> Sessions { get; } = [];
+            private readonly TimeProvider _timeProvider;
 
-            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null)
+            public Context(int parallelism = 0, int maxActivePeers = 25, ILogManager? peerManagerLogManager = null, TimeProvider? timeProvider = null)
             {
+                _timeProvider = timeProvider ?? TimeProvider.System;
                 RlpxPeer = new RlpxMock(Sessions);
                 DiscoveryApp = Substitute.For<IDiscoveryApp>();
                 DiscoveryApp.DiscoverNodes(Arg.Any<CancellationToken>()).Returns(AsyncEnumerable.Empty<Node>());
@@ -1001,7 +1181,7 @@ namespace Nethermind.Network.Test
                 CreatePeerManager(peerManagerLogManager);
             }
 
-            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance);
+            public void CreatePeerManager(ILogManager? logManager = null) => PeerManager = new PeerManager(RlpxPeer, PeerPool, Stats, NetworkConfig, new Enode(TestItem.PublicKeyA, IPAddress.Loopback, 30303), logManager ?? LimboLogs.Instance, _timeProvider);
 
             public void SetupPersistedPeers(int count) => Storage.UpdateNodes(CreateNodes(count));
 
@@ -1120,6 +1300,7 @@ namespace Nethermind.Network.Test
             private readonly List<Session> _sessions = sessions;
             private NodeFilter _nodeFilter = NodeFilter.AcceptAll;
             private int _connectAsyncCallsCount;
+            private int _shouldContactCallsCount;
             private int _plainOperationCanceledCount;
             private bool _throwPlainOperationCanceledOnCancellation;
 
@@ -1131,18 +1312,16 @@ namespace Nethermind.Network.Test
 
             public Task<bool> ConnectAsync(Node node, CancellationToken cancellationToken = default)
             {
-                Interlocked.Increment(ref _connectAsyncCallsCount);
-
                 if (_throwPlainOperationCanceledOnCancellation)
                 {
                     Task<bool> connectTask = ThrowPlainOperationCanceled(cancellationToken);
-                    ConnectCalled?.Invoke();
+                    OnConnectCalled();
                     return connectTask;
                 }
 
                 if (_isFailing)
                 {
-                    ConnectCalled?.Invoke();
+                    OnConnectCalled();
                     return Task.FromResult(false);
                 }
 
@@ -1155,8 +1334,16 @@ namespace Nethermind.Network.Test
                 }
 
                 SessionCreated?.Invoke(this, new SessionEventArgs(session));
-                ConnectCalled?.Invoke();
+                OnConnectCalled();
                 return Task.FromResult(true);
+            }
+
+            // Counted only once the call's session is registered and announced, so a waiter released by the
+            // count never observes a connect whose session it cannot see yet.
+            private void OnConnectCalled()
+            {
+                Interlocked.Increment(ref _connectAsyncCallsCount);
+                ConnectCalled?.Invoke();
             }
 
             public async Task WaitForConnectCallsAsync(int totalCount, TimeSpan timeout)
@@ -1201,6 +1388,8 @@ namespace Nethermind.Network.Test
 
             public int ConnectAsyncCallsCount => Volatile.Read(ref _connectAsyncCallsCount);
 
+            public int ShouldContactCallsCount => Volatile.Read(ref _shouldContactCallsCount);
+
             public int PlainOperationCanceledCount => Volatile.Read(ref _plainOperationCanceledCount);
 
             public void ThrowPlainOperationCanceledOnCancellation() => _throwPlainOperationCanceledOnCancellation = true;
@@ -1243,6 +1432,7 @@ namespace Nethermind.Network.Test
 
             public bool ShouldContact(IPAddress ip, bool exactOnly = false)
             {
+                Interlocked.Increment(ref _shouldContactCallsCount);
                 if (!_nodeFilter.TryAccept(ip, exactOnly)) return false;
 
                 ContactedIps.Add(ip);

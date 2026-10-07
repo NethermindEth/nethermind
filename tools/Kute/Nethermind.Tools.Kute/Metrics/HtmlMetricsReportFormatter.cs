@@ -23,7 +23,7 @@ public sealed class HtmlMetricsReportFormatter : IMetricsReportFormatter
     public async Task WriteAsync(Stream stream, MetricsReport report, CancellationToken token = default)
     {
         await stream.WriteAsync(_encoding.GetBytes("<script>\nconst input =\n"), token);
-        await JsonSerializer.SerializeAsync(stream, report, cancellationToken: token);
+        await JsonSerializer.SerializeAsync(stream, report, MetricsReportJsonContext.Default.MetricsReport, token);
         await stream.WriteAsync(_encoding.GetBytes("\n</script>\n"), token);
 
         await using Stream resourceStream = _assembly.GetManifestResourceStream(_reportTemplate)!;

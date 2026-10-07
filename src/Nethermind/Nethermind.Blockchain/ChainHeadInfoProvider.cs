@@ -18,22 +18,26 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         private readonly IBlockTree _blockTree;
+        private readonly IBlockBuildingTracker? _blockBuildingTracker;
         // For testing
         public bool HasSynced { private get; init; }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader, IBlockBuildingTracker? blockBuildingTracker = null)
+            : this(specProvider, blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader), blockBuildingTracker)
         {
         }
 
-        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider)
+        public ChainHeadInfoProvider(IChainHeadSpecProvider specProvider, IBlockTree blockTree, IReadOnlyStateProvider stateProvider, IBlockBuildingTracker? blockBuildingTracker = null)
         {
+            _blockBuildingTracker = blockBuildingTracker;
             SpecProvider = specProvider;
             ReadOnlyStateProvider = stateProvider;
-            HeadNumber = blockTree.BestKnownNumber;
-            // Seeded off the canonical head, not BestKnownNumber above: a known-but-unprocessed header's
-            // timestamp would expire transactions that are still valid against the head the pool validates on.
-            HeadTimestamp = blockTree.Head?.Timestamp ?? 0;
+            Block? head = blockTree.Head;
+            HeadNumber = head?.Number ?? 0;
+            HeadTimestamp = head?.Timestamp ?? 0;
+            // Genesis is not a head worth pricing or bounding transactions on while syncing. Keep the
+            // gas limit, fees, and proof version at their defaults until the first head change.
+            if (head is not null && !head.IsGenesis) ReadHead(head.Header);
 
             blockTree.BlockAddedToMain += OnHeadChanged;
             _blockTree = blockTree;
@@ -50,6 +54,8 @@ namespace Nethermind.Blockchain
         public ulong? BlockGasLimit { get; internal set; }
 
         public UInt256 CurrentBaseFee { get; private set; }
+
+        public UInt256 NextBaseFee { get; private set; }
 
         public UInt256 CurrentFeePerBlobGas { get; internal set; }
 
@@ -71,21 +77,33 @@ namespace Nethermind.Blockchain
 
         public bool IsProcessingBlock => _blockTree.IsProcessingBlock;
 
+        public bool IsBuildingBlock => _blockBuildingTracker?.IsBuildingBlock ?? false;
+
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
-            IReleaseSpec spec = SpecProvider.GetSpec(e.Block.Header);
             HeadNumber = e.Block.Number;
             HeadTimestamp = e.Block.Timestamp;
-            BlockGasLimit = e.Block!.GasLimit;
-            CurrentBaseFee = e.Block.Header.BaseFeePerGas;
+            ReadHead(e.Block.Header);
+            HeadChanged?.Invoke(sender, e);
+        }
+
+        /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
+        /// <remarks>The constructor calls this only for a non-genesis head; the head-change handler always calls it.
+        /// <see cref="HeadNumber"/> and <see cref="HeadTimestamp"/> are set outside this method so they are seeded for genesis too.</remarks>
+        private void ReadHead(BlockHeader header)
+        {
+            IReleaseSpec spec = SpecProvider.GetSpec(header);
+            BlockGasLimit = header.GasLimit;
+            CurrentBaseFee = header.BaseFeePerGas;
+            IReleaseSpec childSpec = SpecProvider.GetSpec(header.Number + 1, header.Timestamp);
+            NextBaseFee = childSpec.IsEip1559Enabled ? BaseFeeCalculator.Calculate(header, childSpec) : UInt256.Zero;
             CurrentFeePerBlobGas =
-                BlobGasCalculator.TryCalculateFeePerBlobGas(e.Block.Header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
+                BlobGasCalculator.TryCalculateFeePerBlobGas(header, spec.BlobBaseFeeUpdateFraction, out UInt256 currentFeePerBlobGas)
                     ? currentFeePerBlobGas
                     : UInt256.Zero;
             CurrentProofVersion = spec.BlobProofVersion;
-            HeadChanged?.Invoke(sender, e);
         }
     }
 }

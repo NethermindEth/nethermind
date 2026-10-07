@@ -40,6 +40,18 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     bool TryBeginScopeAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IDisposable? scopeCloser);
 
     Task HintBal(ReadOnlyBlockAccessList bal);
+
+    /// <summary>
+    /// Writes the final balance, nonce, code and storage values of every account the Block Access List changed.
+    /// </summary>
+    /// <remarks>
+    /// The values go straight to the scope, and the world state then drops what it cached, so any change not yet
+    /// committed is lost: commit before calling this. Its record of the block's other changes is kept for the cache
+    /// write-back; only the accounts the list changed leave it. The state root is not updated; call
+    /// <see cref="RecalculateStateRoot"/> afterwards.
+    /// </remarks>
+    /// <param name="bal">The Block Access List whose last change per field is applied.</param>
+    void ApplyBal(ReadOnlyBlockAccessList bal);
     bool IsInScope { get; }
     IWorldStateScopeProvider ScopeProvider { get; }
     new ref readonly UInt256 GetBalance(Address address);
@@ -176,6 +188,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     public void RecordAccountAccess(Address address) { }
 
     public void RecordBytecodeAccess(Address address) { }
+
+    /// <summary>The balance just read for <paramref name="address"/> was only compared with <paramref name="minimum"/>.</summary>
+    public void NoteMinimumBalance(Address address, in UInt256 minimum) { }
 
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 

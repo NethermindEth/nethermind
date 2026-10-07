@@ -272,7 +272,7 @@ public class BlockchainProcessorTests
                 .TestObject;
             _branchProcessor = new BranchProcessorMock(_logManager, _stateReader);
             _recoveryStep = new RecoveryStepMock(_logManager);
-            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>());
+            _processor = new BlockchainProcessor(_blockTree, _branchProcessor, MainnetSpecProvider.Instance, [_recoveryStep], _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.Default, Substitute.For<IProcessingStats>(), new BlockTreeMutationLock());
             _resetEvent = new AutoResetEvent(false);
             _queueEmptyResetEvent = new AutoResetEvent(false);
 
@@ -787,6 +787,7 @@ public class BlockchainProcessorTests
         Block secondCopy = UnrecoveredCopy(_block1D2);
         ProcessingTestContext context = When.ProcessingBlocks
             .FullyProcessed(_block0).BecomesGenesis()
+            .CountIs(0)
             .Suggested(_block1D2)
             .Recovered(_block1D2)
             .HeldAfterVerdict(_block1D2);

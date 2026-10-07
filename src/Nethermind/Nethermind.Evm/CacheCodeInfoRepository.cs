@@ -12,39 +12,34 @@ using Nethermind.Evm.State;
 
 namespace Nethermind.Evm;
 
-public class CacheCodeInfoRepository : ICodeInfoRepository
+public partial class CacheCodeInfoRepository : ICodeInfoRepository
 {
     private readonly IWorldState _worldState;
     private readonly ICodeCache _codeCache;
-    private readonly CodeInfoRepository _inner;
+    private readonly CachingCodeInfoRepository _inner;
 
     public CacheCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, ICodeCache codeCache)
     {
         _worldState = worldState;
         _codeCache = codeCache;
-        _inner = new CodeInfoRepository(worldState, precompileProvider, GetOrCacheCodeInfo);
+        _inner = new CachingCodeInfoRepository(worldState, precompileProvider, this);
     }
 
     /// <summary>The code most recently resolved, so a repeat skips the shared cache's probe.</summary>
     /// <remarks>
-    /// A single reference is self-validating: <see cref="StaticCodeCache"/> assigns <c>CodeHash</c> when it
+    /// A single reference is self-validating: a storing <see cref="ICodeCache"/> assigns <c>CodeHash</c> when it
     /// stores, so matching against the hash re-read from the world state costs no allocation, and a stale
     /// read can only miss (a partially-written hash has no keccak preimage), never answer with the wrong
     /// body. Anything that changes an account's code — including a reverted deployment — produces a
     /// different hash and misses; there is nothing to invalidate. Under <c>NoopCodeCache</c> (witness
-    /// generation, stateless execution) the hash stays default and the memo never fires, which is exactly
-    /// the every-lookup-through-the-world-state behaviour that mode requires.
+    /// generation) the hash stays default and the memo never fires, which is exactly the
+    /// every-lookup-through-the-world-state behaviour that mode requires.
     /// </remarks>
     private CodeInfo? _lastResolved;
 
-    /// <summary>Memo hits served before one is spent refreshing the shared cache's eviction ticker.</summary>
-    /// <remarks>A memo hit skips the probe that refreshes the ticker, so without this the hottest code
-    /// would age as though untouched and could be evicted out from under its own memo — costing a code-db
-    /// re-read and re-analysis on the next miss.</remarks>
-    private const int MemoHitsPerTickerRefresh = 64;
     private int _memoHits;
 
-    private CodeInfo GetOrCacheCodeInfo(Address address, ValueHash256 codeHash, IReleaseSpec spec)
+    private CodeInfo GetOrCacheCodeInfo(Address address, in ValueHash256 codeHash)
     {
         if (codeHash == ValueKeccak.OfAnEmptyString)
         {
@@ -83,6 +78,9 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         _inner.GetPrecompile(codeSource, vmSpec);
 
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        _inner.GetDelegatedCodeInfo(target, vmSpec);
+
     public bool TryGetDelegation(Address address, IReleaseSpec spec, [NotNullWhen(true)] out Address? delegatedAddress) =>
         _inner.TryGetDelegation(address, spec, out delegatedAddress);
 
@@ -90,7 +88,7 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
     {
         if (CodeInfoRepository.InsertCode(_worldState, code, codeOwner, spec, out ValueHash256 codeHash) && _codeCache.Get(in codeHash) is null)
         {
-            _codeCache.Set(in codeHash, CodeInfoFactory.CreateCodeInfo(code));
+            _codeCache.Set(in codeHash, new CodeInfo(code));
         }
     }
 
@@ -101,5 +99,12 @@ public class CacheCodeInfoRepository : ICodeInfoRepository
         {
             _codeCache.Set(in codeHash, new CodeInfo(authorizedBuffer));
         }
+    }
+
+    private sealed class CachingCodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider, CacheCodeInfoRepository owner)
+        : CodeInfoRepository(worldState, precompileProvider)
+    {
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
+            owner.GetOrCacheCodeInfo(address, in codeHash);
     }
 }

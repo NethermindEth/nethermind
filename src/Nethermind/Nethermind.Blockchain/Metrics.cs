@@ -27,7 +27,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Total number of blocks processed")]
-    public static ulong Blocks { get; set; }
+    public static ulong Blocks;
 
     [CounterMetric]
     [Description("Total number of chain reorganizations")]
@@ -57,6 +57,22 @@ public static class Metrics
     [Description("Total number of failed block seals")]
     public static long FailedBlockSeals { get; set; }
 
+    [CounterMetric]
+    [Description("Transactions block processing took over from their pre-warm run")]
+    public static long PrewarmHandoffs { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed because state their pre-warm run read had changed")]
+    public static long PrewarmHandoffsRejected { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed for lack of a usable pre-warm run")]
+    public static long PrewarmHandoffsMissing { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions executed after their pre-warm run failed to apply")]
+    public static long PrewarmHandoffFailures { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }
@@ -85,13 +101,13 @@ public static class Metrics
     [GaugeMetric]
     [Description("The current height of the canonical chain.")]
     [DataMember(Name = "ethereum_blockchain_height")]
-    public static ulong BlockchainHeight { get; set; }
+    public static ulong BlockchainHeight;
 
     //EIP-2159: Common Prometheus Metrics Names for Clients
     [GaugeMetric]
     [Description("The estimated highest block available.")]
     [DataMember(Name = "ethereum_best_known_block_number")]
-    public static ulong BestKnownBlockNumber { get; set; }
+    public static ulong BestKnownBlockNumber;
 
     [GaugeMetric]
     [Description("Number of invalid blocks.")]

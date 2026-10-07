@@ -6,14 +6,14 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
-using Nethermind.Core.Cpu;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis;
 
-public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
+public sealed partial class CodeInfo : IEquatable<CodeInfo>
 {
     public static CodeInfo Empty { get; }
     // Empty code sentinel
@@ -33,7 +33,7 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        Code = code;
+        InitializeCode(code);
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -51,8 +51,66 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    public ReadOnlyMemory<byte> Code { get; }
-    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+    public partial ReadOnlyMemory<byte> Code { get; }
+    public partial ReadOnlySpan<byte> CodeSpan { get; }
+
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    internal partial int CodeLength { get; }
+
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
+
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// next-to-last padding byte, which is STOP; the guest reads that opcode together with the byte after it.
+    /// </remarks>
+    internal const int ExecutionPadding = 34;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
+
+    private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
+    {
+        byte[] padded = CreateExecutionBuffer(code.Length);
+        code.CopyTo(padded);
+        return padded;
+    }
+
+    /// <summary>Allocates a buffer for <paramref name="codeLength"/> code bytes followed by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    internal static byte[] CreateExecutionBuffer(int codeLength)
+    {
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(codeLength + ExecutionPadding);
+        buffer.AsSpan(codeLength).Clear();
+        return buffer;
+    }
+    private Address? _delegatedAddress;
+    internal Address? DelegatedAddress
+    {
+        get
+        {
+            if (CodeLength != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            {
+                return null;
+            }
+
+            Address? delegatedAddress = Volatile.Read(ref _delegatedAddress);
+            if (delegatedAddress is not null)
+            {
+                return delegatedAddress;
+            }
+
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(CodeSpan, out Address? parsedAddress))
+            {
+                return null;
+            }
+
+            return Interlocked.CompareExchange(ref _delegatedAddress, parsedAddress, null) ?? parsedAddress;
+        }
+    }
 
     public IPrecompile? Precompile { get; }
 
@@ -99,17 +157,9 @@ public sealed partial class CodeInfo : IThreadPoolWorkItem, IEquatable<CodeInfo>
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
     }
 
-    void IThreadPoolWorkItem.Execute()
-        => _analyzer?.Execute();
-
-    public void AnalyzeInBackgroundIfRequired()
-    {
-        // Analysis only runs ahead of execution on another processor; the guest folds the queue away.
-        if (RuntimeInformation.IsSingleProcessor) return;
-
-        if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && (_analyzer?.RequiresAnalysis ?? false))
-            ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-    }
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    internal long[] JumpAndCallDestinationBitmap
+        => _analyzer?.JumpAndCallDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     public override bool Equals(object? obj)
         => Equals(obj as CodeInfo);

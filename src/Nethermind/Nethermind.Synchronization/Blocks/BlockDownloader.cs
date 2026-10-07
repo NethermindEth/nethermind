@@ -131,6 +131,11 @@ namespace Nethermind.Synchronization.Blocks
                 // catch-all below, so a single bad response cannot finish the feed.
                 throw;
             }
+            catch (BlockTreeNotReadyException e)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Block download deferred: {e.Message}");
+                return null;
+            }
             catch (Exception ex)
             {
                 _logger.DebugError($"Unhandled exception in {nameof(BlockDownloader)}: {ex}");
@@ -291,6 +296,7 @@ namespace Nethermind.Synchronization.Blocks
             BlocksRequestContentType? requestContentType = null;
 
             ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<int> expectedReceiptCounts = new(headers.Count);
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
@@ -356,6 +362,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     entry.MarkReceiptRequestSent();
                     receiptsToDownload.Add(blockHeader);
+                    expectedReceiptCounts.Add(entry.Block!.Transactions.Length);
                     requestContentType = BlocksRequestContentType.Receipts;
                 }
 
@@ -380,6 +387,7 @@ namespace Nethermind.Synchronization.Blocks
                 bodiesToDownload.Dispose();
                 blockAccessListsToDownload.Dispose();
                 receiptsToDownload.Dispose();
+                expectedReceiptCounts.Dispose();
                 return null;
             }
 
@@ -388,6 +396,7 @@ namespace Nethermind.Synchronization.Blocks
                 BodiesRequests = bodiesToDownload,
                 BlockAccessListsRequests = blockAccessListsToDownload,
                 ReceiptsRequests = receiptsToDownload,
+                ExpectedReceiptCounts = expectedReceiptCounts,
             };
         }
 
@@ -665,7 +674,10 @@ namespace Nethermind.Synchronization.Blocks
 
             if (!shouldProcess)
             {
-                _blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]);
+                if (!_blockTree.TryUpdateMainChain(currentBlock.Header, wereProcessed: false, preloadedBlocks: [currentBlock]))
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Canonical update deferred for {currentBlock.Header.ToString(BlockHeader.Format.Short)}: a predecessor is missing or chain maintenance overlapped.");
+                }
             }
 
             _forwardHeaderProvider.OnSuggestBlock(suggestOptions, currentBlock, addResult);
@@ -729,9 +741,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 case AddBlockResult.CannotAccept:
                     {
-                        string message = $"Block tree rejected block/header from peer {peerInfo}: " +
-                                         $"#{block.Number} ({block.Hash}, parent {block.ParentHash})";
-                        throw new EthSyncException(message);
+                        throw new BlockTreeNotReadyException($"Block tree cannot accept block/header from peer {peerInfo}: #{block.Number} ({block.Hash}, parent {block.ParentHash})");
                     }
                 case AddBlockResult.InvalidBlock:
                     {

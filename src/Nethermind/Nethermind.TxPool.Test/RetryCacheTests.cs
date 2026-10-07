@@ -8,6 +8,7 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -172,7 +173,7 @@ public class RetryCacheTests
     private const int AssertTimeoutMs = 10_000;
 
     [SetUp]
-    public async Task Setup()
+    public void Setup()
     {
         _cancellationTokenSource = new CancellationTokenSource();
         _timeProvider = new ManualTimeProvider();
@@ -181,7 +182,7 @@ public class RetryCacheTests
             _timeProvider,
             timeoutMs: CacheTimeoutMs,
             token: _cancellationTokenSource.Token);
-        await _timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        Assert.That(_timeProvider.TimerCreated.IsCompleted, Is.True);
     }
 
     [TearDown]
@@ -200,6 +201,125 @@ public class RetryCacheTests
 
         Assert.That(result1, Is.EqualTo(AnnounceResult.RequestRequired));
         Assert.That(result2, Is.EqualTo(AnnounceResult.Delayed));
+    }
+
+    [Test]
+    public void TryDefer_GrantsOneDeferralPerRequestSent([Values(0, 1, 4)] int retryPeers)
+    {
+        TestHandler source = new();
+        TestHandler[] peers = new TestHandler[retryPeers];
+        Assert.That(_cache.Announced(1, source), Is.EqualTo(AnnounceResult.RequestRequired));
+        for (int i = 0; i < peers.Length; i++)
+        {
+            peers[i] = new TestHandler();
+            Assert.That(_cache.Announced(1, peers[i]), Is.EqualTo(AnnounceResult.Delayed));
+        }
+
+        int granted = 0;
+        for (int requestsSent = 1; requestsSent <= retryPeers + 1; requestsSent++)
+        {
+            for (int resend = 0; resend < 3; resend++)
+            {
+                if (_cache.TryDefer(1)) granted++;
+            }
+
+            Assert.That(granted, Is.EqualTo(requestsSent));
+            _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+            int retriesSent = Math.Min(requestsSent, retryPeers);
+            Assert.That(() => peers.Sum(static peer => peer.HandleMessageCallCount), Is.EqualTo(retriesSent).After(AssertTimeoutMs, 10));
+        }
+
+        Assert.That(() => _cache.TrackedRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryDefer(1), Is.False);
+            Assert.That(granted, Is.EqualTo(retryPeers + 1));
+            Assert.That(source.WasCalled, Is.False);
+        }
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_LetsOneAnnouncerRequestAnUnrequestedResource([Values] bool claimedWhileKnown)
+    {
+        TestHandler claimant = new();
+        TestHandler retryPeer = new();
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryAwaitAnnouncement(1), Is.True, "a resend of the same unrequested resource");
+            Assert.That(_cache.TryDefer(1), Is.False, "nothing was requested, so nothing is owed a deferral");
+        }
+
+        AnnounceResult claim = claimedWhileKnown
+            ? _cache.TryClaimUnrequested(1, claimant) ? AnnounceResult.RequestRequired : AnnounceResult.Delayed
+            : _cache.Announced(1, claimant);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(claim, Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.TryClaimUnrequested(1, retryPeer), Is.False);
+            Assert.That(_cache.Announced(1, retryPeer), Is.EqualTo(AnnounceResult.Delayed));
+            Assert.That(_cache.TryAwaitAnnouncement(1), Is.False, "claimed, so a delivery is the claimant's response");
+            Assert.That(_cache.TryDefer(1), Is.True);
+            Assert.That(_cache.TryDefer(1), Is.False);
+        }
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ClaimStartsAFullTimeout()
+    {
+        TestHandler claimant = new();
+        TestHandler laterPeer = new();
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs * 3 / 4));
+        Assert.That(_cache.Announced(1, claimant), Is.EqualTo(AnnounceResult.RequestRequired));
+        Assert.That(_cache.Announced(1, laterPeer), Is.EqualTo(AnnounceResult.Delayed));
+
+        // Past the push's deadline, inside the claim's: the claimed request is still in flight.
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.WasCalled, Is.False, "a late claim must get a full timeout before a retry");
+
+        _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs / 2 + 1));
+        _cache.ProcessRetryTick();
+        Assert.That(laterPeer.HandleMessageCallCount, Is.EqualTo(1), "once the claim's own timeout passes, the next announcer is asked");
+        _cache.Received(1);
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ClaimRacingExpiryKeepsALiveLifecycle()
+    {
+        const int attempts = 1_000;
+        for (int resourceId = 0; resourceId < attempts; resourceId++)
+        {
+            Assert.That(_cache.TryAwaitAnnouncement(resourceId), Is.True);
+            _timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs + 1));
+
+            bool claimed = false;
+            Parallel.Invoke(
+                _cache.ProcessRetryTick,
+                () => claimed = _cache.TryClaimUnrequested(resourceId, new TestHandler()));
+
+            // Expiry losing to the claim must not leave it a deactivated bag, or the claimed request is owed no deferral.
+            if (claimed) Assert.That(_cache.TryDefer(resourceId), Is.True, $"attempt {resourceId}");
+            _cache.Received(resourceId);
+        }
+    }
+
+    [Test]
+    public void TryAwaitAnnouncement_ExpiresUnclaimedWithoutRequesting()
+    {
+        Assert.That(_cache.TryAwaitAnnouncement(1), Is.True);
+        _timeProvider.AdvanceAndFireTimer(TimeSpan.FromMilliseconds(CacheTimeoutMs));
+        Assert.That(() => _cache.TrackedRequestsInUse, Is.Zero.After(AssertTimeoutMs, 10));
+
+        TestHandler announcer = new();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.ResourcesInRetryQueue, Is.Zero);
+            Assert.That(_cache.TryClaimUnrequested(1, announcer), Is.False);
+            Assert.That(_cache.Announced(1, announcer), Is.EqualTo(AnnounceResult.RequestRequired));
+            Assert.That(_cache.Announced(1, new TestHandler()), Is.EqualTo(AnnounceResult.Delayed), "a fresh lifecycle, not one left firing");
+        }
     }
 
     [Test]
@@ -286,7 +406,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             BatchTestHandler sharedHandler = new();
             BatchTestHandler otherHandler = new();
 
@@ -347,7 +467,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             BatchTestHandler sharedHandler = new();
 
             for (int resourceId = 1; resourceId <= resourceCount; resourceId++)
@@ -381,7 +501,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             ValueEqualBatchTestHandler firstHandler = new();
             ValueEqualBatchTestHandler secondHandler = new();
 
@@ -431,7 +551,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler controlHandler = new();
             TestHandler retryHandler = new();
             cache.Announced(1, new TestHandler());
@@ -493,7 +613,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler[] handlers = new TestHandler[100];
             for (int i = 0; i < handlers.Length; i++)
             {
@@ -534,7 +654,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler retryHandler = new();
             for (int resourceId = 0; resourceId < resourceCount; resourceId++)
             {
@@ -653,7 +773,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             cache.Announced(1, new TestHandler());
             timeProvider.Advance(TimeSpan.FromMilliseconds(timeoutMs / 2));
 
@@ -717,7 +837,7 @@ public class RetryCacheTests
             token: cancellationTokenSource.Token);
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler request1 = new();
             TestHandler request2 = new();
             TestHandler request3 = new();
@@ -938,7 +1058,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             int admitted = 0;
             Parallel.For(0, 100, resourceId =>
@@ -1053,7 +1173,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             for (int resourceId = 0; resourceId < staleResources; resourceId++)
             {
@@ -1088,7 +1208,7 @@ public class RetryCacheTests
         ManualTimeProvider time = new();
         await using RetryCache<ResourceRequestMessage, ResourceId> cache = new(
             NullLogManager.Instance, time, maxPendingResourcesPerHandler: 4);
-        await time.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs));
+        Assert.That(time.TimerCreated.IsCompleted, Is.True);
         ValueEqualBatchTestHandler[] peers = [new(), new()];
         for (int cycle = 0; cycle < 16; cycle++)
         {
@@ -1341,7 +1461,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler source = new();
             for (int batch = 0; batch < batchCount; batch++)
             {
@@ -1481,7 +1601,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
 
             timeProvider.Advance(TimeSpan.FromMilliseconds(CacheTimeoutMs - 1));
             AnnounceResult initial = cache.Announced(1, new TestHandler());
@@ -1637,7 +1757,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             CollisionHandler handler = new();
             for (int resourceId = 0; resourceId < resourceCount; resourceId++)
             {
@@ -1752,7 +1872,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler cappedHandler = new();
             cache.Announced(0, cappedHandler);
 
@@ -1893,7 +2013,7 @@ public class RetryCacheTests
 
         try
         {
-            await timeProvider.TimerCreated.WaitAsync(TimeSpan.FromMilliseconds(AssertTimeoutMs), cancellationTokenSource.Token);
+            Assert.That(timeProvider.TimerCreated.IsCompleted, Is.True);
             TestHandler alternate = new();
             for (int resourceId = 1; resourceId <= 3; resourceId++)
             {

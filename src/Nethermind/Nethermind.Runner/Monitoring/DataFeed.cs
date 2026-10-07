@@ -365,7 +365,9 @@ public class DataFeed
         // No subscribers, no need to prepare event data
         if (!HaveSubscribers(EntryType.forkChoice)) return;
 
-        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, new DataCompletion(TaskCreationOptions.RunContinuationsAsynchronously));
+        // Swapped at raise time so subscribers see updates in raise order even when a slower preparation finishes later.
+        DataCompletion next = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        DataCompletion forkChoice = Interlocked.Exchange(ref _forkChoice, next);
         Task.Run(() =>
         {
             try
@@ -375,6 +377,11 @@ public class DataFeed
             catch (Exception e)
             {
                 if (_logger.IsError) _logger.Error("UI Forkchoice data preparation failed", e);
+                // Subscribers awaiting this update get the next one that succeeds instead of waiting forever.
+                _ = next.Task.ContinueWith(
+                    static (completed, state) => ((DataCompletion)state!).TrySetResult(completed.Result),
+                    forkChoice,
+                    TaskContinuationOptions.OnlyOnRanToCompletion);
             }
         });
     }
@@ -445,14 +452,14 @@ public class DataFeed
         );
     }
 
-    private class ForkData
+    internal class ForkData
     {
         public BlockForWeb Head { get; set; }
         public ulong Safe { get; set; }
         public ulong Finalized { get; set; }
     }
 
-    private class BlockForWeb
+    internal class BlockForWeb
     {
         public byte[] ExtraData { get; set; }
         public ulong GasLimit { get; set; }
@@ -469,7 +476,7 @@ public class DataFeed
         public ReceiptForWeb[] Receipts { get; set; }
         public ReceiptForWeb[] Withdrawals { get; set; }
     }
-    private class ReceiptForWeb
+    internal class ReceiptForWeb
     {
         public ulong GasUsed { get; set; }
         public UInt256 EffectiveGasPrice { get; set; }
@@ -479,13 +486,13 @@ public class DataFeed
         public UInt256 BlobGasPrice { get; set; }
         public ulong BlobGasUsed { get; set; }
     }
-    private class LogEntryForWeb
+    internal class LogEntryForWeb
     {
         public Address Address { get; set; }
         public byte[] Data { get; set; }
         public Hash256[] Topics { get; set; }
     }
-    private class TransactionForWeb
+    internal class TransactionForWeb
     {
         public Hash256 Hash { get; set; }
         public Address From { get; set; }
@@ -501,7 +508,7 @@ public class DataFeed
         public int Blobs { get; set; }
         public byte[] Method { get; set; }
     }
-    private class WithdrawalForWeb
+    internal class WithdrawalForWeb
     {
 
     }

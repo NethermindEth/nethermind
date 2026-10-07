@@ -40,6 +40,8 @@ namespace Nethermind.Network
         private readonly IEnode _enode;
         private readonly INodeStatsManager _stats;
         private readonly SemaphoreSlim _peerUpdateRequested = new(0, 1);
+        private readonly ConditionalWeakTable<Peer, StrongBox<long>> _contactRetryAfter = [];
+        private readonly TimeProvider _timeProvider;
         private Task? _peerUpdateLoopTask;
         private Task? _peerUpdateTimerTask;
         private readonly IPeerPool _peerPool;
@@ -72,7 +74,20 @@ namespace Nethermind.Network
             INetworkConfig networkConfig,
             IEnode enode,
             ILogManager logManager)
+            : this(rlpxHost, peerPool, stats, networkConfig, enode, logManager, TimeProvider.System)
         {
+        }
+
+        internal PeerManager(
+            IRlpxHost rlpxHost,
+            IPeerPool peerPool,
+            INodeStatsManager stats,
+            INetworkConfig networkConfig,
+            IEnode enode,
+            ILogManager logManager,
+            TimeProvider timeProvider)
+        {
+            _timeProvider = timeProvider;
             _logger = logManager.GetClassLogger<PeerManager>();
             _rlpxHost = rlpxHost;
             _enode = enode;
@@ -456,7 +471,7 @@ namespace Nethermind.Network
 
             // Delay to prevent high CPU use. There is a shortcut path for newly discovered peer, so having
             // a lower delay probably won't do much.
-            await Task.Delay(TimeSpan.FromSeconds(1), _cancellationTokenSource.Token);
+            await Task.Delay(TimeSpan.FromSeconds(1), _timeProvider, _cancellationTokenSource.Token);
             return null;
         }
 
@@ -579,21 +594,25 @@ namespace Nethermind.Network
                 _currentSelection.PreCandidates.Add(peer);
             }
 
+            long now = _timeProvider.GetTimestamp();
             bool hasOnlyStaticNodes = false;
             if (_currentSelection.PreCandidates.Count == 0)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsCandidateContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
                 hasOnlyStaticNodes = _currentSelection.PreCandidates.Count > 0;
             }
 
             if (_currentSelection.PreCandidates.Count == 0 && !hasOnlyStaticNodes)
             {
+                RecordCandidateFilterMetrics();
                 return;
             }
 
             DateTime nowUTC = DateTime.UtcNow;
             foreach (Peer preCandidate in _currentSelection.PreCandidates)
             {
+                if (IsCandidateContactRetryDelayed(preCandidate, now)) continue;
+
                 if (preCandidate.Node.Port == 0)
                 {
                     _currentSelection.Counters.Increment(ActivePeerSelectionCounter.FilteredByZeroPort.ToString());
@@ -626,7 +645,7 @@ namespace Nethermind.Network
 
             if (!hasOnlyStaticNodes)
             {
-                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
+                _currentSelection.Candidates.AddRange(_peerPool.StaticPeers.Where(sn => !IsSelf(sn) && !IsCandidateContactRetryDelayed(sn, now) && !_peerPool.ActivePeers.ContainsKey(sn.Node.Id)));
             }
 
             foreach (Peer peer in _currentSelection.Candidates)
@@ -640,6 +659,18 @@ namespace Nethermind.Network
 
             CollectionsMarshal.AsSpan(_currentSelection.Candidates).Sort(default(PeerComparer));
 
+            RecordCandidateFilterMetrics();
+        }
+
+        private bool IsCandidateContactRetryDelayed(Peer peer, long now)
+        {
+            if (!IsContactRetryDelayed(peer, now)) return false;
+            _currentSelection.Counters.Increment(nameof(ActivePeerSelectionCounter.FilteredByContactRetryDelay));
+            return true;
+        }
+
+        private void RecordCandidateFilterMetrics()
+        {
             foreach (KeyValuePair<string, int> currentSelectionCounter in _currentSelection.Counters)
             {
                 Metrics.PeerCandidateFilter.AddBy(
@@ -762,7 +793,8 @@ namespace Nethermind.Network
         private enum ActivePeerSelectionCounter
         {
             FilteredByZeroPort,
-            Incompatible
+            Incompatible,
+            FilteredByContactRetryDelay
         }
 
         private readonly struct PeerStats(Peer peer, bool failedValidation, long currentReputation)
@@ -786,6 +818,7 @@ namespace Nethermind.Network
 
         private async Task SetupOutgoingPeerConnection(Peer peer, bool cancelIfThrottled = false)
         {
+            if (IsContactRetryDelayed(peer, _timeProvider.GetTimestamp())) return;
             if (cancelIfThrottled && _outgoingConnectionRateLimiter.IsThrottled()) return;
 
             // Claim the slot before the first await: a caller suspended in the rate limiter is invisible
@@ -804,7 +837,12 @@ namespace Nethermind.Network
                 // Records the address in the recent-contact filter, so it has to run under the claim:
                 // a candidate refused a slot would otherwise stay suppressed for the whole filter
                 // window without ever having been dialed.
-                if (!ShouldContactPeer(peer)) return;
+                if (!ShouldContactPeer(peer))
+                {
+                    StrongBox<long> retryAfter = _contactRetryAfter.GetValue(peer, static _ => new());
+                    Volatile.Write(ref retryAfter.Value, _timeProvider.GetTimestamp() + _timeProvider.TimestampFrequency);
+                    return;
+                }
 
                 await _outgoingConnectionRateLimiter.WaitAsync(_cancellationTokenSource.Token);
 
@@ -980,6 +1018,10 @@ namespace Nethermind.Network
             => !IsSelf(peer)
                && _rlpxHost.ShouldContact(peer.Node.Address.Address, exactOnly: peer.Node.IsStatic || peer.Node.IsBootnode);
 
+        private bool IsContactRetryDelayed(Peer peer, long now)
+            => _contactRetryAfter.TryGetValue(peer, out StrongBox<long>? retryAfter)
+               && now < Volatile.Read(ref retryAfter.Value);
+
         private bool IsSelf(Peer peer) => peer.Node.Id == _enode.PublicKey;
 
         private bool CanConnectToPeer(Peer peer)
@@ -1099,14 +1141,18 @@ namespace Nethermind.Network
             ConnectionDirection sessionDirection = session.Direction;
             bool newSessionIsIn = sessionDirection == ConnectionDirection.In;
 
-            if (CanAttachSessionDirectly(session, peer))
+            // Decided and attached as one step, or an IN and an OUT session added on different threads could both
+            // find the other direction empty and both attach directly. The disconnect waits until the lock is
+            // released: its handlers take the session lock, which the IN path holds while it waits for this one.
+            (ISession Session, DisconnectReason Reason)? disconnect;
+            lock (peer.SessionLock)
             {
-                AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
+                disconnect = CanAttachSessionDirectly(session, peer)
+                    ? AttachSession(peer, session, sessionDirection, disconnectOpposite: false)
+                    : ResolveSessionConflict(session, peer, sessionDirection);
             }
-            else
-            {
-                ResolveSessionConflict(session, peer, sessionDirection);
-            }
+
+            disconnect?.Session.InitiateDisconnect(disconnect.Value.Reason, "same");
 
             AddActivePeer(peer.Node.Id, peer, newSessionIsIn ? "new IN session" : "new OUT session");
 
@@ -1115,31 +1161,29 @@ namespace Nethermind.Network
                 => _logger.Trace($"ADDING {session} {peer}");
         }
 
+        // An IN session attached while the dial was in flight still has to go through the conflict resolution,
+        // or both directions stay open.
         private bool CanAttachSessionDirectly(ISession session, Peer peer)
-            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out);
+            => !IsConnected(peer) || (peer.IsAwaitingConnection && session.Direction == ConnectionDirection.Out && !HasOpenSession(peer.InSession));
 
-        private void AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
+        private static (ISession Session, DisconnectReason Reason)? AttachSession(Peer peer, ISession session, ConnectionDirection sessionDirection, bool disconnectOpposite)
         {
-            lock (peer.SessionLock)
+            if (sessionDirection == ConnectionDirection.In)
             {
-                if (sessionDirection == ConnectionDirection.In)
-                {
-                    peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
-                    peer.InSession = session;
-                }
-                else
-                {
-                    peer.OutSession = session;
-                }
+                peer.Stats.AddNodeStatsHandshakeEvent(ConnectionDirection.In);
+                peer.InSession = session;
+            }
+            else
+            {
+                peer.OutSession = session;
             }
 
-            if (disconnectOpposite)
-            {
-                GetSession(peer, GetOppositeDirection(sessionDirection))?.InitiateDisconnect(DisconnectReason.OppositeDirectionCleanup, "same");
-            }
+            return disconnectOpposite && GetSession(peer, GetOppositeDirection(sessionDirection)) is { } opposite
+                ? (opposite, DisconnectReason.OppositeDirectionCleanup)
+                : null;
         }
 
-        private void ResolveSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
+        private (ISession Session, DisconnectReason Reason)? ResolveSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
             bool peerHasAnOpenSameDirectionSession = HasOpenSession(GetSession(peer, sessionDirection));
             bool peerHasAnOpenOppositeDirectionSession = HasOpenSession(GetSession(peer, GetOppositeDirection(sessionDirection)));
@@ -1147,14 +1191,12 @@ namespace Nethermind.Network
             if (peerHasAnOpenSameDirectionSession)
             {
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.AlreadyConnected);
-                session.InitiateDisconnect(DisconnectReason.SessionAlreadyExist, "same");
-                return;
+                return (session, DisconnectReason.SessionAlreadyExist);
             }
 
-            if (peerHasAnOpenOppositeDirectionSession)
-            {
-                ResolveOppositeDirectionSessionConflict(session, peer, sessionDirection);
-            }
+            return peerHasAnOpenOppositeDirectionSession
+                ? ResolveOppositeDirectionSessionConflict(session, peer, sessionDirection)
+                : null;
         }
 
         private static bool HasOpenSession(ISession? session)
@@ -1162,19 +1204,18 @@ namespace Nethermind.Network
                && !session.IsClosing
                && !session.IsChannelClosed;
 
-        private void ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
+        private (ISession Session, DisconnectReason Reason)? ResolveOppositeDirectionSessionConflict(ISession session, Peer peer, ConnectionDirection sessionDirection)
         {
             ConnectionDirection directionToKeep = ChooseDirectionToKeep(session.RemoteNodeId);
             if (session.Direction != directionToKeep)
             {
                 if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.NewSessionAlreadyConnected, directionToKeep);
-                session.InitiateDisconnect(DisconnectReason.ReplacingSessionWithOppositeDirection, "same");
                 AttachSession(peer, session, sessionDirection, disconnectOpposite: false);
-                return;
+                return (session, DisconnectReason.ReplacingSessionWithOppositeDirection);
             }
 
             if (_logger.IsDebug) DebugSessionConflict(session, SessionConflictLogEvent.ExistingSessionReplacing, directionToKeep);
-            AttachSession(peer, session, sessionDirection, disconnectOpposite: true);
+            return AttachSession(peer, session, sessionDirection, disconnectOpposite: true);
         }
 
         private static ConnectionDirection GetOppositeDirection(ConnectionDirection sessionDirection)

@@ -52,11 +52,9 @@ public static class StatelessExecutor
         try
         {
             Block block = payload.GetBlock();
-            ReadOnlySpan<SszPublicKey> publicKeys = payload.PublicKeys.Span;
             Transaction[] transactions = block.Transactions;
 
-            if (transactions.Length == publicKeys.Length &&
-                BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
+            if (BlobVersionedHashesMatch(transactions, payload.VersionedHashes.Span) &&
                 HeaderValidator.ValidateHash(block.Header))
             {
                 ISpecProvider specProvider = payload.SpecProvider;
@@ -65,13 +63,13 @@ public static class StatelessExecutor
                 if (spec.IsEip4844Enabled && !KzgPolynomialCommitments.IsInitialized)
                     KzgPolynomialCommitments.InitializeAsync().GetAwaiter().GetResult();
 #endif
-                for (int i = 0; i < transactions.Length; i++)
-                    transactions[i].SenderAddress = PublicKey.ComputeAddress(publicKeys[i].AsSpan()[1..]);
+                if (TryRecoverSenders(transactions, payload.EncodedTransactions, specProvider, spec))
+                {
+                    using Witness witness = payload.Witness.ToWitness();
 
-                using Witness witness = payload.Witness.ToWitness();
-
-                // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
-                success = Execute(block, witness, specProvider, validateHashes: false);
+                    // Reconstruction derives body roots; the hash check above binds them to the declared block hash.
+                    success = Execute(block, witness, specProvider, validateHashes: false);
+                }
             }
         }
         catch (Exception ex)
@@ -175,6 +173,25 @@ public static class StatelessExecutor
         ChainId = 0,
         SchemaId = 0
     };
+
+    private static bool TryRecoverSenders(
+        Transaction[] transactions, byte[][] encodedTransactions, ISpecProvider specProvider, IReleaseSpec spec)
+    {
+        EthereumEcdsa ecdsa = new(specProvider.ChainId);
+        Span<byte> recovered = stackalloc byte[PublicKey.PrefixedLengthInBytes];
+
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            Transaction transaction = transactions[i];
+
+            if (!ecdsa.TryRecoverPublicKey(transaction, encodedTransactions[i], recovered, !spec.ValidateChainId))
+                return false;
+
+            transaction.SenderAddress = PublicKey.ComputeAddress(recovered[1..]);
+        }
+
+        return true;
+    }
 
     /// <summary>Returns whether <paramref name="transactions"/> commit to exactly <paramref name="expected"/>, in order.</summary>
     internal static bool BlobVersionedHashesMatch(Transaction[] transactions, ReadOnlySpan<Hash256> expected)

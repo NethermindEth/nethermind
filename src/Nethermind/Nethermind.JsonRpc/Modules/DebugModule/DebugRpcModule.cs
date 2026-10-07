@@ -8,6 +8,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -65,16 +66,16 @@ public class DebugRpcModule(
     }
 
     public ResultWrapper<int> debug_deleteChainSlice(in long startNumber, bool force = false) =>
-        startNumber < 0
-            ? ResultWrapper<int>.Fail($"startNumber must be non-negative (got {startNumber})", ErrorCodes.InvalidParams)
-            : ResultWrapper<int>.Success(debugBridge.DeleteChainSlice((ulong)startNumber, force));
+        startNumber <= 0
+            ? ResultWrapper<int>.Fail($"startNumber must be positive (got {startNumber})", ErrorCodes.InvalidParams)
+            : debugBridge.DeleteChainSlice((ulong)startNumber, force);
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransaction(Hash256 transactionHash, GethTraceOptions? options = null)
     {
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find block hash for transaction {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         TryGetHeaderAndCheckState(blockHash!, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -96,7 +97,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
@@ -106,6 +107,10 @@ public class DebugRpcModule(
     public ResultWrapper<GethLikeTxTrace> debug_traceCall(TransactionForRpc call, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
     {
         blockParameter ??= BlockParameter.Latest;
+        if (blockParameter.Type == BlockParameterType.Pending)
+        {
+            return ResultWrapper<GethLikeTxTrace>.Fail("tracing on top of pending is not supported", ErrorCodes.InvalidInput);
+        }
 
         BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
@@ -113,7 +118,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        Result<Transaction> txResult = call.ToTransaction(validateUserInput: true, gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
+        Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {
             return ResultWrapper<GethLikeTxTrace>.Fail(error, ErrorCodes.InvalidInput);
@@ -191,15 +196,27 @@ public class DebugRpcModule(
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
-        TryGetHeaderAndCheckState(blockhash, out ResultWrapper<GethLikeTxTrace>? headerError);
-        return headerError ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
+        BlockHeader? header = TryGetHeader(blockhash, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
+        return error ?? TraceTransactionAtIndex(blockhash, index, options, nameof(debug_traceTransactionByBlockhashAndIndex));
     }
 
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockAndIndex(BlockParameter blockParameter, int index, GethTraceOptions options = null)
     {
-        BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetHeader(blockParameter, out ResultWrapper<GethLikeTxTrace>? error);
+        if (error is not null)
+        {
+            return error;
+        }
+
+        error = CheckTraceBaseState<GethLikeTxTrace>(header!);
         // Trace the block that was resolved, not the canonical one at its height: a block hash parameter need not be canonical
-        return headerError ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
+        return error ?? TraceTransactionAtIndex(header!.Hash!, index, options, nameof(debug_traceTransactionByBlockAndIndex));
     }
 
     private ResultWrapper<GethLikeTxTrace> TraceTransactionAtIndex(Hash256 blockHash, int index, GethTraceOptions? options, string method)
@@ -517,7 +534,8 @@ public class DebugRpcModule(
 
     public ResultWrapper<byte[]> debug_seedHash(BlockParameter blockParameter) => throw new NotImplementedException();
 
-    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) => throw new NotImplementedException();
+    public ResultWrapper<bool> debug_setHead(BlockParameter blockParameter) =>
+        ResultWrapper<bool>.Success(debugBridge.UpdateHeadBlock(blockParameter));
 
     public ResultWrapper<byte[]> debug_getFromDb(string dbName, byte[] key)
     {
@@ -872,27 +890,29 @@ public class DebugRpcModule(
     private static ResultWrapper<TResult> GetRlpDecodingFailureResult<TResult>(Rlp blockRlp) =>
         ResultWrapper<TResult>.Fail($"Error decoding block RLP: {blockRlp.Bytes.ToHexString()}", ErrorCodes.InvalidInput);
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
     {
         SearchResult<BlockHeader> searchResult = blockFinder.SearchForHeader(blockParameter);
-        BlockHeader? header = searchResult.Object;
 
         if (searchResult.IsError)
         {
             error = GetFailureResult<TResult, BlockHeader>(searchResult, debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
-        if (!blockchainBridge.HasStateForBlock(header))
-        {
-            error = GetStateFailureResult<TResult>(header);
-            return null;
-        }
 
         error = null;
-        return header;
+        return searchResult.Object;
     }
 
-    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/>, without checking state availability.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeader<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
     {
         BlockHeader? header = blockFinder.FindHeader(blockHash);
 
@@ -903,14 +923,80 @@ public class DebugRpcModule(
                 debugBridge.HaveNotSyncedHeadersYet());
             return null;
         }
+
+        error = null;
+        return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockParameter"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(BlockParameter blockParameter, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockParameter, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
         if (!blockchainBridge.HasStateForBlock(header))
         {
             error = GetStateFailureResult<TResult>(header);
             return null;
         }
 
-        error = null;
         return header;
+    }
+
+    /// <summary>
+    /// Resolves the header for <paramref name="blockHash"/> and checks that its own state is available.
+    /// </summary>
+    /// <returns>The resolved header, or <see langword="null"/> when <paramref name="error"/> is set.</returns>
+    private BlockHeader? TryGetHeaderAndCheckState<TResult>(Hash256 blockHash, out ResultWrapper<TResult>? error)
+    {
+        BlockHeader? header = TryGetHeader<TResult>(blockHash, out error);
+        if (header is null)
+        {
+            return null;
+        }
+
+        if (!blockchainBridge.HasStateForBlock(header))
+        {
+            error = GetStateFailureResult<TResult>(header);
+            return null;
+        }
+
+        return header;
+    }
+
+    /// <summary>
+    /// Checks that the state a whole-block replay of <paramref name="header"/> starts from is available.
+    /// </summary>
+    /// <returns>The failure to return to the caller, or <see langword="null"/> when the state is available.</returns>
+    /// <remarks>
+    /// Replaying a block re-executes it on top of its parent, so the state that has to be available is the
+    /// parent's and not the block's own: <see cref="GethStyleTracer"/> seeds the processing scope with the
+    /// parent header. Genesis has no parent, so it is replayed from the pre-genesis empty state
+    /// (<see cref="Nethermind.Evm.State.IWorldState.PreGenesis"/>) and needs no committed state at all.
+    /// </remarks>
+    private ResultWrapper<TResult>? CheckTraceBaseState<TResult>(BlockHeader header)
+    {
+        if (header.IsGenesis)
+        {
+            return null;
+        }
+
+        BlockHeader? parent = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.None);
+
+        if (parent is null)
+        {
+            return ResultWrapper<TResult>.Fail(
+                $"Cannot find parent header for block {header.ToString(BlockHeader.Format.FullHashAndNumber)}",
+                ErrorCodes.ResourceUnavailable);
+        }
+
+        return blockchainBridge.HasStateForBlock(parent) ? null : GetStateFailureResult<TResult>(parent);
     }
 
     private Block? TryGetBlockAndCheckState<TResult>(Rlp blockRlp, out ResultWrapper<TResult>? error)
