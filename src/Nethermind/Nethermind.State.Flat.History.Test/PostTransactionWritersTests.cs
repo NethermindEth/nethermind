@@ -97,7 +97,6 @@ public class PostTransactionWritersTests
 
     [TestCase(SealEngineType.Ethash, true)]
     [TestCase(SealEngineType.BeaconChain, true)]
-    [TestCase(SealEngineType.Clique, true)]
     [TestCase(SealEngineType.AuRa, false)]
     [TestCase(SealEngineType.Optimism, false)]
     [TestCase(SealEngineType.Taiko, false)]

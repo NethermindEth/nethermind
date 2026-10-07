@@ -26,7 +26,6 @@ using Nethermind.CensorshipDetector.Plugin;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
-using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -687,7 +686,7 @@ public class EthereumRunnerTests
     private static ICollection<(string file, ConfigProvider configProvider)> InitOnce()
     {
         // we need this to discover ChainSpecEngineParameters
-        _ = new[] { typeof(CliqueChainSpecEngineParameters), typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
+        _ = new[] { typeof(OptimismChainSpecEngineParameters), typeof(TaikoChainSpecEngineParameters), typeof(XdcChainSpecEngineParameters) };
 
         // by pre-caching configs providers we make the tests do lot less work
         ConcurrentQueue<(string, ConfigProvider)> resultQueue = new();

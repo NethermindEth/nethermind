@@ -23,7 +23,6 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Optimism\Nethermind.Optimism.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Shutter\Nethermind.Shutter.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
-    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.EthStats\Nethermind.EthStats.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.HealthChecks\Nethermind.HealthChecks.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.OpcodeTracing.Plugin\Nethermind.OpcodeTracing.Plugin.csproj" />

@@ -543,10 +543,10 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 }
 
                 /// <summary>
-                /// Empty clique chains do not update state root on empty blocks (no block reward)
+                /// Chains without a block reward (and without withdrawals) do not update the state root on empty blocks
                 /// </summary>
                 /// <returns></returns>
-                public ScenarioBuilder IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain()
+                public ScenarioBuilder IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyChainWithoutBlockRewards()
                 {
                     // so the state root check can think that state root is after processed
                     _syncProgressSetups.Add(
@@ -558,7 +558,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestProcessedBlock().Returns(ChainHead.Number - FastSyncLag);
                             SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.FinishedBlockAccessLists);
                             SyncProgressResolver.ChainDifficulty.Returns((UInt256)ChainHead.Number - FastSyncLag);
-                            return "recently started full sync on empty clique chain";
+                            return "recently started full sync on empty chain without block rewards";
                         }
                     );
                     return this;
@@ -756,7 +756,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     IfTheSyncProgressIsCorrupted();
                     IfThisNodeJustFinishedStateSyncCatchUp();
                     IfThisNodeHasStateThatIsFarInThePast();
-                    IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyCliqueChain();
+                    IfThisNodeRecentlyStartedFullSyncProcessingOnEmptyChainWithoutBlockRewards();
                     return this;
                 }
 

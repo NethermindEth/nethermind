@@ -21,8 +21,6 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key is not null;
 
-        public bool CanSignHeader => false;
-
         public Signer(ulong chainId, PrivateKey? key, ILogManager logManager)
         {
             _chainId = chainId;

@@ -8,7 +8,6 @@
   <Project Path="../../src/Nethermind/Nethermind.Blockchain/Nethermind.Blockchain.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Config/Nethermind.Config.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus.AuRa/Nethermind.Consensus.AuRa.csproj" />
-  <Project Path="../../src/Nethermind/Nethermind.Consensus.Clique/Nethermind.Consensus.Clique.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Consensus/Nethermind.Consensus.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Core/Nethermind.Core.csproj" />
   <Project Path="../../src/Nethermind/Nethermind.Crypto/Nethermind.Crypto.csproj" />

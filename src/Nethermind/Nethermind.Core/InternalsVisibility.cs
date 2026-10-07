@@ -13,7 +13,6 @@ using System.Runtime.CompilerServices;
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin")]
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
-[assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 [assembly: InternalsVisibleTo("Nethermind.Evm")]
 [assembly: InternalsVisibleTo("Nethermind.Trie")]
 [assembly: InternalsVisibleTo("Nethermind.State.Flat.History")]

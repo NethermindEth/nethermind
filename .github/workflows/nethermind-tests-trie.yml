@@ -54,7 +54,6 @@ jobs:
           - Nethermind.BalRecorder.Test
           - Nethermind.Blockchain.Test
           - Nethermind.CensorshipDetector.Plugin.Test
-          - Nethermind.Clique.Test
           - Nethermind.Config.Test
           - Nethermind.Consensus.Test
           - Nethermind.Core.Test

@@ -15,7 +15,6 @@ public static class NethermindPlugins
         typeof(Nethermind.BlockProfiler.BlockProfilerPlugin),
         typeof(Nethermind.CensorshipDetector.Plugin.CensorshipDetectorPlugin),
         typeof(Nethermind.Consensus.AuRa.AuRaPlugin),
-        typeof(Nethermind.Consensus.Clique.CliquePlugin),
         typeof(Nethermind.Consensus.Ethash.EthashPlugin),
         typeof(Nethermind.Consensus.Ethash.NethDevPlugin),
         typeof(Nethermind.EthStats.EthStatsPlugin),

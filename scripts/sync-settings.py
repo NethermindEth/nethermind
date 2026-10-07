@@ -67,18 +67,6 @@ configs = {
         "multiplierRequirement": 10000,
         "isPoS": True
     },
-    "linea-mainnet": {
-        "url": "https://rpc.linea.build",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
-    "linea-sepolia": {
-        "url": "https://rpc.sepolia.linea.build",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000,
-        "isPoS": False
-    },
     "xdc": {
         "url": "https://erpc.xinfin.network",
         "blockReduced": 8192,

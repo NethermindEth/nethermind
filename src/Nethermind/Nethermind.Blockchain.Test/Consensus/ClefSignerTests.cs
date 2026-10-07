@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -31,41 +30,6 @@ namespace Nethermind.Blockchain.Test.Consensus
             ValueHash256 hash = Keccak.Zero;
             Assert.That(sut.TrySign(in hash, out Signature result), Is.True);
             Assert.That(new Signature(returnValue).Bytes.SequenceEqual(result.Bytes), Is.True);
-        }
-
-        [Test]
-        public async Task Sign_SigningCliqueHeader_PassingCorrectClefParametersForRequest()
-        {
-            IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
-            client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
-            Task<string?> postMethod = client.Post<string>(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>(), Arg.Any<string>());
-            string returnValue = (new byte[65]).ToHexString();
-            postMethod.Returns(returnValue);
-            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
-
-            Assert.That(sut.TrySign(blockHeader, out _), Is.True);
-
-            await client.Received().Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
-        }
-
-
-        [TestCase(0, 27)]
-        [TestCase(1, 28)]
-        public void Sign_RecoveryIdIsSetToCliqueValues_RecoveryIdIsAdjusted(byte recId, byte expected)
-        {
-            IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
-            client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
-            Task<string?> postMethod = client.Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
-            byte[] returnValue = (new byte[65]);
-            returnValue[64] = recId;
-            postMethod.Returns(returnValue.ToHexString());
-            BlockHeader blockHeader = Build.A.BlockHeader.TestObject;
-            ClefSigner sut = ClefSigner.Create(new ClefWallet(client));
-
-            Assert.That(sut.TrySign(blockHeader, out Signature result), Is.True);
-
-            Assert.That(result.V, Is.EqualTo(expected));
         }
 
         [Test]
