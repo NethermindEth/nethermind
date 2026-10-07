@@ -1356,7 +1356,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         result.AsSpan().Sort(static (a, b) =>
         {
             // Experiment only: NETHERMIND_EXP_HOIST=1 hoists heavy jobs; off by default, every job keeps block order.
-            if (HoistsHeavyJobs && a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
+            if (!HoistsHeavyJobs) return a.FirstIndex.CompareTo(b.FirstIndex);
+            if (a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
             if (a.IsHoisted)
             {
                 int byGas = b.GasEstimate.CompareTo(a.GasEstimate);
