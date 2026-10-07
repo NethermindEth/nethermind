@@ -132,7 +132,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -192,7 +192,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddDecorator<ITransactionProcessorAdapter>((_, inner) => new BudgetCountingAdapter(inner, counter)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);
@@ -286,7 +286,7 @@ public partial class DebugRpcModuleTests
                 .AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance) { AllowTestChainOverride = false })
                 .AddSingleton<IPrefixStateSeedSource>(seeds)
                 .AddSingleton(budget)
-                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, ParallelTraceBudget.Bounded(1)))
+                .AddSingleton<ParallelTraceBudgets, ISpecProvider>(specProvider => new ParallelTraceBudgets(specProvider, budget, changesetSeeds: true))
                 .AddKeyedSingleton<IReceiptFinder>(IReceiptFinder.RegenerableKey, ctx => new CountingReceiptFinder(ctx.Resolve<IReceiptFinder>(), availability)));
         BlockHeader parent = chain.BlockTree.Head!.Header;
         ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(parent, TestItem.AddressB);

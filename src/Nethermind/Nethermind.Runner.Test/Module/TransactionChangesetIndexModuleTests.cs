@@ -33,6 +33,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History;
 using Nethermind.State.Flat.History.Changesets;
@@ -318,7 +319,7 @@ public class TransactionChangesetIndexModuleTests
     [TestCase(4, TestName = "ParallelTraceBudgets_ByDefault_TraceAccessListBlocksOnFourWorkers")]
     [TestCase(1, TestName = "ParallelTraceBudgets_WhenSetToOne_TraceAccessListBlocksSequentially")]
     [TestCase(0, TestName = "ParallelTraceBudgets_WhenSetToZero_TraceAccessListBlocksSequentially")]
-    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheirOwnSetting(int configured)
+    public void ParallelTraceBudgets_ForAccessListBlocks_FollowTheTraceBlockSetting(int configured)
     {
         JsonRpcConfig rpc = new();
         if (configured != 4) rpc.TraceBlockParallelism = configured;
@@ -335,7 +336,7 @@ public class TransactionChangesetIndexModuleTests
             Assert.That(new JsonRpcConfig().TraceBlockParallelism, Is.EqualTo(4), "the default is four workers");
             Assert.That(parallel, Is.EqualTo(configured >= 2 && Environment.ProcessorCount >= 2), "zero or one traces an access list block sequentially");
             if (parallel) Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "the degree is the configured setting");
-            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only the access list budget can start a parallel tracer");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(parallel), "with no changeset seeds, only access list blocks can start a parallel tracer");
         }
     }
 
@@ -361,31 +362,58 @@ public class TransactionChangesetIndexModuleTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list takes the changeset seeds' budget, sized by the trace block setting");
+            Assert.That(parallel, Is.EqualTo(expected), "a block without an access list is traced in parallel only on changeset seeds, on the budget the trace block setting sizes");
             if (parallel) Assert.That(budget.Degree, Is.EqualTo(configured), "the degree is the configured setting");
             Assert.That(container.Resolve<ParallelTraceBudgets>().AllowsParallelTracing, Is.EqualTo(expected), "the parallel tracer is built only when a seed this chain can take allows two workers");
         }
     }
 
-    [TestCase(1, null, 1, TestName = "ChangesetTraceBudget_WithTheDeprecatedKeySetToOne_TracesSequentiallyAndWarns")]
-    [TestCase(1, 8, 1, TestName = "ChangesetTraceBudget_WithBothKeysSet_TakesTheDeprecatedKeyAndWarns")]
-    [TestCase(8, 2, 8, TestName = "ChangesetTraceBudget_WithBothKeysSetTheOtherWay_TakesTheDeprecatedKeyAndWarns")]
-    [TestCase(64, null, 16, TestName = "ChangesetTraceBudget_WithTheDeprecatedKeyAboveTheCap_ClampsToSixteenAndWarns")]
-    public void ChangesetTraceBudget_WithTheDeprecatedKeySet_KeepsItsOldMeaningAndWarns(int legacy, int? traceBlock, int expected)
+    [Test]
+    public void ParallelTraceBudgets_WithChangesetSeedsOnAnAccessListChain_DrawBothKindsOfBlockFromOneBudget()
     {
-        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(legacy, traceBlock);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true }, new JsonRpcConfig { TraceBlockParallelism = 2 }))
+            .AddSingleton<ISpecProvider>(new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance)))
+            .Build();
+        ParallelTraceBudgets budgets = container.Resolve<ParallelTraceBudgets>();
+        bool expected = Environment.ProcessorCount >= 2;
+
+        bool changesetBlock = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(1).TestObject, out ParallelTraceBudget changesets);
+        bool accessListBlock = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(10).TestObject, out ParallelTraceBudget accessLists);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(changesetBlock, Is.EqualTo(expected), "a block before access lists is traced in parallel on changeset seeds");
+            Assert.That(accessListBlock, Is.EqualTo(expected), "a block with an access list is traced in parallel on it");
+            if (expected)
+            {
+                Assert.That(changesets, Is.SameAs(container.Resolve<ParallelTraceBudget>()), "changeset seeded blocks draw on the node-wide budget");
+                Assert.That(accessLists, Is.SameAs(changesets), "access list seeded blocks draw on the same budget, so the setting caps both together");
+            }
+            Assert.That(budgets.Degree, Is.EqualTo(Math.Min(2, Environment.ProcessorCount)), "the parallel tracer is sized by the one budget, not a sum");
+        }
+    }
+
+    [TestCase(1, null, 1, TestName = "TraceBudget_WithTheDeprecatedKeySetToOne_TracesSequentiallyAndWarns")]
+    [TestCase(1, 8, 1, TestName = "TraceBudget_WithBothKeysSet_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(8, 2, 8, TestName = "TraceBudget_WithBothKeysSetTheOtherWay_TakesTheDeprecatedKeyAndWarns")]
+    [TestCase(64, null, 16, TestName = "TraceBudget_WithTheDeprecatedKeyAboveTheCap_ClampsToSixteenAndWarns")]
+    public void TraceBudget_WithTheDeprecatedKeySet_KeepsItsOldMeaningAndWarns(int legacy, int? traceBlock, int expected)
+    {
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(legacy, traceBlock);
         using (container)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(budget.Degree, Is.EqualTo(expected), "the deprecated key keeps sizing changeset seeds and wins over the trace block setting");
+            Assert.That(budget.Degree, Is.EqualTo(expected), "the deprecated key keeps its old meaning and wins over the trace block setting");
+            Assert.That(container.Resolve<ParallelTraceBudgets>().Degree, Is.EqualTo(expected), "the deprecated key sizes the one shared budget");
             Assert.That(logger.LogList, Has.Some.Contains("FlatDb.HistoryTransactionIndexTraceParallelism is deprecated"));
         }
     }
 
     [Test]
-    public void ChangesetTraceBudget_WithTheDeprecatedKeySetToZero_UsesTheProcessorCountAndWarns()
+    public void TraceBudget_WithTheDeprecatedKeySetToZero_UsesTheProcessorCountAndWarns()
     {
-        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(0, null);
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(0, null);
         using (container)
         using (Assert.EnterMultipleScope())
         {
@@ -395,9 +423,9 @@ public class TransactionChangesetIndexModuleTests
     }
 
     [Test]
-    public void ChangesetTraceBudget_WithoutTheDeprecatedKey_FollowsTheTraceBlockDefaultWithoutWarning()
+    public void TraceBudget_WithoutTheDeprecatedKey_FollowsTheTraceBlockDefaultWithoutWarning()
     {
-        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveChangesetTraceBudget(null, null);
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(null, null);
         using (container)
         using (Assert.EnterMultipleScope())
         {
@@ -483,7 +511,7 @@ public class TransactionChangesetIndexModuleTests
         stopper.Received(1).AddStoppable(builder);
     }
 
-    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveChangesetTraceBudget(int? legacy, int? traceBlock)
+    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveTraceBudget(int? legacy, int? traceBlock)
     {
         JsonRpcConfig rpc = new();
         if (traceBlock is int workers) rpc.TraceBlockParallelism = workers;
