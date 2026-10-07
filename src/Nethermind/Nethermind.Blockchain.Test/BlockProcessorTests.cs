@@ -2018,6 +2018,41 @@ public partial class BlockProcessorTests
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal([Values] bool existingAccount)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
+        byte[] code = existingAccount ? [0x00] : [];
+        ulong nonce = existingAccount ? 7UL : 0UL;
+        UInt256 balance = existingAccount ? 3UL : 0UL;
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        if (existingAccount)
+        {
+            stateProvider.CreateAccount(verifier, balance, nonce);
+            stateProvider.InsertCode(verifier, code, spec);
+        }
+
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Block block = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed, _) = processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.AccountExists(verifier), Is.EqualTo(existingAccount));
+            Assert.That(stateProvider.GetCode(verifier), Is.SequenceEqualTo(code));
+            Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(nonce));
+            Assert.That(stateProvider.GetBalance(verifier), Is.EqualTo(balance));
+            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null);
+        }
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
     public void Prepared_block_contains_author_field()
     {
         (_, BranchProcessor branchProcessor, _, _) = CreateProcessorAndBranch();

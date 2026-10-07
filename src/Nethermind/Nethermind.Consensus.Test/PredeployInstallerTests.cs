@@ -42,6 +42,18 @@ public class PredeployInstallerTests
         writeState.DidNotReceive().SetNonce(Eip8250Constants.NonceManagerAddress, Arg.Is<ulong>(n => n != expectedNonce));
     }
 
+    [Test]
+    public void Eip8141_activation_does_not_write_the_expiry_verifier([Values] bool noncanonicalPrestate)
+    {
+        (_, _, IWorldState writeState) = Install(
+            static spec => spec.IsEip8141Enabled.Returns(true),
+            Eip8141Constants.ExpiryVerifierAddress,
+            nonce: noncanonicalPrestate ? 7UL : 0UL,
+            code: noncanonicalPrestate ? [0x00] : []);
+
+        Assert.That(writeState.ReceivedCalls(), Is.Empty);
+    }
+
     /// <remarks>The install is the only in-tree writer of a no-op nonce, so it is the only way EIP-7928's
     /// "record a nonce change only when the nonce changes" rule can be observed from block processing.</remarks>
     [Test]
