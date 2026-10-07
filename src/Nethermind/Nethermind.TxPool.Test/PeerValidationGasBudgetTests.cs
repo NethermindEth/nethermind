@@ -10,8 +10,8 @@ public class PeerValidationGasBudgetTests
 {
     private long _now;
 
-    private PeerValidationGasBudget Budget(ulong gasPerSecond = 30_000_000, double burstSeconds = 1) =>
-        new(gasPerSecond, burstSeconds, () => _now);
+    private PeerValidationGasBudget Budget(ulong gasPerSecond = 30_000_000, ulong maxVerifyGas = 0) =>
+        new(gasPerSecond, maxVerifyGas, () => _now);
 
     private void Advance(double seconds) => _now += (long)(seconds * Stopwatch.Frequency);
 
@@ -62,7 +62,7 @@ public class PeerValidationGasBudgetTests
     [Test]
     public void Refund_MakesAdmittedValidationFree()
     {
-        PeerValidationGasBudget budget = Budget(gasPerSecond: 1_000_000, burstSeconds: 1);
+        PeerValidationGasBudget budget = Budget(gasPerSecond: 1_000_000);
 
         for (int i = 0; i < 50; i++)
         {
@@ -74,9 +74,37 @@ public class PeerValidationGasBudgetTests
     [Test]
     public void Refill_NeverExceedsTheBurst()
     {
-        PeerValidationGasBudget budget = Budget(gasPerSecond: 1_000_000, burstSeconds: 1);
+        PeerValidationGasBudget budget = Budget(gasPerSecond: 1_000_000);
         Advance(60);
 
-        Assert.That(budget.TryReserve(1_000_001), Is.False, "an idle peer must not bank more than one burst");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryReserve(1_000_000), Is.True);
+            Assert.That(budget.TryReserve(1), Is.False, "an idle peer must not bank more than one burst");
+        }
+    }
+
+    [Test]
+    public void TryReserve_BudgetBelowOneTransaction_StillAdmitsOnePerRefill()
+    {
+        PeerValidationGasBudget budget = Budget(gasPerSecond: 200_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budget.TryReserve(300_000), Is.True, "a full bucket must admit a transaction larger than itself");
+            Assert.That(budget.TryReserve(300_000), Is.False);
+            Advance(1);
+            Assert.That(budget.TryReserve(300_000), Is.True, "one second refills a full bucket");
+        }
+    }
+
+    [Test]
+    public void TryReserve_AboveMaxVerifyGas_IsNotCharged()
+    {
+        PeerValidationGasBudget budget = Budget(gasPerSecond: 300_000, maxVerifyGas: 300_000);
+        Assert.That(budget.TryReserve(300_000), Is.True);
+
+        Assert.That(budget.TryReserve(300_001), Is.True,
+            "the pool rejects a transaction above MAX_VERIFY_GAS before validating it, so the budget must let it through");
     }
 }

@@ -191,6 +191,15 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
 
         /// <summary>
+        /// An EIP-8141 frame transaction dropped unvalidated because the peer that sent it had spent its validation
+        /// gas budget on transactions that failed validation.
+        /// </summary>
+        /// <remarks>
+        /// Unlike <see cref="FrameSimulationDeferred"/>, the peer caused this, so it counts towards flood disconnects.
+        /// </remarks>
+        public static readonly AcceptTxResult FramePeerValidationBudgetSpent = new(TxPoolErrorMessages.FramePeerValidationBudgetSpent);
+
+        /// <summary>
         /// An EIP-8250 keyed-nonce frame transaction beyond its sender's free pending baseline, submitted while
         /// the sender holds too little MATCHA width to admit another. A local mempool policy, not a validity rule.
         /// </summary>
