@@ -57,6 +57,9 @@ public enum FrameFlags : byte
 
     /// <summary>Ties the frame to the batch it opens or continues: any member failing unrolls them all.</summary>
     AtomicBatch = 0x4,
+
+    /// <summary>EIP-7906: the frame's state changes survive a failed <c>POST_TX</c> assertion.</summary>
+    PostTxExempt = 0x8,
 }
 
 /// <summary>
@@ -113,4 +116,7 @@ public class TxFrame(FrameMode mode, FrameFlags flags, Address? target, ulong ex
 
     /// <summary>Whether the frame belongs to an atomic batch, whose members stand or fall together.</summary>
     public bool IsAtomicBatch => (Flags & FrameFlags.AtomicBatch) != 0;
+
+    /// <summary>Whether a failed EIP-7906 <c>POST_TX</c> assertion leaves the frame's state changes in place.</summary>
+    public bool IsPostTxExempt => (Flags & FrameFlags.PostTxExempt) != 0;
 }

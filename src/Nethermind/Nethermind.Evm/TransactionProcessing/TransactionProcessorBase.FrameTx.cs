@@ -395,6 +395,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 frameContext.RestoreFrameJournal(frameStartJournal);
             }
 
+            if (payerWasSet && frame.IsPostTxExempt)
+            {
+                prefixEnd = new FrameCheckpoint(
+                    WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
+                    Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
+            }
+
             if (inBatch)
             {
                 if (!frameSucceeded)

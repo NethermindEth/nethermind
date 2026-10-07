@@ -196,7 +196,7 @@ public class FrameTxDecoderTests
     /// enum holds any value of its underlying type, so a peer's out-of-range byte survives the decode and the
     /// range checks in <see cref="FrameTxValidation.IsWellFormed"/> remain the only thing rejecting it.</remarks>
     [TestCase((byte)7, (byte)0, FrameTxValidation.InvalidMode, TestName = "Decode_FrameModeAboveTheDefinedRange_DecodesAndFailsValidation")]
-    [TestCase((byte)1, (byte)8, FrameTxValidation.InvalidFlags, TestName = "Decode_FrameFlagsWithAnUndefinedBit_DecodesAndFailsValidation")]
+    [TestCase((byte)1, (byte)16, FrameTxValidation.InvalidFlags, TestName = "Decode_FrameFlagsWithAnUndefinedBit_DecodesAndFailsValidation")]
     public void Decode_FrameCarryingAnUndefinedWireValue_DecodesButFailsValidation(byte mode, byte flags, string expectedError)
     {
         byte[] payload = TypedPayload(FrameTxBody(frames: Rlp.Encode(new[] { RawFrame(mode, flags) })));
