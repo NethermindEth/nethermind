@@ -15,11 +15,12 @@ namespace Nethermind.Evm;
 /// <remarks>
 /// A warm CALL costs 100 gas whatever the size of the code, so a block can call more distinct large contracts, round
 /// and round, than the process-wide cache holds; each call would then read and analyse its code again. Code loaded
-/// during the block is kept here, up to a cap on the memory it retains. Past the cap, code no running transaction has
-/// used gives way to a running transaction's code; code a running transaction uses is never evicted, as evicting on a
-/// cycle over a set larger than the cache misses on every load. Warmth does not outlive a transaction, so reloading
-/// code a finished transaction used is paid for by the next one's cold access, and earlier transactions cannot fill
-/// the cap to leave a later one without retention.
+/// during the block is kept here, up to a cap on the memory it retains. Past the cap, a running transaction reclaims
+/// entries whose latest recorded user is no longer running, including code loaded by warming; evicting what running
+/// transactions use instead would miss on every load of a cycle over a set larger than the cache. Retention is best
+/// effort: a later user that finishes first, or a hit racing a sweep, can leave an earlier running transaction to
+/// reload shared code once. Warmth does not outlive a transaction, so each such eviction takes another transaction
+/// paying cold access for that code, and earlier transactions cannot fill the cap to leave a later one without retention.
 /// The process-wide cache is probed first, so a block it serves pays nothing here.
 /// </remarks>
 public sealed class BlockCodeCache : ICodeCache
@@ -84,14 +85,20 @@ public sealed class BlockCodeCache : ICodeCache
             return codeInfo;
         }
 
-        long transaction = _currentTransaction;
-        if (transaction != 0 && entry.Transaction != transaction) entry.Transaction = transaction;
+        Record(entry);
         return entry.Code;
     }
 
     public void Set(in ValueHash256 codeHash, CodeInfo codeInfo)
     {
         _inner.Set(in codeHash, codeInfo);
+
+        // Another transaction missing on the same code may have loaded it first.
+        if (_retained.Code.TryGetValue(codeHash, out Entry? loaded))
+        {
+            Record(loaded);
+            return;
+        }
 
         // Racing loads may each pass the check, overshooting the cap by at most one code per thread.
         long charge = codeInfo.CodeLength + (codeInfo.CodeLength >> 3) + EntryOverheadBytes;
@@ -101,10 +108,22 @@ public sealed class BlockCodeCache : ICodeCache
             return;
         }
 
-        if (_retained.Code.TryAdd(codeHash, new Entry(codeInfo, charge, transaction)))
+        Entry entry = new(codeInfo, charge, transaction);
+        loaded = _retained.Code.GetOrAdd(codeHash, entry);
+        if (ReferenceEquals(loaded, entry))
         {
             Interlocked.Add(ref _retained.Bytes, charge);
         }
+        else
+        {
+            Record(loaded);
+        }
+    }
+
+    private static void Record(Entry entry)
+    {
+        long transaction = _currentTransaction;
+        if (transaction != 0 && entry.Transaction != transaction) entry.Transaction = transaction;
     }
 
     /// <summary>Drops the code kept for the block, for every view of it.</summary>
@@ -126,7 +145,6 @@ public sealed class BlockCodeCache : ICodeCache
         lock (_retained.Running)
         {
             _retained.Running.Remove(transaction);
-            _retained.Finished++;
         }
     }
 
@@ -162,13 +180,11 @@ public sealed class BlockCodeCache : ICodeCache
         private readonly Lock _sweepLock = new();
         public long Bytes;
 
-        /// <summary>Transactions finished, guarded by <see cref="Running"/>.</summary>
-        public int Finished;
+        /// <summary>The transactions running at the last sweep, if it evicted nothing.</summary>
+        /// <remarks>Until one of them finishes, another sweep could only evict what a later transaction took over by a hit.</remarks>
+        private HashSet<long>? _fruitlessSweep;
 
-        /// <summary><see cref="Finished"/> at the last sweep, or -1 before the first.</summary>
-        public int SweptAtFinished = -1;
-
-        /// <summary>Evicts the code no running transaction has used, unless that was done since the last transaction finished.</summary>
+        /// <summary>Evicts entries whose latest recorded user is not running, unless no transaction running at the last fruitless sweep has finished since.</summary>
         /// <returns>Whether <paramref name="charge"/> now fits under <paramref name="maxBytes"/>.</returns>
         public bool TryMakeRoom(long charge, long maxBytes)
         {
@@ -180,25 +196,25 @@ public sealed class BlockCodeCache : ICodeCache
                 // evicted and its transaction reloads it once.
                 long lastTransaction;
                 HashSet<long> running;
-                int finished;
                 lock (Running)
                 {
-                    if (Finished == SweptAtFinished) return false;
+                    if (_fruitlessSweep?.IsSubsetOf(Running) == true) return false;
                     lastTransaction = Volatile.Read(ref _lastTransaction);
-                    finished = Finished;
                     running = [.. Running];
                 }
 
+                bool evicted = false;
                 foreach (KeyValuePair<ValueHash256, Entry> pair in Code)
                 {
                     long transaction = pair.Value.Transaction;
                     if (transaction <= lastTransaction && !running.Contains(transaction) && Code.TryRemove(pair))
                     {
                         Interlocked.Add(ref Bytes, -pair.Value.Charge);
+                        evicted = true;
                     }
                 }
 
-                SweptAtFinished = finished;
+                _fruitlessSweep = evicted ? null : running;
                 return Volatile.Read(ref Bytes) + charge <= maxBytes;
             }
             finally
