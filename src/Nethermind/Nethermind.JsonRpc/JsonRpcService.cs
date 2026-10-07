@@ -165,7 +165,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     break;
             }
 
-            if (resultWrapper is Modules.DebugModule.PendingTraceChainResponse pending)
+            if (isDebugSubscription && resultWrapper is Modules.DebugModule.PendingTraceChainResponse pending)
             {
                 pending.Subscription.ConfigureRental((IExclusiveRpcModulePool)method.ModulePool!, method.ReturnModule);
             }

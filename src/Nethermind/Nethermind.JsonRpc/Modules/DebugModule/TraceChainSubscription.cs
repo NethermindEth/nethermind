@@ -65,21 +65,12 @@ internal sealed class TraceChainSubscription : Subscription, IPostAcknowledgemen
 
     internal void Activate()
     {
-        try
+        lock (_gate)
         {
-            lock (_gate)
-            {
-                if (_finished || _disposed || _activated) return;
-                _activated = true;
-                // The lease stays owned until replay, sends and cancellation callbacks have exited.
-                _ = Task.Run(RunAsync);
-            }
-        }
-        catch
-        {
-            lock (_gate) _activated = false;
-            Abort();
-            throw;
+            if (_finished || _disposed || _activated) return;
+            _activated = true;
+            // The lease stays owned until replay, sends and cancellation callbacks have exited.
+            _ = Task.Run(RunAsync);
         }
     }
 
