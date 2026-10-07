@@ -134,8 +134,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
-            StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
+            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {
@@ -748,7 +748,19 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
-            AddBlockResult addResult = await _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask().TimeoutOn(timeoutTask);
+            Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
+            AddBlockResult addResult;
+            try
+            {
+                addResult = await suggest.TimeoutOn(timeoutTask);
+            }
+            catch (TimeoutException)
+            {
+                // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
+                // unqueued until the CL re-sends the payload.
+                _ = EnqueueOnceAddedAsync(suggest, block, processingOptions, blockProcessed, workers);
+                throw;
+            }
 
             // A payload sent again while its first copy is between verdict and removal is known, and marked processed
             // only part way through that window. Queued again before the copy is gone it would be skipped as not
@@ -862,6 +874,22 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool HasCommitted(Hash256 blockHash) =>
         _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { Number: ulong number }
         && _blockTree.WasProcessed(number, blockHash);
+
+    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    {
+        try
+        {
+            if (await suggest is not AddBlockResult.Added) return;
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Suggesting {block.ToString(Block.Format.FullHashAndNumber)} failed after its request timed out: {e}");
+            return;
+        }
+
+        // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
+        await Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
+    }
 
     private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {

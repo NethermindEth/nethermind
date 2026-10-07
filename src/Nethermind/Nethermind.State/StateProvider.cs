@@ -10,6 +10,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -32,9 +33,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
 
     // Address -> index of its newest change in _changes; older changes reachable via Change.PrevIdx.
-    private readonly Dictionary<AddressAsKey, int> _intraTxCache = [];
-    private readonly HashSet<AddressAsKey> _committedThisRound = [];
-    private readonly HashSet<AddressAsKey> _nullAccountReads = [];
+    private readonly OptimizedDictionary<AddressAsKey, int> _intraTxCache = [];
+    private readonly OptimizedHashSet<AddressAsKey> _committedThisRound = [];
+    private readonly OptimizedHashSet<AddressAsKey> _nullAccountReads = [];
     // Only guarding against hot duplicates within the current block; the cross-block
     // "already persisted" hint now lives on ICodeDb itself (see ICodeDb.ContainsCode).
     // This is intentional: the lifetime of "is this code durably persisted" must match
@@ -44,7 +45,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // Code staged for CodeDb by the current transaction, paired with the change-log position of the
     // code-hash update referencing it, so Restore can drop code whose deployment an ancestor frame reverted.
     private readonly List<(int Position, ValueHash256 CodeHash, int Length)> _codeInsertJournal = [];
-    private readonly Dictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
+    private readonly OptimizedDictionary<AddressAsKey, ChangeTrace> _blockChanges = new(4_096);
     private List<AddressAsKey> _removedWithStorage = [];
     // Handed back by a detached write-back once it is done with the list it took.
     private List<AddressAsKey>? _spareRemovedWithStorage;
@@ -74,8 +75,9 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
     // when a restore/commit/reset recycles the change log (epoch).
     private Address? _cachedAddress;
     private Account? _cachedAccount;
-    private int _cachedEpoch = -1;
-    private int _epoch;
+    // Word-sized: every account read compares them, and the zkVM guest pays several times an aligned load for a narrow one.
+    private long _cachedEpoch = -1;
+    private long _epoch;
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private bool IsFrontCacheHit(Address address) =>
@@ -407,7 +409,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
         for (int nextPosition = changes.Length - 1; nextPosition > snapshot; nextPosition--)
         {
             ref readonly Change change = ref changes[nextPosition];
-            ref int head = ref CollectionsMarshal.GetValueRefOrNullRef(_intraTxCache, change.Address);
+            ref int head = ref _intraTxCache.GetValueRefOrNullRef(change.Address);
 
             if (Unsafe.IsNullRef(ref head)) ThrowUnexpectedPosition(nextPosition, -1);
             if (head != nextPosition) ThrowUnexpectedPosition(nextPosition, head);
@@ -681,9 +683,12 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
+            // Walking newest first meets an account's head before its older changes, which commit with the head.
+            int head = TStateTracing.IsActive ? -1 : _intraTxCache[change.Address];
+            Debug.Assert(head <= i || changes[head].Address == change.Address);
             bool alreadyCommitted = TStateTracing.IsActive
                 ? _committedThisRound.Contains(change.Address)
-                : !_committedThisRound.Add(change.Address);
+                : head > i;
             if (alreadyCommitted)
             {
                 if (TStateTracing.IsActive && change.ChangeType == ChangeType.JustCache)
@@ -702,7 +707,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 continue;
             }
 
-            int forAssertion = _intraTxCache[change.Address];
+            int forAssertion = TStateTracing.IsActive ? _intraTxCache[change.Address] : head;
             if (forAssertion != i)
             {
                 ThrowUnexpectedCommitPosition(i, forAssertion);
@@ -757,15 +762,11 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
                 case ChangeType.Delete:
                     {
                         if (isTracing) TraceRemove(change);
-                        bool wasItCreatedNow = false;
-                        for (int previousOne = change.PrevIdx; previousOne != -1; previousOne = changes[previousOne].PrevIdx)
-                        {
-                            if (changes[previousOne].ChangeType == ChangeType.New)
-                            {
-                                wasItCreatedNow = true;
-                                break;
-                            }
-                        }
+                        // Only a chain that starts with New proves the account was absent before the commit window.
+                        // Block production commits once per block, so a New can sit above the delete of a pre-existing account.
+                        int oldest = change.PrevIdx;
+                        while (oldest != -1 && changes[oldest].PrevIdx != -1) oldest = changes[oldest].PrevIdx;
+                        bool wasItCreatedNow = oldest != -1 && changes[oldest].ChangeType == ChangeType.New;
 
                         if (!wasItCreatedNow)
                         {
@@ -862,7 +863,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
-            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
             if (change.Before != change.After)
             {
                 change.Before = change.After;
@@ -886,7 +887,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private ref ChangeTrace GetOrAddBlockChange(AddressAsKey key, out bool exists)
-        => ref CollectionsMarshal.GetValueRefOrAddDefault(_blockChanges, key, out exists);
+        => ref _blockChanges.GetValueRefOrAddDefault(key, out exists);
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
@@ -899,7 +900,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
         foreach (AddressAsKey key in _blockChanges.Keys)
         {
-            ref ChangeTrace change = ref CollectionsMarshal.GetValueRefOrNullRef(_blockChanges, key);
+            ref ChangeTrace change = ref _blockChanges.GetValueRefOrNullRef(key);
             if (overlay.TryGetAccount(key.Value, change.After, out Account? account)) change.After = account;
         }
     }
@@ -949,7 +950,8 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private Account? GetAndAddToCache(Address address)
     {
-        if (_nullAccountReads.Contains(address)) return null;
+        // Rarely non-empty, and probing an empty set still hashes the key.
+        if (_nullAccountReads.Count != 0 && _nullAccountReads.Contains(address)) return null;
 
         Account? account = GetState(address);
         if (account is not null)
@@ -1003,7 +1005,7 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     private void Push(Address address, Account? touchedAccount, ChangeType changeType)
     {
-        ref int head = ref CollectionsMarshal.GetValueRefOrAddDefault(_intraTxCache, address, out bool exists);
+        ref int head = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
         if (changeType == ChangeType.Touch
             && exists && _changes[head].ChangeType == ChangeType.Touch)
         {
@@ -1043,6 +1045,27 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
             return addresses;
         }
     }
+
+    /// <summary>
+    /// Drops the block's record of every account <paramref name="bal"/> changes, handing its committed value to
+    /// <paramref name="scope"/> as the one the BAL is applied over.
+    /// </summary>
+    /// <remarks>
+    /// Call after a commit with roots and before the BAL is applied. A hint only fills an empty slot, so a later hint of
+    /// the account's pre-block value (one the caches still hold) cannot override the committed one. Removals with
+    /// storage stay recorded: a removed account's cached slots must go whether or not the BAL recreated it.
+    /// </remarks>
+    internal void ForgetBlockChanges(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IScope scope)
+    {
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            if (accountChanges.HasStateChanges && _blockChanges.Remove(accountChanges.Address, out ChangeTrace change))
+                scope.HintGet(accountChanges.Address, change.After);
+        }
+    }
+
+    /// <summary>Has the write-back drop the cached storage of <paramref name="address"/>, as for an account removed with storage.</summary>
+    internal void ForgetCachedStorage(Address address) => _removedWithStorage.Add(address);
 
     public void Reset(bool resetBlockChanges = true)
     {
@@ -1129,7 +1152,7 @@ internal static class Extensions
     public static void UpdateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, Address address, Account? change) => trace[address] = new ChangeTrace(change, trace[address].After);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, HashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
+    public static void ReportStateTrace(this Dictionary<AddressAsKey, ChangeTrace> trace, IWorldStateTracer stateTracer, OptimizedHashSet<AddressAsKey> nullAccountReads, StateProvider stateProvider)
     {
         foreach (Address nullRead in nullAccountReads)
         {

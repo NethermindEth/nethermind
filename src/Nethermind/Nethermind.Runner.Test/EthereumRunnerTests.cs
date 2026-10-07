@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -132,14 +133,16 @@ public class EthereumRunnerTests
         logger.Received(fail ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("warmup failure")));
     }
 
-    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, Supported }
+    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, CustomPipelineBehindCatchUp, Supported, SupportedBehindCatchUp }
 
     [TestCase(WarmupScenario.Disabled, "disabled by configuration.")]
     [TestCase(WarmupScenario.Diagnostic, "a database diagnostic mode is enabled.")]
     [TestCase(WarmupScenario.CustomSpec, "the chain uses a custom spec provider.")]
     [TestCase(WarmupScenario.MissingMerge, "the standard Merge plugin is not enabled.")]
     [TestCase(WarmupScenario.CustomPipeline, "the chain uses a custom processing pipeline.")]
+    [TestCase(WarmupScenario.CustomPipelineBehindCatchUp, "the chain uses a custom processing pipeline.")]
     [TestCase(WarmupScenario.Supported, null)]
+    [TestCase(WarmupScenario.SupportedBehindCatchUp, null)]
     public async Task Startup_pipeline_warmup_checks_supported_configuration(WarmupScenario scenario, string? expectedReason)
     {
         ChainSpec spec = LoadWarmupChainSpec();
@@ -156,7 +159,15 @@ public class EthereumRunnerTests
         api.Config<IInitConfig>().Returns(config);
         api.SpecProvider.Returns(scenario == WarmupScenario.CustomSpec ? null : new ChainSpecBasedSpecProvider(spec));
         api.Plugins.Returns(scenario == WarmupScenario.MissingMerge ? [] : new INethermindPlugin[] { new MergePlugin(spec, new MergeConfig()) });
-        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(container.Resolve<IMainProcessingContext>());
+        IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
+        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(main);
+        if (scenario is WarmupScenario.CustomPipelineBehindCatchUp or WarmupScenario.SupportedBehindCatchUp)
+        {
+            IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
+            api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+            api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
+        }
 
         Assert.That(StartRpc.GetPipelineWarmupSkipReason(api), Is.EqualTo(expectedReason));
     }
@@ -175,6 +186,7 @@ public class EthereumRunnerTests
     [TestCase("bogota", false, false)]
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
+    [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
     public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
         WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
     {
@@ -216,7 +228,7 @@ public class EthereumRunnerTests
         bool nestedWarmupRan = false;
         bool liveRpcInfoPreserved = false;
         int outerPort = 0;
-        IJsonRpcLocalStats? warmRpcStats = null;
+        SuccessCountingRpcStats? warmRpcStats = null;
         using NodeInfoScope? nodeInfo = throughStartRpc ? new NodeInfoScope() : null;
         await StartupPipelineWarmer.WarmupAsync(spec, liveConfig, flatState, cancellation.Token, authentication,
             configureContainer: builder =>
@@ -229,10 +241,11 @@ public class EthereumRunnerTests
                         return config;
                     });
                 }
+                builder.AddDecorator<IJsonRpcLocalStats>((_, stats) => new SuccessCountingRpcStats(stats, "eth_call"));
                 builder.RegisterBuildCallback(container =>
                 {
                     warmAuthentication = container.Resolve<IRpcAuthentication>();
-                    warmRpcStats = container.Resolve<IJsonRpcLocalStats>();
+                    warmRpcStats = (SuccessCountingRpcStats)container.Resolve<IJsonRpcLocalStats>();
                     outerPort = container.Resolve<IJsonRpcConfig>().Port;
                 });
                 if (throughStartRpc)
@@ -275,7 +288,7 @@ public class EthereumRunnerTests
         ThreadPool.GetMinThreads(out int warmedWorkerThreads, out int warmedCompletionPortThreads);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(warmRpcStats!.GetMethodStats("eth_call").Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
+            Assert.That(warmRpcStats!.Successes, Is.EqualTo(1), "warmup must execute a contract call through RPC");
             Assert.That((warmedWorkerThreads, warmedCompletionPortThreads), Is.EqualTo((minWorkerThreads, minCompletionPortThreads)));
             AssertRpcLimit(RpcLimits.Default.AcquireQueuedSlot, RpcLimits.Default.DecrementQueuedCalls, 7);
             AssertRpcLimit(RpcLimits.Default.AcquireSharedSlot, RpcLimits.Default.DecrementSharedCalls, 11);
@@ -563,6 +576,21 @@ public class EthereumRunnerTests
             await inner.StopAllServices();
             await (Task)typeof(GCKeeper).GetMethod("StopAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(gcKeeper(), null)!;
             stopped.TrySetResult();
+        }
+    }
+
+    private sealed class SuccessCountingRpcStats(IJsonRpcLocalStats inner, string method) : IJsonRpcLocalStats
+    {
+        private int _successes;
+
+        public int Successes => Volatile.Read(ref _successes);
+
+        public bool IsEnabled => inner.IsEnabled;
+
+        public void ReportCall(RpcReport report, long elapsedMicroseconds = 0, long? size = null)
+        {
+            if (report.Success && report.Method == method) Interlocked.Increment(ref _successes);
+            inner.ReportCall(report, elapsedMicroseconds, size);
         }
     }
 

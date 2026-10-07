@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
@@ -14,6 +15,7 @@
 
   <ItemGroup>
     <Compile Include="..\Nethermind.Core.Test\Threading\ParallelUnbalancedWorkTests.cs" Link="Threading\ParallelUnbalancedWorkTests.cs" />
+    <Compile Include="..\Nethermind.Core.Test\Collections\OptimizedCollectionsTests.cs" Link="Collections\OptimizedCollectionsTests.cs" />
   </ItemGroup>
 
   <ItemGroup>

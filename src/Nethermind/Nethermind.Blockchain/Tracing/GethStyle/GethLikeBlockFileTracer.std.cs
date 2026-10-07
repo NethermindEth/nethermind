@@ -6,27 +6,31 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Nethermind.Core.Crypto;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Json;
 using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
 
     private readonly Block _block;
     private Stream? _file;
+    private GethLikeTxFileTracer? _txTracer;
     private readonly string _fileNameFormat;
     private readonly List<string> _fileNames = [];
     private readonly IFileSystem _fileSystem;
     private Utf8JsonWriter? _jsonWriter;
     private readonly GethTraceOptions _options;
     private readonly IReleaseSpec _spec;
-    private readonly JsonSerializerOptions _serializerOptions = new();
+    private readonly JsonSerializerOptions _serializerOptions = new() { TypeInfoResolver = TracingJsonContext.Default };
 
     /// <summary>
     /// Creates a file tracer for the transactions in a block.
@@ -68,13 +72,13 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     {
         GethLikeTxTrace trace = txTracer.BuildResult();
 
-        JsonSerializer.Serialize(_jsonWriter,
-            new
-            {
-                output = trace.ReturnValue.ToHexString(true),
-                gasUsed = $"0x{trace.Gas:x}"
-            },
-            _serializerOptions);
+        if (!LimitReached)
+        {
+            TypeInfoJsonSerializer.Serialize(_jsonWriter,
+                new TxTraceSummary(trace.ReturnValue.ToHexString(false), $"0x{trace.Gas:x}"),
+                _serializerOptions);
+            GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
+        }
 
         DisposeFileStreamIfAny();
 
@@ -92,7 +96,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter = new(_file);
 
         ulong? standardIntrinsicGas = TopLevelGasTracker.GetStandardIntrinsicGas(tx, _spec, _block.Header.GasLimit);
-        return new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
+        return _txTracer = new(DumpTraceEntry, _options, (long)_spec.GasCosts.DestroyRefund, standardIntrinsicGas);
     }
 
     private void DisposeFileStreamIfAny()
@@ -100,11 +104,19 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
         _jsonWriter?.Dispose();
         _file?.Dispose();
 
+        _txTracer = null;
         _file = null;
         _jsonWriter = null;
     }
 
-    private void DumpTraceEntry(GethTxFileTraceEntry entry) => JsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+    private bool LimitReached => _options.Limit != 0 && _file is not null && _file.Position > _options.Limit;
+
+    private void DumpTraceEntry(GethTxFileTraceEntry entry)
+    {
+        if (!LimitReached)
+            TypeInfoJsonSerializer.Serialize(_jsonWriter, entry, _serializerOptions);
+        if (LimitReached) _txTracer?.StopCapture();
+    }
 
     private string GetFileName(Hash256 txHash)
     {
@@ -127,4 +139,8 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
     }
 
     public void Dispose() => DisposeFileStreamIfAny();
+
+    internal sealed record TxTraceSummary(
+        [property: JsonPropertyName("output")] string Output,
+        [property: JsonPropertyName("gasUsed")] string GasUsed);
 }
