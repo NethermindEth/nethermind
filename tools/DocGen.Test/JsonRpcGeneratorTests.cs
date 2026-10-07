@@ -75,16 +75,32 @@ public class JsonRpcGeneratorTests
 
         using (Assert.EnterMultipleScope())
         {
-            AssertDocumentedProperties(wire.RootElement, response);
-            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0], response);
-            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0].GetProperty("action"), response);
+            AssertDocumentedProperties(wire.RootElement, response, 2);
+            string traceResponse = ReadPropertyBlock(response, "trace", 2);
+            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0], traceResponse, 4);
+            string actionResponse = ReadPropertyBlock(traceResponse, "action", 4);
+            AssertDocumentedProperties(wire.RootElement.GetProperty("trace")[0].GetProperty("action"), actionResponse, 6);
         }
     }
 
-    private static void AssertDocumentedProperties(JsonElement value, string response)
+    private static void AssertDocumentedProperties(JsonElement value, string response, int indentation)
     {
         foreach (JsonProperty property in value.EnumerateObject())
-            Assert.That(response, Does.Contain($"- `{property.Name}`:"), $"serialized property {property.Name} is missing from the response docs");
+            Assert.That(response.Split('\n'), Has.Some.StartsWith($"{new string(' ', indentation)}- `{property.Name}`:"),
+                $"serialized property {property.Name} is missing from its response object");
+    }
+
+    private static string ReadPropertyBlock(string response, string property, int indentation)
+    {
+        string[] lines = response.Split('\n');
+        string prefix = $"{new string(' ', indentation)}- `{property}`:";
+        int start = Array.FindIndex(lines, line => line.StartsWith(prefix, StringComparison.Ordinal));
+        Assert.That(start, Is.GreaterThanOrEqualTo(0), $"{property} is missing from its response object");
+        int end = start + 1;
+        string childIndentation = new(' ', indentation + 2);
+        while (end < lines.Length && (string.IsNullOrWhiteSpace(lines[end]) || lines[end].StartsWith(childIndentation, StringComparison.Ordinal)))
+            end++;
+        return string.Join('\n', lines[(start + 1)..end]);
     }
 
     private string ReadResponse(string ns, string method)
