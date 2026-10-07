@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -433,6 +435,38 @@ public class DebugModuleTests
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
+    [Test]
+    public void DebugTraceCall_PinsValidatedHeaderHash([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(selector).Returns(validated.Header);
+        _blockchainBridge.HasStateForBlock(validated.Header).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(new GethLikeTxTrace { ReturnValue = [] });
+        GethTraceOptions options = new()
+        {
+            StateOverrides = withOverrides ? new() { [TestItem.AddressA] = new() { Nonce = 66 } } : null
+        };
+        TransactionForRpc call = new LegacyTransactionForRpc { To = TestItem.AddressA };
+
+        using ResultWrapper<GethLikeTxTrace> actual = CreateModule().debug_traceCall(call, selector, options);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (streaming)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            ((GethLikeTxTraceStreamingSingleResult)actual.Data).WriteAsJson(writer);
+        }
+        _debugBridge.Received(1).GetTransactionTrace(Arg.Any<Transaction>(),
+            Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
+            Arg.Is<GethTraceOptions>(o => o.StateOverrides == options.StateOverrides), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        _blockchainBridge.Received(1).HasStateForBlock(validated.Header);
     }
 
     [Test]

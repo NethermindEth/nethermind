@@ -159,6 +159,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected readonly ITransactionProcessor.IBlobBaseFeeCalculator _blobBaseFeeCalculator;
         protected readonly ILogManager _logManager;
         private readonly bool _parallel;
+        private BalDataMeter? _balDataMeter;
         private ulong _blockCumulativeExecutionGas;
         private ulong _blockCumulativeStateGas;
         private TracerFlags _tracerFlags;
@@ -387,10 +388,15 @@ namespace Nethermind.Evm.TransactionProcessing
             CodeInfo? preloadedCodeInfo,
             Address? preloadedDelegationAddress)
         {
+            bool eip8037 = spec.IsEip8037Enabled;
             VirtualMachine.SetTxExecutionContext(new(tx.SenderAddress!, _codeInfoRepository, tx.BlobVersionedHashes, in opcodeGasPrice)
             {
                 SuppressLogs = !_tracerFlags.IsCollectingLogs && !_tracerFlags.IsTracingLogs,
-                MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory
+                MaterializeLogMemory = _tracerFlags.IsTracingInstructions || _tracerFlags.IsTracingMemory,
+                // EIP-8279: system calls have no floor to settle against, so they are not metered.
+                BalDataMeter = spec.IsEip8279Enabled && !tx.IsSystem()
+                    ? (_balDataMeter ??= new()).Reset(TGasPolicy.GetRemainingGas(intrinsicGas.FloorGas), tx.GasLimit)
+                    : null,
             });
             // Top-level CREATE tx; the opcode-level CREATE/CREATE2 path bumps this counter from EvmInstructions.Create.
             if (tx.IsContractCreation) Metrics.IncrementCreates();
@@ -407,7 +413,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (spec.IsEip7702Enabled && tx.HasAuthorizationList)
             {
-                if (spec.IsEip8037Enabled)
+                if (eip8037)
                 {
                     preExecutionSnapshot = WorldState.TakeSnapshot();
                     hasPreExecutionSnapshot = true;
@@ -415,7 +421,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 if (!ProcessDelegations(tx, spec, accessTracker, ref gasAvailable, ref executionIntrinsicGasStandard, out delegationRefunds))
                 {
-                    if (spec.IsEip8037Enabled)
+                    if (eip8037)
                     {
                         topFrameOutOfGas = true;
                     }
@@ -434,14 +440,14 @@ namespace Nethermind.Evm.TransactionProcessing
             long postIntrinsicStateReservoir = TGasPolicy.GetStateReservoir(in gasAvailable);
 
             // A new (dead) recipient — including an empty precompile — pays NEW_ACCOUNT state gas.
-            if (!topFrameOutOfGas && spec.IsEip8037Enabled && !tx.IsContractCreation && !tx.ValueRef.IsZero
+            if (!topFrameOutOfGas && eip8037 && !tx.IsContractCreation && !tx.ValueRef.IsZero
                 && tx.To is not null && tx.SenderAddress != tx.To
                 && WorldState.IsDeadAccount(tx.To))
             {
                 topFrameOutOfGas = !TGasPolicy.TryConsumeStateGas(ref gasAvailable, TGasPolicy.GetNewAccountStateCost());
             }
 
-            if (topFrameOutOfGas && spec.IsEip8037Enabled)
+            if (topFrameOutOfGas && eip8037)
             {
                 if (hasPreExecutionSnapshot)
                 {
@@ -476,7 +482,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             // EIP-8037+EIP-7708: process destroy list after PayFees so burn logs include
             // the priority fee in the destroyed account's balance.
-            if (spec.IsEip8037Enabled && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
+            if (eip8037 && spec.IsEip7708Enabled && statusCode == StatusCode.Success)
             {
                 JournalSet<Address>? destroyList = substate.DestroyList;
                 if (destroyList is not null)
@@ -1553,7 +1559,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, gas.FloorGas, gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
+            gasConsumed = Refund(tx, header, spec, opts, in substate, gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, (ulong)delegationRefunds, TGasPolicy.FromULong(ExecutedFloorGas(floorGasLong)), gas.Standard, postIntrinsicStateReservoir, topLevelCreateStateGasCharged);
             goto Complete;
         FailContractCreate:
             if (Logger.IsTrace) Logger.Trace("Restoring state from before transaction");
@@ -1574,11 +1580,11 @@ namespace Nethermind.Evm.TransactionProcessing
             if (spec.IsEip8037Enabled)
             {
                 // Preserve the top-frame authorization state gas folded into the execution baseline.
-                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong, postIntrinsicStateReservoir);
+                gasConsumed = CompleteEip8037Halt(tx, spec, opts, ref gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong), postIntrinsicStateReservoir);
             }
             else
             {
-                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, floorGasLong);
+                gasConsumed = RefundOnFail(tx, spec, opts, in gasAvailable, VirtualMachine.TxExecutionContext.GasPrice, in intrinsicGasStandard, ExecutedFloorGas(floorGasLong));
             }
             goto Complete;
         CompleteWithoutFrame:
@@ -1591,6 +1597,11 @@ namespace Nethermind.Evm.TransactionProcessing
         Complete:
             return statusCode;
         }
+
+        /// <summary>The floor to settle an executed transaction against: the static floor extended by EIP-8279's metered bytes.</summary>
+        /// <remarks>Metered bytes are never rewound, so the extension applies whether execution succeeded, reverted or halted.</remarks>
+        private ulong ExecutedFloorGas(ulong staticFloorGas) =>
+            VirtualMachine.TxExecutionContext.BalDataMeter?.FloorGas ?? staticFloorGas;
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         static void RefundRevertedExecutionStateGas(IReleaseSpec spec, long stateGasFloor, ref TGasPolicy gas)
@@ -1778,6 +1789,10 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TGasPolicy gasAfterCodeDeposit = unspentGas;
             if (!TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost))
+                return false;
+
+            // EIP-8279: the deployed code joins the block access list once its deposit is paid for.
+            if (VirtualMachine.TxExecutionContext.BalDataMeter?.TryMeter((ulong)code.Length) == false)
                 return false;
 
             _codeInfoRepository.InsertCode(code, codeOwner, spec);
@@ -2044,7 +2059,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public static TransactionResult WithDetail(ErrorType errorType, string detail) => new(errorType, errorDescription: detail);
 
-        public static readonly TransactionResult Ok = new();
+        // A property rather than a static field: a struct holding a string cannot be preinitialized by ILC, so a
+        // field would make every hot success return pay a class-constructor check in the zkVM guest.
+        public static TransactionResult Ok => new();
         public static readonly TransactionResult BlockGasLimitExceeded = new(ErrorType.BlockGasLimitExceeded, errorDescription: "Block gas limit exceeded");
         public static readonly TransactionResult GasLimitBelowIntrinsicGas = new(ErrorType.GasLimitBelowIntrinsicGas, errorDescription: "intrinsic gas too low");
         public static readonly TransactionResult GasLimitBelowFloorGas = new(ErrorType.GasLimitBelowFloorGas, errorDescription: "gas below floor data cost");
