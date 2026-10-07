@@ -21,41 +21,12 @@ public class PbtStateReaderTests
         Address address = TestItem.AddressA;
 
         Hash256[] roots = new Hash256[5];
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
-        for (ulong number = 1; number <= 2; number++)
+        using IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null);
+        for (ulong number = 1; number <= 4; number++)
         {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-            {
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1))
-                {
-                    storageBatch.Set(1, (UInt256)number);
-                }
-
-                batch.Set(address, new Account(number, number * 100));
-            }
-
-            scope.UpdateRootHash();
-            scope.Commit(number);
-            roots[number] = scope.RootHash;
-        }
-
-        // persist blocks 1-2 to disk, then keep blocks 3-4 in memory only
-        ctx.Manager.FlushCache(default);
-        for (ulong number = 3; number <= 4; number++)
-        {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-            {
-                using (IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, 1))
-                {
-                    storageBatch.Set(1, (UInt256)number);
-                }
-
-                batch.Set(address, new Account(number, number * 100));
-            }
-
-            scope.UpdateRootHash();
-            scope.Commit(number);
-            roots[number] = scope.RootHash;
+            // persist blocks 1-2 to disk, then keep blocks 3-4 in memory only
+            if (number == 3) ctx.Manager.FlushCache(default);
+            roots[number] = scope.CommitBlock(number, address, number * 100, 1);
         }
 
         // persisted floor read

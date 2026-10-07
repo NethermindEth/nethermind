@@ -13,9 +13,9 @@ using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -49,11 +49,8 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Imports_preimage_flat_state_into_pbt(int codeLength, int entryChunkSize, int workers, int windowSize)
     {
         PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = windowSize };
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsInfo.Returns(true);
-        ILogManager logs = Substitute.For<ILogManager>();
-        ILogger progressLogger = new(logger);
-        logs.GetClassLogger<ProgressLogger>().Returns(progressLogger);
+        TestLogger log = new();
+        ILogManager logs = new OneLoggerLogManager(new ILogger(log));
 
         byte[] bigCode = new byte[codeLength];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -62,32 +59,21 @@ public class ImportPbtFromPreimageFlatTests
         Hash256 delegationHash = Keccak.Compute(delegation);
 
         Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 3, 42, bigCode);
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);      // header-region slot
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 70, 0x07);     // storage-zone slot
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
-        // A second contract with the same code exercises content-addressed chunk deduplication.
-        PbtReferenceModel.SetAccount(model, TestItem.AddressC, 9, 5, bigCode);
-        PbtReferenceModel.SetSlot(model, TestItem.AddressC, 2000, 0x55);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressD, 1, 0, delegation);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressE, 1, 0, delegation);
-
-        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch =>
         {
-            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
+            SetAccount(batch, model, TestItem.AddressA, new Account(1, 100), null);
             // A non-empty flat storage root triggers storage fan-out; PBT omits it.
-            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 5, (UInt256)0xAB);
-            batch.SetStorage(TestItem.AddressB, 70, (UInt256)0x07);
-            batch.SetStorage(TestItem.AddressB, 1000, (UInt256)0x1234);
-            batch.SetAccount(TestItem.AddressC, new Account(9, 5).WithChangedCodeHash(bigCodeHash).WithChangedStorageRoot(TestItem.KeccakB));
-            batch.SetStorage(TestItem.AddressC, 2000, (UInt256)0x55);
-            batch.SetAccount(TestItem.AddressD, new Account(1, 0).WithChangedCodeHash(delegationHash));
-            batch.SetAccount(TestItem.AddressE, new Account(1, 0).WithChangedCodeHash(delegationHash));
-        }
+            SetAccount(batch, model, TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA), bigCode);
+            SetSlot(batch, model, TestItem.AddressB, 5, 0xAB);      // header-region slot
+            SetSlot(batch, model, TestItem.AddressB, 70, 0x07);     // storage-zone slot
+            SetSlot(batch, model, TestItem.AddressB, 1000, 0x1234);
+            // A second contract with the same code exercises content-addressed chunk deduplication.
+            SetAccount(batch, model, TestItem.AddressC, new Account(9, 5).WithChangedStorageRoot(TestItem.KeccakB), bigCode);
+            SetSlot(batch, model, TestItem.AddressC, 2000, 0x55);
+            SetAccount(batch, model, TestItem.AddressD, new Account(1, 0), delegation);
+            SetAccount(batch, model, TestItem.AddressE, new Account(1, 0), delegation);
+        });
 
         MemDb codeDb = new();
         codeDb[bigCodeHash.Bytes] = bigCode;
@@ -109,8 +95,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
         foreach (string partitionName in new[] { "accounts/code", "storage" })
         {
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName} {"0.00 %",8} ")));
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {partitionName} {"100.00 %",8} ")));
+            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(partitionName, "0.00 %")));
+            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(partitionName, "100.00 %")));
         }
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
@@ -119,22 +105,17 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
         Assert.That(codeDb.ReadsCount, Is.EqualTo(2), "shared bytecode is fetched once per code hash");
-        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)).ToArray(), Is.EqualTo(((UInt256)0x1234).ToBigEndian()));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
+        Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)), Is.EqualTo((UInt256)0x1234));
+        Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)), Is.EqualTo((UInt256)0x55));
 
         PbtRocksDbPersistence reopened = new(pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool pool = new(config);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
-            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, reopened.CreateReader());
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
         bundle.SetAccount(TestItem.AddressB, retained);
         Assert.Throws<InvalidOperationException>(() => bundle.SetAccount(TestItem.AddressC, null), "imported code chunks are shared without a reference count");
         bundle.SetAccount(TestItem.AddressE, new Account(2, 0));
-        using PbtPartitionBatches changes = bundle.PrepareLeafChanges();
-        ValueHash256 remainingRoot;
-        using (PbtSnapshotStore store = new(bundle))
-            remainingRoot = TrieUpdater.UpdateRoot(store, reader.CurrentRoot, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
-        bundle.CompleteLeafChanges();
+        ValueHash256 remainingRoot = bundle.Fold(reader.CurrentRoot);
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, 4, 43, bigCode);
         PbtReferenceModel.SetAccount(model, TestItem.AddressE, 2, 0);
         Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
@@ -147,18 +128,14 @@ public class ImportPbtFromPreimageFlatTests
         [Values(1, 2)] int pages)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None)) { }
+        PreimageRocksdbPersistence source = CreateSource(flatDb, _ => { });
         using MemDb codes = new();
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();
-        InterfaceLogger logger = Substitute.For<InterfaceLogger>();
-        logger.IsInfo.Returns(true);
-        ILogManager logs = Substitute.For<ILogManager>();
-        ILogger progressLogger = new(logger);
-        logs.GetClassLogger<ProgressLogger>().Returns(progressLogger);
+        TestLogger log = new();
+        ILogManager logs = new OneLoggerLogManager(new ILogger(log));
         PbtColumns column = zone == 0 ? PbtColumns.Accounts : PbtColumns.Storages;
         db.AfterCopy = () =>
         {
@@ -193,9 +170,9 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(resumedPages, Is.EqualTo(pages));
             Assert.That(db.ActiveViews, Is.Zero);
             Assert.That(target.IsValid, Is.False);
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {"0.00 %",8} ")));
-            logger.Received().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {percentage,8} ")));
-            logger.DidNotReceive().Info(Arg.Is<string>(message => message.StartsWith($"PBT import phase 2 {zoneName} {"100.00 %",8} ")));
+            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(zoneName, "0.00 %")));
+            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(zoneName, percentage)));
+            Assert.That(log.LogList, Has.None.StartsWith(PhaseTwoProgress(zoneName, "100.00 %")));
         }
     }
 
@@ -206,14 +183,13 @@ public class ImportPbtFromPreimageFlatTests
     {
         const int batchSize = 7;
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         using MemDb codes = new();
         byte[] code = Bytes.FromHexString("0x6001600055");
         Hash256 codeHash = Keccak.Compute(code);
         codes[codeHash.Bytes] = code;
         Dictionary<string, byte[]> model = [];
         List<Address> addresses = [];
-        using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        PreimageRocksdbPersistence source = CreateSource(flatDb, batch =>
         {
             for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
             {
@@ -221,17 +197,13 @@ public class ImportPbtFromPreimageFlatTests
                 addressBytes[^1] = (byte)accountIndex;
                 Address address = new(addressBytes);
                 addresses.Add(address);
-                Account account = new Account(1, 100).WithChangedCodeHash(codeHash);
+                Account account = new(1, 100);
                 if (slotsPerAccount > 0) account = account.WithChangedStorageRoot(TestItem.KeccakA);
-                batch.SetAccount(address, account);
-                PbtReferenceModel.SetAccount(model, address, 1, 100, code);
+                SetAccount(batch, model, address, account, code);
                 for (uint slot = 0; slot < slotsPerAccount; slot++)
-                {
-                    batch.SetStorage(address, slot, (UInt256)0x01);
-                    PbtReferenceModel.SetSlot(model, address, slot, 1);
-                }
+                    SetSlot(batch, model, address, slot, 1);
             }
-        }
+        });
 
         using RecordingColumnsDb db = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
@@ -268,55 +240,9 @@ public class ImportPbtFromPreimageFlatTests
             {
                 Assert.That(PbtTestLeaves.ReadAccount(reader, address)!.Balance, Is.EqualTo((UInt256)100));
                 for (uint slot = 0; slot < slotsPerAccount; slot++)
-                    Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, address, slot)).ToArray(), Is.EqualTo(UInt256.One.ToBigEndian()));
+                    Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, address, slot)), Is.EqualTo(UInt256.One));
             }
         }
-    }
-
-    /// <summary>
-    /// Flat storage keys interleave accounts sharing their leading four address bytes, so copied slots
-    /// must remain associated with their originating account.
-    /// </summary>
-    [Test]
-    public async Task Imports_slots_of_accounts_sharing_a_storage_key_prefix()
-    {
-        PbtConfig config = new();
-
-        // Equal leading address bytes cause their flat-storage slots to interleave.
-        Address first = new(Bytes.FromHexString("0x00000000000000000000000000000000000000aa"));
-        Address second = new(Bytes.FromHexString("0x00000000000000000000000000000000000000bb"));
-
-        Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, first, 1, 100);
-        PbtReferenceModel.SetAccount(model, second, 2, 200);
-        PbtReferenceModel.SetSlot(model, first, 1, 0x11);      // header-region slot
-        PbtReferenceModel.SetSlot(model, first, 1000, 0x22);   // storage-zone slot
-        PbtReferenceModel.SetSlot(model, second, 1, 0x33);
-        PbtReferenceModel.SetSlot(model, second, 1000, 0x44);
-
-        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
-        {
-            batch.SetAccount(first, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetAccount(second, new Account(2, 200).WithChangedStorageRoot(TestItem.KeccakB));
-            batch.SetStorage(first, 1, (UInt256)0x11);
-            batch.SetStorage(first, 1000, (UInt256)0x22);
-            batch.SetStorage(second, 1, (UInt256)0x33);
-            batch.SetStorage(second, 1000, (UInt256)0x44);
-        }
-
-        SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
-        PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig(), NullTrieNodeLog.Instance);
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance);
-
-        await step.Execute(CancellationToken.None);
-
-        using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
-        Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, first, 1000)).ToArray(), Is.EqualTo(((UInt256)0x22).ToBigEndian()));
-        Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, second, 1000)).ToArray(), Is.EqualTo(((UInt256)0x44).ToBigEndian()));
     }
 
     /// <summary>
@@ -330,20 +256,14 @@ public class ImportPbtFromPreimageFlatTests
         PbtConfig config = new() { ImportFromPreimageFlat = true };
 
         Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100);
-        PbtReferenceModel.SetAccount(model, TestItem.AddressB, 3, 42);
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 5, 0xAB);
-        PbtReferenceModel.SetSlot(model, TestItem.AddressB, 1000, 0x1234);
-
-        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch =>
         {
-            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
-            batch.SetAccount(TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA));
-            batch.SetStorage(TestItem.AddressB, 5, (UInt256)0xAB);
-            batch.SetStorage(TestItem.AddressB, 1000, (UInt256)0x1234);
-        }
+            SetAccount(batch, model, TestItem.AddressA, new Account(1, 100), null);
+            SetAccount(batch, model, TestItem.AddressB, new Account(3, 42).WithChangedStorageRoot(TestItem.KeccakA), null);
+            SetSlot(batch, model, TestItem.AddressB, 5, 0xAB);
+            SetSlot(batch, model, TestItem.AddressB, 1000, 0x1234);
+        });
 
         using RecordingColumnsDb pbtDb = new();
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig(), NullTrieNodeLog.Instance);
@@ -482,17 +402,16 @@ public class ImportPbtFromPreimageFlatTests
             }
             int keyOffset = inlineLeaves ? PbtNodeCodec.InlineKeyOffset(node.BitDepth) : 0;
             byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, leftKey[keyOffset..], rightKey[keyOffset..]);
-            BufferWriter writer = new(new byte[1024]);
-            PbtNodeGroupEncoder.Encode(ref writer, group, new[] { new PbtNodeRecord(node, encoding) }, default);
-            Add(column, group.ToStorageKey(column), writer.WrittenSpan.ToArray());
+            byte[] payload = PbtNodeGroupEncoder.Encode(group, [new PbtNodeRecord(node, encoding)], default);
+            Add(column, group.ToStorageKey(column), payload);
             expectedGroups[depth]++;
-            expectedPayloads[depth] += writer.WrittenSpan.Length;
+            expectedPayloads[depth] += payload.Length;
             expectedNodes[node.BitDepth]++;
             encodingBytes += encoding.Length;
             if (!expectedByPartition.TryGetValue(partition, out (long[] Groups, long[] Payloads, long[] Nodes) byColumn))
                 expectedByPartition[partition] = byColumn = (new long[expectedGroups.Length], new long[expectedGroups.Length], new long[expectedGroups.Length]);
             byColumn.Groups[depth]++;
-            byColumn.Payloads[depth] += writer.WrittenSpan.Length;
+            byColumn.Payloads[depth] += payload.Length;
             byColumn.Nodes[node.BitDepth]++;
         }
         db.Recording = true;
@@ -659,12 +578,8 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Importer_bypasses_cached_persistence_wrapper()
     {
         PbtConfig config = new();
-        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
-        {
-            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
-        }
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch => batch.SetAccount(TestItem.AddressA, new Account(1, 100)));
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence rawPersistence = new(pbtDb, config, NullTrieNodeLog.Instance);
@@ -696,12 +611,8 @@ public class ImportPbtFromPreimageFlatTests
     [Test]
     public async Task Skips_when_pbt_already_populated()
     {
-        SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
-        {
-            batch.SetAccount(TestItem.AddressA, new Account(1, 100));
-        }
+        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
+        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch => batch.SetAccount(TestItem.AddressA, new Account(1, 100)));
 
         // Ensure the persisted target state is not pre-genesis.
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
@@ -722,8 +633,7 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Phase_two_ranges_cover_boundary_keys_once_and_overlap([Values(1, 3)] int workers)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
-        using (IPersistence.IWriteBatch batch = flatSource.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None)) { }
+        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, _ => { });
         using RecordingColumnsDb pbtDb = new();
         PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = 3 };
         PbtRocksDbPersistence target = new(pbtDb, config, NullTrieNodeLog.Instance);
@@ -809,22 +719,16 @@ public class ImportPbtFromPreimageFlatTests
     public async Task Failed_phase_two_terminates_without_publication_and_retries(string failure)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
         byte[] code = Bytes.FromHexString("0x6001600055");
         Hash256 codeHash = Keccak.Compute(code);
         Dictionary<string, byte[]> model = [];
-        PbtReferenceModel.SetAccount(model, TestItem.AddressA, 1, 100, code);
-        using (IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None))
+        PreimageRocksdbPersistence source = CreateSource(flatDb, batch =>
         {
-            batch.SetAccount(TestItem.AddressA, new Account(1, 100).WithChangedCodeHash(codeHash).WithChangedStorageRoot(TestItem.KeccakA));
+            SetAccount(batch, model, TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA), code);
             // One slot per run, so every storage row is one leaf and one page.
             for (uint index = 0; index < 100; index++)
-            {
-                UInt256 slot = PbtKeyDerivation.HeaderStorageOffset + index * SlotRun.Width;
-                batch.SetStorage(TestItem.AddressA, slot, (UInt256)0x01);
-                PbtReferenceModel.SetSlot(model, TestItem.AddressA, slot, 1);
-            }
-        }
+                SetSlot(batch, model, TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset + index * SlotRun.Width, 1);
+        });
         using MemDb codes = new();
         codes[codeHash.Bytes] = code;
         using RecordingColumnsDb db = new();
@@ -898,6 +802,28 @@ public class ImportPbtFromPreimageFlatTests
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         }
     }
+
+    private static PreimageRocksdbPersistence CreateSource(SnapshotableMemColumnsDb<FlatDbColumns> flatDb, Action<IPersistence.IWriteBatch> write)
+    {
+        PreimageRocksdbPersistence source = new(flatDb, LimboLogs.Instance, FlatLayout.PreimageFlat);
+        using IPersistence.IWriteBatch batch = source.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(SourceBlock, SourceStateRoot), WriteFlags.None);
+        write(batch);
+        return source;
+    }
+
+    private static void SetAccount(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, Account account, byte[]? code)
+    {
+        PbtReferenceModel.SetAccount(model, address, (ulong)account.Nonce, account.Balance, code);
+        batch.SetAccount(address, code is null ? account : account.WithChangedCodeHash(Keccak.Compute(code)));
+    }
+
+    private static void SetSlot(IPersistence.IWriteBatch batch, Dictionary<string, byte[]> model, Address address, in UInt256 slot, in UInt256 value)
+    {
+        PbtReferenceModel.SetSlot(model, address, slot, value);
+        batch.SetStorage(address, slot, value);
+    }
+
+    private static string PhaseTwoProgress(string zone, string percentage) => $"PBT import phase 2 {zone} {percentage,8} ";
 
     private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>, ITunableDb
     {

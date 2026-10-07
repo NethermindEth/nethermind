@@ -14,8 +14,8 @@ using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
+using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -33,7 +33,7 @@ public class PbtSnapshotBundleTests
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(Snapshots(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -56,7 +56,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
         PbtNodePath groupPath = new([], 0);
         ValueHash256 groupHash = new(Value(1));
-        byte[] encoding = EncodeGroup(groupPath, [new PbtNodeRecord(groupPath.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] encoding = PbtNodeGroupEncoder.Encode(groupPath, [new PbtNodeRecord(groupPath.ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
 
         using (PbtSnapshotStore store = new(bundle))
         {
@@ -93,7 +93,7 @@ public class PbtSnapshotBundleTests
     }
 
     [Test]
-    public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone)
+    public void SnapshotContent_DisjointGroupReplacementAndResetPreserveReadLeases([Values(1, 16)] int groupCount, [Values] bool tombstone, [Values] bool replaceViaStoragePath)
     {
         using PbtSnapshotContent content = new();
         TrackingMemoryProvider memoryProvider = new();
@@ -111,19 +111,22 @@ public class PbtSnapshotBundleTests
                     Assert.That(content.TryGetNodeGroup(groupPath, out RefCountingMemory? missing), Is.False);
                     using (missing) Assert.That(missing, Is.Null);
 
-                    byte[] original = EncodeGroup(groupPath, [new PbtNodeRecord(PbtTestPaths.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 1)))]);
+                    byte[] original = PbtNodeGroupEncoder.Encode(groupPath, [new PbtNodeRecord(PbtTestPaths.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 1)))], default);
                     originalEncodings[index] = original;
                     using (RefCountingMemory payload = Memory(original, memoryProvider))
                     {
                         content.SetNodeGroup(groupPath, payload);
                         content.SetNodeGroup(groupPath, payload);
                     }
-                    Assert.That(content.TryGetNodeGroup(groupPath, out retained[index]), Is.True);
+                    Assert.That(content.TryGetNodeGroup(storagePath, out retained[index]), Is.True);
                     Assert.That(retained[index], Is.Not.Null);
 
-                    byte[] replacement = EncodeGroup(groupPath, [new PbtNodeRecord(PbtTestPaths.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))]);
+                    byte[] replacement = PbtNodeGroupEncoder.Encode(groupPath, [new PbtNodeRecord(PbtTestPaths.PathOf(groupPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding((byte)(round + 3)))], default);
                     using (RefCountingMemory? payload = tombstone ? null : Memory(replacement, memoryProvider))
-                        content.SetNodeGroup(groupPath, payload);
+                    {
+                        if (replaceViaStoragePath) content.SetNodeGroup(storagePath, payload);
+                        else content.SetNodeGroup(groupPath, payload);
+                    }
                     bool found = content.TryGetNodeGroup(groupPath, out RefCountingMemory? current);
                     using (current)
                     using (Assert.EnterMultipleScope())
@@ -167,19 +170,14 @@ public class PbtSnapshotBundleTests
     public void Dispose_ReturnsTransientOnceEvenWhenOtherCleanupThrows()
     {
         using TrackingTransientPool pool = new() { ThrowOnBuilderReturn = true };
-        PbtSnapshotBundle bundle = CreateBundle(pool, new Reader(default, null));
+        PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader(default, null));
         Assert.Throws<IOException>(bundle.Dispose);
         Assert.DoesNotThrow(bundle.Dispose);
         Assert.That(pool.ReturnCount, Is.EqualTo(1));
     }
 
     private static PbtSnapshotBundle CreateBundle(Reader reader) =>
-        CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
-
-    private static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, Reader reader) => new(
-        new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader),
-        pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
 
     private sealed class TrackingTransientPool : IPbtResourcePool, IDisposable
     {
@@ -229,12 +227,8 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(0u)]
-    [TestCase(63u)]
-    [TestCase(64u)]
-    [TestCase(256u)]
-    [TestCase(uint.MaxValue)]
-    public void Storage_mutations_use_small_header_and_wide_storage_partitions(uint slotValue)
+    [Test]
+    public void Storage_mutations_use_small_header_and_wide_storage_partitions([Values(0u, 63u, 64u, 256u, uint.MaxValue)] uint slotValue)
     {
         UInt256 slot = slotValue == uint.MaxValue ? UInt256.MaxValue : new UInt256(slotValue);
         PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
@@ -280,16 +274,15 @@ public class PbtSnapshotBundleTests
     }
 
     [NonParallelizable]
-    [TestCase(0UL, false)]
-    [TestCase(1UL, false)]
-    [TestCase(1048576UL, true)]
-    public void Trie_cache_reuses_only_matching_subtree_hashes(ulong budget, bool admitted)
+    [Test]
+    public void Trie_cache_reuses_only_matching_subtree_hashes([Values(0UL, 1UL, 1048576UL)] ulong budget)
     {
+        bool admitted = budget == 1048576;
         long initialHits = Metrics.PbtTrieCacheHits["account"];
         long initialMisses = Metrics.PbtTrieCacheMisses["account"];
         TrackingMemoryProvider memory = new();
         PbtNodePath path = new([], 0);
-        byte[] encoding = EncodeGroup(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
         using PbtTrieNodeCache cache = new(new PbtConfig { AccountTrieNodeCacheSizeBudget = budget });
         Reader reader = new(default, null) { GroupPayload = encoding, MemoryProvider = memory, CurrentRoot = new ValueHash256(Value(1)) };
         PbtResourcePool pool = new(new PbtConfig());
@@ -301,7 +294,7 @@ public class PbtSnapshotBundleTests
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
         PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
-        using PbtSnapshotBundle bundle = new(Snapshots(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         int readsBeforeDirectRead = reader.GroupReadCount;
         for (int read = 0; read < 2; read++)
@@ -310,12 +303,6 @@ public class PbtSnapshotBundleTests
             Assert.That(payload!.GetSpan().ToArray(), Is.EqualTo(encoding));
         }
         Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeDirectRead + 2), "direct read-only reads bypass the populated trie cache");
-        Reader forkReader = new(default, null) { GroupPayload = encoding, CurrentRoot = new ValueHash256(Value(2)) };
-        using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
-        using RefCountingMemory? forkPayload = fork.GetNodeGroup(path.ToPath<PbtStorageNodePath>(), forkReader.CurrentRoot);
-        Assert.That(forkReader.GroupReadCount, Is.EqualTo(1));
-        Assert.That(cache.TryGet(default, new PbtNodePath([0], 4), out _), Is.False);
-        Assert.That(cache.TryGet(default, new PbtStorageNodePath([], 0), out _), Is.False);
         int readsBeforeCachedRead = reader.GroupReadCount;
         using RefCountingMemory? cachedRead = bundle.GetNodeGroup(path.ToPath<PbtStorageNodePath>(), reader.CurrentRoot);
         using (Assert.EnterMultipleScope())
@@ -323,7 +310,7 @@ public class PbtSnapshotBundleTests
             Assert.That(cachedRead!.Memory.ToArray(), Is.EqualTo(encoding));
             Assert.That(reader.GroupReadCount, Is.EqualTo(readsBeforeCachedRead + (admitted ? 0 : 1)), "the cache lookup must use the supplied subtree hash, not the local view root");
             Assert.That(Metrics.PbtTrieCacheHits["account"] - initialHits, Is.EqualTo(admitted ? 1 : 0));
-            Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(admitted ? 4 : 5));
+            Assert.That(Metrics.PbtTrieCacheMisses["account"] - initialMisses, Is.EqualTo(admitted ? 1 : 2));
         }
     }
 
@@ -336,8 +323,8 @@ public class PbtSnapshotBundleTests
         ValueHash256 originalHash = PbtTreeHarness.HashBranch(originalNode);
         ValueHash256 changedHash = PbtTreeHarness.HashBranch(changedNode);
         PbtStorageNodePath childPath = PbtTestPaths.PathOf(path, 0).ToPath<PbtStorageNodePath>();
-        byte[] original = EncodeGroup(path, [new PbtNodeRecord(childPath, originalNode)]);
-        byte[] changed = EncodeGroup(path, [new PbtNodeRecord(childPath, changedNode)]);
+        byte[] original = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(childPath, originalNode)], default);
+        byte[] changed = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(childPath, changedNode)], default);
         using PbtTrieNodeCache cache = new(new PbtConfig());
         PbtResourcePool pool = new(new PbtConfig());
         Reader reader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakA.ValueHash256 };
@@ -345,7 +332,7 @@ public class PbtSnapshotBundleTests
         Assert.That(reader.GroupReadCount, Is.EqualTo(1));
 
         Reader forkReader = new(default, null) { GroupKey = path, GroupPayload = original, CurrentRoot = TestItem.KeccakB.ValueHash256 };
-        using PbtSnapshotBundle fork = new(new(0), new PbtReadOnlySnapshotBundle(new(0), forkReader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle fork = PbtSnapshotBundleTestExtensions.CreateBundle(pool, forkReader, cache);
         using (RefCountingMemory? payload = fork.GetNodeGroup(path.ToPath<PbtStorageNodePath>(), originalHash))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
         Assert.That(forkReader.GroupReadCount, Is.Zero, "an unrelated tree-root change must not invalidate this subtree");
@@ -353,7 +340,7 @@ public class PbtSnapshotBundleTests
         Reader changedReader = new(default, null) { GroupKey = path, GroupPayload = changed, CurrentRoot = TestItem.KeccakB.ValueHash256 };
         ReadStageAndCommit(changedReader, pool, cache, path, changedHash, changed);
         Assert.That(changedReader.GroupReadCount, Is.EqualTo(1), "different subtree hashes must miss even with the same whole-tree root");
-        using PbtSnapshotBundle oldView = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle oldView = PbtSnapshotBundleTestExtensions.CreateBundle(pool, reader, cache);
         using (RefCountingMemory? payload = oldView.GetNodeGroup(path.ToPath<PbtStorageNodePath>(), originalHash))
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(original));
         Assert.That(reader.GroupReadCount, Is.EqualTo(2), "replacement must not make the old view return the new subtree");
@@ -362,7 +349,7 @@ public class PbtSnapshotBundleTests
     /// <summary>Reads one group through a throwaway bundle over <paramref name="reader"/> and stages it as a fold would, then commits the block so the group reaches the shared cache.</summary>
     private static void ReadStageAndCommit(Reader reader, PbtResourcePool pool, PbtTrieNodeCache cache, PbtNodePath path, in ValueHash256 groupHash, byte[] expected)
     {
-        using PbtSnapshotBundle bundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, reader, cache);
         using (RefCountingMemory? payload = bundle.GetNodeGroup(path.ToPath<PbtStorageNodePath>(), groupHash))
         {
             Assert.That(payload!.Memory.ToArray(), Is.EqualTo(expected));
@@ -382,12 +369,12 @@ public class PbtSnapshotBundleTests
         using TrackingTransientPool pool = new();
         TrackingMemoryProvider foldMemory = new();
         PbtNodePath foldedPath = CachePath(partition);
-        byte[] first = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtTestPaths.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
-        byte[] second = EncodeGroup(foldedPath, [new PbtNodeRecord(PbtTestPaths.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
+        byte[] first = PbtNodeGroupEncoder.Encode(foldedPath, [new PbtNodeRecord(PbtTestPaths.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
+        byte[] second = PbtNodeGroupEncoder.Encode(foldedPath, [new PbtNodeRecord(PbtTestPaths.PathOf(foldedPath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
         ValueHash256 firstHash = new(Value(1));
         ValueHash256 secondHash = new(Value(2));
         Reader reader = new(default, null);
-        PbtSnapshotBundle bundle = new(new(0), new PbtReadOnlySnapshotBundle(new(0), reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, reader, cache);
         PbtTransientResource transient = pool.LastRented!;
 
         using (RefCountingMemory payload = Memory(first, foldMemory)) bundle.SetNodeGroup(foldedPath.ToPath<PbtStorageNodePath>(), firstHash, payload);
@@ -765,18 +752,18 @@ public class PbtSnapshotBundleTests
     {
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath wideGroupKey = new([], 0);
-        byte[] persisted = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
-            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 14).ToPath<PbtStorageNodePath>(), BranchEncoding(2))]);
-        byte[] shared = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))]);
-        byte[] local = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))]);
-        byte[] write = EncodeGroup(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))]);
+        byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
+            new PbtNodeRecord(PbtTestPaths.PathOf(groupKey, 14).ToPath<PbtStorageNodePath>(), BranchEncoding(2))], default);
+        byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
+        byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
+        byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
         Reader reader = new(new PbtStorageTreeKey([0]), null) { GroupPayload = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
-            ? Snapshots(pool, Content(groupKey, persisted), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared))
+            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared))
             : new(0);
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
-            ? Snapshots(pool, Content(groupKey, shared), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local))
+            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local))
             : new(0);
         using PbtTrieNodeCache cache = new(new PbtConfig());
         if (newestTier >= 2)
@@ -807,7 +794,7 @@ public class PbtSnapshotBundleTests
         PbtStorageTreeKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         PbtNodePath originalNodePath = new([0x80], 4);
-        byte[] originalNode = EncodeGroup(originalNodePath, [new PbtNodeRecord(PbtTestPaths.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))]);
+        byte[] originalNode = PbtNodeGroupEncoder.Encode(originalNodePath, [new PbtNodeRecord(PbtTestPaths.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
         Reader reader = new(new PbtStorageTreeKey([0]), null)
         {
             GroupPayload = malformed ? Bytes.FromHexString("01") : null,
@@ -848,18 +835,14 @@ public class PbtSnapshotBundleTests
         Address address = new("0x0000000000000000000000000000000000000001");
         byte[] bytes = Bytes.FromHexString("6001");
         Account account = Build.An.Account.WithNonce(1).WithBalance(2).WithCode(bytes).TestObject;
-        bundle.SetAccount(address, account);
-        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
+        SetAccountWithCode(bundle, address, account, new CodeInfo(bytes), codeFirst: false);
         // EIP-8297 at d2a64c2d: literal Python mapping and merkelization, using BLAKE3.
         ValueHash256 expected = new("0x1d6376e73eb20356030d5335b0297c6d29b1222e9522450c33406126f6f9f5ee");
-        Assert.That(Fold(bundle, default), Is.EqualTo(expected));
+        Assert.That(bundle.Fold(default), Is.EqualTo(expected));
     }
 
-    [TestCase(false, 0ul)]
-    [TestCase(true, 0ul)]
-    [TestCase(false, 9ul)]
-    [TestCase(true, 9ul)]
-    public void Whole_account_and_code_survive_fold_and_seal_in_either_write_order(bool codeFirst, ulong nonce)
+    [Test]
+    public void Whole_account_and_code_survive_fold_and_seal_in_either_write_order([Values] bool codeFirst, [Values(0ul, 9ul)] ulong nonce)
     {
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
         byte[] bytes = new byte[160];
@@ -868,19 +851,17 @@ public class PbtSnapshotBundleTests
         Account account = Build.An.Account.WithNonce(nonce).WithBalance(nonce).WithStorageRoot(TestItem.KeccakB).WithCode(bytes).TestObject;
         // PBT keeps no storage root, so the account reads back over the empty tree.
         Account stored = account.WithChangedStorageRoot(Keccak.EmptyTreeHash);
-        if (codeFirst) bundle.SetCode(account.CodeHash.ValueHash256, code);
-        bundle.SetAccount(TestItem.AddressA, account);
-        if (!codeFirst) bundle.SetCode(account.CodeHash.ValueHash256, code);
+        SetAccountWithCode(bundle, TestItem.AddressA, account, code, codeFirst);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.EqualTo(stored));
             Assert.That(bundle.GetCode(account.CodeHash.ValueHash256), Is.SameAs(code));
         }
-        ValueHash256 root = Fold(bundle, default);
+        ValueHash256 root = bundle.Fold(default);
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, nonce, nonce, bytes);
         Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
-        Assert.That(Fold(bundle, root), Is.EqualTo(root));
+        Assert.That(bundle.Fold(root), Is.EqualTo(root));
         using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         using (Assert.EnterMultipleScope())
         {
@@ -892,7 +873,7 @@ public class PbtSnapshotBundleTests
         Account rebalanced = account.WithChangedBalance(nonce + 1);
         bundle.SetAccount(TestItem.AddressA, rebalanced);
         int pendingAfterBalanceChange = bundle.PendingMutationCount;
-        root = Fold(bundle, root);
+        root = bundle.Fold(root);
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, nonce, nonce + 1, bytes);
         using (Assert.EnterMultipleScope())
         {
@@ -932,7 +913,7 @@ public class PbtSnapshotBundleTests
         {
             for (uint slot = 0; slot < SlotRun.Width; slot++)
                 Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(EvmWordSlot.FromUInt256(in lastWrite)), $"slot {slot}");
-            Assert.That(Fold(bundle, default), Is.EqualTo(PbtReferenceModel.Root(model)));
+            Assert.That(bundle.Fold(default), Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }
 
@@ -944,13 +925,11 @@ public class PbtSnapshotBundleTests
         bytes.AsSpan().Fill(0x5b);
         CodeInfo code = new(bytes);
         Account account = Build.An.Account.WithCode(bytes).TestObject;
-        if (!reverseOrder) bundle.SetCode(account.CodeHash.ValueHash256, code);
-        bundle.SetAccount(TestItem.AddressA, account);
-        if (reverseOrder) bundle.SetCode(account.CodeHash.ValueHash256, code);
-        ValueHash256 root = Fold(bundle, default);
+        SetAccountWithCode(bundle, TestItem.AddressA, account, code, codeFirst: !reverseOrder);
+        ValueHash256 root = bundle.Fold(default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         bundle.SetAccount(TestItem.AddressB, account);
-        root = Fold(bundle, root);
+        root = bundle.Fold(root);
         Dictionary<string, byte[]> model = [];
         PbtReferenceModel.SetAccount(model, TestItem.AddressA, account.Nonce, account.Balance, bytes);
         PbtReferenceModel.SetAccount(model, TestItem.AddressB, account.Nonce, account.Balance, bytes);
@@ -982,7 +961,7 @@ public class PbtSnapshotBundleTests
         Account previous = Build.An.Account.WithNonce(1).WithCode(previousCode).TestObject;
         Account? next = nextCode is null ? null : Build.An.Account.WithNonce(2).WithCode(nextCode).TestObject;
         Set(previous, previousCode);
-        ValueHash256 root = Fold(bundle, default);
+        ValueHash256 root = bundle.Fold(default);
         if (expectedException is not null)
         {
             Assert.Throws(expectedException, () => Set(next, nextCode));
@@ -991,13 +970,10 @@ public class PbtSnapshotBundleTests
         Set(next, nextCode);
         Dictionary<string, byte[]> model = [];
         if (next is not null) PbtReferenceModel.SetAccount(model, TestItem.AddressA, next.Nonce, next.Balance, nextCode);
-        Assert.That(Fold(bundle, root), Is.EqualTo(PbtReferenceModel.Root(model)));
+        Assert.That(bundle.Fold(root), Is.EqualTo(PbtReferenceModel.Root(model)));
 
-        void Set(Account? account, byte[]? code)
-        {
-            if (code is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(code));
-            bundle.SetAccount(TestItem.AddressA, account);
-        }
+        void Set(Account? account, byte[]? code) =>
+            SetAccountWithCode(bundle, TestItem.AddressA, account, code is null ? null : new CodeInfo(code), codeFirst: true);
     }
 
     [Test]
@@ -1011,60 +987,54 @@ public class PbtSnapshotBundleTests
     [Test]
     public void Delegation_header_matches_eip_preimages()
     {
-        byte[] code = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
-        Account account = Build.An.Account.WithCode(code).TestObject;
+        Account account = Build.An.Account.WithCode(Delegation).TestObject;
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         Dictionary<PbtPath, ValueHash256> expected = new()
         {
             [new PbtPath([0, .. addressHash.Bytes, 0])] = new(Bytes.FromHexString("0000000000000017000000000000000000000000000000000000000000000000")),
-            [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. code, .. new byte[9]]),
+            [new PbtPath([0, .. addressHash.Bytes, 2])] = new([.. Delegation, .. new byte[9]]),
         };
-        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(code)), Is.EquivalentTo(expected));
+        Assert.That(PbtFlatState.AccountLeaves(addressHash, account, new CodeInfo(Delegation)), Is.EquivalentTo(expected));
     }
 
     [Test]
     public void Delegation_transitions_match_reference_leaves([Values] bool codeFirst, [Values] bool foldEachChange)
     {
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
-        byte[] firstDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000001");
         byte[] secondDelegation = Bytes.FromHexString("ef01000000000000000000000000000000000000000002");
         ValueHash256 root = default;
         Dictionary<Address, byte[]> accounts = [];
-        Set(TestItem.AddressA, firstDelegation);
-        Set(TestItem.AddressB, firstDelegation);
+        Set(TestItem.AddressA, Delegation);
+        Set(TestItem.AddressB, Delegation);
         Set(TestItem.AddressA, secondDelegation);
         Set(TestItem.AddressA, []);
-        Set(TestItem.AddressA, firstDelegation);
+        Set(TestItem.AddressA, Delegation);
         Set(TestItem.AddressA, null);
         Set(TestItem.AddressB, null);
         Assert.That(bundle.GetAccount(TestItem.AddressB), Is.Null);
-        Assert.That(Fold(bundle, root), Is.EqualTo(default(ValueHash256)));
+        Assert.That(bundle.Fold(root), Is.EqualTo(default(ValueHash256)));
 
         void Set(Address address, byte[]? bytes)
         {
             Account? account = bytes is null ? null : Build.An.Account.WithNonce(1).WithCode(bytes).TestObject;
-            if (codeFirst && bytes is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(bytes));
-            bundle.SetAccount(address, account);
-            if (!codeFirst && bytes is { Length: > 0 }) bundle.SetCode(account!.CodeHash.ValueHash256, new CodeInfo(bytes));
+            SetAccountWithCode(bundle, address, account, bytes is null ? null : new CodeInfo(bytes), codeFirst);
             if (bytes is null) accounts.Remove(address);
             else accounts[address] = bytes;
             Dictionary<string, byte[]> model = [];
             foreach ((Address owner, byte[] ownerCode) in accounts) PbtReferenceModel.SetAccount(model, owner, 1, 0, ownerCode);
             if (foldEachChange)
             {
-                root = Fold(bundle, root);
+                root = bundle.Fold(root);
                 Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "incremental root");
             }
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(40)]
-    public void Code_resolution_preserves_other_pending_accounts_and_survives_scratch_reuse(int accountCount)
+    [Test]
+    public void Code_resolution_preserves_other_pending_accounts_and_survives_scratch_reuse([Values(0, 1, 40)] int accountCount)
     {
         using TrackingTransientPool pool = new();
-        using PbtSnapshotBundle bundle = CreateBundle(pool, new Reader(default, null));
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(pool, new Reader(default, null));
         byte[] bytes = Bytes.FromHexString("6001600055");
         byte[] otherBytes = Bytes.FromHexString("6002600055");
         Account account = Build.An.Account.WithCode(bytes).TestObject;
@@ -1082,9 +1052,9 @@ public class PbtSnapshotBundleTests
         }
 
         bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
-        Assert.Throws<InvalidDataException>(() => Fold(bundle, default));
+        Assert.Throws<InvalidDataException>(() => bundle.Fold(default));
         bundle.SetCode(otherAccount.CodeHash.ValueHash256, new CodeInfo(otherBytes));
-        ValueHash256 root = Fold(bundle, default);
+        ValueHash256 root = bundle.Fold(default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)));
@@ -1103,12 +1073,12 @@ public class PbtSnapshotBundleTests
         CodeInfo persisted = new(bytes);
         reader.Codes[codeHash] = persisted;
         bundle.SetAccount(TestItem.AddressA, account);
-        ValueHash256 root = Fold(bundle, default);
+        ValueHash256 root = bundle.Fold(default);
         using PbtSnapshot first = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
         Account updated = account.WithChangedBalance(2);
         bundle.SetAccount(TestItem.AddressA, updated);
         int pendingAfterBalanceChange = bundle.PendingMutationCount;
-        root = Fold(bundle, root);
+        root = bundle.Fold(root);
         using PbtSnapshot second = bundle.CollectSnapshot(new StateId(1, default), new StateId(2, default), root);
         using (Assert.EnterMultipleScope())
         {
@@ -1134,7 +1104,7 @@ public class PbtSnapshotBundleTests
         Account? hintedA = bundle.GetAccount(TestItem.AddressA);
         Account? hintedB = bundle.GetAccount(TestItem.AddressB);
         int readsBeforeCollect = reader.AccountReadCount;
-        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), Fold(bundle, default));
+        using PbtSnapshot snapshot = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), bundle.Fold(default));
         bundle.GetAccount(TestItem.AddressB);
         using (Assert.EnterMultipleScope())
         {
@@ -1145,23 +1115,20 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    [TestCase(0x00)]
-    [TestCase(0x01)]
-    [TestCase(0xFF)]
-    public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot(int failedZone)
+    [Test]
+    public void Failed_partition_fold_keeps_mutations_pending_without_completing_snapshot([Values(0x00, 0x01, 0xFF)] int failedZone)
     {
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
         byte[] bytes = new byte[(256 + 2) * 31];
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
-        bundle.SetCode(account.CodeHash.ValueHash256, new CodeInfo(bytes));
-        bundle.SetAccount(TestItem.AddressA, account);
+        SetAccountWithCode(bundle, TestItem.AddressA, account, new CodeInfo(bytes), codeFirst: true);
         bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         // Slots of other accounts store a group below the storage zone boundary, so the failing zone publishes one.
         bundle.SetSlot(TestItem.AddressA, 2000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         bundle.SetSlot(TestItem.AddressC, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         bundle.SetSlot(TestItem.AddressD, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
-        ValueHash256 root = Fold(bundle, default);
+        ValueHash256 root = bundle.Fold(default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
 
         Account replacement = account.WithChangedBalance(4);
@@ -1170,8 +1137,7 @@ public class PbtSnapshotBundleTests
         // A balance change stages no code chunk, so a new contract keeps the code partition in the batch.
         byte[] otherBytes = Bytes.FromHexString("6002600055");
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
-        bundle.SetCode(other.CodeHash.ValueHash256, new CodeInfo(otherBytes));
-        bundle.SetAccount(TestItem.AddressB, other);
+        SetAccountWithCode(bundle, TestItem.AddressB, other, new CodeInfo(otherBytes), codeFirst: true);
         CountingStore store = new(bundle) { FailedZone = failedZone };
         Assert.Throws<InvalidDataException>(() => TrieUpdater.UpdateRoot(store, root, bundle.PrepareLeafChanges(), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null));
         using (Assert.EnterMultipleScope())
@@ -1184,29 +1150,12 @@ public class PbtSnapshotBundleTests
         }
     }
 
-    private static ValueHash256 Fold(PbtSnapshotBundle bundle, ValueHash256 root)
+    private static void SetAccountWithCode(PbtSnapshotBundle bundle, Address address, Account? account, CodeInfo? code, bool codeFirst)
     {
-        PbtPartitionBatches changes = bundle.PrepareLeafChanges();
-        try
-        {
-            ValueHash256 updated;
-            using (PbtSnapshotStore store = new(bundle))
-                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
-            bundle.CompleteLeafChanges();
-            return updated;
-        }
-        finally
-        {
-            changes.Dispose();
-        }
-    }
-
-    private static PbtSnapshotPooledList Snapshots(PbtResourcePool pool, params PbtSnapshotContent[] contents)
-    {
-        PbtSnapshotPooledList snapshots = new(contents.Length);
-        for (int index = 0; index < contents.Length; index++)
-            snapshots.Add(new PbtSnapshot(StateId.PreGenesis, new StateId((ulong)index, default), default, contents[index], pool, PbtResourcePool.Usage.MainBlockProcessing));
-        return snapshots;
+        bool hasCode = code is not null && code.Code.Length > 0;
+        if (codeFirst && hasCode) bundle.SetCode(account!.CodeHash.ValueHash256, code!);
+        bundle.SetAccount(address, account);
+        if (!codeFirst && hasCode) bundle.SetCode(account!.CodeHash.ValueHash256, code!);
     }
 
     private static PbtSnapshotContent Content<TPath>(TPath groupKey, byte[]? encoding)
@@ -1225,28 +1174,11 @@ public class PbtSnapshotBundleTests
         return payload;
     }
 
-    private static byte[] Value(byte marker)
-    {
-        byte[] value = new byte[32];
-        value[^1] = marker;
-        return value;
-    }
-
     private static byte[] BranchEncoding(byte marker)
     {
         ValueHash256 left = new(Value(marker));
         ValueHash256 right = new(Value((byte)(marker + 32)));
         return PbtTreeHarness.EncodeBranch([], 0, left, right);
-    }
-
-    private static byte[] EncodeGroup(PbtNodePath groupKey, IReadOnlyList<PbtNodeRecord> records)
-    {
-        int length = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.MaxTrailerLength;
-        foreach (PbtNodeRecord record in records) length += record.Encoding.Length;
-        byte[] payload = new byte[length];
-        BufferWriter writer = new(payload);
-        PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
-        return writer.WrittenSpan.ToArray();
     }
 
     private sealed class Reader(PbtStorageTreeKey key, ValueHash256? value) : IPbtPersistence.IReader

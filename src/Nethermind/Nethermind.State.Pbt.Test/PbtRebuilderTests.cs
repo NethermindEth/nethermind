@@ -9,10 +9,10 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
@@ -21,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -114,13 +113,8 @@ public class PbtRebuilderTests
             (leaves[i], leaves[j]) = (leaves[j], leaves[i]);
         }
 
-        List<string> messages = [];
-        InterfaceLogger underlyingLogger = Substitute.For<InterfaceLogger>();
-        underlyingLogger.IsInfo.Returns(true);
-        underlyingLogger.Info(Arg.Do<string>(messages.Add));
-        ILogger logger = new(underlyingLogger);
-        ILogManager logManager = Substitute.For<ILogManager>();
-        logManager.GetClassLogger<PbtRebuilder>().Returns(logger);
+        TestLogger log = new();
+        ILogManager logManager = new OneLoggerLogManager(new ILogger(log));
 
         // the header root the source claims is unrelated to the tree root the fold produces, so the
         // two must be recorded separately rather than one standing in for the other
@@ -148,12 +142,10 @@ public class PbtRebuilderTests
         {
             Assert.That(root, Is.EqualTo(PbtReferenceModel.Root(model)), "rebuilt root must match the EIP reference tree");
             Assert.That(root, Is.EqualTo(incrementalRoot), "incremental replay and windowed rebuild must have the same root");
-            Assert.That(CanonicalGroups(PbtStoreTestExtensions.PersistedNodeGroupKeys(db), reader.GetNodeGroup),
-                Is.EqualTo(CanonicalGroups(incrementalStore.EnumerateNodeGroupKeys(), incrementalStore.GetPhysicalNodeGroup)),
-                "incremental replay and windowed rebuild must have the exact same group keys and payloads");
+            PbtStoreTestExtensions.AssertSameGroups(db, reader, incrementalStore, "incremental replay and windowed rebuild must have the exact same group keys and payloads");
             Assert.That(reader.CurrentState, Is.EqualTo(targetState), "persisted state pointer must advance to the rebuilt state");
             Assert.That(reader.CurrentRoot, Is.EqualTo(root), "and record the tree root beside it");
-            Assert.That(messages, Has.Some.Contains("PBT rebuild complete").And.Some.Contains($"{leaves.Count} received leaves"));
+            Assert.That(log.LogList, Has.Some.Contains("PBT rebuild complete").And.Some.Contains($"{leaves.Count} received leaves"));
         }
     }
 
@@ -162,13 +154,8 @@ public class PbtRebuilderTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence target = new(db, Config, NullTrieNodeLog.Instance);
-        PbtRebuilder rebuilder = new(target, Config, LimboLogs.Instance);
-
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateUnbounded<ArrayPoolList<RebuildEntry>>();
-        channel.Writer.Complete();
-
         StateId targetState = new(3, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None);
+        ValueHash256 root = await Rebuild([], 1, targetState, target, LimboLogs.Instance, 0);
 
         Assert.That(root, Is.EqualTo(default(ValueHash256)), "an empty tree is 32 zero bytes");
         using IPbtPersistence.IReader reader = target.CreateReader();
@@ -207,8 +194,7 @@ public class PbtRebuilderTests
                     Assert.That(rebuilding.IsCompleted, Is.False);
                     Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
                     Assert.That(target.IsValid, Is.False);
-                    Assert.That(CanonicalGroups(PbtStoreTestExtensions.PersistedNodeGroupKeys(db), reader.GetNodeGroup),
-                        Is.EqualTo(CanonicalGroups(expectedStore.EnumerateNodeGroupKeys(), expectedStore.GetPhysicalNodeGroup)));
+                    PbtStoreTestExtensions.AssertSameGroups(db, reader, expectedStore);
                     Assert.Throws<ObjectDisposedException>(() => chunk.AsSpan());
                 }
             }
@@ -248,8 +234,7 @@ public class PbtRebuilderTests
                 Assert.That(failure, end == SourceEnd.Cancel ? Is.InstanceOf<OperationCanceledException>() : Is.TypeOf<InvalidDataException>());
                 Assert.That(completedReader.CurrentState, Is.EqualTo(StateId.PreGenesis));
                 Assert.That(target.IsValid, Is.False);
-                Assert.That(CanonicalGroups(PbtStoreTestExtensions.PersistedNodeGroupKeys(db), completedReader.GetNodeGroup),
-                    Is.EqualTo(CanonicalGroups(expectedStore.EnumerateNodeGroupKeys(), expectedStore.GetPhysicalNodeGroup)));
+                PbtStoreTestExtensions.AssertSameGroups(db, completedReader, expectedStore);
             }
         }
     }
@@ -276,17 +261,4 @@ public class PbtRebuilderTests
         public override ValueTask<bool> WaitToReadAsync(CancellationToken cancellationToken = default) =>
             source.WaitToReadAsync(cancellationToken);
     }
-
-    private static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, RefCountingMemory?> getNodeGroup)
-    {
-        List<string> result = [];
-        foreach (PbtStorageNodePath groupKey in groupKeys)
-        {
-            using RefCountingMemory? payload = getNodeGroup(groupKey);
-            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(payload!.GetSpan())}");
-        }
-        result.Sort(StringComparer.Ordinal);
-        return [.. result];
-    }
-
 }

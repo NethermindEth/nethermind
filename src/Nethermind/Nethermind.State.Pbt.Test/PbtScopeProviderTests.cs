@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -14,7 +13,6 @@ using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
-using Nethermind.Pbt;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
@@ -115,20 +113,23 @@ public class PbtScopeProviderTests
         const int slots = 20;
         static UInt256 Slot(int s) => (UInt256)(64 + s * 256);
 
+        void WriteAccountsWithUnchangedSlots(IWorldStateScopeProvider.IScope scope, Account account)
+        {
+            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length);
+            foreach (Address address in addresses)
+            {
+                batch.Set(address, account);
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
+                for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), (UInt256)(s + 1));
+            }
+        }
+
         Dictionary<string, byte[]> model = [];
 
         Hash256 root1;
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics()))
         {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
-            {
-                foreach (Address address in addresses)
-                {
-                    batch.Set(address, new Account(1, 100));
-                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
-                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), (UInt256)(s + 1));
-                }
-            }
+            WriteAccountsWithUnchangedSlots(scope, new Account(1, 100));
 
             scope.UpdateRootHash();
             scope.Commit(1);
@@ -149,15 +150,7 @@ public class PbtScopeProviderTests
         Hash256 root2;
         using (IWorldStateScopeProvider.IScope scope = provider.BeginScope(header1, new LocalMetrics()))
         {
-            using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(addresses.Length))
-            {
-                foreach (Address address in addresses)
-                {
-                    batch.Set(address, new Account(2, 150));
-                    using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = batch.CreateStorageWriteBatch(address, slots);
-                    for (int s = 0; s < slots; s++) storageBatch.Set(Slot(s), (UInt256)(s + 1));
-                }
-            }
+            WriteAccountsWithUnchangedSlots(scope, new Account(2, 150));
 
             scope.UpdateRootHash();
             root2 = scope.RootHash;

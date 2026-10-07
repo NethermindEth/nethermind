@@ -19,10 +19,18 @@ public class MptRightmostNodeStoreTests
 {
     [Test]
     public void MatchesPatriciaTree(
-        [Values(0, 1, 2, 16, 257, 4096)] int count,
+        [Values(2, 16, 257, 4096)] int count,
         [Values(0, 1, 30)] int sharedPrefixBytes,
         [Values(1, 27, 28, 32, 128)] int valueLength,
-        [Values(1, 7, 1000)] int windowSize)
+        [Values(1, 7, 1000)] int windowSize) =>
+        AssertMatchesPatriciaTree(count, sharedPrefixBytes, valueLength, windowSize);
+
+    [TestCase(0)]
+    [TestCase(1)]
+    public void MatchesPatriciaTreeForEmptyAndSingleEntry(int count) =>
+        AssertMatchesPatriciaTree(count, 0, 32, 1);
+
+    private static void AssertMatchesPatriciaTree(int count, int sharedPrefixBytes, int valueLength, int windowSize)
     {
         List<KeyValuePair<ValueHash256, byte[]>> entries = new(count);
         Random random = new(12345);

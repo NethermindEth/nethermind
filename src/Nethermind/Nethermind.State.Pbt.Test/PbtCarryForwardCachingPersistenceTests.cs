@@ -3,15 +3,10 @@
 
 using System;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using Autofac;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Core.Test.Modules;
-using Nethermind.Db;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
@@ -71,18 +66,6 @@ public class PbtCarryForwardCachingPersistenceTests
         ReadAccount(cache, AddressHash);
 
         Assert.That(inner.AccountReads, Is.EqualTo(3), "second distinct address overflows capacity 1, clearing the first");
-    }
-
-    [Test]
-    public async Task Module_RegistersDecoratorOnlyWhenEnabled([Values] bool carryForwardCache)
-    {
-        PbtConfig config = new() { Enabled = true, CarryForwardCache = carryForwardCache };
-        await using IContainer container = new ContainerBuilder()
-            .AddModule(new TestNethermindModule(config))
-            .AddModule(new PbtModule(config))
-            .Build();
-
-        Assert.That(container.Resolve<IPbtPersistence>(), carryForwardCache ? Is.TypeOf<PbtCarryForwardCachingPersistence>() : Is.TypeOf<PbtCachedReaderPersistence>());
     }
 
     private static IEnumerable<TestCaseData> ReadCases()

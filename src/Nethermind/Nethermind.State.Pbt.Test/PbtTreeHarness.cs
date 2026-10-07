@@ -5,15 +5,20 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Core.Buffers;
+using FastEnumUtility;
+using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Db;
+using Nethermind.Db.Rocks;
+using Nethermind.Db.Rocks.Config;
+using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -98,17 +103,7 @@ internal sealed class PbtTreeHarness : IDisposable
 
     public void Dispose() => _store.Dispose();
 
-    public string[] CanonicalRecords()
-    {
-        IReadOnlyList<PbtNodeRecord> records = Nodes;
-        string[] result = new string[records.Count];
-        for (int index = 0; index < result.Length; index++)
-        {
-            PbtNodeRecord record = records[index];
-            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
-        }
-        return result;
-    }
+    public string[] CanonicalRecords() => _store.CanonicalRecords();
 }
 
 /// <summary>Folds every batch serially and with the fan-out and quota under test, each on its own store, and asserts identical roots and groups matching the reference tree.</summary>
@@ -129,17 +124,11 @@ internal sealed class DifferentialTree(FoldFanOut fanOut, ConcurrencyController 
     public void Apply(IEnumerable<(byte[] Key, byte[]? Value)> writes)
     {
         string round = $"round {_round++}";
-        foreach ((byte[] key, byte[]? value) in writes)
-        {
-            if (value is null) _oracle.Delete(key);
-            else _oracle.Insert(key, value);
-        }
+        _oracle.Apply(writes);
 
         // A quota of one folds every zone and frame on the calling thread.
-        using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-            Root = TrieUpdater.UpdateRoot(_serialStore, Root, changes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null);
-        using (PbtPartitionBatches changes = PbtStoreTestExtensions.PreparePartitions(writes))
-            _parallelRoot = TrieUpdater.UpdateRoot(_parallelStore, _parallelRoot, changes, foldQuota, fanOut, null);
+        Root = _serialStore.Fold(Root, writes, new ConcurrencyController(1), PbtTreeHarness.DefaultFanOut, null);
+        _parallelRoot = _parallelStore.Fold(_parallelRoot, writes, foldQuota, fanOut, null);
 
         IReadOnlyList<PbtPhysicalPayload> expected = _serialStore.ExportPhysicalPayloads();
         IReadOnlyList<PbtPhysicalPayload> actual = _parallelStore.ExportPhysicalPayloads();
@@ -319,6 +308,37 @@ internal static class PbtStoreTestExtensions
         return groupKeys;
     }
 
+    /// <summary>Each group as key-then-payload hex, sorted ordinally.</summary>
+    internal static string[] CanonicalGroups(IEnumerable<PbtStorageNodePath> groupKeys, Func<PbtStorageNodePath, RefCountingMemory?> getNodeGroup)
+    {
+        List<string> result = [];
+        foreach (PbtStorageNodePath groupKey in groupKeys)
+        {
+            using RefCountingMemory? payload = getNodeGroup(groupKey);
+            result.Add($"{Convert.ToHexString(groupKey.ToEncodedArray())}:{Convert.ToHexString(payload!.GetSpan())}");
+        }
+        result.Sort(StringComparer.Ordinal);
+        return [.. result];
+    }
+
+    /// <summary>Asserts the groups persisted in <paramref name="db"/>, read through <paramref name="reader"/>, are exactly those of <paramref name="expected"/>.</summary>
+    internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected, string message) =>
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.GetNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)), message);
+
+    /// <inheritdoc cref="AssertSameGroups(IColumnsDb{PbtColumns}, IPbtPersistence.IReader, PbtNodeGroupStore, string)"/>
+    internal static void AssertSameGroups(IColumnsDb<PbtColumns> db, IPbtPersistence.IReader reader, PbtNodeGroupStore expected) =>
+        Assert.That(CanonicalGroups(PersistedNodeGroupKeys(db), reader.GetNodeGroup),
+            Is.EqualTo(CanonicalGroups(expected.EnumerateNodeGroupKeys(), expected.GetPhysicalNodeGroup)));
+
+    /// <summary>Opens the on-disk PBT RocksDB at <paramref name="path"/> with the default <see cref="DbConfig"/> and the production column options for <paramref name="config"/>.</summary>
+    internal static ColumnsDb<PbtColumns> OpenPbtRocksDb(string path, PbtConfig config)
+    {
+        DbConfig dbConfig = new();
+        PbtRocksDbConfigAdjuster adjuster = new(Substitute.For<IRocksDbConfigFactory>(), dbConfig, config, Substitute.For<IDisposableStack>(), LimboLogs.Instance);
+        return new ColumnsDb<PbtColumns>(path, new DbSettings(nameof(DbNames.Pbt), DbNames.Pbt), dbConfig, adjuster, LimboLogs.Instance, FastEnum.GetValues<PbtColumns>());
+    }
+
     /// <summary>Zero-pads a zone prefix to the fixed <see cref="PbtStoragePath"/> or <see cref="PbtPath"/> length the partition fold requires.</summary>
     internal static byte[] ZoneKey(string hexPrefix)
     {
@@ -328,16 +348,29 @@ internal static class PbtStoreTestExtensions
         return key;
     }
 
+    /// <summary>A 32-byte leaf value whose last byte is <paramref name="marker"/>.</summary>
+    internal static byte[] Value(byte marker)
+    {
+        byte[] value = new byte[32];
+        value[^1] = marker;
+        return value;
+    }
+
     /// <summary>Folds zone-key <paramref name="writes"/> into the tree at <paramref name="root"/> through the partitioned driver production folds with.</summary>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes) =>
         store.Fold(root, writes, PbtTreeHarness.DefaultFanOut, null);
 
     /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
     internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
-        FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
+        FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider) =>
+        store.Fold(root, writes, PbtTreeHarness.FoldQuota(), fanOut, memoryProvider);
+
+    /// <inheritdoc cref="Fold(IPbtStore, in ValueHash256, IEnumerable{ValueTuple{byte[], byte[]}})"/>
+    internal static ValueHash256 Fold(this IPbtStore store, in ValueHash256 root, IEnumerable<(byte[] Key, byte[]? Value)> writes,
+        ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider? memoryProvider)
     {
         using PbtPartitionBatches changes = PreparePartitions(writes);
-        return TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), fanOut, null, memoryProvider);
+        return TrieUpdater.UpdateRoot(store, root, changes, foldQuota, fanOut, null, memoryProvider);
     }
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
@@ -434,18 +467,35 @@ internal static class PbtStoreTestExtensions
             return;
         }
 
-        BufferWriter writer = new(memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
-        try
-        {
-            PbtNodeGroupEncoder.Encode(ref writer, location.GroupKey, records, default);
-            using RefCountingMemory payload = writer.Detach()!;
-            store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtTreeHarness.HashBranch(encoding), payload);
-        }
-        finally
-        {
-            writer.Dispose();
-        }
+        using RefCountingMemory payload = PbtNodeGroupEncoder.EncodeToMemory(location.GroupKey, records, memoryProvider ?? PooledRefCountingMemoryProvider.Instance);
+        store.SetNodeGroup(location.GroupKey, encoding is null || encoding[0] == 0 ? default : PbtTreeHarness.HashBranch(encoding), payload);
     }
+
+    /// <summary>The store's canonical records as path-then-encoding hex, in path order.</summary>
+    internal static string[] CanonicalRecords(this PbtNodeGroupStore store)
+    {
+        IReadOnlyList<PbtNodeRecord> records = store.EnumerateRecords();
+        string[] result = new string[records.Count];
+        for (int index = 0; index < result.Length; index++)
+        {
+            PbtNodeRecord record = records[index];
+            result[index] = Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span);
+        }
+        return result;
+    }
+
+    /// <summary>The physical group payloads as key-then-payload hex, sorted ordinally.</summary>
+    internal static string[] PhysicalRecords(this IEnumerable<PbtPhysicalPayload> payloads)
+    {
+        List<string> records = [];
+        foreach (PbtPhysicalPayload payload in payloads)
+            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
+        records.Sort(StringComparer.Ordinal);
+        return [.. records];
+    }
+
+    /// <inheritdoc cref="PhysicalRecords(IEnumerable{PbtPhysicalPayload})"/>
+    internal static string[] PhysicalRecords(this PbtNodeGroupStore store) => store.ExportPhysicalPayloads().PhysicalRecords();
 
     internal static IReadOnlyList<PbtNodeRecord> EnumerateRecords(this PbtNodeGroupStore store)
     {

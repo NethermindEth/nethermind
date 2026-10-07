@@ -26,13 +26,11 @@ using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Evm.State;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
-using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -85,7 +83,7 @@ public class MigrationBalFollowerTests
         using Harness harness = new();
         await harness.Publish();
         Assert.Throws<InvalidOperationException>(() => harness.Replay.Apply(harness.Blocks["a1"].Header, harness.Blocks["a2"].Header, harness.Bal("a2")));
-        Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a2"].Header)), Is.False);
+        AssertAbsent(harness, "a2");
         for (int attempt = 0; attempt < 2; attempt++) harness.Replay.Apply(harness.Blocks["anchor"].Header, harness.Blocks["a1"].Header, harness.Bal("a1"));
         AssertState(harness, "a1");
     }
@@ -103,7 +101,7 @@ public class MigrationBalFollowerTests
         Assert.That(await harness.Follower.Follow(harness.Blocks["a3"].Header, default), Is.False);
 
         AssertState(harness, "a1");
-        Assert.That(harness.Manager.HasStateForBlock(new StateId(missing.Header)), Is.False);
+        AssertAbsent(harness, "a2");
         Assert.That(harness.Follower.Error, Is.Not.Null.And.Not.Empty);
         harness.Reopen();
         harness.RestoreBal("a2");
@@ -125,7 +123,7 @@ public class MigrationBalFollowerTests
         Block missing = harness.Blocks["b2"];
         harness.Store.Delete(missing.Number, missing.Hash!);
         Assert.Throws<InvalidDataException>(() => follower.Follow(harness.Blocks["b3"].Header, default));
-        Assert.That(harness.Manager.HasStateForBlock(new StateId(missing.Header)), Is.False);
+        AssertAbsent(harness, "b2");
         harness.RestoreBal("b2");
         Assert.That(follower.Follow(harness.Blocks["b3"].Header, default), Is.True);
         AssertState(harness, "b3");
@@ -133,11 +131,7 @@ public class MigrationBalFollowerTests
         harness.Canonical("b");
         harness.BlockTree.ForkChoiceUpdated(harness.Blocks["b3"].Hash, Hash256.Zero);
         Assert.That(follower.Follow(harness.Blocks["a3"].Header, default), Is.True, "a branch beside the finalized chain is done");
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a2"].Header)), Is.False);
-            Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a3"].Header)), Is.False);
-        }
+        AssertAbsent(harness, "a2", "a3");
     }
 
     [Test]
@@ -159,7 +153,7 @@ public class MigrationBalFollowerTests
         else Assert.ThrowsAsync<OperationCanceledException>(() => harness.Follower.Follow(harness.Blocks["a3"].Header, cancellation.Token));
 
         AssertState(harness, "a1");
-        Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks["a2"].Header)), Is.False);
+        AssertAbsent(harness, "a2");
         harness.Reopen();
         string target = reorg ? "b3" : "a3";
         Assert.That(await harness.Follower.Follow(harness.Blocks[target].Header, default), Is.True, harness.Follower.Error);
@@ -180,7 +174,7 @@ public class MigrationBalFollowerTests
 
         Assert.That(await harness.Follower.Follow(child, default), Is.True, harness.Follower.Error);
 
-        Hash256 anchorRoot = new(harness.Metadata["anchor"].GetProperty("pbtRoot").GetString()!);
+        Hash256 anchorRoot = harness.PbtRoot("anchor");
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.TreeRoot(child), Is.EqualTo(anchorRoot));
@@ -196,7 +190,16 @@ public class MigrationBalFollowerTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Manager.HasStateForBlock(new StateId(header)), Is.True, name);
-            Assert.That(harness.TreeRoot(header), Is.EqualTo(new Hash256(harness.Metadata[name].GetProperty("pbtRoot").GetString()!)), name);
+            Assert.That(harness.TreeRoot(header), Is.EqualTo(harness.PbtRoot(name)), name);
+        }
+    }
+
+    private static void AssertAbsent(Harness harness, params string[] names)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            foreach (string name in names)
+                Assert.That(harness.Manager.HasStateForBlock(new StateId(harness.Blocks[name].Header)), Is.False, name);
         }
     }
 
@@ -278,6 +281,8 @@ public class MigrationBalFollowerTests
             Store.Insert(block.Number, block.Hash!, bal);
         }
 
+        public Hash256 PbtRoot(string name) => new(Metadata[name].GetProperty("pbtRoot").GetString()!);
+
         public void RestoreBal(string name) => Store.Insert(Blocks[name].Number, Blocks[name].Hash!, Bytes.FromHexString(Metadata[name].GetProperty("balRlp").GetString()!));
 
         public ReadOnlyBlockAccessList Bal(string name) =>
@@ -311,8 +316,8 @@ public class MigrationBalFollowerTests
             BlockHeader header = Blocks["anchor"].Header;
             PbtImageAnchor anchor = new("1", header.Hash!, header, 48);
             Directory.CreateDirectory(_scratch.Path);
-            using FileStream snapshot = File.OpenRead(Path.Combine(Eip8347FixtureState.Directory, "canonical", "anchor", "snapshot.pbt"));
-            using FileStream preimages = File.OpenRead(Path.Combine(Eip8347FixtureState.Directory, "canonical", "anchor", "preimages.bin"));
+            using FileStream snapshot = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "snapshot.pbt"));
+            using FileStream preimages = File.OpenRead(Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin"));
             await new PbtAnchorPublication(new PbtRocksDbPersistence(_target, new PbtConfig(), NullTrieNodeLog.Instance), _target, _pbt.Coordinator, new PbtConfig(), LimboLogs.Instance)
                 .PublishSnapshot(snapshot, preimages, anchor, _scratch.Path, () => true, default);
         }
@@ -366,9 +371,8 @@ public class MigrationBalFollowerTests
         [Test]
         public async Task Migration_acquires_owned_input_despite_store_pruning([Values] bool stored, [Values] bool snap2)
         {
-            BlockHeader from = Block(10, null);
             byte[] valid = Bytes.FromHexString("c0");
-            BlockHeader to = MigrationBlock(from, valid);
+            (BlockHeader from, BlockHeader to) = MigrationPair(valid);
             if (stored) _balStore.Insert(to.Number, to.Hash!, valid);
             AllocatePeer(snap2 ? Snap2Peer() : Eth71Peer());
             ReadOnlyBlockAccessList? retained = null;
@@ -393,9 +397,8 @@ public class MigrationBalFollowerTests
         [TestCase("01", false, false)]
         public async Task Migration_authenticates_existing_bytes_and_structure(string storedHex, bool repairable, bool locallyStored)
         {
-            BlockHeader from = Block(10, null);
             byte[] stored = Bytes.FromHexString(storedHex);
-            BlockHeader to = MigrationBlock(from, repairable ? Bytes.FromHexString("c0") : stored);
+            (BlockHeader from, BlockHeader to) = MigrationPair(repairable ? Bytes.FromHexString("c0") : stored);
             if (locallyStored) _balStore.Insert(to.Number, to.Hash!, stored);
             AllocatePeer(Snap2Peer());
             int consumed = 0;
@@ -414,8 +417,7 @@ public class MigrationBalFollowerTests
         [Test]
         public async Task Migration_rejects_chain_change_during_fetch([Values] bool restoreOriginal)
         {
-            BlockHeader from = Block(10, null);
-            BlockHeader to = MigrationBlock(from, Bytes.FromHexString("c0"));
+            (BlockHeader from, BlockHeader to) = MigrationPair(Bytes.FromHexString("c0"));
             BlockHeader replacement = Build.A.BlockHeader.WithNumber(to.Number).WithExtraData(Bytes.FromHexString("01")).TestObject;
             _onFetch = () =>
             {
@@ -448,8 +450,7 @@ public class MigrationBalFollowerTests
         [Test]
         public async Task Migration_rechecks_after_consumer_but_allows_tip_extension([Values] bool reorg)
         {
-            BlockHeader from = Block(10, null);
-            BlockHeader to = MigrationBlock(from, Bytes.FromHexString("c0"));
+            (BlockHeader from, BlockHeader to) = MigrationPair(Bytes.FromHexString("c0"));
             AllocatePeer(Snap2Peer());
             bool result = await _follower.AcquireBal(from, to, _ =>
             {
@@ -462,8 +463,7 @@ public class MigrationBalFollowerTests
         [Test]
         public async Task Migration_disposes_borrowed_memory_after_callback([Values] bool cancel)
         {
-            BlockHeader from = Block(10, null);
-            BlockHeader to = MigrationBlock(from, Bytes.FromHexString("c0"));
+            (BlockHeader from, BlockHeader to) = MigrationPair(Bytes.FromHexString("c0"));
             TrackingMemory owner = new(Bytes.FromHexString("c0"));
             IBlockAccessListStore store = Substitute.For<IBlockAccessListStore>();
             store.GetRlp(to.Number, to.Hash!).Returns(owner);
@@ -492,10 +492,7 @@ public class MigrationBalFollowerTests
         {
             BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(parent.Number + 1)
                 .WithBlockAccessListHash(Keccak.Compute(bal)).TestObject;
-            _blockTree.FindHeader(header.Number).Returns(header);
-            _blockTree.IsMainChain(header).Returns(true);
-            _balByHash[header.Hash!.ValueHash256] = bal;
-            return header;
+            return Register(header, bal);
         }
 
         // Registers a header at `number` and (when it has a BAL) records the RLP a peer should return for it.
@@ -503,12 +500,21 @@ public class MigrationBalFollowerTests
         {
             BlockHeaderBuilder builder = Build.A.BlockHeader.WithNumber(number);
             if (bal is not null) builder = builder.WithBlockAccessListHash(Keccak.Compute(bal));
-            BlockHeader header = builder.TestObject;
+            return Register(builder.TestObject, bal);
+        }
 
-            _blockTree.FindHeader(number).Returns(header);
+        private BlockHeader Register(BlockHeader header, byte[]? bal)
+        {
+            _blockTree.FindHeader(header.Number).Returns(header);
             _blockTree.IsMainChain(header).Returns(true);
             if (bal is not null) _balByHash[header.Hash!.ValueHash256] = bal;
             return header;
+        }
+
+        private (BlockHeader From, BlockHeader To) MigrationPair(byte[] bal)
+        {
+            BlockHeader from = Block(10, null);
+            return (from, MigrationBlock(from, bal));
         }
 
         private void AllocatePeer(PeerInfo peer) =>

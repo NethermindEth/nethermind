@@ -5,7 +5,6 @@ using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Pbt;
@@ -33,20 +32,6 @@ public class PbtSnapshotCompactorTests
         using (RefCountingMemory olderPayload = CreateStorageLeafGroup())
         using (RefCountingMemory newerPayload = CreateStorageLeafGroup())
         {
-            older.SetNodeGroup(groupKey, olderPayload);
-            Assert.That(older.TryGetNodeGroup(alternateGroupKey, out RefCountingMemory? original), Is.True);
-            using (original)
-            {
-                older.SetNodeGroup(alternateGroupKey, newerPayload);
-                Assert.That(older.TryGetNodeGroup(groupKey, out RefCountingMemory? replacement), Is.True);
-                using (replacement)
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(older.NodeGroupCount(), Is.EqualTo(1));
-                    Assert.That(original, Is.SameAs(olderPayload));
-                    Assert.That(replacement, Is.SameAs(newerPayload));
-                }
-            }
             older.SetNodeGroup(groupKey, olderPayload);
             newer.SetNodeGroup(alternateGroupKey, tombstone ? null : newerPayload);
             expected = newerPayload.GetSpan().ToArray();
@@ -78,11 +63,8 @@ public class PbtSnapshotCompactorTests
         }
     }
 
-    [TestCase(7u, false)]
-    [TestCase(7u, true)]
-    [TestCase(1000u, false)]
-    [TestCase(1000u, true)]
-    public void Compact_preserves_clear_ordering_and_whole_typed_values(uint slot, bool clearLast)
+    [Test]
+    public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
@@ -121,9 +103,7 @@ public class PbtSnapshotCompactorTests
 
     private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst)
     {
-        using PbtSnapshotPooledList chain = new(layersOldestFirst.Length);
-        for (int i = 0; i < layersOldestFirst.Length; i++)
-            chain.Add(new PbtSnapshot(i == 0 ? StateId.PreGenesis : new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], _pool, PbtResourcePool.Usage.MainBlockProcessing));
+        using PbtSnapshotPooledList chain = PbtSnapshotBundleTestExtensions.Chain(_pool, layersOldestFirst);
         return NewCompactor().Compact(chain);
     }
 

@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BlockAccessLists;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Consensus.Processing;
 using Nethermind.Core;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
-using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Migration;
@@ -46,7 +38,7 @@ public class MigrationRestartE2ETests
     {
         await using (MigrationLifecycleHarness harness = await OpenLifecycle(_directory, portable))
         {
-            ProcessBranch(harness, ["a1", "a2", "a3"]);
+            harness.ProcessBranch(["a1", "a2", "a3"], expectPbt: true);
             Promote(harness, "a3");
             Persist(harness);
         }
@@ -59,7 +51,7 @@ public class MigrationRestartE2ETests
                 Assert.That(reopened.Telemetry.GetShadowRoot(reopened.Blocks["a3"].Hash!), Is.EqualTo(reopened.PbtRoot("a3")));
                 Assert.That(reopened.Telemetry.GetProgress().Binary!.Phase, Is.EqualTo("synced"));
             }
-            ProcessBranch(reopened, ["a4", "a5"]);
+            reopened.ProcessBranch(["a4", "a5"], expectPbt: true);
             Promote(reopened, "a5");
             Persist(reopened);
         }
@@ -97,10 +89,9 @@ public class MigrationRestartE2ETests
     {
         await RunFlatOnly("a1", "a2");
         // A follower that never runs keeps PBT at the anchor, behind the flat head.
-        await using MigrationLifecycleHarness migrating = await MigrationLifecycleHarness.Create(Path.Combine(_directory, "db"), portable: true, FlatLayout.Flat,
-            Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"),
-            builder => ConfigureRocks(builder).AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false), () => null, () => null)));
-        ProcessBranch(migrating, ["a3"], expectPbt: false);
+        await using MigrationLifecycleHarness migrating = await OpenLifecycle(_directory, portable: true,
+            builder => builder.AddSingleton<PbtBalFollowerScheduler>(_ => new PbtBalFollowerScheduler((_, _) => Task.FromResult(false), () => null, () => null)), migration: true);
+        migrating.ProcessBranch(["a3"], expectPbt: false);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(migrating.Pbt.HasStateForBlock(new StateId(migrating.Blocks["a2"].Header)), Is.False);
@@ -111,9 +102,8 @@ public class MigrationRestartE2ETests
 
     private async Task RunFlatOnly(params string[] names)
     {
-        await using MigrationLifecycleHarness flatOnly = await MigrationLifecycleHarness.Create(Path.Combine(_directory, "db"), portable: true, FlatLayout.Flat,
-            Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"), builder => ConfigureRocks(builder), migration: false);
-        ProcessBranch(flatOnly, names, expectPbt: false);
+        await using MigrationLifecycleHarness flatOnly = await OpenLifecycle(_directory, portable: true, _ => { }, migration: false);
+        flatOnly.ProcessBranch(names, expectPbt: false);
         Promote(flatOnly, names[^1]);
         Persist(flatOnly);
     }
@@ -134,39 +124,10 @@ public class MigrationRestartE2ETests
             .CreateColumnsDb<FlatDbColumns>(new DbSettings("Flat", "flat")));
 
     private static Task<MigrationLifecycleHarness> OpenLifecycle(string directory, bool portable)
-        => MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable, FlatLayout.Flat,
-            Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"), builder => ConfigureRocks(builder));
+        => OpenLifecycle(directory, portable, _ => { }, migration: true);
 
-    private static void ProcessBranch(MigrationLifecycleHarness harness, string[] names, bool expectPbt = true)
-    {
-        IContainer container = harness.Container;
-        IBlockAccessListStore bals = container.Resolve<IBlockAccessListStore>();
-        Block[] branch = new Block[names.Length];
-        for (int index = 0; index < names.Length; index++)
-        {
-            Block block = harness.Blocks[names[index]];
-            branch[index] = block;
-            block.EncodedBlockAccessList = Bytes.FromHexString(harness.Expected[names[index]].GetProperty("balRlp").GetString()!);
-            block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList);
-            bals.Insert(block.Number, block.Hash!, block.EncodedBlockAccessList);
-            foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
-            harness.Tree.SuggestBlock(block);
-        }
-        IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
-        foreach (Block block in branch)
-        {
-            if (expectPbt && harness.Expected[names[Array.IndexOf(branch, block)]].GetProperty("binary").GetBoolean())
-                harness.WaitForPbt(harness.Tree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!);
-            Assert.That(processor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
-                NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
-        }
-        if (!expectPbt) return;
-        foreach (string name in names)
-        {
-            bool binary = harness.Expected[name].GetProperty("binary").GetBoolean();
-            Assert.That(() => harness.Telemetry.GetShadowRoot(harness.Blocks[name].Hash!), Is.EqualTo(binary ? null : harness.PbtRoot(name)).After(30_000, 50), name);
-        }
-    }
+    private static Task<MigrationLifecycleHarness> OpenLifecycle(string directory, bool portable, Action<ContainerBuilder> configure, bool migration)
+        => MigrationLifecycleHarness.Create(Path.Combine(directory, "db"), portable, FlatLayout.Flat, builder => configure(ConfigureRocks(builder)), migration);
 
     private static void Promote(MigrationLifecycleHarness harness, string name)
     {

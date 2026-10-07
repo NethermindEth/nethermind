@@ -8,7 +8,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
@@ -74,12 +73,7 @@ public class PbtTrieNodeLogTests
         Open();
     }
 
-    private static byte[] GroupKey(byte[] path, int depth)
-    {
-        PbtStorageNodePath groupKey = PbtStorageNodePath.Create(path, depth);
-        Span<byte> destination = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-        return PbtNodeGroupKey.Encode(groupKey, destination).ToArray();
-    }
+    private static byte[] GroupKey(byte[] path, int depth) => PbtStorageNodePath.Create(path, depth).ToStorageKey(PbtColumns.StorageNodeGroups);
 
     private static PbtColumns ColumnOf(byte[] key) => PbtRocksDbPersistence.NodeGroupColumn(PbtNodeGroupKey.Decode(key));
 
@@ -116,6 +110,24 @@ public class PbtTrieNodeLogTests
         byte[] value = new byte[length];
         new Random(seed).NextBytes(value);
         return value;
+    }
+
+    /// <summary>A 3000-byte value: two fit in a 4 KiB generation, so every second batch seals one.</summary>
+    private static byte[] Value(byte seed) => Value(seed, 3000);
+
+    private async Task ReopenAfterTornTailAndLostLastBatch()
+    {
+        await _log.DisposeAsync();
+        foreach (string file in LogFiles()) File.AppendAllText(file, "torn tail garbage");
+        RollBackConfirmedVersions();
+        Open();
+    }
+
+    private async Task MergeAllOnDiskAndReopen()
+    {
+        await _log.DisposeAsync();
+        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
+        Open();
     }
 
     private static long Counter(NonBlocking.ConcurrentDictionary<string, long> metric, string label) => metric.TryGetValue(label, out long value) ? value : 0;
@@ -240,19 +252,9 @@ public class PbtTrieNodeLogTests
     }
 
     /// <summary>The group holding a single branch node at <paramref name="node"/>; the node has a prefix, as a prefixless interior branch would be omitted.</summary>
-    private static RefCountingMemory EncodeGroup(PbtNodePath node, in ValueHash256 child)
-    {
-        BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
-        try
-        {
-            PbtNodeGroupEncoder.Encode(ref writer, PbtTestPaths.Locate(node).GroupKey, [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], default);
-            return writer.Detach()!;
-        }
-        finally
-        {
-            writer.Dispose();
-        }
-    }
+    private static RefCountingMemory EncodeGroup(PbtNodePath node, in ValueHash256 child) =>
+        PbtNodeGroupEncoder.EncodeToMemory(PbtTestPaths.Locate(node).GroupKey,
+            [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], PooledRefCountingMemoryProvider.Instance);
 
     [Test]
     public void Every_node_group_column_is_logged_and_the_metadata_column_is_not()
@@ -297,10 +299,7 @@ public class PbtTrieNodeLogTests
         WriteTop(Value3);
 
         // A torn tail plus a batch whose RocksDB write never happened: roll the confirmed version back by one.
-        await _log.DisposeAsync();
-        foreach (string file in LogFiles()) File.AppendAllText(file, "torn tail garbage");
-        RollBackConfirmedVersions();
-        Open();
+        await ReopenAfterTornTailAndLostLastBatch();
 
         using (Assert.EnterMultipleScope())
         {
@@ -333,9 +332,6 @@ public class PbtTrieNodeLogTests
         _config.TrieNodeLogMergeLag = 1;
         await Reopen();
 
-        // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
-        static byte[] Value(byte seed) => PbtTrieNodeLogTests.Value(seed, 3000);
-
         Write((TopKey, Value(1)), (ColdKey, Value1));
         WriteTop(Value(2)); // seals generation 1
         WriteTop(Value(3)); // generation 2
@@ -366,9 +362,6 @@ public class PbtTrieNodeLogTests
     public async Task Second_level_takes_merged_generations_and_merges_its_own_full_ones_into_RocksDB()
     {
         await ReopenWithSecondLevel(secondLevelMergeLag: 0);
-
-        // 3000-byte values: two per 4 KiB generation, so every second batch seals one.
-        static byte[] Value(byte seed) => PbtTrieNodeLogTests.Value(seed, 3000);
 
         Write((TopKey, Value(1)), (ColdKey, Value1));
         long secondLevelStoredBefore = SecondLevelStoredAccountBytes();
@@ -417,10 +410,7 @@ public class PbtTrieNodeLogTests
     {
         await ReopenWithSecondLevel(secondLevelMergeLag: 1);
 
-        // 3000-byte values: two per 4 KiB generation, so every second batch seals a first-level generation and every
-        // fourth a second-level one.
-        static byte[] Value(byte seed) => PbtTrieNodeLogTests.Value(seed, 3000);
-
+        // Every fourth batch seals a second-level generation.
         Write((TopKey, Value(1)), (ColdKey, Value1));
         for (byte block = 1; block < 4; block++) WriteTop(Value((byte)(block + 1)));
         Assert.That(() => ShardFiles("account-0"), Is.Empty.After(5000, 20), "a first-level lag of zero merges every sealed generation");
@@ -439,7 +429,7 @@ public class PbtTrieNodeLogTests
     public async Task Second_level_survives_a_restart_and_the_startup_merge_takes_it_first()
     {
         await ReopenWithSecondLevel(secondLevelMergeLag: 0);
-        byte[] large = Value(1, 3000);
+        byte[] large = Value(1);
 
         Write((TopKey, large), (AccountKey, Value1));
         WriteTop(large); // seals first-level generation 1, copied into the second level
@@ -448,10 +438,7 @@ public class PbtTrieNodeLogTests
 
         // A torn tail plus a batch whose RocksDB write never happened: the second level is confirmed by the first
         // level's version, so it survives the rollback that drops the last first-level batch.
-        await _log.DisposeAsync();
-        foreach (string file in LogFiles()) File.AppendAllText(file, "torn tail garbage");
-        RollBackConfirmedVersions();
-        Open();
+        await ReopenAfterTornTailAndLostLastBatch();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Read(TopKey), Is.EqualTo(large));
@@ -459,9 +446,7 @@ public class PbtTrieNodeLogTests
         }
 
         WriteTop(Value3);
-        await _log.DisposeAsync();
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
-        Open();
+        await MergeAllOnDiskAndReopen();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(LogFiles(), Is.Empty);
@@ -487,10 +472,8 @@ public class PbtTrieNodeLogTests
         }
 
         // A different shard count needs the directory merged first; then reads come from RocksDB.
-        await _log.DisposeAsync();
         _config.TrieNodeLogAccountShardCount = 1;
-        TrieNodeLog.MergeAllOnDisk(_directory.Path, _db, LimboLogs.Instance);
-        Open();
+        await MergeAllOnDiskAndReopen();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(Directory.GetDirectories(_directory.Path).Where(static directory => Directory.GetFiles(directory).Length > 0), Is.Empty);
@@ -510,7 +493,7 @@ public class PbtTrieNodeLogTests
         byte[] value = [];
         for (byte block = 0; block < 24; block++)
         {
-            value = Value(block, 3000);
+            value = Value(block);
             WriteTop(value);
             Assert.That(Read(TopKey), Is.EqualTo(value));
         }
@@ -662,10 +645,8 @@ public class PbtTrieNodeLogTests
     public void A_failed_log_commit_releases_the_RocksDB_batch()
     {
         FailingMetadataBatch? batch = null;
-        IColumnsDb<PbtColumns> db = Substitute.For<IColumnsDb<PbtColumns>>();
-        db.GetColumnDb(Arg.Any<PbtColumns>()).Returns(call => _db.GetColumnDb(call.Arg<PbtColumns>()));
+        IColumnsDb<PbtColumns> db = HookedDb(() => _db.CreateSnapshot());
         db.ColumnKeys.Returns(_db.ColumnKeys);
-        db.CreateSnapshot().Returns(_ => _db.CreateSnapshot());
         db.StartWriteBatch().Returns(_ => batch = new FailingMetadataBatch(_db.StartWriteBatch()));
         PbtRocksDbPersistence persistence = new(db, _config, _log);
 

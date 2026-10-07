@@ -3,17 +3,12 @@
 
 using System.Threading.Tasks;
 using Autofac;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
-using Nethermind.State.Flat;
 using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -24,12 +19,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class MigrationScopeProviderTests
 {
-    private const ulong Activation = 48;
-
-    private static ISpecProvider Specs() => new CustomSpecProvider(
-        ((ForkActivation)0, Prague.Instance),
-        (ForkActivation.TimestampOnly(Activation), new OverridableReleaseSpec(Prague.Instance) { IsEip8347Enabled = true }));
-
     private static BlockHeader Header(ulong number, ulong timestamp) => Build.A.BlockHeader.WithNumber(number).WithTimestamp(timestamp).TestObject;
 
     [TestCase(true, null, "flat", TestName = "a read goes to flat when it holds the state")]
@@ -41,9 +30,9 @@ public class MigrationScopeProviderTests
     {
         IWorldStateScopeProvider flat = Substitute.For<IWorldStateScopeProvider>();
         IWorldStateScopeProvider pbt = Substitute.For<IWorldStateScopeProvider>();
-        using MigrationReadOnlyScopeProvider provider = new(flat, pbt, Specs());
-        BlockHeader baseBlock = Header(1, Activation - 1);
-        BlockHeader? target = targetBinary is { } binary ? Header(2, binary ? Activation : Activation - 1) : null;
+        using MigrationReadOnlyScopeProvider provider = new(flat, pbt, MigrationTestSpecs.Create());
+        BlockHeader baseBlock = Header(1, MigrationTestSpecs.Activation - 1);
+        BlockHeader? target = targetBinary is { } binary ? Header(2, binary ? MigrationTestSpecs.Activation : MigrationTestSpecs.Activation - 1) : null;
         flat.HasRoot(baseBlock).Returns(flatHolds);
         LocalMetrics metrics = new();
         IWorldStateScopeProvider selected = expected == "flat" ? flat : pbt;
@@ -68,13 +57,13 @@ public class MigrationScopeProviderTests
     {
         using IContainer container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new FlatDbConfig { Enabled = true }))
-            .AddSingleton<ISpecProvider>(Specs())
+            .AddSingleton<ISpecProvider>(MigrationTestSpecs.Create())
             .Build();
         await using PbtTestContext pbt = new();
-        MigrationScopeProvider provider = new(container.Resolve<FlatWorldStateManager>(), pbt.WorldStateManager, Specs(), UnavailableStateHeaderProvider.Instance);
+        MigrationScopeProvider provider = new(container.Resolve<FlatWorldStateManager>(), pbt.WorldStateManager, MigrationTestSpecs.Create(), UnavailableStateHeaderProvider.Instance);
         BlockHeader genesis = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         BlockHeader block1 = Build.A.BlockHeader.WithParent(genesis).WithTimestamp(12).TestObject;
-        BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(Activation).TestObject;
+        BlockHeader activation = Build.A.BlockHeader.WithParent(block1).WithTimestamp(MigrationTestSpecs.Activation).TestObject;
 
         // Commit genesis into PBT: before activation main processing still runs on flat alone.
         using (IWorldStateScopeProvider.IScope scope = pbt.WorldStateManager.GlobalWorldState.BeginScope(null, new LocalMetrics()))

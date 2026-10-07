@@ -5,7 +5,6 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Metric;
@@ -16,7 +15,6 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 using NSubstitute;
-using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -64,9 +62,7 @@ public class PbtMetricsTests
     public async Task CommittingABlock_TimesTheWriteBatchAndTheFoldsThatDidWork()
     {
         await using PbtTestContext ctx = new();
-        PbtScopeProvider provider = ctx.CreateScopeProvider();
-
-        using IWorldStateScopeProvider.IScope scope = provider.BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null);
 
         using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
         {

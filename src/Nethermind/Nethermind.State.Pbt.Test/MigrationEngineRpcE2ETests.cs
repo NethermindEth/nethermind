@@ -1,23 +1,15 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using System.Text.Json;
 using Autofac;
 using Nethermind.Api;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.BlockAccessLists;
 using Nethermind.Blockchain.Find;
-using Nethermind.Consensus.Processing;
-using Nethermind.Core.BlockAccessLists;
-using Nethermind.Blockchain.Tracing;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -40,7 +32,6 @@ public class MigrationEngineRpcE2ETests
     {
         using TempPath scratch = TempPath.GetTempDirectory();
         await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat,
-            Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"),
             builder => builder.AddModule(new MergePluginModule()).AddSingleton<IEngineRequestsTracker, NoEngineRequestsTracker>());
         await harness.Scheduler.DisposeAsync();
         IEngineRpcModule engine = harness.Container.Resolve<IEngineRpcModule>();
@@ -65,7 +56,7 @@ public class MigrationEngineRpcE2ETests
         Block unavailable = branch[^2];
         Block head = branch[^1];
         Assert.That(harness.Reader.HasStateForBlock(unavailable.Header), Is.False);
-        head.EncodedBlockAccessList = Bytes.FromHexString(harness.Expected["a4"].GetProperty("balRlp").GetString()!);
+        head.EncodedBlockAccessList = harness.BalRlp("a4");
         ExecutionPayloadV4 repeatedPayload = ExecutionPayloadV4.Create(head);
         for (int attempt = 0; attempt < 2; attempt++)
         {
@@ -105,25 +96,7 @@ public class MigrationEngineRpcE2ETests
             Assert.That(debug.debug_migrationProgress().Data.Binary!.CursorHash, Is.EqualTo(anchorHash));
         }
 
-        IBlockAccessListStore accessLists = harness.Container.Resolve<IBlockAccessListStore>();
-        for (int index = 0; index < branch.Length; index++)
-        {
-            Block block = branch[index];
-            block.Header.IsPostMerge = true;
-            block.EncodedBlockAccessList = Bytes.FromHexString(harness.Expected[$"a{index + 1}"].GetProperty("balRlp").GetString()!);
-            block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList);
-            accessLists.Insert(block.Number, block.Hash!, block.EncodedBlockAccessList);
-            foreach (IBlockPreprocessorStep preprocessor in harness.Container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
-            harness.Tree.SuggestBlock(block);
-        }
-        IBlockchainProcessor processor = harness.Container.Resolve<IMainProcessingContext>().BlockchainProcessor;
-        foreach (Block block in branch)
-        {
-            // The activation block needs its parent in PBT, which the background BAL replay provides.
-            if (block == head) harness.WaitForPbt(branch[^2].Header);
-            Block? processed = processor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts, NullBlockTracer.Instance);
-            Assert.That(processed?.Hash, Is.EqualTo(block.Hash));
-        }
+        harness.ProcessBranch(["a1", "a2", "a3", "a4"], expectPbt: false);
         ResultWrapper<PayloadStatusV1> recovered = await engine.engine_newPayloadV5(repeatedPayload, [], head.ParentBeaconBlockRoot, []);
         using (Assert.EnterMultipleScope())
         {
@@ -138,7 +111,7 @@ public class MigrationEngineRpcE2ETests
         Assert.That(balance.Result.ResultType, Is.EqualTo(ResultType.Success), balance.Result.Error);
         using JsonDocument allocation = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(harness.FixtureDirectory, "states", "a4.alloc.json")));
         string expectedBalance = allocation.RootElement.GetProperty(Address.Zero.ToString()).GetProperty("balance").GetString()!;
-        UInt256 balanceValue = MigrationLifecycleHarness.ParseQuantity(expectedBalance);
+        UInt256 balanceValue = Eip8347FixtureState.ParseQuantity(expectedBalance);
         IResultWrapper proof = eth.eth_getProof(Address.Zero, [], requested);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoice = await engine.engine_forkchoiceUpdatedV4(
             new ForkchoiceStateV1(head.Hash!, anchorHash, anchorHash));

@@ -20,8 +20,7 @@ public class PbtAccountTests
         byte[] code = Bytes.FromHexString(codeHex);
         Account account = new Account(7, 9).WithChangedCodeHash(Keccak.Compute(code));
         PbtAccount stem = PbtAccount.From(account, code.Length == 0 ? null : new CodeInfo(code));
-        byte[] encoded = new byte[stem.EncodedLength];
-        stem.Encode(encoded);
+        byte[] encoded = stem.Encoded();
         PbtAccount decoded = PbtAccount.Decode(encoded);
         Account rebalanced = account.WithChangedBalance(10);
 

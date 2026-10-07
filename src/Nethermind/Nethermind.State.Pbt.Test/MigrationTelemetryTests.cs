@@ -7,7 +7,6 @@ using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Logging;
@@ -32,16 +31,16 @@ public class MigrationTelemetryTests
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("running", null, null)));
         Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.Null, "no state before the anchor import");
         await harness.Publish();
-        Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(Root("anchor")));
+        Assert.That(telemetry.GetShadowRoot(harness.Blocks["anchor"].Hash!), Is.EqualTo(harness.PbtRoot("anchor")));
         Assert.That(await harness.Follower.Follow(harness.Blocks["a2"].Header, default), Is.True, harness.Follower.Error);
 
         MigrationProgressForRpc following = telemetry.GetProgress();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(following.Phase, Is.EqualTo("running"));
-            Assert.That(following.Binary, Is.EqualTo(new MigrationDirectionForRpc("following", 2, harness.Blocks["a2"].Hash!, Root("a2"), "")));
+            Assert.That(following.Binary, Is.EqualTo(new MigrationDirectionForRpc("following", 2, harness.Blocks["a2"].Hash!, harness.PbtRoot("a2"), "")));
             Assert.That(following.Merkle, Is.Null);
-            Assert.That(telemetry.GetShadowRoot(harness.Blocks["a2"].Hash!), Is.EqualTo(Root("a2")));
+            Assert.That(telemetry.GetShadowRoot(harness.Blocks["a2"].Hash!), Is.EqualTo(harness.PbtRoot("a2")));
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a4"].Hash!), Is.Null, "the post-activation shadow comes from the Merkle follower, which has not replayed yet");
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a5"].Hash!), Is.Null, "known header without retained state");
             Assert.That(telemetry.GetShadowRoot(Hash256.Zero), Is.Null);
@@ -58,10 +57,10 @@ public class MigrationTelemetryTests
         MigrationProgressForRpc transition = telemetry.GetProgress();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(transition.Binary, Is.EqualTo(new MigrationDirectionForRpc("parked", 3, harness.Blocks["a3"].Hash!, Root("a3"), "")));
+            Assert.That(transition.Binary, Is.EqualTo(new MigrationDirectionForRpc("parked", 3, harness.Blocks["a3"].Hash!, harness.PbtRoot("a3"), "")));
             Assert.That(transition.Merkle, Is.EqualTo(new MigrationDirectionForRpc("synced", 4, harness.Blocks["a4"].Hash!, merkleRoot, "")));
             Assert.That(telemetry.GetShadowRoot(harness.Blocks["a4"].Hash!), Is.EqualTo(merkleRoot));
-            Assert.That(telemetry.GetShadowRoot(harness.Blocks["a3"].Hash!), Is.EqualTo(Root("a3")), "pre-activation shadow stays the PBT root");
+            Assert.That(telemetry.GetShadowRoot(harness.Blocks["a3"].Hash!), Is.EqualTo(harness.PbtRoot("a3")), "pre-activation shadow stays the PBT root");
         }
         AssertFixture("transition", transition);
         merkle.Error = "no BAL";
@@ -71,8 +70,6 @@ public class MigrationTelemetryTests
         harness.BlockTree.ForkChoiceUpdated(harness.Blocks["a4"].Hash!, Hash256.Zero);
         Assert.That(telemetry.GetProgress(), Is.EqualTo(new MigrationProgressForRpc("done", null, null)));
         AssertFixture("done", telemetry.GetProgress());
-
-        Hash256 Root(string name) => new(harness.Metadata[name].GetProperty("pbtRoot").GetString()!);
     }
 
     [Test]
@@ -95,7 +92,7 @@ public class MigrationTelemetryTests
         {
             Assert.That(stalled.Binary!.Phase, Is.EqualTo("stalled"));
             Assert.That(stalled.Binary.CursorHash, Is.EqualTo(harness.Blocks["anchor"].Hash));
-            Assert.That(stalled.Binary.ShadowRoot, Is.EqualTo(new Hash256(harness.Metadata["anchor"].GetProperty("pbtRoot").GetString()!)));
+            Assert.That(stalled.Binary.ShadowRoot, Is.EqualTo(harness.PbtRoot("anchor")));
             Assert.That(stalled.Binary.Error, Is.Not.Empty);
             Assert.That(stalled.Merkle, Is.Null);
         }

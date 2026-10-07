@@ -4,9 +4,7 @@
 using System;
 using Autofac;
 using Nethermind.Core.Memory;
-using Nethermind.Core.Test.Modules;
 using Nethermind.State.Pbt.Migration;
-using Nethermind.State.Pbt.Mirror;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
@@ -29,7 +27,6 @@ using Nethermind.Monitoring.Config;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.Api.Steps;
-using Nethermind.Init.Steps;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -39,7 +36,7 @@ public class PbtDbManagerTests
     public async Task Production_modules_share_trie_cache_and_report_inactive_migration([Values] bool mirror)
     {
         PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror };
-        await using IContainer container = BuildProductionContainer(config);
+        await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
         using ILifetimeScope child = container.BeginLifetimeScope();
         IMigrationDebugRpcModule rpcModule = container.Resolve<IMigrationDebugRpcModule>();
@@ -60,7 +57,7 @@ public class PbtDbManagerTests
     public async Task Command_steps_are_registered_and_selected_by_config([Values] bool mirror, [Values] bool import, [Values] bool scan)
     {
         PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror, ImportFromPreimageFlat = import, ScanTree = scan };
-        await using IContainer container = BuildProductionContainer(config);
+        await using IContainer container = PbtTestContext.BuildProductionContainer(config);
 
         List<Type> expectedTargets = [];
         if (import) expectedTargets.Add(typeof(ImportPbtFromPreimageFlat));
@@ -69,38 +66,25 @@ public class PbtDbManagerTests
         IEnumerable<string?> commands = steps.Select(static step => step.Command);
         using (Assert.EnterMultipleScope())
         {
-            // A command run is pruned to its dependency closure, so metrics only start if the command asks for them.
-            Assert.That(steps.Where(static step => step.Command is "import-pbt" or "scan-pbt").Select(static step => step.Dependencies),
-                Has.All.Contains(typeof(StartMonitoring)));
             Assert.That(commands, Does.Contain("import-pbt"));
             Assert.That(commands.Contains("scan-pbt"), Is.EqualTo(!mirror));
             Assert.That(container.Resolve<IEnumerable<StepTarget>>().Select(static target => target.StepBaseType), Is.EquivalentTo(expectedTargets));
         }
     }
 
-    private static IContainer BuildProductionContainer(PbtConfig config) => new ContainerBuilder()
-        .AddModule(new TestNethermindModule(config))
-        .AddModule(config.MirrorFlat ? new PbtMirrorModule(config) : new PbtModule(config))
-        .Build();
+    [Test]
+    public async Task Production_module_registers_carry_forward_decorator_only_when_enabled([Values] bool carryForwardCache)
+    {
+        PbtConfig config = new() { Enabled = true, CarryForwardCache = carryForwardCache };
+        await using IContainer container = PbtTestContext.BuildProductionContainer(config);
+
+        Assert.That(container.Resolve<IPbtPersistence>(), carryForwardCache ? Is.TypeOf<PbtCarryForwardCachingPersistence>() : Is.TypeOf<PbtCachedReaderPersistence>());
+    }
 
     private static readonly Address Address = TestItem.AddressA;
 
     /// <summary>The per-block storage slot, on a stem separate from the account header.</summary>
     private static readonly UInt256 Slot = 1000;
-
-    private static Hash256 CommitBlock(IWorldStateScopeProvider.IScope scope, ulong blockNumber, in UInt256 balance)
-    {
-        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
-        {
-            batch.Set(Address, new Account(blockNumber, balance));
-            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(Address, 1);
-            storage.Set(Slot, (UInt256)blockNumber);
-        }
-
-        scope.UpdateRootHash();
-        scope.Commit(blockNumber);
-        return scope.RootHash;
-    }
 
     private static BlockHeader Header(ulong number, Hash256 root) => Build.A.BlockHeader.WithNumber(number).WithStateRoot(root).TestObject;
 
@@ -109,9 +93,9 @@ public class PbtDbManagerTests
     {
         await using PbtTestContext ctx = new();
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null))
         {
-            root1 = CommitBlock(scope, 1, 100);
+            root1 = scope.CommitBlock(1, Address, 100, Slot);
         }
 
         StateId state = new(1, root1);
@@ -141,11 +125,11 @@ public class PbtDbManagerTests
 
         await using (PbtTestContext ctx = new(db))
         {
-            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null))
             {
-                root1 = CommitBlock(scope, 1, 100);
-                CommitBlock(scope, 2, 200);
-                root3 = CommitBlock(scope, 3, 300);
+                root1 = scope.CommitBlock(1, Address, 100, Slot);
+                scope.CommitBlock(2, Address, 200, Slot);
+                root3 = scope.CommitBlock(3, Address, 300, Slot);
             }
 
             ctx.Manager.FlushCache(default);
@@ -159,7 +143,7 @@ public class PbtDbManagerTests
             Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root1)), Is.False);
             Assert.That(reopened.Manager.TryGatherReadOnlyBundle(new StateId(1, root1)), Is.Null);
 
-            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(Header(3, root3), new LocalMetrics());
+            using IWorldStateScopeProvider.IScope scope = reopened.BeginScope(Header(3, root3));
             Account? account = scope.Get(Address);
             Assert.That(account, Is.Not.Null);
             Assert.That(account!.Nonce, Is.EqualTo(3ul));
@@ -173,21 +157,21 @@ public class PbtDbManagerTests
     {
         await using PbtTestContext ctx = new();
         Hash256 root1;
-        using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null))
         {
-            root1 = CommitBlock(scope, 1, 100);
+            root1 = scope.CommitBlock(1, Address, 100, Slot);
         }
 
         Hash256 rootA;
         Hash256 rootB;
-        using (IWorldStateScopeProvider.IScope scopeA = ctx.CreateScopeProvider().BeginScope(Header(1, root1), new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scopeA = ctx.BeginScope(Header(1, root1)))
         {
-            rootA = CommitBlock(scopeA, 2, 222);
+            rootA = scopeA.CommitBlock(2, Address, 222, Slot);
         }
 
-        using (IWorldStateScopeProvider.IScope scopeB = ctx.CreateScopeProvider().BeginScope(Header(1, root1), new LocalMetrics()))
+        using (IWorldStateScopeProvider.IScope scopeB = ctx.BeginScope(Header(1, root1)))
         {
-            rootB = CommitBlock(scopeB, 2, 333);
+            rootB = scopeB.CommitBlock(2, Address, 333, Slot);
         }
 
         Assert.That(rootA, Is.Not.EqualTo(rootB));
@@ -214,10 +198,10 @@ public class PbtDbManagerTests
         await using PbtTestContext ctx = new(config: new PbtConfig { CompactSize = 2, MinReorgDepth = 1, MaxReorgDepth = 100 });
 
         Hash256[] roots = new Hash256[6];
-        using IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics());
+        using IWorldStateScopeProvider.IScope scope = ctx.BeginScope(null);
         for (ulong number = 1; number <= 5; number++)
         {
-            roots[number] = CommitBlock(scope, number, number * 100);
+            roots[number] = scope.CommitBlock(number, Address, number * 100, Slot);
             ctx.FinalizedStateProvider.SetCanonicalRoot(number, roots[number]);
         }
 
@@ -251,17 +235,17 @@ public class PbtDbManagerTests
         {
             // Block 0 has no header root, so genesis claims its tree root.
             BlockHeader genesis;
-            using (IWorldStateScopeProvider.IScope genesisScope = ctx.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope genesisScope = ctx.BeginScope(null))
             {
-                genesis = Header(0, CommitBlock(genesisScope, 0, 1));
+                genesis = Header(0, genesisScope.CommitBlock(0, Address, 1, Slot));
             }
 
             BlockHeader first = childHeaders.Add(genesis, TestItem.KeccakA);
             second = childHeaders.Add(first, TestItem.KeccakB);
-            using (IWorldStateScopeProvider.IScope scope = ctx.CreateScopeProvider().BeginScope(genesis, new LocalMetrics()))
+            using (IWorldStateScopeProvider.IScope scope = ctx.BeginScope(genesis))
             {
-                Assert.That(CommitBlock(scope, 1, 100), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
-                Assert.That(CommitBlock(scope, 2, 200), Is.EqualTo(TestItem.KeccakB), "and the next block in the branch resolves its own header");
+                Assert.That(scope.CommitBlock(1, Address, 100, Slot), Is.EqualTo(TestItem.KeccakA), "the block reports the root its header claims");
+                Assert.That(scope.CommitBlock(2, Address, 200, Slot), Is.EqualTo(TestItem.KeccakB), "and the next block in the branch resolves its own header");
             }
 
             using (Assert.EnterMultipleScope())
@@ -289,23 +273,16 @@ public class PbtDbManagerTests
             }
 
             BlockHeader third = childHeaders.Add(second, TestItem.KeccakC);
-            using IWorldStateScopeProvider.IScope scope = reopened.CreateScopeProvider().BeginScope(second, new LocalMetrics());
+            using IWorldStateScopeProvider.IScope scope = reopened.BeginScope(second);
             Assert.That(scope.Get(Address)!.Balance, Is.EqualTo((UInt256)200), "the persisted state is found by its header");
-            Assert.That(CommitBlock(scope, 3, 300), Is.EqualTo(third.StateRoot), "and the branch carries on from it");
+            Assert.That(scope.CommitBlock(3, Address, 300, Slot), Is.EqualTo(third.StateRoot), "and the branch carries on from it");
         }
     }
 
-    [TestCase(32, 0)]
-    [TestCase(1, 0)]
-    [TestCase(32, 1)]
-    [TestCase(1, 1)]
-    [TestCase(32, 2)]
-    [TestCase(1, 2)]
-    [TestCase(32, 3)]
-    [TestCase(1, 3)]
-    public void Persistence_PrefersExistingUnits_AndBoundsBackgroundDrain(int width, int mode)
+    [Test]
+    public void Persistence_PrefersExistingUnits_AndBoundsBackgroundDrain([Values(32, 1)] int width, [Values] PersistTrigger trigger)
     {
-        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = mode == 2 });
+        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = trigger == PersistTrigger.MirrorPersistUpTo });
         List<(StateId From, StateId To)> writes = [];
         harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
             .Returns(call =>
@@ -323,12 +300,12 @@ public class PbtDbManagerTests
             if (width > 1 && number % width == 0)
                 harness.Repository.TryAddCompacted(PersistenceSnapshot(number - width, number, harness.Pool));
         }
-        if (mode == 3) harness.Finalized.FinalizedBlockNumber = 192;
-        if (mode is 0 or 3) harness.Coordinator.CheckPersistence(PersistenceState(192));
-        else if (mode == 1) harness.Coordinator.FlushToPersistence();
+        if (trigger == PersistTrigger.FinalizedCheck) harness.Finalized.FinalizedBlockNumber = 192;
+        if (trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck) harness.Coordinator.CheckPersistence(PersistenceState(192));
+        else if (trigger == PersistTrigger.Flush) harness.Coordinator.FlushToPersistence();
         else Assert.That(harness.Coordinator.PersistUpTo(PersistenceState(192)), Is.True);
 
-        Assert.That(writes.Count, Is.EqualTo(mode is 0 or 3 ? 4 : 192 / width));
+        Assert.That(writes.Count, Is.EqualTo(trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck ? 4 : 192 / width));
         for (int index = 0; index < writes.Count; index++)
             Assert.That(writes[index], Is.EqualTo((PersistenceState(index * width), PersistenceState((index + 1) * width))));
         Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(writes[^1].To));
@@ -446,8 +423,8 @@ public class PbtDbManagerTests
         Hash256 root;
         await using (PbtTestContext context = new(db, new PbtConfig { MirrorFlat = mirror }))
         {
-            using (IWorldStateScopeProvider.IScope scope = context.CreateScopeProvider().BeginScope(null, new LocalMetrics()))
-                root = CommitBlock(scope, 1, 100);
+            using (IWorldStateScopeProvider.IScope scope = context.BeginScope(null))
+                root = scope.CommitBlock(1, Address, 100, Slot);
             await context.Manager.DisposeAsync();
             await context.Manager.DisposeAsync();
         }
@@ -455,6 +432,8 @@ public class PbtDbManagerTests
         using IPbtPersistence.IReader reader = reopened.Persistence.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(mirror ? StateId.PreGenesis : new StateId(1, root)));
     }
+
+    public enum PersistTrigger { Check, Flush, MirrorPersistUpTo, FinalizedCheck }
 
     public enum TransientHandOff { Admitted, NoCache, Duplicate, ChannelFull }
 

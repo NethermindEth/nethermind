@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 
@@ -81,6 +80,34 @@ internal static class PbtNodeGroupEncoder
         int trailerLength = PbtNodeGroupCodec.GetTrailerLength(availability, descendantMask, descendantBytes);
         PbtNodeGroupCodec.WriteFooter(writer.GetSpan(trailerLength), offsets, availability, descendantMask, descendantBytes);
         writer.Advance(trailerLength);
+    }
+
+    /// <summary>Encodes a canonical group payload into an exactly sized array.</summary>
+    /// <inheritdoc cref="Encode{TPath}(ref BufferWriter, TPath, IReadOnlyList{PbtNodeRecord}, ReadOnlySpan{long})"/>
+    public static byte[] Encode<TPath>(TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, ReadOnlySpan<long> descendantBytes)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        int capacity = PbtNodeGroupCodec.HeaderLength + PbtNodeGroupCodec.MaxTrailerLength;
+        foreach (PbtNodeRecord record in nodes) capacity += record.Encoding.Length;
+        BufferWriter writer = new(new byte[capacity]);
+        Encode(ref writer, groupKey, nodes, descendantBytes);
+        return writer.WrittenSpan.ToArray();
+    }
+
+    /// <summary>Encodes a canonical group payload without descendants into memory rented from <paramref name="provider"/>.</summary>
+    public static RefCountingMemory EncodeToMemory<TPath>(TPath groupKey, IReadOnlyList<PbtNodeRecord> nodes, IRefCountingMemoryProvider provider)
+        where TPath : struct, IPbtNodePath<TPath>
+    {
+        BufferWriter writer = new(provider);
+        try
+        {
+            Encode(ref writer, groupKey, nodes, default);
+            return writer.Detach()!;
+        }
+        finally
+        {
+            writer.Dispose();
+        }
     }
 
     private static void ValidateNodePath<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>

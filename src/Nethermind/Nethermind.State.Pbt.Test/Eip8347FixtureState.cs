@@ -8,6 +8,8 @@ using System.Text.Json;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Json;
@@ -38,6 +40,26 @@ internal static class Eip8347FixtureState
             if (block.GetProperty("name").GetString() == name) return block.Clone();
         throw new ArgumentException("Unknown fixture", nameof(name));
     }
+
+    /// <summary>The path of <paramref name="file"/> among the canonical artifacts of fixture <paramref name="name"/>.</summary>
+    public static string ArtifactPath(string name, string file) => Path.Combine(Directory, "canonical", name, file);
+
+    /// <summary>The independently computed PBT root of fixture <paramref name="name"/>.</summary>
+    public static Hash256 PbtRoot(string name) => new(Metadata(name).GetProperty("pbtRoot").GetString()!);
+
+    /// <summary>A header at fixture <paramref name="name"/>'s number and MPT root, with a zero timestamp.</summary>
+    public static BlockHeader AnchorHeader(string name)
+    {
+        JsonElement metadata = Metadata(name);
+        return Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
+            .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
+    }
+
+    /// <summary>The reference allocation of fixture <paramref name="name"/>.</summary>
+    public static JsonDocument LoadAllocation(string name) => JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Directory, "states", name + ".alloc.json")));
+
+    /// <summary>Parses a big-endian hex quantity, which may have an odd number of digits.</summary>
+    public static UInt256 ParseQuantity(string value) => new(Bytes.FromHexString(value.Length % 2 == 0 ? value : "0x0" + value[2..]), true);
 
     /// <summary>Writes the logical state of a fixture snapshot, addressed through its preimages, as the pre-genesis to <paramref name="anchor"/> transition.</summary>
     public static void ReplayInto(IPersistence persistence, IKeyValueStore codes, BlockHeader anchor, Stream snapshot, Stream preimages)

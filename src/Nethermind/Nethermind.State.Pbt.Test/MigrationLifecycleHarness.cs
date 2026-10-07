@@ -10,14 +10,17 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Tracing;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
-using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.ChainSpecStyle;
@@ -51,7 +54,42 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
     public Hash256 ExpectedShadowRoot(string name) =>
         new(expected[name].GetProperty(expected[name].GetProperty("binary").GetBoolean() ? "mptRoot" : "pbtRoot").GetString()!);
 
-    public static UInt256 ParseQuantity(string value) => new(Bytes.FromHexString(value.Length % 2 == 0 ? value : "0x0" + value[2..]), true);
+    public byte[] BalRlp(string name) => Bytes.FromHexString(expected[name].GetProperty("balRlp").GetString()!);
+
+    /// <summary>Stores the fixture BAL of <paramref name="name"/>, recovers its senders and suggests the block to <see cref="Tree"/>.</summary>
+    public void Prepare(string name)
+    {
+        Block block = blocks[name];
+        block.Header.IsPostMerge = true;
+        block.EncodedBlockAccessList = BalRlp(name);
+        block.BlockAccessList = Rlp.Decode<ReadOnlyBlockAccessList>(block.EncodedBlockAccessList);
+        container.Resolve<IBlockAccessListStore>().Insert(block.Number, block.Hash!, block.EncodedBlockAccessList);
+        foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
+        Tree.SuggestBlock(block);
+    }
+
+    /// <summary>Prepares and processes <paramref name="names"/> in order, waiting for PBT at the parent of each binary block.</summary>
+    /// <param name="names">The fixture blocks of one branch, parents first.</param>
+    /// <param name="expectPbt">Whether to also assert the shadow root PBT reports for every processed block.</param>
+    public void ProcessBranch(string[] names, bool expectPbt)
+    {
+        foreach (string name in names) Prepare(name);
+        IBlockchainProcessor processor = container.Resolve<IMainProcessingContext>().BlockchainProcessor;
+        foreach (string name in names)
+        {
+            Block block = blocks[name];
+            if (expected[name].GetProperty("binary").GetBoolean())
+                WaitForPbt(Tree.FindHeader(block.ParentHash!, BlockTreeLookupOptions.None)!);
+            Assert.That(processor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
+                NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
+        }
+        if (!expectPbt) return;
+        foreach (string name in names)
+        {
+            bool binary = expected[name].GetProperty("binary").GetBoolean();
+            Assert.That(() => Telemetry.GetShadowRoot(blocks[name].Hash!), Is.EqualTo(binary ? null : PbtRoot(name)).After(30_000, 50), name);
+        }
+    }
 
     /// <summary>Asserts every account of the fixture's reference allocation for <paramref name="name"/> through <see cref="Reader"/>.</summary>
     public void AssertAllocation(string name)
@@ -65,18 +103,19 @@ internal sealed class MigrationLifecycleHarness(IContainer container, Dictionary
             JsonElement value = account.Value;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(reader.GetBalance(header, address), Is.EqualTo(ParseQuantity(value.GetProperty("balance").GetString()!)), $"{name} balance {address}");
-                Assert.That(reader.GetNonce(header, address), Is.EqualTo(value.TryGetProperty("nonce", out JsonElement nonce) ? (ulong)ParseQuantity(nonce.GetString()!) : 0UL), $"{name} nonce {address}");
+                Assert.That(reader.GetBalance(header, address), Is.EqualTo(Eip8347FixtureState.ParseQuantity(value.GetProperty("balance").GetString()!)), $"{name} balance {address}");
+                Assert.That(reader.GetNonce(header, address), Is.EqualTo(value.TryGetProperty("nonce", out JsonElement nonce) ? (ulong)Eip8347FixtureState.ParseQuantity(nonce.GetString()!) : 0UL), $"{name} nonce {address}");
                 Assert.That(reader.GetCode(header, address), Is.EqualTo(value.TryGetProperty("code", out JsonElement code) ? Bytes.FromHexString(code.GetString()!) : []), $"{name} code {address}");
             }
             if (value.TryGetProperty("storage", out JsonElement storage))
                 foreach (JsonProperty slot in storage.EnumerateObject())
-                    Assert.That(reader.GetStorage(header, address, ParseQuantity(slot.Name)), Is.EqualTo(ParseQuantity(slot.Value.GetString()!)), $"{name} slot {address}/{slot.Name}");
+                    Assert.That(reader.GetStorage(header, address, Eip8347FixtureState.ParseQuantity(slot.Name)), Is.EqualTo(Eip8347FixtureState.ParseQuantity(slot.Value.GetString()!)), $"{name} slot {address}/{slot.Name}");
         }
     }
 
-    public static async Task<MigrationLifecycleHarness> Create(string targetPath, bool portable, FlatLayout layout, string fixtureDirectory, Action<ContainerBuilder>? configure = null, bool migration = true)
+    public static async Task<MigrationLifecycleHarness> Create(string targetPath, bool portable, FlatLayout layout, Action<ContainerBuilder>? configure = null, bool migration = true)
     {
+        string fixtureDirectory = Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys");
         using Stream genesisInput = File.OpenRead(Path.Combine(fixtureDirectory, "genesis.json"));
         ChainSpec chain = new GethGenesisLoader(new EthereumJsonSerializer()).Load(genesisInput);
         using JsonDocument fixture = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(fixtureDirectory, "blocks.json")));

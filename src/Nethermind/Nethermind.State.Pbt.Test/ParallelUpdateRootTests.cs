@@ -7,13 +7,13 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 using NUnit.Framework;
+using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -90,21 +90,17 @@ public class ParallelUpdateRootTests
             (byte[] Key, byte[]? Value)[] writes = new (byte[], byte[]?)[mutations.Length];
             for (int index = 0; index < mutations.Length; index++)
                 writes[index] = (mutations[index].Key, zeroDeletes && mutations[index].Value is null ? new byte[32] : mutations[index].Value);
-            root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
+            root = store.Fold(root, writes);
             sequential.ApplyBatch(mutations);
-            foreach ((byte[] key, byte[]? value) in mutations)
-            {
-                if (value is null) oracle.Delete(key);
-                else oracle.Insert(key, value);
-            }
+            oracle.Apply(mutations);
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root, Is.EqualTo(sequential.RootHash));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                Assert.That(PhysicalRecords(store), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
-                Assert.That(TrieUpdater.UpdateRoot(reopened, root, PreparePartitions(writes), PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null), Is.EqualTo(root));
-                Assert.That(PhysicalRecords(reopened), Is.EqualTo(PhysicalRecords(store)));
+                Assert.That(store.PhysicalRecords(), Is.EqualTo(sequential.PhysicalPayloads.PhysicalRecords()));
+                Assert.That(reopened.Fold(root, writes), Is.EqualTo(root));
+                Assert.That(reopened.PhysicalRecords(), Is.EqualTo(store.PhysicalRecords()));
             }
         }
     }
@@ -154,10 +150,7 @@ public class ParallelUpdateRootTests
             foreach ((string key, byte[] value) in surviving)
                 remaining.Add((Bytes.FromHexString(key), value));
             rebuilt.ApplyBatch(remaining);
-            IReadOnlyList<PbtNodeRecord> records = target.EnumerateRecords();
-            string[] canonicalRecords = new string[records.Count];
-            for (int index = 0; index < records.Count; index++)
-                canonicalRecords[index] = Convert.ToHexString(records[index].Path.ToEncodedArray()) + Convert.ToHexString(records[index].Encoding.Span);
+            string[] canonicalRecords = target.CanonicalRecords();
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
@@ -167,30 +160,22 @@ public class ParallelUpdateRootTests
         }
     }
 
-    [TestCase(new[] { 2000 }, 1024, new[] { 1 })]
-    [TestCase(new[] { 100, 100, 100 }, 1024, new[] { 3 })]
-    [TestCase(new[] { 500, 600, 700 }, 1024, new[] { 3 })]
-    [TestCase(new[] { 1024, 1024, 1024 }, 1024, new[] { 1, 2, 3 })]
-    [TestCase(new[] { 500, 600, 1024, 10 }, 1024, new[] { 2, 4 })]
-    [TestCase(new[] { 10, 5000, 10, 5000 }, 1024, new[] { 2, 4 })]
-    [TestCase(new[] { 1, 1, 1 }, 0, new[] { 1, 2, 3 })]
-    public void Bucket_runs_merge_consecutive_buckets_up_to_the_minimum(int[] counts, int minOperations, int[] expectedRunEnds)
+    [TestCase(new[] { 2000 }, new long[] { 0 }, 1024, new[] { 1 })]
+    [TestCase(new[] { 100, 100, 100 }, new long[] { 0, 0, 0 }, 1024, new[] { 3 })]
+    [TestCase(new[] { 500, 600, 700 }, new long[] { 0, 0, 0 }, 1024, new[] { 3 })]
+    [TestCase(new[] { 1024, 1024, 1024 }, new long[] { 0, 0, 0 }, 1024, new[] { 1, 2, 3 })]
+    [TestCase(new[] { 500, 600, 1024, 10 }, new long[] { 0, 0, 0, 0 }, 1024, new[] { 2, 4 })]
+    [TestCase(new[] { 10, 5000, 10, 5000 }, new long[] { 0, 0, 0, 0 }, 1024, new[] { 2, 4 })]
+    [TestCase(new[] { 1, 1, 1 }, new long[] { 0, 0, 0 }, 0, new[] { 1, 2, 3 })]
+    // Zero-descendant cases cover the merging alone; the others keep the default large-subtree size of 32 KiB, which lowers the minimum to 16.
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 0, 0, 0, 0 }, FoldFanOut.DefaultMinOperationsPerWorker, new[] { 4 }, TestName = "Small buckets need the full minimum")]
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 40000, 0, 0, 0 }, FoldFanOut.DefaultMinOperationsPerWorker, new[] { 1, 4 }, TestName = "A large bucket cuts its own run early and leaves the next one whole")]
+    [TestCase(new[] { 20, 20, 140 }, new long[] { 20000, 20000, 0 }, FoldFanOut.DefaultMinOperationsPerWorker, new[] { 2, 3 }, TestName = "Descendants accumulate across the buckets of a run")]
+    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 20000, 20000, 20000, 0 }, FoldFanOut.DefaultMinOperationsPerWorker, new[] { 2, 4 }, TestName = "A cut forgets the descendants it already charged")]
+    public void Bucket_runs_merge_consecutive_buckets_up_to_their_own_minimum(int[] counts, long[] descendantBytes, int minOperations, int[] expectedRunEnds)
     {
         int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
-        // The harness fan-out asks the same minimum whatever is stored, so these cases cover the merging alone.
-        int runCount = PbtTreeHarness.FanOut(minOperations).PlanBucketRuns(counts, new long[counts.Length], runEnds);
-        Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
-    }
-
-    // Every case uses the default fan-out: 128 operations per run, or 16 once the run holds 32 KiB of descendants.
-    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 0, 0, 0, 0 }, new[] { 4 }, TestName = "Small buckets need the full minimum")]
-    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 40000, 0, 0, 0 }, new[] { 1, 4 }, TestName = "A large bucket cuts its own run early and leaves the next one whole")]
-    [TestCase(new[] { 20, 20, 140 }, new long[] { 20000, 20000, 0 }, new[] { 2, 3 }, TestName = "Descendants accumulate across the buckets of a run")]
-    [TestCase(new[] { 20, 20, 20, 140 }, new long[] { 20000, 20000, 20000, 0 }, new[] { 2, 4 }, TestName = "A cut forgets the descendants it already charged")]
-    public void Bucket_run_minimum_follows_its_own_descendants(int[] counts, long[] descendantBytes, int[] expectedRunEnds)
-    {
-        int[] runEnds = new int[PbtFourLevelGroupGeometry.BoundarySlots];
-        int runCount = PbtTreeHarness.DefaultFanOut.PlanBucketRuns(counts, descendantBytes, runEnds);
+        int runCount = (FoldFanOut.Default with { MinOperationsPerWorker = minOperations }).PlanBucketRuns(counts, descendantBytes, runEnds);
         Assert.That(runEnds.AsSpan(0, runCount).ToArray(), Is.EqualTo(expectedRunEnds));
     }
 
@@ -215,16 +200,16 @@ public class ParallelUpdateRootTests
         using BucketWorkerStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, PbtTreeHarness.DefaultFanOut, null);
+        ValueHash256 root = store.Fold(default, initial, foldQuota, PbtTreeHarness.DefaultFanOut, null);
         sequential.ApplyBatch(initial);
         store.Observe(coordinate: expectParallel);
-        root = TrieUpdater.UpdateRoot(store, root, PreparePartitions(changes), foldQuota, PbtTreeHarness.DefaultFanOut, null);
+        root = store.Fold(root, changes, foldQuota, PbtTreeHarness.DefaultFanOut, null);
         sequential.ApplyBatch(changes);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(store.ReadThreads, expectParallel ? Is.GreaterThan(1) : Is.EqualTo(1));
             Assert.That(root, Is.EqualTo(sequential.RootHash));
-            Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
+            Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(sequential.PhysicalPayloads.PhysicalRecords()));
             Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1));
         }
     }
@@ -266,9 +251,9 @@ public class ParallelUpdateRootTests
         using CoordinatedStore store = new();
         using PbtTreeHarness sequential = new();
         ConcurrencyController foldQuota = new(foldConcurrency);
-        ValueHash256 root = TrieUpdater.UpdateRoot(store, default, PreparePartitions(initial), foldQuota, fanOut, null);
+        ValueHash256 root = store.Fold(default, initial, foldQuota, fanOut, null);
         sequential.ApplyBatch(initial);
-        string[] initialRecords = PhysicalRecords(store.Inner);
+        string[] initialRecords = store.Inner.PhysicalRecords();
         (byte[] Key, byte[]? Value)[] changes = Changes(initial);
         using PbtPartitionBatches prepared = PreparePartitions(changes);
         store.Coordinate = true;
@@ -280,7 +265,7 @@ public class ParallelUpdateRootTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(store.Writes, Is.GreaterThan(0), "partial writes belong to the caller on failure");
-                Assert.That(PhysicalRecords(store.Inner), Is.Not.EqualTo(initialRecords));
+                Assert.That(store.Inner.PhysicalRecords(), Is.Not.EqualTo(initialRecords));
                 Assert.That(store.ArrivedWorkers, Is.EqualTo(2));
                 Assert.That(store.ActiveReads, Is.Zero, "all workers joined before failure returns");
                 Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1), "failed folds return their quota");
@@ -294,7 +279,7 @@ public class ParallelUpdateRootTests
         {
             Assert.That(store.ArrivedWorkers, Is.EqualTo(2), "both root slot folds reached the barrier concurrently");
             Assert.That(result, Is.EqualTo(sequential.RootHash));
-            Assert.That(PhysicalRecords(store.Inner), Is.EqualTo(PhysicalRecords(sequential.PhysicalPayloads)));
+            Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(sequential.PhysicalPayloads.PhysicalRecords()));
             Assert.That(store.ActiveReads, Is.Zero);
             Assert.That(store.DuplicateWrites, Is.False, "each group has one owner");
             Assert.That(AvailableWorkers(foldQuota), Is.EqualTo(foldConcurrency - 1), "completed folds return their quota");
@@ -355,11 +340,7 @@ public class ParallelUpdateRootTests
                 Assert.That(hash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize(path)), $"old subtree read at {path}");
                 if (path.BitDepth != 0) nonRootReads++;
             }
-            foreach ((byte[] key, byte[]? value) in changes)
-            {
-                if (value is null) oracle.Delete(key);
-                else oracle.Insert(key, value);
-            }
+            oracle.Apply(changes);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
@@ -400,9 +381,6 @@ public class ParallelUpdateRootTests
         public void Dispose() => _store.Dispose();
     }
 
-    private static PbtPartitionBatches PreparePartitions((byte[] Key, byte[]? Value)[] changes) =>
-        PbtStoreTestExtensions.PreparePartitions(changes);
-
     private static (byte[] Key, byte[]? Value)[] ZoneEntries(int populatedZones, bool compressed)
     {
         List<(byte[] Key, byte[]? Value)> entries = [];
@@ -434,17 +412,6 @@ public class ParallelUpdateRootTests
             entries[index] = (key, Value((byte)(index % 4 + 1)));
         }
         return entries;
-    }
-
-    private static string[] PhysicalRecords(PbtNodeGroupStore store) => PhysicalRecords(store.ExportPhysicalPayloads());
-
-    private static string[] PhysicalRecords(IEnumerable<PbtPhysicalPayload> payloads)
-    {
-        List<string> records = [];
-        foreach (PbtPhysicalPayload payload in payloads)
-            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
-        records.Sort(StringComparer.Ordinal);
-        return [.. records];
     }
 
     private sealed class CoordinatedStore : IPbtStore, IPbtNodeGroupSink, IDisposable
@@ -587,12 +554,5 @@ public class ParallelUpdateRootTests
             changes.Add((initial[index].Key, index % 2 == 0 ? null : Value((byte)index)));
         }
         return [.. changes];
-    }
-
-    private static byte[] Value(byte marker)
-    {
-        byte[] value = new byte[32];
-        value[^1] = marker;
-        return value;
     }
 }

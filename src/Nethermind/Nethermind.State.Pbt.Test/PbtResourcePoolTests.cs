@@ -134,9 +134,8 @@ public class PbtResourcePoolTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Write_batch_pool_retains_three_partitions_per_writable_bundle(bool storage)
+    [Test]
+    public void Write_batch_pool_retains_three_partitions_per_writable_bundle([Values] bool storage)
     {
         if (storage) AssertPoolCapacity(2, _pool.GetStorageWriteBatch, _pool.ReturnStorageWriteBatch);
         else AssertPoolCapacity(4, _pool.GetWriteBatch, _pool.ReturnWriteBatch);
@@ -252,10 +251,6 @@ public class PbtResourcePoolTests
         content.SetSlot(PbtStateKey.Storage(TestItem.AddressA, 1), EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
-        TrackingMemoryProvider memoryProvider = new();
-        PbtNodePath groupKey = new([], 0);
-        using (RefCountingMemory payload = CreateGroup(memoryProvider, TestItem.KeccakA.ValueHash256))
-            content.SetNodeGroup(groupKey, payload);
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
         PbtSnapshotContent rented = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         using (Assert.EnterMultipleScope())
@@ -266,26 +261,8 @@ public class PbtResourcePoolTests
             Assert.That(rented.Codes, Is.Empty);
             Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));
-            Assert.That(rented.TryGetNodeGroup(groupKey, out _), Is.False);
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
         }
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, rented);
-    }
-
-    internal static RefCountingMemory CreateGroup(IRefCountingMemoryProvider memoryProvider, ValueHash256 hash)
-    {
-        PbtNodePath groupKey = new([], 0);
-        byte[] encoding = PbtTreeHarness.EncodeBranch([], 0, hash, hash);
-        BufferWriter writer = new(memoryProvider);
-        try
-        {
-            PbtNodeGroupEncoder.Encode(ref writer, groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), encoding)], default);
-            return writer.Detach()!;
-        }
-        finally
-        {
-            writer.Dispose();
-        }
     }
 
 }

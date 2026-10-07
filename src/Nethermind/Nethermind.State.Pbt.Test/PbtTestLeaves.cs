@@ -3,12 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Test;
@@ -46,6 +47,20 @@ internal static class PbtTestLeaves
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
         into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), new ValueHash256(value.ToBigEndian())));
+
+    /// <summary>Reads every account preimage and its slot preimages from <paramref name="source"/>.</summary>
+    public static List<PbtAccountPreimages> ReadPreimages(Stream source)
+    {
+        List<PbtAccountPreimages> accounts = [];
+        PbtPreimageReader reader = new(source);
+        while (reader.ReadAccount(out Address? address, out uint count))
+        {
+            List<ValueHash256> slots = [];
+            for (uint index = 0; index < count; index++) slots.Add(reader.ReadSlot());
+            accounts.Add(new(address!, count, slots));
+        }
+        return accounts;
+    }
 
     /// <summary>A snapshot root calculation that consumes the written leaves and claims <paramref name="root"/> whatever they hold.</summary>
     public static Func<IEnumerable<RebuildEntry>, ValueHash256> Claiming(ValueHash256 root) => leaves =>

@@ -16,22 +16,16 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Db;
-using Nethermind.Evm.State;
-using Nethermind.Evm.Tracing;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
-using Nethermind.State;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.ScopeProvider;
 using NUnit.Framework;
@@ -45,8 +39,7 @@ public class MigrationLifecycleE2ETests
     public async Task Reference_transactions_cross_activation_and_recross_in_one_branch([Values] bool portable, [Values] FlatLayout layout)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, layout,
-            fixtureDirectory: Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"));
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable, layout);
         IContainer container = harness.Container;
         Dictionary<string, Block> blocks = harness.Blocks;
         Dictionary<string, JsonElement> expected = harness.Expected;
@@ -55,18 +48,8 @@ public class MigrationLifecycleE2ETests
         IMigrationTelemetry telemetry = harness.Telemetry;
         Assert.That(telemetry.GetShadowRoot(blocks["anchor"].Hash!), Is.EqualTo(harness.PbtRoot("anchor")));
         IMainProcessingContext processing = container.Resolve<IMainProcessingContext>();
-        IBlockAccessListStore bals = container.Resolve<IBlockAccessListStore>();
-        foreach ((string name, Block block) in blocks)
-        {
-            if (name == "anchor") continue;
-            byte[] balBytes = Bytes.FromHexString(expected[name].GetProperty("balRlp").GetString()!);
-            bals.Insert(block.Number, block.Hash!, balBytes);
-            RlpReader balReader = new(balBytes);
-            block.BlockAccessList = BlockAccessListDecoder.Instance.Decode(ref balReader);
-            block.Header.IsPostMerge = true;
-            foreach (IBlockPreprocessorStep preprocessor in container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);
-            tree.SuggestBlock(block);
-        }
+        foreach (string name in blocks.Keys)
+            if (name != "anchor") harness.Prepare(name);
         Stopwatch elapsed = Stopwatch.StartNew();
         List<int> branchSizes = [];
         processing.BranchProcessor.BlocksProcessing += (_, args) => branchSizes.Add(args.Blocks.Count);
@@ -157,7 +140,7 @@ public class MigrationLifecycleE2ETests
             {
                 UInt256 expectedValue = 0;
                 if (allocation.RootElement.TryGetProperty(writer.ToString(), out JsonElement account) && account.TryGetProperty("storage", out JsonElement storage))
-                    foreach (JsonProperty entry in storage.EnumerateObject()) if (MigrationLifecycleHarness.ParseQuantity(entry.Name) == slot) expectedValue = MigrationLifecycleHarness.ParseQuantity(entry.Value.GetString()!);
+                    foreach (JsonProperty entry in storage.EnumerateObject()) if (Eip8347FixtureState.ParseQuantity(entry.Name) == slot) expectedValue = Eip8347FixtureState.ParseQuantity(entry.Value.GetString()!);
                 Assert.That(reader.GetStorage(blocks[name].Header, writer, slot), Is.EqualTo(expectedValue), $"{name} restored slot {slot}");
             }
         }
@@ -167,23 +150,14 @@ public class MigrationLifecycleE2ETests
     public async Task Created_and_selfdestructed_account_is_absent_from_both_commitments([Values] bool afterActivation)
     {
         using TempPath scratch = TempPath.GetTempDirectory();
-        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat,
-            fixtureDirectory: Path.Combine(Eip8347FixtureState.Directory, "builder-predeploys"));
+        await using MigrationLifecycleHarness harness = await MigrationLifecycleHarness.Create(Path.Combine(scratch.Path, "target"), portable: true, FlatLayout.Flat);
         await harness.Scheduler.DisposeAsync();
         IMainProcessingContext processing = harness.Container.Resolve<IMainProcessingContext>();
         Block parent = harness.Anchor;
         if (afterActivation)
         {
-            for (int number = 1; number <= 4; number++)
-            {
-                Block block = harness.Blocks[$"a{number}"];
-                Prepare(block);
-                // The activation block needs its parent in PBT, which the background BAL replay provides.
-                if (number == 4) harness.WaitForPbt(parent.Header);
-                Assert.That(processing.BlockchainProcessor.Process(block, ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts,
-                    NullBlockTracer.Instance)?.Hash, Is.EqualTo(block.Hash));
-                parent = block;
-            }
+            harness.ProcessBranch(["a1", "a2", "a3", "a4"], expectPbt: false);
+            parent = harness.Blocks["a4"];
         }
         using PrivateKey sender = new("b71c71a67e1177ad4e901695e1b4b9ee17ae16c6668d313eac2f96dbcda3f291");
         IStateReader reader = harness.Container.Resolve<IWorldStateManager>().GlobalStateReader;
@@ -223,8 +197,6 @@ public class MigrationLifecycleE2ETests
         void Prepare(Block block)
         {
             block.Header.IsPostMerge = true;
-            if (block.EncodedBlockAccessList is null && block.GeneratedBlockAccessList is null)
-                block.EncodedBlockAccessList = Bytes.FromHexString(harness.Expected[$"a{block.Number}"].GetProperty("balRlp").GetString()!);
             if (block.EncodedBlockAccessList is { } encoded)
                 block.BlockAccessList = Rlp.Decode<Nethermind.Core.BlockAccessLists.ReadOnlyBlockAccessList>(encoded);
             foreach (IBlockPreprocessorStep preprocessor in harness.Container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>()) preprocessor.RecoverData(block);

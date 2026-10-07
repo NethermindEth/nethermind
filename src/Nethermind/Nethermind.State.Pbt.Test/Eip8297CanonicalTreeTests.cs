@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,9 +22,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Account_and_code_zone_folds_match_oracle_and_serial_application_for_34_byte_inputs([Values] bool zeroDeletes)
     {
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
+        using BulkSerialOracle tree = new();
         for (int round = -1; round < 3; round++)
         {
             List<(byte[] Key, byte[]? Value)> changes = [];
@@ -40,8 +37,8 @@ public class Eip8297CanonicalTreeTests
                 changes.Add((key, zeroDeletes ? new byte[32] : null));
                 if (value is not null) changes.Add((key, value));
             }
-            ApplyAll(bulk, serial, oracle, changes);
-            AssertEquivalentAfterReopen(bulk, serial, oracle, $"round {round}");
+            tree.Apply(changes);
+            tree.AssertEquivalentAfterReopen($"round {round}");
         }
     }
 
@@ -154,26 +151,6 @@ public class Eip8297CanonicalTreeTests
     }
 
     [Test]
-    public void Trie_updater_matches_independent_oracle_through_mutations()
-    {
-        using PbtTreeHarness tree = new();
-        EipReferenceTree oracle = new();
-        byte[][] keys = [AccountKey(0x00), AccountKey(0x40), AccountKey(0x41, 0x80), AccountKey(0xFF, 0x10), AccountKey(0x12, 0x34, 0x56, 0x78)];
-        for (int index = 0; index < keys.Length; index++)
-        {
-            byte[] value = Value((byte)(index + 1));
-            tree.ApplyBatch([(keys[index], value)]);
-            oracle.Insert(keys[index], value);
-            Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"insert {index}");
-        }
-
-        tree.ApplyBatch([(keys[1], new byte[32]), (keys[2], null)]);
-        oracle.Delete(keys[1]);
-        oracle.Delete(keys[2]);
-        Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-    }
-
-    [Test]
     public void Randomized_sequences_match_oracle_and_reopen()
     {
         Random random = new(8297);
@@ -231,71 +208,58 @@ public class Eip8297CanonicalTreeTests
         for (int batch = 0; batch < batches.Length; batch++)
         {
             tree.ApplyBatch(batches[batch]);
-            ApplyOracle(oracle, batches[batch]);
+            oracle.Apply(batches[batch]);
             tree.Reopen();
             Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), $"batch {batch}");
         }
     }
 
-    [TestCase(11)]
-    [TestCase(15)]
-    [TestCase(16)]
-    [TestCase(71)]
-    [TestCase(72)]
-    [TestCase(171)]
-    [TestCase(255)]
-    [TestCase(271)]
-    [TestCase(527)]
-    public void Compressed_boundary_cursor_survives_replacement_collapse_and_reinsertion(int divergenceBit)
+    [Test]
+    public void Compressed_boundary_cursor_survives_replacement_collapse_and_reinsertion([Values(11, 15, 16, 71, 72, 171, 255, 271, 527)] int divergenceBit)
     {
         byte[] leftKey = ZoneKey(divergenceBit < PbtPath.KeyLength * 8 ? "00" : "FF");
         byte[] rightKey = (byte[])leftKey.Clone();
         rightKey[divergenceBit >> 3] |= (byte)(0x80 >> (divergenceBit & 7));
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
+        using BulkSerialOracle tree = new();
 
-        ApplyAll(bulk, serial, oracle, [(leftKey, Value(1)), (rightKey, Value(2))]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "initial boundary");
-        ApplyAll(bulk, serial, oracle, [(rightKey, Value(3)), (leftKey, null)]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "promoted survivor");
-        Assert.That(bulk.Nodes, Has.Count.EqualTo(1));
-        ApplyAll(bulk, serial, oracle, [(leftKey, Value(4)), (rightKey, Value(5))]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "restored boundary");
-        ApplyAll(bulk, serial, oracle, [(leftKey, null), (rightKey, null)]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "emptied");
+        tree.Apply([(leftKey, Value(1)), (rightKey, Value(2))]);
+        tree.AssertEquivalentAfterReopen("initial boundary");
+        tree.Apply([(rightKey, Value(3)), (leftKey, null)]);
+        tree.AssertEquivalentAfterReopen("promoted survivor");
+        Assert.That(tree.Bulk.Nodes, Has.Count.EqualTo(1));
+        tree.Apply([(leftKey, Value(4)), (rightKey, Value(5))]);
+        tree.AssertEquivalentAfterReopen("restored boundary");
+        tree.Apply([(leftKey, null), (rightKey, null)]);
+        tree.AssertEquivalentAfterReopen("emptied");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bulk.RootHash, Is.EqualTo(default(ValueHash256)));
-            Assert.That(bulk.Nodes, Is.Empty);
+            Assert.That(tree.Bulk.RootHash, Is.EqualTo(default(ValueHash256)));
+            Assert.That(tree.Bulk.Nodes, Is.Empty);
+            Assert.That(tree.Bulk.PhysicalPayloads, Is.Empty);
         }
     }
 
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(3)]
-    public void Rewriting_leaves_with_their_current_values_keeps_root_and_records(int leafCount)
+    [Test]
+    public void Rewriting_leaves_with_their_current_values_keeps_root_and_records([Range(1, 3)] int leafCount)
     {
         (byte[] Key, byte[]? Value)[] entries = [(AccountKey(0x80, 0x01), Value(1)), (AccountKey(0x40, 0x02), Value(2)), (AccountKey(0x40, 0x03), Value(3))];
         List<(byte[] Key, byte[]? Value)> changes = [.. entries[..leafCount]];
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(bulk, serial, oracle, changes);
-        ValueHash256 root = bulk.RootHash;
-        string[] canonical = bulk.CanonicalRecords();
+        using BulkSerialOracle tree = new();
+        tree.Apply(changes);
+        ValueHash256 root = tree.Bulk.RootHash;
+        string[] canonical = tree.Bulk.CanonicalRecords();
 
-        ApplyAll(bulk, serial, oracle, changes);
+        tree.Apply(changes);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bulk.RootHash, Is.EqualTo(root), "identical rewrite root");
-            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical), "identical rewrite records");
+            Assert.That(tree.Bulk.RootHash, Is.EqualTo(root), "identical rewrite root");
+            Assert.That(tree.Bulk.CanonicalRecords(), Is.EqualTo(canonical), "identical rewrite records");
         }
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "identical rewrite");
+        tree.AssertEquivalentAfterReopen("identical rewrite");
 
-        ApplyAll(bulk, serial, oracle, [(entries[0].Key, Value(9))]);
-        Assert.That(bulk.RootHash, Is.Not.EqualTo(root), "changed value root");
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "changed value");
+        tree.Apply([(entries[0].Key, Value(9))]);
+        Assert.That(tree.Bulk.RootHash, Is.Not.EqualTo(root), "changed value root");
+        tree.AssertEquivalentAfterReopen("changed value");
     }
 
     [TestCase(new byte[] { 0x90, 0xC0 }, new byte[] { }, TestName = "Right half folds away under a kept left half")]
@@ -306,19 +270,17 @@ public class Eip8297CanonicalTreeTests
     [TestCase(new byte[] { 0x10, 0x20, 0x90, 0xC0 }, new byte[] { }, TestName = "Both halves fold away")]
     public void Touched_right_half_folding_away_settles_left_sibling_canonically(byte[] deletedPrefixes, byte[] writtenPrefixes)
     {
-        using PbtTreeHarness tree = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
+        using BulkSerialOracle tree = new();
         List<(byte[] Key, byte[]? Value)> initial = [];
         foreach (byte prefix in new byte[] { 0x10, 0x20, 0x90, 0xC0 }) initial.Add((AccountKey(prefix, 0x00), Value(prefix)));
-        ApplyAll(tree, serial, oracle, initial);
+        tree.Apply(initial);
 
         List<(byte[] Key, byte[]? Value)> changes = [];
         foreach (byte prefix in deletedPrefixes) changes.Add((AccountKey(prefix, 0x00), null));
         foreach (byte prefix in writtenPrefixes) changes.Add((AccountKey(prefix, 0x00), Value((byte)(prefix + 1))));
-        ApplyAll(tree, serial, oracle, changes);
+        tree.Apply(changes);
 
-        AssertEquivalentAfterReopen(tree, serial, oracle, "touched right half");
+        tree.AssertEquivalentAfterReopen("touched right half");
     }
 
     [TestCase("001200", "001280", "001000")]
@@ -329,16 +291,14 @@ public class Eip8297CanonicalTreeTests
         byte[] first = ZoneKey(firstHex);
         byte[] second = ZoneKey(secondHex);
         byte[] split = ZoneKey(splitHex);
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
+        using BulkSerialOracle tree = new();
 
-        ApplyAll(bulk, serial, oracle, [(first, Value(1)), (second, Value(2))]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "initial split");
-        ApplyAll(bulk, serial, oracle, [(split, Value(3)), (second, Value(4))]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "split inside prefix");
-        ApplyAll(bulk, serial, oracle, [(first, null)]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "promotion and prefix merge");
+        tree.Apply([(first, Value(1)), (second, Value(2))]);
+        tree.AssertEquivalentAfterReopen("initial split");
+        tree.Apply([(split, Value(3)), (second, Value(4))]);
+        tree.AssertEquivalentAfterReopen("split inside prefix");
+        tree.Apply([(first, null)]);
+        tree.AssertEquivalentAfterReopen("promotion and prefix merge");
     }
 
     [Test]
@@ -355,8 +315,8 @@ public class Eip8297CanonicalTreeTests
             byte[] leftValue = Value(1);
             byte[] rightValue = Value(2);
             byte[] prefix = new byte[(prefixBits + 7) / 8];
-            byte[] expected = Hash([1, (byte)(prefixBits >> 8), (byte)prefixBits, .. prefix,
-                .. Hash([0, .. leftKey, .. leftValue]), .. Hash([0, .. rightKey, .. rightValue])]);
+            byte[] expected = EipReferenceTree.Hash([1, (byte)(prefixBits >> 8), (byte)prefixBits, .. prefix,
+                .. EipReferenceTree.Hash([0, .. leftKey, .. leftValue]), .. EipReferenceTree.Hash([0, .. rightKey, .. rightValue])]);
             EipReferenceTree oracle = new();
             oracle.Insert(leftKey, leftValue);
             oracle.Insert(rightKey, rightValue);
@@ -364,15 +324,8 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(271)]
-    [TestCase(272)]
-    [TestCase(527)]
-    [TestCase(528)]
-    public void Inline_paths_preserve_occupied_bytes_and_value_behavior(int bitDepth)
+    [Test]
+    public void Inline_paths_preserve_occupied_bytes_and_value_behavior([Values(0, 1, 7, 8, 271, 272, 527, 528)] int bitDepth)
     {
         byte[] source = new byte[PbtStorageTreeKey.MaxLength];
         source.AsSpan().Fill(0xA5);
@@ -398,10 +351,8 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(1)]
-    [TestCase(34)]
-    [TestCase(66)]
-    public void Inline_full_keys_preserve_copies_and_dictionary_identity(int length)
+    [Test]
+    public void Inline_full_keys_preserve_copies_and_dictionary_identity([Values(1, 34, 66)] int length)
     {
         byte[] source = new byte[length];
         source.AsSpan().Fill(0xA5);
@@ -507,19 +458,6 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(67)]
-    [TestCase(8192)]
-    public void Oversized_keys_and_persisted_leaves_are_rejected(int length)
-    {
-        byte[] encoding = new byte[3 + length + 32];
-        System.Buffers.Binary.BinaryPrimitives.WriteUInt16BigEndian(encoding.AsSpan(1), (ushort)length);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageTreeKey(new byte[length]));
-            Assert.Throws<InvalidDataException>(() => PbtNodeCodec.ThrowIfNotExact(encoding));
-        }
-    }
-
 #if DEBUG
     [Test]
     public void Invalid_inline_paths_are_rejected()
@@ -613,11 +551,11 @@ public class Eip8297CanonicalTreeTests
             {
                 Assert.That(reader.Key.ToArray(), Is.EqualTo(field));
                 Assert.That(reader.Key.Overlaps(backing.AsSpan()), Is.True);
-                Assert.That(PbtTreeHarness.HashLeaf(field, left.Bytes).Bytes.ToArray(), Is.EqualTo(Hash([0, .. field, .. left.Bytes])), "leaf hash");
+                Assert.That(PbtTreeHarness.HashLeaf(field, left.Bytes).Bytes.ToArray(), Is.EqualTo(EipReferenceTree.Hash([0, .. field, .. left.Bytes])), "leaf hash");
             }
             else
             {
-                Assert.That(Blake3Hash.Hash(reader.Preimage).Bytes.ToArray(), Is.EqualTo(Hash(preimage)), "inline leaf keys are not hashed");
+                Assert.That(Blake3Hash.Hash(reader.Preimage).Bytes.ToArray(), Is.EqualTo(EipReferenceTree.Hash(preimage)), "inline leaf keys are not hashed");
                 Assert.That(reader.Preimage.ToArray(), Is.EqualTo(preimage));
                 Assert.That(reader.Prefix.BitCount, Is.EqualTo(length));
                 Assert.That(reader.Prefix.Bytes.ToArray(), Is.EqualTo(field));
@@ -714,9 +652,8 @@ public class Eip8297CanonicalTreeTests
     }
 #endif
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Node_reader_construction_and_field_access_do_not_allocate(bool leaf)
+    [Test]
+    public void Node_reader_construction_and_field_access_do_not_allocate([Values] bool leaf)
     {
         byte[] encoding = leaf
             ? PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(Bytes.FromHexString("A0")))
@@ -750,7 +687,7 @@ public class Eip8297CanonicalTreeTests
         PbtPath account = Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address32), 0);
         PbtStorageTreeKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
         PbtStorageTreeKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
-        byte[] expectedAddressHash = Hash(address32);
+        byte[] expectedAddressHash = EipReferenceTree.Hash(address32);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(account.Length, Is.EqualTo(34));
@@ -804,9 +741,8 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(17)]
-    [TestCase(33)]
-    public void Single_bucket_prefix_survives_existing_sibling_branches(int count)
+    [Test]
+    public void Single_bucket_prefix_survives_existing_sibling_branches([Values(17, 33)] int count)
     {
         List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, 40, 16, 2);
         initial.Add((ZoneKey("00AA8000000000"), Value(1)));
@@ -814,16 +750,14 @@ public class Eip8297CanonicalTreeTests
         initial.Add((ZoneKey("00AAAAAA800000"), Value(3)));
         List<(byte[] Key, byte[]? Value)> changes = [];
         for (int index = 0; index < count; index++) changes.Add((initial[index].Key, Value(0xEF)));
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(bulk, serial, oracle, initial);
-        ApplyAll(bulk, serial, oracle, changes);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "single bucket with shallower siblings");
+        using BulkSerialOracle tree = new();
+        tree.Apply(initial);
+        tree.Apply(changes);
+        tree.AssertEquivalentAfterReopen("single bucket with shallower siblings");
         CountingPbtStore store = new();
         ValueHash256 root = store.Fold(default, initial);
         root = store.Fold(root, changes);
-        Assert.That(root, Is.EqualTo(bulk.RootHash));
+        Assert.That(root, Is.EqualTo(tree.Bulk.RootHash));
         AssertAllMemoryReleased(store);
     }
 
@@ -834,13 +768,11 @@ public class Eip8297CanonicalTreeTests
     {
         foreach (int occupiedSlots in new[] { 1, 2, 16 })
         {
-            using PbtTreeHarness bulk = new();
-            using PbtTreeHarness serial = new();
-            EipReferenceTree oracle = new();
+            using BulkSerialOracle tree = new();
             List<(byte[] Key, byte[]? Value)> initial = BoundaryChanges(count, groupDepth, occupiedSlots, 0);
-            ApplyAll(bulk, serial, oracle, initial);
-            AssertEquivalentAfterReopen(bulk, serial, oracle, "build boundary batch");
-            ApplyAll(bulk, serial, oracle, [(ZoneKey("00555555000002"), Value(0x77))]);
+            tree.Apply(initial);
+            tree.AssertEquivalentAfterReopen("build boundary batch");
+            tree.Apply([(ZoneKey("00555555000002"), Value(0x77))]);
 
             List<(byte[] Key, byte[]? Value)> changes = BoundaryChanges(count, groupDepth, occupiedSlots, 2);
             for (int index = 0; index < changes.Count; index++)
@@ -853,16 +785,16 @@ public class Eip8297CanonicalTreeTests
                 }
                 changes[index] = (key, index % 2 == 0 ? null : Value(0xEF));
             }
-            ApplyAll(bulk, serial, oracle, changes);
-            AssertEquivalentAfterReopen(bulk, serial, oracle, "mixed boundary batch");
+            tree.Apply(changes);
+            tree.AssertEquivalentAfterReopen("mixed boundary batch");
 
             List<(byte[] Key, byte[]? Value)> deletions = [];
             foreach ((byte[] key, byte[]? _) in initial) deletions.Add((key, null));
             foreach ((byte[] key, byte[]? _) in changes) deletions.Add((key, null));
-            ApplyAll(bulk, serial, oracle, deletions);
-            AssertEquivalentAfterReopen(bulk, serial, oracle, "boundary buckets collapse to untouched survivor");
-            ApplyAll(bulk, serial, oracle, initial);
-            AssertEquivalentAfterReopen(bulk, serial, oracle, "restore boundary buckets after collapse");
+            tree.Apply(deletions);
+            tree.AssertEquivalentAfterReopen("boundary buckets collapse to untouched survivor");
+            tree.Apply(initial);
+            tree.AssertEquivalentAfterReopen("restore boundary buckets after collapse");
         }
     }
 
@@ -912,18 +844,10 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    private static IEnumerable<TestCaseData> DenseGroupCollapseCases()
-    {
-        int[] groupDepths = [8, 12, 248, 252, 520, 524];
-        int[] retainedMasks = [0x0000, 0x0001, 0x8000, 0x000A, 0xA000, 0xA55A, 0x8001, 0xFFFF];
-        foreach (int groupDepth in groupDepths)
-            foreach (int retainedMask in retainedMasks)
-                yield return new TestCaseData(groupDepth, retainedMask)
-                    .SetName($"Dense_group_paths_survive_collapse_and_restoration(depth={groupDepth}, retained=0x{retainedMask:X4})");
-    }
-
-    [TestCaseSource(nameof(DenseGroupCollapseCases))]
-    public void Dense_group_paths_survive_collapse_and_restoration(int groupDepth, int retainedMask)
+    [Test]
+    public void Dense_group_paths_survive_collapse_and_restoration(
+        [Values(8, 12, 248, 252, 520, 524)] int groupDepth,
+        [Values(0x0000, 0x0001, 0x8000, 0x000A, 0xA000, 0xA55A, 0x8001, 0xFFFF)] int retainedMask)
     {
         byte[] sharedKey = ZoneKey(groupDepth + 4 <= PbtPath.KeyLength * 8 ? "00" : "FF");
         new Random(8297).NextBytes(sharedKey.AsSpan(1));
@@ -938,28 +862,18 @@ public class Eip8297CanonicalTreeTests
             if ((retainedMask & (1 << slot)) == 0) deletions.Add((key, null));
         }
 
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(bulk, serial, oracle, initial);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "dense group");
-        ApplyAll(bulk, serial, oracle, deletions);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "collapsed group");
-        ApplyAll(bulk, serial, oracle, initial);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, "restored group");
+        using BulkSerialOracle tree = new();
+        tree.Apply(initial);
+        tree.AssertEquivalentAfterReopen("dense group");
+        tree.Apply(deletions);
+        tree.AssertEquivalentAfterReopen("collapsed group");
+        tree.Apply(initial);
+        tree.AssertEquivalentAfterReopen("restored group");
     }
 
-    [TestCase(1)]
-    [TestCase(3)]
-    [TestCase(4)]
-    [TestCase(5)]
-    [TestCase(7)]
-    [TestCase(8)]
-    [TestCase(9)]
-    [TestCase(11)]
-    [TestCase(12)]
-    [TestCase(13)]
-    public void Span_partition_divergence_before_on_and_after_compressed_group_boundaries_matches_oracle(int divergenceBit)
+    [Test]
+    public void Span_partition_divergence_before_on_and_after_compressed_group_boundaries_matches_oracle(
+        [Values(1, 3, 4, 5, 7, 8, 9, 11, 12, 13)] int divergenceBit)
     {
         byte[] leftKey = ZoneKey("000000");
         byte[] existingRightKey = ZoneKey("000008");
@@ -972,16 +886,14 @@ public class Eip8297CanonicalTreeTests
         (byte[] Key, byte[]? Value)[] initial = [(leftKey, Value(1)), (existingRightKey, Value(2))];
         (byte[] Key, byte[]? Value)[] changes = [(insertedKey, Value(3)), (existingRightKey, Value(4))];
 
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(bulk, serial, oracle, [.. initial]);
-        ApplyAll(bulk, serial, oracle, [.. changes]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, $"divergence bit {divergenceBit}");
-        ApplyAll(bulk, serial, oracle, [(insertedKey, null), (leftKey, Value(5)), (existingRightKey, null)]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, $"collapse divergence bit {divergenceBit}");
-        ApplyAll(bulk, serial, oracle, [.. changes]);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, $"restore divergence bit {divergenceBit}");
+        using BulkSerialOracle tree = new();
+        tree.Apply([.. initial]);
+        tree.Apply([.. changes]);
+        tree.AssertEquivalentAfterReopen($"divergence bit {divergenceBit}");
+        tree.Apply([(insertedKey, null), (leftKey, Value(5)), (existingRightKey, null)]);
+        tree.AssertEquivalentAfterReopen($"collapse divergence bit {divergenceBit}");
+        tree.Apply([.. changes]);
+        tree.AssertEquivalentAfterReopen($"restore divergence bit {divergenceBit}");
     }
 
     [Test]
@@ -1007,9 +919,7 @@ public class Eip8297CanonicalTreeTests
             keys.Add(key);
         }
 
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
+        using BulkSerialOracle tree = new();
         HashSet<byte[]> live = new(Bytes.EqualityComparer);
         Apply([.. keys.Select((key, index) => (key, (byte[]?)Value((byte)(index + 1))))], "insert");
         Apply([.. keys.Where((_, index) => index % 2 == 0).Select(key => (key, (byte[]?)Value(0x80)))], "update");
@@ -1019,16 +929,16 @@ public class Eip8297CanonicalTreeTests
 
         void Apply(List<(byte[] Key, byte[]? Value)> changes, string scenario)
         {
-            ApplyAll(bulk, serial, oracle, changes);
+            tree.Apply(changes);
             foreach ((byte[] key, byte[]? value) in changes)
             {
                 if (value is null) live.Remove(key);
                 else live.Add(key);
             }
-            AssertEquivalentAfterReopen(bulk, serial, oracle, scenario);
+            tree.AssertEquivalentAfterReopen(scenario);
             using (Assert.EnterMultipleScope())
             {
-                foreach (PbtPhysicalPayload payload in bulk.PhysicalPayloads)
+                foreach (PbtPhysicalPayload payload in tree.Bulk.PhysicalPayloads)
                 {
                     int postfixLength = shared.Length - (payload.Key.BitDepth >> 3);
                     PbtNodeGroupReader.Enumerator nodes = PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span).EnumerateNodes();
@@ -1059,20 +969,27 @@ public class Eip8297CanonicalTreeTests
     [TestCase("first-group-boundary-destinations")]
     [TestCase("second-group-boundary-destinations")]
     [TestCase("descending-inserts")]
+    [TestCase("split-inside-long-storage-prefix")]
+    [TestCase("sibling-pair-delete")]
     public void Bulk_mutation_kinds_match_oracle_serial_outcome_and_reopen(string scenarioName)
     {
         (List<(byte[] Key, byte[]? Value)> Initial, List<(byte[] Key, byte[]? Value)> Changes) = Scenario(scenarioName);
-        using PbtTreeHarness tree = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(tree, serial, oracle, Initial);
-        ApplyAll(tree, serial, oracle, Changes);
-        AssertEquivalentAfterReopen(tree, serial, oracle, scenarioName);
+        using BulkSerialOracle tree = new();
+        tree.Apply(Initial);
+        tree.Apply(Changes);
+        tree.AssertEquivalentAfterReopen(scenarioName);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Mixed_batch_produces_only_the_remaining_trie_leaf(bool deleteKeyExists)
+    [Test]
+    public void Split_inside_long_storage_prefix_stores_three_branches_with_inlined_leaves()
+    {
+        using PbtTreeHarness tree = new();
+        tree.ApplyBatch(Scenario("split-inside-long-storage-prefix").Changes);
+        Assert.That(tree.Nodes, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void Mixed_batch_produces_only_the_remaining_trie_leaf([Values] bool deleteKeyExists)
     {
         CountingPbtStore store = new();
         byte[] deleteKeyBytes = AccountKey(0x00);
@@ -1111,13 +1028,11 @@ public class Eip8297CanonicalTreeTests
         ValueHash256 root = store.Fold(default, initial);
         root = store.Fold(root, changes);
 
-        using PbtTreeHarness bulk = new();
-        using PbtTreeHarness serial = new();
-        EipReferenceTree oracle = new();
-        ApplyAll(bulk, serial, oracle, initial);
-        ApplyAll(bulk, serial, oracle, changes);
-        AssertEquivalentAfterReopen(bulk, serial, oracle, $"prefix at bit {divergenceBit}, persisted {persisted}");
-        Assert.That(root, Is.EqualTo(bulk.RootHash));
+        using BulkSerialOracle tree = new();
+        tree.Apply(initial);
+        tree.Apply(changes);
+        tree.AssertEquivalentAfterReopen($"prefix at bit {divergenceBit}, persisted {persisted}");
+        Assert.That(root, Is.EqualTo(tree.Bulk.RootHash));
         AssertAllMemoryReleased(store);
     }
 
@@ -1136,9 +1051,8 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Non_empty_update_discovers_persisted_root_instead_of_using_stale_current_root(bool useDefaultRoot)
+    [Test]
+    public void Non_empty_update_discovers_persisted_root_instead_of_using_stale_current_root([Values] bool useDefaultRoot)
     {
         using PbtNodeGroupStore source = new();
         ValueHash256 actualRoot = source.Fold(default, [
@@ -1155,8 +1069,8 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(resultFromStaleRoot, Is.EqualTo(resultFromActualRoot));
-            Assert.That(CanonicalRecords(staleStore), Is.EqualTo(CanonicalRecords(actualStore)));
-            Assert.That(PhysicalRecords(staleStore.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(actualStore.ExportPhysicalPayloads())));
+            Assert.That(staleStore.CanonicalRecords(), Is.EqualTo(actualStore.CanonicalRecords()));
+            Assert.That(staleStore.PhysicalRecords(), Is.EqualTo(actualStore.PhysicalRecords()));
         }
     }
 
@@ -1177,29 +1091,18 @@ public class Eip8297CanonicalTreeTests
             Assert.That(store.Applies, Is.EqualTo(2));
         }
 
-        AssertAllMemoryReleased(store);
-    }
+        ValueHash256 changedRoot = store.Fold(root, [(AccountKey(0x00), Value(3)), (AccountKey(0x40), Value(4))]);
+        Assert.That(store.Applies, Is.EqualTo(3), "a changed batch touching both leaves publishes the group once");
 
-    [Test]
-    public void Boundary_crossing_fetches_only_visited_groups_once()
-    {
-        CountingPbtStore store = new();
-        ValueHash256 root = store.Fold(default, [
-            (AccountKey(0x00), Value(1)), (AccountKey(0x08), Value(2)), (AccountKey(0x80), Value(3)), (AccountKey(0x88), Value(4))]);
-        store.ResetReads();
-
-        store.Fold(root, [(AccountKey(0x00), Value(5))]);
-
-        PbtStorageNodePath absentGroup = new(Bytes.FromHexString("0000"), 12);
-        PbtStorageNodePath untouchedGroup = new(Bytes.FromHexString("0080"), 12);
+        ValueHash256 emptiedRoot = store.Fold(changedRoot, [(AccountKey(0x00), null), (AccountKey(0x40), null)]);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.GroupReads.Keys, Is.EquivalentTo(new PbtStorageNodePath[] { new([], 0), new(Bytes.FromHexString("00"), 8) }),
-                "only the root group and the zone's group at depth eight; the left boundary's group is never entered");
-            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
-            Assert.That(store.GroupReads.ContainsKey(absentGroup), Is.False, "the changed left boundary inlines its leaves, so its group is absent and never fetched");
-            Assert.That(store.GroupReads.ContainsKey(untouchedGroup), Is.False, "the untouched right group is not fetched");
+            Assert.That(store.Applies, Is.EqualTo(4), "deleting both leaves publishes the group once");
+            Assert.That(emptiedRoot, Is.EqualTo(default(ValueHash256)));
+            Assert.That(store.Inner.EnumerateNodeGroupKeys(), Is.Empty);
         }
+
+        AssertAllMemoryReleased(store);
     }
 
     // Each case leaves the group at 0x0000 with a boundary node that owns nothing below it, so the fold that
@@ -1207,6 +1110,7 @@ public class Eip8297CanonicalTreeTests
     [TestCase(new byte[] { 0x80 }, new byte[] { 0x00, 0x08 }, TestName = "Absent_group_is_never_fetched_over_an_empty_boundary")]
     [TestCase(new byte[] { 0x80, 0x00 }, new byte[] { 0x04 }, TestName = "Absent_group_is_never_fetched_over_a_leaf_boundary")]
     [TestCase(new byte[] { 0x80, 0x00, 0x08 }, new byte[] { 0x00 }, TestName = "Absent_group_is_never_fetched_over_two_inlined_leaves")]
+    [TestCase(new byte[] { 0x00, 0x08, 0x80, 0x88 }, new byte[] { 0x00 }, TestName = "Absent_group_is_never_fetched_beside_an_untouched_sibling_group")]
     public void Absent_group_is_never_fetched(byte[] initialKeys, byte[] changedKeys)
     {
         CountingPbtStore store = new();
@@ -1224,7 +1128,9 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(result, Is.EqualTo(expected.ApplyBatch(changes)));
             Assert.That(store.GroupReads.ContainsKey(absentGroup), Is.False, "a group that stores nothing is never fetched");
-            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(expected)));
+            Assert.That(store.GroupReads.Values, Has.All.EqualTo(1));
+            Assert.That(store.GroupReads.Keys.Where(key => key.BitDepth > 8), Is.Empty);
+            Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(expected.PhysicalPayloads.PhysicalRecords()));
             PbtStoreTestExtensions.AssertSubtreeBytes(store.Inner.ExportPhysicalPayloads());
         }
 
@@ -1236,65 +1142,52 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false, 0)]
-    [TestCase(false, 1)]
-    [TestCase(true, 0)]
-    public void Group_leases_are_released_when_decode_or_apply_fails(bool applyFailure, int malformedPayloadLength)
-    {
-        CountingPbtStore store = new();
-        ValueHash256 root = store.Fold(default, [(AccountKey(0x12), Value(1))]);
-        int appliesBeforeFailure = store.Applies;
-        if (applyFailure) store.ThrowOnApply = true;
-        else
-        {
-            store.OverrideGroup = (_, _) =>
-            {
-                RefCountingMemory memory = store.MemoryProvider.Rent(malformedPayloadLength);
-                if (malformedPayloadLength != 0) memory.GetSpan()[0] = 0x01;
-                return memory;
-            };
-        }
+    public enum FoldFailure { MissingNode, EmptyGroup, MalformedGroup, ApplyThrows }
 
-        TrackingMemoryProvider memoryProvider = new();
-        Action update = () => store.Fold(root, [(AccountKey(0x12), Value(2))], PbtTreeHarness.DefaultFanOut, memoryProvider);
-        if (applyFailure) Assert.Throws<InvalidOperationException>(update);
-        else Assert.Catch(update);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + (applyFailure ? 1 : 0)));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
-        }
-
-        AssertAllMemoryReleased(store);
-    }
-
-    [Test]
-    public void Failed_batches_never_apply_or_change_state_when_a_referenced_node_is_missing()
+    [TestCase(FoldFailure.MissingNode, typeof(InvalidDataException), 0)]
+    [TestCase(FoldFailure.EmptyGroup, typeof(Exception), 0)]
+    [TestCase(FoldFailure.MalformedGroup, typeof(Exception), 0)]
+    [TestCase(FoldFailure.ApplyThrows, typeof(InvalidOperationException), 1)]
+    public void Failed_fold_releases_leases_and_leaves_state_unchanged(FoldFailure failure, Type expectedException, int appliesDelta)
     {
         CountingPbtStore store = new();
         // [0x13] keeps a stored branch below the root for the override to hide.
         ValueHash256 root = store.Fold(default, [(AccountKey(0x12), Value(1)), (AccountKey(0x92), Value(2)), (AccountKey(0x13), Value(4))]);
         PbtPhysicalPayload[] before = [.. store.Inner.ExportPhysicalPayloads()];
         int appliesBeforeFailure = store.Applies;
-        store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
+        switch (failure)
+        {
+            case FoldFailure.MissingNode:
+                store.OverrideNode = path => path.BitDepth == 0 ? store.Inner.GetNode(path) : null;
+                break;
+            case FoldFailure.ApplyThrows:
+                store.ThrowOnApply = true;
+                break;
+            default:
+                store.OverrideGroup = (_, _) =>
+                {
+                    RefCountingMemory memory = store.MemoryProvider.Rent(failure == FoldFailure.MalformedGroup ? 1 : 0);
+                    if (failure == FoldFailure.MalformedGroup) memory.GetSpan()[0] = 0x01;
+                    return memory;
+                };
+                break;
+        }
 
         TrackingMemoryProvider memoryProvider = new();
-        Assert.Throws<InvalidDataException>(() => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtTreeHarness.DefaultFanOut, memoryProvider));
+        Assert.Catch(expectedException, () => store.Fold(root, [(AccountKey(0x12), Value(3))], PbtTreeHarness.DefaultFanOut, memoryProvider));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure));
+            Assert.That(store.Applies, Is.EqualTo(appliesBeforeFailure + appliesDelta));
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
-            Assert.That(PhysicalRecords(store.Inner.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(before)));
+            Assert.That(store.Inner.PhysicalRecords(), Is.EqualTo(before.PhysicalRecords()));
         }
 
         AssertAllMemoryReleased(store);
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Group_outputs_retain_only_store_leases_after_mutations_and_partition_folds(bool parallel)
+    [Test]
+    public void Group_outputs_retain_only_store_leases_after_mutations_and_partition_folds([Values] bool parallel)
     {
         TrackingMemoryProvider memoryProvider = new() { FillByte = 0xFF };
         using PbtNodeGroupStore store = new();
@@ -1316,17 +1209,13 @@ public class Eip8297CanonicalTreeTests
         {
             root = ApplyTracked(store, root, changes, parallel, memoryProvider);
             expectedRoot = expectedStore.Fold(expectedRoot, changes);
-            foreach ((byte[] key, byte[]? value) in changes)
-            {
-                if (value is null) oracle.Delete(key);
-                else oracle.Insert(key, value);
-            }
+            oracle.Apply(changes);
             using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(store.ExportPhysicalPayloads());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(root, Is.EqualTo(expectedRoot));
                 Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-                Assert.That(PhysicalRecords(reopened.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(expectedStore.ExportPhysicalPayloads())));
+                Assert.That(reopened.PhysicalRecords(), Is.EqualTo(expectedStore.PhysicalRecords()));
                 AssertOnlyPublishedRentalsRemain(store, memoryProvider);
             }
         }
@@ -1335,9 +1224,8 @@ public class Eip8297CanonicalTreeTests
         Assert.That(memoryProvider.RentCount, Is.GreaterThan(0));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Owned_node_encodings_are_released_at_every_rent_failure(bool parallel)
+    [Test]
+    public void Owned_node_encodings_are_released_at_every_rent_failure([Values] bool parallel)
     {
         (byte[] Key, byte[]? Value)[] changes =
         [
@@ -1363,13 +1251,8 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(false, 0)]
-    [TestCase(false, 4)]
-    [TestCase(false, 8)]
-    [TestCase(true, 0)]
-    [TestCase(true, 4)]
-    [TestCase(true, 8)]
-    public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails(bool parallel, int failedDepth)
+    [Test]
+    public void Owned_node_encodings_are_released_when_worker_or_ancestor_publish_fails([Values] bool parallel, [Values(0, 4, 8)] int failedDepth)
     {
         TrackingMemoryProvider memoryProvider = new();
         TrackingMemoryProvider storeProvider = new();
@@ -1475,9 +1358,7 @@ public class Eip8297CanonicalTreeTests
         PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
             records.Add(new(PbtTestPaths.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
-        byte[] expectedPayload = new byte[group.Payload.Length];
-        BufferWriter writer = new(expectedPayload);
-        PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
+        byte[] expectedPayload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
@@ -1490,7 +1371,7 @@ public class Eip8297CanonicalTreeTests
             AssertOnlyPublishedRentalsRemain(store, provider);
         }
         using PbtNodeGroupStore reopened = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
-        Assert.That(PhysicalRecords(reopened.ExportPhysicalPayloads()), Is.EqualTo(PhysicalRecords(payloads)));
+        Assert.That(reopened.PhysicalRecords(), Is.EqualTo(payloads.PhysicalRecords()));
         store.Dispose();
         Assert.That(TrackingMemoryProvider.CountUnreleased(provider.Rented), Is.Zero);
     }
@@ -1575,6 +1456,12 @@ public class Eip8297CanonicalTreeTests
         "descending-inserts" => ([],
             [(AccountKey(0x80), Value(1)), (AccountKey(0x40), Value(2)), (AccountKey(0x20), Value(3)),
              (AccountKey(0x10), Value(4)), (AccountKey(0x08), Value(5)), (AccountKey(0x04), Value(6))]),
+        "split-inside-long-storage-prefix" => ([],
+            [(ZoneKey("FF1200"), Value(1)), (ZoneKey("FF1280"), Value(2)), (ZoneKey("FF1000"), Value(3)), (ZoneKey("FF1240"), Value(4))]),
+        "sibling-pair-delete" => (
+            [(AccountKey(0x00), Value(1)), (AccountKey(0x40), Value(2)), (AccountKey(0x41, 0x80), Value(3)),
+             (AccountKey(0xFF, 0x10), Value(4)), (AccountKey(0x12, 0x34, 0x56, 0x78), Value(5))],
+            [(AccountKey(0x40), new byte[32]), (AccountKey(0x41, 0x80), null)]),
         _ => throw new ArgumentOutOfRangeException(nameof(name)),
     };
 
@@ -1599,61 +1486,46 @@ public class Eip8297CanonicalTreeTests
         return (initial, changes);
     }
 
-    private static void ApplyAll(PbtTreeHarness tree, PbtTreeHarness serial, EipReferenceTree oracle, List<(byte[] Key, byte[]? Value)> changes)
+    /// <summary>A tree folded in bulk, a tree folded one change at a time and the reference tree, fed the same changes.</summary>
+    private sealed class BulkSerialOracle : IDisposable
     {
-        tree.ApplyBatch(changes);
-        foreach ((byte[] key, byte[]? value) in changes)
-            serial.ApplyBatch([(key, value)]);
-        ApplyOracle(oracle, changes);
-    }
+        private readonly PbtTreeHarness _serial = new();
+        private readonly EipReferenceTree _oracle = new();
 
-    private static void AssertEquivalentAfterReopen(PbtTreeHarness bulk, PbtTreeHarness serial, EipReferenceTree oracle, string scenario)
-    {
-        string[] canonical = bulk.CanonicalRecords();
-        string[] physical = PhysicalRecords(bulk);
-        PbtStoreTestExtensions.AssertSubtreeBytes(bulk.PhysicalPayloads);
-        bulk.Reopen();
+        public PbtTreeHarness Bulk { get; } = new();
 
-        using (Assert.EnterMultipleScope())
+        public void Apply(List<(byte[] Key, byte[]? Value)> changes)
         {
-            Assert.That(bulk.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), scenario);
-            Assert.That(bulk.RootHash, Is.EqualTo(serial.RootHash), "bulk and serial roots");
-            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(serial.CanonicalRecords()), "bulk and serial canonical records");
-            Assert.That(PhysicalRecords(bulk), Is.EqualTo(PhysicalRecords(serial)), "bulk and serial physical records");
-            Assert.That(bulk.CanonicalRecords(), Is.EqualTo(canonical), "canonical records survive reopen");
-            Assert.That(PhysicalRecords(bulk), Is.EqualTo(physical), "physical groups survive reopen");
+            Bulk.ApplyBatch(changes);
+            foreach ((byte[] key, byte[]? value) in changes)
+                _serial.ApplyBatch([(key, value)]);
+            _oracle.Apply(changes);
+        }
+
+        public void AssertEquivalentAfterReopen(string scenario)
+        {
+            string[] canonical = Bulk.CanonicalRecords();
+            string[] physical = Bulk.PhysicalPayloads.PhysicalRecords();
+            PbtStoreTestExtensions.AssertSubtreeBytes(Bulk.PhysicalPayloads);
+            Bulk.Reopen();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(Bulk.RootHash.Bytes.ToArray(), Is.EqualTo(_oracle.Merkelize()), scenario);
+                Assert.That(Bulk.RootHash, Is.EqualTo(_serial.RootHash), "bulk and serial roots");
+                Assert.That(Bulk.CanonicalRecords(), Is.EqualTo(_serial.CanonicalRecords()), "bulk and serial canonical records");
+                Assert.That(Bulk.PhysicalPayloads.PhysicalRecords(), Is.EqualTo(_serial.PhysicalPayloads.PhysicalRecords()), "bulk and serial physical records");
+                Assert.That(Bulk.CanonicalRecords(), Is.EqualTo(canonical), "canonical records survive reopen");
+                Assert.That(Bulk.PhysicalPayloads.PhysicalRecords(), Is.EqualTo(physical), "physical groups survive reopen");
+            }
+        }
+
+        public void Dispose()
+        {
+            Bulk.Dispose();
+            _serial.Dispose();
         }
     }
-
-    private static void ApplyOracle(EipReferenceTree oracle, IEnumerable<(byte[] Key, byte[]? Value)> changes)
-    {
-        foreach ((byte[] key, byte[]? value) in changes)
-        {
-            if (value is null || new ValueHash256(value) == default) oracle.Delete(key);
-            else oracle.Insert(key, value);
-        }
-    }
-
-    private static string[] CanonicalRecords(PbtNodeGroupStore store)
-    {
-        List<string> records = [];
-        foreach (PbtNodeRecord record in store.EnumerateRecords())
-            records.Add(Convert.ToHexString(record.Path.ToEncodedArray()) + Convert.ToHexString(record.Encoding.Span));
-        return [.. records];
-    }
-
-    private static string[] PhysicalRecords(PbtTreeHarness tree) => PhysicalRecords(tree.PhysicalPayloads);
-
-    private static string[] PhysicalRecords(IEnumerable<PbtPhysicalPayload> payloads)
-    {
-        List<string> records = [];
-        foreach (PbtPhysicalPayload payload in payloads)
-            records.Add(Convert.ToHexString(payload.Key.ToEncodedArray()) + Convert.ToHexString(payload.Payload.Span));
-        records.Sort(StringComparer.Ordinal);
-        return [.. records];
-    }
-
-    private static string[] PhysicalRecords(PbtPhysicalPayload[] payloads) => PhysicalRecords((IEnumerable<PbtPhysicalPayload>)payloads);
 
     private static void AssertAllMemoryReleased(CountingPbtStore store)
     {
@@ -1701,18 +1573,7 @@ public class Eip8297CanonicalTreeTests
                 }
 
                 if (records.Count == 0) return null;
-                BufferWriter writer = new(MemoryProvider);
-                try
-                {
-                    PbtNodeGroupEncoder.Encode(ref writer, storageGroupKey, records, default);
-                    RefCountingMemory payload = writer.Detach()!;
-                    return payload;
-                }
-                catch
-                {
-                    writer.Dispose();
-                    throw;
-                }
+                return PbtNodeGroupEncoder.EncodeToMemory(storageGroupKey, records, MemoryProvider);
             }
             RefCountingMemory? innerPayload = Inner.GetNodeGroup(groupKey, hash);
             return innerPayload;
@@ -1733,26 +1594,11 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-
-    private static byte[] Hash(byte[] preimage)
-    {
-        byte[] result = new byte[32];
-        global::Blake3.Hasher.Hash(preimage, result);
-        return result;
-    }
-
     /// <summary>An account-zone key whose bytes after the zone byte start with <paramref name="suffix"/>.</summary>
     private static byte[] AccountKey(params ReadOnlySpan<byte> suffix)
     {
         byte[] key = new byte[PbtPath.KeyLength];
         suffix.CopyTo(key.AsSpan(1));
         return key;
-    }
-
-    private static byte[] Value(byte marker)
-    {
-        byte[] value = new byte[32];
-        value[^1] = marker;
-        return value;
     }
 }

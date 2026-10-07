@@ -33,11 +33,8 @@ public class PbtFormatInteropTests
         using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
         List<(byte[] Key, byte[]? Value)> changes = [];
-        foreach (byte[] key in keys)
-        {
-            changes.Add((key, value));
-            oracle.Insert(key, value);
-        }
+        foreach (byte[] key in keys) changes.Add((key, value));
+        oracle.Apply(changes);
         tree.ApplyBatch(changes);
         Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
         string mixedRoot = tree.RootHash.ToString();

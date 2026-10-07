@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Test;
@@ -33,6 +34,16 @@ public sealed class EipReferenceTree
 
     /// <summary>Removes a key, returning whether it was present.</summary>
     public bool Delete(ReadOnlySpan<byte> key) => _entries.Remove(key.ToArray());
+
+    /// <summary>Applies a batch of writes, deleting each key whose value is <c>null</c> or all zero and inserting the rest.</summary>
+    public void Apply(IEnumerable<(byte[] Key, byte[]? Value)> writes)
+    {
+        foreach ((byte[] key, byte[]? value) in writes)
+        {
+            if (value is null || new ValueHash256(value) == default) Delete(key);
+            else Insert(key, value);
+        }
+    }
 
     /// <summary>Returns the root hash, or 32 zero bytes for an empty tree.</summary>
     public byte[] Merkelize()
@@ -104,7 +115,7 @@ public sealed class EipReferenceTree
 
     private static int Bit(byte[] key, int bit) => (key[bit / 8] >> (7 - bit % 8)) & 1;
 
-    private static byte[] Hash(byte[] data)
+    internal static byte[] Hash(byte[] data)
     {
         byte[] result = new byte[32];
         Blake3.Hasher.Hash(data, result);

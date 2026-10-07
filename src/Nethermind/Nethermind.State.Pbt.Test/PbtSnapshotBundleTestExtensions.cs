@@ -3,10 +3,10 @@
 
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -28,5 +28,39 @@ internal static class PbtSnapshotBundleTestExtensions
         using PbtTransientResource staged = new(nodeGroupCapacity: 1);
         staged.NodeGroups.Set(groupHash, path, payload);
         cache.Add(staged);
+    }
+
+    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader) =>
+        CreateBundle(pool, reader, NoopPbtTrieNodeCache.Instance);
+
+    public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtTrieNodeCache cache) => new(
+        new PbtSnapshotPooledList(0),
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader),
+        pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+
+    /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>
+    public static ValueHash256 Fold(this PbtSnapshotBundle bundle, ValueHash256 root)
+    {
+        PbtPartitionBatches changes = bundle.PrepareLeafChanges();
+        try
+        {
+            ValueHash256 updated;
+            using (PbtSnapshotStore store = new(bundle))
+                updated = TrieUpdater.UpdateRoot(store, root, changes, PbtTreeHarness.FoldQuota(), PbtTreeHarness.DefaultFanOut, null);
+            bundle.CompleteLeafChanges();
+            return updated;
+        }
+        finally
+        {
+            changes.Dispose();
+        }
+    }
+
+    public static PbtSnapshotPooledList Chain(IPbtResourcePool pool, params PbtSnapshotContent[] layersOldestFirst)
+    {
+        PbtSnapshotPooledList chain = new(layersOldestFirst.Length);
+        for (int i = 0; i < layersOldestFirst.Length; i++)
+            chain.Add(new PbtSnapshot(i == 0 ? StateId.PreGenesis : new StateId((ulong)i, default), new StateId((ulong)i + 1, default), default, layersOldestFirst[i], pool, PbtResourcePool.Usage.MainBlockProcessing));
+        return chain;
     }
 }

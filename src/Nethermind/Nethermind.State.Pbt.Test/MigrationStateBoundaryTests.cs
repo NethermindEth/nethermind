@@ -3,10 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Migration;
@@ -18,12 +15,6 @@ namespace Nethermind.State.Pbt.Test;
 
 public class MigrationStateBoundaryTests
 {
-    private const ulong Activation = 48;
-
-    private static ISpecProvider Specs() => new CustomSpecProvider(
-        ((ForkActivation)0, Prague.Instance),
-        (ForkActivation.TimestampOnly(Activation), new OverridableReleaseSpec(Prague.Instance) { IsEip8347Enabled = true }));
-
     [TestCase(false, false, 7UL, TestName = "nothing persisted in PBT: flat's pointer")]
     [TestCase(true, false, 7UL, TestName = "PBT keyed by an MPT root (pre-activation): flat's pointer")]
     [TestCase(true, true, 9UL, TestName = "PBT keyed by its own root (post-activation): PBT's pointer")]
@@ -57,7 +48,7 @@ public class MigrationStateBoundaryTests
         BlockHeader[] chain = new BlockHeader[6];
         chain[0] = Build.A.BlockHeader.WithNumber(0).WithTimestamp(0).TestObject;
         for (int number = 1; number < chain.Length; number++)
-            chain[number] = Build.A.BlockHeader.WithParent(chain[number - 1]).WithTimestamp(number >= 4 ? Activation + (ulong)number : (ulong)number * 12).TestObject;
+            chain[number] = Build.A.BlockHeader.WithParent(chain[number - 1]).WithTimestamp(number >= 4 ? MigrationTestSpecs.Activation + (ulong)number : (ulong)number * 12).TestObject;
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         foreach (BlockHeader header in chain)
         {
@@ -68,7 +59,7 @@ public class MigrationStateBoundaryTests
         inner.FinalizedBlockNumber.Returns(finalized);
         inner.GetFinalizedHeader(Arg.Any<ulong>()).Returns(call => chain[call.Arg<ulong>()]);
 
-        MigrationFlatFinalizedStateProvider provider = new(inner, blockTree, Specs());
+        MigrationFlatFinalizedStateProvider provider = new(inner, blockTree, MigrationTestSpecs.Create());
 
         using (Assert.EnterMultipleScope())
         {

@@ -25,8 +25,8 @@ public class PbtPortableCodecTests
     public void Canonical_artifacts_roundtrip_with_independent_digests(
         [Values("anchor", "a1", "a2", "a3", "a4", "a5", "b2", "b3", "b4", "b5", "b6")] string name)
     {
-        byte[] snapshot = File.ReadAllBytes(Path.Combine(Eip8347FixtureState.Directory, "canonical", name, "snapshot.pbt"));
-        byte[] preimages = File.ReadAllBytes(Path.Combine(Eip8347FixtureState.Directory, "canonical", name, "preimages.bin"));
+        byte[] snapshot = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "snapshot.pbt"));
+        byte[] preimages = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "preimages.bin"));
         using JsonDocument golden = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(Eip8347FixtureState.Directory, "canonical-manifest.json")));
         JsonElement expected = golden.RootElement.GetProperty("artifacts").EnumerateArray().Single(item => item.GetProperty("name").GetString() == name);
         for (int repetition = 0; repetition < 2; repetition++)
@@ -39,7 +39,7 @@ public class PbtPortableCodecTests
             PbtArtifactWriter.PbtArtifactDigests digests = new(
                 PbtArtifactWriter.WriteDigested(snapshotOutput, destination => PbtSnapshotCodec.Write(destination, leaves,
                     written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None))),
-                PbtArtifactWriter.WriteDigested(preimageOutput, destination => PbtPreimageCodec.Write(destination, ReadAccounts(preimageInput))));
+                PbtArtifactWriter.WriteDigested(preimageOutput, destination => PbtPreimageCodec.Write(destination, PbtTestLeaves.ReadPreimages(preimageInput))));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshotOutput.ToArray(), Is.EqualTo(snapshot));
@@ -110,8 +110,8 @@ public class PbtPortableCodecTests
     {
         List<RebuildEntry> leaves =
         [
-            Leaf("00" + AddressHash + "00", "0x0000000000000000000000000000000100000000000000000000000000000000"),
-            Leaf("00" + AddressHash + "01", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
+            BasicLeaf,
+            CodeHashLeaf,
             Leaf("00" + AddressHash + "40", "0x05"),
             Leaf("01" + CodeStem + "00", "0x0102"),
             Leaf("ff" + AddressHash + StorageStem + "07", "0xff"),
@@ -124,30 +124,6 @@ public class PbtPortableCodecTests
             "04" + AddressHash, "05" + StorageStem + "07" + "01ff", "06" + SecondStorageStem + "01" + "01" + "0101" + "02" + "0102")));
         stream.Position = 0;
         Assert.That(PbtSnapshotCodec.ReadLeaves(stream).ToList(), Is.EqualTo(leaves));
-    }
-
-    [Test]
-    public void Readers_reject_huge_truncated_counts_without_allocating_declared_records()
-    {
-        byte[] header = new byte[24];
-        header.AsSpan(20).Fill(255);
-        using MemoryStream source = new(header);
-        PbtPreimageReader reader = new(source);
-        Assert.That(reader.ReadAccount(out _, out uint count), Is.True);
-        Assert.That(count, Is.EqualTo(uint.MaxValue));
-        Assert.Throws<InvalidDataException>(() => reader.ReadSlot());
-    }
-
-    private static IEnumerable<PbtAccountPreimages> ReadAccounts(Stream source)
-    {
-        PbtPreimageReader reader = new(source);
-        while (reader.ReadAccount(out Address? address, out uint count))
-            yield return new(address!, count, ReadSlots(reader, count));
-    }
-
-    private static IEnumerable<ValueHash256> ReadSlots(PbtPreimageReader reader, uint count)
-    {
-        for (uint index = 0; index < count; index++) yield return reader.ReadSlot();
     }
 
     [Test]
@@ -194,7 +170,7 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Preimages_reject_bad_order_counts_and_trailing_bytes([Values("duplicate-account", "duplicate-slot", "truncated-slot", "trailing")] string corruption)
+    public void Preimages_reject_bad_order_counts_and_trailing_bytes([Values("duplicate-account", "duplicate-slot", "truncated-slot", "huge-count", "trailing")] string corruption)
     {
         byte[] account = new byte[24];
         byte[] bytes = corruption switch
@@ -202,12 +178,12 @@ public class PbtPortableCodecTests
             "duplicate-account" => [.. account, .. account],
             "duplicate-slot" => [.. account.AsSpan(0, 23).ToArray(), 2, .. new byte[64]],
             "truncated-slot" => [.. account.AsSpan(0, 23).ToArray(), 1, .. new byte[31]],
+            "huge-count" => [.. account.AsSpan(0, 20).ToArray(), 0xFF, 0xFF, 0xFF, 0xFF],
             "trailing" => [.. account, 1],
             _ => throw new ArgumentOutOfRangeException(nameof(corruption))
         };
         using MemoryStream source = new(bytes);
-        Assert.That(() => { foreach (PbtAccountPreimages entry in ReadAccounts(source)) foreach (ValueHash256 slot in entry.Slots) { } },
-            Throws.InstanceOf<InvalidDataException>());
+        Assert.That(() => PbtTestLeaves.ReadPreimages(source), Throws.InstanceOf<InvalidDataException>());
     }
 
     [Test]
@@ -228,14 +204,12 @@ public class PbtPortableCodecTests
     [Test]
     public void Writer_rejects_unrepresentable_leaves([Values("unconsumed", "duplicate", "zero", "missing-basic", "cancel")] string failure)
     {
-        RebuildEntry basic = Leaf("00" + AddressHash + "00", "0x0000000000000000000000000000000100000000000000000000000000000000");
-        RebuildEntry codeHash = Leaf("00" + AddressHash + "01", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
         List<RebuildEntry> leaves = failure switch
         {
-            "duplicate" => [basic, basic, codeHash],
-            "zero" => [basic, codeHash with { Leaf = default }],
-            "missing-basic" => [codeHash],
-            _ => [basic, codeHash]
+            "duplicate" => [BasicLeaf, BasicLeaf, CodeHashLeaf],
+            "zero" => [BasicLeaf, CodeHashLeaf with { Leaf = default }],
+            "missing-basic" => [CodeHashLeaf],
+            _ => [BasicLeaf, CodeHashLeaf]
         };
         Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot = failure == "unconsumed" ? _ => default : PbtTestLeaves.Claiming(default);
         using MemoryStream destination = new();
@@ -255,6 +229,9 @@ public class PbtPortableCodecTests
 
     /// <summary>A codeless account with nonce one and header slot zero holding five.</summary>
     private static readonly string ValidHeader = "00" + AddressHash + "0101" + "00" + "01" + "00" + "0105";
+
+    private static readonly RebuildEntry BasicLeaf = Leaf("00" + AddressHash + "00", "0x0000000000000000000000000000000100000000000000000000000000000000");
+    private static readonly RebuildEntry CodeHashLeaf = Leaf("00" + AddressHash + "01", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
 
     private static RebuildEntry Leaf(string key, string value) =>
         new(new PbtStorageTreeKey(Bytes.FromHexString(key)), new ValueHash256(Bytes.FromHexString(value).PadLeft(32)));

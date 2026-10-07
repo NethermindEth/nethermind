@@ -5,22 +5,22 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Config;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
-using Nethermind.Pbt;
 using Nethermind.Specs.Forks;
-using Nethermind.State.Flat.ScopeProvider;
+using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -73,6 +73,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>
         new(CodeDb, Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, isReadOnly, Config, logManager ?? LimboLogs.Instance);
+
+    /// <summary>Opens a writable scope over <paramref name="parent"/>, or over the pre-genesis state when it is <c>null</c>.</summary>
+    public PbtWorldStateScope BeginScope(BlockHeader? parent) => (PbtWorldStateScope)CreateScopeProvider().BeginScope(parent, new LocalMetrics());
+
+    /// <summary>Builds the production container: the test Nethermind module and the PBT or mirror module <paramref name="config"/> selects.</summary>
+    internal static IContainer BuildProductionContainer(PbtConfig config) => new ContainerBuilder()
+        .AddModule(new TestNethermindModule(config))
+        .AddModule(config.MirrorFlat ? new PbtMirrorModule(config) : new PbtModule(config))
+        .Build();
 
     /// <summary>
     /// The contract code deployed by <see cref="RunReferenceBlocks"/>: more than 128 + 256 chunks (11904 bytes), so the
@@ -182,5 +191,23 @@ internal sealed class PbtTestContext : IAsyncDisposable
         public CancellationToken Token => cts.Token;
 
         public void Exit(int exitCode) => throw new NotSupportedException();
+    }
+}
+
+internal static class PbtTestScopeExtensions
+{
+    /// <summary>Writes block <paramref name="number"/> into <paramref name="scope"/>: <paramref name="address"/> at nonce <paramref name="number"/> with <paramref name="balance"/>, and <paramref name="number"/> into its <paramref name="slot"/>; then commits and returns the root.</summary>
+    public static Hash256 CommitBlock(this IWorldStateScopeProvider.IScope scope, ulong number, Address address, in UInt256 balance, in UInt256 slot)
+    {
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+        {
+            batch.Set(address, new Account(number, balance));
+            using IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(address, 1);
+            storage.Set(slot, (UInt256)number);
+        }
+
+        scope.UpdateRootHash();
+        scope.Commit(number);
+        return scope.RootHash;
     }
 }

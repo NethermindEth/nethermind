@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using NUnit.Framework;
+using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
 namespace Nethermind.State.Pbt.Test;
 
@@ -130,11 +131,4 @@ public class SortedTrieUpdaterTests
 
     // A single-operation minimum splits every frame with two touched slots, so even small batches fold in parallel.
     private static DifferentialTree NewTree() => new(PbtTreeHarness.FanOut(1), PbtTreeHarness.FoldQuota());
-
-    private static byte[] Value(byte seed)
-    {
-        byte[] value = new byte[32];
-        value[31] = seed;
-        return value;
-    }
 }

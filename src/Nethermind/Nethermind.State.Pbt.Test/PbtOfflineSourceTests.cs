@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -50,13 +49,10 @@ public class PbtOfflineSourceTests
     public void Exports_pinned_source_as_identical_canonical_fixture_with_bounded_sort(
         [Values("anchor", "a5")] string name, [Values(1024, 65536)] int bufferBytes, [Values(1, 4)] int workerCount)
     {
-        string fixtures = Eip8347FixtureState.Directory;
-        JsonElement metadata = Eip8347FixtureState.Metadata(name);
-        BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
-            .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
+        BlockHeader header = Eip8347FixtureState.AnchorHeader(name);
         PbtImageAnchor anchor = new("1", header.Hash!, header, 48);
-        byte[] expectedSnapshot = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "snapshot.pbt"));
-        byte[] expectedPreimages = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "preimages.bin"));
+        byte[] expectedSnapshot = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "snapshot.pbt"));
+        byte[] expectedPreimages = File.ReadAllBytes(Eip8347FixtureState.ArtifactPath(name, "preimages.bin"));
         using MemoryStream inputSnapshot = new(expectedSnapshot);
         using MemoryStream inputPreimages = new(expectedPreimages);
         Eip8347FixtureState.ReplayInto(_persistence, _codes, header, inputSnapshot, inputPreimages);

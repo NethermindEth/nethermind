@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -34,7 +33,7 @@ public class MigrationBalStateChangesTests
         await using IContainer container = CreateContainer(binary);
         await using ILifetimeScope environment = CreateEnvironment(container);
         IWorldState worldState = environment.Resolve<IWorldState>();
-        using JsonDocument parentAllocations = LoadAllocations(parent.GetProperty("name").GetString()!);
+        using JsonDocument parentAllocations = Eip8347FixtureState.LoadAllocation(parent.GetProperty("name").GetString()!);
         Hash256 parentRoot;
         using (worldState.BeginScope(null))
         {
@@ -50,7 +49,7 @@ public class MigrationBalStateChangesTests
             worldState.Commit(Amsterdam.Instance);
             worldState.ApplyBal(Decode(block.GetProperty("balRlp").GetString()!));
             worldState.RecalculateStateRoot();
-            using JsonDocument allocations = LoadAllocations(name);
+            using JsonDocument allocations = Eip8347FixtureState.LoadAllocation(name);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(worldState.StateRoot, Is.EqualTo(new Hash256(block.GetProperty(binary ? "pbtRoot" : "mptRoot").GetString()!)), name);
@@ -118,9 +117,6 @@ public class MigrationBalStateChangesTests
     private static ILifetimeScope CreateEnvironment(IContainer container) => container.BeginLifetimeScope(builder =>
         builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
 
-    private static JsonDocument LoadAllocations(string name) =>
-        JsonDocument.Parse(File.ReadAllText(Path.Combine(Eip8347FixtureState.Directory, "states", name + ".alloc.json")));
-
     private static JsonElement FindBlock(JsonDocument blocks, string property, string value)
     {
         foreach (JsonElement block in blocks.RootElement.EnumerateArray())
@@ -135,7 +131,7 @@ public class MigrationBalStateChangesTests
     }
 
     private static UInt256 Number(JsonElement account, string property) =>
-        account.TryGetProperty(property, out JsonElement value) ? new UInt256(Bytes.FromHexString(value.GetString()!), true) : UInt256.Zero;
+        account.TryGetProperty(property, out JsonElement value) ? Eip8347FixtureState.ParseQuantity(value.GetString()!) : UInt256.Zero;
 
     private static void Seed(IWorldState worldState, JsonElement allocations)
     {
@@ -147,7 +143,7 @@ public class MigrationBalStateChangesTests
                 worldState.InsertCode(address, Bytes.FromHexString(code.GetString()!), Amsterdam.Instance, isGenesis: true);
             if (entry.Value.TryGetProperty("storage", out JsonElement storage))
                 foreach (JsonProperty slot in storage.EnumerateObject())
-                    worldState.Set(new StorageCell(address, new UInt256(Bytes.FromHexString(slot.Name), true)), new UInt256(Bytes.FromHexString(slot.Value.GetString()!), true));
+                    worldState.Set(new StorageCell(address, Eip8347FixtureState.ParseQuantity(slot.Name)), Eip8347FixtureState.ParseQuantity(slot.Value.GetString()!));
         }
     }
 
