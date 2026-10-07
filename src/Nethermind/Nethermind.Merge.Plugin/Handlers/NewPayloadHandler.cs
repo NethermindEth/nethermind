@@ -125,15 +125,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="request">The execution payload to process.</param>
     /// <returns></returns>
-    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request) => HandleAsync(request, null);
-
-    internal async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request, ExecutionPayloadPreparation? prepared)
+    public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        using ExecutionPayloadPreparation? ownedPreparation = prepared is null ? new(request) : null;
-        ExecutionPayloadPreparation preparation = prepared ?? ownedPreparation!;
+        using ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
@@ -196,12 +193,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         if (parentHeader is null)
         {
             // Keep full orphan validation because ValidateOrphanedBlock is also used without this handler's hash gate.
-            bool valid = transactionValidation is null
-                ? _blockValidator.ValidateOrphanedBlock(block, out string? error)
-                : _blockValidator is InvalidBlockInterceptor interceptor
-                    ? interceptor.ValidateOrphanedBlock(block, out error, transactionValidation)
-                    : ((BlockValidator)_blockValidator).ValidateOrphanedBlock(block, out error, transactionValidation);
-            if (!valid)
+            if (!ValidateBlock(block, null, transactionValidation, out string? error))
             {
                 if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(block, $"orphaned block is invalid: {error}"));
                 RecordBadBlock(block);
@@ -982,15 +974,33 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         };
     }
 
+    private bool ValidateBlock(Block block, BlockHeader? parent, BlockValidator.TransactionValidation? transactions, [NotNullWhen(false)] out string? error)
+    {
+        if (transactions is not null)
+        {
+            switch (_blockValidator)
+            {
+                case InvalidBlockInterceptor interceptor:
+                    return parent is null
+                        ? interceptor.ValidateOrphanedBlock(block, out error, transactions)
+                        : interceptor.ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactions);
+                case BlockValidator validator:
+                    return parent is null
+                        ? validator.ValidateOrphanedBlock(block, out error, transactions)
+                        : validator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactions);
+            }
+        }
+
+        return parent is null
+            ? _blockValidator.ValidateOrphanedBlock(block, out error)
+            : _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false);
+    }
+
     private bool ValidateWithBlockValidator(Block block, BlockHeader parent, BlockValidator.TransactionValidation? transactionValidation, [NotNullWhen(false)] out string? error)
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
-        bool isValid = transactionValidation is null
-            ? _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false)
-            : _blockValidator is InvalidBlockInterceptor interceptor
-                ? interceptor.ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactionValidation)
-                : ((BlockValidator)_blockValidator).ValidateSuggestedBlock(block, parent, out error, validateHashes: false, transactionValidation);
+        bool isValid = ValidateBlock(block, parent, transactionValidation, out error);
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }

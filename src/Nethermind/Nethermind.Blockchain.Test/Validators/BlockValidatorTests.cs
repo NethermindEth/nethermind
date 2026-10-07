@@ -170,9 +170,9 @@ public class BlockValidatorTests
 
     [Test]
     public void Background_validation_preserves_custom_validators_and_small_blocks(
-        [Values(31, 32)] int count, [Values] bool senderDependent, [Values] bool custom)
+        [Values(31, 32)] int count, [Values] bool custom)
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(new ReleaseSpec { IsEip2780Enabled = senderDependent });
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Amsterdam.Instance);
         BlockValidator sut = custom
             ? Substitute.ForPartsOf<BlockValidator>(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance)
             : new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);

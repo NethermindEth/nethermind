@@ -59,7 +59,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
 
     [Test]
-    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash, [Values] bool prepared)
+    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
     {
         using ManualResetEventSlim finishRecovery = new();
         TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -96,10 +96,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ISenderRecoveryProgress? progress = null;
         try
         {
-            using ExecutionPayloadPreparation? preparation = prepared ? new(payload) : null;
-            ResultWrapper<PayloadStatusV1> result = prepared
-                ? await handler.HandleAsync(payload, preparation)
-                : await handler.HandleAsync(payload);
+            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
             bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor

@@ -8,8 +8,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
-using Nethermind.State.Proofs;
 using Nethermind.Specs.Forks;
+using Nethermind.State.Proofs;
 
 namespace Nethermind.Merge.Plugin.Benchmark;
 
@@ -18,6 +18,12 @@ namespace Nethermind.Merge.Plugin.Benchmark;
 /// transactions-trie root, withdrawals root, and the complete
 /// <see cref="ExecutionPayload.TryGetBlock"/> call.
 /// </summary>
+/// <remarks>
+/// <see cref="HandlerPrefix"/> validates parameters before starting root preparation.
+/// <see cref="HandlerPrefixWithEarlyRoot"/> measures speculative root preparation alongside
+/// parameter validation. Both use signed EIP-1559 transactions with a mainnet-like calldata
+/// mix to include transaction-decoding and trie-leaf costs.
+/// </remarks>
 [MemoryDiagnoser]
 public class NewPayloadPrefixBenchmarks
 {
