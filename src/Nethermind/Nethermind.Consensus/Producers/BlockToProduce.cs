@@ -50,10 +50,6 @@ namespace Nethermind.Consensus.Producers
 
         public long TxByteLength { get; internal set; }
 
-        /// <summary>EIP-8288 <c>recursive_stark_gas</c> owed by the transactions selected so far.</summary>
-        /// <remarks>Charged to the header only after execution, so selection must hold it back itself.</remarks>
-        public ulong RecursiveStarkGas { get; internal set; }
-
         internal AggregationInput? InclusionListProofInput { get; set; }
         internal List<AggregationInput> LeanProofInputs { get; } = [];
         internal LeanProofBudget LeanProofBudget { get; private set; } = new();
@@ -67,7 +63,6 @@ namespace Nethermind.Consensus.Producers
                 InclusionListProvenDependencies = InclusionListProvenDependencies,
                 InclusionListProofInput = InclusionListProofInput,
                 TxByteLength = TxByteLength,
-                RecursiveStarkGas = RecursiveStarkGas,
                 LeanProofBudget = LeanProofBudget.Clone()
             };
             replacement.LeanProofInputs.AddRange(LeanProofInputs);

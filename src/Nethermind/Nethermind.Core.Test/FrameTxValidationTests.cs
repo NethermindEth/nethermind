@@ -533,6 +533,31 @@ public class FrameTxValidationTests
             "the measured calldata must be priced, not served from the memo taken before it was set");
     }
 
+    [Test]
+    public void TryCalculateGasBudget_Eip8288_ChargesRecursiveStarkGasPerDeclaredDependencyInIntrinsicGas()
+    {
+        IReleaseSpec disabled = ReleaseSpecSubstitute.Create();
+        IReleaseSpec enabled = ReleaseSpecSubstitute.Create();
+        enabled.IsEip8288Enabled.Returns(true);
+        byte[] repeatedSchemes = [Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanSphincsScheme, Eip8288Constants.LeanStarkScheme];
+        Transaction tx = CreateValidFrameTx(t => t.Frames = [.. t.Frames!, DepFrame(repeatedSchemes)]);
+
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, disabled, out ulong baseIntrinsic, out ulong baseFloor, out ulong baseMax), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, disabled, out ulong baseExecution, out ulong baseState), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateGasBudget(tx, enabled, out ulong intrinsic, out ulong floor, out ulong max), Is.True);
+        Assert.That(FrameTxValidation.TryCalculateBlockGasReservations(tx, enabled, out ulong execution, out ulong state), Is.True);
+
+        const ulong recursiveStarkGas = 3 * Eip8288Constants.LeanStarkVerificationGas;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(intrinsic, Is.EqualTo(baseIntrinsic + recursiveStarkGas));
+            Assert.That(floor, Is.EqualTo(baseFloor));
+            Assert.That(max, Is.EqualTo(baseMax + recursiveStarkGas));
+            Assert.That(execution, Is.EqualTo(baseExecution + recursiveStarkGas));
+            Assert.That(state, Is.EqualTo(baseState));
+        }
+    }
+
     [TestCase(TxFrameSignature.SchemeSecp256k1, 65)]
     [TestCase(TxFrameSignature.SchemeP256, 128)]
     public void TryCalculateGasBudget_PlaceholderPricesSignatureBytesWithoutChangingConsensus(byte scheme, int length)

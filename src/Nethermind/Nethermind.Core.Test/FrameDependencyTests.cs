@@ -160,7 +160,6 @@ public class FrameDependencyTests
         {
             Assert.That(Eip8288Dependencies.ForTransaction(tx), Has.Count.EqualTo(1));
             Assert.That(Eip8288Dependencies.ForBlock(block), Has.Count.EqualTo(1));
-            Assert.That(Eip8288Dependencies.DependencyDeclarationCount(block), Is.EqualTo((ulong)declarations * 2));
             Assert.That(Eip8288Dependencies.RecursiveStarkGas(tx), Is.EqualTo((ulong)declarations * Eip8288Constants.LeanStarkVerificationGas));
         }
     }

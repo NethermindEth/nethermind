@@ -513,20 +513,16 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private bool? EvaluateWithUnknownGasDimensions(Block block, Transaction[] inclusionList, IReadOnlyStateProvider state, IReleaseSpec spec, ILeanProofVerifier verifier)
     {
         state = new CachedAccountStateProvider(state);
-        ulong proofGas = spec.IsEip8288Enabled
-            ? (ulong)Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas : 0;
-        if (proofGas > block.GasUsed) return null;
-        ulong transactionGas = block.GasUsed - proofGas;
         // EIP-8037 stores max(execution, state). Appendability decreases as either used dimension increases.
         try
         {
-            block.Header.GasUsedPerDimension = (transactionGas, transactionGas);
+            block.Header.GasUsedPerDimension = (block.GasUsed, block.GasUsed);
             if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return false;
 
-            block.Header.GasUsedPerDimension = (transactionGas, 0);
+            block.Header.GasUsedPerDimension = (block.GasUsed, 0);
             if (!InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false)) return null;
 
-            block.Header.GasUsedPerDimension = (0, transactionGas);
+            block.Header.GasUsedPerDimension = (0, block.GasUsed);
             return InclusionListValidator.IsSatisfied(block, inclusionList, state, spec, _txValidator, block.InclusionListRecursiveStark, verifier, frameCanInclude: static _ => false) ? true : null;
         }
         finally

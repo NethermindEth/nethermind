@@ -81,11 +81,10 @@ public class NativeFrameAssertionsTests
             Assert.That(chain.MainWorldState.GetNonce(TestItem.PrivateKeyB.Address), Is.EqualTo(1));
             Assert.That(chain.MainWorldState.GetBalance(TestItem.PrivateKeyB.Address), Is.LessThan(balanceBefore));
             Assert.That(receipt.Payer, Is.EqualTo(TestItem.PrivateKeyB.Address));
-            Assert.That(Eip8288Dependencies.DependencyDeclarationCount(block), Is.EqualTo(3));
             (ulong execution, ulong state) = block.Header.GasUsedPerDimension!.Value;
             Assert.That(state, Is.EqualTo(passes ? (ulong)GasCostOf.SSetState : 0));
             Assert.That(receipt.GasUsed, Is.EqualTo(execution + state));
-            Assert.That(Math.Max(execution, state) + 3 * Eip8288Constants.LeanStarkVerificationGas, Is.EqualTo(block.GasUsed));
+            Assert.That(Math.Max(execution, state), Is.EqualTo(block.GasUsed));
             Assert.That(Eip8288Dependencies.ComputeBlockDepsHash(block), Is.EqualTo(commitment));
             Assert.That(NativeLeanProofVerifier.Instance.VerifyRecursiveStark(commitment, Eip8288Constants.AggregatedVk,
                 block.Header.RecursiveStark!.StarkProof), Is.True);

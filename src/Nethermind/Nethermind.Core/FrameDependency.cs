@@ -104,23 +104,9 @@ public static class Eip8288Dependencies
         return Canonicalize(dependencies);
     }
 
-    /// <summary>Counts every declared dependency, including duplicates, for block gas accounting.</summary>
-    public static ulong DependencyDeclarationCount(Block block)
-    {
-        ulong count = 0;
-        foreach (Transaction tx in block.Transactions)
-        {
-            foreach (TxFrame frame in tx.Frames ?? [])
-            {
-                if (IsDependencyFrame(frame)) count += (ulong)(frame.Data.Length / Eip8288Constants.DependencyTripleLength);
-            }
-        }
-        return count;
-    }
-
     /// <summary>
-    /// The block-level <c>recursive_stark_gas</c> this transaction's dependencies contribute, charged
-    /// on top of the per-scheme verification gas the frames already paid.
+    /// The EIP-8288 <c>recursive_stark_gas</c> of this transaction: part of its intrinsic gas, charged per
+    /// declared dependency, duplicates included, on top of the per-scheme verification gas the frames already paid.
     /// </summary>
     public static ulong RecursiveStarkGas(Transaction tx)
     {

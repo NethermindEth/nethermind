@@ -272,13 +272,6 @@ public partial class BlockProcessor(
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        if (spec.IsEip8288Enabled)
-        {
-            (ulong Execution, ulong State)? dimensions = header.GasUsedPerDimension;
-            header.GasUsed += Eip8288Dependencies.DependencyDeclarationCount(block) * Eip8288Constants.LeanStarkVerificationGas;
-            header.GasUsedPerDimension = dimensions;
-        }
-
         if (receiptWork is null && TComputesCommitments.IsActive)
         {
             CalculateBlooms(receipts);

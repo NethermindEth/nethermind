@@ -330,9 +330,9 @@ namespace Nethermind.Blockchain.Test
                 Is.EquivalentTo(testCase.ExpectedSelectedTransactions.Select(static transaction => transaction.Hash)));
         }
 
-        [TestCase(0UL, false)]
-        [TestCase(Eip8288Constants.LeanStarkVerificationGas, true)]
-        public void BlockProductionTransactionPicker_reserves_recursive_stark_gas(ulong headroom, bool expectedToFit)
+        [TestCase(0UL, true)]
+        [TestCase(1UL, false)]
+        public void BlockProductionTransactionPicker_fits_recursive_stark_gas_inside_the_transaction_reservation(ulong shortfall, bool expectedToFit)
         {
             FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
             TxFrame dependencyFrame = new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]));
@@ -340,7 +340,7 @@ namespace Nethermind.Blockchain.Test
             tx.Type = TxType.FrameTx;
             tx.Frames = [dependencyFrame];
             FrameTxValidation.TryCalculateBlockGasReservations(tx, Eip8288Prototype.Instance, out ulong executionReservation, out _);
-            Block block = Build.A.Block.WithGasLimit(executionReservation + headroom).TestObject;
+            Block block = Build.A.Block.WithGasLimit(executionReservation - shortfall).TestObject;
             LeanProofStore proofs = new();
             proofs.AddVerified([dependency], [[1]], null);
             BlockProcessor.BlockProductionTransactionPicker txPicker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
@@ -374,23 +374,6 @@ namespace Nethermind.Blockchain.Test
                 Assert.That(producing.Transactions, Is.Empty);
                 Assert.That(receipts, Is.Empty);
             }
-        }
-
-        [Test]
-        public void BlockProductionTransactionPicker_reserves_recursive_proof_gas_in_state_lane([Values] bool fits, [Values(0UL, 30_000UL)] ulong reserved)
-        {
-            FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
-            Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
-            tx.Type = TxType.FrameTx;
-            tx.Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))];
-            LeanProofStore proofs = new();
-            proofs.AddVerified([dependency], [[1]], null);
-            BlockHeader header = Build.A.BlockHeader.WithGasLimit(1_000_000).TestObject;
-            BlockToProduce block = new(header) { RecursiveStarkGas = reserved };
-            ulong stateUsed = block.GasLimit - reserved - Eip8288Constants.LeanStarkVerificationGas + (fits ? 0UL : 1UL);
-            BlockProcessor.BlockProductionTransactionPicker picker = new(new TestSingleReleaseSpecProvider(Eip8288Prototype.Instance), leanProofStore: proofs);
-            BlockProcessor.AddingTxEventArgs result = picker.CanAddTransaction(block, tx, new HashSet<Transaction>(), Substitute.For<IReadOnlyStateProvider>(), 0, stateUsed);
-            Assert.That(result.Action, Is.EqualTo(fits ? BlockProcessor.TxAction.Add : BlockProcessor.TxAction.Skip));
         }
 
         [Test]
