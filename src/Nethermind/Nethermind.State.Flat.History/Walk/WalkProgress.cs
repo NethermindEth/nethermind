@@ -89,7 +89,7 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     }
 
     /// <remarks>
-    /// A storage item's replay block is best-effort: borrowed groups of one range replay on other threads and the last writer wins,
+    /// A storage item's replay block is best-effort: forked groups of one range replay on other threads and the last writer wins,
     /// so the block shown can step back between heartbeats, and a scan tick hides it until the next replay update.
     /// </remarks>
     public void Replaying(int item, ulong block)

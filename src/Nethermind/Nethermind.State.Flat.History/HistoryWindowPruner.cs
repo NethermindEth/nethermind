@@ -29,6 +29,9 @@ public sealed class HistoryWindowPruner(
 {
     private const int BlockBytes = sizeof(ulong);
     private const int FlushEveryNDeletes = 1000;
+    // An iterator step is roughly an order of magnitude cheaper than a seek, so a key's live tail is only worth
+    // seeking past once it has shown this many rows.
+    internal const int LiveRowsBeforeSkip = 16;
     private const double DeadWeightCompactionRatio = 0.5;
     private const int OwedDrainWarnEveryNFailures = 10;
     private static readonly TimeSpan DeadWeightCompactionMinInterval = TimeSpan.FromHours(1);
@@ -374,7 +377,9 @@ public sealed class HistoryWindowPruner(
     }
 
     /// <summary>Under v3 every row at or below the floor is dead, since a forward-seek only returns rows strictly
-    /// above the query - and the pruner only ever runs windowed, which forces v3.</summary>
+    /// above the query - and the pruner only ever runs windowed, which forces v3. The v3 suffix ascends, so once a
+    /// key shows <see cref="LiveRowsBeforeSkip"/> live rows the rest of its rows are live too and the view seeks
+    /// past them instead of reading every one on every cycle.</summary>
     private bool PruneVersionedColumn(IDb column, ReadOnlySpan<byte> cursorKeyName, HistoryKeyLayout keyLayout, ulong floor, bool hasScopes, IPruneBudget budget, CancellationToken token)
     {
         int flatKeyLength = keyLayout.FlatKeyLength;
@@ -384,9 +389,15 @@ public sealed class HistoryWindowPruner(
         Span<byte> upperBound = stackalloc byte[flatKeyLength + BlockBytes + 1];
         upperBound.Fill(0xFF);
 
+        // Sorts after every row of the current key and at or before the first row of the next one.
+        Span<byte> pastGroupKey = stackalloc byte[flatKeyLength + BlockBytes + 1];
+        pastGroupKey[flatKeyLength..].Fill(0xFF);
+        pastGroupKey[^1] = 0;
+
         Span<byte> currentGroupKey = stackalloc byte[flatKeyLength];
         bool hasGroup = false;
         ulong currentGroupFloor = floor;
+        int liveRowsInGroup = 0;
         Span<byte> addressKey = stackalloc byte[HistoryKeyLayout.ScopeKeyLength];
         int sinceFlush = 0;
 
@@ -394,7 +405,8 @@ public sealed class HistoryWindowPruner(
         IWriteBatch batch = column.StartWriteBatch();
         try
         {
-            while (view.MoveNext())
+            bool hasRow = view.MoveNext();
+            while (hasRow)
             {
                 if (budget.Exhausted || token.IsCancellationRequested)
                 {
@@ -406,13 +418,18 @@ public sealed class HistoryWindowPruner(
                 }
 
                 ReadOnlySpan<byte> key = view.CurrentKey;
-                if (key.Length != flatKeyLength + BlockBytes) continue;
+                if (key.Length != flatKeyLength + BlockBytes)
+                {
+                    hasRow = view.MoveNext();
+                    continue;
+                }
 
                 ReadOnlySpan<byte> keyPrefix = key[..flatKeyLength];
                 if (!hasGroup || !keyPrefix.SequenceEqual(currentGroupKey))
                 {
                     keyPrefix.CopyTo(currentGroupKey);
                     hasGroup = true;
+                    liveRowsInGroup = 0;
 
                     // With no slices configured neither ExtractAddressKey nor ResolveScope is ever called.
                     if (hasScopes)
@@ -429,6 +446,14 @@ public sealed class HistoryWindowPruner(
                     Metrics.FlatHistoryPrunedRows++;
                     sinceFlush = FlushBatchIfNeeded(column, ref batch, sinceFlush);
                 }
+                else if (++liveRowsInGroup == LiveRowsBeforeSkip && view is ISeekableSortedView seekable)
+                {
+                    currentGroupKey.CopyTo(pastGroupKey);
+                    hasRow = seekable.SeekTo(pastGroupKey);
+                    continue;
+                }
+
+                hasRow = view.MoveNext();
             }
         }
         finally

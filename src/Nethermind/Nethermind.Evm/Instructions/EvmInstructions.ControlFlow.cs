@@ -254,22 +254,43 @@ public static partial class EvmInstructions
         where TSkipCallDest : struct, IFlag
     {
         if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
-        if (!stack.EnsureDepth(1)) goto StackUnderflow;
-        nint destination = CallDestination(ref stack.PopBytesByRefUnchecked(), ref stack);
-        if (destination < 0) goto InvalidJumpDestination;
-        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) goto ReturnStackOverflow;
-        if (!SkipJumpDest<TGasPolicy, TSkipCallDest>(vm, ref gas, destination, out programCounter))
-            return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
-        PrefetchCodeAtDestination(ref stack, programCounter);
+        if (!stack.EnsureDepth(1)) return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
+        nint callOpCodeCount = 0;
+        EvmExceptionType result = CallSubTo<TGasPolicy, TSkipCallDest, OnFlag>(
+            ref stack, ref gas, vm, JumpDestination(ref stack.PopBytesByRefUnchecked(), ref stack), ref programCounter, ref callOpCodeCount);
+        return new OpcodeResult(programCounter, result);
+    }
 
-        return new OpcodeResult(programCounter, EvmExceptionType.None);
-        // Jump forward to be unpredicted by the branch predictor.
-    StackUnderflow:
-        return new OpcodeResult(programCounter, EvmExceptionType.StackUnderflow);
-    InvalidJumpDestination:
-        return new OpcodeResult(programCounter, EvmExceptionType.InvalidJumpDestination);
-    ReturnStackOverflow:
-        return new OpcodeResult(programCounter, EvmExceptionType.ReturnStackOverflow);
+    /// <summary>
+    /// Completes an EIP-7979 <c>CALLSUB</c> whose gas is charged: checks that <paramref name="destination"/> is a
+    /// <c>CALLDEST</c>, pushes the return address and moves to the destination.
+    /// </summary>
+    /// <param name="destination">The destination as <see cref="JumpDestination(ref byte, ref EvmStack)"/> returns it.</param>
+    /// <param name="programCounter">The return address on entry; the destination, or past its <c>CALLDEST</c>, on success.</param>
+    /// <remarks>
+    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
+    /// them apart. A marked position is inside the code, so the byte read is in bounds.
+    /// </remarks>
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static EvmExceptionType CallSubTo<TGasPolicy, TSkipCallDest, TUseVmCounter>(
+        ref EvmStack stack,
+        ref TGasPolicy gas,
+        VirtualMachine<TGasPolicy> vm,
+        nint destination,
+        ref nint programCounter,
+        ref nint opCodeCount)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TSkipCallDest : struct, IFlag
+        where TUseVmCounter : struct, IFlag
+    {
+        if (destination < 0 || Unsafe.Add(ref stack.Code, destination) != (byte)Instruction.CALLDEST)
+            return EvmExceptionType.InvalidJumpDestination;
+        if (!vm.VmState.TryPushReturnAddress((int)programCounter)) return EvmExceptionType.ReturnStackOverflow;
+        if (!SkipJumpDest<TGasPolicy, TSkipCallDest, TUseVmCounter>(vm, ref gas, destination, ref opCodeCount, out programCounter))
+            return EvmExceptionType.OutOfGas;
+        PrefetchCodeAtDestination(ref stack, programCounter);
+        return EvmExceptionType.None;
     }
 
     /// <summary>EIP-7979 <c>RETURNSUB</c>: resumes at the position popped off the frame's return stack.</summary>
@@ -485,23 +506,6 @@ public static partial class EvmInstructions
         stack.IsJumpDestination(jumpDestination)
             ? jumpDestination
             : -1;
-
-    /// <summary>
-    /// Reads an EIP-7979 <c>CALLSUB</c> destination out of the stack slot that holds it, returning it, or <c>-1</c>
-    /// when it is not a <c>CALLDEST</c>.
-    /// </summary>
-    /// <remarks>
-    /// Requires <see cref="EvmStack.UseCallDestinations"/>, whose bitmap marks both markers; the code byte tells
-    /// them apart. A marked position is inside the code, so the byte read is in bounds.
-    /// </remarks>
-    /// <inheritdoc cref="JumpDestination(ref byte, ref EvmStack)" path="/param"/>
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static nint CallDestination(ref byte slot, ref EvmStack stack)
-    {
-        nint destination = JumpDestination(ref slot, ref stack);
-        return destination >= 0 && Unsafe.Add(ref stack.Code, destination) == (byte)Instruction.CALLDEST ? destination : -1;
-    }
 
     /// <summary>Prefetches the bytecode cache line at a taken jump's next instruction.</summary>
     /// <remarks>Hints the target explicitly to reduce cache misses after non-sequential control flow.</remarks>
