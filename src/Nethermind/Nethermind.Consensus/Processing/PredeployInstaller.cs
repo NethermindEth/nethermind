@@ -15,8 +15,8 @@ namespace Nethermind.Consensus.Processing;
 public static class PredeployInstaller
 {
     /// <param name="InitializesOnce">EIP-8272: the predeploy is initialised only over an account with empty code and
-    /// storage, and never again. An account holding the canonical code is treated as initialised; any other code or
-    /// storage at the address makes the block invalid.</param>
+    /// storage. Any code or storage at the address makes the first block the predeploy is active in invalid; a later
+    /// block leaves such an account as it is.</param>
     private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false, bool InitializesOnce = false);
 
     private static readonly Predeploy[] Predeploys =
@@ -46,9 +46,10 @@ public static class PredeployInstaller
     /// block produces no BAL entry; on the non-BAL path the same world state is passed for both.</param>
     /// <param name="writeState">State the code and nonce change is applied to (BAL-traced on the BAL path).</param>
     /// <param name="spec">The release spec in effect for the block being processed.</param>
-    /// <returns><see langword="false"/> when a predeploy that initialises once finds foreign code, or storage without
-    /// code, which makes the block invalid.</returns>
-    public static bool Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec)
+    /// <param name="parentSpec">The release spec in effect for the parent of the block being processed.</param>
+    /// <returns><see langword="false"/> when a predeploy that initialises once and is not active in
+    /// <paramref name="parentSpec"/> finds code or storage at its address, which makes the block invalid.</returns>
+    public static bool Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec, IReleaseSpec parentSpec)
     {
         foreach (Predeploy predeploy in Predeploys)
         {
@@ -60,22 +61,15 @@ public static class PredeployInstaller
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
             ReadOnlySpan<byte> existingCode = readState.GetCodeSpan(predeploy.Address);
-            if (predeploy.InitializesOnce)
+            if (predeploy.InitializesOnce
+                && (!existingCode.IsEmpty || (readState.TryGetAccount(predeploy.Address, out AccountStruct account) && account.HasStorage)))
             {
-                if (!existingCode.IsEmpty)
-                {
-                    if (!existingCode.SequenceEqual(code.Span))
-                    {
-                        return false;
-                    }
-
-                    continue;
-                }
-
-                if (readState.TryGetAccount(predeploy.Address, out AccountStruct account) && account.HasStorage)
+                if (!predeploy.IsActive(parentSpec))
                 {
                     return false;
                 }
+
+                continue;
             }
 
             bool codeSatisfied = code.IsEmpty || existingCode.SequenceEqual(code.Span);

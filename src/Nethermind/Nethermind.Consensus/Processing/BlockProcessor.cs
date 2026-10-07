@@ -174,7 +174,7 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec))
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec, _balManager.GetParentSpec(header)))
         {
             throw new InvalidBlockException(block, BlockErrorMessages.RecentRootPredeployNotEmpty);
         }
