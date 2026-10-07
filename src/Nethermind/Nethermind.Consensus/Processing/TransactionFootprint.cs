@@ -39,20 +39,52 @@ internal sealed class TransactionFootprint(
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
 
+    // BENCH (bench/handoff-matches-skip): BENCH_MATCHES_SKIP=0 restores the full comparison for A/B on one image.
+    private static readonly bool SkipUnchanged = Environment.GetEnvironmentVariable("BENCH_MATCHES_SKIP") != "0";
+
     public bool Matches(IWorldState state)
     {
+        // A footprint is recorded against the block's parent state, which the main thread reads through the same
+        // pre-block cache. A precondition on an account, or on a slot of a contract, that has not changed since the block
+        // started therefore still holds; only keys the block has changed so far need reading.
+        bool skip = SkipUnchanged;
+        long skipped = 0, compared = 0;
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
         {
-            if (!account.IsMet(state)) return false;
+            if (skip && !state.MayHaveChangedInBlock(account.Address)) { skipped++; continue; }
+            compared++;
+            if (!account.IsMet(state)) { Count(skipped, compared); return false; }
         }
 
+        Address? lastContract = null;
+        bool lastContractChanged = true;
         foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
         {
+            if (skip)
+            {
+                Address contract = slot.Cell.Address;
+                if (!ReferenceEquals(contract, lastContract))
+                {
+                    lastContract = contract;
+                    lastContractChanged = state.MayHaveStorageChangedInBlock(contract);
+                }
+
+                if (!lastContractChanged) { skipped++; continue; }
+            }
+
+            compared++;
             state.Get(in slot.Cell, out UInt256 value);
-            if (value != slot.Value) return false;
+            if (value != slot.Value) { Count(skipped, compared); return false; }
         }
 
+        Count(skipped, compared);
         return true;
+    }
+
+    private static void Count(long skipped, long compared)
+    {
+        Blockchain.Metrics.PrewarmHandoffPreconditionsSkipped += skipped;
+        Blockchain.Metrics.PrewarmHandoffPreconditionsChecked += compared;
     }
 
     public void Replay(IWorldState state, IReleaseSpec spec)

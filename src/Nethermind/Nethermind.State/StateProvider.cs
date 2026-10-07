@@ -895,6 +895,14 @@ internal partial class StateProvider(ILogManager logManager, LocalMetrics metric
 
     internal Account? GetPureRead(Address address) => GetState(address);
 
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): <see langword="false"/> only when nothing is pending in the transaction journal and
+    /// the block's change record holds the same account for <paramref name="address"/> as at the block start (reads add an
+    /// entry with Before == After; <see cref="FlushToTree"/> writes exactly the entries where they differ), or no entry at all.
+    /// </summary>
+    internal bool MayHaveChangedInBlock(Address address) =>
+        _changes.Count != 0 || (_blockChanges.TryGetValue(address, out ChangeTrace change) && change.Before != change.After);
+
     /// <summary>Layers a transaction prefix over cached block-start account changes.</summary>
     internal void ApplyAccountOverlay(IStateReadOverlay overlay)
     {

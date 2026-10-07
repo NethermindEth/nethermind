@@ -73,6 +73,14 @@ public static class Metrics
     [Description("Transactions executed after their pre-warm run failed to apply")]
     public static long PrewarmHandoffFailures { get; set; }
 
+    [CounterMetric]
+    [Description("BENCH: handoff preconditions skipped because their account or contract did not change in the block")]
+    public static long PrewarmHandoffPreconditionsSkipped { get; set; }
+
+    [CounterMetric]
+    [Description("BENCH: handoff preconditions read and compared")]
+    public static long PrewarmHandoffPreconditionsChecked { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }

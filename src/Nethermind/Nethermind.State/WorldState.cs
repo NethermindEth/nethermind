@@ -33,6 +33,12 @@ namespace Nethermind.State
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
+
+        // BENCH (bench/handoff-matches-skip)
+        public bool MayHaveChangedInBlock(Address address) => _stateProvider.MayHaveChangedInBlock(address);
+
+        // BENCH (bench/handoff-matches-skip)
+        public bool MayHaveStorageChangedInBlock(Address address) => _persistentStorageProvider.MayHaveChangedInBlock(address);
         private readonly TransientStorageProvider _transientStorageProvider;
         // Per-scope counter accumulator shared with the providers and scope; folded into the global
         // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.

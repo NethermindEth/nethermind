@@ -23,6 +23,18 @@ namespace Nethermind.Evm.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): whether <paramref name="address"/> may hold a different account than at the start
+    /// of the current block. Conservative: <see langword="true"/> unless the implementation knows otherwise.
+    /// </summary>
+    bool MayHaveChangedInBlock(Address address) => true;
+
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): whether any storage slot of <paramref name="address"/> may hold a different value
+    /// than at the start of the current block. Conservative: <see langword="true"/> unless the implementation knows otherwise.
+    /// </summary>
+    bool MayHaveStorageChangedInBlock(Address address) => true;
+
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 

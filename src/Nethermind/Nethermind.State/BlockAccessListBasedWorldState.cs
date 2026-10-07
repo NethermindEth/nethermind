@@ -25,6 +25,11 @@ namespace Nethermind.State;
 
 public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logManager) : WorldStateDecorator(state)
 {
+    // BENCH (bench/handoff-matches-skip): this decorator keeps its own state layer, so it never claims a key is unchanged.
+    public override bool MayHaveChangedInBlock(Address address) => true;
+
+    public override bool MayHaveStorageChangedInBlock(Address address) => true;
+
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;

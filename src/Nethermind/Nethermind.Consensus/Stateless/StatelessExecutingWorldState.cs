@@ -17,6 +17,11 @@ namespace Nethermind.Consensus.Stateless;
 /// <remarks>Not thread-safe: the remembered code is two fields, and the stateless environment executes sequentially.</remarks>
 public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorator(state)
 {
+    // BENCH (bench/handoff-matches-skip): this decorator keeps its own state layer, so it never claims a key is unchanged.
+    public override bool MayHaveChangedInBlock(Address address) => true;
+
+    public override bool MayHaveStorageChangedInBlock(Address address) => true;
+
     // The code the last bytecode access checked: code resolution checks an account's code and then
     // loads the same code by hash, so the load is answered here rather than from the code store again.
     private ValueHash256 _checkedCodeHash;

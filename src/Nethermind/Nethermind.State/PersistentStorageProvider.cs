@@ -764,6 +764,15 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         if (state.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
     }
 
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): <see langword="false"/> only when no storage change or clear is pending in the
+    /// transaction journal and the contract has no per-block state that was written, cleared or journalled this block.
+    /// Committed writes set <c>WasWritten</c> in <see cref="CommitCore"/> after every transaction.
+    /// </summary>
+    internal bool MayHaveChangedInBlock(Address address) =>
+        _changes.Count != 0 || _storageClearJournal.Count != 0
+        || (_storages.TryGetValue(address, out PerContractState? state) && (state.WasWritten || state.WasCleared || state.HasJournalledWrites));
+
     public override void ClearStorage(Address address)
     {
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;

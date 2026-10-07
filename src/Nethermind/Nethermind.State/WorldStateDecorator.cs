@@ -22,6 +22,11 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     protected readonly IWorldState State = state;
 
     public Hash256 StateRoot => State.StateRoot;
+
+    // BENCH (bench/handoff-matches-skip): forwarded; decorators with their own write layer answer true.
+    public virtual bool MayHaveChangedInBlock(Address address) => State.MayHaveChangedInBlock(address);
+
+    public virtual bool MayHaveStorageChangedInBlock(Address address) => State.MayHaveStorageChangedInBlock(address);
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 

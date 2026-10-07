@@ -26,6 +26,11 @@ public class WitnessGeneratingWorldState(
     IHeaderFinder headerFinder)
     : WorldStateDecorator(state)
 {
+    // BENCH (bench/handoff-matches-skip): this decorator keeps its own state layer, so it never claims a key is unchanged.
+    public override bool MayHaveChangedInBlock(Address address) => true;
+
+    public override bool MayHaveStorageChangedInBlock(Address address) => true;
+
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());
