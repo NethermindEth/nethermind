@@ -75,7 +75,7 @@ internal sealed class PostStateCache(
 
     // Two epochs of slots: an envelope arrives within its block's slot, and a payload attestation
     // or late envelope for a block two epochs back is already outside any window the spec honors.
-    private const int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
+    private static readonly int RetainedGloasStateCount = 2 * (int)Presets.SlotsPerEpoch;
 
     private readonly LruCache<Hash256, BeaconStateFulu> _retained = new(RetainedStateCount, nameof(PostStateCache));
     private readonly BoundaryTier<BeaconStateFulu> _retainedBoundaries = new(store, isAboveFinalized, BeaconStateFulu.Encode, nameof(PostStateCache) + "Boundaries", (logManager ?? LimboLogs.Instance).GetClassLogger<PostStateCache>());

@@ -90,8 +90,8 @@ public partial class RangeSyncTests
     /// asking a peer for them spends its rate limit on sidecars it need not serve and may penalize it for not having them.
     /// The fixture block sits in epoch 0, which leaves the window once the clock is more than the window width past it.
     /// </summary>
-    [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests, 1)]
-    [TestCase(Eip7594DasConstants.MinEpochsForDataColumnSidecarsRequests + 1, 0)]
+    [TestCase(4096UL, 1)]
+    [TestCase(4096UL + 1, 0)]
     public async Task Fulu_blob_blocks_before_the_data_availability_window_get_no_column_request(ulong currentEpoch, int expectedRequests, CancellationToken token)
     {
         ImportableBlobBlock chain = ImportableBlobBlock.Create();

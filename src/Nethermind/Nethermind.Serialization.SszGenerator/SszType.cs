@@ -126,7 +126,7 @@ class SszType
 
     public const int PointerLength = 4;
 
-    internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type)
+    internal static SszType From(SemanticModel semanticModel, List<SszType> types, ITypeSymbol type, bool alternatePreset = false)
     {
         string? @namespace = GetNamespace(type);
         string name = GetTypeName(type);
@@ -168,7 +168,7 @@ class SszType
         result.Members = kind switch
         {
             Kind.Container or Kind.ProgressiveContainer or Kind.CompatibleUnion => GetPublicProperties(type)
-                .Select(prop => SszProperty.From(semanticModel, types, prop))
+                .Select(prop => SszProperty.From(semanticModel, types, prop, alternatePreset))
                 .ToArray(),
             _ => null,
         };

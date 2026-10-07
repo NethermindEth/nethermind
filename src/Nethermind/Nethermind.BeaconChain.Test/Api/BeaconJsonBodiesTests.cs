@@ -329,7 +329,7 @@ public class BeaconJsonBodiesTests : BeaconApiFixture
     [Test]
     public async Task State_finalized_flag_uses_the_block_slot_and_the_state_slot_cutoff([Values(0, 5)] int offset)
     {
-        const ulong checkpointSlot = 412_500 * Presets.SlotsPerEpoch;
+        ulong checkpointSlot = 412_500 * Presets.SlotsPerEpoch;
         Hash256 root = BeaconApiTestHost.TestRoot(0x21);
         BeaconStateFulu state = BeaconApiTestHost.RichState(BeaconChainSpec.Mainnet, checkpointSlot + (ulong)offset);
         state.LatestBlockHeader!.Slot = checkpointSlot - 1;

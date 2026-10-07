@@ -17,8 +17,8 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 [HardTimeout(60_000)]
 public class ProposerBoostDependentRootTests
 {
-    private const ulong BoostSlot = 2 * Presets.SlotsPerEpoch;
-    private const ulong DependentSlot = Presets.SlotsPerEpoch - 1;
+    private static readonly ulong BoostSlot = 2 * Presets.SlotsPerEpoch;
+    private static readonly ulong DependentSlot = Presets.SlotsPerEpoch - 1;
 
     [Test]
     public void Block_with_another_dependent_root_is_not_boosted_and_does_not_take_the_head()
@@ -87,7 +87,7 @@ public class ProposerBoostDependentRootTests
     }
 
     [Test]
-    public void Block_in_the_first_two_epochs_compares_dependent_roots_at_the_anchor([Values(2ul, Presets.SlotsPerEpoch + 8)] ulong slot)
+    public void Block_in_the_first_two_epochs_compares_dependent_roots_at_the_anchor([Values(2ul, Presets.DefaultSlotsPerEpoch + 8)] ulong slot)
     {
         FuluChain chain = new();
         ForkChoiceRunner runner = chain.CreateRunner();
@@ -143,7 +143,7 @@ public class ProposerBoostDependentRootTests
     [Test]
     public void Known_gloas_block_imported_again_skips_the_parent_checks()
     {
-        const ulong GloasBoostSlot = 3 * Presets.SlotsPerEpoch;
+        ulong GloasBoostSlot = 3 * Presets.SlotsPerEpoch;
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = chain.CreateRunner();
         TickTo(runner, chain.First.Block.Message!.Slot);
@@ -175,7 +175,7 @@ public class ProposerBoostDependentRootTests
     [Test]
     public void Gloas_block_is_boosted_only_with_the_heads_dependent_root([Values] bool onHeadBranch)
     {
-        const ulong GloasBoostSlot = 3 * Presets.SlotsPerEpoch;
+        ulong GloasBoostSlot = 3 * Presets.SlotsPerEpoch;
         ForkCrossingChain chain = ForkCrossingChain.Instance;
         ForkChoiceRunner runner = chain.CreateRunner();
         TickTo(runner, chain.First.Block.Message!.Slot);

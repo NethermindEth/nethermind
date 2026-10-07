@@ -29,7 +29,7 @@ public partial class ExecutionPayload
     public Hash256? BlockHash { get; set; }
     [SszList(1_048_576)]
     public SszTransaction[]? Transactions { get; set; }
-    [SszList((ulong)Presets.MaxWithdrawalsPerPayload)]
+    [SszList((ulong)Presets.DefaultMaxWithdrawalsPerPayload, AlternateLimit = 8)]
     public SszWithdrawal[]? Withdrawals { get; set; }
     public ulong BlobGasUsed { get; set; }
     public ulong ExcessBlobGas { get; set; }
