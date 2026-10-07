@@ -61,6 +61,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? QueuedInclusionListsField =
         typeof(NewPayloadHandler).GetField("_queuedInclusionLists", BindingFlags.Instance | BindingFlags.NonPublic);
 
+    private static readonly FieldInfo? QueuedInclusionListsLockField =
+        typeof(NewPayloadHandler).GetField("_queuedInclusionListsLock", BindingFlags.Instance | BindingFlags.NonPublic);
+
     [Test]
     public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
     {
@@ -596,6 +599,98 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
     }
 
+    /// <summary>
+    /// A request that timed out leaves its copy on the way to the queue, and a retry with the same list queues a
+    /// second copy that is answered and gone while the first is still held. A re-submission with another inclusion
+    /// list must go on waiting for the held copy, which would otherwise run first and answer it.
+    /// </summary>
+    [Test, MaxTime(30_000)]
+    public async Task ValidateBlockAndProcess_waits_for_a_held_copy_with_another_inclusion_list_after_a_same_list_retry_has_finished()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource firstEnqueueEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource firstEnqueueReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource retryEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource retryEnqueueReleased = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource resentEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int enqueues = 0;
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                switch (Interlocked.Increment(ref enqueues))
+                {
+                    case 1:
+                        firstEnqueueEntered.TrySetResult();
+                        firstEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        break;
+                    case 2:
+                        retryEnqueued.TrySetResult();
+                        retryEnqueueReleased.Task.Wait(TimeSpan.FromSeconds(20));
+                        break;
+                    default:
+                        resentEnqueued.TrySetResult();
+                        break;
+                }
+
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: true,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 3_000);
+
+        ExecutionPayloadV3 heldPayload = ExecutionPayloadV3.Create(block);
+        heldPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        ExecutionPayloadV3 retryPayload = ExecutionPayloadV3.Create(block);
+        retryPayload.InclusionListTransactions = heldPayload.InclusionListTransactions;
+        ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
+        resentPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyC).TestObject).Bytes];
+
+        Task<ResultWrapper<PayloadStatusV1>> resent;
+        try
+        {
+            Task<ResultWrapper<PayloadStatusV1>> held = handler.HandleAsync(heldPayload);
+            await firstEnqueueEntered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That((await held.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its copy is still on the way to the queue");
+
+            Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(retryPayload);
+            await retryEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            MethodInfo? waitMethod = typeof(NewPayloadHandler).GetMethod("WaitForEarlierCopiesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(waitMethod, Is.Not.Null);
+            Task bothCopiesWait = (Task)waitMethod!.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            retryEnqueueReleased.SetResult();
+            processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+            Assert.That((await retry.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
+            Assert.That(() => GetQueuedInclusionLists(handler, block.Hash!)?.Length ?? 0, Is.EqualTo(1).After(10_000, 10), "the retry's copy has left the queue and the held copy has not");
+            Assert.That(bothCopiesWait.IsCompleted, Is.False, "a wait started while both copies were outstanding must outlast the retry's copy");
+
+            resent = handler.HandleAsync(resentPayload);
+
+            Task earlierCopyWait = (Task)waitMethod.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
+
+            processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        }
+        finally
+        {
+            retryEnqueueReleased.TrySetResult();
+            firstEnqueueReleased.TrySetResult();
+        }
+
+        await resentEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
     [Test, MaxTime(30_000)]
     public async Task ValidateBlockAndProcess_waits_for_a_copy_with_another_inclusion_list_whose_request_timed_out_in_suggest()
     {
@@ -769,8 +864,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
             Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            object? queuedCopy = GetQueuedInclusionList(handler, block.Hash!);
-            Assert.That(queuedCopy, Is.Not.Null, "the copy still in the queue keeps its entry");
+            object[]? queuedCopies = GetQueuedInclusionLists(handler, block.Hash!);
+            Assert.That(queuedCopies, Has.Length.EqualTo(1), "the copy still in the queue keeps its entry");
+            object queuedCopy = queuedCopies![0];
 
             ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the second request gives up while its suggest is still pending");
@@ -778,7 +874,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timedOutSuggest.SetResult(AddBlockResult.Added);
             await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.That(GetQueuedInclusionList(handler, block.Hash!), Is.SameAs(queuedCopy), "the copy queued first must keep its entry while it is still queued");
+            Assert.That(GetQueuedInclusionLists(handler, block.Hash!), Has.Member(queuedCopy), "the copy queued first must keep its entry while it is still queued");
         }
         finally
         {
@@ -966,11 +1062,19 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
     }
 
-    private static object? GetQueuedInclusionList(NewPayloadHandler handler, Hash256 blockHash)
+    private static object[]? GetQueuedInclusionLists(NewPayloadHandler handler, Hash256 blockHash)
     {
         Assert.That(QueuedInclusionListsField, Is.Not.Null, "_queuedInclusionLists field not found - was it renamed?");
+        Assert.That(QueuedInclusionListsLockField, Is.Not.Null, "_queuedInclusionListsLock field not found - was it renamed?");
 
-        return ((System.Collections.IDictionary)QueuedInclusionListsField!.GetValue(handler)!)[blockHash];
+        using (((Lock)QueuedInclusionListsLockField!.GetValue(handler)!).EnterScope())
+        {
+            System.Collections.IList? copies = (System.Collections.IList?)((System.Collections.IDictionary)QueuedInclusionListsField!.GetValue(handler)!)[blockHash];
+            if (copies is null) return null;
+            object[] snapshot = new object[copies.Count];
+            copies.CopyTo(snapshot, 0);
+            return snapshot;
+        }
     }
 
     /// <summary>The block every case here drives: post-merge, one past a parent none of them have.</summary>
