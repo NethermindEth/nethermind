@@ -211,6 +211,14 @@ internal static class NodeViews
         return NodeView.Branch(children, rlp, knownHash?.ValueHash256);
     }
 
+    public static bool TryReadExtensionPath(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount)
+    {
+        nibbleCount = 0;
+        RlpReader reader = new(rlp);
+        int length = reader.ReadSequenceLength();
+        return reader.PeekNumberOfItemsRemaining(reader.Position + length, maxSearch: 3) == 2 && !DecodeShortNode(rlp, nibbles, out nibbleCount, out _);
+    }
+
     private static bool DecodeShortNode(ReadOnlySpan<byte> rlp, Span<byte> nibbles, out int nibbleCount, out ReadOnlySpan<byte> payload)
     {
         RlpReader reader = new(rlp);

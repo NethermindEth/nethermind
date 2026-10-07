@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -22,6 +23,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -67,6 +69,8 @@ public class ArchiveProofTests
     [TearDown]
     public void TearDown()
     {
+        _container?.Dispose();
+        _container = null;
         _reclaimer?.Dispose();
         foreach (CommitmentMetadata metadata in _metadatas) metadata.Dispose();
         _metadatas.Clear();
@@ -693,6 +697,48 @@ public class ArchiveProofTests
         Assert.That(actual.Proof,
             Is.EqualTo(expected.Proof),
             "a fully covered height resolves from the commitment chain alone, every node verified against its parent down from the header");
+    }
+
+    [TestCase(2, true, TestName = "TipCapture_ExactRow")]
+    [TestCase(3, true, TestName = "TipCapture_CheckpointRow")]
+    [TestCase(2, false, TestName = "Walk_ExactRow")]
+    [TestCase(3, false, TestName = "Walk_CheckpointRow")]
+    public void CommitmentEmitter_BranchReformedAboveAChildItDidNotCommit_IsServedFromCommitmentsAlone(int depth, bool atTheTip)
+    {
+        // Block 0: the branch at the prefix holds a branch child under nibble 8 and a leaf under nibble 9; its parent also holds a sibling.
+        // Block 1: the leaf and the sibling go, so one extension above the prefix skips it and points straight at the child under nibble 8.
+        // Block 2: an account under that child changes; the child is committed, the prefix holds no node and is not committed.
+        // Block 3: an account under nibble b re-forms the branch at the prefix; the child under nibble 8 is reattached, not committed.
+        // No account depth is composed, so every level of the path is read from its own rows.
+        _policy = new CommitmentDepthPolicy(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1, accountComposedDepths: 0);
+        string prefix = "123"[..depth];
+        Address reattached = AddressUnder(prefix + "8", 0x3000_0000);
+        Address reattachedSibling = AddressUnder(prefix + "8", 0x3100_0000, differsAfter: HashNibbles(reattached)[depth + 1]);
+        Address dropped = AddressUnder(prefix + "9", 0x3200_0000);
+        Address parentSibling = AddressUnder(prefix[..^1] + "a", 0x3300_0000);
+        Address reforming = AddressUnder(prefix + "b", 0x3400_0000);
+        Address[] elsewhere = [AddressUnder("7", 0x3500_0000), AddressUnder("c", 0x3600_0000)];
+
+        ReplaceChain();
+        _chain.AddBlock(0, block =>
+        {
+            foreach (Address address in new[] { reattached, reattachedSibling, dropped, parentSibling, elsewhere[0], elsewhere[1] }) block.SetBalance(address, 100);
+        });
+        _chain.AddBlock(1, block => block.SetAccount(dropped, null).SetAccount(parentSibling, null));
+        _chain.AddBlock(2, block => block.SetBalance(reattached, 200));
+        _chain.AddBlock(3, block => block.SetBalance(reforming, 300));
+        _chain.PublishWatermark();
+        if (atTheTip) CaptureAtTheTip();
+        else BuildCommitments();
+
+        AccountProof expected = _chain.ExpectedProof(reattached, 3);
+        Assert.That(_chain.ExpectedProof(reattached, 2).Proof!.Length, Is.LessThan(expected.Proof!.Length),
+            "precondition: the branch at the prefix is absent at block 2 and present again at block 3");
+
+        CorruptEveryAccountRow();
+
+        Assert.That(ProveFromArchive(reattached, 3).Proof, Is.EqualTo(expected.Proof),
+            "the reattached child changed while the branch above it was gone; the re-formed branch's row must carry it, or the reader fills it from the row written before the collapse and has to rebuild the branch from the (here corrupt) history rows");
     }
 
     [Test]
@@ -2074,6 +2120,7 @@ public class ArchiveProofTests
     private int _recentEpochs;
     private int _fineEpochs;
     private CommitmentReclaimer? _reclaimer;
+    private IContainer? _container;
 
     private static CommitmentDepthPolicy TestPolicy { get; } = new(CommitmentDepthPolicy.MinIntervalLog2, CommitmentDepthPolicy.DefaultAccountExactDepth, CommitmentDepthPolicy.DefaultAccountCheckpointDepth, CommitmentDepthPolicy.DefaultStorageExactDepth, CommitmentDepthPolicy.DefaultStorageCheckpointDepth, CommitmentDepthPolicy.DefaultLargeTrieSignalDepth, storageRowsSignalDepth: 1);
 
@@ -2124,13 +2171,65 @@ public class ArchiveProofTests
             if (Keccak.Compute(candidate.Bytes).Bytes[0] == range) siblings.Add(candidate);
         }
 
+        ReplaceChain();
+        BuildChain(siblings);
+        return [.. siblings];
+    }
+
+    private void ReplaceChain()
+    {
         _chain.Dispose();
         _historyColumns.Dispose();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
         _chain = new ArchiveProofTestChain(_historyColumns);
-        BuildChain(siblings);
-        return [.. siblings];
     }
+
+    private void CaptureAtTheTip()
+    {
+        FlatDbConfig config = new()
+        {
+            Enabled = true,
+            HistoryEnabled = true,
+            ArchiveProofBuildEnabled = true,
+            CompactSize = 16
+        };
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<CommitmentDepthPolicy>(_policy);
+        builder.RegisterInstance(_historyColumns)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        _container?.Dispose();
+        _container = builder.Build();
+        IResourcePool pool = _container.Resolve<IResourcePool>();
+        ForwardCommitmentCapture capture = _container.Resolve<ForwardCommitmentCapture>();
+        for (ulong block = 0; block <= _chain.Head; block++)
+        {
+            using Snapshot snapshot = pool.CreateSnapshot(block == 0 ? StateId.PreGenesis : _chain.StateIdAt(block - 1), _chain.StateIdAt(block), ResourcePool.Usage.ReadOnlyProcessingEnv);
+            foreach ((TreePath path, byte[] rlp) in _chain.CommittedStateNodes(block)) snapshot.Content.StateNodes[path] = new TrieNode(NodeType.Unknown, rlp);
+            capture.Capture(block, snapshot);
+        }
+
+        capture.Complete();
+    }
+
+    private static Address AddressUnder(string nibbles, uint seedBase, char? differsAfter = null)
+    {
+        const uint maxSeeds = 1 << 22;
+        for (uint seed = 0; seed < maxSeeds; seed++)
+        {
+            byte[] bytes = new byte[Address.Size];
+            BitConverter.TryWriteBytes(bytes.AsSpan(), seedBase + seed);
+            Address candidate = new(bytes);
+            string hash = HashNibbles(candidate);
+            if (hash.StartsWith(nibbles, StringComparison.Ordinal) && hash[nibbles.Length] != differsAfter) return candidate;
+        }
+
+        Assert.Fail($"No address hashes under 0x{nibbles} within {maxSeeds} seeds");
+        return null!;
+    }
+
+    private static string HashNibbles(Address address) => address.ToAccountPath.Bytes.ToHexString();
 
     private void BuildCommitments(long maxRowsPerPartition = HistoryWalkVerifier.DefaultMaxRowsPerPartition, long minRowsToBorrow = HistoryWalkRun.DefaultMinRowsToBorrowASlot)
     {
