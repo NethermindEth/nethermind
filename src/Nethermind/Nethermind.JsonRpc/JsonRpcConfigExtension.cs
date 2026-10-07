@@ -18,17 +18,11 @@ namespace Nethermind.JsonRpc
         private static int _ctsPoolSize;
 
         /// <summary>
-        /// The number of EVM-executing requests (<see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>) any caller may run
-        /// at once: <see cref="IJsonRpcConfig.EthModuleConcurrentInstances"/>, and at least one.
+        /// The number of gated EVM-executing requests (<see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>) that run at
+        /// once: <see cref="IJsonRpcConfig.EthModuleConcurrentInstances"/>, and at least one.
         /// </summary>
         public static int GetEvmExecutionSlots(this IJsonRpcConfig config) =>
             Math.Max(1, config.EthModuleConcurrentInstances ?? Environment.ProcessorCount);
-
-        /// <summary>
-        /// The most EVM-executing requests that run at once: <see cref="GetEvmExecutionSlots"/> plus one that only authenticated
-        /// and IPC callers may take. Every pool of environments those requests execute in must hold this many.
-        /// </summary>
-        public static int GetMaxConcurrentEvmExecutions(this IJsonRpcConfig config) => config.GetEvmExecutionSlots() + 1;
 
         public static void EnableModules(this IJsonRpcConfig config, params string[] modules)
         {

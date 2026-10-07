@@ -121,23 +121,18 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         // Admitted before binding, so a rejected request never pays for deserializing its parameters.
-        using EvmAdmissionGate.Lease lease = await AdmitAsync(request, context);
+        using EvmAdmissionGate.Lease lease = await AdmitAsync(request);
         request.CancellationToken.ThrowIfCancellationRequested();
         return await ExecuteAsync(request, methodName, method, context);
     }
 
-    // Authenticated and IPC callers are the operator's own, so they go ahead of every other waiter and may take one slot
-    // above the others, so public calls holding every slot do not hold them up. The override and simulate env pools hold
-    // that slot too.
-    private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request, JsonRpcContext context) =>
+    private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request) =>
         request.BatchQueueWait is null
-            ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, context.IsAuthenticated, request.CancellationToken)
-            : AdmitBatchItemAsync(request, request.BatchQueueWait, context.IsAuthenticated);
+            ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, request.CancellationToken)
+            : AdmitBatchItemAsync(request, request.BatchQueueWait);
 
     // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
-    // That holds for trusted batches too, which otherwise could hold up a single-worker IPC connection for their size times
-    // the budget.
-    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait, bool priority)
+    private async ValueTask<EvmAdmissionGate.Lease> AdmitBatchItemAsync(JsonRpcRequest request, StrongBox<TimeSpan> batchQueueWait)
     {
         // The wait is charged on the clock that times it out, so what an item may wait and what it is charged agree.
         TimeProvider clock = EvmGate.TimeProvider;
@@ -145,7 +140,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool timedOut = false;
         try
         {
-            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, priority, request.CancellationToken);
+            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, request.CancellationToken);
         }
         catch (EvmAdmissionGate.WaitTimeoutException)
         {

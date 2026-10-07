@@ -13,28 +13,23 @@ namespace Nethermind.JsonRpc;
 
 /// <summary>
 /// Runs at most <see cref="IJsonRpcConfig.EthModuleConcurrentInstances"/> EVM-executing JSON-RPC requests
-/// (<see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>) at a time, plus one with priority, queueing the excess
-/// for at most <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>.
+/// (<see cref="Modules.JsonRpcMethodAttribute.IsEvmExecution"/>) at a time, queueing the excess for at most
+/// <see cref="IJsonRpcConfig.EvmExecutionMaxQueueWaitMs"/>.
 /// </summary>
 /// <remarks>
 /// EVM throughput plateaus at about one execution per logical processor, so running more at once only adds latency and,
 /// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
 /// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
-/// concurrency turns them off. A priority request may also take one slot above <see cref="Permits"/>, so it waits only
-/// while another priority request holds a slot and every other slot is busy, and it is never refused for a full queue.
-/// Requests without priority are counted apart, so they keep all <see cref="Permits"/> slots while one priority request
-/// runs, whichever request releases a slot first; only a second priority request in flight takes one of theirs.
-/// Priority waiters are served first, in order of arrival. The others are served in order of
-/// arrival plus a penalty that grows with their <c>params</c> size up to half of what they may wait, so a smaller request
-/// overtakes a larger one that arrived shortly before it. A waiter that has waited half the budget is served before any
-/// later arrival without priority, so sustained light traffic cannot starve a heavy request.
+/// concurrency turns them off. Waiters are served in order of arrival plus a penalty that grows with their <c>params</c>
+/// size up to half of what they may wait, so a smaller request overtakes a larger one that arrived shortly before it.
+/// A waiter that has waited half the budget is served before any later arrival, so sustained light traffic cannot starve
+/// a heavy request.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
     internal const int MaxWeight = 8;
     internal const int BytesPerWeightUnit = 128 * 1024;
 
-    private const long PriorityOrder = long.MinValue;
     private const string BusyMessage = "All EVM execution slots are busy.";
     private const string WaitTimeoutMessage = "No EVM execution slot was granted within the queue wait budget.";
 
@@ -45,27 +40,23 @@ internal sealed class EvmAdmissionGate
     private readonly TimeSpan _budget;
     private readonly long _weightPenalty;
     private readonly int _queueLimit;
-    private readonly int _maxInFlight;
     private long _sequence;
     private int _inFlight;
-    private int _publicInFlight;
 
     internal EvmAdmissionGate(IJsonRpcConfig config, TimeProvider? timeProvider = null)
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
         Permits = config.GetEvmExecutionSlots();
-        _maxInFlight = config.GetMaxConcurrentEvmExecutions();
         _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
         _queueLimit = Math.Max(0, config.EvmExecutionQueueLimit);
         _weightPenalty = (long)(_budget.TotalSeconds * _timeProvider.TimestampFrequency / (2 * (MaxWeight - 1)));
     }
 
-    /// <summary>The most slots requests without priority hold at once; a priority request may also take one more.</summary>
+    /// <summary>The most requests that hold a slot at once.</summary>
     internal int Permits { get; }
     internal TimeSpan Budget => _budget;
     internal TimeProvider TimeProvider => _timeProvider;
     internal int InFlight => Volatile.Read(ref _inFlight);
-    internal int PublicInFlight => Volatile.Read(ref _publicInFlight);
 
     internal int Queued
     {
@@ -92,24 +83,21 @@ internal sealed class EvmAdmissionGate
     /// <summary>Acquires an execution slot, waiting up to <paramref name="maxWait"/> for one if every slot is busy.</summary>
     /// <param name="paramsUtf8Length">Byte length of the request's raw <c>params</c>; see <see cref="Weigh"/>.</param>
     /// <param name="maxWait">How long the request may wait for a slot, capped at <see cref="Budget"/>; zero or less rejects it at once.</param>
-    /// <param name="priority">Serves the request ahead of every waiter without priority, lets it take one slot above
-    /// <see cref="Permits"/> and lets it queue past the queue limit.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">No slot was free and the request could not queue.</exception>
     /// <exception cref="WaitTimeoutException">No slot was granted within <paramref name="maxWait"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a slot was granted.</exception>
-    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, bool priority, CancellationToken cancellationToken)
+    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Waiter waiter;
         lock (_lock)
         {
-            if (_inFlight < _maxInFlight && (priority || _publicInFlight < Permits))
+            if (_inFlight < Permits)
             {
-                if (!priority) _publicInFlight++;
                 Metrics.RpcAdmissionInFlight = ++_inFlight;
-                return new Lease(this, priority);
+                return new Lease(this);
             }
 
             if (maxWait > _budget) maxWait = _budget;
@@ -120,8 +108,7 @@ internal sealed class EvmAdmissionGate
                 throw new LimitExceededException(BusyMessage);
             }
 
-            // Priority callers are the operator's own, which bounds their number without the limit.
-            if (!priority && _queueLimit > 0 && _waiters.Count >= _queueLimit)
+            if (_queueLimit > 0 && _waiters.Count >= _queueLimit)
             {
                 Metrics.RpcAdmissionQueueFullRejections++;
                 QueueFullRejections++;
@@ -129,8 +116,8 @@ internal sealed class EvmAdmissionGate
             }
 
             long now = _timeProvider.GetTimestamp();
-            waiter = new Waiter(now, maxWait, priority);
-            _waiters.Enqueue(waiter, (priority ? PriorityOrder : now + SizePenalty(paramsUtf8Length, maxWait), ++_sequence));
+            waiter = new Waiter(now, maxWait);
+            _waiters.Enqueue(waiter, (now + SizePenalty(paramsUtf8Length, maxWait), ++_sequence));
             waiter.Arrival = _arrivals.AddLast(waiter);
             Metrics.RpcAdmissionQueued = _waiters.Count;
         }
@@ -188,16 +175,13 @@ internal sealed class EvmAdmissionGate
         }
     }
 
-    private void Release(bool priority)
+    private void Release()
     {
         lock (_lock)
         {
-            Debug.Assert(priority ? _inFlight > _publicInFlight : _publicInFlight > 0, "a lease was released twice");
-            // Judged by the total alone, a slot released by a request without priority while a priority one runs above
-            // Permits would look like the slot above them, and their waiters would lose it for the rest of that run.
-            if (!priority) _publicInFlight--;
+            Debug.Assert(_inFlight > 0, "a lease was released twice");
             // Waiters resume on the thread pool, so completing them under the lock never runs their continuations here.
-            while (TryDequeue(publicAllowed: _publicInFlight < Permits, out Waiter? next))
+            while (TryDequeue(out Waiter? next))
             {
                 Metrics.RpcAdmissionQueued = _waiters.Count;
                 TimeSpan waited = _timeProvider.GetElapsedTime(next.EnqueuedTimestamp);
@@ -209,8 +193,7 @@ internal sealed class EvmAdmissionGate
                     QueuedGrants++;
                     Metrics.RpcAdmissionQueueWaitMicroseconds += waitedMicroseconds;
                     QueueWaitMicroseconds += waitedMicroseconds;
-                    if (!next.Priority) _publicInFlight++;
-                    next.SetResult(new Lease(this, next.Priority));
+                    next.SetResult(new Lease(this));
                     return;
                 }
 
@@ -223,24 +206,17 @@ internal sealed class EvmAdmissionGate
         }
     }
 
-    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget and no priority
-    // waiter is queued: then the oldest goes first. Without publicAllowed, takes only a priority waiter.
-    private bool TryDequeue(bool publicAllowed, [NotNullWhen(true)] out Waiter? next)
+    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget: then the oldest
+    // goes first.
+    private bool TryDequeue([NotNullWhen(true)] out Waiter? next)
     {
-        if (!_waiters.TryPeek(out next, out (long Order, long Sequence) first))
+        if (!_waiters.TryPeek(out next, out _))
         {
-            return false;
-        }
-
-        bool priority = first.Order == PriorityOrder;
-        if (!priority && !publicAllowed)
-        {
-            next = null;
             return false;
         }
 
         Waiter oldest = _arrivals.First!.Value;
-        if (!priority && _timeProvider.GetElapsedTime(oldest.EnqueuedTimestamp) >= _budget / 2)
+        if (_timeProvider.GetElapsedTime(oldest.EnqueuedTimestamp) >= _budget / 2)
         {
             _waiters.Remove(oldest, out _, out _);
             next = oldest;
@@ -259,19 +235,18 @@ internal sealed class EvmAdmissionGate
 
     /// <summary>An execution slot; disposing it passes the slot to the next waiter or frees it.</summary>
     /// <remarks>Dispose it exactly once: a second release would permanently raise the number of concurrent executions.</remarks>
-    internal readonly struct Lease(EvmAdmissionGate? gate, bool priority) : IDisposable
+    internal readonly struct Lease(EvmAdmissionGate? gate) : IDisposable
     {
         internal bool IsGranted => gate is not null;
 
-        public void Dispose() => gate?.Release(priority);
+        public void Dispose() => gate?.Release();
     }
 
     /// <summary>A queued admission, completed only by <see cref="Release"/> after dequeuing it.</summary>
-    private sealed class Waiter(long enqueuedTimestamp, TimeSpan maxWait, bool priority) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
+    private sealed class Waiter(long enqueuedTimestamp, TimeSpan maxWait) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
     {
         public long EnqueuedTimestamp { get; } = enqueuedTimestamp;
         public TimeSpan MaxWait { get; } = maxWait;
-        public bool Priority { get; } = priority;
         public LinkedListNode<Waiter>? Arrival;
     }
 }

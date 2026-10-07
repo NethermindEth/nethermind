@@ -23,14 +23,14 @@ public class EvmExecutionEnvironmentPoolTests
 {
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
 
-    // The EVM admission gate runs one call more than EthModuleConcurrentInstances, for authenticated and IPC callers. A pool
-    // that held fewer environments would refuse that call after the gate admitted it.
+    // The EVM admission gate runs up to EthModuleConcurrentInstances gated calls at once. A pool that held fewer environments
+    // would refuse a call after the gate admitted it.
     [TestCase(1)]
     [TestCase(3)]
     public async Task Simulate_environment_pool_holds_every_call_the_admission_gate_runs_at_once(int ethModuleConcurrentInstances)
     {
         JsonRpcConfig config = new() { EthModuleConcurrentInstances = ethModuleConcurrentInstances };
-        int maxConcurrent = config.GetMaxConcurrentEvmExecutions();
+        int maxConcurrent = config.GetEvmExecutionSlots();
         using SemaphoreSlim entered = new(0);
         using ManualResetEventSlim release = new();
         ISimulateReadOnlyBlocksProcessingEnvFactory envFactory = Substitute.For<ISimulateReadOnlyBlocksProcessingEnvFactory>();

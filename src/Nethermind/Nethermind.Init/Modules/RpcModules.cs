@@ -94,10 +94,9 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
             .AddSingleton<IBlockForRpcFactory, BlockForRpcFactory>()
             .RegisterBoundedJsonRpcModule<IEthRpcModule, EthModuleFactory>(jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, jsonRpcConfig.Timeout)
                 .AddSingleton<IBlockchainBridgeFactory, ISimulateReadOnlyBlocksProcessingEnvFactory, IOverridableEnvFactory, ILifetimeScope>(
-                    // One environment for every call the EVM admission gate runs at once, so none finds the pools empty.
                     (simEnvFactory, overridableEnvFactory, lifetimeScope) =>
                         new BlockchainBridgeFactory(simEnvFactory, overridableEnvFactory, lifetimeScope,
-                            jsonRpcConfig.GetMaxConcurrentEvmExecutions()))
+                            jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount))
                 .AddScoped<IBlockchainBridge>((ctx) => ctx.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge())
                     .AddSingleton<IFeeHistoryOracle, FeeHistoryOracle>()
                     .AddSingleton<IEthCapabilitiesProvider, EthCapabilitiesProvider>()
