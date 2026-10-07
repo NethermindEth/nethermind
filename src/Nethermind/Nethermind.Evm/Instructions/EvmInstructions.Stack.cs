@@ -139,7 +139,8 @@ public static partial class EvmInstructions
         }
         if (!TTracingInst.IsActive &&
             (TCallSub.IsActive
-                // Non-short-circuit so the common unfused case takes one branch; the flag-off arm keeps master's code.
+                // Non-short-circuit so the common unfused case takes one branch. The flag-off arm stays short-circuit,
+                // which the JIT compiles to tighter code there.
                 ? ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI)
                     | nextInstruction == Instruction.CALLSUB
                 : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
