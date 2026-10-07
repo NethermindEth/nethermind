@@ -578,8 +578,10 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         try
         {
-            Task queuedInTheGap = await Task.WhenAny(secondEnqueueEntered.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
-            Assert.That(queuedInTheGap, Is.Not.SameAs(secondEnqueueEntered.Task), "the re-submission must wait for the copy carrying another list");
+            MethodInfo? waitMethod = typeof(NewPayloadHandler).GetMethod("WaitForEarlierCopiesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.That(waitMethod, Is.Not.Null);
+            Task earlierCopyWait = (Task)waitMethod!.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
         }
         finally
         {
