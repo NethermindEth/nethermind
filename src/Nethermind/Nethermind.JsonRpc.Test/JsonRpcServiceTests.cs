@@ -1644,45 +1644,6 @@ public class JsonRpcServiceTests
         Assert.That(calls, Is.EqualTo(new (ulong?, int, int)[] { (1, 1, 1), (2, 1, 0) }), "served one at a time, in arrival order");
     }
 
-    [TestCase(true, TestName = "Raw params")]
-    [TestCase(false, TestName = "Parsed params")]
-    public async Task Smaller_evm_request_overtakes_a_larger_one_by_params_size(bool rawParams)
-    {
-        List<int> servedInputLengths = [];
-        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_call(Arg.Any<SignableTransactionForRpc>()).ReturnsForAnyArgs(callInfo =>
-        {
-            lock (servedInputLengths)
-            {
-                servedInputLengths.Add(callInfo.Arg<SignableTransactionForRpc>() is LegacyTransactionForRpc { Input: { } input } ? input.Length : -1);
-            }
-
-            return ResultWrapper<HexBytes>.Success(ToHexBytes("0x01"));
-        });
-        JsonRpcService service = CreateGatedService(ethRpcModule);
-        // Calldata is hex-encoded on the wire, so one unit of bytes makes the params weigh 3.
-        LegacyTransactionForRpc large = new() { Input = new byte[EvmAdmissionGate.BytesPerWeightUnit] };
-        LegacyTransactionForRpc small = new() { Input = new byte[1] };
-        JsonRpcRequest[] requests = [.. new[] { large, small }.Select(transaction => rawParams
-            ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)},\"latest\",{StateOverrideJson}]")
-            : EthCall(transaction))];
-
-        Task<JsonRpcResponse>[] responses;
-        using (await HoldSlot(service))
-        {
-            responses = [.. requests.Select(request => service.SendRequestAsync(request, _context).AsTask())];
-            Assert.That(service.EvmGate.Queued, Is.EqualTo(2));
-        }
-
-        foreach (Task<JsonRpcResponse> response in responses)
-        {
-            using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
-            RpcTest.AssertSuccess<HexBytes>(completed);
-        }
-
-        Assert.That(servedInputLengths, Is.EqualTo(new[] { small.Input.Length, large.Input.Length }));
-    }
-
     [Test]
     public async Task Cancelled_caller_leaves_the_queue_and_gets_no_response()
     {
@@ -1810,7 +1771,7 @@ public class JsonRpcServiceTests
         RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc(), "latest", JsonSerializer.Deserialize<JsonElement>(StateOverrideJson));
 
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
-        service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);
+        service.EvmGate.AdmitAsync(TimeSpan.Zero, CancellationToken.None);
 
     private static JsonRpcContext CreateAuthenticatedContext(RpcEndpoint endpoint, bool authenticatedUrl) =>
         new(endpoint, url: authenticatedUrl ? new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]) : null);

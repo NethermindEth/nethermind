@@ -179,9 +179,7 @@ public interface IJsonRpcConfig : IConfig
             The max time, in milliseconds, an `eth_simulateV1` request, or an `eth_call`, `eth_estimateGas` or
             `eth_createAccessList` request with a state or block override, waits for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
-            Requests are served in arrival order, except that each full 128 KiB of `params` delays a request's turn by 1/14 of
-            this budget, up to half of it or of what is left of its batch's budget; a request that has waited half this budget is
-            served before any that arrived later.
+            Requests are served in arrival order.
             The budget bounds only the wait for a slot, not the response time. `0` or a negative value disables queueing.
             Items of one batch share one budget: each may wait only what the earlier items did not, and once they have waited
             all of it, a later item is rejected at once if every slot is busy.

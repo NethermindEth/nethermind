@@ -57,10 +57,6 @@ namespace Nethermind.JsonRpc
             ? ParamsUtf8.Span
             : _params.ValueKind == JsonValueKind.Undefined ? default : JsonMarshal.GetRawUtf8Value(_params);
 
-        /// <summary>Byte length of the raw <c>params</c> element, or zero when the request carries none.</summary>
-        /// <remarks>Read it before the parameters are bound: disposing the parsed document invalidates it.</remarks>
-        internal int ParamsUtf8Length => RawParamsUtf8.Length;
-
         internal void DisposeParsedParamsDocument()
         {
             _paramsDocument?.Dispose();

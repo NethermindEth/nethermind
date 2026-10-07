@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.JsonRpc.Exceptions;
@@ -20,27 +19,18 @@ namespace Nethermind.JsonRpc;
 /// EVM throughput plateaus at about one execution per logical processor, so running more at once only adds latency and,
 /// past saturation, wastes work on requests that are rejected anyway. An explicitly configured pool size is used as is;
 /// queueing and shedding start only when more than that many requests are in flight, so a pool at or above the peak
-/// concurrency turns them off. Waiters are served in order of arrival plus a penalty that grows with their <c>params</c>
-/// size up to half of what they may wait, so a smaller request overtakes a larger one that arrived shortly before it.
-/// A waiter that has waited half the budget is served before any later arrival, so sustained light traffic cannot starve
-/// a heavy request.
+/// concurrency turns them off. Waiters are served in order of arrival.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
-    internal const int MaxWeight = 8;
-    internal const int BytesPerWeightUnit = 128 * 1024;
-
     private const string BusyMessage = "All EVM execution slots are busy.";
     private const string WaitTimeoutMessage = "No EVM execution slot was granted within the queue wait budget.";
 
     private readonly Lock _lock = new();
-    private readonly PriorityQueue<Waiter, (long Order, long Sequence)> _waiters = new();
-    private readonly LinkedList<Waiter> _arrivals = new();
+    private readonly LinkedList<Waiter> _waiters = new();
     private readonly TimeProvider _timeProvider;
     private readonly TimeSpan _budget;
-    private readonly long _weightPenalty;
     private readonly int _queueLimit;
-    private long _sequence;
     private int _inFlight;
 
     internal EvmAdmissionGate(IJsonRpcConfig config, TimeProvider? timeProvider = null)
@@ -49,7 +39,6 @@ internal sealed class EvmAdmissionGate
         Permits = config.GetEvmExecutionSlots();
         _budget = TimeSpan.FromMilliseconds(Math.Max(0, config.EvmExecutionMaxQueueWaitMs));
         _queueLimit = Math.Max(0, config.EvmExecutionQueueLimit);
-        _weightPenalty = (long)(_budget.TotalSeconds * _timeProvider.TimestampFrequency / (2 * (MaxWeight - 1)));
     }
 
     /// <summary>The most requests that hold a slot at once.</summary>
@@ -77,18 +66,14 @@ internal sealed class EvmAdmissionGate
     internal long QueuedGrants { get; private set; }
     internal long QueueWaitMicroseconds { get; private set; }
 
-    /// <summary>Converts the byte length of a request's raw <c>params</c> into a weight from 1 to <see cref="MaxWeight"/>.</summary>
-    internal static int Weigh(int paramsUtf8Length) => Math.Min(MaxWeight, 1 + paramsUtf8Length / BytesPerWeightUnit);
-
     /// <summary>Acquires an execution slot, waiting up to <paramref name="maxWait"/> for one if every slot is busy.</summary>
-    /// <param name="paramsUtf8Length">Byte length of the request's raw <c>params</c>; see <see cref="Weigh"/>.</param>
     /// <param name="maxWait">How long the request may wait for a slot, capped at <see cref="Budget"/>; zero or less rejects it at once.</param>
     /// <param name="cancellationToken">Abandons the wait.</param>
     /// <returns>A lease to dispose exactly once, after the execution, including any task it returned, has completed.</returns>
     /// <exception cref="LimitExceededException">No slot was free and the request could not queue.</exception>
     /// <exception cref="WaitTimeoutException">No slot was granted within <paramref name="maxWait"/>.</exception>
     /// <exception cref="OperationCanceledException"><paramref name="cancellationToken"/> was cancelled before a slot was granted.</exception>
-    internal async ValueTask<Lease> AdmitAsync(int paramsUtf8Length, TimeSpan maxWait, CancellationToken cancellationToken)
+    internal async ValueTask<Lease> AdmitAsync(TimeSpan maxWait, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
         Waiter waiter;
@@ -115,10 +100,8 @@ internal sealed class EvmAdmissionGate
                 throw new LimitExceededException(BusyMessage);
             }
 
-            long now = _timeProvider.GetTimestamp();
-            waiter = new Waiter(now, maxWait);
-            _waiters.Enqueue(waiter, (now + SizePenalty(paramsUtf8Length, maxWait), ++_sequence));
-            waiter.Arrival = _arrivals.AddLast(waiter);
+            waiter = new Waiter(_timeProvider.GetTimestamp(), maxWait);
+            _waiters.AddLast(waiter.Node);
             Metrics.RpcAdmissionQueued = _waiters.Count;
         }
 
@@ -142,21 +125,16 @@ internal sealed class EvmAdmissionGate
         return lease.IsGranted ? lease : throw new WaitTimeoutException();
     }
 
-    // Capped at half the waiter's own wait: a batch item may wait less than half the budget, so it could never age to the
-    // front, but it still goes ahead of anything that arrives that much after it.
-    private long SizePenalty(int paramsUtf8Length, TimeSpan maxWait) =>
-        Math.Min((Weigh(paramsUtf8Length) - 1) * _weightPenalty, (long)(maxWait.TotalSeconds * _timeProvider.TimestampFrequency / 2));
-
     private bool TryRemove(Waiter waiter, Exception reason)
     {
         lock (_lock)
         {
-            if (!_waiters.Remove(waiter, out _, out _))
+            if (waiter.Node.List is null)
             {
                 return false;
             }
 
-            _arrivals.Remove(waiter.Arrival!);
+            _waiters.Remove(waiter.Node);
             Metrics.RpcAdmissionQueued = _waiters.Count;
             // Any other failure is rethrown and answered as an internal error, so it counts as neither.
             switch (reason)
@@ -181,8 +159,9 @@ internal sealed class EvmAdmissionGate
         {
             Debug.Assert(_inFlight > 0, "a lease was released twice");
             // Waiters resume on the thread pool, so completing them under the lock never runs their continuations here.
-            while (TryDequeue(out Waiter? next))
+            while (_waiters.First is { Value: Waiter next })
             {
+                _waiters.RemoveFirst();
                 Metrics.RpcAdmissionQueued = _waiters.Count;
                 TimeSpan waited = _timeProvider.GetElapsedTime(next.EnqueuedTimestamp);
                 // Its timeout may not have fired yet, but a waiter past its budget must not be admitted.
@@ -206,30 +185,6 @@ internal sealed class EvmAdmissionGate
         }
     }
 
-    // Caller holds _lock. Takes the smallest order, unless the oldest waiter has waited half the budget: then the oldest
-    // goes first.
-    private bool TryDequeue([NotNullWhen(true)] out Waiter? next)
-    {
-        if (!_waiters.TryPeek(out next, out _))
-        {
-            return false;
-        }
-
-        Waiter oldest = _arrivals.First!.Value;
-        if (_timeProvider.GetElapsedTime(oldest.EnqueuedTimestamp) >= _budget / 2)
-        {
-            _waiters.Remove(oldest, out _, out _);
-            next = oldest;
-        }
-        else
-        {
-            _waiters.Dequeue();
-        }
-
-        _arrivals.Remove(next.Arrival!);
-        return true;
-    }
-
     /// <summary>A queued request got no slot within its wait.</summary>
     internal sealed class WaitTimeoutException() : LimitExceededException(WaitTimeoutMessage);
 
@@ -243,10 +198,19 @@ internal sealed class EvmAdmissionGate
     }
 
     /// <summary>A queued admission, completed only by <see cref="Release"/> after dequeuing it.</summary>
-    private sealed class Waiter(long enqueuedTimestamp, TimeSpan maxWait) : TaskCompletionSource<Lease>(TaskCreationOptions.RunContinuationsAsynchronously)
+    private sealed class Waiter : TaskCompletionSource<Lease>
     {
-        public long EnqueuedTimestamp { get; } = enqueuedTimestamp;
-        public TimeSpan MaxWait { get; } = maxWait;
-        public LinkedListNode<Waiter>? Arrival;
+        public Waiter(long enqueuedTimestamp, TimeSpan maxWait) : base(TaskCreationOptions.RunContinuationsAsynchronously)
+        {
+            EnqueuedTimestamp = enqueuedTimestamp;
+            MaxWait = maxWait;
+            Node = new LinkedListNode<Waiter>(this);
+        }
+
+        public long EnqueuedTimestamp { get; }
+        public TimeSpan MaxWait { get; }
+
+        /// <summary>The waiter's place in the queue, so leaving it early is O(1); detached once it has left.</summary>
+        public LinkedListNode<Waiter> Node { get; }
     }
 }

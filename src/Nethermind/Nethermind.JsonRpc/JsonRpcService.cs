@@ -172,7 +172,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
     private ValueTask<EvmAdmissionGate.Lease> AdmitAsync(JsonRpcRequest request) =>
         request.BatchQueueWait is null
-            ? EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget, request.CancellationToken)
+            ? EvmGate.AdmitAsync(EvmGate.Budget, request.CancellationToken)
             : AdmitBatchItemAsync(request, request.BatchQueueWait);
 
     // Items of one batch run one after another, so they share one budget: each may wait only what the earlier ones did not.
@@ -184,7 +184,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool timedOut = false;
         try
         {
-            return await EvmGate.AdmitAsync(request.ParamsUtf8Length, EvmGate.Budget - batchQueueWait.Value, request.CancellationToken);
+            return await EvmGate.AdmitAsync(EvmGate.Budget - batchQueueWait.Value, request.CancellationToken);
         }
         catch (EvmAdmissionGate.WaitTimeoutException)
         {

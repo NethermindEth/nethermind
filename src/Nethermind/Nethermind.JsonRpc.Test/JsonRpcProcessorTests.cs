@@ -366,10 +366,10 @@ public class JsonRpcProcessorTests
         const string paramsJson = "[{\"parentHash\":\"0x0\"},[],null,null]";
         TimeSpan itemWait = TimeSpan.FromMilliseconds(7);
         using CancellationTokenSource cancellation = new();
-        List<(int ParamsUtf8Length, StrongBox<TimeSpan>? BatchQueueWait, TimeSpan? WaitedBefore, CancellationToken CancellationToken)> seen = [];
+        List<(int RawParamsLength, StrongBox<TimeSpan>? BatchQueueWait, TimeSpan? WaitedBefore, CancellationToken CancellationToken)> seen = [];
         IJsonRpcService service = CreateService(request =>
         {
-            seen.Add((request.ParamsUtf8Length, request.BatchQueueWait, request.BatchQueueWait?.Value, request.CancellationToken));
+            seen.Add((request.RawParamsUtf8.Length, request.BatchQueueWait, request.BatchQueueWait?.Value, request.CancellationToken));
             // As the service does when an item waited for a slot.
             if (request.BatchQueueWait is { } waited) waited.Value += itemWait;
             return new JsonRpcSuccessResponse { Id = request.Id };

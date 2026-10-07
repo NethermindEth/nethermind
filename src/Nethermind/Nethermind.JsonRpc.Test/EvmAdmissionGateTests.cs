@@ -28,12 +28,6 @@ public class EvmAdmissionGateTests
             new EvmAdmissionGate(new JsonRpcConfig { EthModuleConcurrentInstances = ethModuleConcurrentInstances }).Permits,
             Is.EqualTo(expected ?? Environment.ProcessorCount));
 
-    [TestCase(0, ExpectedResult = 1)]
-    [TestCase(BytesPerWeightUnit - 1, ExpectedResult = 1)]
-    [TestCase(BytesPerWeightUnit, ExpectedResult = 2)]
-    [TestCase(int.MaxValue, ExpectedResult = MaxWeight)]
-    public int Weight_grows_with_params_size(int paramsUtf8Length) => Weigh(paramsUtf8Length);
-
     [Test]
     public async Task Released_slot_passes_to_a_waiter_without_exceeding_the_permits()
     {
@@ -122,92 +116,33 @@ public class EvmAdmissionGateTests
     }
 
     [Test]
-    public async Task Smaller_requests_go_first_but_never_ahead_of_one_that_arrived_its_size_penalty_earlier()
-    {
-        ManualClock clock = new();
-        EvmAdmissionGate gate = CreateGate(clock);
-        Lease held = await Admit(gate);
-        // Weight 4 delays its turn by 3/14 of the budget, about 214 ms; all grants below happen before anyone has waited half the budget.
-        List<(string Name, Task<Lease> Admission)> waiters =
-        [
-            ("heavy", Admit(gate, 3 * BytesPerWeightUnit).AsTask()),
-            ("light 1", Admit(gate).AsTask()),
-        ];
-        clock.Advance(TimeSpan.FromMilliseconds(3 * BudgetMs / 14));
-        waiters.Add(("light 2", Admit(gate).AsTask()));
-        clock.Advance(TimeSpan.FromMilliseconds(2));
-        waiters.Add(("light 3", Admit(gate).AsTask()));
-
-        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "light 1", "light 2", "heavy", "light 3" }));
-    }
-
-    [Test]
-    public async Task Equal_keys_are_served_in_enqueue_order()
+    public async Task Waiters_are_served_in_arrival_order()
     {
         EvmAdmissionGate gate = CreateGate();
         Lease held = await Admit(gate);
-        // The clock never moves, so all keys are equal. Two waiters would be too few for the heap to reorder them.
         List<(string Name, Task<Lease> Admission)> waiters = [.. Enumerable.Range(0, 5).Select(i => (i.ToString(), Admit(gate).AsTask()))];
 
         Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "0", "1", "2", "3", "4" }));
     }
 
-    [TestCase(BudgetMs / 2 - 1, "light", TestName = "Just before half the budget: size order")]
-    [TestCase(BudgetMs / 2, "heavy", TestName = "At half the budget: oldest first")]
-    public async Task Oldest_waiter_goes_first_exactly_at_half_the_budget(int releaseAtMs, string expectedFirst)
-    {
-        ManualClock clock = new();
-        EvmAdmissionGate gate = CreateGate(clock);
-        Lease held = await Admit(gate);
-        // By size alone, the heavy request comes after one that arrived up to almost half the budget later.
-        List<(string Name, Task<Lease> Admission)> waiters = [("heavy", Admit(gate, MaxWeight * BytesPerWeightUnit).AsTask())];
-        clock.Advance(TimeSpan.FromMilliseconds(100));
-        waiters.Add(("light", Admit(gate).AsTask()));
-        clock.Advance(TimeSpan.FromMilliseconds(releaseAtMs - 100));
-
-        Assert.That((await ReleaseAndRecordGrantOrder(held, waiters))[0], Is.EqualTo(expectedFirst));
-    }
-
-    // Released at 250 ms: past half of the heavy waiter's 400 ms, but before it has waited half the budget.
-    [TestCase(2 * BudgetMs / 10 - 1, "light", TestName = "Arrived within half of the shorter wait: size order")]
-    [TestCase(2 * BudgetMs / 10, "heavy", TestName = "Arrived half the shorter wait later: heavy first")]
-    public async Task Size_penalty_is_capped_at_half_of_what_the_waiter_may_wait(int lightArrivesAtMs, string expectedFirst)
-    {
-        ManualClock clock = new();
-        EvmAdmissionGate gate = CreateGate(clock);
-        Lease held = await Admit(gate);
-        List<(string Name, Task<Lease> Admission)> waiters =
-            [("heavy", Admit(gate, MaxWeight * BytesPerWeightUnit, maxWait: TimeSpan.FromMilliseconds(4 * BudgetMs / 10)).AsTask())];
-        clock.Advance(TimeSpan.FromMilliseconds(lightArrivesAtMs));
-        waiters.Add(("light", Admit(gate).AsTask()));
-        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 4 - lightArrivesAtMs));
-
-        Assert.That((await ReleaseAndRecordGrantOrder(held, waiters))[0], Is.EqualTo(expectedFirst));
-    }
-
     [Test]
-    public async Task Sustained_lighter_traffic_cannot_starve_a_heavy_waiter()
+    public async Task Waiter_leaving_the_middle_of_the_queue_keeps_the_others_in_arrival_order([Values] bool timesOut)
     {
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
-        Lease slot = await Admit(gate);
-        // One grant and one new light waiter per 100 ms behind a backlog of seven: every light request waits 700 ms, within the
-        // budget but always ahead of the heavy request on size alone.
-        List<Task<Lease>> waiters = [.. Enumerable.Range(0, 7).Select(_ => Admit(gate).AsTask())];
-        Task<Lease> heavy = Admit(gate, MaxWeight * BytesPerWeightUnit).AsTask();
-        waiters.Add(heavy);
+        Lease held = await Admit(gate);
+        using CancellationTokenSource cancellation = new();
+        List<(string Name, Task<Lease> Admission)> waiters = [("0", Admit(gate).AsTask()), ("1", Admit(gate).AsTask())];
+        Task<Lease> leaving = Admit(gate, cancellation.Token, TimeSpan.FromMilliseconds(100)).AsTask();
+        waiters.AddRange([("3", Admit(gate).AsTask()), ("4", Admit(gate).AsTask())]);
 
-        for (int waitedMs = 100; waitedMs < BudgetMs && !heavy.IsCompleted; waitedMs += 100)
-        {
-            clock.Advance(TimeSpan.FromMilliseconds(100));
-            waiters.Add(Admit(gate).AsTask());
-            slot.Dispose();
-            Task<Lease> granted = await Task.WhenAny(waiters).WaitAsync(TestTimeout);
-            waiters.Remove(granted);
-            slot = await granted;
-        }
+        if (timesOut) clock.Advance(TimeSpan.FromMilliseconds(100));
+        else cancellation.Cancel();
 
-        Assert.That(heavy.IsCompletedSuccessfully, Is.True, "granted within its budget");
+        Assert.That(async () => await leaving.WaitAsync(TestTimeout),
+            timesOut ? Throws.TypeOf<WaitTimeoutException>() : Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(gate.Queued, Is.EqualTo(4), "left the queue at once");
+        Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "0", "1", "3", "4" }));
     }
 
     // A late timer leaves the rejection to the next release, which passes the slot on to the next waiter.
@@ -324,8 +259,8 @@ public class EvmAdmissionGateTests
     private static EvmAdmissionGate CreateGate(ManualClock? clock = null, int permits = 1, int maxQueueWaitMs = BudgetMs, int queueLimit = 0) =>
         new(new JsonRpcConfig { EthModuleConcurrentInstances = permits, EvmExecutionMaxQueueWaitMs = maxQueueWaitMs, EvmExecutionQueueLimit = queueLimit }, clock ?? new ManualClock());
 
-    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, int paramsUtf8Length = 0, CancellationToken cancellationToken = default, TimeSpan? maxWait = null) =>
-        gate.AdmitAsync(paramsUtf8Length, maxWait ?? gate.Budget, cancellationToken);
+    private static ValueTask<Lease> Admit(EvmAdmissionGate gate, CancellationToken cancellationToken = default, TimeSpan? maxWait = null) =>
+        gate.AdmitAsync(maxWait ?? gate.Budget, cancellationToken);
 
     // One slot: each grant is disposed before the next, so completions follow the grant order.
     private static async Task<List<string>> ReleaseAndRecordGrantOrder(Lease held, List<(string Name, Task<Lease> Admission)> waiters)
