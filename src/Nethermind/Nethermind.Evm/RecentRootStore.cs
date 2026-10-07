@@ -51,9 +51,9 @@ public static class RecentRootStore
 
     /// <summary>Reads the <c>source_id(32) || slot(8, big-endian) || root(32)</c> tuple at the start of <paramref name="tuple"/>.</summary>
     public static (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) ReadTuple(ReadOnlySpan<byte> tuple) =>
-        (new ValueHash256(tuple.Slice(0, HashLength)),
-         BinaryPrimitives.ReadUInt64BigEndian(tuple.Slice(HashLength, SlotLength)),
-         new ValueHash256(tuple.Slice(HashLength + SlotLength, HashLength)));
+        (new ValueHash256(tuple[..HashLength]),
+         BinaryPrimitives.ReadUInt64BigEndian(tuple[HashLength..(HashLength + SlotLength)]),
+         new ValueHash256(tuple[(HashLength + SlotLength)..(HashLength + SlotLength + HashLength)]));
 
     /// <summary>The predeploy storage cell a reference to <paramref name="slot"/> reads.</summary>
     public static StorageCell ReferenceCell(in ValueHash256 sourceId, ulong slot) =>
