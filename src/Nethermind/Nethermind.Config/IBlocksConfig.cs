@@ -60,6 +60,17 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Concurrency for speculative mempool pre-warming (runs in the idle gap between blocks). Default (0) is half of PreWarmStateConcurrency, to leave cores for RPC.", DefaultValue = "0", HiddenFromDocs = true)]
     int MempoolPreWarmConcurrency { get; set; }
 
+    [ConfigItem(Description = "Read the code of the contracts a block access list names on background threads ahead of execution. Requires PreWarming.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PrefetchBlockAccessListCode { get; set; }
+
+    /// <summary>Whether block processing takes over a transaction's pre-warm run instead of executing it again.</summary>
+    /// <remarks>
+    /// On by default. Requires <see cref="PreWarming"/>, and applies only on the Ethereum transaction processor, to blocks
+    /// without a block access list (EIP-7928) and before EIP-8037.
+    /// </remarks>
+    [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool PreWarmHandoff { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

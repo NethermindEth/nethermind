@@ -37,7 +37,7 @@ public interface ITxPoolConfig : IConfig
     [ConfigItem(DefaultValue = "0", Description = "The max number of pending transactions per single sender. `0` to lift the limit.")]
     int MaxPendingTxsPerSender { get; set; }
 
-    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` to lift the limit, though a simulated prefix and per-signature recovery stay capped frame by frame at the fixed `Eip8141Constants.MaxVerifyGas` either way. Raise it only on a test network.")]
+    [ConfigItem(DefaultValue = "300000", Description = "EIP-8141 `MAX_VERIFY_GAS`: the max gas a frame transaction's validation prefix and signature verification may cost for it to be accepted into the public mempool. `0` lifts the static admission limit. Raising this setting does not raise the fixed `Eip8141Constants.MaxVerifyGas` simulation budget or signature verification ceiling. Raise it only on a test network.")]
     ulong FrameTxMaxVerifyGas { get; set; }
 
     [ConfigItem(DefaultValue = "500000", Description = "EIP-8141 `MAX_VERIFY_STATE_GAS`: the max state gas a frame transaction's validation prefix may budget across its `limits.state` for it to be accepted into the public mempool. EIP-8250 charges a first use of each keyed nonce key 97,920 state gas, so at the default value a first-use set of more than five keys does not propagate. `0` to lift the limit. Raise it only on a test network.")]
@@ -63,6 +63,18 @@ public interface ITxPoolConfig : IConfig
 
     [ConfigItem(DefaultValue = "16", Description = "The max number of pending blob transactions per single sender. `0` to lift the limit.")]
     int MaxPendingBlobTxsPerSender { get; set; }
+
+    /// <summary>Whether MATCHA sender width gates keyed-nonce frame transactions beyond the baseline. Defaults to <c>false</c>.</summary>
+    [ConfigItem(DefaultValue = "false", Description = "Whether each pending EIP-8250 keyed-nonce frame transaction a sender admits beyond the single EIP-8141 baseline transaction must spend sender width, earned from the gas the sender's finalized keyed-nonce frame transactions paid. Also rejects a keyed-nonce frame transaction whose nonce keys overlap a pending one of the same sender. Experimental.")]
+    bool FrameTxWidthEnabled { get; set; }
+
+    /// <summary>MATCHA <c>safety_factor</c> in permille of the declared admission gas. Defaults to <c>1000</c>, minimum <c>1000</c>.</summary>
+    [ConfigItem(DefaultValue = "1000", Description = "EIP-8141 MATCHA `safety_factor`, in permille of a keyed-nonce frame transaction's `admission_gas`, that fixes the width its admission and each revalidation spends: `charge = ceil(safety_factor * admission_gas)`. `admission_gas` is declared work: the transaction's intrinsic gas, which prices its data, signatures and recent-root references, plus the validation prefix's execution gas limits and one cold SLOAD per nonce key, not the gas the prefix actually burns. `1000` charges exactly that declared gas; a higher value adds headroom for client work EVM gas does not measure. Values below `1000` are raised to `1000`. Spent width is never returned. Used only when `FrameTxWidthEnabled` is set.")]
+    ulong FrameTxWidthSafetyFactorPermille { get; set; }
+
+    /// <summary>MATCHA <c>width_cap</c> in gas. Defaults to <c>0</c>, which lifts the cap.</summary>
+    [ConfigItem(DefaultValue = "0", Description = "EIP-8141 MATCHA `width_cap`: the max width, in gas, a sender may hold. Newly finalized gas earns width only up to this cap; lowering it never shrinks width already earned. `0` lifts the cap. Used only when `FrameTxWidthEnabled` is set.")]
+    ulong FrameTxWidthCap { get; set; }
 
     [ConfigItem(DefaultValue = "524288",
         Description = "The max number of cached hashes of already known transactions. Set automatically by the memory hint.")]

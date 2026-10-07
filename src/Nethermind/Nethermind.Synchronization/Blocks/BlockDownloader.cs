@@ -296,6 +296,7 @@ namespace Nethermind.Synchronization.Blocks
             BlocksRequestContentType? requestContentType = null;
 
             ArrayPoolList<BlockHeader> receiptsToDownload = new(headers.Count);
+            ArrayPoolList<int> expectedReceiptCounts = new(headers.Count);
             ArrayPoolList<BlockHeader> bodiesToDownload = new(headers.Count);
             ArrayPoolList<BlockHeader> blockAccessListsToDownload = new(headers.Count);
 
@@ -361,6 +362,7 @@ namespace Nethermind.Synchronization.Blocks
                 {
                     entry.MarkReceiptRequestSent();
                     receiptsToDownload.Add(blockHeader);
+                    expectedReceiptCounts.Add(entry.Block!.Transactions.Length);
                     requestContentType = BlocksRequestContentType.Receipts;
                 }
 
@@ -385,6 +387,7 @@ namespace Nethermind.Synchronization.Blocks
                 bodiesToDownload.Dispose();
                 blockAccessListsToDownload.Dispose();
                 receiptsToDownload.Dispose();
+                expectedReceiptCounts.Dispose();
                 return null;
             }
 
@@ -393,6 +396,7 @@ namespace Nethermind.Synchronization.Blocks
                 BodiesRequests = bodiesToDownload,
                 BlockAccessListsRequests = blockAccessListsToDownload,
                 ReceiptsRequests = receiptsToDownload,
+                ExpectedReceiptCounts = expectedReceiptCounts,
             };
         }
 

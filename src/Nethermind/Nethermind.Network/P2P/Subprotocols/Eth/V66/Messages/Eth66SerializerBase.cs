@@ -32,8 +32,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             long requestId = ctx.DecodeLong();
 
             TMessage message = DeserializeInternal(ref ctx, requestId);
-            ctx.Check(checkPosition);
-            return message;
+            try
+            {
+                ctx.Check(checkPosition);
+                return message;
+            }
+            catch
+            {
+                message.Dispose();
+                throw;
+            }
         }
 
         public int GetLength(TMessage message, out int contentLength)

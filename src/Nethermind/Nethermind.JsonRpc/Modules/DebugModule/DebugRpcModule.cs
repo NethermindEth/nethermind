@@ -75,7 +75,7 @@ public class DebugRpcModule(
         Hash256? blockHash = debugBridge.GetTransactionBlockHash(transactionHash);
         if (blockHash is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find block hash for transaction {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         TryGetHeaderAndCheckState(blockHash!, out ResultWrapper<GethLikeTxTrace>? headerError);
@@ -97,7 +97,7 @@ public class DebugRpcModule(
         GethLikeTxTrace? transactionTrace = debugBridge.GetTransactionTrace(transactionHash, cancellationToken, options);
         if (transactionTrace is null)
         {
-            return ResultWrapper<GethLikeTxTrace>.Fail($"Cannot find transactionTrace for hash: {transactionHash}", ErrorCodes.ResourceNotFound);
+            return ResultWrapper<GethLikeTxTrace>.Fail("transaction not found", ErrorCodes.ResourceNotFound);
         }
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {transactionHash}, result: trace");
@@ -112,11 +112,13 @@ public class DebugRpcModule(
             return ResultWrapper<GethLikeTxTrace>.Fail("tracing on top of pending is not supported", ErrorCodes.InvalidInput);
         }
 
-        BlockHeader? header = TryGetHeaderAndCheckState(blockParameter, out ResultWrapper<GethLikeTxTrace>? headerError);
+        BlockHeader? header = TryGetTraceCallHeader(blockParameter, options?.TxIndex, out ResultWrapper<GethLikeTxTrace>? headerError);
         if (headerError is not null)
         {
             return headerError;
         }
+
+        blockParameter = new BlockParameter(header!.Hash!);
 
         Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
@@ -156,6 +158,31 @@ public class DebugRpcModule(
 
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
+    }
+
+    private BlockHeader? TryGetTraceCallHeader(BlockParameter parameter, ulong? txIndex, out ResultWrapper<GethLikeTxTrace>? error)
+    {
+        if (txIndex is null) return TryGetHeaderAndCheckState(parameter, out error);
+
+        SearchResult<Block> search = blockFinder.SearchForBlock(parameter);
+        if (search.IsError)
+        {
+            error = GetFailureResult<GethLikeTxTrace, Block>(search, debugBridge.HaveNotSyncedHeadersYet());
+            return null;
+        }
+        Block block = search.Object!;
+        if (block.IsGenesis)
+        {
+            error = ResultWrapper<GethLikeTxTrace>.Fail("no transaction in genesis", ErrorCodes.InvalidInput);
+            return null;
+        }
+        if (txIndex >= (ulong)Math.Max(block.Transactions.Length, 1))
+        {
+            error = ResultWrapper<GethLikeTxTrace>.Fail($"transaction index {txIndex} out of range for block {block.Hash}", ErrorCodes.InvalidInput);
+            return null;
+        }
+        _ = TryGetHeaderAndCheckState(block.ParentHash!, out error);
+        return error is null ? block.Header : null;
     }
 
     private bool CanStreamStructLogs(GethTraceOptions? options)
@@ -714,6 +741,8 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (options?.TxIndex is not null) options = options with { TxIndex = null };
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
             ? TraceCallManyWithOverrides(bundles, options, header)

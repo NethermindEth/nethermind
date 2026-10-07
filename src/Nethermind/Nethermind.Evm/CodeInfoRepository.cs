@@ -10,6 +10,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
@@ -39,6 +40,8 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// 2 KB of references covers every number an in-tree chain indexes, sparsely: mainnet fills 18 of the
     /// 257 slots, and anything outside the range falls back to the dictionary.</remarks>
     private const int MaxIndexedNumber = 0x100;
+
+    private readonly CodeInfo _emptyCodeInfo = CodeInfo.Empty;
 
     public CodeInfoRepository(IWorldState worldState, IPrecompileProvider precompileProvider)
     {
@@ -93,6 +96,9 @@ public class CodeInfoRepository : ICodeInfoRepository
     public IPrecompile? GetPrecompile(Address codeSource, IReleaseSpec vmSpec) =>
         vmSpec.IsPrecompile(codeSource) ? PrecompileCodeInfo(codeSource).Precompile : null;
 
+    public CodeInfo GetDelegatedCodeInfo(Address target, IReleaseSpec vmSpec) =>
+        vmSpec.IsPrecompile(target) ? _emptyCodeInfo : InternalGetCodeInfo(target);
+
     /// <summary>Resolves a precompile's <see cref="CodeInfo"/> from its number, then from the map.</summary>
     /// <remarks>The map still has to answer for a number above <see cref="MaxIndexedNumber"/>, which the
     /// index array deliberately leaves out.</remarks>
@@ -115,15 +121,16 @@ public class CodeInfoRepository : ICodeInfoRepository
     /// <summary>Resolves the code stored under <paramref name="codeHash"/> for <paramref name="address"/>.</summary>
     /// <remarks>Overridden by a repository that serves code from a cache instead of the world state.</remarks>
     protected virtual CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash) =>
-        codeHash == ValueKeccak.OfAnEmptyString ? CodeInfo.Empty : GetCodeInfo(_worldState, address, in codeHash);
+        codeHash == ValueKeccak.OfAnEmptyString ? _emptyCodeInfo : GetCodeInfo(_worldState, address, in codeHash);
 
     internal static CodeInfo GetCodeInfo(IWorldState worldState, Address address, in ValueHash256 codeHash)
     {
         // The one chokepoint where code is resolved by hash; record here so the witness also captures the account's trie path.
         worldState.RecordBytecodeAccess(address);
-        // When executing in parallel must get by address
-        byte[]? code = worldState.GetCode(in codeHash) ?? worldState.GetCode(address);
-        if (code is null)
+        // When executing in parallel must get by address. Null, not empty, means not served: empty code is real.
+        ReadOnlyMemory<byte> code = worldState.GetCode(in codeHash);
+        if (code.IsNull()) code = worldState.GetCode(address);
+        if (code.IsNull())
         {
             MissingCode(in codeHash);
         }

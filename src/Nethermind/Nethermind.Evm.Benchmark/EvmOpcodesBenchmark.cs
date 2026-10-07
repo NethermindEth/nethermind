@@ -50,6 +50,8 @@ public unsafe class EvmOpcodesBenchmark
     private const int DynamicStorageKeyCount = InnerCount * 8;
     private const int DynamicCallTargetCount = InnerCount;
     private const int ExtendedStackDepth = 20;
+    /// <summary>The entries of a table that dispatch; an untraced table may carry plain handlers past them.</summary>
+    private const int DispatchEntries = byte.MaxValue + 1;
     private const byte ExtendedStackImmediate = 0x80;
     private const string OpcodeFilterEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_OPCODES";
     private const string InvocationCountEnvironmentVariable = "NETHERMIND_EVM_BENCHMARK_INVOCATION_COUNT";
@@ -99,6 +101,8 @@ public unsafe class EvmOpcodesBenchmark
     private static readonly UInt256 CopyLength = new((ulong)EvmPooledMemory.WordSize);
     private static readonly UInt256 CopySourceOffset = UInt256.Zero;
     private static readonly UInt256 CopyDestinationOffset = new((ulong)EvmPooledMemory.WordSize);
+    // A word inside the active, initialized memory, where Solidity's allocations start.
+    private static readonly UInt256 MemoryWordOffset = new(0x80UL);
     private static readonly Address CallTargetAddress = Address.FromNumber(0x1000);
     private static readonly byte[] CopySource = CreateCopySource();
     private static readonly Instruction[] AllValidLegacyOpcodes = Enum
@@ -259,7 +263,7 @@ public unsafe class EvmOpcodesBenchmark
             _env,
             new StackAccessTracker(),
             Snapshot.Empty);
-        _vmState.InitializeStacks(_opcodeCode, out _);
+        _vmState.InitializeStacks(_opcodeCodeInfo.ExecutionCodeSpan, out _);
         InitializeKeccakMemoryLocations();
 
         _vm.SetVmState(_vmState);
@@ -271,9 +275,13 @@ public unsafe class EvmOpcodesBenchmark
 
         _opcodeHandlers = _vm.GetOpcodeHandlers<OffFlag, OffFlag>();
         delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[] continuationHandlers =
-            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[byte.MaxValue + 1];
-        for (int i = 0; i < continuationHandlers.Length; i++)
-            continuationHandlers[i] = &CompleteOpcode;
+            new delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>[_opcodeHandlers.Length];
+        for (int i = 0; i < DispatchEntries; i++)
+            continuationHandlers[i] = (delegate*<ref EvmStack, ref EthereumGasPolicy, ref DispatchState, nint, nint, EvmExceptionType>)(
+                delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)&CompleteOpcode;
+        // A fast path that falls back runs the plain handler past the dispatch entries, which then completes.
+        for (int i = DispatchEntries; i < continuationHandlers.Length; i++)
+            continuationHandlers[i] = _opcodeHandlers[i];
 
         _continuationHandlersHandle = GCHandle.Alloc(continuationHandlers, GCHandleType.Pinned);
         // Safety: the handle pins the complete table until GlobalCleanup, and every entry has the
@@ -314,10 +322,11 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithStackWalk()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = CreateDispatchState(ref gas);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -326,7 +335,7 @@ public unsafe class EvmOpcodesBenchmark
 
             for (int i = 0; i < runs; i++)
             {
-                EthereumGasPolicy gas = _gas;
+                gas = _gas;
                 result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
                 DisposeNestedReturnFrame();
             }
@@ -339,16 +348,17 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithPerRunRefresh()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = CreateDispatchState(ref gas);
         for (int runIndex = 0; runIndex < InnerCount; runIndex++)
         {
             stack.Head = _stackDepth;
             PreparePerRunLocationSetup(runIndex);
 
-            EthereumGasPolicy gas = _gas;
+            gas = _gas;
             result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
             DisposeNestedReturnFrame();
         }
@@ -358,10 +368,11 @@ public unsafe class EvmOpcodesBenchmark
 
     private EvmExceptionType ExecuteOpcodeWithIndependentBinaryInputs()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
-        DispatchState state = CreateDispatchState();
         EvmExceptionType result = EvmExceptionType.None;
+        EthereumGasPolicy gas = _gas;
+        DispatchState state = CreateDispatchState(ref gas);
         int remaining = InnerCount;
         while (remaining > 0)
         {
@@ -371,7 +382,7 @@ public unsafe class EvmOpcodesBenchmark
             {
                 stack.Head = depth - (i * 2);
 
-                EthereumGasPolicy gas = _gas;
+                gas = _gas;
                 result = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
                 DisposeNestedReturnFrame();
             }
@@ -551,6 +562,16 @@ public unsafe class EvmOpcodesBenchmark
                 SetupStack2(in JumpDestination, in One);
                 return 2;
 
+            case Instruction.MLOAD:
+                // The word holds its own offset, so every run in the chain loads the same word of active memory.
+                _vmState.Memory.TrySave(in MemoryWordOffset, MemoryWordOffset.ToBigEndian());
+                WriteStackSlot(0, in MemoryWordOffset);
+                return 1;
+
+            case Instruction.MSTORE:
+                SetupStack2(in MemoryWordOffset, in ValueA);
+                return 2;
+
             case Instruction.CALL:
             case Instruction.CALLCODE:
                 SetupCallStack(hasValue: true);
@@ -715,7 +736,7 @@ public unsafe class EvmOpcodesBenchmark
 
     private long ExecuteOpcodeOnceForGas()
     {
-        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCode, _opcodeCodeInfo);
+        EvmStack stack = new(_stackDepth, NullTxTracer.Instance, ref MemoryMarshal.GetReference(GetAlignedStackSpan()), _opcodeCodeInfo.ExecutionCodeSpan, _opcodeCodeInfo);
         stack.HoistInputData(_env.InputData.Span);
         if (RequiresPerRunLocationSetup(Opcode))
         {
@@ -733,7 +754,7 @@ public unsafe class EvmOpcodesBenchmark
         }
 
         EthereumGasPolicy gas = _gas;
-        DispatchState state = CreateDispatchState();
+        DispatchState state = CreateDispatchState(ref gas);
         _ = ExecuteOpcodeHandler(ref stack, ref gas, ref state);
         DisposeNestedReturnFrame();
 
@@ -741,8 +762,10 @@ public unsafe class EvmOpcodesBenchmark
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private DispatchState CreateDispatchState() => new()
+    private DispatchState CreateDispatchState(scoped ref EthereumGasPolicy gas) => new()
     {
+        // Safety: the dispatch chain is fully contained in each benchmark invocation, so the reference cannot outlive gas.
+        Gas = ref Unsafe.AsRef(in gas),
         OpcodeHandlers = _continuationHandlers,
         Vm = _vm,
     };
@@ -751,16 +774,21 @@ public unsafe class EvmOpcodesBenchmark
     private EvmExceptionType ExecuteOpcodeHandler(
         ref EvmStack stack,
         ref EthereumGasPolicy gas,
-        ref DispatchState state) =>
-        _opcodeHandlers[(int)Opcode](ref stack, ref gas, ref state, 0, 0);
+        scoped ref DispatchState state) =>
+        ((delegate*<ref EvmStack, ulong, ref DispatchState, nint, nint, EvmExceptionType>)(nint)_opcodeHandlers[(int)Opcode])(
+            ref stack, gas.Value, ref state, 0, 0);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private static EvmExceptionType CompleteOpcode(
         ref EvmStack stack,
-        ref EthereumGasPolicy gas,
+        ulong gas,
         ref DispatchState state,
         nint programCounter,
-        nint opCodeCount) => EvmExceptionType.None;
+        nint opCodeCount)
+    {
+        state.Gas.Value = gas;
+        return EvmExceptionType.None;
+    }
 
     private void DisposeNestedReturnFrame()
     {

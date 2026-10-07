@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq.Expressions;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -159,6 +160,8 @@ namespace Nethermind.Core.Collections
             public static readonly Action<ConcurrentDictionary<TKey, TValue>> Clear = CreateNoResizeClearExpression();
             public static readonly Func<ConcurrentDictionary<TKey, TValue>, int[]> CountPerLock = CreateCountPerLockGetter();
 
+            [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, "System.Collections.Concurrent.ConcurrentDictionary`2.Tables", "System.Collections.Concurrent")]
+            [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "ConcurrentDictionary<,>.Tables' non-public fields are preserved by the DynamicDependency above.")]
             private static Func<ConcurrentDictionary<TKey, TValue>, int[]> CreateCountPerLockGetter()
             {
                 ParameterExpression dictionaryParam = Expression.Parameter(typeof(ConcurrentDictionary<TKey, TValue>), "dictionary");
@@ -171,6 +174,8 @@ namespace Nethermind.Core.Collections
                 return Expression.Lambda<Func<ConcurrentDictionary<TKey, TValue>, int[]>>(countPerLockAccess, dictionaryParam).Compile();
             }
 
+            [DynamicDependency(DynamicallyAccessedMemberTypes.NonPublicFields, "System.Collections.Concurrent.ConcurrentDictionary`2.Tables", "System.Collections.Concurrent")]
+            [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = "ConcurrentDictionary<,>.Tables' non-public fields are preserved by the DynamicDependency above.")]
             private static Action<ConcurrentDictionary<TKey, TValue>> CreateNoResizeClearExpression()
             {
                 // Parameters

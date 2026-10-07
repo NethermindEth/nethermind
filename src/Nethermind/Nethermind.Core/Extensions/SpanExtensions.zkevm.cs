@@ -54,6 +54,8 @@ namespace Nethermind.Core.Extensions
         private static ulong LastSlot2;
         private static ulong LastSlot3;
         private static ulong LastSlotHash;
+        // The index's share of LastSlotHash, which MixSlotIndex finalizes for the index-keyed maps probed next.
+        private static ulong LastSlotIndexSum;
 
         /// <inheritdoc />
         public static partial void SeedHashes(in Int256.UInt256 seed)
@@ -68,7 +70,8 @@ namespace Nethermind.Core.Extensions
             SlotSeeds = [DeriveSlotSeed(seed.u0, 0), DeriveSlotSeed(seed.u1, 1), DeriveSlotSeed(seed.u2, 2), DeriveSlotSeed(seed.u3, 3)];
             // The memo's all-zero key must map to what MixSlot would compute for it.
             LastSlotAddressSum = LastSlot0 = LastSlot1 = LastSlot2 = LastSlot3 = 0;
-            LastSlotHash = SumSlot(0, 0, 0, 0, 0);
+            LastSlotIndexSum = SumIndexLanes(0, 0, 0, 0);
+            LastSlotHash = FinalizeSum(LastSlotIndexSum);
             AesHashSeed0 = seed.u0 ^ 0x6A09E667F3BCC909UL;
             AesHashSeed1 = seed.u1 ^ 0xBB67AE8584CAA73BUL;
             AesHash20Seed0 = seed.u0 ^ 0x510E527FADE682D1UL;
@@ -130,8 +133,10 @@ namespace Nethermind.Core.Extensions
             if (addressSum == LastSlotAddressSum && i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3)
                 return LastSlotHash;
 
-            ulong hash = SumSlot(addressSum, i0, i1, i2, i3);
+            ulong indexSum = SumIndexLanes(i0, i1, i2, i3);
+            ulong hash = FinalizeSum(addressSum + indexSum);
             LastSlotAddressSum = addressSum;
+            LastSlotIndexSum = indexSum;
             LastSlot0 = i0;
             LastSlot1 = i1;
             LastSlot2 = i2;
@@ -140,18 +145,35 @@ namespace Nethermind.Core.Extensions
             return hash;
         }
 
+        /// <summary>Hashes a 32-byte slot index on its own, keyed as <see cref="MixSlot"/> keys the index words.</summary>
+        /// <remarks>
+        /// A storage access probes the index-keyed maps of its contract right after the cell-keyed ones, so the index
+        /// <see cref="MixSlot"/> hashed last reuses its sum. An index alone is a different key type from a cell, so
+        /// sharing the index keys keeps each map's NH bound.
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        internal static ulong MixSlotIndex(ref byte index)
+        {
+            ulong i0 = Unsafe.ReadUnaligned<ulong>(ref index);
+            ulong i1 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 8));
+            ulong i2 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 16));
+            ulong i3 = Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref index, 24));
+            ulong indexSum = i0 == LastSlot0 && i1 == LastSlot1 && i2 == LastSlot2 && i3 == LastSlot3
+                ? LastSlotIndexSum
+                : SumIndexLanes(i0, i1, i2, i3);
+            return FinalizeSum(indexSum);
+        }
+
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong SumSlot(ulong addressSum, ulong i0, ulong i1, ulong i2, ulong i3)
+        private static ulong SumIndexLanes(ulong i0, ulong i1, ulong i2, ulong i3)
         {
             Debug.Assert(SlotSeeds is not null, $"{nameof(SeedHashes)} must run before hashing.");
             ulong mask = HashLaneMask;
             ref ulong seeds = ref MemoryMarshal.GetArrayDataReference(SlotSeeds!);
-            ulong sum = addressSum
-                + MixLanes(i0, seeds, mask)
+            return MixLanes(i0, seeds, mask)
                 + MixLanes(i1, Unsafe.Add(ref seeds, 1), mask)
                 + MixLanes(i2, Unsafe.Add(ref seeds, 2), mask)
                 + MixLanes(i3, Unsafe.Add(ref seeds, 3), mask);
-            return FinalizeSum(sum);
         }
 
         // NH over three words, the last ending at the address' last byte and so overlapping the middle one: the words
@@ -201,13 +223,13 @@ namespace Nethermind.Core.Extensions
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static partial ulong MultiplyFold(ulong a, ulong b)
         {
-            uint al = (uint)a, ah = (uint)(a >> 32);
-            uint bl = (uint)b, bh = (uint)(b >> 32);
-            ulong lower = (ulong)al * bl;
-            ulong middle = (ulong)ah * bl + (lower >> 32);
-            ulong carry = (ulong)al * bh + (uint)middle;
-            ulong low = (carry << 32) | (uint)lower;
-            ulong high = (ulong)ah * bh + (middle >> 32) + (carry >> 32);
+            ulong al = a & uint.MaxValue, ah = a >> 32;
+            ulong bl = b & uint.MaxValue, bh = b >> 32;
+            ulong lower = al * bl;
+            ulong middle = ah * bl + (lower >> 32);
+            ulong carry = al * bh + (middle & uint.MaxValue);
+            ulong low = (carry << 32) | (lower & uint.MaxValue);
+            ulong high = ah * bh + (middle >> 32) + (carry >> 32);
             return low ^ high;
         }
     }

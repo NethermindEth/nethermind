@@ -24,6 +24,8 @@ public ref partial struct EvmStack
 {
     public const int RegisterLength = 1;
     public const int MaxStackSize = 1025;
+    /// <summary>EIP-7979: the most return addresses a frame's return stack may hold.</summary>
+    public const int ReturnStackLimit = 1024;
     public const int WordSize = 32;
     public const int AddressSize = 20;
 
@@ -94,6 +96,20 @@ public ref partial struct EvmStack
     /// <summary>Resolves the jump-destination bitmap when the stack is built, where the build flavour wants it.</summary>
     partial void InitializeJumpDestinations();
 
+    /// <summary>Validates jumps against the EIP-7979 bitmap, where a <c>CALLDEST</c> is also a jump destination.</summary>
+    /// <remarks>Chosen once per frame, so JUMP and JUMPI keep their single bit test.</remarks>
+    internal void UseCallDestinations()
+    {
+        if (CodeLength != 0 && _codeInfo is not null)
+        {
+            _jumpDestinations = _codeInfo.JumpAndCallDestinationBitmap;
+            OnJumpDestinationsReplaced();
+        }
+    }
+
+    /// <summary>Lets the build flavour follow a bitmap <see cref="UseCallDestinations"/> swapped in.</summary>
+    partial void OnJumpDestinationsReplaced();
+
     /// <summary>
     /// Reserves the next stack slot and returns a ref to it. On overflow returns <see cref="Unsafe.NullRef{T}"/>;
     /// callers must check with <see cref="Unsafe.IsNullRef{T}"/> before writing.
@@ -117,7 +133,7 @@ public ref partial struct EvmStack
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static EvmWord CreateAcceleratedWordFromUInt64(ulong value)
-        => Vector256.Create(value, 0UL, 0UL, 0UL).AsByte();
+        => Vector256.CreateScalar(value).AsByte();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void WriteScalarWordFromUInt64(ref EvmWord word, ulong value)
@@ -2149,14 +2165,16 @@ public ref partial struct EvmStack
         ref byte bottom = ref Unsafe.Add(ref bytes, headOffset - depthBytes);
         ref byte top = ref Unsafe.Add(ref bytes, headOffset - WordSize);
 
-        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
-        Unsafe.WriteUnaligned(ref top, buffer);
+        SwapWords(ref bottom, ref top);
 
         if (TTracingInst.IsActive) Trace(depth);
 
         return EvmExceptionType.None;
     }
+
+    /// <summary>Exchanges the two 32-byte stack words at <paramref name="bottom"/> and <paramref name="top"/>.</summary>
+    /// <remarks>Split per target; see <c>EvmStack.Swap.std.cs</c> and <c>.zkevm.cs</c>.</remarks>
+    private static partial void SwapWords(ref byte bottom, ref byte top);
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

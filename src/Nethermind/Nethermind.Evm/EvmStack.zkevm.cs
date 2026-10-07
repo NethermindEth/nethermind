@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Evm.CodeAnalysis;
@@ -28,9 +29,53 @@ public ref partial struct EvmStack
     internal bool IsJumpDestination(int destination)
     {
         if ((uint)destination >= (uint)CodeLength) return false;
-        long[] bitmap = _jumpDestinations!;
-        return JumpDestinationAnalyzer.IsJumpDestination(bitmap, destination)
-            || (_codeInfo is not null && _codeInfo.AnalyzeJump(destination, bitmap, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength)));
+        return JumpDestinationAnalyzer.IsJumpDestination(_jumpDestinations!, destination) || AnalyzeJumpDestination(destination);
+    }
+
+    /// <summary>Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, and reports whether it is a jump destination.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool AnalyzeJumpDestination(int destination) =>
+        _codeInfo is not null && ReferenceEquals(_jumpDestinations, _codeInfo.IncrementalJumpBitmap) &&
+        _codeInfo.AnalyzeJump(destination, _jumpDestinations!, MemoryMarshal.CreateReadOnlySpan(ref Code, (int)CodeLength));
+
+    /// <summary>
+    /// Analyzes <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, as the
+    /// destination of the jump running, and reports whether it is a jump destination.
+    /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
+    /// <remarks>
+    /// <see cref="AnalyzeJumpDestination(int)"/> without the tests that running code makes redundant: the code holds
+    /// the jump, so it does not start with STOP, and the destination is inside it.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool AnalyzeJumpDestination(nint destination, ref byte code)
+    {
+        CodeInfo? codeInfo = _codeInfo;
+        return codeInfo is not null && ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) &&
+            codeInfo.AnalyzeRunningJump(destination, _jumpDestinations!, ref code);
+    }
+
+    /// <summary>
+    /// Marks <paramref name="destination"/>, a position inside <see cref="Code"/> whose bit is still clear, when a single
+    /// look-back proves it the destination of the jump running, and reports whether it did.
+    /// </summary>
+    /// <param name="destination">The destination.</param>
+    /// <param name="code">The first byte of <see cref="Code"/>, as dispatch carries it.</param>
+    /// <remarks>
+    /// A false answer leaves the destination to <see cref="AnalyzeJumpDestination"/>. The bitmap is reached only once
+    /// the destination is proven, so a frameless handler does not hold it through the look-back.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool TryMarkJumpDestination(nint destination, ref byte code)
+    {
+        CodeInfo? codeInfo = _codeInfo;
+        if (codeInfo is null || !ReferenceEquals(_jumpDestinations, codeInfo.IncrementalJumpBitmap) ||
+            !codeInfo.IsJumpProvenByLookBack(destination, ref code)) return false;
+
+        ref long segment = ref Unsafe.Add(ref _jumpDestinationBits, destination >> 6);
+        segment |= 1L << (int)destination;
+        return true;
     }
 
     /// <summary>Whether jump destinations are analyzed only when the code jumps to them.</summary>
@@ -40,18 +85,49 @@ public ref partial struct EvmStack
     /// <summary>Reports whether <paramref name="destination"/> is a jump destination already analyzed.</summary>
     /// <remarks>
     /// A bit test and nothing else, so a false answer may only mean "not analyzed yet". The fused PUSH2+JUMP
-    /// fuses only on a true answer and otherwise runs the two unfused, leaving the scan to the jump handler:
-    /// carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on every
-    /// execution, though almost none of them scan.
+    /// fuses only on a true answer and otherwise pushes and leaves the scan to the guest's unanalyzed-destination
+    /// jump handler: carrying the scan inline made the PUSH2 handler save and restore the callee-saved registers on
+    /// every execution, though almost none of them scan.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool IsKnownJumpDestination(int destination) =>
-        (uint)destination < (uint)CodeLength && JumpDestinationAnalyzer.IsJumpDestination(_jumpDestinations!, destination);
+        (nuint)(uint)destination < (nuint)CodeLength && IsAnalyzedJumpDestination((uint)destination);
+
+    /// <summary>Reports whether <paramref name="destination"/>, a position inside <see cref="Code"/>, is a jump destination already analyzed.</summary>
+    /// <remarks>
+    /// The bitmap is sized for the code, so a position inside it needs no bounds check of its own. The bit is
+    /// tested in the sign, which takes one instruction fewer than masking it: a narrowed mask makes the JIT
+    /// sign-extend it first.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal readonly bool IsAnalyzedJumpDestination(nuint destination)
+    {
+        Debug.Assert(destination < (nuint)CodeLength, "Only a position inside the code indexes the bitmap unchecked.");
+        ulong bits = (ulong)Unsafe.Add(ref _jumpDestinationBits, (nint)(destination >> 6));
+        return (long)((bits >> (int)destination) << 63) < 0;
+    }
+
+    /// <summary>The bottom slot of the stack.</summary>
+    /// <remarks>
+    /// Guest dispatch carries it, and the head, outside the stack (see <c>VirtualMachine.Dispatch.zkevm.cs</c>), so its
+    /// handlers address slots off the two they hold rather than through <see cref="PeekBytesByRefUnchecked()"/>.
+    /// </remarks>
+    internal readonly ref byte Bottom => ref _stack;
+
+    /// <summary>The first word of <see cref="_jumpDestinations"/>, which the bit test indexes without a null check.</summary>
+    private ref long _jumpDestinationBits;
+
+    partial void OnJumpDestinationsReplaced() => _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(_jumpDestinations!);
 
     // Resolved when the stack is built, as the host form is: resolving on the first jump put a call and a
-    // write barrier into every handler that validates a jump.
-    partial void InitializeJumpDestinations() =>
-        _jumpDestinations = CodeLength == 0
+    // write barrier into every handler that validates a jump. A stack over code without its code info gets
+    // an empty bitmap sized for that code, so the unchecked bit test stays inside it and rejects everything.
+    partial void InitializeJumpDestinations()
+    {
+        long[] bitmap = CodeLength == 0
             ? JumpDestinationAnalyzer.EmptyBitmap
-            : _codeInfo?.IncrementalJumpBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
+            : _codeInfo?.IncrementalJumpBitmap ?? JumpDestinationAnalyzer.CreateBitmap((int)CodeLength);
+        _jumpDestinations = bitmap;
+        _jumpDestinationBits = ref MemoryMarshal.GetArrayDataReference(bitmap);
+    }
 }

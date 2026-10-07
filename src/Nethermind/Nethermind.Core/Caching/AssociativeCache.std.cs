@@ -42,8 +42,6 @@ public sealed partial class AssociativeCache<TKey, TValue>
 
             if ((h1 & LockMarker) == 0)
             {
-                // Prevent ARM64 from reordering Key/Value loads before the seqlock header read.
-                if (!Sse.IsSupported) Interlocked.MemoryBarrier();
                 key = entry.Key;
                 value = entry.Value;
                 // Prevent ARM64 from reordering the trailing seq re-read before Key/Value loads.
@@ -57,5 +55,21 @@ public sealed partial class AssociativeCache<TKey, TValue>
         key = default;
         value = null;
         return false;
+    }
+
+    /// <remarks>
+    /// Stops at the first ticker at least as new, but proving an entry newest reads all eight, up to seven lines past the
+    /// matched way; that trades loads for the clock read and the shared ticker write. A skipped hit keeps its older stamp,
+    /// so a later stamp in the same clock tick ranks after it, as in access order, where stamping every hit would tie them.
+    /// </remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    static partial void CheckNewestInSet(ref Entry entries, int baseIdx, int way, long ticker, ref bool newest)
+    {
+        for (int j = 0; j < Ways; j++)
+        {
+            if (j != way && Unsafe.Add(ref entries, baseIdx + j).Ticker >= ticker) return;
+        }
+
+        newest = true;
     }
 }

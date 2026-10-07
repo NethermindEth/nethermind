@@ -33,8 +33,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
     // Regular contract
     public CodeInfo(ReadOnlyMemory<byte> code)
     {
-        PadForDispatch(ref code);
-        Code = code;
+        InitializeCode(code);
         if (code.Length == 0)
         {
             _analyzer = _emptyAnalyzer;
@@ -52,18 +51,48 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         _analyzer = null;
     }
 
-    public ReadOnlyMemory<byte> Code { get; }
-    public ReadOnlySpan<byte> CodeSpan => Code.Span;
+    public partial ReadOnlyMemory<byte> Code { get; }
+    public partial ReadOnlySpan<byte> CodeSpan { get; }
 
-    /// <summary>Copies the code into a buffer dispatch may read past its end, in builds that dispatch without end-of-code tests.</summary>
-    static partial void PadForDispatch(ref ReadOnlyMemory<byte> code);
+    /// <summary>The length of <see cref="Code"/>.</summary>
+    internal partial int CodeLength { get; }
 
+    partial void InitializeCode(ReadOnlyMemory<byte> code);
+
+    /// <summary>The number of zero bytes that follow <see cref="ExecutionCodeSpan"/> in its backing array.</summary>
+    /// <remarks>
+    /// A PUSH32 in the last byte reads 32 immediate bytes, and the next opcode read then lands on the
+    /// next-to-last padding byte, which is STOP; the guest reads that opcode together with the byte after it.
+    /// </remarks>
+    internal const int ExecutionPadding = 34;
+
+    /// <summary>The code that dispatch runs, followed in memory by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    /// <remarks>
+    /// Untraced dispatch reads into the padding instead of checking the program counter against the code
+    /// length. The padding is never JUMPDEST, and jump destinations are bounded by the code length anyway.
+    /// </remarks>
+    internal partial ReadOnlySpan<byte> ExecutionCodeSpan { get; }
+
+    private static byte[] CreatePaddedCode(ReadOnlySpan<byte> code)
+    {
+        byte[] padded = CreateExecutionBuffer(code.Length);
+        code.CopyTo(padded);
+        return padded;
+    }
+
+    /// <summary>Allocates a buffer for <paramref name="codeLength"/> code bytes followed by <see cref="ExecutionPadding"/> zero bytes.</summary>
+    internal static byte[] CreateExecutionBuffer(int codeLength)
+    {
+        byte[] buffer = GC.AllocateUninitializedArray<byte>(codeLength + ExecutionPadding);
+        buffer.AsSpan(codeLength).Clear();
+        return buffer;
+    }
     private Address? _delegatedAddress;
     internal Address? DelegatedAddress
     {
         get
         {
-            if (Code.Length != Eip7702Constants.DelegationHeaderLength + Address.Size)
+            if (CodeLength != Eip7702Constants.DelegationHeaderLength + Address.Size)
             {
                 return null;
             }
@@ -74,7 +103,7 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
                 return delegatedAddress;
             }
 
-            if (!ICodeInfoRepository.TryGetDelegatedAddress(Code.Span, out Address? parsedAddress))
+            if (!ICodeInfoRepository.TryGetDelegatedAddress(CodeSpan, out Address? parsedAddress))
             {
                 return null;
             }
@@ -127,6 +156,10 @@ public sealed partial class CodeInfo : IEquatable<CodeInfo>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get => _analyzer?.JumpDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
     }
+
+    /// <summary>The EIP-7979 bitmap of <c>JUMPDEST</c> and <c>CALLDEST</c> positions in this code, built on first use.</summary>
+    internal long[] JumpAndCallDestinationBitmap
+        => _analyzer?.JumpAndCallDestinationBitmap ?? JumpDestinationAnalyzer.EmptyBitmap;
 
     public override bool Equals(object? obj)
         => Equals(obj as CodeInfo);

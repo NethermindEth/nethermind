@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Evm.CodeAnalysis;
 using NUnit.Framework;
@@ -14,8 +15,8 @@ public class GuestCodePaddingTests
     [Test]
     public void Code_is_followed_by_zero_padding([Values(1, 2, 32, 33, 100, 4096)] int length)
     {
-        // PUSH32 in the last byte reads 32 immediates, and dispatch then reads the next opcode.
-        const int padding = 33;
+        // PUSH32 in the last byte reads 32 immediates, and dispatch then reads the next opcode and the byte after it.
+        const int padding = 34;
 
         // The buffer goes on past the code with bytes the padding must not inherit.
         byte[] buffer = new byte[length + padding + 8];
@@ -23,13 +24,13 @@ public class GuestCodePaddingTests
 
         CodeInfo codeInfo = new(buffer.AsMemory(0, length));
 
-        Assert.That(MemoryMarshal.TryGetArray(codeInfo.Code, out ArraySegment<byte> code), Is.True);
-        ReadOnlySpan<byte> afterCode = code.Array.AsSpan(code.Offset + code.Count);
+        ReadOnlySpan<byte> execution = codeInfo.ExecutionCodeSpan;
+        ReadOnlySpan<byte> afterCode = MemoryMarshal.CreateReadOnlySpan(ref Unsafe.Add(ref MemoryMarshal.GetReference(execution), execution.Length), padding);
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(execution.ToArray(), Is.EqualTo(buffer[..length]));
             Assert.That(codeInfo.CodeSpan.ToArray(), Is.EqualTo(buffer[..length]));
-            Assert.That(afterCode.Length, Is.GreaterThanOrEqualTo(padding));
-            Assert.That(afterCode[..padding].IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
+            Assert.That(afterCode.IndexOfAnyExcept((byte)Instruction.STOP), Is.EqualTo(-1));
         }
     }
 }
