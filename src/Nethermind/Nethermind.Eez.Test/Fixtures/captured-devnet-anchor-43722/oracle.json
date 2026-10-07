@@ -1,0 +1,19 @@
+{
+  "network": "kurtosis-devnet",
+  "rollup_id": 1,
+  "l2_chain_id": 6290,
+  "l1_transaction_hash": "0x4ea9a028f606c36b33744c8f8023f3b27cdfa2d8913e3cf99d58b676af143bc2",
+  "l1_block_number": 7290,
+  "eez_address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+  "window_pre_block_hash": "0x08d8eda0014664673e37def7b50156985405d4f020c221b4af6f8bdf15620e61",
+  "window_post_block_hash": "0xb545d2078e3ae02b3a538e2af32be3d018071b5dcb91b8826fa2d7eefe849660",
+  "from_block": 43717,
+  "to_block": 43722,
+  "public_inputs_hash": "0x7fb44e9917784d555f5316040b60518b52919c31843c103f20b94cbb9706f455",
+  "attester": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "proof_system_vkey": "0x00000000000000000000000070997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "l2_system_address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0076",
+  "l2_block_time_seconds": 2,
+  "captured_at": "2026-09-28T23:11:02Z",
+  "proof_system": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512"
+}

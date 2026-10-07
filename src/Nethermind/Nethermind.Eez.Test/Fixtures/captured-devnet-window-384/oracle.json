@@ -1,0 +1,21 @@
+{
+  "network": "kurtosis-devnet",
+  "l2_chain_id": 6290,
+  "rollup_id": 1,
+  "from_block": 379,
+  "to_block": 384,
+  "l1_transaction_hash": "0xbd18cbc2e2d744b9c45eea9893fe32586d04690d648c7cea40fdf4987afb4166",
+  "l1_block_number": 66,
+  "l1_block_hash": "0x47a662fa838df4092eb868b9a7634c2130c99c13772949272e76c1c168b9d156",
+  "eez_address": "0x5fbdb2315678afecb367f032d93f642f64180aa3",
+  "proof_system": "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+  "attester": "0x70997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "proof_system_vkey": "0x00000000000000000000000070997970C51812dc3A010C7d01b50e0d17dc79C8",
+  "l2_system_address": "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee0076",
+  "public_inputs_hash": "0xdba28e526b876c24ca618f4f5467eb656348276fb249d0d3a83e7e4b5940ee4d",
+  "window_pre_block_hash": "0x94f2c7b0206e43cca7a125db75ad02a6e900299700fa2dd8970639f2503ac5e9",
+  "window_post_block_hash": "0xc2d1514102cf4b5384e63c9651941d4861accd8f9c5b061dc208b64fa353393e",
+  "l2_block_time_seconds": 2,
+  "mined_proof": "0x904102f1989b550ce0f885de2811d6e01bf1440a6bf134e365fd45bc1db1a42f00f3c80837826106e541b5fa6d68d7ed19c1776766790805107829c24e7d9a571c",
+  "entries": 4
+}
