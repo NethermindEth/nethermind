@@ -307,7 +307,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public void UpdateRootHash(bool canBeParallel = true)
+        public void UpdateRootHash(bool canBeParallel = false)
         {
             TreePath path = TreePath.Empty;
             if (RootRef is not null && DirtyNodeHasher.HashBelowRoot(RootRef, TrieStore, _bufferPool, canBeParallel))

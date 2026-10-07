@@ -32,12 +32,20 @@ internal sealed class TransactionFootprint(
 
     public Transaction Transaction { get; } = transaction;
 
+    /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
+    public bool Refreshed { get; init; }
+
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
     public ref readonly TransactionResult Result => ref _result;
 
     /// <summary>What the run added to the execution counters.</summary>
     public ref readonly ExecutionCounts Counts => ref _counts;
+
+    /// <summary>The slots the run read, at the values it read.</summary>
+    public ReadOnlySpan<SlotPrecondition> Slots => slots;
+
+    public ReadOnlySpan<StateEffect> Effects => effects;
 
     public bool Matches(IWorldState state)
     {
