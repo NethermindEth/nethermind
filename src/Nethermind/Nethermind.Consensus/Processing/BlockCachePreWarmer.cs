@@ -1360,6 +1360,27 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             }
             return a.FirstIndex.CompareTo(b.FirstIndex);
         });
+
+        // Experiment only: the heavy jobs alternate with the block-order ones, so the transactions block processing reaches
+        // first are not all queued behind the heavy ones. NETHERMIND_EXP_INTERLEAVE=0 keeps the heavy jobs first.
+        if (InterleavesHeavyJobs) Interleave(result);
+    }
+
+    private static readonly bool InterleavesHeavyJobs = Environment.GetEnvironmentVariable("NETHERMIND_EXP_INTERLEAVE") != "0";
+
+    private static void Interleave(ArrayPoolList<WarmupJob> jobs)
+    {
+        int hoisted = 0;
+        while (hoisted < jobs.Count && jobs[hoisted].IsHoisted) hoisted++;
+        if (hoisted == 0 || hoisted == jobs.Count) return;
+
+        WarmupJob[] sorted = jobs.AsSpan().ToArray();
+        int heavy = 0, inOrder = hoisted, next = 0;
+        while (next < sorted.Length)
+        {
+            if (inOrder < sorted.Length) jobs[next++] = sorted[inOrder++];
+            if (heavy < hoisted) jobs[next++] = sorted[heavy++];
+        }
     }
 
     /// <summary>
