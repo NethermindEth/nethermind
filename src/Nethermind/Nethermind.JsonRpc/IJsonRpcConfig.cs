@@ -166,11 +166,10 @@ public interface IJsonRpcConfig : IConfig
             HTTP 503 is returned along with the JSON-RPC error. Also acts as the hard active
             concurrency cap on the override-path env pool used by sharable `eth_call` /
             `eth_estimateGas` / `eth_createAccessList` when called with state or blob-base-fee
-            overrides: calls beyond this cap fail with a `LimitExceeded` JSON-RPC error. The same
-            number of execution slots is shared by `eth_simulateV1` and by `eth_call`,
-            `eth_estimateGas` and `eth_createAccessList` with state or block overrides; more such
-            calls wait up to `EvmExecutionMaxQueueWaitMs` for a slot. Defaults to the number of
-            logical processors.
+            overrides, and as the number of execution slots shared by `eth_simulateV1` and those
+            calls when they carry a state or block override: more such calls wait up to
+            `EvmExecutionMaxQueueWaitMs` for a slot, then fail with a `LimitExceeded` JSON-RPC
+            error. Defaults to the number of logical processors.
             """)]
     int? EthModuleConcurrentInstances { get; set; }
 
