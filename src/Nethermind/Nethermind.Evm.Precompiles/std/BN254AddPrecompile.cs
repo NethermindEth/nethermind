@@ -10,4 +10,6 @@ public partial class BN254AddPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Add(ReadOnlySpan<byte> input, byte[] output) => BN254.Add(output, input);
+
+    partial void CountCall() => Metrics.Bn254AddPrecompile++;
 }

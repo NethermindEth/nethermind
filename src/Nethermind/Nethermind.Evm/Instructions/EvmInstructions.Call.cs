@@ -323,14 +323,7 @@ public static partial class EvmInstructions
         vm.TxTracer.ReportRejectedAction(gas, gas, callValue, env.ExecutingAccount, codeSource, input, TOpCall.ExecutionType, error, isPrecompile);
     }
 
-    // Mainline keeps this out-of-line for icache locality on the common path. The zkVM guest
-    // has no icache and counts instructions, so the NoInlining call and its wide argument
-    // marshalling are pure overhead on every CALL; inline it, pulling the hot precompile path in too.
-#if ZK_EVM
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-#else
-    [MethodImpl(MethodImplOptions.NoInlining)]
-#endif
+    [MethodImpl(FullCallFrameInlining)]
     [SkipLocalsInit]
     private static EvmExceptionType CreateFullCallFrame<TGasPolicy, TOpCall, TTracingInst>(
         VirtualMachine<TGasPolicy> vm,
@@ -380,23 +373,13 @@ public static partial class EvmInstructions
 
         TGasPolicy childGas = TGasPolicy.CreateChildFrameGas(ref gas, gasLimitUl);
 
-#if ZK_EVM
-        // Precompiles run no bytecode: handle them inline, skipping the child
+        // Precompiles run no bytecode: where the build supports it, handle them inline, skipping the child
         // frame's round trip through the ExecuteTransaction dispatch loop.
-        if (codeInfo.IsPrecompile)
+        if (InlinesPrecompileFrames && codeInfo.IsPrecompile)
         {
-            return vm.InlinePrecompileCall<TTracingInst>(
-                callEnv,
-                childGas,
-                outputOffset.ToLong(),
-                outputLength.ToLong(),
-                TOpCall.ExecutionType,
-                TOpCall.ExecutionType == ExecutionType.STATICCALL || vm.VmState.IsStatic,
-                in snapshot,
-                ref stack,
-                newAccountCharged);
+            return InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+                vm, callEnv, childGas, outputOffset.ToLong(), outputLength.ToLong(), in snapshot, ref stack, newAccountCharged);
         }
-#endif
 
         // Rent a new call frame for executing the call.
         vm.ReturnData = VmState<TGasPolicy>.RentFrame(
@@ -439,6 +422,24 @@ public static partial class EvmInstructions
         ulong gasLimitUl,
         out EvmExceptionType result)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TTracingInst : struct, IFlag;
+
+    /// <summary>
+    /// Runs a CALL to a precompile within the calling frame, without renting a child frame for the
+    /// <c>ExecuteTransaction</c> dispatch loop.
+    /// </summary>
+    /// <remarks>Only builds where <c>InlinesPrecompileFrames</c> is set, the zkEVM guest's, call this.</remarks>
+    private static partial EvmExceptionType InlinePrecompileFrame<TGasPolicy, TOpCall, TTracingInst>(
+        VirtualMachine<TGasPolicy> vm,
+        ExecutionEnvironment callEnv,
+        TGasPolicy childGas,
+        long outputOffset,
+        long outputLength,
+        in Snapshot snapshot,
+        ref EvmStack stack,
+        bool newAccountCharged)
+        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
+        where TOpCall : struct, IOpCall
         where TTracingInst : struct, IFlag;
 
     /// <summary>

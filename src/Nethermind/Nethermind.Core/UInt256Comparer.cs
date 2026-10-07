@@ -4,7 +4,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -16,7 +15,7 @@ namespace Nethermind.Core;
 /// <see cref="SpanExtensions.SeedHashes(in UInt256)"/> controls their hashes independently of the
 /// int256 package. Host containers use the package's process-seeded default comparer.
 /// </remarks>
-public sealed class UInt256Comparer : IEqualityComparer<UInt256>
+public sealed partial class UInt256Comparer : IEqualityComparer<UInt256>
 {
     /// <summary>Gets the shared comparer using the currently installed hash seed.</summary>
     public static UInt256Comparer Instance { get; } = new();
@@ -29,12 +28,7 @@ public sealed class UInt256Comparer : IEqualityComparer<UInt256>
     /// <see cref="EqualityComparer{T}.Default"/> is an intrinsic the JIT devirtualizes at each call site
     /// and the package's own per-process seed already applies. The guest has neither and takes this.
     /// </remarks>
-    public static IEqualityComparer<UInt256>? GetOptimized() =>
-#if ZK_EVM
-        Instance;
-#else
-        null;
-#endif
+    public static partial IEqualityComparer<UInt256>? GetOptimized();
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -42,13 +36,5 @@ public sealed class UInt256Comparer : IEqualityComparer<UInt256>
 
     /// <inheritdoc />
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public int GetHashCode([DisallowNull] UInt256 obj)
-    {
-#if ZK_EVM
-        ulong hash = SpanExtensions.MixSlotIndex(ref Unsafe.As<UInt256, byte>(ref obj));
-        return (int)(hash ^ (hash >> 32));
-#else
-        return MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in obj, 1)).FastHash();
-#endif
-    }
+    public partial int GetHashCode([DisallowNull] UInt256 obj);
 }

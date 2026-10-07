@@ -12,7 +12,7 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Precompiles;
 
-public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
+public partial class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
 {
     public static ECRecoverPrecompile Instance { get; } = new();
     private static readonly Result<byte[]> Empty = Array.Empty<byte>();
@@ -41,13 +41,17 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         return end < 0 ? ReadOnlyMemory<byte>.Empty : clamped[..(end + 1)];
     }
 
+    // The public key without the SEC1 uncompressed-point prefix, as the address hashes it.
+    private const int PublicKeyLength = 64;
+
+    /// <summary>Counts the call for the host's metrics; the guest publishes none.</summary>
+    partial void CountCall();
+
     private readonly byte[] _zero31 = new byte[31];
 
     public Result<byte[]> Run(ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-#if !ZK_EVM
-        Metrics.ECRecoverPrecompile++;
-#endif
+        CountCall();
         if (inputData.Length < InputLength)
             return RunInternal(inputData);
 
@@ -89,13 +93,7 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         ReadOnlySpan<byte> signature = inputDataSpan.Slice(64, 64);
         byte recoveryId = Signature.GetRecoveryId(v);
 
-        int publicKeyLen =
-#if ZK_EVM
-            64;
-#else
-            65;
-#endif
-        Span<byte> publicKey = stackalloc byte[publicKeyLen];
+        Span<byte> publicKey = stackalloc byte[RecoveredPublicKeyLength];
 
         if (!EthereumEcdsa.RecoverAddressRaw(signature, recoveryId, message, publicKey))
             return Empty;
@@ -103,9 +101,7 @@ public class ECRecoverPrecompile : IPrecompile<ECRecoverPrecompile>
         byte[] result = new byte[32];
         ref byte resultRef = ref MemoryMarshal.GetArrayDataReference(result);
 
-#if !ZK_EVM
-        publicKey = publicKey[1..];
-#endif
+        publicKey = publicKey[(RecoveredPublicKeyLength - PublicKeyLength)..];
 
         KeccakCache.ComputeTo(publicKey, out Unsafe.As<byte, ValueHash256>(ref resultRef));
         // Clear the first 12 bytes, as address is the last 20 bytes of the hash

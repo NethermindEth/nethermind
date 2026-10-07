@@ -58,9 +58,7 @@ public partial class PatriciaTree
     {
         if (entries.Count == 0)
             return;
-#if ZK_EVM
-        flags |= Flags.DoNotParallelize;
-#endif
+        AdjustBulkSetFlags(ref flags);
 
         using ParallelUnbalancedWork.WorkerScope? workers = !Core.Cpu.RuntimeInformation.IsSingleProcessor
             && entries.Count >= MinEntriesToParallelizeThreshold && (flags & Flags.DoNotParallelize) == 0
@@ -122,6 +120,9 @@ public partial class PatriciaTree
         _writeBeforeCommit += entries.Count;
         ReturnTraverseStack(traverseStack);
     }
+
+    /// <summary>Lets the build adjust the flags of a bulk set; the guest never parallelizes one.</summary>
+    partial void AdjustBulkSetFlags(ref Flags flags);
 
     private readonly record struct Context(BulkSetEntry[] OriginalEntriesArray, BulkSetEntry[] OriginalSortBufferArray);
 

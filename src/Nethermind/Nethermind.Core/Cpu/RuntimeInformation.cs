@@ -9,7 +9,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Core.Cpu;
 
-public static class RuntimeInformation
+public static partial class RuntimeInformation
 {
     [System.Runtime.Versioning.SupportedOSPlatformGuard("windows")]
     internal static bool IsWindows() => OperatingSystem.IsWindows(); // prefer linker-friendly OperatingSystem APIs
@@ -20,29 +20,8 @@ public static class RuntimeInformation
     [System.Runtime.Versioning.SupportedOSPlatformGuard("macos")]
     internal static bool IsMacOS() => OperatingSystem.IsMacOS();
 
-    public static CpuInfo? GetCpuInfo()
-    {
-#if !ZK_EVM
-        if (IsWindows())
-            return WmicCpuInfoProvider.WmicCpuInfo.Value;
-        if (IsLinux())
-            return ProcCpuInfoProvider.ProcCpuInfo.Value;
-        if (IsMacOS())
-            return SysctlCpuInfoProvider.SysctlCpuInfo.Value;
-#endif
-        return null;
-    }
+    public static partial CpuInfo? GetCpuInfo();
 
-    /// <summary>The logical processors available to the process, at least one.</summary>
-    /// <remarks>
-    /// The zkEVM guest runs single-threaded and is compiled ahead of time, so it takes a constant and
-    /// every path that fans out on the count compiles away.
-    /// </remarks>
-#if ZK_EVM
-    public const int ProcessorCount = 1;
-#else
-    public static readonly int ProcessorCount = Math.Max(1, Environment.ProcessorCount);
-#endif
     /// <summary>Whether the process has a single logical processor.</summary>
     /// <remarks>
     /// Fan-out gates test this rather than the count: nothing gains from fanning out on one processor,

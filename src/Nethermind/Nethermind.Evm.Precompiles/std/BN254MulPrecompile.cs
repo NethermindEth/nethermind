@@ -10,4 +10,6 @@ public partial class BN254MulPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool Mul(ReadOnlySpan<byte> input, byte[] output) => BN254.Mul(output, input);
+
+    partial void CountCall() => Metrics.Bn254MulPrecompile++;
 }

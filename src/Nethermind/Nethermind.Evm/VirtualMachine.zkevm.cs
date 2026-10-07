@@ -161,4 +161,8 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         child.Dispose();
         return push;
     }
+
+    private static partial delegate*<VirtualMachine<TGasPolicy>, VmState<TGasPolicy>, void> SelectInitializeFrame(IReleaseSpec spec) =>
+        SpecFlags.Eip158(spec) && !spec.IsEip7928Enabled ? &InitializeFrameSkippingNoOpCredit :
+        SpecFlags.Eip158(spec) ? &InitializeFrameCore<OnFlag> : &InitializeFrameCore<OffFlag>;
 }
