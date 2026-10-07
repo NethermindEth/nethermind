@@ -15,9 +15,7 @@ public static class Eip8297KeyDerivation
     public const int AccountKeyLength = 34;
     public const int StorageKeyLength = 66;
 
-    public static PbtPath AccountKey(ReadOnlySpan<byte> address32, byte subIndex) => AccountKey(Blake3Hash.Hash(address32), subIndex);
-
-    /// <summary><see cref="AccountKey(ReadOnlySpan{byte}, byte)"/> reusing a precomputed address hash.</summary>
+    /// <summary>The account-zone key at <paramref name="subIndex"/> of the account whose 32-byte address hashes to <paramref name="addressHash"/>.</summary>
     public static PbtPath AccountKey(in ValueHash256 addressHash, byte subIndex) => ZoneKey(AccountZone, addressHash, subIndex);
 
     private static PbtPath ZoneKey(byte zone, in ValueHash256 hash, byte subIndex)
@@ -31,7 +29,7 @@ public static class Eip8297KeyDerivation
 
     public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
     {
-        if (slot < PbtKeyDerivation.HeaderStorageOffset)
+        if (slot < PbtKeyDerivation.HeaderStorageSlots)
         {
             return StorageKey(address32, Blake3Hash.Hash(address32), slot);
         }
@@ -49,7 +47,7 @@ public static class Eip8297KeyDerivation
     /// </summary>
     public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
     {
-        if (slot < PbtKeyDerivation.HeaderStorageOffset)
+        if (slot < PbtKeyDerivation.HeaderStorageSlots)
         {
             return (PbtStorageTreeKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
         }

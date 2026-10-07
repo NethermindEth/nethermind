@@ -19,7 +19,7 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtResourcePoolTests
 {
     private PbtResourcePool _pool = null!;
-    [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
+    [SetUp] public void SetUp() => _pool = new PbtResourcePool(new PbtConfig());
 
     [TestCase(false, false, 0xFFFF, 64)]
     [TestCase(false, true, 0x8005, 64)]
@@ -109,12 +109,12 @@ public class PbtResourcePoolTests
     [Test]
     public void Returned_shards_are_empty_and_not_shared_with_the_previous_builder()
     {
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> original = new(0);
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> original = new();
         PbtStorageTreeKey key = new(Bytes.FromHexString("1234"));
         original.Set(key, TestItem.KeccakA.ValueHash256);
         original.Reset();
 
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> replacement = new(0);
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> replacement = new();
         PbtStorageTreeKey replacementKey = new(Bytes.FromHexString("1235"));
         replacement.Set(replacementKey, TestItem.KeccakB.ValueHash256);
         original.Reset();
@@ -162,14 +162,12 @@ public class PbtResourcePoolTests
 
     [TestCase(PbtResourcePool.Usage.MainBlockProcessing, PbtResourcePool.Usage.ReadOnlyProcessingEnv)]
     [TestCase(PbtResourcePool.Usage.ReadOnlyProcessingEnv, PbtResourcePool.Usage.MainBlockProcessing)]
-    public void CachedResourceReturnWaitsForLastLeaseAndResets(PbtResourcePool.Usage usage, PbtResourcePool.Usage otherUsage)
+    public void CachedResourceIsReusedOnlyOnceReturnedAndResets(PbtResourcePool.Usage usage, PbtResourcePool.Usage otherUsage)
     {
         PbtTransientResource resource = _pool.GetCachedResource(usage);
         try
         {
             resource.NodeGroups.Set(default, new PbtNodePath([2], 8), RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([1])));
-            Assert.That(resource.TryAcquireLease(), Is.True);
-            resource.ReleaseLease();
             PbtTransientResource concurrentRental = _pool.GetCachedResource(usage);
             try
             {
@@ -185,6 +183,7 @@ public class PbtResourcePoolTests
         {
             resource.ReleaseLease();
         }
+        Assert.That(resource.ReleaseLease, Throws.InvalidOperationException, "a second return must not pool the resource twice");
         PbtTransientResource reused = _pool.GetCachedResource(usage);
         try
         {

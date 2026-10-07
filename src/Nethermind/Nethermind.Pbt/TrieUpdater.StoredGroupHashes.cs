@@ -68,18 +68,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             Span<byte> rightBuffer = stackalloc byte[PbtNodeCodec.BranchPreimageLength(0)];
             ReadOnlySpan<byte> leftPreimage = PendingPreimage(ref frame, leftPosition, leftBuffer);
             ReadOnlySpan<byte> rightPreimage = PendingPreimage(ref frame, rightPosition, rightBuffer);
-            if (!leftPreimage.IsEmpty && !rightPreimage.IsEmpty)
-            {
-                Blake3Hash.HashTwo(leftPreimage, rightPreimage, out _hashes[leftPosition], out _hashes[rightPosition]);
-            }
-            else if (!leftPreimage.IsEmpty)
-            {
-                _hashes[leftPosition] = Blake3Hash.Hash(leftPreimage);
-            }
-            else if (!rightPreimage.IsEmpty)
-            {
-                _hashes[rightPosition] = Blake3Hash.Hash(rightPreimage);
-            }
+            HashPendingPair(leftPreimage, ref _hashes[leftPosition], rightPreimage, ref _hashes[rightPosition]);
             _known |= (1u << leftPosition) | (1u << rightPosition);
             left = _hashes[leftPosition];
             right = _hashes[rightPosition];
@@ -105,7 +94,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return buffer;
         }
 
-        [InlineArray(PbtNodeGroupCodec.PositionCount)]
+        [InlineArray(PbtFourLevelGroupGeometry.PositionCount)]
         private struct HashBuffer
         {
             private ValueHash256 _element;

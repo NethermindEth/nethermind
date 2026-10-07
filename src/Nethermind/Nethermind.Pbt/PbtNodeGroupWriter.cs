@@ -7,7 +7,6 @@ using System.Diagnostics;
 using System.Numerics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 
 namespace Nethermind.Pbt;
@@ -145,17 +144,6 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         PbtNodeGroupCodec.DebugValidateNode(path, position, encoding);
     }
 
-    /// <summary>Emits the resolved tree root at the root position, returning its hash.</summary>
-    internal ValueHash256 WriteRoot<TKey>(scoped in PbtTraversalPath path, in TrieUpdater<TKey, TPath>.FoldResult node)
-        where TKey : unmanaged, IPbtKey<TKey>
-    {
-        if (node.IsEmpty) return default;
-        Span<byte> encoding = GetSpan(PbtFourLevelGroupGeometry.RootPosition, node.EncodedLength(path, 0));
-        ValueHash256 hash = node.EncodeAt(path, 0, encoding);
-        Commit(path);
-        return hash;
-    }
-
     /// <summary>Appends a validated source group's contiguous entry range at unchanged positions.</summary>
     /// <param name="offsets">The source footer's little-endian offsets of <paramref name="positions"/>, in position order.</param>
     /// <param name="positions">The stored positions <paramref name="entries"/> holds; at least one.</param>
@@ -235,13 +223,13 @@ internal sealed class PbtNodeGroupWriter<TPath> : IDisposable
         _scratch = grown;
     }
 
-    [InlineArray(PbtNodeGroupCodec.PositionCount)]
+    [InlineArray(PbtFourLevelGroupGeometry.PositionCount)]
     private struct OffsetBuffer
     {
         private ushort _element;
     }
 
-    [InlineArray(PbtNodeGroupCodec.DescendantSlots)]
+    [InlineArray(PbtFourLevelGroupGeometry.BoundarySlots)]
     private struct DescendantDeltaBuffer
     {
         private long _element;

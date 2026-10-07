@@ -37,9 +37,9 @@ public class PbtPortableCodecTests
             using MemoryStream snapshotOutput = new();
             using MemoryStream preimageOutput = new();
             PbtArtifactWriter.PbtArtifactDigests digests = new(
-                PbtArtifactWriter.WriteSnapshot(snapshotOutput, leaves,
-                    written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None)),
-                PbtArtifactWriter.WritePreimages(preimageOutput, ReadAccounts(preimageInput)));
+                PbtArtifactWriter.WriteDigested(snapshotOutput, destination => PbtSnapshotCodec.Write(destination, leaves,
+                    written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None))),
+                PbtArtifactWriter.WriteDigested(preimageOutput, destination => PbtPreimageCodec.Write(destination, ReadAccounts(preimageInput))));
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(snapshotOutput.ToArray(), Is.EqualTo(snapshot));

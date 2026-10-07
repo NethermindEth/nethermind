@@ -35,12 +35,11 @@ public class PbtFlatDrivenPersistenceTests
         await using PbtTestContext ctx = NewContext();
         (Hash256 root1, Hash256 root2) = CommitTwoBlocks(ctx);
 
-        // This satisfies the finalized trigger, so an ungated coordinator would persist.
+        // This satisfies the finalized trigger, so an ungated manager would persist.
         ctx.FinalizedStateProvider.SetCanonicalRoot(1, root1);
         ctx.FinalizedStateProvider.SetCanonicalRoot(2, root2);
         ctx.FinalizedStateProvider.FinalizedBlockNumber = 2;
 
-        Assert.That(ctx.Coordinator.CheckPersistence(ctx.Repository.GetLastCommittedStateId()!.Value), Is.False);
         Assert.That(ctx.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(StateId.PreGenesis));
 
         FlatPersistence inner = Substitute.For<FlatPersistence>();

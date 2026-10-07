@@ -46,19 +46,6 @@ public static class PbtFourLevelGroupGeometry
         return depth == 0 ? 0 : (depth - 1) / LevelsPerGroup * LevelsPerGroup;
     }
 
-    /// <summary>Returns the group key and position for <paramref name="path"/>.</summary>
-    public static PbtNodeGroupLocation<TPath> Locate<TPath>(TPath path) where TPath : struct, IPbtNodePath<TPath>
-    {
-        int groupDepth = GroupDepthOf(path.BitDepth);
-        TPath groupKey = path.Prefix(groupDepth);
-        int position = PositionOf(path, groupDepth);
-        return new PbtNodeGroupLocation<TPath>(groupKey, position);
-    }
-
-    /// <summary>Reconstructs a canonical path from a group key and one of its positions.</summary>
-    public static TPath PathOf<TPath>(TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath> =>
-        groupKey.AppendBits(PositionNibbles[position], PositionDepths[position]);
-
     internal static NodeGroupPath LocalPathOf(int position)
     {
         if ((uint)position >= PositionCount) throw new ArgumentOutOfRangeException(nameof(position));
@@ -69,28 +56,9 @@ public static class PbtFourLevelGroupGeometry
     /// <summary>The position of the node at boundary slot <paramref name="slot"/>.</summary>
     internal static int BoundaryPosition(int slot) => 2 * slot - BitOperations.PopCount((uint)slot);
 
-    internal static int WidthOf(int position) => position switch
-    {
-        2 or 5 or 9 or 12 or 17 or 20 or 24 or 27 => 2,
-        6 or 13 or 21 or 28 => 4,
-        14 or 29 => 8,
-        RootPosition => BoundarySlots,
-        _ => 1
-    };
+    internal static int WidthOf(int position) => BoundarySlots >> PositionDepths[position];
 
     private static ReadOnlySpan<byte> PositionNibbles => [0, 1, 0, 2, 3, 1, 0, 4, 5, 2, 6, 7, 3, 1, 0, 8, 9, 4, 10, 11, 5, 2, 12, 13, 6, 14, 15, 7, 3, 1, 0];
 
     private static ReadOnlySpan<byte> PositionDepths => [4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 4, 4, 3, 4, 4, 3, 2, 4, 4, 3, 4, 4, 3, 2, 1, 0];
-
-    private static int PositionOf<TPath>(TPath path, int groupDepth) where TPath : struct, IPbtNodePath<TPath>
-    {
-        int relativeDepth = path.BitDepth - groupDepth;
-        if (relativeDepth == 0) return RootPosition;
-        int slot = (path.GetByte(groupDepth >> 3) >> (4 - (groupDepth & 4))) & 0xF;
-        int width = BoundarySlots >> relativeDepth;
-        return new NodeGroupPath(slot & ~(width - 1), relativeDepth).Position;
-    }
 }
-
-/// <summary>Identifies one node's group key and post-order position.</summary>
-public readonly record struct PbtNodeGroupLocation<TPath>(TPath GroupKey, int Position) where TPath : struct, IPbtNodePath<TPath>;

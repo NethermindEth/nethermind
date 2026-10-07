@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -22,7 +23,10 @@ internal sealed class PbtPreimageReader(Stream source)
     /// <summary>The Keccak path of the account read last, which ascends through the stream.</summary>
     public ValueHash256? AccountHash => _previousAccountHash;
 
-    public bool ReadAccount(out Address? address, out uint slotCount, CancellationToken cancellationToken = default)
+    /// <summary>The Keccak path of the slot read last, which ascends through its account's slots.</summary>
+    public ValueHash256? SlotHash => _previousSlotHash;
+
+    public bool ReadAccount([NotNullWhen(true)] out Address? address, out uint slotCount, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
         if (_remainingSlots != 0) throw new InvalidOperationException("Read all account slots before advancing.");

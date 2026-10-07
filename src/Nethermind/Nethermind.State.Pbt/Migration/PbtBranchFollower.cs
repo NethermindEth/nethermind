@@ -10,8 +10,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
 
 namespace Nethermind.State.Pbt.Migration;
 
@@ -143,16 +141,13 @@ internal sealed class PbtBranchFollower(
     /// <summary>Whether the finalized chain holds another block at the height of <paramref name="header"/>.</summary>
     private bool IsBesideFinalized(BlockHeader header, BlockHeader? finalized) =>
         finalized is not null && header.Number <= finalized.Number
-        && blockTree.FindHeader(header.Number, BlockTreeLookupOptions.RequireCanonical)?.Hash != header.Hash;
+        && !blockTree.IsMainChain(header);
 
     private void Replay(BlockHeader parent, BlockHeader child)
     {
         using MemoryManager<byte>? owner = balStore.GetRlp(child.Number, child.Hash!);
-        if (owner is null || child.BlockAccessListHash is null || ValueKeccak.Compute(owner.Memory.Span) != child.BlockAccessListHash.ValueHash256)
-            throw new InvalidDataException($"No BAL matching the header of {child.ToString(BlockHeader.Format.Short)} is stored.");
-        RlpReader reader = new(owner.Memory.Span);
-        replay.Apply(parent, child, BlockAccessListDecoder.Instance.Decode(ref reader)
-            ?? throw new InvalidDataException($"The BAL of {child.ToString(BlockHeader.Format.Short)} is empty."));
+        replay.Apply(parent, child, (owner is null ? null : PbtBalFollower.DecodeAuthenticated(child, owner.Memory.Span))
+            ?? throw new InvalidDataException($"No BAL matching the header of {child.ToString(BlockHeader.Format.Short)} is stored."));
     }
 
     public async ValueTask DisposeAsync()

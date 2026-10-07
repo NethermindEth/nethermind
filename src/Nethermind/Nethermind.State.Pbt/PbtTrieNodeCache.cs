@@ -57,14 +57,13 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
         return hit;
     }
 
-    /// <summary>Folds a retired block's staged groups into the shared cache once its last reader has left.</summary>
+    /// <summary>Folds a retired block's staged groups into the shared cache.</summary>
     /// <remarks>
     /// Child shard <c>i</c> maps onto parent shard <c>i</c>, so the shards ingest in parallel with one writer each.
     /// Must not run concurrently with another write to the cache.
     /// </remarks>
     public void Add(PbtTransientResource transientResource)
     {
-        transientResource.WaitForExclusiveLease();
         ChildCache child = transientResource.NodeGroups;
         long account = 0;
         long code = 0;
@@ -204,9 +203,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
     /// <remarks>
     /// Partitioned and sharded like the parent so ingestion pairs shard with shard. Each shard is a direct-mapped table
     /// where a later write to the same slot supersedes the earlier one; fold workers write concurrently.
-    /// A slot holds an immutable entry swapped by compare-and-exchange, so a reader never pairs one entry's key with
-    /// another's payload, and a lookup's lease fails once an overwrite has released the payload's last reference.
-    /// A RocksDB-backed payload is copied on entry so the block cache is not pinned for the life of the block.
+    /// A slot holds an immutable entry swapped by compare-and-exchange. Entries are read only when
+    /// <see cref="Add(PbtTransientResource)"/> folds them in after the block commits.
     /// </remarks>
     public sealed class ChildCache : IDisposable
     {
@@ -247,18 +245,8 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
             }
         }
 
-        /// <summary>Leases the staged group at <paramref name="path"/> whose subtree hash is <paramref name="groupHash"/>.</summary>
-        /// <returns><c>true</c> when <paramref name="payload"/> holds a caller-owned lease to release with <see cref="IDisposable.Dispose"/>.</returns>
-        internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> =>
-            PbtPartitions.PartitionOfPath(path) switch
-            {
-                PbtPartition.Storage => Storage.TryGet(groupHash, path, out payload),
-                PbtPartition.Code => Code.TryGet(groupHash, path, out payload),
-                _ => Account.TryGet(groupHash, path, out payload),
-            };
-
         /// <summary>Releases every staged payload, growing the tables when the block filled more than a quarter of the slots.</summary>
-        /// <remarks>Only the exclusive owner may reset after all leases have drained.</remarks>
+        /// <remarks>Only the exclusive owner may reset.</remarks>
         public void Reset()
         {
             int count = Count;
@@ -303,20 +291,6 @@ public sealed class PbtTrieNodeCache(IPbtConfig config) : IPbtTrieNodeCache, IDi
                 else ((IDisposable)current.Payload).Dispose();
                 return;
             }
-        }
-
-        /// <summary>Leases the staged group at <paramref name="path"/> whose subtree hash is <paramref name="groupHash"/>.</summary>
-        internal bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
-        {
-            int hash = path.GetHashCode();
-            ChildEntry<TStored>? entry = Volatile.Read(ref Slot(hash));
-            if (entry is null || !entry.Matches(hash, groupHash, path) || !entry.Payload.TryAcquireLease())
-            {
-                payload = null;
-                return false;
-            }
-            payload = entry.Payload;
-            return true;
         }
 
         /// <summary>Releases every payload; reallocates the tables when <paramref name="shardSize"/> differs from the current one.</summary>

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using static Nethermind.Pbt.TrieUpdater;
@@ -25,8 +24,6 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// node is therefore never hashed again to be opened, moved or handed to another thread. An omitted prefixless
     /// branch is never one, since omission only applies to a group's interior
     /// (<see cref="PbtNodeGroupCodec.ShouldOmit"/>) and a spanning branch always carries a prefix.
-    /// The exception is a group root just composed, read back as a result, whose hash may still be unknown (default);
-    /// <see cref="ToFoldResult"/> then records no known hash.
     /// </remarks>
     internal readonly struct BoundaryNode
     {
@@ -201,59 +198,5 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// </remarks>
         internal readonly ValueHash256 HashAt(int depth) =>
             IsEmpty || IsLeaf || depth == _anchorDepth ? _hash : PbtNodeCodec.HashReanchored(Reader, depth - _anchorDepth);
-
-        /// <summary>This node as a composed result addressed at <paramref name="anchorDepth"/>, detached from its frame.</summary>
-        /// <remarks>
-        /// The result owns everything below that cursor. It keeps the hash of the stored encoding, which the encoder
-        /// reuses only when it writes the node back at its own anchor, where that hash is the one it would compute.
-        /// </remarks>
-        internal readonly void ToFoldResult(scoped in PbtTraversalPath cursor, int anchorDepth, ref FoldResult result)
-        {
-            Debug.Assert(anchorDepth % PbtFourLevelGroupGeometry.LevelsPerGroup == 0, "A result is anchored at a group depth.");
-            if (IsEmpty)
-            {
-                result = default;
-                return;
-            }
-            if (IsLeaf)
-            {
-                result = new FoldResult(LeafKey(cursor), _hash);
-                return;
-            }
-
-            int splitDepth = BranchDepth;
-            Debug.Assert(splitDepth >= anchorDepth, "A result branches at or below the cursor that addresses it.");
-            int localLength = Math.Min(splitDepth - anchorDepth, PbtFourLevelGroupGeometry.LevelsPerGroup);
-            int slot = 0;
-            for (int bit = anchorDepth; bit < anchorDepth + localLength; bit++) slot = (slot << 1) | PrefixBit(cursor, bit);
-            PbtNodeReader reader = Reader;
-            result = new FoldResult(new NodeGroupPath(slot << (PbtFourLevelGroupGeometry.LevelsPerGroup - localLength), localLength),
-                reader.LeftHash, reader.RightHash,
-                reader.LeftKeyPostfix.IsEmpty ? default : LeftLeafKey(cursor),
-                reader.RightKeyPostfix.IsEmpty ? default : RightLeafKey(cursor),
-                LeafChildrenMask,
-                OwnedPrefix(this, cursor, anchorDepth + localLength, splitDepth, stackalloc byte[FoldResult.MaxPrefixLength]), _hash, splitDepth - _anchorDepth);
-
-            // The bits from from to splitDepth as a standalone compressed prefix.
-            static Span<byte> OwnedPrefix(scoped in BoundaryNode node, scoped in PbtTraversalPath cursor, int from, int splitDepth, Span<byte> buffer)
-            {
-                int bitCount = splitDepth - from;
-                if (bitCount == 0) return default;
-                Span<byte> prefix = buffer[..(sizeof(ushort) + PbtBitPrefix.ByteCount(bitCount))];
-                // Zeroed, because the bits are copied in by disjunction.
-                prefix.Clear();
-                BinaryPrimitives.WriteUInt16BigEndian(prefix, (ushort)bitCount);
-                Span<byte> bits = prefix[sizeof(ushort)..];
-                int cursorEnd = Math.Min(splitDepth, node._anchorDepth);
-                if (from < cursorEnd) PbtBitPrefix.CopyBits(cursor.Bytes, from, cursorEnd - from, bits, 0);
-                if (splitDepth > node._anchorDepth)
-                {
-                    int start = Math.Max(from, node._anchorDepth);
-                    PbtBitPrefix.CopyBits(node.Prefix.Bytes, start - node._anchorDepth, splitDepth - start, bits, start - from);
-                }
-                return prefix;
-            }
-        }
-
     }
 }

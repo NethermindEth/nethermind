@@ -15,14 +15,14 @@ namespace Nethermind.State.Pbt.Migration;
 internal sealed class MigrationScopeProvider(
     FlatWorldStateManager flat,
     PbtWorldStateManager pbt,
-    MigrationBackendSelector selector,
+    ISpecProvider specProvider,
     IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider
 {
     private readonly IWorldStateScopeProvider _flat = flat.GlobalWorldState;
     private readonly IWorldStateScopeProvider _pbt = pbt.GlobalWorldState;
 
     internal IWorldStateScopeProvider Select(BlockHeader? baseBlock, BlockHeader? targetBlock) =>
-        selector.IsBinary(baseBlock, targetBlock) ? _pbt : _flat;
+        MigrationActivation.IsBinary(specProvider, baseBlock, targetBlock) ? _pbt : _flat;
 
     public bool HasRoot(BlockHeader? baseBlock) => Select(baseBlock, null).HasRoot(baseBlock);
 

@@ -153,10 +153,7 @@ internal sealed unsafe class TrieNodeLogGeneration : RefCountingDisposable
             offset = TrieNodeLogRecord.SlotOffset(slot);
             bytesRead = ReadAt(offset, buffer);
             if (bytesRead < TrieNodeLogRecord.HeaderLength) continue;
-            header = TrieNodeLogRecord.Read(buffer);
-            if (header.KeyLength == key.Length && bytesRead >= TrieNodeLogRecord.HeaderLength + key.Length
-                && buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
-                return true;
+            if (TrieNodeLogRecord.HoldsKey(buffer[..bytesRead], key, out header)) return true;
             Metrics.IncrementPbtTrieNodeLogIndexFalseMatches();
         }
 

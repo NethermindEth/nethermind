@@ -2,14 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
@@ -21,7 +18,6 @@ using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
-using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Sync;
@@ -42,21 +38,7 @@ public class PbtModule(IPbtConfig config) : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
-            .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
-            .AddSingleton<ITrieNodeLog, IPbtConfig, IInitConfig, IColumnsDb<PbtColumns>, ILogManager>(TrieNodeLog.Create)
-            .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
-            .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
-            // A second pool would halve each pool's hit rate.
-            .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
-            .AddSingleton<PbtTrieNodeCache>()
-            .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
-            .AddSingleton<PbtSnapshotRepository>()
-            .AddSingleton<PbtSnapshotCompactor>()
-            .AddSingleton<PbtCompactionSchedule>()
-            .AddSingleton<PbtPersistenceCoordinator>()
-            .AddSingleton<IPbtDbManager, PbtDbManager>()
+            .AddPbtCore(config)
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
@@ -111,7 +93,7 @@ public class PbtModule(IPbtConfig config) : Module
         });
     }
 
-    private sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule
+    internal sealed class PruningDisabledAdminRpcModule : IPruningTrieStateAdminRpcModule
     {
         public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
     }

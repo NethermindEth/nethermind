@@ -37,7 +37,7 @@ public sealed class PbtSnapshotBundle(
     // Storage commits may write one run from several threads, so a write replaces its run by compare-and-swap.
     // A replaced run is held here until the write buffer is sealed: returned earlier, it could be re-rented and
     // stored back under the same key, and a writer still comparing against it would overwrite a newer run (ABA).
-    private readonly ConcurrentQueue<ISlotRun> _replacedRuns = new();
+    private readonly ConcurrentQueue<PackedSlotRun> _replacedRuns = new();
     private bool _isDisposed;
 
     public ValueHash256 TreeRoot => snapshots.Count > 0 ? snapshots[^1].TreeRoot : readOnlyBundle.TreeRoot;
@@ -56,16 +56,16 @@ public sealed class PbtSnapshotBundle(
     private void SetPbtLeaf(PbtPath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        int partition = PbtPartitions.PartitionOf(key);
-        if (partition == (int)PbtPartition.Account) _accountBatch.SetLeaf(key, value);
-        else if (partition == (int)PbtPartition.Code) _codeBatch.SetLeaf(key, value);
+        PbtPartition? partition = PbtPartitions.PartitionOf(key);
+        if (partition == PbtPartition.Account) _accountBatch.SetLeaf(key, value);
+        else if (partition == PbtPartition.Code) _codeBatch.SetLeaf(key, value);
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
     }
 
     private void SetPbtLeaf(in PbtStorageTreeKey key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (PbtPartitions.PartitionOf(key) == (int)PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
+        if (PbtPartitions.PartitionOf(key) == PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
         else SetPbtLeaf((PbtPath)key, value);
     }
 
@@ -100,20 +100,19 @@ public sealed class PbtSnapshotBundle(
         _storageBatch.Reset();
     }
 
-    internal void SetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
+    internal void SetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
     {
         WriteBuffer.SetNodeGroup(groupKey, payload);
         _transientResource.NodeGroups.Set(groupHash, groupKey, payload);
     }
 
-    internal RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey, in ValueHash256 groupHash) where TPath : struct, IPbtNodePath<TPath>
+    internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
     {
-        PbtStorageNodePath storagePath = groupKey.ToPath<PbtStorageNodePath>();
-        if (WriteBuffer.TryGetNodeGroup(storagePath, out RefCountingMemory? payload)) return payload;
+        if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
-            if (snapshots[index].Content.TryGetNodeGroup(storagePath, out payload)) return payload;
-        if (trieNodeCache.TryGet(groupHash, storagePath, out payload)) return payload;
-        return readOnlyBundle.GetNodeGroup(storagePath);
+            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
+        if (trieNodeCache.TryGet(groupHash, groupKey, out payload)) return payload;
+        return readOnlyBundle.GetNodeGroup(groupKey);
     }
 
     public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
@@ -159,9 +158,9 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
-    private ISlotRun BufferRun(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    private PackedSlotRun BufferRun(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
-        ISlotRun? run;
+        PackedSlotRun? run;
         while (!writeBuffer.TryGetSlotRun(runKey, out run))
         {
             run = FindLocalRun(runKey, addressHash)?.Clone() ?? readOnlyBundle.RentRun(runKey, addressHash);
@@ -233,8 +232,8 @@ public sealed class PbtSnapshotBundle(
         PbtSnapshotContent writeBuffer = WriteBuffer;
         while (true)
         {
-            ISlotRun current = BufferRun(writeBuffer, runKey, addressHash);
-            ISlotRun next = current.With(index, value);
+            PackedSlotRun current = BufferRun(writeBuffer, runKey, addressHash);
+            PackedSlotRun next = current.With(index, value);
             if (writeBuffer.TryReplaceRun(runKey, next, current))
             {
                 _replacedRuns.Enqueue(current);
@@ -245,21 +244,21 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>The run as the local snapshots see it, borrowed; null when they say nothing about it.</summary>
-    private ISlotRun? FindLocalRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    private PackedSlotRun? FindLocalRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out ISlotRun? run)) return run;
+            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run)) return run;
             if (content.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
         }
         return null;
     }
 
-    // Clearing existing storage (isNewStorage: false) is not supported in PBT: under EIP-6780 a contract only loses
-    // its storage when destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
-    public void SelfDestruct(in ValueHash256 addressHash) => WriteBuffer.ClearStorage(addressHash, isNewStorage: true);
+    // Clearing persisted storage is not supported in PBT: under EIP-6780 a contract only loses its storage when
+    // destroyed in its creating transaction, so no persisted run or trie leaf ever needs deleting.
+    public void SelfDestruct(in ValueHash256 addressHash) => WriteBuffer.ClearStorage(addressHash);
 
     /// <summary>Stores bytecode written in this block; its chunk leaves are staged by the account writes that reference it.</summary>
     internal void SetCode(in ValueHash256 codeHash, CodeInfo code)
@@ -290,7 +289,7 @@ public sealed class PbtSnapshotBundle(
         return code;
     }
 
-    /// <summary>Seals the write buffer into a snapshot and hands the block's transient resource to the caller, who owns its remaining lease.</summary>
+    /// <summary>Seals the write buffer into a snapshot and hands the block's transient resource to the caller, who must return it.</summary>
     public PbtSnapshot CollectSnapshot(in StateId from, in StateId to, in ValueHash256 treeRoot, out PbtTransientResource retired)
     {
         if (_accountsAwaitingCode.Count != 0 || PendingMutationCount != 0)
@@ -308,7 +307,7 @@ public sealed class PbtSnapshotBundle(
 
     private void ReturnReplacedRuns()
     {
-        while (_replacedRuns.TryDequeue(out ISlotRun? run)) SlotRun.Return(run);
+        while (_replacedRuns.TryDequeue(out PackedSlotRun? run)) SlotRun.Return(run);
     }
 
     public void Dispose()

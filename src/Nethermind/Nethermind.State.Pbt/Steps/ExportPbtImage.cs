@@ -62,7 +62,7 @@ public class ExportPbtImage(
             ?? throw new InvalidDataException("Export anchor is not present in the canonical chain.");
 
         using IPersistence.IPersistenceReader source = flatPersistence.CreateReader();
-        string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "export");
+        string scratch = PbtMigrationAnchor.ScratchDirectory(dbFactory, "export");
         PbtOfflineExport.Export(source, dbProvider.CodeDb,
             PbtMigrationAnchor.Create(chainSpec, blockTree.Genesis!, header),
             config.MigrationExportPath!, scratch, () => blockTree.IsMainChain(header),

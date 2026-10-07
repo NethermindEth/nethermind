@@ -4,24 +4,16 @@
 using Autofac;
 using Autofac.Core;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.FullPruning;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Container;
 using Nethermind.Db;
-using Nethermind.Db.Rocks.Config;
 using Nethermind.Init.Modules;
-using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
-using Nethermind.Logging;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Image;
-using Nethermind.State.Pbt.Persistence;
-using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Sync;
@@ -42,26 +34,12 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
-            .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
-            .AddSingleton<ITrieNodeLog, IPbtConfig, IInitConfig, IColumnsDb<PbtColumns>, ILogManager>(TrieNodeLog.Create)
-            .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
-            .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
-            .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(configuration))
-            .AddSingleton<PbtTrieNodeCache>()
-            .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
-            .AddSingleton<PbtSnapshotRepository>()
-            .AddSingleton<PbtSnapshotCompactor>()
-            .AddSingleton<PbtCompactionSchedule>()
-            .AddSingleton<PbtPersistenceCoordinator>()
-            .AddSingleton<IPbtDbManager, PbtDbManager>()
+            .AddPbtCore(configuration)
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
             .AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance)
 
-            .AddSingleton<MigrationBackendSelector>()
             .AddSingleton<MigrationScopeProvider>()
             .AddSingleton<MigrationStateReader>()
             .Add<MigrationOverridableWorldScope>()
@@ -74,7 +52,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
             .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
             .AddSingleton<IBalHealing>(NoopBalHealing.Instance)
-            .AddSingleton<IPruningTrieStateAdminRpcModule, MigrationPruningDisabled>()
+            .AddSingleton<IPruningTrieStateAdminRpcModule, PbtModule.PruningDisabledAdminRpcModule>()
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
             .AddSingleton<PbtAnchorPublication>()
@@ -99,10 +77,5 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
         if (configuration.MigrationGenesisBootstrap)
             builder.AddSingleton<MigrationGenesisSource>().AddSingleton<MigrationGenesisBootstrap>()
                 .Bind<IGenesisPostProcessor, MigrationGenesisBootstrap>();
-    }
-
-    private sealed class MigrationPruningDisabled : IPruningTrieStateAdminRpcModule
-    {
-        public ResultWrapper<PruningStatus> admin_prune() => ResultWrapper<PruningStatus>.Success(PruningStatus.Disabled);
     }
 }

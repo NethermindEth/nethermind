@@ -15,7 +15,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotCompactorTests
 {
-    private readonly PbtResourcePool _pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
+    private readonly PbtResourcePool _pool = new(new PbtConfig());
     private static readonly PbtConfig Config = new() { CompactSize = 16 };
 
     [Test]
@@ -98,10 +98,10 @@ public class PbtSnapshotCompactorTests
         older.SetSlot(otherSlot, original);
         older.SetSlot(otherAddress, original);
         PbtSnapshotContent clearing = new();
-        clearing.ClearStorage(addressHash, isNewStorage: false);
+        clearing.ClearStorage(addressHash);
         PbtSnapshotContent writing = new();
         writing.SetSlot(key, replacement);
-        ISlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
+        PackedSlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
         writing.Accounts[addressHash] = PbtAccount.From(account, code);
         writing.Codes[account.CodeHash.ValueHash256] = code;
         using (PbtSnapshot compacted = Compact(older, clearLast ? writing : clearing, clearLast ? clearing : writing))
@@ -117,18 +117,6 @@ public class PbtSnapshotCompactorTests
             Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(default(EvmWord)));
             Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));
         }
-    }
-
-    [Test]
-    public void Compact_keeps_a_clear_of_existing_storage_sticky([Values] bool existingFirst)
-    {
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtSnapshotContent existing = new();
-        existing.ClearStorage(addressHash, isNewStorage: false);
-        PbtSnapshotContent fresh = new();
-        fresh.ClearStorage(addressHash, isNewStorage: true);
-        using PbtSnapshot compacted = Compact(existingFirst ? existing : fresh, existingFirst ? fresh : existing);
-        Assert.That(compacted.Content.SelfDestructedStorageAddresses[addressHash], Is.False);
     }
 
     private PbtSnapshot Compact(params PbtSnapshotContent[] layersOldestFirst)

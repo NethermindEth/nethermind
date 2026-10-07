@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
+
 namespace Nethermind.Pbt;
 
 /// <summary>A mutable traversal cursor backed by an operation-local buffer.</summary>
@@ -35,15 +37,12 @@ public ref struct PbtTraversalPath
     /// <summary>Gets the consumed MSB-first bit count.</summary>
     public int BitDepth { get; private set; }
 
-    /// <summary>Appends a four-bit nibble to this cursor.</summary>
+    /// <summary>Appends a four-bit nibble to this cursor at a nibble-aligned depth.</summary>
     public void AppendMut(int nibble)
     {
-        int depth = BitDepth + 4;
-        int byteIndex = BitDepth >> 3;
-        int shiftedBits = nibble << (12 - (BitDepth & 7));
-        _buffer[byteIndex] |= (byte)(shiftedBits >> 8);
-        if ((BitDepth & 7) > 4) _buffer[byteIndex + 1] = (byte)shiftedBits;
-        BitDepth = depth;
+        Debug.Assert((BitDepth & 3) == 0, "Only a nibble-aligned cursor takes a nibble.");
+        _buffer[BitDepth >> 3] |= (byte)(nibble << (4 - (BitDepth & 4)));
+        BitDepth += 4;
     }
 
     /// <summary>Extends the cursor to a depth using the corresponding bits of a complete key.</summary>

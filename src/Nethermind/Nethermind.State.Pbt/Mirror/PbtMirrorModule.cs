@@ -2,22 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
-using Nethermind.Api;
 using Nethermind.Api.Steps;
-using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Container;
-using Nethermind.Db;
-using Nethermind.Db.Rocks.Config;
+using Nethermind.Core.Memory;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Migration;
-using Nethermind.State.Pbt.Persistence;
-using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Steps;
 
 namespace Nethermind.State.Pbt.Mirror;
@@ -32,24 +26,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddColumnDatabase<PbtColumns>(DbNames.Pbt)
-            .AddDecorator<IRocksDbConfigFactory, PbtRocksDbConfigAdjuster>()
-            .AddSingleton<ITrieNodeLog, IPbtConfig, IInitConfig, IColumnsDb<PbtColumns>, ILogManager>(TrieNodeLog.Create)
-            .AddSingleton<IPbtPersistence, PbtRocksDbPersistence>()
-            .AddDecorator<IPbtPersistence, PbtCachedReaderPersistence>()
-            // A second pool would halve cache hit rates.
-            .AddSingleton<IPbtResourcePool, PbtResourcePool>()
-            .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
-            .AddSingleton<PbtTrieNodeCache>()
-            .Bind<IPbtTrieNodeCache, PbtTrieNodeCache>()
-            .AddSingleton<PbtSnapshotRepository>()
-            .AddSingleton<PbtSnapshotCompactor>()
-            .AddSingleton<PbtCompactionSchedule>()
-            .AddSingleton<PbtPersistenceCoordinator>()
-            // Both registrations must share the manager that owns the layer repository and workers.
-            .AddSingleton<PbtDbManager>()
-            .Bind<IPbtDbManager, PbtDbManager>()
-
+            .AddPbtCore(config)
             .AddDecorator<IPersistence, PbtFlatDrivenPersistence>()
             .AddSingleton<IMainProcessingModule, PbtMirrorMainProcessingModule>()
             .AddSingleton<IMigrationTelemetry>(NullMigrationTelemetry.Instance)
@@ -81,7 +58,7 @@ public class PbtMirrorModule(IPbtConfig config) : Module
                         : new PbtMirrorScopeProvider(
                             worldStateScopeProvider,
                             ctx.Resolve<IPbtDbManager>(),
-                            ctx.Resolve<IPbtResourcePool>(),
+                            ctx.Resolve<IRefCountingMemoryProvider>(),
                             ctx.Resolve<IPbtConfig>(),
                             ctx.Resolve<IStateHeaderProvider>(),
                             ctx.Resolve<ILogManager>()));

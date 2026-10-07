@@ -18,19 +18,20 @@ internal static class PbtReferenceModel
     {
         byte[] basicData = new byte[32];
         PbtKeyDerivation.PackBasicData(basicData, (uint)(code?.Length ?? 0), nonce, balance);
-        Set(model, PbtStateKey.Account(address, PbtKeyDerivation.BasicDataLeafKey), basicData);
+        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        Set(model, PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
 
         ValueHash256 codeHash = code is null or [] ? Keccak.OfAnEmptyString.ValueHash256 : ValueKeccak.Compute(code);
-        model.Remove(PbtStateKey.Account(address, 1).Bytes.ToArray().ToHexString());
-        model.Remove(PbtStateKey.Account(address, 2).Bytes.ToArray().ToHexString());
+        model.Remove(PbtStateKey.Account(addressHash, 1).Bytes.ToArray().ToHexString());
+        model.Remove(PbtStateKey.Account(addressHash, 2).Bytes.ToArray().ToHexString());
         if (code is { Length: 23 } && code.AsSpan(0, 3).SequenceEqual(Bytes.FromHexString("ef0100")))
         {
             byte[] delegation = new byte[32];
             code.CopyTo(delegation, 0);
-            Set(model, PbtStateKey.Account(address, 2), delegation);
+            Set(model, PbtStateKey.Account(addressHash, 2), delegation);
             return;
         }
-        Set(model, PbtStateKey.Account(address, PbtKeyDerivation.CodeHashLeafKey), codeHash.ToByteArray());
+        Set(model, PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), codeHash.ToByteArray());
 
         if (code is not { Length: > 0 }) return;
         byte[] chunks = PbtTreeHarness.ChunkifyCode(code);

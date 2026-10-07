@@ -163,15 +163,15 @@ public class PbtAnchorPublicationTests
     [Test]
     public async Task Local_resource_refusal_does_not_invalidate_the_import_and_can_be_retried()
     {
-        using Harness harness = new("a5");
-        PbtImageAnchor anchor = harness.Anchor;
-        harness.Anchor = anchor with { MaxBufferedCodeBytes = 0 };
-
-        Assert.ThrowsAsync<PbtImageResourceLimitException>(() => harness.Publish());
+        using Harness harness = new("a4");
+        (MemoryStream snapshot, MemoryStream preimages) = Corrupt("a4", "oversized-code");
+        using (snapshot)
+        using (preimages)
+            Assert.ThrowsAsync<PbtImageResourceLimitException>(() =>
+                harness.Publication.PublishSnapshot(snapshot, preimages, harness.Anchor, harness.Scratch.Path, () => true));
 
         AssertUnpublished(harness);
-        harness.Anchor = anchor;
-        AssertPublishedState(harness, await harness.Publish(), "a5");
+        AssertPublishedState(harness, await harness.Publish(), "a4");
     }
 
     /// <remarks>Each snapshot carries a recomputed PBT root, so only the staging checks stand between it and publication.</remarks>
@@ -303,8 +303,8 @@ public class PbtAnchorPublicationTests
             Address address = addresses[index] = Address.FromNumber((UInt256)(index + 1));
             ValueHash256 basicData = default;
             PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
-            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(address, 0), basicData));
-            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(address, 1), Keccak.OfAnEmptyString.ValueHash256));
+            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 0), basicData));
+            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
             leaves.Add(new(PbtStateKey.Storage(address, 100), new ValueHash256(((UInt256)(index + 1)).ToBigEndian())));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
@@ -406,9 +406,9 @@ public class PbtAnchorPublicationTests
         Address authority = new("0x2b5ad5c4795c026514f8317c7a215e218dccd6cf");
         Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
         ValueHash256 writerCodeHash = ValueKeccak.Compute(Bytes.FromHexString("60003560005500"));
-        PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(writer, 0);
+        PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(writer), 0);
         PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(writerCodeHash, 0);
-        PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(authority, 2);
+        PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(authority), 2);
         PbtStorageTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
         switch (corruption)
         {
@@ -416,6 +416,13 @@ public class PbtAnchorPublicationTests
             case "pushdata": Mutate(chunk, 0); break;
             case "padding": Mutate(chunk, 31); break;
             case "code-size": Mutate(basic, 7); break;
+            // A claimed code size of 2^28 plus the real one, whose buffering exceeds the local budget.
+            case "oversized-code":
+                int basicIndex = leaves.FindIndex(entry => entry.Key.Equals(basic));
+                byte[] oversized = leaves[basicIndex].Leaf.Bytes.ToArray();
+                oversized[4] = 0x10;
+                leaves[basicIndex] = new(basic, new ValueHash256(oversized));
+                break;
             case "nonce": Mutate(basic, 15); break;
             case "balance": Mutate(basic, 31); break;
             case "storage": Mutate(storageKey, 31); break;
@@ -431,8 +438,8 @@ public class PbtAnchorPublicationTests
                 Address surplus = new("0x00000000000000000000000000000000deadbeef");
                 ValueHash256 basicData = default;
                 PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, 1, UInt256.Zero);
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(surplus, 0), basicData));
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(surplus, 1), Keccak.OfAnEmptyString.ValueHash256));
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 0), basicData));
+                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 1), Keccak.OfAnEmptyString.ValueHash256));
                 break;
             case "orphan-storage-leaf":
                 leaves.Add(new(PbtStateKey.Storage(new Address("0x00000000000000000000000000000000cafebabe"), 100),
@@ -479,7 +486,7 @@ public class PbtAnchorPublicationTests
 
         // A codeless account without storage, whose leaves are only its basic data and empty code hash.
         Address Eoa() => accounts.Find(account => account.SlotCount == 0 && leaves.Exists(entry =>
-            entry.Key.Equals((PbtStorageTreeKey)PbtStateKey.Account(account.Address, 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
+            entry.Key.Equals((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(account.Address), 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
 
         void ChangeSlots(Action<List<ValueHash256>> change)
         {
@@ -516,13 +523,13 @@ public class PbtAnchorPublicationTests
         }
     }
 
-    /// <remarks>Opening the persistence stamps the schema epoch and key layout; nothing else may be there.</remarks>
+    /// <remarks>Opening the persistence stamps the schema epoch; nothing else may be there.</remarks>
     private static void AssertNoNativeState(Harness harness)
     {
         foreach (PbtColumns column in harness.Target.ColumnKeys)
         {
             IEnumerable<byte[]> keys = harness.Target.GetColumnDb(column).GetAllKeys();
-            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EquivalentTo(new[] { "schemaEpoch"u8.ToArray(), "nodeGroupKeyLayout"u8.ToArray(), "prefixlessBranchOmission"u8.ToArray() }));
+            if (column == PbtColumns.Metadata) Assert.That(keys, Is.EquivalentTo(new[] { "schemaEpoch"u8.ToArray() }));
             else Assert.That(keys, Is.Empty, column.ToString());
         }
     }
@@ -594,7 +601,7 @@ public class PbtAnchorPublicationTests
         public PbtTestContext Pbt { get; private set; } = null!;
         private PbtAnchorPublication? _publication;
         public PbtAnchorPublication Publication => _publication ??=
-            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.Persistence, Pbt.Coordinator, _config, LimboLogs.Instance);
+            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.Coordinator, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -608,7 +615,7 @@ public class PbtAnchorPublicationTests
             JsonElement metadata = Eip8347FixtureState.Metadata(name);
             BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
                 .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
-            Anchor = new("1", new Hash256(Eip8347FixtureState.Metadata("anchor").GetProperty("blockHash").GetString()!), header, 48, 24576);
+            Anchor = new("1", new Hash256(Eip8347FixtureState.Metadata("anchor").GetProperty("blockHash").GetString()!), header, 48);
             Open();
         }
 
@@ -681,8 +688,12 @@ public class PbtAnchorPublicationTests
         public void Dispose() => _database.Dispose();
     }
 
-    private sealed class SyncDb(IDb database, Action sync) : IDb
+    private sealed class SyncDb(IDb database, Action sync) : IDb, ISortedKeyValueStore
     {
+        public byte[]? FirstKey => ((ISortedKeyValueStore)database).FirstKey;
+        public byte[]? LastKey => ((ISortedKeyValueStore)database).LastKey;
+        public ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None) =>
+            ((ISortedKeyValueStore)database).GetViewBetween(firstKeyInclusive, lastKeyExclusive, flags);
         public string Name => database.Name;
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => database.Get(key, flags);
         public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) => database.Set(key, value, flags);

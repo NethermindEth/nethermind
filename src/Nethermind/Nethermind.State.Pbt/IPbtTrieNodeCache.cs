@@ -16,6 +16,6 @@ public interface IPbtTrieNodeCache
     /// <returns><c>true</c> when <paramref name="payload"/> holds a caller-owned lease to release with <see cref="IDisposable.Dispose"/>.</returns>
     bool TryGet<TPath>(in ValueHash256 groupHash, TPath path, [NotNullWhen(true)] out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>;
 
-    /// <summary>Folds a retired block's staged groups into the shared cache once its last reader has left.</summary>
+    /// <summary>Folds a retired block's staged groups into the shared cache.</summary>
     void Add(PbtTransientResource transientResource);
 }

@@ -31,5 +31,5 @@ internal sealed class PbtKeyspaceProgress(int partitionCount)
         }
     }
 
-    private long Boundary(int partition) => (long)partition * PbtPrefixPartitions.PrefixSpace / partitionCount << 32;
+    private long Boundary(int partition) => (long)PbtPrefixPartitions.Start(partition, partitionCount) << 32;
 }

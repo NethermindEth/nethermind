@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core.Utils;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
@@ -9,7 +8,6 @@ namespace Nethermind.State.Pbt;
 /// <summary>Per-block scratch state that is never committed into a snapshot: the node groups staged for the shared trie cache.</summary>
 public sealed class PbtTransientResource(int nodeGroupCapacity = 1024) : IDisposable, IResettable
 {
-    private long _leases = RefCountingLease.Single;
     private IPbtResourcePool? _returnPool;
     private PbtResourcePool.Usage _returnUsage;
 
@@ -18,32 +16,22 @@ public sealed class PbtTransientResource(int nodeGroupCapacity = 1024) : IDispos
 
     internal void OnRented(IPbtResourcePool pool, PbtResourcePool.Usage usage)
     {
-        _returnPool = pool;
         _returnUsage = usage;
-        Volatile.Write(ref _leases, RefCountingLease.Single);
+        Volatile.Write(ref _returnPool, pool);
     }
 
-    internal bool TryAcquireLease() => RefCountingLease.TryAcquire(ref _leases);
-
-    /// <summary>Spins until only the owner lease remains.</summary>
-    internal void WaitForExclusiveLease()
-    {
-        SpinWait spinWait = default;
-        while (Volatile.Read(ref _leases) != RefCountingLease.Single) spinWait.SpinOnce();
-    }
-
+    /// <summary>Returns the resource to the pool it was rented from; the owner calls this exactly once per rental.</summary>
+    /// <exception cref="InvalidOperationException">The resource is not rented, e.g. it was already returned.</exception>
     internal void ReleaseLease()
     {
-        if (RefCountingLease.ReleaseOnce(ref _leases))
-        {
-            if (_returnPool is null)
-                throw new InvalidOperationException($"{nameof(PbtTransientResource)} final lease released without a registered return pool");
-            _returnPool.ReturnCachedResource(_returnUsage, this);
-        }
+        // Claiming the pool guards against a double return putting one resource into two later rentals.
+        IPbtResourcePool pool = Interlocked.Exchange(ref _returnPool, null)
+            ?? throw new InvalidOperationException($"{nameof(PbtTransientResource)} released without an outstanding rental");
+        pool.ReturnCachedResource(_returnUsage, this);
     }
 
     /// <summary>Clears staged groups, growing the cache if its capacity was exceeded.</summary>
-    /// <remarks>Only the exclusive owner may reset the resource after all query leases have drained.</remarks>
+    /// <remarks>Only the exclusive owner may reset the resource.</remarks>
     public void Reset() => NodeGroups.Reset();
 
     /// <summary>Releases staged groups when the exclusively owned resource is discarded, rather than returned to its pool.</summary>

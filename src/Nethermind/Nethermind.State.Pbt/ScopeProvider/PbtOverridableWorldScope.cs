@@ -6,11 +6,11 @@ using System.Diagnostics.CodeAnalysis;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
 using Nethermind.Int256;
-using Nethermind.Monitoring.Config;
 using Nethermind.Trie;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
@@ -27,9 +27,9 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
     private readonly IPbtResourcePool _resourcePool;
+    private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtConfig _config;
     private readonly IPbtTrieNodeCache _trieNodeCache;
-    private readonly bool _recordDetailedMetrics;
     private readonly KnownHeadersScopeProvider _worldState;
     private bool _isDisposed;
 
@@ -37,18 +37,18 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
         IPbtResourcePool resourcePool,
-        IMetricsConfig metricsConfig,
+        IRefCountingMemoryProvider nodeGroupMemory,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
         IPbtTrieNodeCache trieNodeCache,
-        ILogManager? logManager = null)
+        ILogManager logManager)
     {
-        _logManager = logManager ?? NullLogManager.Instance;
+        _logManager = logManager;
         _config = config;
         _manager = manager;
         _resourcePool = resourcePool;
+        _nodeGroupMemory = nodeGroupMemory;
         _trieNodeCache = trieNodeCache;
-        _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableScopeProvider(this, headerProvider));
@@ -125,15 +125,10 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
         public bool HasRoot(BlockHeader? baseBlock) => outer.HasStateForBlock(baseBlock);
 
-        public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
-            stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+        public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(stateHeaderProvider, targetBlock);
 
-        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-        {
-            if (stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent)) return TryBeginScope(parent, metrics, out scope);
-            scope = null;
-            return false;
-        }
+        public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+            this.TryBeginScopeAtBase(stateHeaderProvider, targetBlock, metrics, out scope);
 
         public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
@@ -146,7 +141,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             StateId stateId = new(baseBlock);
             scope = new PbtWorldStateScope(
                 stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
-                outer._resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false, outer._config, outer._logManager);
+                outer._nodeGroupMemory, isReadOnly: false, outer._config, outer._logManager);
             return true;
         }
     }

@@ -26,9 +26,7 @@ internal sealed class MigrationFlatFinalizedStateProvider(IStateHeaderProvider i
             ulong finalized = inner.FinalizedBlockNumber;
             BlockHeader? header = blockTree.FindHeader(finalized, BlockTreeLookupOptions.RequireCanonical);
             if (header is null || !specProvider.GetSpec(header).IsEip8347Enabled) return finalized;
-            while (header is not null && specProvider.GetSpec(header).IsEip8347Enabled)
-                header = header.IsGenesis ? null : blockTree.FindHeader(header.ParentHash!, BlockTreeLookupOptions.RequireCanonical);
-            ulong lastMerkle = header?.Number ?? 0;
+            ulong lastMerkle = MigrationActivation.FindActivationParent(blockTree, specProvider, header, BlockTreeLookupOptions.RequireCanonical)?.Number ?? 0;
             // The activation parent is finalized, so the clamp never moves again.
             _lastMerkleBlock = lastMerkle;
             return lastMerkle;

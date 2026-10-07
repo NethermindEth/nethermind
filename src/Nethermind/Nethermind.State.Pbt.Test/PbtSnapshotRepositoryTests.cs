@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -14,7 +13,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotRepositoryTests
 {
-    private readonly PbtResourcePool _pool = new(new PbtConfig(), PooledRefCountingMemoryProvider.Instance);
+    private readonly PbtResourcePool _pool = new(new PbtConfig());
     private PbtSnapshotRepository _repository = null!;
 
     [SetUp]

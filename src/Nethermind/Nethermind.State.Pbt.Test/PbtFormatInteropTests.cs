@@ -23,7 +23,7 @@ public class PbtFormatInteropTests
         codeHash[^1] = 2;
         byte[][] keys =
         [
-            Eip8297KeyDerivation.AccountKey(address, 0).Bytes.ToArray(),
+            Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address), 0).Bytes.ToArray(),
             Eip8297KeyDerivation.StorageKey(address, new UInt256(63)).Bytes.ToArray(),
             Eip8297KeyDerivation.OverflowCodeKey(codeHash, 127).Bytes.ToArray(),
             Eip8297KeyDerivation.OverflowCodeKey(codeHash, 128).Bytes.ToArray(),
@@ -123,7 +123,7 @@ public class PbtFormatInteropTests
         long pathBytes = GC.GetAllocatedBytesForCurrentThread() - start;
         GC.KeepAlive(paths);
         start = GC.GetAllocatedBytesForCurrentThread();
-        using PbtWriteBatchBuilder<TKey> builder = new(0);
+        using PbtWriteBatchBuilder<TKey> builder = new();
         for (int index = 0; index < iterations; index++)
         {
             bytes[^2] = (byte)(index >> 8);
@@ -150,8 +150,7 @@ public class PbtFormatInteropTests
         copied.Clear();
         PbtNodePathOperations.CopyTo(path, copied);
         TPath converted = path.ToPath<TPath>();
-        TPath appended = path.AppendBits(0, 0);
-        if (path.GetByte(0) != 0 || !copied.SequenceEqual(bytes) || !converted.Equals(appended))
+        if (path.GetByte(0) != 0 || !copied.SequenceEqual(bytes) || !converted.Equals(path))
             throw new InvalidOperationException("Path operations changed the zero key.");
     }
 }

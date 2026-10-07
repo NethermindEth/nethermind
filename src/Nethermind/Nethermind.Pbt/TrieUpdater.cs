@@ -16,8 +16,6 @@ public static partial class TrieUpdater
 {
     internal static int GetBit(ReadOnlySpan<byte> bytes, int bit) => (bytes[bit >> 3] >> (7 - (bit & 7))) & 1;
 
-    internal enum NodeKind : byte { Empty, Leaf, Branch }
-
     /// <summary>The bit flagging a composed branch's left child as a leaf.</summary>
     internal const byte LeftLeaf = 1;
     /// <summary>The bit flagging a composed branch's right child as a leaf.</summary>
@@ -36,33 +34,52 @@ public static partial class TrieUpdater
         Stored,
     }
 
-    /// <summary>Charges a starting parallel-loop worker to <paramref name="quota"/>.</summary>
+    /// <summary>Runs <paramref name="work"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
     /// <remarks>
-    /// A loop starts only once its caller took one slot, the admission slot, which the first worker thread to start
-    /// claims through <paramref name="admissionSlotClaimed"/>; every further worker takes quota outright, so the loop
-    /// is charged exactly once per running worker, briefly exceeding the budget when sibling loops start together.
-    /// The calling thread already holds its own slot and is not charged.
+    /// Work runs on the calling thread while the quota has no free slot; the first slot taken admits a parallel loop over
+    /// the indices still left, whose workers charge themselves as they start. That admission slot is claimed by the first
+    /// worker thread to start, through <c>admissionSlotClaimed</c>, or returned after the loop when none did; every further
+    /// worker takes quota outright, so the loop is charged exactly once per running worker, briefly exceeding the budget
+    /// when sibling loops start together. The calling thread already holds its own slot and is not charged.
     /// </remarks>
-    /// <returns>Whether the worker holds a slot to hand back through <see cref="ReturnWorkerQuota"/>.</returns>
-    internal static bool TakeWorkerQuota(ConcurrencyController quota, int callerThreadId, ref int admissionSlotClaimed)
+    internal static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
     {
-        if (Environment.CurrentManagedThreadId == callerThreadId) return false;
-        if (!ClaimAdmissionSlot(ref admissionSlotClaimed)) quota.TakeConcurrencyQuota();
-        return true;
+        int next = 0;
+        for (; next < count - 1 && !quota.TryRequestConcurrencyQuota(); next++)
+            work(next);
+        if (next < count - 1)
+        {
+            int callerThreadId = Environment.CurrentManagedThreadId;
+            int admissionSlotClaimed = 0;
+            try
+            {
+                ParallelUnbalancedWork.For(next, count, ParallelUnbalancedWork.DefaultOptions,
+                    () =>
+                    {
+                        if (Environment.CurrentManagedThreadId == callerThreadId) return false;
+                        if (Interlocked.Exchange(ref admissionSlotClaimed, 1) != 0) quota.TakeConcurrencyQuota();
+                        return true;
+                    },
+                    (index, tookQuota) =>
+                    {
+                        work(index);
+                        return tookQuota;
+                    },
+                    tookQuota =>
+                    {
+                        if (tookQuota) quota.ReturnConcurrencyQuota();
+                    });
+            }
+            finally
+            {
+                if (Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0) quota.ReturnConcurrencyQuota();
+            }
+        }
+        else if (next < count)
+        {
+            work(next);
+        }
     }
-
-    internal static void ReturnWorkerQuota(ConcurrencyController quota, bool taken)
-    {
-        if (taken) quota.ReturnConcurrencyQuota();
-    }
-
-    /// <summary>Returns the admission slot after the loop unless a worker claimed it and returns it itself.</summary>
-    internal static void ReturnAdmissionSlot(ConcurrencyController quota, ref int admissionSlotClaimed)
-    {
-        if (ClaimAdmissionSlot(ref admissionSlotClaimed)) quota.ReturnConcurrencyQuota();
-    }
-
-    private static bool ClaimAdmissionSlot(ref int admissionSlotClaimed) => Interlocked.Exchange(ref admissionSlotClaimed, 1) == 0;
 
     internal static int BoundarySlot(ReadOnlySpan<byte> key, int groupDepth)
     {
@@ -86,7 +103,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped in PbtTraversalPath path, in ValueHash256 hash)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        Span<long> descendantBytes = stackalloc long[PbtNodeGroupCodec.DescendantSlots];
+        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
         ushort candidateSlots = (ushort)(reader.DescendantMask | writer.DescendantDeltaMask);
         long deltaTotal = 0;
         for (uint remaining = candidateSlots; remaining != 0; remaining &= remaining - 1)
@@ -101,27 +118,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         return (payload?.GetSpan().Length ?? 0) - reader.PayloadLength + deltaTotal;
     }
 
-    /// <summary>Whether the group at <paramref name="bitDepth"/> below <paramref name="current"/> is provably absent, so it is folded without reading the store.</summary>
+    /// <summary>Whether <paramref name="current"/>'s whole subtree is the node itself, which its owner group stores.</summary>
     /// <remarks>
     /// A group holds the nodes strictly below its boundary node. Nothing is stored below an empty subtree or a leaf,
-    /// and a branch over two inlined leaves is its own whole subtree, so none of the three owns a group. A branch whose
-    /// children lie beyond this group owns no group either. Any other branch has a child inside the group, which is stored.
+    /// and a branch over two inlined leaves is its own whole subtree, so none of the three owns a group.
+    /// LeafChildrenMask decodes the branch encoding, so the empty and leaf kinds are ruled out first.
     /// </remarks>
-    internal static bool IsAbsentGroup(scoped in BoundaryNode current, int bitDepth) => OwnsNoGroup(current) || IsAbsentGroupBelow(current, bitDepth);
-
-    /// <summary>The frame of the absent group at <paramref name="bitDepth"/> below <paramref name="current"/>.</summary>
-    /// <param name="spanningDescendantBytes">
-    /// The size the owner recorded under the boundary slot on the way here, which a spanning branch carries down with it.
-    /// </param>
-    internal static AbsentGroupFrame<TKey, TPath> AbsentFrame(scoped in BoundaryNode current, scoped in PbtTraversalPath path, int bitDepth,
-        long spanningDescendantBytes) =>
-        // A spanning branch may inline two leaves as well; taking its slot size keeps the owner's accounting.
-        IsAbsentGroupBelow(current, bitDepth)
-            ? new(bitDepth, current.BranchSlot(path, bitDepth), spanningDescendantBytes)
-            : new(bitDepth);
-
-    /// <summary>Whether <paramref name="current"/>'s whole subtree is the node itself, which its owner group stores.</summary>
-    /// <remarks>LeafChildrenMask decodes the branch encoding, so the empty and leaf kinds are ruled out first.</remarks>
     private static bool OwnsNoGroup(scoped in BoundaryNode current) =>
         current.IsEmpty || current.IsLeaf || current.LeafChildrenMask == (LeftLeaf | RightLeaf);
 
@@ -134,19 +136,19 @@ internal static partial class TrieUpdater<TKey, TPath>
 
     /// <summary>Per-fold state shared by every frame of one root update.</summary>
     /// <remarks>
-    /// <see cref="FoldQuota"/> and <see cref="Operations"/> are set only when wide frames may fold their buckets
-    /// concurrently; the former is the budget every nested frame takes its extra workers from before fanning out, the latter
-    /// is the backing array of every operation range, so a bucket can rebuild its span on another thread,
+    /// <see cref="FoldQuota"/> is the budget every nested frame takes its extra workers from before fanning out;
+    /// <see cref="Operations"/>, set only when wide frames may fold their buckets concurrently, is the backing array of
+    /// every operation range, so a bucket can rebuild its span on another thread,
     /// and <see cref="FanOut"/> gives how many operations a concurrent run of buckets holds at least, by what it has stored below it.
     /// Groups are read from <see cref="Store"/> but published to <see cref="Writer"/>, which a concurrent bucket replaces
     /// with its own <see cref="IPbtStore.CreateWriter"/> so it never writes the store directly.
     /// </remarks>
-    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController? foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
+    internal sealed class FoldContext(IPbtStore store, IPbtNodeGroupSink writer, IRefCountingMemoryProvider memoryProvider, ConcurrencyController foldQuota, PbtWriteOperation<TKey>[]? operations, FoldFanOut fanOut)
     {
         internal IPbtStore Store { get; } = store;
         internal IPbtNodeGroupSink Writer { get; } = writer;
         internal IRefCountingMemoryProvider MemoryProvider { get; } = memoryProvider;
-        internal ConcurrencyController? FoldQuota { get; } = foldQuota;
+        internal ConcurrencyController FoldQuota { get; } = foldQuota;
         internal PbtWriteOperation<TKey>[]? Operations { get; } = operations;
         internal FoldFanOut FanOut { get; } = fanOut;
     }

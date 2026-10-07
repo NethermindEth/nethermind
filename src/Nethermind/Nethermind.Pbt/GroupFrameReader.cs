@@ -135,16 +135,11 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
         _lease = null;
     }
 
-    /// <summary>Releases the actual mutable frames, including payloads loaded after this scope was opened.</summary>
-    internal readonly ref struct Scope(Span<GroupFrameReader<TKey, TPath>> readers) : IDisposable
+    /// <summary>Releases the actual mutable frame, including payloads loaded after this scope was opened.</summary>
+    internal readonly ref struct Scope(ref GroupFrameReader<TKey, TPath> reader) : IDisposable
     {
-        private readonly Span<GroupFrameReader<TKey, TPath>> _readers = readers;
+        private readonly ref GroupFrameReader<TKey, TPath> _reader = ref reader;
 
-        internal Scope(ref GroupFrameReader<TKey, TPath> reader) : this(System.Runtime.InteropServices.MemoryMarshal.CreateSpan(ref reader, 1)) { }
-
-        public void Dispose()
-        {
-            foreach (ref GroupFrameReader<TKey, TPath> reader in _readers) reader.Dispose();
-        }
+        public void Dispose() => _reader.Dispose();
     }
 }

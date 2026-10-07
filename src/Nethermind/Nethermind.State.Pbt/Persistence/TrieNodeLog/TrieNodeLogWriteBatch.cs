@@ -122,10 +122,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             record = _probeBuffer.AsSpan(0, read);
         }
 
-        if (record.Length < TrieNodeLogRecord.HeaderLength) return false;
-        TrieNodeLogRecord header = TrieNodeLogRecord.Read(record);
-        return header.KeyLength == key.Length && record.Length >= TrieNodeLogRecord.HeaderLength + key.Length
-            && record.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key);
+        return TrieNodeLogRecord.HoldsKey(record, key, out _);
     }
 
     private TrieNodeLogGeneration CurrentGeneration()

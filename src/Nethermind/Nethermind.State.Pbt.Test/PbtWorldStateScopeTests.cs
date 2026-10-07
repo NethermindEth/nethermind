@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Modules;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Blockchain;
@@ -53,7 +54,7 @@ public class PbtWorldStateScopeTests
         using IOverridableWorldScope overrides = manager.CreateOverridableWorldScope();
         using (PbtWorldStateScope scope = (PbtWorldStateScope)overrides.WorldState.BeginScope(parent, new LocalMetrics()))
         {
-            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath, canonicalRoot.ValueHash256);
+            using RefCountingMemory? group = scope.Bundle.GetNodeGroup(rootPath.ToPath<PbtStorageNodePath>(), canonicalRoot.ValueHash256);
             Assert.That(group, Is.Not.Null);
             using RefCountingMemory? cached = cache.TryGet(canonicalRoot.ValueHash256, rootPath, out RefCountingMemory? payload) ? payload : null;
             Assert.That(cached!.Memory.ToArray(), Is.EqualTo(group!.Memory.ToArray()));
@@ -287,11 +288,13 @@ public class PbtWorldStateScopeTests
         scope.Commit(0);
 
         using PbtReadOnlySnapshotBundle reopened = ((IPbtDbManager)ctx.Manager).GatherReadOnlyBundle(new StateId(0, scope.RootHash));
-        Dictionary<PbtStorageTreeKey, ValueHash256> leaves = new(reopened.EnumerateLeaves());
+        List<RebuildEntry> expected = [];
+        PbtTestLeaves.AddAccount(expected, TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject, code);
+        PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 7, (UInt256)(updatedSlot == 7 ? 0xef : 0xab));
+        PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 1000, (UInt256)(updatedSlot == 1000 ? 0xef : 0xcd));
+        Dictionary<PbtStorageTreeKey, ValueHash256> leaves = expected.ToDictionary(entry => entry.Key, entry => entry.Leaf);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 7)), Is.True);
-            Assert.That(leaves.ContainsKey(PbtStateKey.Storage(TestItem.AddressA, 1000)), Is.True);
             Assert.That(leaves.ContainsKey((PbtStorageTreeKey)PbtStateKey.Code(codeHash.ValueHash256, 256)), Is.True);
             Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(leaves)));
             Assert.That(reopened.TreeRoot, Is.EqualTo(scope.RootHash.ValueHash256));

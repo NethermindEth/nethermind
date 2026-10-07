@@ -54,7 +54,7 @@ public class PbtOfflineSourceTests
         JsonElement metadata = Eip8347FixtureState.Metadata(name);
         BlockHeader header = Build.A.BlockHeader.WithNumber(metadata.GetProperty("number").GetUInt64())
             .WithTimestamp(0).WithStateRoot(new Hash256(metadata.GetProperty("mptRoot").GetString()!)).TestObject;
-        PbtImageAnchor anchor = new("1", header.Hash!, header, 48, 24576);
+        PbtImageAnchor anchor = new("1", header.Hash!, header, 48);
         byte[] expectedSnapshot = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "snapshot.pbt"));
         byte[] expectedPreimages = File.ReadAllBytes(Path.Combine(fixtures, "canonical", name, "preimages.bin"));
         using MemoryStream inputSnapshot = new(expectedSnapshot);
@@ -80,7 +80,7 @@ public class PbtOfflineSourceTests
     {
         Address address = new("0xffffffffffffffffffffffffffffffffffffffff");
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue, 24576);
+        PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue);
         using (IPersistence.IWriteBatch batch = _persistence.CreateWriteBatch(FlatStateId.PreGenesis, new FlatStateId(header), WriteFlags.None))
             batch.SetAccount(address, new Account(1, 100));
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
@@ -105,7 +105,7 @@ public class PbtOfflineSourceTests
     {
         using IPersistence.IPersistenceReader reader = _persistence.CreateReader();
         BlockHeader header = Build.A.BlockHeader.TestObject;
-        PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue, 24576);
+        PbtImageAnchor anchor = new("1", header.Hash!, header, ulong.MaxValue);
         using MemoryStream snapshot = new(), preimages = new();
         Assert.That(() => PbtOfflineSource.WriteArtifacts(reader, _codes, anchor, _directory, snapshot, preimages, LimboLogs.Instance,
             sortBufferBytes: 1024, workerCount: 0, new CancellationToken(cancel)),
@@ -122,13 +122,11 @@ public class PbtOfflineSourceTests
         [Values(1, 2)] int maxConcurrentPreMerges)
     {
         // A buffer of a few records per run, so a few hundred records spill into many runs.
-        int finalMerges = 0;
-        using PbtSortedSpool spool = new(_directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
+        using PbtSortedSpool spool = new("test", _directory, 512, writerCount, LimboLogs.Instance, CancellationToken.None)
         {
             MaxFanIn = maxFanIn,
             PreMergeThreshold = preMergeThreshold,
-            MaxConcurrentPreMerges = maxConcurrentPreMerges,
-            FinalMerge = () => finalMerges++
+            MaxConcurrentPreMerges = maxConcurrentPreMerges
         };
         SortedDictionary<ValueHash256, byte[]> expected = [];
         for (int index = 0; index < 400; index++)
@@ -164,6 +162,5 @@ public class PbtOfflineSourceTests
             }
             Assert.That(reference.MoveNext(), Is.False, "fewer merged records than distinct keys");
         }
-        Assert.That(finalMerges, Is.EqualTo(1), "final merge hook");
     }
 }

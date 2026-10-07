@@ -23,7 +23,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
-    private readonly PbtResourcePool.Usage _usage;
     private readonly ConcurrencyController _foldQuota;
     private readonly FoldFanOut _foldFanOut;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
@@ -48,17 +47,15 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         IWorldStateScopeProvider.ICodeDb codeDb,
         IPbtCommitTarget commitTarget,
         IPbtChildHeaderSource childHeaders,
-        IPbtResourcePool resourcePool,
-        PbtResourcePool.Usage usage,
+        IRefCountingMemoryProvider nodeGroupMemory,
         bool isReadOnly,
         IPbtConfig config,
-        ILogManager? logManager = null)
+        ILogManager logManager)
     {
-        _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtWorldStateScope>();
+        _logger = logManager.GetClassLogger<PbtWorldStateScope>();
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
-        _nodeGroupMemory = resourcePool.NodeGroupMemory;
-        _usage = usage;
+        _nodeGroupMemory = nodeGroupMemory;
         _currentStateId = currentStateId;
         _currentHeader = currentHeader;
         Bundle = bundle;
@@ -72,7 +69,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     private void LogLifecycle(string stage) =>
-        _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, usage={_usage}, readOnly={_isReadOnly}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
+        _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, readOnly={_isReadOnly}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
 
     internal PbtSnapshotBundle Bundle { get; }
     public Hash256 RootHash => _rootHash;
@@ -95,9 +92,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.Apply(this, bal);
 
-    public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address) => GetOrCreateStorageTree(address);
-
-    private PbtStorageTree GetOrCreateStorageTree(Address address)
+    public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
         lock (_storages)
         {
@@ -161,7 +156,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             _currentHeader = _childHeader;
             _childHeader = null;
             lock (_storages) _storages.Clear();
-            _rootDirty = false;
             if (_logger.IsDebug) LogLifecycle($"commit completed block={blockNumber}");
         }
         finally
@@ -181,7 +175,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
         finally
         {
-            if (_logger.IsDebug) _logger.Debug($"PBT scope {_scopeId} closed: state={_currentStateId}, usage={_usage}, managedBytes={GC.GetTotalMemory(false)}");
+            if (_logger.IsDebug) _logger.Debug($"PBT scope {_scopeId} closed: state={_currentStateId}, managedBytes={GC.GetTotalMemory(false)}");
         }
     }
 

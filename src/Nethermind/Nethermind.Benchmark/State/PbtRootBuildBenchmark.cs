@@ -27,7 +27,7 @@ public class PbtRootBuildBenchmark
 {
     public enum Variant
     {
-        /// <summary><see cref="PbtRightmostGroupStore"/>, which the snapshot verifier checks an image's root with.</summary>
+        /// <summary><see cref="PbtRightmostGroupStore"/>, which the exporter computes a snapshot's claimed root with.</summary>
         RightmostGroupStore,
         /// <summary>The partitioned updater, sorting the shards and folding slots across threads, building every group from an empty tree.</summary>
         Partitioned,
@@ -107,6 +107,6 @@ public class PbtRootBuildBenchmark
         {
             Account = new PbtWriteBatch<PbtPath>(new ArrayPoolList<PbtWriteOperation<PbtPath>>(_shardedOperations), new ArrayPoolList<int>(_zoneTable)),
         };
-        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, new FoldFanOut(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker), null);
+        return TrieUpdater.UpdateRoot(_store, default, batches, _foldQuota, FoldFanOut.Default, null);
     }
 }

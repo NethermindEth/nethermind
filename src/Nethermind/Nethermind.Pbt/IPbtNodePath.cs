@@ -17,10 +17,6 @@ public interface IPbtNodePath<TSelf> : IEquatable<TSelf>, IComparable<TSelf> whe
     /// <summary>Reads a canonical path byte, including zero padding in the final byte.</summary>
     /// <exception cref="IndexOutOfRangeException">The byte index is outside the canonical bytes.</exception>
     byte GetByte(int byteIndex);
-    /// <summary>Returns the first <paramref name="depth"/> bits, preserving the path type and capacity.</summary>
-    TSelf Prefix(int depth);
-    /// <summary>Appends zero to four right-aligned bits, preserving the path type and capacity.</summary>
-    TSelf AppendBits(int bits, int bitCount);
     /// <summary>Converts this path to the selected capacity without changing its identity.</summary>
     TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath>;
 }

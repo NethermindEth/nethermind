@@ -2,15 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
-using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
-using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.State.Flat.ScopeProvider;
 
 namespace Nethermind.State.Pbt.Migration;
@@ -38,7 +35,6 @@ internal interface IMerkleShadowFollower
 internal sealed class MerkleShadowFollower(
     IBlockTree blockTree,
     FlatWorldStateManager flat,
-    ILifetimeScope rootLifetime,
     PbtBalFollower balAcquisition,
     ISpecProvider specProvider,
     ILogManager logManager) : IMerkleShadowFollower, IAsyncDisposable
@@ -127,7 +123,7 @@ internal sealed class MerkleShadowFollower(
             Volatile.Write(ref _error, null);
             if (target.Hash is null) return Stall("Replay target has no block hash.");
             ReplayState? replay = _state;
-            if (replay is null || !IsCanonical(replay.Cursor) || !IsCanonical(target) || target.Number < replay.Cursor.Number)
+            if (replay is null || !blockTree.IsMainChain(replay.Cursor) || !blockTree.IsMainChain(target) || target.Number < replay.Cursor.Number)
             {
                 Reset();
                 BlockHeader anchor = target;
@@ -137,7 +133,7 @@ internal sealed class MerkleShadowFollower(
                     if (anchor.IsGenesis) return Stall("Flat holds no canonical ancestor of the target.");
                     anchor = blockTree.FindHeader(anchor.ParentHash!, BlockTreeLookupOptions.RequireCanonical)
                         ?? throw new InvalidOperationException("Canonical ancestry is unavailable.");
-                    if (!IsCanonical(target)) return Stall("Replay target is no longer canonical.");
+                    if (!blockTree.IsMainChain(target)) return Stall("Replay target is no longer canonical.");
                 }
                 replay = Open(anchor);
             }
@@ -145,32 +141,25 @@ internal sealed class MerkleShadowFollower(
             while (replay.Cursor.Number < target.Number)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (!IsCanonical(target)) return Stall("Replay target is no longer canonical.");
+                if (!blockTree.IsMainChain(target)) return Stall("Replay target is no longer canonical.");
                 BlockHeader parent = replay.Cursor;
                 BlockHeader? child = blockTree.FindHeader(parent.Number + 1, BlockTreeLookupOptions.RequireCanonical);
                 if (child?.Hash is null || child.ParentHash != parent.Hash) return Stall("Replay headers are unavailable or disconnected.");
-                bool consumed = false;
-                bool acquired = await balAcquisition.AcquireRange(parent, child, (header, bytes, token) =>
+                bool acquired = await balAcquisition.AcquireBal(parent, child, bal =>
                 {
-                    token.ThrowIfCancellationRequested();
-                    if (consumed || header.Hash != child.Hash || header.ParentHash != parent.Hash)
-                        throw new InvalidDataException("Unexpected replay acquisition identity.");
-                    RlpReader reader = new(bytes.Span);
-                    MigrationBalStateChanges.Apply(BlockAccessListDecoder.Instance.Decode(ref reader) ?? throw new InvalidDataException("Missing replay BAL."),
-                        replay.WorldState, specProvider.GetSpec(child));
+                    replay.WorldState.Commit(specProvider.GetSpec(child));
+                    replay.WorldState.ApplyBal(bal);
                     replay.WorldState.CommitTree(child.Number);
                     // The scope now holds the child; a cancelled or failed acquisition must not leave the cursor behind it.
                     replay.Cursor = child;
-                    consumed = true;
-                    return Task.CompletedTask;
                 }, cancellationToken);
-                if (!acquired || !consumed) return Stall("BAL range unavailable or canonical ancestry changed.");
+                if (!acquired) return Stall("BAL range unavailable or canonical ancestry changed.");
                 Hash256 root = replay.WorldState.StateRoot;
                 Publish(child, root);
                 if (!specProvider.GetSpec(child).IsEip8347Enabled && root != child.StateRoot)
                     return Stall($"BAL replay of {child.ToString(BlockHeader.Format.Short)} produced MPT root {root}, header commits to {child.StateRoot}.");
             }
-            return IsCanonical(target);
+            return blockTree.IsMainChain(target);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -184,33 +173,19 @@ internal sealed class MerkleShadowFollower(
         }
     }
 
-    private bool IsCanonical(BlockHeader header) => blockTree.FindHeader(header.Number)?.Hash == header.Hash;
-
     private ReplayState Open(BlockHeader anchor)
     {
-        ILifetimeScope lifetime = rootLifetime.BeginLifetimeScope(builder =>
-            builder.RegisterInstance(flat.CreateResettableWorldState()).As<IWorldStateScopeProvider>());
-        try
-        {
-            IWorldState worldState = lifetime.Resolve<IWorldState>();
-            if (!worldState.TryBeginScope(anchor, out IDisposable? scopeCloser))
-                throw new InvalidOperationException($"Flat state is unavailable at the shadow anchor {anchor.ToString(BlockHeader.Format.Short)}.");
-            return _state = new ReplayState(lifetime, worldState, scopeCloser, anchor);
-        }
-        catch
-        {
-            lifetime.Dispose();
-            throw;
-        }
+        IWorldState worldState = new WorldState(flat.CreateResettableWorldState(), logManager);
+        if (!worldState.TryBeginScope(anchor, out IDisposable? scopeCloser))
+            throw new InvalidOperationException($"Flat state is unavailable at the shadow anchor {anchor.ToString(BlockHeader.Format.Short)}.");
+        return _state = new ReplayState(worldState, scopeCloser, anchor);
     }
 
     private void Reset()
     {
         ReplayState? state = _state;
         _state = null;
-        if (state is null) return;
-        try { state.Scope.Dispose(); }
-        finally { state.Lifetime.Dispose(); }
+        state?.Scope.Dispose();
     }
 
     private void Publish(BlockHeader header, Hash256 root)
@@ -229,9 +204,8 @@ internal sealed class MerkleShadowFollower(
 
     public ValueTask DisposeAsync() => new(StopAsync());
 
-    private sealed class ReplayState(ILifetimeScope lifetime, IWorldState worldState, IDisposable scope, BlockHeader cursor)
+    private sealed class ReplayState(IWorldState worldState, IDisposable scope, BlockHeader cursor)
     {
-        public ILifetimeScope Lifetime => lifetime;
         public IWorldState WorldState => worldState;
         public IDisposable Scope => scope;
         public BlockHeader Cursor { get; set; } = cursor;

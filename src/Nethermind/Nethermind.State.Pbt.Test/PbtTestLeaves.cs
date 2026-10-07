@@ -53,18 +53,4 @@ internal static class PbtTestLeaves
         foreach (RebuildEntry _ in leaves) { }
         return root;
     };
-
-    public static IEnumerable<KeyValuePair<PbtStorageTreeKey, ValueHash256>> EnumerateLeaves(this PbtReadOnlySnapshotBundle bundle)
-    {
-        SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
-        foreach ((ValueHash256 addressHash, PbtAccount stem) in bundle.EnumerateAccounts())
-        {
-            Account account = stem.ToAccount();
-            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressHash, account, account.HasCode ? bundle.GetCode(account.CodeHash.ValueHash256) : null))
-                leaves[(PbtStorageTreeKey)key] = value;
-        }
-        foreach ((PbtStorageTreeKey key, EvmWord value) in bundle.EnumerateStorage())
-            if (!EvmWordSlot.IsZero(value)) leaves[key] = new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
-        return leaves;
-    }
 }

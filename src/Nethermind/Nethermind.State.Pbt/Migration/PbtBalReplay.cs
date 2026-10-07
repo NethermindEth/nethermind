@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics.CodeAnalysis;
-using Autofac;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -21,9 +21,8 @@ namespace Nethermind.State.Pbt.Migration;
 /// de-duplicates whichever lands second.
 /// </remarks>
 internal sealed class PbtBalReplay(
-    ILifetimeScope rootLifetime,
     IPbtDbManager manager,
-    IPbtResourcePool resourcePool,
+    IRefCountingMemoryProvider nodeGroupMemory,
     [KeyFilter(DbNames.Code)] IDb codeDb,
     ISpecProvider specProvider,
     IPbtConfig config,
@@ -32,14 +31,13 @@ internal sealed class PbtBalReplay(
     public void Apply(BlockHeader parent, BlockHeader child, ReadOnlyBlockAccessList blockAccessList)
     {
         SingleScopeProvider provider = new(this, parent, child);
-        using ILifetimeScope scope = rootLifetime.BeginLifetimeScope(builder =>
-            builder.RegisterInstance(provider).As<IWorldStateScopeProvider>().ExternallyOwned());
-        IWorldState state = scope.Resolve<IWorldState>();
+        IWorldState state = new WorldState(provider, logManager);
         if (!state.TryBeginScopeAtTarget(child, out IDisposable? stateScope))
             throw new InvalidOperationException("The replay scope opens once, for its own child.");
         using IDisposable _ = stateScope;
         provider.Scope!.UseAuthoritativeRoot(child.StateRoot!);
-        MigrationBalStateChanges.Apply(blockAccessList, state, specProvider.GetSpec(child));
+        state.Commit(specProvider.GetSpec(child));
+        state.ApplyBal(blockAccessList);
         state.CommitTree(child.Number);
     }
 
@@ -48,7 +46,7 @@ internal sealed class PbtBalReplay(
         StateId stateId = new(parent);
         return new PbtWorldStateScope(stateId, parent, manager.GatherBundle(stateId, PbtResourcePool.Usage.ReadOnlyProcessingEnv),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb, isPersistent: true), manager,
-            NullPbtChildHeaderSource.Instance, resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, isReadOnly: false,
+            NullPbtChildHeaderSource.Instance, nodeGroupMemory, isReadOnly: false,
             config, logManager);
     }
 

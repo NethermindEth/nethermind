@@ -131,10 +131,10 @@ internal sealed class MigrationGenesisBootstrap(
         foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> entry in snapshot.Storages)
             batch.SetStorage(entry.Key.Key.Item1, entry.Key.Key.Item2, entry.Value);
         foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> entry in snapshot.StateNodes)
-            if (entry.Value.FullRlp.Length != 0 || entry.Value.NodeType != NodeType.Unknown)
+            if (!entry.Value.IsHashOnlyPlaceholder())
                 batch.SetStateTrieNode(entry.Key.Key, entry.Value.FullRlp.AsSpan());
         foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> entry in snapshot.StorageNodes)
-            if (entry.Value.FullRlp.Length != 0 || entry.Value.NodeType != NodeType.Unknown)
+            if (!entry.Value.IsHashOnlyPlaceholder())
                 batch.SetStorageTrieNode(entry.Key.Key.Item1, entry.Key.Key.Item2, entry.Value.FullRlp.AsSpan());
     }
 

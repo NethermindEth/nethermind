@@ -119,7 +119,7 @@ public class PbtScopeProviderBenchmark
         PbtConfig config = new();
         PbtSnapshotRepository repository = new(new MetricsConfig());
         PbtRocksDbPersistence persistence = new(_pbtDb, config, NullTrieNodeLog.Instance);
-        PbtResourcePool resourcePool = new(config, PooledRefCountingMemoryProvider.Instance);
+        PbtResourcePool resourcePool = new(config);
         PbtCompactionSchedule schedule = new(new MemDb(), config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
         PbtPersistenceCoordinator coordinator = new(
@@ -128,8 +128,8 @@ public class PbtScopeProviderBenchmark
         _pbtManager = new PbtDbManager(
             repository, coordinator, persistence, resourcePool, compactor, new BenchProcessExitSource(_cts), LimboLogs.Instance, config, new MetricsConfig(), new BenchNoopTrieNodeCache());
         return new PbtScopeProvider(
-            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), resourcePool, PbtResourcePool.Usage.MainBlockProcessing, isReadOnly: false,
-            config);
+            new MemDb(), _pbtManager, NullPbtChildHeaderSource.Instance, new BenchFinalizedStateProvider(), PooledRefCountingMemoryProvider.Instance, isReadOnly: false,
+            config, LimboLogs.Instance);
     }
 
     [Benchmark]

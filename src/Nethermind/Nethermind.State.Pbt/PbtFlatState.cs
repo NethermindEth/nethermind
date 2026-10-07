@@ -15,20 +15,16 @@ internal static class PbtFlatState
 {
     internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> AccountLeaves(ValueHash256 addressHash, Account account, CodeInfo? code)
     {
-        if (account.HasCode && code is null) throw new InvalidDataException($"Missing PBT bytecode for {account.CodeHash}.");
-        ValueHash256 basicData = default;
-        PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)(code?.Code.Length ?? 0), account.Nonce, account.Balance);
-        if (basicData != default) yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), basicData);
-        if (code is not null && Eip7702Constants.IsDelegatedCode(code.CodeSpan))
+        PbtAccount stem = PbtAccount.From(account, code);
+        if (stem.BasicData != default) yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), stem.BasicData);
+        if (stem.IsDelegation)
         {
-            ValueHash256 delegation = default;
-            code.CodeSpan.CopyTo(delegation.BytesAsSpan);
-            yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), delegation);
+            yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), stem.CodeLeaf);
             yield break;
         }
-        yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), account.CodeHash.ValueHash256);
+        yield return new(PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey), stem.CodeLeaf);
         if (code is null) yield break;
-        foreach (KeyValuePair<PbtPath, ValueHash256> leaf in CodeLeaves(account.CodeHash.ValueHash256, code)) yield return leaf;
+        foreach (KeyValuePair<PbtPath, ValueHash256> leaf in CodeLeaves(stem.CodeLeaf, code)) yield return leaf;
     }
 
     /// <summary>The code-chunk leaves of <paramref name="code"/>, omitting all-zero chunks as the tree does.</summary>

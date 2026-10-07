@@ -14,26 +14,13 @@ internal static class PbtArtifactWriter
     /// artifact ahead of an expensive download; they are not roots of trust.</summary>
     internal readonly record struct PbtArtifactDigests(ValueHash256 Snapshot, ValueHash256? Preimages);
 
-    /// <summary>Writes the snapshot stream and returns its digest.</summary>
-    /// <param name="calculateRoot">Folds the claimed root from the snapshot leaves as they are written.</param>
-    public static ValueHash256 WriteSnapshot(Stream snapshot, IEnumerable<RebuildEntry> leaves,
-        Func<IEnumerable<RebuildEntry>, ValueHash256> calculateRoot, CancellationToken cancellationToken = default)
+    /// <summary>Writes one stream to <paramref name="destination"/> through <paramref name="write"/> and returns its digest.</summary>
+    /// <remarks>The snapshot and preimage streams are independent, so the two may be written concurrently.</remarks>
+    public static ValueHash256 WriteDigested(Stream destination, Action<Stream> write)
     {
-        using DigestWriter snapshotWriter = new(snapshot);
-        PbtSnapshotCodec.Write(snapshotWriter, leaves, calculateRoot, cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        return snapshotWriter.Digest;
-    }
-
-    /// <summary>Writes the preimage stream and returns its digest.</summary>
-    /// <remarks>Independent of the snapshot, so the two streams may be written concurrently.</remarks>
-    public static ValueHash256 WritePreimages(Stream preimages, IEnumerable<PbtAccountPreimages> accounts,
-        CancellationToken cancellationToken = default)
-    {
-        using DigestWriter preimageWriter = new(preimages);
-        PbtPreimageCodec.Write(preimageWriter, accounts, cancellationToken);
-        cancellationToken.ThrowIfCancellationRequested();
-        return preimageWriter.Digest;
+        using DigestWriter writer = new(destination);
+        write(writer);
+        return writer.Digest;
     }
 
     private sealed class DigestWriter(Stream destination) : Stream

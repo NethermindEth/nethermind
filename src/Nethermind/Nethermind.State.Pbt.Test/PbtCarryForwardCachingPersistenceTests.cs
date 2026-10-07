@@ -51,8 +51,8 @@ public class PbtCarryForwardCachingPersistenceTests
         PbtCarryForwardCachingPersistence cache = new(new FakePersistence());
         using IPbtPersistence.IReader reader = cache.CreateReader();
 
-        ISlotRun first = reader.GetSlotRun(Run1);
-        ISlotRun second = reader.GetSlotRun(Run1);
+        PackedSlotRun first = reader.GetSlotRun(Run1);
+        PackedSlotRun second = reader.GetSlotRun(Run1);
 
         Assert.That(second, Is.Not.SameAs(first));
         Assert.That(second.Mask, Is.EqualTo(first.Mask));
@@ -97,14 +97,6 @@ public class PbtCarryForwardCachingPersistenceTests
         });
         yield return Scenario("written_account_invalidated", 2, 1, batch => batch.SetAccount(AddressHash, new Account(1, 100).ToPbtAccount()));
         yield return Scenario("written_run_invalidated", 1, 2, batch => batch.SetSlotRun(Run1, SlotRun.Empty));
-        yield return Scenario("clear_storage_clears_cache", 2, 2, batch => batch.ClearStorage(PbtStateKey.AddressKeyHash(TestItem.AddressB)));
-
-        yield return new TestCaseData((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, _) =>
-        {
-            using IPbtPersistence.IWriteBatch batch = cache.CreateStagingWriteBatch(WriteFlags.None);
-            batch.Commit();
-        }), 2, 2)
-        { TestName = "staging_commit_clears_cache" };
 
         yield return new TestCaseData((Action<PbtCarryForwardCachingPersistence, FakePersistence>)((cache, inner) =>
         {
@@ -164,7 +156,6 @@ public class PbtCarryForwardCachingPersistenceTests
 
         public IPbtPersistence.IReader CreateReader() => new Reader(this);
         public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags) => new WriteBatch();
-        public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) => new WriteBatch();
         public void Flush() { }
 
         private sealed class Reader(FakePersistence parent) : IPbtPersistence.IReader
@@ -178,7 +169,7 @@ public class PbtCarryForwardCachingPersistenceTests
                 return PbtAccount.From(new Account(1, 100), null);
             }
 
-            public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+            public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
             {
                 parent.RunReads++;
                 Span<EvmWord> values = stackalloc EvmWord[SlotRun.Width];
@@ -188,8 +179,7 @@ public class PbtCarryForwardCachingPersistenceTests
 
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
             public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => throw new NotSupportedException();
-            public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
-            public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => throw new NotSupportedException();
+            public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
             public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
             public void Dispose() { }
         }
@@ -197,10 +187,9 @@ public class PbtCarryForwardCachingPersistenceTests
         private sealed class WriteBatch : IPbtPersistence.IWriteBatch
         {
             public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) { }
-            public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run) { }
+            public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run) { }
             public void SetCode(in ValueHash256 codeHash, CodeInfo code) { }
             public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) { }
-            public void ClearStorage(in ValueHash256 addressHash) { }
             public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> { }
             public void Commit() { }
             public void Dispose() { }

@@ -45,21 +45,11 @@ public class Eip8297CanonicalTreeTests
         }
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(131)]
-    public void Builder_prepares_selected_nibble_and_independent_single_use_outputs(int shardNibbleIndex)
+    [Test]
+    public void Builder_prepares_selected_nibble_and_independent_single_use_outputs()
     {
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new(shardNibbleIndex);
-        PbtStorageTreeKey Key(byte nibble, byte suffix)
-        {
-            byte[] bytes = new byte[Math.Max(2, shardNibbleIndex / 2 + 1)];
-            bytes[0] = suffix;
-            bytes[shardNibbleIndex / 2] = (byte)((shardNibbleIndex & 1) == 0 ? nibble << 4 : nibble);
-            if (shardNibbleIndex < 2) bytes[1] = suffix;
-            return new(bytes);
-        }
+        using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new();
+        static PbtStorageTreeKey Key(byte nibble, byte suffix) => new([suffix, (byte)(nibble << 4)]);
         PbtStorageTreeKey setKey = Key(15, 1);
         PbtStorageTreeKey deleteKey = Key(2, 2);
         PbtStorageTreeKey zeroKey = Key(8, 3);
@@ -150,29 +140,6 @@ public class Eip8297CanonicalTreeTests
 
             Assert.That(actual, Is.EqualTo(expected), $"count {bitCount}");
         }
-    }
-
-    [Test]
-    public void Path_append_matches_bit_reference(
-        [Range(0, 7)] int pathOffset,
-        [Values(0, 1, 7, 8, 9, 63, 64, 65, 511)] int prefixLength,
-        [Values(0, 1)] int direction)
-    {
-        byte[] keyBytes = new byte[PbtStorageTreeKey.MaxLength];
-        new Random(8297).NextBytes(keyBytes);
-        PbtStorageTreeKey key = new(keyBytes);
-        int pathDepth = 8 + pathOffset;
-        PbtStorageNodePath path = PbtNodePathOperations.Prefix<PbtStorageNodePath>(key.Bytes, key.BitLength, pathDepth);
-        byte[] expectedPrefix = new byte[(prefixLength + 7) >> 3];
-        CopyBitsReference(keyBytes, pathOffset, prefixLength, expectedPrefix, 0);
-        int resultDepth = pathDepth + prefixLength + 1;
-        byte[] expectedPath = new byte[(resultDepth + 7) >> 3];
-        CopyBitsReference(keyBytes, 0, pathDepth, expectedPath, 0);
-        CopyBitsReference(expectedPrefix, 0, prefixLength, expectedPath, pathDepth);
-        expectedPath[(resultDepth - 1) >> 3] |= (byte)(direction << (7 - ((resultDepth - 1) & 7)));
-
-        PbtStorageNodePath appended = path.Append(CompressedPrefix.FromValidated(EncodePrefix(expectedPrefix, prefixLength)), direction);
-        Assert.That(appended, Is.EqualTo(new PbtStorageNodePath(expectedPath, resultDepth)));
     }
 
     private static void CopyBitsReference(ReadOnlySpan<byte> source, int sourceOffset, int bitCount, Span<byte> destination, int destinationOffset)
@@ -410,25 +377,22 @@ public class Eip8297CanonicalTreeTests
         byte[] source = new byte[PbtStorageTreeKey.MaxLength];
         source.AsSpan().Fill(0xA5);
         PbtStorageTreeKey key = new(source);
-        PbtStorageNodePath fromKey = PbtNodePathOperations.Prefix<PbtStorageNodePath>(key.Bytes, key.BitLength, bitDepth);
+        PbtStorageNodePath fromKey = PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, bitDepth);
         byte[] expected = source.AsSpan(0, (bitDepth + 7) >> 3).ToArray();
         if ((bitDepth & 7) != 0) expected[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
         byte[] constructorInput = (byte[])expected.Clone();
         PbtStorageNodePath constructed = new(constructorInput, bitDepth);
         constructorInput.AsSpan().Clear();
         source.AsSpan().Clear();
-        PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(constructed);
         byte[] copiedPath = constructed.ToPathArray();
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(copiedPath, Is.EqualTo(expected));
             Assert.That(fromKey, Is.EqualTo(constructed));
-            Assert.That(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, location.Position), Is.EqualTo(constructed));
             if (bitDepth > 0)
             {
-                PbtStorageNodePath parent = PbtNodePathOperations.Prefix<PbtStorageNodePath>(key.Bytes, key.BitLength, bitDepth - 1);
-                Assert.That(parent.Append(default, key.GetBit(bitDepth - 1)), Is.EqualTo(constructed));
+                PbtStorageNodePath parent = PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, bitDepth - 1);
                 Assert.That(parent.CompareTo(constructed), Is.LessThan(0));
             }
         }
@@ -459,8 +423,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(keys[equal], Is.EqualTo(42));
             Assert.That(copy.CompareTo(equal), Is.Zero);
             Assert.That(copy.CompareTo(different), Is.GreaterThan(0));
-            Assert.That(copy.FirstDifferingBit(different), Is.EqualTo(length * 8 - 1));
-            Assert.That(copy.FirstDifferingBit(equal), Is.EqualTo(length * 8));
+            Assert.That(copy.FirstDifferingBit(different, 0), Is.EqualTo(length * 8 - 1));
+            Assert.That(copy.FirstDifferingBit(equal, 0), Is.EqualTo(length * 8));
             Assert.That(key.Bytes.Length, Is.Zero);
             Assert.That(key.Equals(default), Is.True);
             Assert.That(key.CompareTo(copy), Is.LessThan(0));
@@ -600,8 +564,8 @@ public class Eip8297CanonicalTreeTests
             Assert.That(tree.Nodes, Has.Count.EqualTo(1));
             Assert.That(branch.LeftKeyPostfix.ToArray(), Is.EqualTo(first));
             Assert.That(branch.RightKeyPostfix.ToArray(), Is.EqualTo(second));
-            Assert.That(branch.LeftHash, Is.EqualTo(PbtNodeCodec.HashLeaf(first, Value(2))), "the split reuses the stored leaf hash");
-            Assert.That(branch.RightHash, Is.EqualTo(PbtNodeCodec.HashLeaf(second, Value(3))));
+            Assert.That(branch.LeftHash, Is.EqualTo(PbtTreeHarness.HashLeaf(first, Value(2))), "the split reuses the stored leaf hash");
+            Assert.That(branch.RightHash, Is.EqualTo(PbtTreeHarness.HashLeaf(second, Value(3))));
         }
 
         tree.ApplyBatch([(first, null)]);
@@ -644,14 +608,12 @@ public class Eip8297CanonicalTreeTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.IsLeaf, Is.EqualTo(leaf));
-            Assert.That(reader.Encoding.ToArray(), Is.EqualTo(expected));
-            Assert.That(reader.Encoding.Overlaps(backing.AsSpan(), out int offset), Is.True);
-            Assert.That(offset, Is.EqualTo(-7));
+            Assert.That(encoding, Is.EqualTo(expected));
             if (leaf)
             {
                 Assert.That(reader.Key.ToArray(), Is.EqualTo(field));
                 Assert.That(reader.Key.Overlaps(backing.AsSpan()), Is.True);
-                Assert.That(PbtNodeCodec.HashLeaf(field, left.Bytes).Bytes.ToArray(), Is.EqualTo(Hash([0, .. field, .. left.Bytes])), "leaf hash");
+                Assert.That(PbtTreeHarness.HashLeaf(field, left.Bytes).Bytes.ToArray(), Is.EqualTo(Hash([0, .. field, .. left.Bytes])), "leaf hash");
             }
             else
             {
@@ -693,37 +655,6 @@ public class Eip8297CanonicalTreeTests
                 Assert.That(empty.BitCount, Is.EqualTo(prefix.BitCount));
                 Assert.That(empty.Bytes.IsEmpty, Is.True);
             }
-        }
-    }
-
-    [Test]
-    public void Compressed_prefix_append_preserves_bits_and_capacity(
-        [Values(0, 1, 7, 8, 9)] int bitCount, [Values(0, 3, 8)] int pathDepth, [Values(0, 1)] int direction)
-    {
-        byte[] bytes = new byte[(bitCount + 7) / 8];
-        if (bitCount != 0) bytes[0] = 0x80;
-        byte[] encoding = EncodePrefix(bytes, bitCount);
-        CompressedPrefix prefix = CompressedPrefix.FromValidated(encoding);
-        PbtStorageNodePath path = PbtStorageNodePath.Create(new byte[(pathDepth + 7) / 8], pathDepth);
-        int depth = pathDepth + bitCount + 1;
-        byte[] expected = new byte[(depth + 7) / 8];
-        CopyBitsReference(bytes, 0, bitCount, expected, pathDepth);
-        expected[(depth - 1) >> 3] |= (byte)(direction << (7 - ((depth - 1) & 7)));
-        Assert.That(path.Append(prefix, direction), Is.EqualTo(PbtStorageNodePath.Create(expected, depth)));
-        if (bitCount == 0) Assert.That(path.Append(default, direction), Is.EqualTo(path.Append(prefix, direction)));
-        int boundaryDepth = PbtStorageNodePath.MaxBitDepth - bitCount - 1;
-        PbtStorageNodePath boundary = PbtStorageNodePath.Create(new byte[(boundaryDepth + 7) / 8], boundaryDepth);
-        Assert.That(boundary.Append(prefix, direction).BitDepth, Is.EqualTo(PbtStorageNodePath.MaxBitDepth));
-
-        for (int index = 0; index < 1000; index++) _ = path.Append(CompressedPrefix.FromValidated(encoding), direction);
-        long before = GC.GetAllocatedBytesForCurrentThread();
-        int checksum = 0;
-        for (int index = 0; index < 1000; index++) checksum += path.Append(CompressedPrefix.FromValidated(encoding), direction).BitDepth;
-        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(checksum, Is.EqualTo(depth * 1000));
-            Assert.That(allocated, Is.Zero);
         }
     }
 
@@ -806,7 +737,7 @@ public class Eip8297CanonicalTreeTests
     private static int ReadNodeFields(byte[] encoding)
     {
         PbtNodeReader reader = PbtNodeReader.FromValidated(encoding);
-        return reader.Encoding.Length + (reader.IsLeaf
+        return encoding.Length + (reader.IsLeaf
             ? reader.Key[0]
             : reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0] + reader.LeftKeyPostfix[0] + reader.RightKeyPostfix[0]);
     }
@@ -816,7 +747,7 @@ public class Eip8297CanonicalTreeTests
     {
         byte[] address32 = new byte[32];
         address32[0] = 0xA5;
-        PbtPath account = Eip8297KeyDerivation.AccountKey(address32, 0);
+        PbtPath account = Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address32), 0);
         PbtStorageTreeKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
         PbtStorageTreeKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
         byte[] expectedAddressHash = Hash(address32);
@@ -1155,7 +1086,7 @@ public class Eip8297CanonicalTreeTests
         byte[] expectedLeaf = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(setKeyBytes));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootAfterUpdate, Is.EqualTo(PbtNodeCodec.HashLeaf(setKeyBytes, Value(2))));
+            Assert.That(rootAfterUpdate, Is.EqualTo(PbtTreeHarness.HashLeaf(setKeyBytes, Value(2))));
             Assert.That(store.Inner.EnumerateRecords(), Has.Count.EqualTo(1));
             Assert.That(store.GetNode(new PbtStorageNodePath([], 0), rootAfterUpdate), Is.EqualTo(expectedLeaf));
         }
@@ -1543,7 +1474,7 @@ public class Eip8297CanonicalTreeTests
         List<PbtNodeRecord> records = [];
         PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
         while (nodes.MoveNext())
-            records.Add(new(PbtFourLevelGroupGeometry.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
+            records.Add(new(PbtTestPaths.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
         byte[] expectedPayload = new byte[group.Payload.Length];
         BufferWriter writer = new(expectedPayload);
         PbtNodeGroupEncoder.Encode(ref writer, groupKey, records, default);
@@ -1761,10 +1692,10 @@ public class Eip8297CanonicalTreeTests
             if (OverrideNode is { } overrideNode)
             {
                 List<PbtNodeRecord> records = [];
-                for (int position = 0; position < PbtNodeGroupCodec.PositionCount; position++)
+                for (int position = 0; position < PbtFourLevelGroupGeometry.PositionCount; position++)
                 {
                     if (position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0) continue;
-                    PbtStorageNodePath path = PbtFourLevelGroupGeometry.PathOf(storageGroupKey, position);
+                    PbtStorageNodePath path = PbtTestPaths.PathOf(storageGroupKey, position);
                     byte[]? encoding = overrideNode(path);
                     if (encoding is not null) records.Add(new PbtNodeRecord(path, encoding));
                 }

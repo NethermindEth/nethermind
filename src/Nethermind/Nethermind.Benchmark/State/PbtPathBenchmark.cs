@@ -47,7 +47,7 @@ public class PbtPathBenchmark
     public int HashKey() => _key.GetHashCode();
 
     [Benchmark]
-    public int FirstDifferingBit() => _key.FirstDifferingBit(_differentKey);
+    public int FirstDifferingBit() => _key.FirstDifferingBit(_differentKey, 0);
 
     [Benchmark]
     public int DictionaryLookup() => _dictionary[_equalKey];
@@ -67,7 +67,7 @@ public class PbtPathDerivationBenchmark
     }
 
     [Benchmark]
-    public PbtPath Account() => Eip8297KeyDerivation.AccountKey(_address, 0);
+    public PbtPath Account() => Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(_address), 0);
 
     [Benchmark]
     public PbtStorageTreeKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
@@ -95,7 +95,7 @@ public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKe
             bytes[^1] = (byte)index;
             _keys[index] = TKey.Create(bytes);
         }
-        _builder = new(0);
+        _builder = new();
         foreach (TKey key in _keys) _builder.Set(key, default);
         using PbtWriteBatch<TKey> warmup = _builder.Build();
     }
@@ -106,7 +106,7 @@ public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKe
     [Benchmark]
     public int PopulateColdBuilder()
     {
-        using PbtWriteBatchBuilder<TKey> builder = new(0);
+        using PbtWriteBatchBuilder<TKey> builder = new();
         foreach (TKey key in _keys) builder.Set(key, default);
         return builder.Count;
     }

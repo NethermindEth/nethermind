@@ -26,7 +26,6 @@ namespace Nethermind.State.Pbt.Image;
 internal sealed class PbtAnchorPublication(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
-    IPbtPersistence persistence,
     PbtPersistenceCoordinator coordinator,
     IPbtConfig config,
     ILogManager logManager)
@@ -57,7 +56,6 @@ internal sealed class PbtAnchorPublication(
         Stopwatch importing = Stopwatch.StartNew();
         if (ImportedEarlier(anchor) is { } imported) return imported;
 
-        Directory.CreateDirectory(scratchDirectory);
         ValueHash256 claimedRoot = PbtSnapshotCodec.ReadRoot(snapshot);
         if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
@@ -82,8 +80,7 @@ internal sealed class PbtAnchorPublication(
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool leaves = new(directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken)
-            { FinalMerge = () => { if (_logger.IsInfo) _logger.Info("PBT import: merging the sorted preimage leaves."); } };
+            using PbtSortedSpool leaves = new("import preimage leaves", directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
             ulong leafCount;
             using (PbtSortedSpool.Writer writer = leaves.CreateWriter())
                 leafCount = WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);
@@ -114,7 +111,8 @@ internal sealed class PbtAnchorPublication(
             CodeInfo? accountCode = account.HasCode
                 ? new CodeInfo(code.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing code {account.CodeHash} of {address}."))
                 : null;
-            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(PbtStateKey.AddressKeyHash(address!), account, accountCode))
+            ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address!);
+            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressKeyHash, account, accountCode))
             {
                 leaves.Add(key.Bytes, value.Bytes);
                 leafCount++;
@@ -127,7 +125,7 @@ internal sealed class PbtAnchorPublication(
                 UInt256 value = default;
                 if (!flat.TryGetSlot(address!, slot, ref value) || value.IsZero) continue;
                 value.ToBigEndian(slotValue);
-                leaves.Add(PbtStateKey.Storage(address!, slot).Bytes, slotValue);
+                leaves.Add(PbtStateKey.Storage(address!, addressKeyHash, slot).Bytes, slotValue);
                 leafCount++;
             }
         }
@@ -145,7 +143,7 @@ internal sealed class PbtAnchorPublication(
         (ulong Accounts, ulong Slots, long CodeChunks) staged;
         using (LogicalBatch batch = new(target, config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount, cancellationToken))
         {
-            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction), anchor.MaxBufferedCodeBytes, cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction), cancellationToken);
             batch.Commit();
         }
         PbtLeafStaging.RebuildCodes(target, staged.CodeChunks, logManager, cancellationToken);
@@ -169,7 +167,7 @@ internal sealed class PbtAnchorPublication(
         if (!prepared.AsSpan().SequenceEqual(Provenance(anchor)))
             throw new InvalidDataException("The native PBT database was imported from another migration source.");
         if (_logger.IsInfo) _logger.Info($"PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} was imported earlier; reusing it.");
-        using IPbtPersistence.IReader reader = persistence.CreateReader();
+        using IPbtPersistence.IReader reader = target.CreateReader();
         return reader.CurrentRoot;
     }
 
@@ -191,24 +189,11 @@ internal sealed class PbtAnchorPublication(
         {
             try
             {
-                ArrayPoolList<RebuildEntry>? chunk = new(2048);
-                try
+                using (PbtRebuilder.EntrySink sink = new(channel.Writer, 2048, linked.Token))
                 {
-                    foreach (RebuildEntry entry in leaves(linked.Token))
-                    {
-                        chunk.Add(entry);
-                        if (chunk.Count != 2048) continue;
-                        await channel.Writer.WriteAsync(chunk, linked.Token);
-                        chunk = null;
-                        chunk = new(2048);
-                    }
-                    if (chunk.Count != 0)
-                    {
-                        await channel.Writer.WriteAsync(chunk, linked.Token);
-                        chunk = null;
-                    }
+                    foreach (RebuildEntry entry in leaves(linked.Token)) await sink.Add(entry);
+                    await sink.Complete();
                 }
-                finally { chunk?.Dispose(); }
                 channel.Writer.TryComplete();
             }
             catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
@@ -280,22 +265,9 @@ internal sealed class PbtAnchorPublication(
             foreach (PbtColumns column in targetDb.ColumnKeys)
             {
                 IDb records = targetDb.GetColumnDb(column);
-                List<byte[]> keys = new(4096);
-                foreach (byte[] recordKey in records.GetAllKeys())
-                {
-                    token.ThrowIfCancellationRequested();
-                    if (column == PbtColumns.Metadata && (recordKey.AsSpan().SequenceEqual(_provenanceKey) || PbtRocksDbPersistence.IsSchemaStamp(recordKey))) continue;
-                    keys.Add(recordKey);
-                    if (keys.Count == 4096) Delete();
-                }
-                Delete();
+                PbtColumnSweep.DeleteKeys(records, 4096,
+                    recordKey => column == PbtColumns.Metadata && (recordKey.SequenceEqual(_provenanceKey) || PbtRocksDbPersistence.IsSchemaStamp(recordKey)), token);
                 records.SyncWal();
-                void Delete()
-                {
-                    using IWriteBatch batch = records.StartWriteBatch();
-                    foreach (byte[] recordKey in keys) batch.Remove(recordKey);
-                    keys.Clear();
-                }
             }
         }
         else

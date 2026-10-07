@@ -32,19 +32,9 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
     public byte GetByte(int byteIndex) => _path.Bytes[byteIndex];
 
     /// <inheritdoc/>
-    public PbtStorageNodePath Prefix(int depth) => PbtNodePathOperations.Prefix<PbtStorageNodePath>(_path.Bytes, BitDepth, depth);
-
-    /// <inheritdoc/>
-    public PbtStorageNodePath AppendBits(int bits, int bitCount) =>
-        PbtNodePathOperations.AppendBits<PbtStorageNodePath>(_path.Bytes, BitDepth, bits, bitCount);
-    /// <inheritdoc/>
     public TPath ToPath<TPath>() where TPath : struct, IPbtNodePath<TPath> => typeof(TPath) == typeof(PbtStorageNodePath)
         ? Unsafe.As<PbtStorageNodePath, TPath>(ref Unsafe.AsRef(in this))
         : TPath.Create(_path.Bytes, BitDepth);
-
-    /// <summary>Appends a compressed prefix and one direction bit.</summary>
-    public PbtStorageNodePath Append(CompressedPrefix prefix, int direction) =>
-        PbtNodePathOperations.Append<PbtStorageNodePath>(_path.Bytes, BitDepth, prefix, direction);
 
     public int CompareTo(PbtStorageNodePath other)
     {
@@ -52,11 +42,6 @@ public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IE
         return depthComparison != 0 ? depthComparison : _path.Bytes.SequenceCompareTo(other._path.Bytes);
     }
     public bool Equals(PbtStorageNodePath other) => BitDepth == other.BitDepth && _path.Bytes.SequenceEqual(other._path.Bytes);
-    public override bool Equals(object? obj) => obj switch
-    {
-        PbtNodePath path => PbtNodePathOperations.Equal(this, path),
-        PbtStorageNodePath path => Equals(path),
-        _ => false
-    };
+    public override bool Equals(object? obj) => obj is PbtStorageNodePath path && Equals(path);
     public override int GetHashCode() => _hashCode;
 }

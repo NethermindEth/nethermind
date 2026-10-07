@@ -26,8 +26,6 @@ internal readonly struct NodeGroupPath
     // Each preceding leaf contributes two post-order positions, except its still-open ancestors.
     internal int Position => 2 * (Slot + Width) - 2 - BitOperations.PopCount((uint)Slot);
 
-    internal int GetBit(int bit) => (Slot >> (3 - bit)) & 1;
-
     /// <summary>Whether a key in boundary slot <paramref name="slot"/> lies under this path; no key lies under one past the last slot.</summary>
     internal bool Covers(int slot) => ((slot ^ Slot) >> (PbtFourLevelGroupGeometry.LevelsPerGroup - Length)) == 0;
 

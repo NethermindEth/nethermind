@@ -32,11 +32,7 @@ public interface ITrieNodeLog
     /// RocksDB snapshot then confirms exactly which log batches it includes, and recovery discards records of a
     /// batch whose RocksDB write never happened.
     /// </param>
-    /// <param name="bypass">
-    /// When true the returned batch passes every column through unchanged; used for staging and no-WAL batches,
-    /// which may be open several at a time and <see cref="Drain"/> the log first, so no logged group shadows their writes.
-    /// </param>
-    IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch, bool bypass);
+    IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch);
 
     /// <summary>Merges every generation into RocksDB synchronously.</summary>
     void Drain();

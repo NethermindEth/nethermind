@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Threading;
 using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
@@ -59,19 +58,19 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             PbtWriteOperation<TKey> operation = operations[0];
             if (current.IsEmpty)
-                return operation.Value == default ? default : EncodeLeaf(operation.Key, HashLeaf(operation), encoding);
+                return operation.Value == default ? default : EncodeLeaf(operation.Key, operation.Value, encoding);
             if (current.IsLeaf)
             {
                 TKey leafKey = current.LeafKey(path);
                 if (operation.Key.Equals(leafKey))
                 {
                     if (operation.Value == default) return default;
-                    return EncodeLeaf(leafKey, HashLeaf(operation), encoding);
+                    return EncodeLeaf(leafKey, operation.Value, encoding);
                 }
                 if (operation.Value == default) return EncodeLeaf(leafKey, current.Hash, encoding);
                 int divergenceDepth = leafKey.FirstDifferingBit(operation.Key, bitDepth);
                 if (divergenceDepth < Math.Min(leafKey.BitLength, operation.Key.BitLength))
-                    return EncodeTwoLeafBranch(leafKey, current.Hash, operation.Key, HashLeaf(operation), divergenceDepth, bitDepth, encoding);
+                    return EncodeTwoLeafBranch(leafKey, current.Hash, operation.Key, operation.Value, divergenceDepth, bitDepth, encoding);
             }
             else if (current.LeafChildrenMask == (LeftLeaf | RightLeaf))
             {
@@ -80,7 +79,7 @@ internal static partial class TrieUpdater<TKey, TPath>
                 {
                     if (operation.Value == default)
                         return right ? EncodeLeaf(current.LeftLeafKey(path), current.LeftHash, encoding) : EncodeLeaf(current.RightLeafKey(path), current.RightHash, encoding);
-                    ValueHash256 leafHash = HashLeaf(operation);
+                    ValueHash256 leafHash = operation.Value;
                     if (leafHash == (right ? current.RightHash : current.LeftHash)) return EncodeReanchored(current, path, bitDepth, encoding);
                     PbtNodeReader branch = current.Reader;
                     int length = PbtNodeCodec.EncodeReanchored(branch, current.AnchorDepth, bitDepth, right ? branch.LeftHash : leafHash, right ? leafHash : branch.RightHash, encoding);
@@ -115,15 +114,20 @@ internal static partial class TrieUpdater<TKey, TPath>
         ReadOnlySpan<PbtWriteOperation<TKey>> operations, ref PbtTraversalPath path, int bitDepth, int anchorDepth, scoped Span<byte> encoding)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        if (IsAbsentGroup(current, bitDepth))
+        AbsentGroupFrame<TKey, TPath> absent;
+        // A spanning branch may inline two leaves as well, so it is checked first: it carries down the size the owner holds
+        // of everything below the boundary slot on the way here, which keeps the owner's accounting.
+        if (IsAbsentGroupBelow(current, bitDepth))
+            absent = new(bitDepth, current.BranchSlot(path, bitDepth), ownerReader.DescendantBytes(BoundarySlot(path.Bytes, ownerReader.BitDepth)));
+        else if (OwnsNoGroup(current))
+            absent = new(bitDepth);
+        else
         {
-            // The owner holds the size of everything below the boundary slot on the way here, which a spanning branch carries down.
-            AbsentGroupFrame<TKey, TPath> absent = AbsentFrame(current, path, bitDepth, ownerReader.DescendantBytes(BoundarySlot(path.Bytes, ownerReader.BitDepth)));
-            return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
+            GroupFrameReader<TKey, TPath> reader = new(context.Store, path, current.HashAt(bitDepth));
+            using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
+                return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
         }
-        GroupFrameReader<TKey, TPath> reader = new(context.Store, path, current.HashAt(bitDepth));
-        using (new GroupFrameReader<TKey, TPath>.Scope(ref reader))
-            return FoldSortedAndPublish(context, ref reader, current, operations, ref path, bitDepth, anchorDepth, encoding);
+        return FoldSortedAndPublish(context, ref absent, current, operations, ref path, bitDepth, anchorDepth, encoding);
     }
 
     /// <summary>Folds the group of <paramref name="reader"/> and publishes it, detaching its root as the encoding its caller places.</summary>
@@ -155,19 +159,12 @@ internal static partial class TrieUpdater<TKey, TPath>
         scoped in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations, PbtTraversalPath path)
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
-        int bitDepth = path.BitDepth;
-        // Only a branch splitting inside the group has anything stored in it; the root position is the input itself.
-        uint stored = !input.IsEmpty && !input.IsLeaf && input.BranchDepth < bitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup
-            ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
-            : 0;
         writer.ReserveFirstBuffer(reader.PayloadLength);
-        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, operations);
+        SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, operations);
         try
         {
-            if (context.FoldQuota is not null) TryFoldSlotsInParallel(ref walk);
-            ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
-            Debug.Assert(walk.Next == operations.Length, "The walk consumes every operation of its frame.");
-            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, path, root, PbtFourLevelGroupGeometry.RootPosition);
+            TryFoldSlotsInParallel(ref walk);
+            return WalkRoot(ref walk, input.IsEmpty);
         }
         finally
         {
@@ -184,7 +181,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// here, on the calling thread, since the frame's hash cache is not shared. Each worker writes its slot's encoding
     /// into a slice of its own and never touches the frame, whose group lease outlives the loop, so boundary nodes are
     /// read from it in place. Slots fold on the calling thread while the quota has no free slot, as
-    /// <see cref="ForEachOnQuota"/> does.
+    /// <see cref="TrieUpdater.ForEachOnQuota"/> does.
     /// </remarks>
     [MethodImpl(MethodImplOptions.NoInlining)]
     [SkipLocalsInit]
@@ -257,47 +254,11 @@ internal static partial class TrieUpdater<TKey, TPath>
     private static void FoldSlotRuns(FoldContext context, SortedSlotFold[] folds, scoped ReadOnlySpan<int> runEnds, TPath groupPath, int bitDepth, byte[] foldedAhead)
     {
         using ArrayPoolList<int> runs = new(runEnds);
-        ForEachOnQuota(context.FoldQuota!, runs.Count, run =>
+        ForEachOnQuota(context.FoldQuota, runs.Count, run =>
         {
             for (int fold = run == 0 ? 0 : runs[run - 1]; fold < runs[run]; fold++)
                 folds[fold].Fold(context, groupPath, bitDepth, foldedAhead);
         });
-    }
-
-    /// <summary>Runs <paramref name="work"/> for every index below <paramref name="count"/>, across threads as <paramref name="quota"/> allows.</summary>
-    /// <remarks>
-    /// Work runs on the calling thread while the quota has no free slot; the first slot taken admits a parallel loop over
-    /// the indices still left, whose workers charge themselves as they start.
-    /// </remarks>
-    private static void ForEachOnQuota(ConcurrencyController quota, int count, Action<int> work)
-    {
-        int next = 0;
-        for (; next < count - 1 && !quota.TryRequestConcurrencyQuota(); next++)
-            work(next);
-        if (next < count - 1)
-        {
-            int callerThreadId = Environment.CurrentManagedThreadId;
-            int admissionSlotClaimed = 0;
-            try
-            {
-                ParallelUnbalancedWork.For(next, count, ParallelUnbalancedWork.DefaultOptions,
-                    () => TakeWorkerQuota(quota, callerThreadId, ref admissionSlotClaimed),
-                    (index, tookQuota) =>
-                    {
-                        work(index);
-                        return tookQuota;
-                    },
-                    tookQuota => ReturnWorkerQuota(quota, tookQuota));
-            }
-            finally
-            {
-                ReturnAdmissionSlot(quota, ref admissionSlotClaimed);
-            }
-        }
-        else if (next < count)
-        {
-            work(next);
-        }
     }
 
     /// <summary>Sorts a zone's operations, which the producer grouped by <paramref name="shardTable"/>'s shards, by sorting each shard in place, and replaces every set value with its leaf hash.</summary>
@@ -310,7 +271,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     internal static void SortShards(FoldContext context, Span<PbtWriteOperation<TKey>> operations, ReadOnlySpan<int> shardTable)
     {
         int shardCount = BitOperations.PopCount((uint)shardTable[0]);
-        if (context.FoldQuota is null || shardCount < 2 || operations.Length < 2 * context.FanOut.MinOperationsPerWorker)
+        if (shardCount < 2 || operations.Length < 2 * context.FanOut.MinOperationsPerWorker)
         {
             int offset = 0;
             foreach (int count in shardTable.Slice(1, shardCount))
@@ -342,7 +303,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     /// <remarks>
     /// For a frame whose slots hold keys of other types than its own, so their operations cannot be walked here. Every
     /// touched slot's boundary node is resolved on the calling thread, then the slots fold across threads as
-    /// <see cref="ForEachOnQuota"/> allows, and the walk places each result as one folded ahead. Two stand-in operations
+    /// <see cref="TrieUpdater.ForEachOnQuota"/> allows, and the walk places each result as one folded ahead. Two stand-in operations
     /// per touched slot drive the walk, so the single-operation shortcuts never apply; each sets a value exactly when its
     /// slot folded to a node, which is all the walk reads of them besides the slot their one-byte key names.
     /// </remarks>
@@ -352,16 +313,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         where TFrame : struct, IGroupFrame<TKey, TPath>
     {
         Debug.Assert(path.BitDepth == 0, "Stand-in keys name a slot of the root group only.");
-        uint stored = !input.IsEmpty && !input.IsLeaf && input.BranchDepth < PbtFourLevelGroupGeometry.LevelsPerGroup
-            ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
-            : 0;
         writer.ReserveFirstBuffer(reader.PayloadLength);
         int slotCount = BitOperations.PopCount((uint)touchedSlots);
         using ArrayPoolList<PbtWriteOperation<TKey>> standIns = new(2 * slotCount);
         int[] slots = new int[slotCount];
         BoundaryNode[] boundaries = new BoundaryNode[slotCount];
         long[] descendantBytes = new long[slotCount];
-        SortedWalk<TFrame> resolver = new(context, ref reader, ref hashes, writer, path, input, stored, default);
+        SortedWalk<TFrame> resolver = new(context, ref reader, ref hashes, writer, path, input, default);
         for (int remaining = touchedSlots, index = 0; remaining != 0; remaining &= remaining - 1, index++)
         {
             slots[index] = BitOperations.TrailingZeroCount(remaining);
@@ -373,7 +331,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         SlotNode[] foldedAheadNodes = ArrayPool<SlotNode>.Shared.Rent(PbtFourLevelGroupGeometry.BoundarySlots);
         try
         {
-            ForEachOnQuota(context.FoldQuota!, slotCount, index =>
+            ForEachOnQuota(context.FoldQuota, slotCount, index =>
                 foldedAheadNodes[slots[index]] = foldSlot(slots[index], boundaries[index], descendantBytes[index],
                     foldedAhead.AsSpan(slots[index] * MaxNodeLength, MaxNodeLength)));
             foreach (int slot in slots)
@@ -384,21 +342,28 @@ internal static partial class TrieUpdater<TKey, TPath>
                 standIns.Add(standIn);
             }
 
-            SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, stored, standIns.AsSpan())
+            SortedWalk<TFrame> walk = new(context, ref reader, ref hashes, writer, path, input, standIns.AsSpan())
             {
                 FoldedAhead = foldedAhead,
                 FoldedAheadNodes = foldedAheadNodes,
                 FoldedAheadMask = touchedSlots,
             };
-            ComposedNode root = Walk(ref walk, default, input.IsEmpty ? default : new Cover(CoverKind.Input, RootSource));
-            Debug.Assert(walk.Next == standIns.Count, "The walk consumes every stand-in of its frame.");
-            return root.IsEmpty ? default : Land(ref reader, ref hashes, writer, path, root, PbtFourLevelGroupGeometry.RootPosition);
+            return WalkRoot(ref walk, input.IsEmpty);
         }
         finally
         {
             ArrayPool<byte>.Shared.Return(foldedAhead);
             ArrayPool<SlotNode>.Shared.Return(foldedAheadNodes);
         }
+    }
+
+    /// <summary>Walks the open frame from its input, consuming every operation, and lands its root, the last entry, at the root position.</summary>
+    private static ComposedNode WalkRoot<TFrame>(scoped ref SortedWalk<TFrame> walk, bool inputIsEmpty)
+        where TFrame : struct, IGroupFrame<TKey, TPath>
+    {
+        ComposedNode root = Walk(ref walk, default, inputIsEmpty ? default : new Cover(CoverKind.Input, RootSource));
+        Debug.Assert(walk.Next == walk.Operations.Length, "The walk consumes every operation of its frame.");
+        return root.IsEmpty ? default : Land(ref walk.Reader, ref walk.Hashes, walk.Writer, walk.Path, root, PbtFourLevelGroupGeometry.RootPosition);
     }
 
     private static int OffsetOf(PbtWriteOperation<TKey>[] array, ReadOnlySpan<PbtWriteOperation<TKey>> span)
@@ -446,10 +411,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         return new SlotNode(node.Length, hash);
     }
 
-    private static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
-
-    /// <summary>The leaf hash of a set operation, which <see cref="SortShards"/> put in place of its value.</summary>
-    private static ValueHash256 HashLeaf(in PbtWriteOperation<TKey> operation) => operation.Value;
+    internal static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
 
     /// <summary>How many leaves <see cref="HashLeaves"/> hashes in one <see cref="Blake3Hash.HashMany"/> call, the widest lane count.</summary>
     private const int LeafHashBatch = 16;
@@ -714,7 +676,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         node = default;
         if (cover.IsEmpty)
         {
-            if (operation.Value != default) node = AppendLeaf(walk.Writer, local.Position, operation.Key, HashLeaf(operation));
+            if (operation.Value != default) node = AppendLeaf(walk.Writer, local.Position, operation.Key, operation.Value);
             return true;
         }
         if (!operation.Key.Equals(walk.LeafKey(cover)))
@@ -724,7 +686,7 @@ internal static partial class TrieUpdater<TKey, TPath>
             return true;
         }
         if (operation.Value == default) return true;
-        ValueHash256 leafHash = HashLeaf(operation);
+        ValueHash256 leafHash = operation.Value;
         node = leafHash == walk.LeafHash(cover) ? AppendUntouched(ref walk, local, cover) : AppendLeaf(walk.Writer, local.Position, operation.Key, leafHash);
         return true;
     }
@@ -893,7 +855,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>The source position standing for the frame's input, which no group position addresses.</summary>
-    private const int RootSource = PbtNodeGroupCodec.PositionCount;
+    private const int RootSource = PbtFourLevelGroupGeometry.PositionCount;
 
     private enum CoverKind : byte
     {
@@ -1008,7 +970,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         }
 
         internal SortedWalk(FoldContext context, ref TFrame reader, ref StoredGroupHashes hashes, PbtNodeGroupWriter<TPath> writer,
-            PbtTraversalPath path, in BoundaryNode input, uint stored, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
+            PbtTraversalPath path, in BoundaryNode input, ReadOnlySpan<PbtWriteOperation<TKey>> operations)
         {
             Operations = operations;
             Context = context;
@@ -1020,7 +982,10 @@ internal static partial class TrieUpdater<TKey, TPath>
             _nextSlot = SlotAt(0);
             _followingSlot = -1;
             _input = input;
-            _stored = stored;
+            // Only a branch splitting inside the group has anything stored in it; the root position is the input itself.
+            _stored = !input.IsEmpty && !input.IsLeaf && input.BranchDepth < BitDepth + PbtFourLevelGroupGeometry.LevelsPerGroup
+                ? reader.StoredPositions & ~(1u << PbtFourLevelGroupGeometry.RootPosition)
+                : 0;
         }
 
         internal readonly bool IsLeaf(Cover cover) => cover.Kind == CoverKind.InlineLeaf || (cover.Kind == CoverKind.Input && _input.IsLeaf);

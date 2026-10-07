@@ -129,7 +129,7 @@ public class PbtMetricsTests
         if (snapshotHit)
         {
             content.Accounts[addressHash] = deleted ? null : account.ToPbtAccount();
-            if (scenario == "selfdestruct") content.ClearStorage(addressHash, isNewStorage: false);
+            if (scenario == "selfdestruct") content.ClearStorage(addressHash);
             else
             {
                 content.SetSlot(headerStorageKey, deleted ? default : slot);
@@ -150,8 +150,8 @@ public class PbtMetricsTests
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
         EvmWord actualHeaderSlot = bundle.GetSlot(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
         EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
-        ISlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
-        ISlotRun storageRun = bundle.RentRun(SlotRun.RunKey(storageKey), addressHash);
+        PackedSlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
+        PackedSlotRun storageRun = bundle.RentRun(SlotRun.RunKey(storageKey), addressHash);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 

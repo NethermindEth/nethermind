@@ -89,9 +89,13 @@ public static partial class TrieUpdater
         StoredGroupHashes.Open(out StoredGroupHashes hashes);
         FoldContext context = new(store, storeWriter, memoryProvider, foldQuota, null, fanOut);
         ComposedNode rootNode = WalkFrameOverForeignSlots(context, ref rootReader, ref hashes, rootWriter, root, rootPath, touchedSlots, foldSlot);
-        FoldResult rootResult = default;
-        TakeRoot(rootWriter, rootPath, 0, rootNode, ref rootResult);
-        ValueHash256 hash = rootWriter.WriteRoot(rootPath, rootResult);
+        ValueHash256 hash = default;
+        if (!rootNode.IsEmpty)
+        {
+            ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
+            rootWriter.ValidateEntry(rootPath, PbtFourLevelGroupGeometry.RootPosition, entry);
+            hash = rootNode.Hash != default || PbtNodeReader.FromValidated(entry).IsLeaf ? rootNode.Hash : HashBranch(entry);
+        }
         PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
         return hash;
     }

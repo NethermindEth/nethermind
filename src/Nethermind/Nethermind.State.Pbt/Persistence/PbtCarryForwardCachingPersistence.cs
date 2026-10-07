@@ -15,8 +15,8 @@ namespace Nethermind.State.Pbt.Persistence;
 /// <summary>
 /// <see cref="IPbtPersistence"/> decorator that caches persisted account and slot-run reads across heads, so a
 /// new head does not re-read the serving working set from the database. Wraps the reader (serve/fill) and the
-/// write batch (drops the committed write-set; clears on storage clear or any staging write). Generation-gated:
-/// a reader behind the cache basis bypasses it rather than serving stale data.
+/// write batch (drops the committed write-set). Generation-gated: a reader behind the cache basis bypasses it rather
+/// than serving stale data.
 /// </summary>
 public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
 {
@@ -26,7 +26,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private readonly int _maxEntriesPerKind;
 
     private readonly ConcurrentDictionary<ValueHash256, PbtAccount?> _accounts = new();
-    private readonly ConcurrentDictionary<PbtStorageTreeKey, ISlotRun> _runs = new();
+    private readonly ConcurrentDictionary<PbtStorageTreeKey, PackedSlotRun> _runs = new();
     private int _accountCount;
     private int _runCount;
 
@@ -56,11 +56,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     }
 
     public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags) =>
-        new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, treeRoot, flags), to, clearAll: false);
-
-    // Staging writes bypass state ids, so nothing cached can be trusted after they commit.
-    public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
-        new InvalidatingWriteBatch(this, _inner.CreateStagingWriteBatch(flags), to: null, clearAll: true);
+        new InvalidatingWriteBatch(this, _inner.CreateWriteBatch(from, to, treeRoot, flags), to);
 
     public void Flush() => _inner.Flush();
 
@@ -90,7 +86,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     }
 
     // Cached runs are never returned to their pool: a concurrent reader may still be cloning an evicted one.
-    private void TryCacheRun(in PbtStorageTreeKey runKey, ISlotRun run, long readerGeneration)
+    private void TryCacheRun(in PbtStorageTreeKey runKey, PackedSlotRun run, long readerGeneration)
     {
         using (_lock.EnterScope())
         {
@@ -105,12 +101,12 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         }
     }
 
-    private void OnCommitted(StateId? to, HashSet<ValueHash256>? writtenAccounts, HashSet<PbtStorageTreeKey>? writtenRuns, bool clearAll)
+    private void OnCommitted(StateId to, HashSet<ValueHash256>? writtenAccounts, HashSet<PbtStorageTreeKey>? writtenRuns, bool clearAll)
     {
         using (_lock.EnterScope())
         {
             _generation++;
-            if (to is { } committed) _basis = committed;
+            _basis = to;
             if (clearAll)
             {
                 _accounts.Clear();
@@ -142,29 +138,26 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             return account;
         }
 
-        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             bool current = parent.IsCurrent(generation);
-            if (current && parent._runs.TryGetValue(runKey, out ISlotRun? cached)) return cached.Clone();
-            ISlotRun run = inner.GetSlotRun(runKey);
+            if (current && parent._runs.TryGetValue(runKey, out PackedSlotRun? cached)) return cached.Clone();
+            PackedSlotRun run = inner.GetSlotRun(runKey);
             if (current && !parent._runs.ContainsKey(runKey)) parent.TryCacheRun(runKey, run.Clone(), generation);
             return run;
         }
 
         public CodeInfo? GetCode(in ValueHash256 codeHash) => inner.GetCode(codeHash);
         public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
-        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => inner.EnumerateStorage(addressHash);
+        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
         public void Dispose() => inner.Dispose();
     }
 
-    private sealed class InvalidatingWriteBatch(PbtCarryForwardCachingPersistence parent, IPbtPersistence.IWriteBatch inner, StateId? to, bool clearAll) : IPbtPersistence.IWriteBatch
+    private sealed class InvalidatingWriteBatch(PbtCarryForwardCachingPersistence parent, IPbtPersistence.IWriteBatch inner, StateId to) : IPbtPersistence.IWriteBatch
     {
         private HashSet<ValueHash256>? _writtenAccounts;
         private HashSet<PbtStorageTreeKey>? _writtenRuns;
-
-        private bool _clearAll = clearAll;
 
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
@@ -172,7 +165,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             inner.SetAccount(addressHash, account);
         }
 
-        public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run)
+        public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run)
         {
             (_writtenRuns ??= []).Add(runKey);
             inner.SetSlotRun(runKey, run);
@@ -181,18 +174,12 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) => inner.SetCode(codeHash, code);
         public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) => inner.SetCodeLeaf(key, value);
 
-        public void ClearStorage(in ValueHash256 addressHash)
-        {
-            _clearAll = true;
-            inner.ClearStorage(addressHash);
-        }
-
         public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> => inner.SetNodeGroup(groupKey, payload);
 
         public void Commit()
         {
             inner.Commit();
-            parent.OnCommitted(to, _writtenAccounts, _writtenRuns, _clearAll);
+            parent.OnCommitted(to, _writtenAccounts, _writtenRuns, clearAll: false);
         }
 
         public void Dispose() => inner.Dispose();

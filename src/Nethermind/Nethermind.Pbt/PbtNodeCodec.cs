@@ -151,18 +151,10 @@ internal static class PbtNodeCodec
             throw new InvalidDataException("A PBT branch must have two non-empty children.");
     }
 
-    /// <summary>Hashes a leaf from its complete key and 32-byte value, per EIP-8297.</summary>
-    internal static ValueHash256 HashLeaf(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        Span<byte> preimage = stackalloc byte[LeafPreimageLength(key.Length)];
-        WriteLeafPreimage(preimage, key, value);
-        return Blake3Hash.Hash(preimage);
-    }
-
-    /// <summary>The length of the preimage <see cref="HashLeaf"/> hashes for a key of <paramref name="keyLength"/> bytes.</summary>
+    /// <summary>The length of the EIP-8297 leaf hash preimage for a key of <paramref name="keyLength"/> bytes.</summary>
     internal static int LeafPreimageLength(int keyLength) => 1 + keyLength + 32;
 
-    /// <summary>Writes the preimage <see cref="HashLeaf"/> hashes into <paramref name="preimage"/>, which is <see cref="LeafPreimageLength"/> bytes long.</summary>
+    /// <summary>Writes the EIP-8297 leaf hash preimage of a complete key and 32-byte value into <paramref name="preimage"/>, which is <see cref="LeafPreimageLength"/> bytes long.</summary>
     internal static void WriteLeafPreimage(Span<byte> preimage, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
     {
         preimage[0] = LeafTag;

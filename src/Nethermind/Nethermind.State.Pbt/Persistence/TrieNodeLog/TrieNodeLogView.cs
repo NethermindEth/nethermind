@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 
@@ -28,8 +27,8 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
     {
         try
         {
-            _version = ReadUInt64(metadata.Get(shard.VersionKey));
-            _flushedGeneration = ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
+            _version = TrieNodeLogShard.ReadUInt64(metadata.Get(shard.VersionKey));
+            _flushedGeneration = TrieNodeLogShard.ReadUInt64(metadata.Get(shard.FlushedGenerationKey));
             shard.PinNewer(pinned);
 
             while (pinned.Count > 0 && pinned[0].Number <= _flushedGeneration)
@@ -83,9 +82,7 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
 
                 offset = TrieNodeLogRecord.PrevOffset(header.Prev);
                 bytesRead = generation.ReadAt(offset, buffer);
-                header = TrieNodeLogRecord.Read(buffer);
-                if (bytesRead < TrieNodeLogRecord.HeaderLength + key.Length || header.KeyLength != key.Length
-                    || !buffer.Slice(TrieNodeLogRecord.HeaderLength, key.Length).SequenceEqual(key))
+                if (!TrieNodeLogRecord.HoldsKey(buffer[..bytesRead], key, out header))
                 {
                     throw new InvalidOperationException($"Trie node log record at {generation.Path}:{offset} is linked as a previous version of a different key");
                 }
@@ -102,6 +99,4 @@ internal sealed class TrieNodeLogView(TrieNodeLogShard shard, ArrayPoolList<Trie
         value = null;
         return false;
     }
-
-    private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 }

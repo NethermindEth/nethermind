@@ -48,15 +48,16 @@ internal static class Eip8347FixtureState
         PbtPreimageReader reader = new(preimages);
         while (reader.ReadAccount(out Address? address, out uint slotCount))
         {
-            ValueHash256 basic = leaves.GetValueOrDefault((PbtStorageTreeKey)PbtStateKey.Account(address!, PbtKeyDerivation.BasicDataLeafKey));
+            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address!);
+            ValueHash256 basic = leaves.GetValueOrDefault((PbtStorageTreeKey)PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey));
             PbtKeyDerivation.UnpackBasicData(basic.Bytes, out ulong nonce, out UInt256 balance);
             int size = (int)PbtKeyDerivation.ReadBasicDataCodeSize(basic.Bytes);
             byte[] code = new byte[size];
-            if (leaves.TryGetValue((PbtStorageTreeKey)PbtStateKey.Account(address!, PbtKeyDerivation.DelegationLeafKey), out ValueHash256 delegation))
+            if (leaves.TryGetValue((PbtStorageTreeKey)PbtStateKey.Account(addressHash, PbtKeyDerivation.DelegationLeafKey), out ValueHash256 delegation))
                 delegation.Bytes[..size].CopyTo(code);
             else
             {
-                ValueHash256 codeHash = leaves[(PbtStorageTreeKey)PbtStateKey.Account(address!, PbtKeyDerivation.CodeHashLeafKey)];
+                ValueHash256 codeHash = leaves[(PbtStorageTreeKey)PbtStateKey.Account(addressHash, PbtKeyDerivation.CodeHashLeafKey)];
                 for (int chunk = 0; chunk * 31 < size; chunk++)
                     if (leaves.TryGetValue((PbtStorageTreeKey)PbtStateKey.Code(codeHash, chunk), out ValueHash256 chunkValue))
                         chunkValue.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));

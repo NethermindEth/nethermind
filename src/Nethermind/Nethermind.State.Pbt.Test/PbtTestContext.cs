@@ -42,6 +42,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public TestFinalizedStateProvider FinalizedStateProvider { get; } = new();
     public PbtSnapshotRepository Repository { get; } = new(new MetricsConfig());
     public IPbtResourcePool ResourcePool { get; }
+    public IRefCountingMemoryProvider NodeGroupMemory { get; }
     public IPbtPersistence Persistence { get; }
     public PbtPersistenceCoordinator Coordinator { get; }
     public PbtDbManager Manager { get; }
@@ -59,19 +60,19 @@ internal sealed class PbtTestContext : IAsyncDisposable
         if (Config.CompactionOffset < 0) Config.CompactionOffset = 0;
         _cachedReaderPersistence = new PbtCachedReaderPersistence(new PbtRocksDbPersistence(db, Config, NullTrieNodeLog.Instance), new TestProcessExitSource(_cts));
         Persistence = Config.CarryForwardCache ? new PbtCarryForwardCachingPersistence(_cachedReaderPersistence) : _cachedReaderPersistence;
-        ResourcePool = new PbtResourcePool(Config, nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance);
+        NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
+        ResourcePool = new PbtResourcePool(Config);
         PbtCompactionSchedule schedule = new(new MemDb(), Config, LimboLogs.Instance);
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _trieNodeCache = new PbtTrieNodeCache(Config);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, new TestProcessExitSource(_cts), LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
-        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, ResourcePool, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, metricsConfig, Config, _stateHeaderProvider, _trieNodeCache), CodeDb, Config);
+        WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, NodeGroupMemory, Config, _stateHeaderProvider, _trieNodeCache, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
 
     public PbtScopeProvider CreateScopeProvider(bool isReadOnly = false, ILogManager? logManager = null) =>
-        new(CodeDb, Manager, _childHeaders, _stateHeaderProvider, ResourcePool, isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing, isReadOnly,
-            Config, logManager);
+        new(CodeDb, Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, isReadOnly, Config, logManager ?? LimboLogs.Instance);
 
     /// <summary>
     /// The contract code deployed by <see cref="RunReferenceBlocks"/>: more than 128 + 256 chunks (11904 bytes), so the

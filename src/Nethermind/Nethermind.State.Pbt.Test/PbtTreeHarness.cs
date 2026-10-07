@@ -29,7 +29,7 @@ internal sealed class PbtTreeHarness : IDisposable
     /// <summary>A fan-out with one worker minimum whatever the subtree size.</summary>
     public static FoldFanOut FanOut(int minOperationsPerWorker) => new(minOperationsPerWorker, long.MaxValue, minOperationsPerWorker);
 
-    public static readonly FoldFanOut DefaultFanOut = new(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker);
+    public static readonly FoldFanOut DefaultFanOut = FoldFanOut.Default;
 
     /// <summary>The code chunks of <paramref name="code"/>, copied out of the pooled memory <see cref="PbtKeyDerivation.ChunkifyCode(ReadOnlySpan{byte})"/> returns.</summary>
     public static byte[] ChunkifyCode(ReadOnlySpan<byte> code)
@@ -48,6 +48,14 @@ internal sealed class PbtTreeHarness : IDisposable
 
     /// <summary>The hash of a branch encoding: BLAKE3 over its preimage.</summary>
     public static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
+
+    /// <summary>Hashes a leaf from its complete key and 32-byte value, per EIP-8297.</summary>
+    public static ValueHash256 HashLeaf(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        byte[] preimage = new byte[PbtNodeCodec.LeafPreimageLength(key.Length)];
+        PbtNodeCodec.WriteLeafPreimage(preimage, key, value);
+        return Blake3Hash.Hash(preimage);
+    }
 
     /// <summary>Encodes a branch whose children are both branches.</summary>
     public static byte[] EncodeBranch(ReadOnlySpan<byte> prefix, int bitCount, in ValueHash256 left, in ValueHash256 right) =>
@@ -159,7 +167,7 @@ internal static class PbtStoreTestExtensions
     internal static long[] ReadDescendantBytes(ReadOnlySpan<byte> payload)
     {
         ushort descendantMask = PbtNodeGroupCodec.ReadDescendantMask(payload);
-        long[] descendantBytes = new long[PbtNodeGroupCodec.DescendantSlots];
+        long[] descendantBytes = new long[PbtFourLevelGroupGeometry.BoundarySlots];
         for (int slot = 0; slot < descendantBytes.Length; slot++)
             descendantBytes[slot] = (descendantMask & (1 << slot)) == 0 ? 0 : PbtNodeGroupCodec.ReadDescendantBytes(payload, descendantMask, slot);
         return descendantBytes;
@@ -219,7 +227,7 @@ internal static class PbtStoreTestExtensions
             foreach (PbtPhysicalPayload group in payloads)
             {
                 int groupDepth = group.Key.BitDepth;
-                long[] expected = new long[PbtNodeGroupCodec.DescendantSlots];
+                long[] expected = new long[PbtFourLevelGroupGeometry.BoundarySlots];
                 foreach (PbtPhysicalPayload candidate in payloads)
                 {
                     if (candidate.Key.BitDepth <= groupDepth || !candidate.Key.Prefix(groupDepth).Equals(group.Key)) continue;
@@ -243,7 +251,7 @@ internal static class PbtStoreTestExtensions
         PbtStorageNodePath path = new([], 0);
         while (true)
         {
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(path);
+            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtTestPaths.Locate(path);
             byte[]? encoding = null;
             foreach (PbtPhysicalPayload physical in groups)
                 if (physical.Key.Equals(location.GroupKey))
@@ -334,9 +342,9 @@ internal static class PbtStoreTestExtensions
 
     internal static PbtPartitionBatches PreparePartitions(IEnumerable<(byte[] Key, byte[]? Value)> changes)
     {
-        using PbtWriteBatchBuilder<PbtPath> account = new(2);
-        using PbtWriteBatchBuilder<PbtPath> code = new(2);
-        using PbtWriteBatchBuilder<PbtStoragePath> storage = new(2);
+        using PbtWriteBatchBuilder<PbtPath> account = new();
+        using PbtWriteBatchBuilder<PbtPath> code = new();
+        using PbtWriteBatchBuilder<PbtStoragePath> storage = new();
         foreach ((byte[] key, byte[]? value) in changes)
         {
             switch (key[0])
@@ -367,7 +375,7 @@ internal static class PbtStoreTestExtensions
         while (currentPath.BitDepth <= path.BitDepth)
         {
             byte[]? encoding = GetLogicalNode(store, currentPath);
-            if (encoding is null || currentPath.Equals(path)) return encoding;
+            if (encoding is null || PbtNodePathOperations.Equal(currentPath, path)) return encoding;
             PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
@@ -382,7 +390,7 @@ internal static class PbtStoreTestExtensions
 
     private static byte[]? GetLogicalNode<TPath>(PbtNodeGroupStore store, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
+        PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
         using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
         PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
@@ -393,7 +401,7 @@ internal static class PbtStoreTestExtensions
     {
         ReadOnlySpan<byte> encoding = reader.GetNode(position);
         if (!encoding.IsEmpty) return encoding.ToArray();
-        TPath path = PbtFourLevelGroupGeometry.PathOf(groupKey, position);
+        TPath path = PbtTestPaths.PathOf(groupKey, position);
         int relativeDepth = path.BitDepth - groupKey.BitDepth;
         if (relativeDepth is < 1 or > 3) return null;
         int width = 1 << (4 - relativeDepth);
@@ -406,7 +414,7 @@ internal static class PbtStoreTestExtensions
     internal static void SetNode<TPath>(this PbtNodeGroupStore store, TPath path, byte[]? encoding,
         IRefCountingMemoryProvider? memoryProvider = null) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtNodeGroupLocation<TPath> location = PbtFourLevelGroupGeometry.Locate(path);
+        PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
         using RefCountingMemory? priorPayload = store.GetPhysicalNodeGroup(location.GroupKey);
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
@@ -416,7 +424,7 @@ internal static class PbtStoreTestExtensions
             while (enumerator.MoveNext())
             {
                 if (enumerator.CurrentPosition != location.Position)
-                    records.Add(new PbtNodeRecord(PbtFourLevelGroupGeometry.PathOf(location.GroupKey, enumerator.CurrentPosition).ToPath<PbtStorageNodePath>(), enumerator.Current));
+                    records.Add(new PbtNodeRecord(PbtTestPaths.PathOf(location.GroupKey, enumerator.CurrentPosition).ToPath<PbtStorageNodePath>(), enumerator.Current));
             }
         }
         if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));

@@ -87,7 +87,7 @@ public class PbtTrieNodeLogTests
     private void Write(params (byte[] Key, byte[]? Value)[] writes)
     {
         IColumnsWriteBatch<PbtColumns> batch = _db.StartWriteBatch();
-        using ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(batch, bypass: false);
+        using ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(batch);
         foreach ((byte[] key, byte[]? value) in writes) logBatch.Wrap(ColumnOf(key), batch.GetColumnBatch(ColumnOf(key))).Set(key, value);
         logBatch.Commit();
         batch.Dispose();
@@ -199,8 +199,8 @@ public class PbtTrieNodeLogTests
         PbtRocksDbPersistence persistence = new(_db, _config, _log);
         PbtNodePath rootNode = new([], 0);
         PbtNodePath topNode = new(Bytes.FromHexString("0x10"), 5);
-        PbtNodePath rootKey = PbtFourLevelGroupGeometry.Locate(rootNode).GroupKey;
-        PbtNodePath topKey = PbtFourLevelGroupGeometry.Locate(topNode).GroupKey;
+        PbtNodePath rootKey = PbtTestPaths.Locate(rootNode).GroupKey;
+        PbtNodePath topKey = PbtTestPaths.Locate(topNode).GroupKey;
         StateId state = new(1, TestItem.KeccakA.ValueHash256);
         byte[] topGroup;
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, state, default, WriteFlags.None))
@@ -245,7 +245,7 @@ public class PbtTrieNodeLogTests
         BufferWriter writer = new(PooledRefCountingMemoryProvider.Instance);
         try
         {
-            PbtNodeGroupEncoder.Encode(ref writer, PbtFourLevelGroupGeometry.Locate(node).GroupKey, [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], default);
+            PbtNodeGroupEncoder.Encode(ref writer, PbtTestPaths.Locate(node).GroupKey, [new PbtNodeRecord(node.ToPath<PbtStorageNodePath>(), PbtTreeHarness.EncodeBranch(Bytes.FromHexString("0x80"), 1, child, child))], default);
             return writer.Detach()!;
         }
         finally
@@ -259,7 +259,7 @@ public class PbtTrieNodeLogTests
     {
         Write((TopKey, Value1), (AccountKey, Value2), (StorageKey, Value3));
         IColumnsWriteBatch<PbtColumns> batch = _db.StartWriteBatch();
-        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(batch, bypass: false))
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(batch))
         {
             IWriteBatch metadata = batch.GetColumnBatch(PbtColumns.Metadata);
             Assert.That(logBatch.Wrap(PbtColumns.Metadata, metadata), Is.SameAs(metadata));
@@ -594,7 +594,7 @@ public class PbtTrieNodeLogTests
     public async Task A_batch_RocksDB_never_confirmed_poisons_the_log_until_restart()
     {
         using (IColumnsWriteBatch<PbtColumns> rocksDbBatch = _db.StartWriteBatch())
-        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(rocksDbBatch, bypass: false))
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(rocksDbBatch))
         {
             logBatch.Wrap(PbtColumns.TopNodeGroups, rocksDbBatch.GetColumnBatch(PbtColumns.TopNodeGroups)).PutSpan(TopKey, Value1);
             logBatch.Commit();
@@ -615,7 +615,7 @@ public class PbtTrieNodeLogTests
     public void A_commit_failing_after_the_log_is_durable_poisons_the_log()
     {
         using (IColumnsWriteBatch<PbtColumns> rocksDbBatch = _db.StartWriteBatch())
-        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(new FailingMetadataBatch(rocksDbBatch), bypass: false))
+        using (ITrieNodeLog.IWriteBatch logBatch = _log.StartWriteBatch(new FailingMetadataBatch(rocksDbBatch)))
         {
             logBatch.Wrap(PbtColumns.TopNodeGroups, rocksDbBatch.GetColumnBatch(PbtColumns.TopNodeGroups)).PutSpan(TopKey, Value1);
             Assert.That(logBatch.Commit, Throws.TypeOf<IOException>(), "the version write into the RocksDB batch fails after the log records are fsynced");
@@ -672,7 +672,7 @@ public class PbtTrieNodeLogTests
         IPbtPersistence.IWriteBatch writeBatch = persistence.CreateWriteBatch(StateId.PreGenesis, new StateId(1, TestItem.KeccakA.ValueHash256), default, WriteFlags.None);
         PbtNodePath topNode = new(Bytes.FromHexString("0x10"), 5);
         using (RefCountingMemory top = EncodeGroup(topNode, TestItem.KeccakB.ValueHash256))
-            writeBatch.SetNodeGroup(PbtFourLevelGroupGeometry.Locate(topNode).GroupKey, top);
+            writeBatch.SetNodeGroup(PbtTestPaths.Locate(topNode).GroupKey, top);
         Assert.That(writeBatch.Commit, Throws.TypeOf<IOException>());
         writeBatch.Dispose();
         using (Assert.EnterMultipleScope())

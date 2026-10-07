@@ -7,7 +7,7 @@ public enum PbtColumns
 {
     Metadata,
 
-    /// <summary>Code-chunk leaf values of the content-addressed code zone (0x1), keyed by their EIP-8297 tree key; all-zero chunks are absent, as in the tree.</summary>
+    /// <summary>Code-chunk leaf values of the content-addressed code zone (0x1) staged by an anchor import, keyed by their EIP-8297 tree key; all-zero chunks are absent, as in the tree.</summary>
     CodeLeaves,
 
     /// <summary>Whole accounts as their <see cref="PbtAccount"/> stem encoding, keyed by the PBT address hash.</summary>

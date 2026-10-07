@@ -22,15 +22,15 @@ public class SlotRunTests
         return EvmWordSlot.AsReadOnlySpan(in word).ToArray();
     }
 
-    private static ISlotRun Build(int count, out ushort mask)
+    private static PackedSlotRun Build(int count, out ushort mask)
     {
-        ISlotRun run = SlotRun.Empty;
+        PackedSlotRun run = SlotRun.Empty;
         mask = 0;
         for (int index = 0; index < count; index++)
         {
             int slot = SlotRun.Width - 1 - index;
             mask |= (ushort)(1 << slot);
-            ISlotRun previous = run;
+            PackedSlotRun previous = run;
             run = run.With(slot, Word(slot));
             SlotRun.Return(previous);
         }
@@ -48,9 +48,9 @@ public class SlotRunTests
     [TestCase(16, typeof(SlotRun16))]
     public void Runs_are_immutable_whole_and_tiered_by_occupancy(int count, Type tier)
     {
-        ISlotRun run = Build(count, out ushort mask);
-        ISlotRun cleared = run.With(SlotRun.Width - 1, default);
-        ISlotRun clone = run.Clone();
+        PackedSlotRun run = Build(count, out ushort mask);
+        PackedSlotRun cleared = run.With(SlotRun.Width - 1, default);
+        PackedSlotRun clone = run.Clone();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(run, Is.TypeOf(tier));
@@ -76,12 +76,12 @@ public class SlotRunTests
     [TestCase(16, 0x04)]
     public void Persisted_row_is_type_mask_and_whole_words(int count, byte type)
     {
-        ISlotRun run = Build(count, out ushort mask);
+        PackedSlotRun run = Build(count, out ushort mask);
         byte[] row = new byte[run.EncodedLength];
         run.Encode(row);
         byte[] expected = Bytes.Concat(new byte[] { type, (byte)mask, (byte)(mask >> 8) },
             Bytes.Concat(Enumerable.Range(0, SlotRun.Width).Where(index => (mask & (1 << index)) != 0).Select(WordBytes).ToArray()));
-        ISlotRun decoded = SlotRunCodec.Decode(row);
+        PackedSlotRun decoded = SlotRunCodec.Decode(row);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(row, Is.EqualTo(expected));

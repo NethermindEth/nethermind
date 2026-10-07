@@ -8,16 +8,16 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.State.Pbt.Persistence;
 
 /// <summary>
-/// Decodes the persisted <see cref="PbtColumns.Storages"/> row of one <see cref="ISlotRun"/>:
+/// Decodes the persisted <see cref="PbtColumns.Storages"/> row of one <see cref="PackedSlotRun"/>:
 /// <c>[type][mask u16 LE][32-byte value × popcount(mask), ascending slot]</c>, where the type byte is the
-/// log2 of the capacity that wrote it (see <see cref="ISlotRun.Encode"/>). An empty run is a row deletion and is never encoded.
+/// log2 of the capacity that wrote it (see <see cref="PackedSlotRun.Encode"/>). An empty run is a row deletion and is never encoded.
 /// </summary>
 internal static class SlotRunCodec
 {
     internal const int HeaderLength = 1 + sizeof(ushort);
     private const byte MaxType = 4;
 
-    public static ISlotRun Decode(ReadOnlySpan<byte> encoded)
+    public static PackedSlotRun Decode(ReadOnlySpan<byte> encoded)
     {
         ushort mask = ReadMask(encoded);
         Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];

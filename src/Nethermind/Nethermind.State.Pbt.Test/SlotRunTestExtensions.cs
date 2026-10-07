@@ -14,14 +14,14 @@ internal static class SlotRunTestExtensions
     /// <summary>Stages a run holding only <paramref name="slotKey"/>; a second slot of the same run in one batch replaces it.</summary>
     public static void SetSlot(this IPbtPersistence.IWriteBatch batch, in PbtStorageTreeKey slotKey, in EvmWord value)
     {
-        ISlotRun run = SlotRun.Empty.With(SlotRun.IndexOf(slotKey), value);
+        PackedSlotRun run = SlotRun.Empty.With(SlotRun.IndexOf(slotKey), value);
         batch.SetSlotRun(SlotRun.RunKey(slotKey), run);
         SlotRun.Return(run);
     }
 
     public static EvmWord GetSlot(this IPbtPersistence.IReader reader, in PbtStorageTreeKey slotKey)
     {
-        ISlotRun run = reader.GetSlotRun(SlotRun.RunKey(slotKey));
+        PackedSlotRun run = reader.GetSlotRun(SlotRun.RunKey(slotKey));
         EvmWord value = run.Get(SlotRun.IndexOf(slotKey));
         SlotRun.Return(run);
         return value;
@@ -30,7 +30,7 @@ internal static class SlotRunTestExtensions
     /// <summary>Whether the layer holds the slot's run; <paramref name="value"/> is zero for a held but absent slot.</summary>
     public static bool TryGetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey, out EvmWord value)
     {
-        bool held = content.TryGetSlotRun(SlotRun.RunKey(slotKey), out ISlotRun? run);
+        bool held = content.TryGetSlotRun(SlotRun.RunKey(slotKey), out PackedSlotRun? run);
         value = run?.Get(SlotRun.IndexOf(slotKey)) ?? default;
         return held;
     }
@@ -45,7 +45,7 @@ internal static class SlotRunTestExtensions
     public static void SetSlot(this PbtSnapshotContent content, in PbtStorageTreeKey slotKey, in EvmWord value)
     {
         HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(slotKey);
-        ISlotRun current = content.TryGetSlotRun(runKey, out ISlotRun? held) ? held : SlotRun.Empty;
+        PackedSlotRun current = content.TryGetSlotRun(runKey, out PackedSlotRun? held) ? held : SlotRun.Empty;
         content.SetRun(runKey, current.With(SlotRun.IndexOf(slotKey), value));
     }
 

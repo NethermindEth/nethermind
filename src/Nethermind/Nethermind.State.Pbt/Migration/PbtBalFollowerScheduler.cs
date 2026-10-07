@@ -3,7 +3,6 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -73,11 +72,10 @@ internal sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToke
         {
             if (_disposed || _blockTree?.Head is not { } head) return;
             FlushFlatOnce();
-            StateId headState = new(head.Header);
-            if (_manager!.HasStateForBlock(headState))
+            if (_manager!.HasStateForBlock(new StateId(head.Header)))
             {
                 // PBT already holds the head; the follower is only needed for delayed catch-up.
-                Volatile.Write(ref _headCursor, Describe(head.Header, headState));
+                Volatile.Write(ref _headCursor, PbtFollowerCursor.At(_manager, head.Header));
                 _cancellation?.Cancel();
                 return;
             }
@@ -86,21 +84,13 @@ internal sealed class PbtBalFollowerScheduler(Func<BlockHeader, CancellationToke
         }
     }
 
-    private PbtFollowerCursor Describe(BlockHeader header, in StateId stateId)
-    {
-        using PbtReadOnlySnapshotBundle? bundle = _manager!.TryGatherReadOnlyBundle(stateId);
-        return new PbtFollowerCursor(header.Number, header.Hash!, (bundle?.TreeRoot ?? default).ToHash256());
-    }
-
     /// <remarks>
     /// Flat gets no commits after activation, so nothing nudges its persistence: persist its remaining
     /// pre-activation states once the activation is final (see <see cref="MigrationFlatFinalizedStateProvider"/>).
     /// </remarks>
     private void FlushFlatOnce()
     {
-        if (_flatFlushed || _blockTree!.FinalizedHash is not { } finalizedHash || finalizedHash == Hash256.Zero) return;
-        BlockHeader? finalized = _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.None);
-        if (finalized is null || !_specProvider!.GetSpec(finalized).IsEip8347Enabled) return;
+        if (_flatFlushed || !MigrationActivation.IsFinal(_blockTree!, _specProvider!)) return;
         _flatFlushed = true;
         IFlatDbManager flat = _flatDbManager!;
         ILogger logger = _logger!.Value;

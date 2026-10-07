@@ -44,11 +44,7 @@ internal sealed class PbtSortedSpool : IDisposable
     /// <summary>Background pre-merge rounds allowed to run at once; full levels wait for a free slot.</summary>
     internal int MaxConcurrentPreMerges { get; init; } = 1;
 
-    /// <summary>Invoked once, on the reading thread, when the first <see cref="Read"/> starts the final merge.</summary>
-    /// <remarks>Draining the background sorts and folding the leftover runs precede the first record, so a consumer
-    /// whose progress only counts records would otherwise look stalled for the whole merge.</remarks>
-    internal Action? FinalMerge { get; init; }
-
+    private readonly string _name;
     private readonly string _directory;
     private readonly int _segmentBytes;
     private readonly int _writerCount;
@@ -72,12 +68,14 @@ internal sealed class PbtSortedSpool : IDisposable
     private bool _completed;
     private bool _disposed;
 
+    /// <param name="name">What the spool holds, naming it in the log line of its final merge.</param>
     /// <param name="bufferBytes">Bytes buffered per writer before a segment is sorted and spilled to a run.</param>
     /// <param name="writerCount">Producers that will spool concurrently; sizes the segment pool with them.</param>
-    public PbtSortedSpool(string directory, int bufferBytes, int writerCount, ILogManager logManager,
+    public PbtSortedSpool(string name, string directory, int bufferBytes, int writerCount, ILogManager logManager,
         CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(writerCount, 1);
+        _name = name;
         _directory = directory;
         _segmentBytes = Math.Max(bufferBytes, 2 * MaxRecordFieldLength);
         _writerCount = writerCount;
@@ -277,7 +275,9 @@ internal sealed class PbtSortedSpool : IDisposable
             if (_openWriters != 0) throw new InvalidOperationException("Spool writers must be disposed before reading.");
             _completed = true;
         }
-        FinalMerge?.Invoke();
+        // Draining the background sorts and folding the leftover runs precede the first record, so a consumer
+        // whose progress only counts records would otherwise look stalled for the whole merge.
+        if (_logger.IsInfo) _logger.Info($"PBT {_name}: merging the sorted runs.");
         WaitForPending();
         ThrowIfFaulted();
         foreach (List<string> tier in _levels) _runs.AddRange(tier);

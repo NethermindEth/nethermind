@@ -24,13 +24,16 @@ public class PbtRocksDbPersistence(
     private static ReadOnlySpan<byte> CurrentStateKey => "currentState"u8;
     private static ReadOnlySpan<byte> SchemaEpochKey => "schemaEpoch"u8;
     private static ReadOnlySpan<byte> ValidStateKey => "validState"u8;
+    // Retired stamps that epoch-23 databases still carry; the epoch alone now pins the layout and the omission.
     private static ReadOnlySpan<byte> NodeGroupKeyLayoutKey => "nodeGroupKeyLayout"u8;
-    /// <summary>The stamp of the variable node-group key layout, the only one left; databases without it are padded.</summary>
-    private const byte VariableLayoutStamp = 1;
     private static ReadOnlySpan<byte> PrefixlessBranchOmissionKey => "prefixlessBranchOmission"u8;
-    private const byte InteriorOmissionStamp = 1;
     private const int CurrentStateLength = sizeof(ulong) + 2 * ValueHash256.MemorySize;
     internal static ReadOnlySpan<byte> RootNodeGroupKey => "rootNodeGroup"u8;
+    /// <remarks>
+    /// Bump on any change to the persisted layout, including which prefixless branches a group omits: omission changes
+    /// a group's bytes but not its hash, and the node-group caches key on the hash, so a database written with another
+    /// omission can serve a group whose size no longer matches the one its ancestors recorded.
+    /// </remarks>
     private const int SchemaEpoch = 23;
     /// <summary>Account groups keyed at or above this depth are top groups: the last level before the 16^8 dense band.</summary>
     internal const int AccountTopDepth = 28;
@@ -38,28 +41,20 @@ public class PbtRocksDbPersistence(
     internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
-    private readonly IColumnsDb<PbtColumns> _db = Initialize(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
+    private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
 
     internal bool IsValid => _db.GetColumnDb(PbtColumns.Metadata).Get(ValidStateKey) is not null;
 
-    /// <summary>Whether a metadata key is one written when the schema is stamped, so an otherwise empty database still counts as empty.</summary>
+    /// <summary>Whether a metadata key is a schema stamp, current or retired, so an otherwise empty database still counts as empty.</summary>
     internal static bool IsSchemaStamp(ReadOnlySpan<byte> key) =>
         key.SequenceEqual(SchemaEpochKey) || key.SequenceEqual(NodeGroupKeyLayoutKey) || key.SequenceEqual(PrefixlessBranchOmissionKey);
 
-    private static IColumnsDb<PbtColumns> Initialize(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
-    {
-        EnsureSchema(db, allowInterruptedImport);
-        return db;
-    }
-
-    private static void EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
+    private static IColumnsDb<PbtColumns> EnsureSchema(IColumnsDb<PbtColumns> db, bool allowInterruptedImport)
     {
         IDb metadata = db.GetColumnDb(PbtColumns.Metadata);
         byte[]? storedEpoch = metadata.Get(SchemaEpochKey);
         byte[]? storedCurrentState = metadata.Get(CurrentStateKey);
         byte[]? storedValidity = metadata.Get(ValidStateKey);
-        byte[]? storedLayout = metadata.Get(NodeGroupKeyLayoutKey);
-        byte[]? storedOmission = metadata.Get(PrefixlessBranchOmissionKey);
 
         if (storedEpoch is not null && storedEpoch.Length != sizeof(int))
             throw new InvalidDataException("Malformed PBT schema epoch. Rebuild or re-import into a new pbt database.");
@@ -76,9 +71,7 @@ public class PbtRocksDbPersistence(
             Span<byte> value = stackalloc byte[sizeof(int)];
             BinaryPrimitives.WriteInt32BigEndian(value, SchemaEpoch);
             metadata.PutSpan(SchemaEpochKey, value, WriteFlags.None);
-            metadata.PutSpan(NodeGroupKeyLayoutKey, [VariableLayoutStamp], WriteFlags.None);
-            metadata.PutSpan(PrefixlessBranchOmissionKey, [InteriorOmissionStamp], WriteFlags.None);
-            return;
+            return db;
         }
 
         int epoch = BinaryPrimitives.ReadInt32BigEndian(storedEpoch);
@@ -86,31 +79,28 @@ public class PbtRocksDbPersistence(
         {
             throw new InvalidDataException($"The pbt database uses schema epoch {epoch}, but this build reads epoch {SchemaEpoch}. Rebuild or re-import into a new pbt database.");
         }
-        ValidateLayout(storedLayout);
-        ValidateOmission(storedOmission);
 
         if ((storedCurrentState is null) != (storedValidity is null))
         {
             throw new InvalidDataException("The PBT validity marker and current-state metadata are inconsistent. Rebuild or re-import into a new pbt database.");
         }
 
-        if (storedValidity is not null) return;
+        if (storedValidity is not null) return db;
 
         if (HasPopulatedDataColumn(db) && !allowInterruptedImport)
         {
             throw new InvalidDataException($"The epoch-{SchemaEpoch} PBT database contains an interrupted initialization. Rebuild into a new pbt database, or enable the preimage-flat import or configure the migration source to clear and retry it.");
         }
+        return db;
     }
 
     private static bool HasPopulatedDataColumn(IColumnsDb<PbtColumns> db)
     {
         if (db.GetColumnDb(PbtColumns.Metadata).Get(RootNodeGroupKey) is not null) return true;
 
-        PbtColumns[] columns = [PbtColumns.CodeLeaves,
-            PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups,
-            PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes];
-        foreach (PbtColumns column in columns)
+        foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
+            if (column == PbtColumns.Metadata) continue;
             using IEnumerator<KeyValuePair<byte[], byte[]>> entries = db.GetColumnDb(column).GetAll().GetEnumerator();
             if (entries.MoveNext()) return true;
         }
@@ -123,21 +113,21 @@ public class PbtRocksDbPersistence(
     {
         StateId current = ReadCurrentState(_db.GetColumnDb(PbtColumns.Metadata)).State;
         if (current != from) throw new InvalidOperationException($"Attempted to apply snapshot on top of wrong state. Snapshot from: {from}, db state: {current}");
-        return StartWriteBatch(to, treeRoot, flags, publishState: true, bypassLog: flags.HasFlag(WriteFlags.DisableWAL));
+        return StartWriteBatch(to, treeRoot, flags, publishState: true);
     }
 
-    // Staging batches may be open several at a time, which the log does not allow.
+    // Staging batches may be open several at a time, which the log does not allow, so they bypass it.
     public IPbtPersistence.IWriteBatch CreateStagingWriteBatch(WriteFlags flags) =>
-        StartWriteBatch(default, default, flags, publishState: false, bypassLog: true);
+        StartWriteBatch(default, default, flags, publishState: false);
 
-    private WriteBatch StartWriteBatch(StateId to, ValueHash256 root, WriteFlags flags, bool publishState, bool bypassLog)
+    private WriteBatch StartWriteBatch(StateId to, ValueHash256 root, WriteFlags flags, bool publishState)
     {
         // A group written straight to RocksDB must not be shadowed by an older version still in the log.
-        if (bypassLog) trieNodeLog.Drain();
+        if (!publishState) trieNodeLog.Drain();
         IColumnsWriteBatch<PbtColumns> batch = _db.StartWriteBatch();
         try
         {
-            return new WriteBatch(_db, batch, trieNodeLog.StartWriteBatch(batch, bypassLog), to, root, flags, publishState);
+            return new WriteBatch(_db, batch, publishState ? trieNodeLog.StartWriteBatch(batch) : NullTrieNodeLog.Instance, to, root, flags, publishState);
         }
         catch
         {
@@ -170,29 +160,8 @@ public class PbtRocksDbPersistence(
 
     private static void ValidateValidity(byte[]? value)
     {
-        if (value is not [ValidState])
-        {
-            if (value is not null)
-                throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
-        }
-    }
-
-    /// <remarks>Databases stamped before the layout became configurable carry no stamp and use the padded layout, which is no longer read.</remarks>
-    private static void ValidateLayout(byte[]? value)
-    {
-        if (value is not [VariableLayoutStamp])
-            throw new InvalidDataException("The pbt database uses the padded or an unknown node-group key layout, which is no longer supported. Rebuild or re-import into a new pbt database.");
-    }
-
-    /// <remarks>
-    /// The stamp records that every interior prefixless branch is omitted. Omission changes a group's bytes but not its
-    /// hash, and the node-group caches key on the hash, so a database written with another omission can serve a group
-    /// whose size no longer matches the one its ancestors recorded.
-    /// </remarks>
-    private static void ValidateOmission(byte[]? value)
-    {
-        if (value is not [InteriorOmissionStamp])
-            throw new InvalidDataException("The pbt database uses an unsupported prefixless-branch omission stamp. Rebuild or re-import into a new pbt database.");
+        if (value is not (null or [ValidState]))
+            throw new InvalidDataException("Malformed PBT validity metadata. Rebuild or re-import into a new pbt database.");
     }
 
     internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -215,19 +184,6 @@ public class PbtRocksDbPersistence(
 
     private static ReadOnlySpan<byte> NodeGroupStorageKey<TPath>(PbtColumns column, TPath groupKey, Span<byte> destination) where TPath : struct, IPbtNodePath<TPath> =>
         column == PbtColumns.Metadata ? RootNodeGroupKey : PbtNodeGroupKey.Encode(groupKey, destination);
-
-    private static ReadOnlySpan<byte> PrefixUpperBound(ReadOnlySpan<byte> prefix, Span<byte> destination)
-    {
-        Span<byte> upper = destination[..prefix.Length];
-        prefix.CopyTo(upper);
-        for (int i = upper.Length - 1; i >= 0; i--)
-        {
-            if (++upper[i] != 0) return upper[..(i + 1)];
-        }
-        Span<byte> maximum = destination[..(PbtStorageTreeKey.MaxLength + 1)];
-        maximum.Fill(byte.MaxValue);
-        return maximum;
-    }
 
     private sealed class Reader(ITrieNodeLog.IView view) : IPbtPersistence.IReader
     {
@@ -258,7 +214,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
         {
             Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
             ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(runKey, persistedKey));
@@ -305,10 +261,7 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() =>
-            new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(EnumerateAccountsCore());
-
-        private IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccountsCore()
+        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts()
         {
             ISortedKeyValueStore accounts = (ISortedKeyValueStore)_accounts;
             Span<byte> upper = stackalloc byte[ValueHash256.MemorySize + 1];
@@ -316,25 +269,6 @@ public class PbtRocksDbPersistence(
             using ISortedView view = accounts.GetViewBetween([], upper);
             while (view.MoveNext())
                 yield return new(new ValueHash256(view.CurrentKey), PbtAccount.Decode(view.CurrentValue));
-        }
-
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) =>
-            new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(EnumerateStorageCore(addressHash));
-
-        private IEnumerator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorageCore(ValueHash256? addressHash)
-        {
-            ISortedKeyValueStore storage = (ISortedKeyValueStore)_storages;
-            Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-            ReadOnlySpan<byte> prefix = addressHash is null ? [] : addressHash.Value.Bytes;
-            using ISortedView view = storage.GetViewBetween(prefix, PrefixUpperBound(prefix, upper));
-            while (view.MoveNext())
-            {
-                PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(view.CurrentKey);
-                ISlotRun run = SlotRunCodec.Decode(view.CurrentValue);
-                for (int index = 0; index < SlotRun.Width; index++)
-                    if ((run.Mask & (1 << index)) != 0) yield return new(SlotRun.SlotKey(runKey, index), run.Get(index));
-                SlotRun.Return(run);
-            }
         }
 
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
@@ -371,11 +305,9 @@ public class PbtRocksDbPersistence(
         WriteFlags flags,
         bool publishState) : IPbtPersistence.IWriteBatch
     {
-        private readonly IColumnsWriteBatch<PbtColumns> _batch = batch;
-
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
-            IWriteBatch accounts = _batch.GetColumnBatch(PbtColumns.Accounts);
+            IWriteBatch accounts = batch.GetColumnBatch(PbtColumns.Accounts);
             if (account is not { } value) accounts.Set(addressHash.Bytes, null, flags);
             else
             {
@@ -385,10 +317,10 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public void SetSlotRun(in PbtStorageTreeKey runKey, ISlotRun run)
+        public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run)
         {
             if (!IsStorageKey(runKey.Bytes)) throw new ArgumentException("A complete storage run key is required.", nameof(runKey));
-            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
+            IWriteBatch storage = batch.GetColumnBatch(PbtColumns.Storages);
             Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
             ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(runKey, persistedKey);
             if (run.Count == 0) storage.Set(encodedKey, null, flags);
@@ -401,19 +333,10 @@ public class PbtRocksDbPersistence(
         }
 
         public void SetCode(in ValueHash256 codeHash, CodeInfo code) =>
-            _batch.GetColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
+            batch.GetColumnBatch(PbtColumns.Codes).PutSpan(codeHash.Bytes, code.CodeSpan, flags);
 
         public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) =>
-            _batch.GetColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
-
-        public void ClearStorage(in ValueHash256 addressHash)
-        {
-            IWriteBatch storage = _batch.GetColumnBatch(PbtColumns.Storages);
-            ISortedKeyValueStore persisted = (ISortedKeyValueStore)db.GetColumnDb(PbtColumns.Storages);
-            Span<byte> upper = stackalloc byte[PbtStorageTreeKey.MaxLength + 1];
-            using ISortedView view = persisted.GetViewBetween(addressHash.Bytes, PrefixUpperBound(addressHash.Bytes, upper));
-            while (view.MoveNext()) storage.Set(view.CurrentKey, null, flags);
-        }
+            batch.GetColumnBatch(PbtColumns.CodeLeaves).PutSpan(key.Bytes, value.Bytes, flags);
 
         private static bool IsStorageKey(ReadOnlySpan<byte> key) =>
             key.Length == 34 && key[0] == Eip8297KeyDerivation.AccountZone && key[^1] is >= 64 and < 128
@@ -423,7 +346,7 @@ public class PbtRocksDbPersistence(
         {
             if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
             PbtColumns column = NodeGroupColumn(groupKey);
-            IWriteBatch groups = logBatch.Wrap(column, _batch.GetColumnBatch(column));
+            IWriteBatch groups = logBatch.Wrap(column, batch.GetColumnBatch(column));
             Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
             ReadOnlySpan<byte> storageKey = NodeGroupStorageKey(column, groupKey, key);
             if (payload is null) groups.Set(storageKey, null, flags);
@@ -446,7 +369,7 @@ public class PbtRocksDbPersistence(
                     BinaryPrimitives.WriteUInt64BigEndian(value, to.BlockNumber);
                     to.StateRoot.Bytes.CopyTo(value[sizeof(ulong)..]);
                     root.Bytes.CopyTo(value[(sizeof(ulong) + ValueHash256.MemorySize)..]);
-                    IWriteBatch metadata = _batch.GetColumnBatch(PbtColumns.Metadata);
+                    IWriteBatch metadata = batch.GetColumnBatch(PbtColumns.Metadata);
                     metadata.PutSpan(CurrentStateKey, value, flags);
                     metadata.PutSpan(ValidStateKey, [ValidState], flags);
                 }
@@ -454,8 +377,8 @@ public class PbtRocksDbPersistence(
             catch
             {
                 _completed = true;
-                _batch.Clear();
-                _batch.Dispose();
+                batch.Clear();
+                batch.Dispose();
                 logBatch.Dispose();
                 throw;
             }
@@ -463,7 +386,7 @@ public class PbtRocksDbPersistence(
             _completed = true;
             try
             {
-                _batch.Dispose();
+                batch.Dispose();
                 if (!flags.HasFlag(WriteFlags.DisableWAL)) db.Flush(onlyWal: true);
                 logBatch.Confirm();
             }
@@ -477,8 +400,8 @@ public class PbtRocksDbPersistence(
         {
             if (_completed) return;
             _completed = true;
-            _batch.Clear();
-            _batch.Dispose();
+            batch.Clear();
+            batch.Dispose();
             logBatch.Dispose();
         }
     }

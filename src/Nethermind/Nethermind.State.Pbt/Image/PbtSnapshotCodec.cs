@@ -25,8 +25,7 @@ internal static class PbtSnapshotCodec
     private const byte SingleStorageGroup = 0x05;
     private const byte StorageGroup = 0x06;
     private const byte End = 0x07;
-    private const int HeaderStorageSlots = 64;
-    private const int DelegationLength = 23;
+    internal const int HeaderStorageSlots = 64;
     private const int GroupWidth = 256;
 
     /// <summary>Reads the claimed PBT root from the trailer, leaving the stream's position unchanged.</summary>
@@ -148,10 +147,10 @@ internal static class PbtSnapshotCodec
             case DelegationHeader:
                 delegation.Clear();
                 Eip7702Constants.DelegationHeader.CopyTo(delegation);
-                ReadRecord(source, delegation[Eip7702Constants.DelegationHeaderLength..DelegationLength]);
+                ReadRecord(source, delegation[Eip7702Constants.DelegationHeaderLength..PbtAccount.DelegationLength]);
                 codeLeaf = new ValueHash256(delegation);
                 codeLeafIndex = PbtKeyDerivation.DelegationLeafKey;
-                codeSize = DelegationLength;
+                codeSize = PbtAccount.DelegationLength;
                 break;
             default:
                 throw new InvalidDataException("Unknown snapshot account kind.");
@@ -239,7 +238,7 @@ internal static class PbtSnapshotCodec
     private static void Validate(RebuildEntry entry, in PbtStorageTreeKey previous)
     {
         ReadOnlySpan<byte> key = entry.Key.Bytes;
-        if (key.IsEmpty || key.Length != (key[0] switch { Eip8297KeyDerivation.AccountZone or Eip8297KeyDerivation.CodeZone => 34, Eip8297KeyDerivation.StorageZone => 66, _ => -1 }))
+        if (key.IsEmpty || key.Length != (key[0] switch { Eip8297KeyDerivation.AccountZone or Eip8297KeyDerivation.CodeZone => Eip8297KeyDerivation.AccountKeyLength, Eip8297KeyDerivation.StorageZone => Eip8297KeyDerivation.StorageKeyLength, _ => -1 }))
             throw new InvalidDataException("Invalid snapshot key zone or length.");
         if (entry.Leaf == default || (previous.Length != 0 && previous.CompareTo(entry.Key) >= 0))
             throw new InvalidDataException("Snapshot leaves must be nonzero and strictly ordered.");
@@ -381,7 +380,7 @@ internal static class PbtSnapshotCodec
             if (delegation is { } delegated)
             {
                 _record[tagPosition] = DelegationHeader;
-                Append(delegated.Bytes[Eip7702Constants.DelegationHeaderLength..DelegationLength]);
+                Append(delegated.Bytes[Eip7702Constants.DelegationHeaderLength..PbtAccount.DelegationLength]);
             }
             else if (codeSize == 0) _record[tagPosition] = NoCodeHeader;
             else

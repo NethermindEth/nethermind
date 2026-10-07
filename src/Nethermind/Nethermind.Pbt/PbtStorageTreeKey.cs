@@ -48,7 +48,7 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
 
     public int GetBit(int bitIndex) => TrieUpdater.GetBit(Bytes, bitIndex);
 
-    public int FirstDifferingBit(in PbtStorageTreeKey other, int startBit = 0) =>
+    public int FirstDifferingBit(in PbtStorageTreeKey other, int startBit) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtStorageTreeKey other) => Bytes.SequenceCompareTo(other.Bytes);

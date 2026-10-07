@@ -249,10 +249,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
     }
 
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch, bool bypass)
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch)
     {
-        if (bypass) return NullTrieNodeLog.Instance;
-
         ArrayPoolList<TrieNodeLogWriteBatch> batches = new(_shards.Length);
         try
         {

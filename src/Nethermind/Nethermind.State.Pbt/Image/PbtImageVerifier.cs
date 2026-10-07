@@ -17,18 +17,14 @@ using Nethermind.State.Pbt.Persistence;
 namespace Nethermind.State.Pbt.Image;
 
 /// <summary>Anchor information obtained from the consumer's chain, never from an artifact.</summary>
-/// <param name="MaxBufferedCodeBytes">Local byte budget for whole code plus its 32-byte chunk encoding;
-/// not a deployment-code limit. Exhaustion is retryable resource unavailability, not invalid state.</param>
 /// <param name="ActivationTimestamp">The chain specification's binaryTrieTime, or null when it schedules none.
 /// An anchor must precede it; there is nothing to precede when it is null.</param>
-internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, BlockHeader Header,
-    ulong? ActivationTimestamp, int MaxBufferedCodeBytes)
+internal sealed record PbtImageAnchor(string ChainId, Hash256 GenesisHash, BlockHeader Header, ulong? ActivationTimestamp)
 {
     public void Validate()
     {
         if (ActivationTimestamp is { } activation && Header.Timestamp >= activation || Header.Hash is null || Header.StateRoot is null)
             throw new InvalidDataException("Image requires a pre-activation MPT anchor.");
-        ArgumentOutOfRangeException.ThrowIfNegative(MaxBufferedCodeBytes);
     }
 }
 
@@ -78,8 +74,7 @@ internal static class PbtImageVerifier
         Directory.CreateDirectory(directory);
         try
         {
-            using PbtSortedSpool spool = new(directory, bufferBytes, workers, logManager, cancellationToken)
-            { FinalMerge = () => { if (logger.IsInfo) logger.Info("PBT verify: merging the sorted preimages."); } };
+            using PbtSortedSpool spool = new("verify preimages", directory, bufferBytes, workers, logManager, cancellationToken);
             (ulong accounts, ulong slots) = Spool(preimages, state, spool, capacity, workers, logManager, cancellationToken);
 
             ValueHash256 mptRoot;
@@ -171,7 +166,7 @@ internal static class PbtImageVerifier
             while (reader.ReadAccount(out Address? address, out uint slotCount, abort.Token))
             {
                 ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address!);
-                ValueHash256 addressHash = ValueKeccak.Compute(address!.Bytes);
+                ValueHash256 addressHash = reader.AccountHash!.Value;
                 walked = PbtImageProgress.KeyspaceFraction(addressHash);
                 progress.Update(++accounts);
                 Queue(new Job((PbtStorageTreeKey)PbtStateKey.Account(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
@@ -181,7 +176,7 @@ internal static class PbtImageVerifier
                     slots++;
                     ValueHash256 slot = reader.ReadSlot(abort.Token);
                     Queue(new Job(PbtStateKey.Storage(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)),
-                        address, addressHash, ValueKeccak.Compute(slot.Bytes), 0, IsSlot: true));
+                        address, addressHash, reader.SlotHash!.Value, 0, IsSlot: true));
                 }
             }
         }
@@ -261,7 +256,7 @@ internal static class PbtImageVerifier
         jobs.Sort((left, right) => PbtStorageKeyLayout.Comparer.Compare(left.StateKey, right.StateKey));
         Span<byte> key = stackalloc byte[SpoolKeyLength];
         PbtStorageTreeKey? runKey = null;
-        ISlotRun run = SlotRun.Empty;
+        PackedSlotRun run = SlotRun.Empty;
         try
         {
             foreach (ref readonly Job job in jobs)

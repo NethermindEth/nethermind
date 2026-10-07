@@ -14,7 +14,7 @@ public sealed class NullTrieNodeLog : ITrieNodeLog, ITrieNodeLog.IWriteBatch
     private NullTrieNodeLog() { }
 
     public ITrieNodeLog.IView OpenView(IColumnsDb<PbtColumns> db) => new View(db.CreateSnapshot());
-    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch, bool bypass) => this;
+    public ITrieNodeLog.IWriteBatch StartWriteBatch(IColumnsWriteBatch<PbtColumns> batch) => this;
     public void Drain() { }
 
     public IWriteBatch Wrap(PbtColumns column, IWriteBatch inner) => inner;

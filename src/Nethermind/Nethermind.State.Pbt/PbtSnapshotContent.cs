@@ -25,7 +25,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal readonly ConcurrentDictionary<ValueHash256, PbtAccount?> Accounts = new();
     // Whole slot runs keyed by run key (see SlotRun.RunKey); this layer owns the runs. A read probes every
     // layer with the same key; the pre-hashed key pays the 66-byte hash once instead of once per layer.
-    internal readonly ConcurrentDictionary<HashedKey<PbtStorageTreeKey>, ISlotRun> Storages = new();
+    internal readonly ConcurrentDictionary<HashedKey<PbtStorageTreeKey>, PackedSlotRun> Storages = new();
     internal readonly ConcurrentDictionary<ValueHash256, CodeInfo> Codes = new();
     internal readonly ConcurrentDictionary<ValueHash256, bool> SelfDestructedStorageAddresses = new();
     // Partitioned like PbtTrieNodeCache: account and code groups key on the narrower PbtNodePath; only storage pays for PbtStorageNodePath.
@@ -35,51 +35,34 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
 
 
     /// <summary>Drops this layer's runs of <paramref name="addressHash"/> and marks its storage cleared.</summary>
-    /// <param name="addressHash">The address whose storage is cleared.</param>
-    /// <param name="isNewStorage">Whether no layer below this one holds storage for the address, so persistence has nothing to delete. A clear of existing storage is sticky: a later clear of new storage does not lift it.</param>
-    internal void ClearStorage(in ValueHash256 addressHash, bool isNewStorage)
+    internal void ClearStorage(in ValueHash256 addressHash)
     {
         foreach ((HashedKey<PbtStorageTreeKey> key, _) in Storages)
-            if (PbtStateKey.StorageAddress(key) == addressHash && Storages.TryRemove(key, out ISlotRun? removed)) SlotRun.Return(removed);
-        if (isNewStorage) SelfDestructedStorageAddresses.TryAdd(addressHash, true);
-        else SelfDestructedStorageAddresses[addressHash] = false;
-    }
-
-    internal void ApplyStorage(IDictionary<PbtStorageTreeKey, EvmWord> visible)
-    {
-        foreach ((ValueHash256 addressHash, _) in SelfDestructedStorageAddresses)
-        {
-            using ArrayPoolListRef<PbtStorageTreeKey> removed = new(0);
-            foreach (PbtStorageTreeKey key in visible.Keys)
-                if (PbtStateKey.StorageAddress(key) == addressHash) removed.Add(key);
-            foreach (PbtStorageTreeKey key in removed) visible.Remove(key);
-        }
-        // A run is whole, so every one of its slots is written, zeros included, to mask persisted values.
-        foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in Storages)
-            for (int index = 0; index < SlotRun.Width; index++) visible[SlotRun.SlotKey(runKey, index)] = run.Get(index);
+            if (PbtStateKey.StorageAddress(key) == addressHash && Storages.TryRemove(key, out PackedSlotRun? removed)) SlotRun.Return(removed);
+        SelfDestructedStorageAddresses.TryAdd(addressHash, true);
     }
 
     /// <summary>Whether this layer holds the run of <paramref name="runKey"/>, borrowed; a held run answers for all of its slots.</summary>
-    internal bool TryGetSlotRun(in HashedKey<PbtStorageTreeKey> runKey, [NotNullWhen(true)] out ISlotRun? run) => Storages.TryGetValue(runKey, out run);
+    internal bool TryGetSlotRun(in HashedKey<PbtStorageTreeKey> runKey, [NotNullWhen(true)] out PackedSlotRun? run) => Storages.TryGetValue(runKey, out run);
 
     /// <summary>Takes ownership of <paramref name="run"/> and returns the run it replaces to its pool.</summary>
     /// <remarks>Replacements of one run require caller serialization; a run being read must not be replaced.</remarks>
-    internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run)
+    internal void SetRun(in HashedKey<PbtStorageTreeKey> runKey, PackedSlotRun run)
     {
-        Storages.TryGetValue(runKey, out ISlotRun? previous);
+        Storages.TryGetValue(runKey, out PackedSlotRun? previous);
         Storages[runKey] = run;
         if (previous is not null) SlotRun.Return(previous);
     }
 
     /// <summary>Takes ownership of <paramref name="run"/> unless the layer already holds a run of <paramref name="runKey"/>.</summary>
-    internal bool TryAddRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) => Storages.TryAdd(runKey, run);
+    internal bool TryAddRun(in HashedKey<PbtStorageTreeKey> runKey, PackedSlotRun run) => Storages.TryAdd(runKey, run);
 
     /// <summary>Takes ownership of <paramref name="run"/> if the layer still holds <paramref name="expected"/>, which the caller then owns.</summary>
     /// <remarks>
     /// The compare is by reference, so <paramref name="expected"/> must stay out of the pool while any writer may still
     /// compare against it: a re-rented instance stored back under the same key would let a stale replacement through.
     /// </remarks>
-    internal bool TryReplaceRun(in HashedKey<PbtStorageTreeKey> runKey, ISlotRun run, ISlotRun expected) => Storages.TryUpdate(runKey, run, expected);
+    internal bool TryReplaceRun(in HashedKey<PbtStorageTreeKey> runKey, PackedSlotRun run, PackedSlotRun expected) => Storages.TryUpdate(runKey, run, expected);
 
     /// <summary>Retains an independent reference to a complete group replacement, or records a null tombstone.</summary>
     internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
@@ -118,7 +101,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     public void Reset()
     {
         Accounts.NoLockClear();
-        foreach ((_, ISlotRun run) in Storages) SlotRun.Return(run);
+        foreach ((_, PackedSlotRun run) in Storages) SlotRun.Return(run);
         Storages.NoLockClear();
         Codes.NoLockClear();
         SelfDestructedStorageAddresses.NoLockClear();
@@ -137,7 +120,7 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     {
         long leafBytes = Accounts.Count * (ValueHash256.MemorySize + 128L)
             + SelfDestructedStorageAddresses.Count * ValueHash256.MemorySize;
-        foreach ((HashedKey<PbtStorageTreeKey> key, ISlotRun run) in Storages) leafBytes += key.Key.Length + run.Count * ValueHash256.MemorySize;
+        foreach ((HashedKey<PbtStorageTreeKey> key, PackedSlotRun run) in Storages) leafBytes += key.Key.Length + run.Count * ValueHash256.MemorySize;
         foreach ((_, CodeInfo code) in Codes) leafBytes += ValueHash256.MemorySize + code.Code.Length;
 
         return new PbtSnapshotPayloadSize(leafBytes, NodeBytes(AccountNodeGroups) + NodeBytes(CodeNodeGroups) + NodeBytes(StorageNodeGroups));

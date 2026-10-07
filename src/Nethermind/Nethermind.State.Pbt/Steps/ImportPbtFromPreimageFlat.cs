@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
-using System.Globalization;
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Autofac.Features.AttributeFilters;
@@ -46,11 +45,6 @@ public class ImportPbtFromPreimageFlat(
     ILogManager logManager
 ) : IStep
 {
-    private const int AddressLength = 20;
-
-    /// <summary>Entries per channel chunk, amortizing channel write costs.</summary>
-    private const int ChunkSize = 2_048;
-
     /// <summary>Maximum chunks in flight on the entry channel.</summary>
     private const int EntryChunkCapacity = 64;
 
@@ -65,8 +59,10 @@ public class ImportPbtFromPreimageFlat(
 
     private static readonly TimeSpan CopyLogInterval = TimeSpan.FromSeconds(5);
 
+    private const string CopyPhase = "PBT import flat copy";
+
     /// <summary>Leaves per phase-two channel chunk and records per scan page.</summary>
-    internal int EntryChunkSize { get; init; } = ChunkSize;
+    internal int EntryChunkSize { get; init; } = 2_048;
 
     /// <summary>Keys deleted per view and write batch when clearing an interrupted import.</summary>
     internal int ClearKeyChunk { get; init; } = 10_000;
@@ -106,13 +102,14 @@ public class ImportPbtFromPreimageFlat(
         }
 
         int workerCount = config.ImportStorageReadConcurrency > 0 ? config.ImportStorageReadConcurrency : Environment.ProcessorCount;
+        int partitionCount = (int)Math.Min((long)workerCount * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
         if (_logger.IsInfo) _logger.Info($"Rebuilding PBT state from preimage-flat database at {sourceState} with {workerCount} source reader(s)");
 
         ClearInterruptedAttempt();
-        await CopyFlatColumns(workerCount, cancellationToken);
+        await CopyFlatColumns(workerCount, partitionCount, cancellationToken);
 
         // State is addressed by the source block header's root; the fold records its tree root beside it.
-        await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, cancellationToken);
+        await DeriveAndFold(new StateId(sourceState.BlockNumber, sourceState.StateRoot), workerCount, partitionCount, cancellationToken);
     }
 
     /// <remarks>
@@ -124,40 +121,12 @@ public class ImportPbtFromPreimageFlat(
     private void ClearInterruptedAttempt()
     {
         long cleared = 0;
-        byte[] pastEnd = PastEveryKey();
         pbtDb.GetColumnDb(PbtColumns.Metadata).Remove(PbtRocksDbPersistence.RootNodeGroupKey);
 
         foreach (PbtColumns column in Enum.GetValues<PbtColumns>())
         {
             if (column == PbtColumns.Metadata) continue;
-
-            ISortedKeyValueStore store = (ISortedKeyValueStore)pbtDb.GetColumnDb(column);
-            byte[] cursor = [];
-            byte[]? resumeFrom;
-            do
-            {
-                resumeFrom = null;
-                using (IColumnsWriteBatch<PbtColumns> batch = pbtDb.StartWriteBatch())
-                {
-                    IWriteBatch columnBatch = batch.GetColumnBatch(column);
-                    using ISortedView view = store.GetViewBetween(cursor, pastEnd);
-
-                    int read = 0;
-                    while (read < ClearKeyChunk && view.MoveNext())
-                    {
-                        columnBatch.Remove(view.CurrentKey);
-                        read++;
-                    }
-
-                    cleared += read;
-
-                    // The count limit leaves the view on the last deleted key.
-                    if (read == ClearKeyChunk) resumeFrom = AfterKey(view.CurrentKey);
-                }
-
-                if (resumeFrom is not null) cursor = resumeFrom;
-            }
-            while (resumeFrom is not null);
+            cleared += PbtColumnSweep.DeleteKeys(pbtDb.GetColumnDb(column), ClearKeyChunk, static _ => false, CancellationToken.None);
         }
 
         if (cleared > 0 && _logger.IsInfo) _logger.Info($"Discarded {cleared:N0} entries left by an interrupted PBT import.");
@@ -172,10 +141,9 @@ public class ImportPbtFromPreimageFlat(
     /// next import safely overwrites. Auto-compaction is disabled during the copy and a single full
     /// compaction runs once it completes.
     /// </remarks>
-    private async Task CopyFlatColumns(int workerCount, CancellationToken cancellationToken)
+    private async Task CopyFlatColumns(int workerCount, int partitionCount, CancellationToken cancellationToken)
     {
         Stopwatch copying = Stopwatch.StartNew();
-        int partitionCount = Math.Min(workerCount * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
         PbtPrefixPartitions partitions = new(partitionCount);
 
         int nextPartition = -1, donePartitions = 0;
@@ -203,34 +171,18 @@ public class ImportPbtFromPreimageFlat(
         // ProgressLogger is not thread-safe, so one ticker samples worker-published counters.
         async Task LogCopyProgress(CancellationToken loggingToken)
         {
-            long loggedAccounts = 0, loggedSlots = 0;
-            double accountsPerSec = 0, slotsPerSec = 0;
-            Stopwatch sinceLog = Stopwatch.StartNew();
-
             // CurrentValue uses entry count so ProgressLogger emits updates during long ranges.
-            ProgressLogger progress = new("PBT import flat copy", logManager);
-            progress.SetFormat(_ =>
-            {
-                float percentage = Math.Clamp(Volatile.Read(ref donePartitions) / (float)partitionCount, 0, 1);
-                return $"PBT import flat copy {percentage.ToString("P2", CultureInfo.InvariantCulture),8} {Progress.GetMeter(percentage, 1)} | " +
-                    $"{Interlocked.Read(ref accounts),13:N0} acc ({accountsPerSec,8:N0}/s) | {Interlocked.Read(ref slots),15:N0} slot ({slotsPerSec,8:N0}/s)";
-            });
+            ProgressLogger progress = new(CopyPhase, logManager);
+            Func<string> accountCounter = PbtImageProgress.Counter("acc", () => (ulong)Interlocked.Read(ref accounts));
+            Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref slots));
+            progress.SetFormat(_ => PbtImageProgress.Format(CopyPhase, Volatile.Read(ref donePartitions) / (float)partitionCount,
+                $"{accountCounter()} | {slotCounter()}"));
             progress.Reset(0, 0);
 
             using PeriodicTimer timer = new(CopyLogInterval);
             while (await timer.WaitForNextTickAsync(loggingToken))
             {
-                long currentAccounts = Interlocked.Read(ref accounts), currentSlots = Interlocked.Read(ref slots);
-                double secs = sinceLog.Elapsed.TotalSeconds;
-                if (secs > 0)
-                {
-                    accountsPerSec = (currentAccounts - loggedAccounts) / secs;
-                    slotsPerSec = (currentSlots - loggedSlots) / secs;
-                }
-                (loggedAccounts, loggedSlots) = (currentAccounts, currentSlots);
-                sinceLog.Restart();
-
-                progress.Update((ulong)(currentAccounts + currentSlots));
+                progress.Update((ulong)(Interlocked.Read(ref accounts) + Interlocked.Read(ref slots)));
                 progress.LogProgress();
             }
         }
@@ -288,7 +240,7 @@ public class ImportPbtFromPreimageFlat(
 
             // In preimage mode, the first 20 key bytes are the raw address.
             ValueHash256 accountKey = accountIterator.CurrentKey;
-            Address address = new(accountKey.Bytes[..AddressLength]);
+            Address address = new(accountKey.Bytes[..Address.Size]);
 
             Account account = AccountDecoder.Slim.Decode(accountIterator.CurrentValue)!;
             PbtAccount stem = StageStem(account, address, out CodeInfo? code);
@@ -296,12 +248,7 @@ public class ImportPbtFromPreimageFlat(
             if (account.HasStorage) CopySlots(reader, batch, accountKey, address, ref slots, cancellationToken);
 
             batch.NextWrite().SetAccount(PbtStateKey.AddressKeyHash(address), stem);
-            if (code is not null)
-            {
-                batch.NextWrite().SetCode(account.CodeHash.ValueHash256, code);
-                if (!stem.IsDelegation)
-                    foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(account.CodeHash.ValueHash256, code)) batch.NextWrite().SetCodeLeaf(key, value);
-            }
+            if (code is not null) batch.NextWrite().SetCode(account.CodeHash.ValueHash256, code);
 
             pendingAccounts++;
             if (pendingAccounts >= ProgressPublishInterval)
@@ -326,7 +273,7 @@ public class ImportPbtFromPreimageFlat(
     {
         long pendingSlots = 0;
         PbtStorageTreeKey runKey = default;
-        ISlotRun run = SlotRun.Empty;
+        PackedSlotRun run = SlotRun.Empty;
         using FlatPersistence.IFlatIterator slotIterator = reader.CreateStorageIterator(accountKey, default, ValueKeccak.MaxValue);
         while (slotIterator.MoveNext())
         {
@@ -342,7 +289,7 @@ public class ImportPbtFromPreimageFlat(
                 Flush();
                 runKey = slotRunKey;
             }
-            ISlotRun previous = run;
+            PackedSlotRun previous = run;
             run = run.With(SlotRun.IndexOf(key), value);
             SlotRun.Return(previous);
 
@@ -391,7 +338,7 @@ public class ImportPbtFromPreimageFlat(
     }
 
     /// <summary>Derives tree leaves in parallel and commits bounded fold windows.</summary>
-    private async Task DeriveAndFold(StateId targetState, int workerCount, CancellationToken cancellationToken)
+    private async Task DeriveAndFold(StateId targetState, int workerCount, int partitionCount, CancellationToken cancellationToken)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(EntryChunkSize);
         ArgumentOutOfRangeException.ThrowIfNegative(config.ImportWindowSize);
@@ -426,7 +373,6 @@ public class ImportPbtFromPreimageFlat(
 
         async Task ProduceEntries()
         {
-            int partitionCount = (int)Math.Min((long)workerCount * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
             int nextPartition = -1;
             ScanProgress scanProgress = new(partitionCount);
             string[] partitionNames = ["accounts/code", "storage"];
@@ -475,7 +421,7 @@ public class ImportPbtFromPreimageFlat(
                 {
                     try
                     {
-                        using EntrySink sink = new(entries.Writer, EntryChunkSize, cts.Token);
+                        using PbtRebuilder.EntrySink sink = new(entries.Writer, EntryChunkSize, cts.Token);
                         int partition;
                         while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount * 2)
                         {
@@ -532,11 +478,11 @@ public class ImportPbtFromPreimageFlat(
     private static (byte[] Start, byte[] End) ScanBounds(int partition, int partitionCount)
     {
         byte[] start = new byte[sizeof(ushort)];
-        BinaryPrimitives.WriteUInt16BigEndian(start, (ushort)((long)partition * PbtPrefixPartitions.PrefixSpace / partitionCount));
-        if (partition == partitionCount - 1) return (start, PastEveryKey());
+        BinaryPrimitives.WriteUInt16BigEndian(start, (ushort)PbtPrefixPartitions.Start(partition, partitionCount));
+        if (partition == partitionCount - 1) return (start, PbtColumnSweep.PastEveryKey());
 
         byte[] end = new byte[sizeof(ushort)];
-        BinaryPrimitives.WriteUInt16BigEndian(end, (ushort)((long)(partition + 1) * PbtPrefixPartitions.PrefixSpace / partitionCount));
+        BinaryPrimitives.WriteUInt16BigEndian(end, (ushort)PbtPrefixPartitions.Start(partition + 1, partitionCount));
         return (start, end);
     }
 
@@ -544,7 +490,7 @@ public class ImportPbtFromPreimageFlat(
     /// Header slots are emitted with their account because they share its stem and node groups;
     /// <see cref="EmitStorage"/> skips them.
     /// </remarks>
-    private async Task EmitAccounts(byte[] cursor, byte[] end, EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
+    private async Task EmitAccounts(byte[] cursor, byte[] end, PbtRebuilder.EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
     {
         ISortedKeyValueStore accounts = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Accounts);
         ISortedKeyValueStore storage = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Storages);
@@ -561,7 +507,7 @@ public class ImportPbtFromPreimageFlat(
                     cancellationToken.ThrowIfCancellationRequested();
                     buffered.Add(new(new ValueHash256(view.CurrentKey), PbtAccount.Decode(view.CurrentValue).ToAccount()));
                 }
-                if (buffered.Count == EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
+                if (buffered.Count == EntryChunkSize) resumeFrom = PbtColumnSweep.AfterKey(view.CurrentKey);
             }
 
             cancellationToken.ThrowIfCancellationRequested();
@@ -594,7 +540,7 @@ public class ImportPbtFromPreimageFlat(
         }
     }
 
-    private async Task EmitStorage(byte[] cursor, byte[] end, EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
+    private async Task EmitStorage(byte[] cursor, byte[] end, PbtRebuilder.EntrySink sink, ScanProgress progress, int partition, CancellationToken cancellationToken)
     {
         ISortedKeyValueStore storage = (ISortedKeyValueStore)pbtDb.GetColumnDb(PbtColumns.Storages);
         using ArrayPoolList<RebuildEntry> buffered = new(EntryChunkSize);
@@ -610,7 +556,7 @@ public class ImportPbtFromPreimageFlat(
                     AddSlots(view.CurrentKey, view.CurrentValue, buffered);
                 }
                 // A row holds up to a run of slots, so a chunk may overshoot its size.
-                if (buffered.Count >= EntryChunkSize) resumeFrom = AfterKey(view.CurrentKey);
+                if (buffered.Count >= EntryChunkSize) resumeFrom = PbtColumnSweep.AfterKey(view.CurrentKey);
             }
             cancellationToken.ThrowIfCancellationRequested();
             if (resumeFrom is not null) progress.Publish(partition, resumeFrom);
@@ -638,7 +584,7 @@ public class ImportPbtFromPreimageFlat(
     private static void AddSlots(ReadOnlySpan<byte> persistedRunKey, ReadOnlySpan<byte> encodedRun, ArrayPoolList<RebuildEntry> destination)
     {
         PbtStorageTreeKey runKey = PbtStorageKeyLayout.Decode(persistedRunKey);
-        ISlotRun run = SlotRunCodec.Decode(encodedRun);
+        PackedSlotRun run = SlotRunCodec.Decode(encodedRun);
         for (int index = 0; index < SlotRun.Width; index++)
         {
             if ((run.Mask & (1 << index)) == 0) continue;
@@ -646,38 +592,6 @@ public class ImportPbtFromPreimageFlat(
             destination.Add(new(SlotRun.SlotKey(runKey, index), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in slot))));
         }
         SlotRun.Return(run);
-    }
-
-    /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
-    private sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
-    {
-        private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);
-        private bool _owned = true;
-
-        public async ValueTask Add(RebuildEntry entry)
-        {
-            _chunk.Add(entry);
-            if (_chunk.Count >= chunkSize) await Flush();
-        }
-
-        public async ValueTask Complete()
-        {
-            if (_chunk.Count > 0) await Flush();
-        }
-
-        // A failed channel write leaves ownership with this sink.
-        private async ValueTask Flush()
-        {
-            await entries.WriteAsync(_chunk, cancellationToken);
-            _owned = false;
-            _chunk = new ArrayPoolList<RebuildEntry>(chunkSize);
-            _owned = true;
-        }
-
-        public void Dispose()
-        {
-            if (_owned) _chunk.Dispose();
-        }
     }
 
     /// <summary>The stem of <paramref name="account"/>, with the code to stage when this call is the first to see its code hash.</summary>
@@ -696,21 +610,6 @@ public class ImportPbtFromPreimageFlat(
             _stagedCodes.Set(codeHash, stem);
             return stem;
         }
-    }
-
-    private static byte[] PastEveryKey()
-    {
-        byte[] key = new byte[PbtStorageTreeKey.MaxLength + 1];
-        key.AsSpan().Fill(0xFF);
-        return key;
-    }
-
-    /// <summary>Returns the inclusive lower bound immediately after <paramref name="key"/>.</summary>
-    private static byte[] AfterKey(ReadOnlySpan<byte> key)
-    {
-        byte[] next = new byte[key.Length + 1];
-        key.CopyTo(next);
-        return next;
     }
 
 }

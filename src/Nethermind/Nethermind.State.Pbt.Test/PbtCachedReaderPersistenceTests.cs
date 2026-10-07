@@ -169,21 +169,6 @@ public class PbtCachedReaderPersistenceTests
     }
 
     [Test]
-    public async Task Staging_write_does_not_publish_or_refresh_the_cached_reader()
-    {
-        Context ctx = new();
-        await using PbtCachedReaderPersistence persistence = ctx.Build();
-        using IPbtPersistence.IReader beforeStaging = persistence.CreateReader();
-
-        persistence.CreateStagingWriteBatch(WriteFlags.None).Dispose();
-
-        using IPbtPersistence.IReader afterStaging = persistence.CreateReader();
-        Assert.That(afterStaging, Is.SameAs(beforeStaging));
-        ctx.Inner.Received(1).CreateReader();
-        ctx.Inner.Received(1).CreateStagingWriteBatch(WriteFlags.None);
-    }
-
-    [Test]
     public async Task Reader_and_batch_forward_to_the_inner_persistence()
     {
         Context ctx = new();
@@ -234,7 +219,6 @@ public class PbtCachedReaderPersistenceTests
             Inner.CreateReader().Returns(_ => Reader, _ => Substitute.For<IPbtPersistence.IReader>());
             Inner.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
                 .Returns(Batch);
-            Inner.CreateStagingWriteBatch(Arg.Any<WriteFlags>()).Returns(Batch);
         }
 
         public PbtCachedReaderPersistence Build() => new(Inner, Substitute.For<IProcessExitSource>());

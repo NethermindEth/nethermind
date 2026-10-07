@@ -12,40 +12,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
 
-/// <summary>
-/// The values of the <see cref="SlotRun.Width"/> consecutive storage slots that share a run key: an EIP-8297
-/// storage key with its low four bits cleared. A run is whole — an absent slot is zero — and immutable.
-/// </summary>
-/// <remarks>
-/// Instances are pooled by capacity (see <see cref="SlotRun"/>); a write produces a new run via
-/// <see cref="With"/> and the caller returns the old one. The <see cref="PbtSnapshotContent"/> holding a
-/// run owns it.
-/// </remarks>
-public interface ISlotRun
-{
-    /// <summary>The number of non-zero slots.</summary>
-    int Count { get; }
-
-    /// <summary>Bit <c>i</c> set when slot <c>i</c> is non-zero.</summary>
-    ushort Mask { get; }
-
-    /// <summary>The value of slot <paramref name="index"/>, zero when absent.</summary>
-    EvmWord Get(int index);
-
-    /// <summary>A new run with slot <paramref name="index"/> set to <paramref name="value"/> (zero clears it); this run is untouched.</summary>
-    ISlotRun With(int index, in EvmWord value);
-
-    /// <summary>A new run holding the same slots.</summary>
-    ISlotRun Clone();
-
-    /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
-    int EncodedLength { get; }
-
-    /// <summary>Writes the persisted row (see <see cref="Persistence.SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
-    void Encode(Span<byte> destination);
-}
-
-/// <summary>Creates, pools and keys <see cref="ISlotRun"/>s.</summary>
+/// <summary>Creates, pools and keys <see cref="PackedSlotRun"/>s.</summary>
 public static class SlotRun
 {
     /// <summary>The slots one run key spans.</summary>
@@ -53,10 +20,10 @@ public static class SlotRun
     private const byte IndexMask = Width - 1;
 
     /// <summary>The shared all-zero run; never pooled.</summary>
-    public static ISlotRun Empty { get; } = new EmptySlotRun();
+    public static PackedSlotRun Empty { get; } = new EmptySlotRun();
 
     /// <summary>Rents the smallest run holding the slots set in <paramref name="mask"/>, taking their values from the <see cref="Width"/>-wide <paramref name="valuesByIndex"/>.</summary>
-    public static ISlotRun Create(ushort mask, ReadOnlySpan<EvmWord> valuesByIndex)
+    public static PackedSlotRun Create(ushort mask, ReadOnlySpan<EvmWord> valuesByIndex)
     {
         int count = BitOperations.PopCount(mask);
         if (count == 0) return Empty;
@@ -73,7 +40,7 @@ public static class SlotRun
     }
 
     /// <summary>Returns <paramref name="run"/> to its pool; the caller must drop every reference to it.</summary>
-    public static void Return(ISlotRun run) => ((PackedSlotRun)run).ReturnSelf();
+    public static void Return(PackedSlotRun run) => run.ReturnSelf();
 
     /// <summary>The storage key with its low four bits cleared: the key of the run holding <paramref name="slotKey"/>.</summary>
     public static PbtStorageTreeKey RunKey(in PbtStorageTreeKey slotKey) => WithLastByte(slotKey, (byte)(slotKey.Bytes[^1] & ~IndexMask));
@@ -93,19 +60,32 @@ public static class SlotRun
     }
 }
 
-/// <summary>A run whose non-zero values are packed by rank into a fixed-capacity array.</summary>
-internal abstract class PackedSlotRun(int capacity) : ISlotRun, IResettable
+/// <summary>
+/// The values of the <see cref="SlotRun.Width"/> consecutive storage slots that share a run key: an EIP-8297
+/// storage key with its low four bits cleared. A run is whole — an absent slot is zero — and immutable.
+/// </summary>
+/// <remarks>
+/// The non-zero values are packed by rank into a fixed-capacity array. Instances are pooled by capacity (see
+/// <see cref="SlotRun"/>); a write produces a new run via <see cref="With"/> and the caller returns the old one.
+/// The <see cref="PbtSnapshotContent"/> holding a run owns it.
+/// </remarks>
+public abstract class PackedSlotRun(int capacity) : IResettable
 {
     private readonly EvmWord[] _values = new EvmWord[capacity];
     private ushort _mask;
 
+    /// <summary>The number of non-zero slots.</summary>
     public int Count => BitOperations.PopCount(_mask);
+
+    /// <summary>Bit <c>i</c> set when slot <c>i</c> is non-zero.</summary>
     public ushort Mask => _mask;
     private ReadOnlySpan<EvmWord> PackedValues => _values.AsSpan(0, Count);
 
+    /// <summary>The value of slot <paramref name="index"/>, zero when absent.</summary>
     public EvmWord Get(int index) => (_mask & (1 << index)) == 0 ? default : _values[Rank(index)];
 
-    public ISlotRun With(int index, in EvmWord value)
+    /// <summary>A new run with slot <paramref name="index"/> set to <paramref name="value"/> (zero clears it); this run is untouched.</summary>
+    public PackedSlotRun With(int index, in EvmWord value)
     {
         Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
         Expand(valuesByIndex);
@@ -114,15 +94,18 @@ internal abstract class PackedSlotRun(int capacity) : ISlotRun, IResettable
         return SlotRun.Create((ushort)(EvmWordSlot.IsZero(value) ? _mask & ~bit : _mask | bit), valuesByIndex);
     }
 
-    public ISlotRun Clone()
+    /// <summary>A new run holding the same slots.</summary>
+    public PackedSlotRun Clone()
     {
         Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
         Expand(valuesByIndex);
         return SlotRun.Create(_mask, valuesByIndex);
     }
 
+    /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
     public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
 
+    /// <summary>Writes the persisted row (see <see cref="Persistence.SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
     public void Encode(Span<byte> destination)
     {
         destination[0] = (byte)BitOperations.Log2((uint)_values.Length);
@@ -148,7 +131,7 @@ internal abstract class PackedSlotRun(int capacity) : ISlotRun, IResettable
 
     private int Rank(int index) => BitOperations.PopCount((uint)(_mask & ((1 << index) - 1)));
 
-    public void Reset() => _mask = 0;
+    void IResettable.Reset() => _mask = 0;
 
     internal abstract void ReturnSelf();
 }

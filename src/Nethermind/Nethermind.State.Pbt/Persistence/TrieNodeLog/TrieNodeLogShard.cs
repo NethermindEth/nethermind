@@ -629,7 +629,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         return generation;
     }
 
-    private static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
+    internal static ulong ReadUInt64(byte[]? bytes) => bytes is { Length: 8 } ? BinaryPrimitives.ReadUInt64BigEndian(bytes) : 0;
 
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
     private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable

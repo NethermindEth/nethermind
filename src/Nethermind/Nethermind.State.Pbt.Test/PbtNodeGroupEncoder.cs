@@ -44,8 +44,8 @@ internal static class PbtNodeGroupEncoder
         for (int index = 0; index < nodes.Count; index++)
         {
             PbtNodeRecord record = nodes[index] ?? throw new InvalidDataException("A PBT node group contains a null record.");
-            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtFourLevelGroupGeometry.Locate(record.Path);
-            if (!location.GroupKey.Equals(groupKey)) throw new InvalidDataException("Node does not belong to the group key.");
+            PbtNodeGroupLocation<PbtStorageNodePath> location = PbtTestPaths.Locate(record.Path);
+            if (!PbtNodePathOperations.Equal(location.GroupKey, groupKey)) throw new InvalidDataException("Node does not belong to the group key.");
             if ((uint)location.Position >= PbtFourLevelGroupGeometry.PositionCount
                 || (location.Position == PbtFourLevelGroupGeometry.RootPosition && groupKey.BitDepth != 0))
                 throw new InvalidDataException("The group contains a reserved node position.");
@@ -103,7 +103,7 @@ internal static class PbtNodeGroupEncoder
     }
 
     private static bool StartsWith<TPath>(ReadOnlySpan<byte> key, TPath path) where TPath : struct, IPbtNodePath<TPath> =>
-        key.Length * 8 >= path.BitDepth && PbtNodePathOperations.Prefix<TPath>(key, key.Length * 8, path.BitDepth).Equals(path);
+        key.Length * 8 >= path.BitDepth && PbtTestPaths.Prefix<TPath>(key, path.BitDepth).Equals(path);
 
     private static void ValidateGroupKey<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {

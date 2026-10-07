@@ -36,6 +36,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly Channel<PbtTransientResource> _trieCachePopulationJobs = Channel.CreateBounded<PbtTransientResource>(1);
     private readonly Lock _admissionLock = new();
     private readonly CancellationToken _processExitToken;
+    // Mirror mode follows the flat backend's ranges to keep persisted pointers aligned, so it persists only through PersistUpTo.
     private readonly bool _externallyDriven;
     private readonly bool _recordDetailedMetrics;
     private int _isDisposed;
@@ -284,7 +285,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     if (_logger.IsError) _logger.Error("Pbt compaction failed", e);
                 }
 
-                await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
+                if (!_externallyDriven) await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
             }
         }
         catch (OperationCanceledException)
@@ -383,15 +384,14 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public ValueHash256 CurrentRoot => default;
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
-        public ISlotRun GetSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
+        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
         {
             value = default;
             return false;
         }
-        public IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => new PbtIterator<KeyValuePair<ValueHash256, PbtAccount>>(((IEnumerable<KeyValuePair<ValueHash256, PbtAccount>>)[]).GetEnumerator());
-        public IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage(ValueHash256? addressHash = null) => new PbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>>(((IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>>)[]).GetEnumerator());
+        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => ((IEnumerable<KeyValuePair<ValueHash256, PbtAccount>>)[]).GetEnumerator();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
 
         public void Dispose()

@@ -17,7 +17,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Serialization.Rlp.Eip7928;
 using Nethermind.Specs.Forks;
-using Nethermind.State.Pbt.Migration;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
@@ -48,7 +47,8 @@ public class MigrationBalStateChangesTests
 
         using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject))
         {
-            MigrationBalStateChanges.Apply(Decode(block.GetProperty("balRlp").GetString()!), worldState, Amsterdam.Instance);
+            worldState.Commit(Amsterdam.Instance);
+            worldState.ApplyBal(Decode(block.GetProperty("balRlp").GetString()!));
             worldState.RecalculateStateRoot();
             using JsonDocument allocations = LoadAllocations(name);
             using (Assert.EnterMultipleScope())
@@ -93,7 +93,8 @@ public class MigrationBalStateChangesTests
             .TestObject;
         using (worldState.BeginScope(Build.A.BlockHeader.WithNumber(0).WithStateRoot(parentRoot).TestObject))
         {
-            MigrationBalStateChanges.Apply(bal, worldState, Amsterdam.Instance);
+            worldState.Commit(Amsterdam.Instance);
+            worldState.ApplyBal(bal);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(worldState.AccountExists(TestItem.AddressA), Is.False);

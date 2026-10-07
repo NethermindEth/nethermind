@@ -7,6 +7,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Modules;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Mirror;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -465,27 +466,40 @@ public class PbtDbManagerTests
         IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
         exitSource.Token.Returns(CancellationToken.None);
         using PbtTrieNodeCache cache = new(harness.Config);
-        PbtDbManager manager = harness.CreateManager(exitSource, LimboLogs.Instance, mode == TransientHandOff.NoCache ? NoopPbtTrieNodeCache.Instance : cache);
-        PbtTransientResource first = StagedTransient(pool, 1);
-        PbtTransientResource second = StagedTransient(pool, 2);
-        PbtTransientResource third = StagedTransient(pool, 3);
+        // A closed gate parks the populator on the first transient, so the second fills the one-slot queue and the third finds it full.
+        using ManualResetEventSlim populatorGate = new(mode != TransientHandOff.ChannelFull);
+        IPbtTrieNodeCache gatedCache = Substitute.For<IPbtTrieNodeCache>();
+        gatedCache.When(c => c.Add(Arg.Any<PbtTransientResource>())).Do(call =>
+        {
+            populatorGate.Wait();
+            cache.Add(call.Arg<PbtTransientResource>());
+        });
+        PbtDbManager manager = harness.CreateManager(exitSource, LimboLogs.Instance, mode == TransientHandOff.NoCache ? NoopPbtTrieNodeCache.Instance : gatedCache);
+        ConcurrentBag<PbtTransientResource> returned = [];
+        IPbtResourcePool recordingPool = Substitute.For<IPbtResourcePool>();
+        recordingPool.When(p => p.ReturnCachedResource(Arg.Any<PbtResourcePool.Usage>(), Arg.Any<PbtTransientResource>())).Do(call =>
+        {
+            returned.Add(call.Arg<PbtTransientResource>());
+            pool.ReturnCachedResource(call.Arg<PbtResourcePool.Usage>(), call.Arg<PbtTransientResource>());
+        });
+        PbtTransientResource first = StagedTransient(pool, recordingPool, 1);
+        PbtTransientResource second = StagedTransient(pool, recordingPool, 2);
+        PbtTransientResource third = StagedTransient(pool, recordingPool, 3);
         try
         {
-            // An extra lease parks the populator on the first transient, so the second fills the one-slot queue and the third finds it full.
-            bool firstHeld = mode == TransientHandOff.ChannelFull && first.TryAcquireLease();
             manager.AddSnapshot(PersistenceSnapshot(0, 1, pool), first);
             manager.AddSnapshot(PersistenceSnapshot(mode == TransientHandOff.Duplicate ? 0 : 1, mode == TransientHandOff.Duplicate ? 1 : 2, pool), second);
             if (mode == TransientHandOff.ChannelFull)
             {
                 Task stalledCommit = Task.Run(() => manager.AddSnapshot(PersistenceSnapshot(2, 3, pool), third));
                 Assert.That(stalledCommit.Wait(200), Is.False, "a full queue stalls the commit instead of dropping the staged groups");
-                if (firstHeld) first.ReleaseLease();
+                populatorGate.Set();
                 Assert.That(stalledCommit.Wait(5000), Is.True, "the stalled commit resumes once the populator drains the queue");
             }
             else third.ReleaseLease();
-            if (mode == TransientHandOff.Duplicate) Assert.That(IsReturned(second), Is.True, "a transient that cannot reach the populator returns to the pool at once");
+            if (mode == TransientHandOff.Duplicate) Assert.That(returned, Does.Contain(second), "a transient that cannot reach the populator returns to the pool at once");
             Assert.That(() => cache.EntryCount, Is.EqualTo(mode switch { TransientHandOff.NoCache => 0, TransientHandOff.Duplicate => 1, TransientHandOff.Admitted => 2, _ => 3 }).After(5000, 10));
-            Assert.That(() => IsReturned(first) && IsReturned(second) && IsReturned(third), Is.True.After(5000, 10), "every transient returns to the pool once ingested or refused");
+            Assert.That(() => returned, Is.EquivalentTo(new[] { first, second, third }).After(5000, 10), "every transient returns to the pool exactly once, ingested or refused");
             Assert.That(first.NodeGroups.Count + second.NodeGroups.Count + third.NodeGroups.Count, Is.Zero);
         }
         finally
@@ -494,35 +508,14 @@ public class PbtDbManagerTests
         }
     }
 
-    /// <summary>A returned resource refuses new leases until it is rented again; a probe that succeeds is undone.</summary>
-    private static bool IsReturned(PbtTransientResource transient)
-    {
-        if (!transient.TryAcquireLease()) return true;
-        transient.ReleaseLease();
-        return false;
-    }
-
-    private static PbtTransientResource StagedTransient(PbtResourcePool pool, byte marker)
+    /// <summary>Rents a transient that stages one group and returns itself through <paramref name="returnPool"/>.</summary>
+    private static PbtTransientResource StagedTransient(PbtResourcePool pool, IPbtResourcePool returnPool, byte marker)
     {
         PbtTransientResource transient = pool.GetCachedResource(PbtResourcePool.Usage.MainBlockProcessing);
+        transient.OnRented(returnPool, PbtResourcePool.Usage.MainBlockProcessing);
         using RefCountingMemory payload = RefCountingMemory.OwningRocksDb(new ArrayMemoryManager([marker]));
         transient.NodeGroups.Set(new ValueHash256(TestItem.KeccakA.Bytes), new PbtNodePath([marker], 8), payload);
         return transient;
-    }
-
-    [Test]
-    public void Persistence_ClearsStorageOnlyForAddressesWithExistingStorage()
-    {
-        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 1, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 1 });
-        ValueHash256 existing = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        ValueHash256 fresh = PbtStateKey.AddressKeyHash(TestItem.AddressB);
-        PbtSnapshot snapshot = PersistenceSnapshot(0, 1, harness.Pool);
-        snapshot.Content.ClearStorage(existing, isNewStorage: false);
-        snapshot.Content.ClearStorage(fresh, isNewStorage: true);
-        harness.Repository.TryAdd(snapshot);
-        Assert.That(harness.Coordinator.PersistUpTo(PersistenceState(1)), Is.True);
-        harness.Batch.Received(1).ClearStorage(existing);
-        harness.Batch.DidNotReceive().ClearStorage(fresh);
     }
 
     [Test]
@@ -556,7 +549,7 @@ public class PbtDbManagerTests
         public CoordinatorHarness(PbtConfig config)
         {
             Config = config;
-            Pool = new(config, PooledRefCountingMemoryProvider.Instance);
+            Pool = new(config);
             Schedule = new(Metadata, config, LimboLogs.Instance);
             IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
             reader.CurrentState.Returns(PersistenceState(0));

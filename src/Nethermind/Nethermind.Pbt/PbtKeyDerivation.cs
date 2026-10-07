@@ -17,6 +17,8 @@ public static class PbtKeyDerivation
     public const int CodeHashLeafKey = 1;
     public const int DelegationLeafKey = 2;
     public const int HeaderStorageOffset = 64;
+    /// <summary>The number of storage slots, from slot zero, an account keeps in its own subtree from <see cref="HeaderStorageOffset"/> on.</summary>
+    public const int HeaderStorageSlots = 64;
 
     /// <summary>Size of one code chunk, which is one leaf value.</summary>
     public const int CodeChunkSize = 32;

@@ -20,8 +20,6 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, int foldConcurrency, ILogManager logManager)
 {
     private const int DefaultWindowSize = 2_000_000;
-    /// <summary>The key nibble the zone fold expects each partition batch to be sharded on.</summary>
-    private const int PartitionShardNibbleIndex = 2;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
     private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
@@ -53,9 +51,9 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     {
         if (windowSize == 0) windowSize = DefaultWindowSize;
 
-        using PbtWriteBatchBuilder<PbtPath> accountChanges = new(PartitionShardNibbleIndex);
-        using PbtWriteBatchBuilder<PbtPath> codeChanges = new(PartitionShardNibbleIndex);
-        using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new(PartitionShardNibbleIndex);
+        using PbtWriteBatchBuilder<PbtPath> accountChanges = new();
+        using PbtWriteBatchBuilder<PbtPath> codeChanges = new();
+        using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new();
         ValueHash256 root = default;
         int windowCount = 0;
         long receivedCount = 0;
@@ -69,10 +67,10 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                 foreach (RebuildEntry entry in chunk.AsSpan())
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    int partition = PbtPartitions.PartitionOf(entry.Key);
-                    if (partition == (int)PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
-                    else if (partition == (int)PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                    else if (partition == (int)PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
+                    PbtPartition? partition = PbtPartitions.PartitionOf(entry.Key);
+                    if (partition == PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
+                    else if (partition == PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
+                    else if (partition == PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
                     else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
                     receivedCount++;
                     if (++windowCount == windowSize) CommitWindow();
@@ -139,5 +137,34 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         }
 
         public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+    }
+
+    /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>
+    internal sealed class EntrySink(ChannelWriter<ArrayPoolList<RebuildEntry>> entries, int chunkSize, CancellationToken cancellationToken) : IDisposable
+    {
+        private ArrayPoolList<RebuildEntry> _chunk = new(chunkSize);
+        private bool _owned = true;
+
+        public ValueTask Add(in RebuildEntry entry)
+        {
+            _chunk.Add(entry);
+            return _chunk.Count >= chunkSize ? Flush() : default;
+        }
+
+        public ValueTask Complete() => _chunk.Count > 0 ? Flush() : default;
+
+        // A failed channel write leaves ownership with this sink.
+        private async ValueTask Flush()
+        {
+            await entries.WriteAsync(_chunk, cancellationToken);
+            _owned = false;
+            _chunk = new ArrayPoolList<RebuildEntry>(chunkSize);
+            _owned = true;
+        }
+
+        public void Dispose()
+        {
+            if (_owned) _chunk.Dispose();
+        }
     }
 }

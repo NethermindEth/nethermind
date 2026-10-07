@@ -19,8 +19,6 @@ namespace Nethermind.State.Pbt.Image;
 internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
     internal const int DefaultWindowSize = 2_000_000;
-    /// <summary>The key nibble the zone fold expects each partition batch to be sharded on.</summary>
-    private const int PartitionShardNibbleIndex = 2;
 
     private readonly Lock _lock = new();
     private readonly Group[] _edge = new Group[PbtStorageTreeKey.MaxLength * 8 + 1];
@@ -29,6 +27,8 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
 
     /// <summary>Calculates an EIP-8297 root from strictly ordered image leaves.</summary>
     /// <remarks>The next window is read and batched on another thread while the current one folds.</remarks>
+    /// <param name="entries">Validated, strictly ascending account, code and storage leaves, such as those
+    /// <see cref="PbtSnapshotCodec.Write"/> passes on; an out-of-order leaf is not detected and yields a wrong root.</param>
     /// <param name="windowSize">Maximum leaves folded per tree update.</param>
     /// <param name="foldConcurrency">Maximum threads, including the calling one, folding a window.</param>
     internal static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> entries, int windowSize, int foldConcurrency, CancellationToken cancellationToken)
@@ -41,11 +41,10 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
         {
             using PbtRightmostGroupStore store = new();
             ConcurrencyController foldQuota = new(foldConcurrency);
-            FoldFanOut fanOut = new(FoldFanOut.DefaultMinOperationsPerWorker, FoldFanOut.DefaultLargeSubtreeBytes, FoldFanOut.DefaultLargeSubtreeMinOperationsPerWorker);
             ValueHash256 root = default;
             foreach (PbtPartitionBatches window in windows.GetConsumingEnumerable(cancellationToken))
             {
-                using (window) root = TrieUpdater.UpdateRoot(store, root, window, foldQuota, fanOut, null);
+                using (window) root = TrieUpdater.UpdateRoot(store, root, window, foldQuota, FoldFanOut.Default, null);
                 store.ReleaseSuperseded();
             }
             reading.GetAwaiter().GetResult();
@@ -64,21 +63,17 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
     {
         try
         {
-            using PbtWriteBatchBuilder<PbtPath> accountChanges = new(PartitionShardNibbleIndex);
-            using PbtWriteBatchBuilder<PbtPath> codeChanges = new(PartitionShardNibbleIndex);
-            using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new(PartitionShardNibbleIndex);
-            PbtStorageTreeKey previous = default;
+            using PbtWriteBatchBuilder<PbtPath> accountChanges = new();
+            using PbtWriteBatchBuilder<PbtPath> codeChanges = new();
+            using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new();
             int windowCount = 0;
             foreach (RebuildEntry entry in entries)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                if (previous.Length != 0 && previous.CompareTo(entry.Key) >= 0)
-                    throw new InvalidDataException("Image leaves must be strictly ordered.");
-                previous = entry.Key;
-                int partition = PbtPartitions.PartitionOf(entry.Key);
-                if (partition == (int)PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
-                else if (partition == (int)PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                else if (partition == (int)PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
+                PbtPartition? partition = PbtPartitions.PartitionOf(entry.Key);
+                if (partition == PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
+                else if (partition == PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
+                else if (partition == PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
                 else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
                 if (++windowCount == windowSize) AddWindow();
             }

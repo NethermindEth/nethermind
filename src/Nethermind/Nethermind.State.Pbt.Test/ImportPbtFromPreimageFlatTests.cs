@@ -123,7 +123,7 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(EvmWordSlot.AsReadOnlySpan(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)).ToArray(), Is.EqualTo(((UInt256)0x55).ToBigEndian()));
 
         PbtRocksDbPersistence reopened = new(pbtDb, config, NullTrieNodeLog.Instance);
-        PbtResourcePool pool = new(config, PooledRefCountingMemoryProvider.Instance);
+        PbtResourcePool pool = new(config);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0),
             new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reopened.CreateReader()), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         Account retained = bundle.GetAccount(TestItem.AddressB)!.WithChangedNonce(4).WithChangedBalance(43);
@@ -468,7 +468,7 @@ public class ImportPbtFromPreimageFlatTests
             if (pathBytes.Length != 0) pathBytes[0] = prefix;
             if (depth % 8 != 0) pathBytes[^1] &= 0xF0;
             PbtStorageNodePath group = PbtStorageNodePath.Create(pathBytes, depth);
-            PbtStorageNodePath node = depth == 0 ? group : PbtFourLevelGroupGeometry.PathOf(group, 0);
+            PbtStorageNodePath node = depth == 0 ? group : PbtTestPaths.PathOf(group, 0);
             // Below the root every group stores one branch over two inline leaves, except where no longer key fits.
             bool inlineLeaves = depth != 0 && node.BitDepth < PbtFourLevelGroupGeometry.MaxPathDepth;
             byte[] leftKey = new byte[inlineLeaves ? PbtStorageTreeKey.MaxLength : 0];
@@ -560,17 +560,6 @@ public class ImportPbtFromPreimageFlatTests
                 Assert.That(formatted, Does.Contain($"Descendant sizes ({label})"));
             }
         }
-    }
-
-    [TestCase(new long[0], 0, 0, 0, 0, 0)]
-    [TestCase(new long[] { 1000, 1100, 900 }, 18, 7, 6, 7, 6)]
-    [TestCase(new long[] { 0x0100000000FF, 0x010000000001 }, 12, 13, 9, 8, 12)]
-    [TestCase(new long[] { 0xFFFF, 0x10000 }, 12, 7, 5, 7, 6)]
-    public void Scanner_measures_descendant_size_encodings(long[] sizes, long fixedBytes, long sharedWidth, long baseDelta, long frontCoded, long varint)
-    {
-        long[] bytesByEncoding = new long[Enum.GetValues<PbtScanReport.DescendantEncoding>().Length];
-        PbtScanner.AddDescendantEncodingBytes(sizes, bytesByEncoding);
-        Assert.That(bytesByEncoding, Is.EqualTo(new[] { fixedBytes, sharedWidth, baseDelta, frontCoded, varint }));
     }
 
     [Test]

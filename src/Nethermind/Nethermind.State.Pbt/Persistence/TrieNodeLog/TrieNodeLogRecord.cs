@@ -66,6 +66,18 @@ internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int 
         _ => false,
     };
 
+    /// <summary>Whether <paramref name="record"/> starts with a complete header and the whole of <paramref name="key"/>.</summary>
+    public static bool HoldsKey(ReadOnlySpan<byte> record, ReadOnlySpan<byte> key, out TrieNodeLogRecord header)
+    {
+        if (record.Length < HeaderLength)
+        {
+            header = default;
+            return false;
+        }
+        header = Read(record);
+        return header.KeyLength == key.Length && record.Length >= HeaderLength + key.Length && record.Slice(HeaderLength, key.Length).SequenceEqual(key);
+    }
+
     public static ulong Hash(ReadOnlySpan<byte> key) => XxHash3.HashToUInt64(key);
 
     public static ulong PackPrev(long offset) => (ulong)offset + 1;

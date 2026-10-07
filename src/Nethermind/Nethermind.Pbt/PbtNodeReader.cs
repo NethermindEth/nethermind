@@ -17,7 +17,6 @@ internal readonly ref struct PbtNodeReader
 
     internal static PbtNodeReader FromValidated(ReadOnlySpan<byte> encoding) => new(encoding);
 
-    internal ReadOnlySpan<byte> Encoding => _encoding;
     internal bool IsLeaf => _encoding[0] == 0;
     /// <summary>The root leaf's complete key.</summary>
     internal ReadOnlySpan<byte> Key => _encoding[2..];

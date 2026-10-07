@@ -9,7 +9,7 @@ namespace Nethermind.State.Pbt.Migration;
 
 /// <summary>Imports the configured EIP-8347 anchor in the background, then starts the BAL follower.</summary>
 /// <remarks>
-/// Main processing keeps running on flat alone while PBT lacks the base state (see <see cref="MigrationBackendSelector"/>),
+/// Main processing runs on flat until EIP-8347 activation (see <see cref="MigrationActivation.IsBinary"/>),
 /// so the node does not wait for the import. An import that fails validation stops the node, as it did when the import
 /// blocked startup. Any other failure is logged and leaves PBT empty: flat keeps processing until activation, where
 /// processing stalls.

@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Pbt.Image;
 
@@ -13,10 +14,13 @@ namespace Nethermind.State.Pbt.Migration;
 /// anchor the same way for the provenance marker of a seeded database to match the one that seeded it.</remarks>
 internal static class PbtMigrationAnchor
 {
-    /// <summary>Local byte budget for whole code plus its chunk encoding during verification.</summary>
-    private const int MaxBufferedCodeBytes = 256 * 1024 * 1024;
+    private const string WorkDbName = "migration-work";
 
     public static PbtImageAnchor Create(ChainSpec chainSpec, BlockHeader genesis, BlockHeader header) =>
         new(chainSpec.ChainId.ToString(CultureInfo.InvariantCulture), genesis.Hash!, header,
-            chainSpec.Parameters.Eip8347TransitionTimestamp, MaxBufferedCodeBytes);
+            chainSpec.Parameters.Eip8347TransitionTimestamp);
+
+    /// <summary>The <paramref name="name"/> scratch directory under the migration's work database path.</summary>
+    public static string ScratchDirectory(IDbFactory dbFactory, string name) =>
+        Path.Combine(dbFactory.GetFullDbPath(new DbSettings(WorkDbName, WorkDbName)), name);
 }

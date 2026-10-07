@@ -6,7 +6,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Pbt;
 using IResettable = Nethermind.Core.Resettables.IResettable;
@@ -21,9 +20,8 @@ public class PbtResourcePool : IPbtResourcePool
 {
     private readonly Dictionary<Usage, ResourcePoolCategory> _categories;
 
-    public PbtResourcePool(IPbtConfig config, IRefCountingMemoryProvider nodeGroupMemory)
+    public PbtResourcePool(IPbtConfig config)
     {
-        NodeGroupMemory = nodeGroupMemory;
         _categories = new()
         {
             // A persisted segment returns its whole chain at once, so the pool must absorb that burst:
@@ -34,24 +32,11 @@ public class PbtResourcePool : IPbtResourcePool
 
             // Read-only means never committed to the repository; the scope may still commit locally.
             { Usage.ReadOnlyProcessingEnv, new ResourcePoolCategory(Usage.ReadOnlyProcessingEnv, Environment.ProcessorCount * 4, Environment.ProcessorCount * 4) },
-
-            // one compaction runs at a time per width, and its content is dropped as soon as it is written
-            { Usage.Compact2, new ResourcePoolCategory(Usage.Compact2, 2, 0) },
-            { Usage.Compact4, new ResourcePoolCategory(Usage.Compact4, 2, 0) },
-            { Usage.Compact8, new ResourcePoolCategory(Usage.Compact8, 2, 0) },
-            { Usage.Compact16, new ResourcePoolCategory(Usage.Compact16, 2, 0) },
-            { Usage.Compact32, new ResourcePoolCategory(Usage.Compact32, 2, 0) },
-            { Usage.Compact64, new ResourcePoolCategory(Usage.Compact64, 2, 0) },
-            { Usage.Compact128, new ResourcePoolCategory(Usage.Compact128, 2, 0) },
-            { Usage.Compact256, new ResourcePoolCategory(Usage.Compact256, 2, 0) },
-            { Usage.Compact512, new ResourcePoolCategory(Usage.Compact512, 2, 0) },
-            { Usage.Compact1024, new ResourcePoolCategory(Usage.Compact1024, 2, 0) },
-            { Usage.Compact2048, new ResourcePoolCategory(Usage.Compact2048, 2, 0) },
         };
-    }
 
-    /// <inheritdoc/>
-    public IRefCountingMemoryProvider NodeGroupMemory { get; }
+        // one compaction runs at a time per width, and its content is dropped as soon as it is written
+        for (Usage usage = Usage.Compact2; usage <= Usage.Compact2048; usage++) _categories[usage] = new ResourcePoolCategory(usage, 2, 0);
+    }
 
     public PbtSnapshotContent GetSnapshotContent(Usage usage) => _categories[usage].GetSnapshotContent();
 
@@ -82,8 +67,8 @@ public class PbtResourcePool : IPbtResourcePool
 
     /// <summary>Maps a merged layer's width to its size class, rounded up to the next pooled power of two.</summary>
     /// <remarks>
-    /// Takes the width actually merged, never the configured compact size: a segment is also persisted
-    /// at depth 1 on a genesis flush and at up to the reorg depth by the finality-stall backstop.
+    /// Takes the number of layers in the leased window, not the scheduled width: the window mixes already-compacted
+    /// and base layers, so its count can be below the width and is not necessarily a power of two.
     /// </remarks>
     public static Usage CompactUsage(int mergedLayerCount) => (uint)BitOperations.RoundUpToPowerOf2((uint)mergedLayerCount) switch
     {
@@ -153,86 +138,57 @@ public class PbtResourcePool : IPbtResourcePool
         private readonly PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
 
-        public PbtSnapshotContent GetSnapshotContent()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, 1);
-            if (_snapshotPool.TryGet(out PbtSnapshotContent? content))
-            {
-                Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
-                return content;
-            }
+        public PbtSnapshotContent GetSnapshotContent() =>
+            TryRent(_snapshotPool, _snapshotLabel, out PbtSnapshotContent? content) ? content : new PbtSnapshotContent();
 
-            // This grows indefinitely when the category's pool is too small.
-            Metrics.PbtCreatedPooledResource.AddBy(_snapshotLabel, 1);
-            return new PbtSnapshotContent();
-        }
+        public void ReturnSnapshotContent(PbtSnapshotContent content) => Return(_snapshotPool, _snapshotLabel, content);
 
-        public void ReturnSnapshotContent(PbtSnapshotContent content)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_snapshotLabel, -1);
-            _snapshotPool.Return(content);
-            Metrics.PbtCachedPooledResource[_snapshotLabel] = _snapshotPool.PooledItemCount;
-        }
+        public PbtWriteBatchBuilder<PbtPath> GetWriteBatch() =>
+            TryRent(_writeBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtPath>? batch) ? batch : new PbtWriteBatchBuilder<PbtPath>();
 
-        public PbtWriteBatchBuilder<PbtPath> GetWriteBatch()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
-            if (_writeBatchPool.TryGet(out PbtWriteBatchBuilder<PbtPath>? batch))
-            {
-                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
-                return batch;
-            }
-            Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
-            return new PbtWriteBatchBuilder<PbtPath>(2);
-        }
+        public void ReturnWriteBatch(PbtWriteBatchBuilder<PbtPath> batch) => Return(_writeBatchPool, _writeBatchLabel, batch);
 
-        public void ReturnWriteBatch(PbtWriteBatchBuilder<PbtPath> batch)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
-            _writeBatchPool.Return(batch);
-            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
-        }
+        public PbtWriteBatchBuilder<PbtStoragePath> GetStorageWriteBatch() =>
+            TryRent(_storageWriteBatchPool, _writeBatchLabel, out PbtWriteBatchBuilder<PbtStoragePath>? batch) ? batch : new PbtWriteBatchBuilder<PbtStoragePath>();
 
-        public PbtWriteBatchBuilder<PbtStoragePath> GetStorageWriteBatch()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, 1);
-            if (_storageWriteBatchPool.TryGet(out PbtWriteBatchBuilder<PbtStoragePath>? batch))
-            {
-                Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
-                return batch;
-            }
-            Metrics.PbtCreatedPooledResource.AddBy(_writeBatchLabel, 1);
-            return new PbtWriteBatchBuilder<PbtStoragePath>(2);
-        }
+        public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStoragePath> batch) => Return(_storageWriteBatchPool, _writeBatchLabel, batch);
 
-        public void ReturnStorageWriteBatch(PbtWriteBatchBuilder<PbtStoragePath> batch)
-        {
-            Metrics.PbtActivePooledResource.AddBy(_writeBatchLabel, -1);
-            _storageWriteBatchPool.Return(batch);
-            Metrics.PbtCachedPooledResource[_writeBatchLabel] = _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount;
-        }
-
-        public PbtTransientResource GetCachedResource()
-        {
-            Metrics.PbtActivePooledResource.AddBy(_cachedResourceLabel, 1);
-            if (_cachedResourcePool.TryGet(out PbtTransientResource? resource))
-            {
-                Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
-                return resource;
-            }
-
-            Metrics.PbtCreatedPooledResource.AddBy(_cachedResourceLabel, 1);
-            return new PbtTransientResource(Volatile.Read(ref _lastNodeGroupCapacity));
-        }
+        public PbtTransientResource GetCachedResource() =>
+            TryRent(_cachedResourcePool, _cachedResourceLabel, out PbtTransientResource? resource) ? resource : new PbtTransientResource(Volatile.Read(ref _lastNodeGroupCapacity));
 
         public void ReturnCachedResource(PbtTransientResource resource)
         {
-            Metrics.PbtActivePooledResource.AddBy(_cachedResourceLabel, -1);
-            if (!_cachedResourcePool.Return(resource))
+            if (!Return(_cachedResourcePool, _cachedResourceLabel, resource))
                 Volatile.Write(ref _lastNodeGroupCapacity, resource.NodeGroups.Capacity);
-            Metrics.PbtCachedPooledResource[_cachedResourceLabel] = _cachedResourcePool.PooledItemCount;
         }
 
+        /// <summary>Pops a pooled item; on a miss the caller creates one, counted as created.</summary>
+        private bool TryRent<T>(ConcurrentStackPool<T> pool, PooledResourceLabel label, [NotNullWhen(true)] out T? item) where T : notnull, IDisposable, IResettable
+        {
+            Metrics.PbtActivePooledResource.AddBy(label, 1);
+            if (pool.TryGet(out item))
+            {
+                Metrics.PbtCachedPooledResource[label] = CachedCount(pool, label);
+                return true;
+            }
+
+            // This grows indefinitely when the category's pool is too small.
+            Metrics.PbtCreatedPooledResource.AddBy(label, 1);
+            return false;
+        }
+
+        /// <returns>Whether the pool kept <paramref name="item"/> rather than disposing it on overflow.</returns>
+        private bool Return<T>(ConcurrentStackPool<T> pool, PooledResourceLabel label, T item) where T : notnull, IDisposable, IResettable
+        {
+            Metrics.PbtActivePooledResource.AddBy(label, -1);
+            bool kept = pool.Return(item);
+            Metrics.PbtCachedPooledResource[label] = CachedCount(pool, label);
+            return kept;
+        }
+
+        // The two write-batch pools share one label, so its count covers both.
+        private int CachedCount<T>(ConcurrentStackPool<T> pool, PooledResourceLabel label) where T : notnull, IDisposable, IResettable =>
+            ReferenceEquals(label, _writeBatchLabel) ? _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount : pool.PooledItemCount;
     }
 
     public record PooledResourceLabel(string Category, string ResourceType) : IMetricLabels

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Memory;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt;
@@ -19,10 +18,10 @@ public interface IPbtResourcePool
     /// </summary>
     void ReturnSnapshotContent(PbtResourcePool.Usage usage, PbtSnapshotContent content);
 
-    /// <summary>Rents an empty transient resource with its owner lease armed.</summary>
+    /// <summary>Rents an empty transient resource, armed to return itself here.</summary>
     PbtTransientResource GetCachedResource(PbtResourcePool.Usage usage);
 
-    /// <summary>Returns an exclusively owned transient resource after its final lease is released.</summary>
+    /// <summary>Returns an exclusively owned transient resource; reached through <see cref="PbtTransientResource.ReleaseLease"/>.</summary>
     /// <remarks>Use the original rental usage; the caller must not access the resource after returning it.</remarks>
     void ReturnCachedResource(PbtResourcePool.Usage usage, PbtTransientResource resource);
 
@@ -37,7 +36,4 @@ public interface IPbtResourcePool
 
     /// <summary>Returns a storage accumulator to its original rental usage.</summary>
     void ReturnStorageWriteBatch(PbtResourcePool.Usage usage, PbtWriteBatchBuilder<PbtStoragePath> batch);
-
-    /// <summary>The memory the tree fold writes node-group payloads into.</summary>
-    IRefCountingMemoryProvider NodeGroupMemory { get; }
 }

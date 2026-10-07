@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -23,24 +24,19 @@ namespace Nethermind.State.Pbt.Mirror;
 public class PbtMirrorScopeProvider(
     IWorldStateScopeProvider authoritative,
     IPbtDbManager manager,
-    IPbtResourcePool resourcePool,
+    IRefCountingMemoryProvider nodeGroupMemory,
     IPbtConfig config,
     IStateHeaderProvider stateHeaderProvider,
-    ILogManager? logManager = null) : IWorldStateScopeProvider
+    ILogManager logManager) : IWorldStateScopeProvider
 {
 
     public bool HasRoot(BlockHeader? baseBlock) =>
         authoritative.HasRoot(baseBlock) && manager.HasStateForBlock(new StateId(baseBlock));
 
-    public bool HasStateForTargetBlock(BlockHeader targetBlock) =>
-        stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent) && HasRoot(parent);
+    public bool HasStateForTargetBlock(BlockHeader targetBlock) => this.HasRootForTarget(stateHeaderProvider, targetBlock);
 
-    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
-    {
-        if (stateHeaderProvider.TryGetBaseBlock(targetBlock, out BlockHeader? parent)) return TryBeginScope(parent, metrics, out scope);
-        scope = null;
-        return false;
-    }
+    public bool TryBeginScopeAtTarget(BlockHeader targetBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope) =>
+        this.TryBeginScopeAtBase(stateHeaderProvider, targetBlock, metrics, out scope);
 
     public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
     {
@@ -68,8 +64,7 @@ public class PbtMirrorScopeProvider(
                 manager,
                 // The mirror supplies the root; do not consult the block tree.
                 NullPbtChildHeaderSource.Instance,
-                resourcePool,
-                PbtResourcePool.Usage.MainBlockProcessing,
+                nodeGroupMemory,
                 isReadOnly: false,
                 config,
                 logManager);

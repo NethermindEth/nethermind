@@ -18,13 +18,6 @@ internal static class PbtStateKey
         return Blake3Hash.Hash(address32);
     }
 
-    public static PbtPath Account(Address address, byte subIndex)
-    {
-        Span<byte> address32 = stackalloc byte[32];
-        Address32(address, address32);
-        return Eip8297KeyDerivation.AccountKey(address32, subIndex);
-    }
-
     public static PbtPath Account(in ValueHash256 addressHash, byte subIndex) =>
         Eip8297KeyDerivation.AccountKey(addressHash, subIndex);
 

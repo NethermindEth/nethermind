@@ -38,9 +38,6 @@ public class PbtPersistenceCoordinator(
     private readonly ulong _compactSize = (ulong)config.CompactSize;
     private readonly ulong _minReorgDepth = (ulong)config.MinReorgDepth;
 
-    // Mirror mode follows the flat backend's ranges to keep persisted pointers aligned.
-    private readonly bool _externallyDriven = config.MirrorFlat;
-
     // Leave one compact window for finality-driven persistence before the backstop fires.
     private readonly ulong _backstopReorgDepth = Math.Max((ulong)config.MaxReorgDepth, (ulong)(config.MinReorgDepth + config.CompactSize));
 
@@ -73,11 +70,8 @@ public class PbtPersistenceCoordinator(
 
     /// <summary>Evaluates the persistence triggers, persisting at most a few segments per call; re-invoked on every committed block.</summary>
     /// <returns>Whether anything was persisted, and so whether the persisted state id has advanced.</returns>
-    /// <remarks>Does nothing when persistence is driven externally; see <see cref="PersistUpTo"/>.</remarks>
     public bool CheckPersistence(in StateId latestSnapshot)
     {
-        if (_externallyDriven) return false;
-
         lock (_persistenceLock)
         {
             const int maxDrainIterations = 4;
@@ -103,13 +97,9 @@ public class PbtPersistenceCoordinator(
     {
         lock (_persistenceLock)
         {
-            // Validate the complete target before advancing a mirror through any intermediate state.
-            using PbtSnapshot? candidate = repository.FindSnapshotToPersist(seed, GetCurrentPersistedStateId(), _compactSize);
-            if (candidate is null) return false;
-            while (PersistSegment(seed))
-            {
-            }
-            return true;
+            bool persistedAny = false;
+            while (PersistSegment(seed)) persistedAny = true;
+            return persistedAny;
         }
     }
 
@@ -186,16 +176,9 @@ public class PbtPersistenceCoordinator(
         PbtSnapshotContent content = snapshot.Content;
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, snapshot.TreeRoot, WriteFlags.None);
 
-        foreach ((ValueHash256 addressHash, bool isNewStorage) in content.SelfDestructedStorageAddresses)
-            if (!isNewStorage) batch.ClearStorage(addressHash);
         foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) batch.SetAccount(addressHash, account);
-        foreach ((HashedKey<PbtStorageTreeKey> runKey, ISlotRun run) in content.Storages) batch.SetSlotRun(runKey, run);
-        foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes)
-        {
-            batch.SetCode(codeHash, code);
-            if (Eip7702Constants.IsDelegatedCode(code.CodeSpan)) continue;
-            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(codeHash, code)) batch.SetCodeLeaf(key, value);
-        }
+        foreach ((HashedKey<PbtStorageTreeKey> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey, run);
+        foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((PbtStorageNodePath groupKey, RefCountingMemory? payload) in content.StorageNodeGroups) batch.SetNodeGroup(groupKey, payload);

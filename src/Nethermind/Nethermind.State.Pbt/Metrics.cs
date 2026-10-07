@@ -39,9 +39,6 @@ public static class Metrics
         ["storage"] = 0,
     };
 
-    internal static readonly PbtSnapshotMemoryLabel AccountLeafSnapshotMemory = new("account", "leaf");
-    internal static readonly PbtSnapshotMemoryLabel AccountTrieSnapshotMemory = new("account", "trie");
-
     [DetailedMetric]
     [Description("Time a pbt write batch was open, covering the block's storage and account flush (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
@@ -138,12 +135,13 @@ public static class Metrics
     };
 
     [GaugeMetric]
-    [Description("Retained payload bytes in pbt base snapshots, by partition and value type, excluding tombstones and data-structure overhead")]
-    [KeyIsLabel("partition", "type")]
-    public static ConcurrentDictionary<PbtSnapshotMemoryLabel, long> PbtBaseSnapshotMemory { get; } = new()
+    [DetailedMetric]
+    [Description("Retained payload bytes in pbt base snapshots, by value type, excluding tombstones and data-structure overhead")]
+    [KeyIsLabel("type")]
+    public static ConcurrentDictionary<string, long> PbtBaseSnapshotMemory { get; } = new()
     {
-        [AccountLeafSnapshotMemory] = 0,
-        [AccountTrieSnapshotMemory] = 0,
+        ["leaf"] = 0,
+        ["trie"] = 0,
     };
 
     private static long _pbtBaseSnapshotCount;
@@ -152,11 +150,12 @@ public static class Metrics
     [Description("Number of pbt base snapshots currently retained in snapshot repositories")]
     public static long PbtBaseSnapshotCount => Volatile.Read(ref _pbtBaseSnapshotCount);
 
-    internal static void AddPbtBaseSnapshot(in PbtSnapshotPayloadSize size, long direction)
+    internal static void AddPbtBaseSnapshotCount(long delta) => Interlocked.Add(ref _pbtBaseSnapshotCount, delta);
+
+    internal static void AddPbtBaseSnapshotMemory(in PbtSnapshotPayloadSize size, long direction)
     {
-        PbtBaseSnapshotMemory.AddBy(AccountLeafSnapshotMemory, direction * size.Leaf);
-        PbtBaseSnapshotMemory.AddBy(AccountTrieSnapshotMemory, direction * size.Node);
-        Interlocked.Add(ref _pbtBaseSnapshotCount, direction);
+        PbtBaseSnapshotMemory.AddBy("leaf", direction * size.Leaf);
+        PbtBaseSnapshotMemory.AddBy("trie", direction * size.Node);
     }
 
     [GaugeMetric]
@@ -221,11 +220,7 @@ public static class Metrics
 
     [GaugeMetric]
     [Description("Bytes of pbt trie node log generation files not yet merged into RocksDB")]
-    public static long PbtTrieNodeLogBytes
-    {
-        get => Volatile.Read(ref _pbtTrieNodeLogBytes);
-        set => Interlocked.Exchange(ref _pbtTrieNodeLogBytes, value);
-    }
+    public static long PbtTrieNodeLogBytes => Volatile.Read(ref _pbtTrieNodeLogBytes);
 
     public static void AddPbtTrieNodeLogBytes(long delta) => Interlocked.Add(ref _pbtTrieNodeLogBytes, delta);
 
@@ -242,13 +237,6 @@ public static class Metrics
     [Description("Newest pbt trie node log generation merged into RocksDB, by shard")]
     [KeyIsLabel("shard")]
     public static ConcurrentDictionary<string, long> PbtTrieNodeLogFlushedGeneration { get; } = new();
-}
-
-/// <summary>Metric labels identifying a PBT partition and value type.</summary>
-public readonly record struct PbtSnapshotMemoryLabel(string Partition, string Type) : IMetricLabels
-{
-    /// <inheritdoc/>
-    public string[] Labels => [Partition, Type];
 }
 
 /// <summary>Metric labels identifying a PBT partition and whether a node-group read found a group.</summary>

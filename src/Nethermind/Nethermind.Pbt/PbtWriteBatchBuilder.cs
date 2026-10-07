@@ -11,14 +11,14 @@ namespace Nethermind.Pbt;
 
 /// <summary>Accumulates complete-key mutations in shards selected by a key nibble.</summary>
 /// <remarks>Writes synchronize per shard. Count, enumeration, preparation and reset require joined writers.</remarks>
-/// <param name="shardNibbleIndex">The zero-based key nibble used to select a shard.</param>
-public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposable, IResettable where TKey : struct, IPbtKey<TKey>
+public sealed class PbtWriteBatchBuilder<TKey> : IDisposable, IResettable where TKey : struct, IPbtKey<TKey>
 {
     private const int ShardCount = 16;
     private static readonly ObjectPool<Shard> ShardPool = new DefaultObjectPool<Shard>(new ShardPoolPolicy(), ShardCount * 2);
     private ShardBuffer _shards;
 
-    private readonly int _shardNibbleIndex = shardNibbleIndex;
+    /// <summary>The zero-based key nibble used to select a shard: the first one after the zone byte.</summary>
+    private const int ShardNibbleIndex = 2;
 
     private sealed class Shard(int capacity)
     {
@@ -51,7 +51,7 @@ public sealed class PbtWriteBatchBuilder<TKey>(int shardNibbleIndex) : IDisposab
         private Shard? _element;
     }
 
-    private int ShardOf(TKey key) => (key.Bytes[_shardNibbleIndex >> 1] >> ((_shardNibbleIndex & 1) == 0 ? 4 : 0)) & 15;
+    private static int ShardOf(TKey key) => (key.Bytes[ShardNibbleIndex >> 1] >> 4) & 15;
 
     /// <summary>Adds a complete-key value mutation, or a deletion when the value is zero.</summary>
     public void Set(TKey key, in ValueHash256 value)

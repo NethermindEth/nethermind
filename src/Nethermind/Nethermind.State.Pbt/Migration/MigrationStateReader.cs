@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -15,12 +16,12 @@ namespace Nethermind.State.Pbt.Migration;
 /// <see cref="HasStateForBlock"/> answers exactly what <see cref="MigrationScopeProvider"/> can open for a null
 /// target, so the processing pre-checks that go through the state reader agree with main processing.
 /// </remarks>
-internal sealed class MigrationStateReader(FlatStateReader flat, PbtStateReader pbt, MigrationBackendSelector selector) : IStateReader
+internal sealed class MigrationStateReader(FlatStateReader flat, PbtStateReader pbt, ISpecProvider specProvider) : IStateReader
 {
     // Flat never holds a post-activation state, so availability picks the backend; flat first, as the authoritative tree before activation.
     private IStateReader Select(BlockHeader? baseBlock) => flat.HasStateForBlock(baseBlock) ? flat : pbt;
 
-    public bool HasStateForBlock(BlockHeader? baseBlock) => selector.IsBinary(baseBlock, null)
+    public bool HasStateForBlock(BlockHeader? baseBlock) => MigrationActivation.IsBinary(specProvider, baseBlock, null)
         ? pbt.HasStateForBlock(baseBlock)
         : flat.HasStateForBlock(baseBlock);
 

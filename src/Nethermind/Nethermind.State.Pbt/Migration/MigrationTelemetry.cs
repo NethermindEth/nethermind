@@ -29,7 +29,7 @@ internal sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager man
         if (head is not null && specProvider.GetSpec(head).IsEip8347Enabled)
         {
             BlockHeader? parent = ActivationParent(head);
-            MigrationDirectionForRpc? parked = parent is null ? null : new("parked", parent.Number, parent.Hash!, PbtRoot(parent), "");
+            MigrationDirectionForRpc? parked = parent is null ? null : new("parked", parent.Number, parent.Hash!, PbtFollowerCursor.At(manager, parent).TreeRoot, "");
             return new("running", parked, Direction(head, merkle.Cursor, merkle.Error));
         }
         return new("running", Direction(head, scheduler.Cursor, scheduler.Error), null);
@@ -52,19 +52,13 @@ internal sealed class MigrationTelemetry(IBlockTree blockTree, IPbtDbManager man
         return new(phase, cursor.Number, cursor.Hash, cursor.TreeRoot, synced ? "" : error ?? "");
     }
 
-    private Hash256 PbtRoot(BlockHeader header)
-    {
-        using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(header));
-        return (bundle?.TreeRoot ?? default).ToHash256();
-    }
-
     // The activation parent only changes on a reorg across the boundary, so keep it while it stays canonical.
     private BlockHeader? ActivationParent(BlockHeader head)
     {
         BlockHeader? cached = _activationParent;
-        if (cached is not null && blockTree.FindHeader(cached.Number)?.Hash == cached.Hash
+        if (cached is not null && blockTree.IsMainChain(cached)
             && blockTree.FindHeader(cached.Number + 1) is { } child && specProvider.GetSpec(child).IsEip8347Enabled)
             return cached;
-        return _activationParent = MigrationActivation.FindActivationParent(blockTree, specProvider, head);
+        return _activationParent = MigrationActivation.FindActivationParent(blockTree, specProvider, head, BlockTreeLookupOptions.None);
     }
 }

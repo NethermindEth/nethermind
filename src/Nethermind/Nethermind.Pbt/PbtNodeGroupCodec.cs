@@ -32,12 +32,6 @@ public static class PbtNodeGroupCodec
     internal const int HeaderLength = 1;
     internal static ReadOnlySpan<byte> Header => "\x07"u8;
 
-    /// <summary>The number of positions represented by the offset table.</summary>
-    public const int PositionCount = PbtFourLevelGroupGeometry.PositionCount;
-
-    /// <summary>The number of boundary slots a group records descendant sizes for.</summary>
-    public const int DescendantSlots = PbtFourLevelGroupGeometry.BoundarySlots;
-
     /// <summary>The number of bytes in the widest descendant-size field.</summary>
     public const int MaxDescendantBytesLength = 6;
 
@@ -47,7 +41,7 @@ public static class PbtNodeGroupCodec
     public const int DescendantMaskLength = sizeof(ushort);
 
     /// <summary>The maximum number of bytes in the packed offset, availability and descendant-size footer.</summary>
-    public const int MaxTrailerLength = PositionCount * sizeof(ushort) + sizeof(uint) + DescendantSlots * MaxDescendantBytesLength + DescendantWidthLength + DescendantMaskLength;
+    public const int MaxTrailerLength = PbtFourLevelGroupGeometry.PositionCount * sizeof(ushort) + sizeof(uint) + PbtFourLevelGroupGeometry.BoundarySlots * MaxDescendantBytesLength + DescendantWidthLength + DescendantMaskLength;
 
     /// <summary>The largest descendant size a 48-bit field can hold.</summary>
     public const long MaxDescendantBytes = (1L << (8 * MaxDescendantBytesLength)) - 1;
@@ -55,7 +49,7 @@ public static class PbtNodeGroupCodec
     /// <summary>The largest payload a group can encode: header, a full entries section, and the widest trailer.</summary>
     public const int MaxPayloadLength = HeaderLength + MaxEntriesLength + MaxTrailerLength;
     private const uint ReservedRootBit = 1u << PbtFourLevelGroupGeometry.RootPosition;
-    private const uint AllowedPositionBits = (1u << PositionCount) - 1;
+    private const uint AllowedPositionBits = (1u << PbtFourLevelGroupGeometry.PositionCount) - 1;
 
     /// <summary>Checks a payload's header, footer length, availability bits and descendant sizes without parsing its nodes.</summary>
     /// <returns>The availability bitmap.</returns>
@@ -68,7 +62,7 @@ public static class PbtNodeGroupCodec
         if (descendantMask != 0 && ReadDescendantWidth(payload) is < 1 or > MaxDescendantBytesLength) throw new InvalidDataException("Invalid PBT node group descendant-size width.");
         if (payload.Length < HeaderLength + sizeof(uint) + DescendantsLength(payload)) throw new InvalidDataException("Truncated PBT node group footer.");
         long widest = 0;
-        for (int slot = 0; slot < DescendantSlots; slot++)
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
         {
             if ((descendantMask & (1 << slot)) == 0) continue;
             long slotBytes = ReadDescendantBytes(payload, descendantMask, slot);

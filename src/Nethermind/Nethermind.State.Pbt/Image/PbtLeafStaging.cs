@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
@@ -22,15 +23,14 @@ namespace Nethermind.State.Pbt.Image;
 /// </remarks>
 internal static class PbtLeafStaging
 {
-    private const byte AccountZone = 0x00;
-    private const byte CodeZone = 0x01;
-    private const int DelegationLength = 23;
-    private const int HeaderStorageSlots = 64;
+    /// <summary>Local byte budget for whole code plus its 32-byte chunk encoding; not a deployment-code limit.
+    /// Exhaustion is retryable resource unavailability, not invalid state.</summary>
+    private const ulong MaxBufferedCodeBytes = 256 * 1024 * 1024;
     private const string CodePhase = "PBT import code";
 
     /// <returns>The staged accounts and slots, and the code chunks <see cref="RebuildCodes"/> must consume.</returns>
     public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtAnchorPublication.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
-        int maxBufferedCodeBytes, CancellationToken cancellationToken)
+        CancellationToken cancellationToken)
     {
         ulong accounts = 0;
         ulong slots = 0;
@@ -40,20 +40,20 @@ internal static class PbtLeafStaging
         ValueHash256? codeHash = null;
         ValueHash256? delegation = null;
         PbtStorageTreeKey? runKey = null;
-        ISlotRun run = SlotRun.Empty;
+        PackedSlotRun run = SlotRun.Empty;
 
         foreach (RebuildEntry entry in leaves)
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadOnlySpan<byte> key = entry.Key.Bytes;
-            if (key[0] == CodeZone)
+            if (key[0] == Eip8297KeyDerivation.CodeZone)
             {
                 FlushAccount();
                 batch.Next().SetCodeLeaf((PbtPath)entry.Key, entry.Leaf);
                 chunkCount++;
                 continue;
             }
-            if (key[0] == AccountZone)
+            if (key[0] == Eip8297KeyDerivation.AccountZone)
             {
                 ValueHash256 addressHash = new(key[1..33]);
                 if (stem != addressHash)
@@ -72,7 +72,7 @@ internal static class PbtLeafStaging
                     case PbtKeyDerivation.DelegationLeafKey:
                         delegation = entry.Leaf;
                         continue;
-                    case < PbtKeyDerivation.HeaderStorageOffset or >= PbtKeyDerivation.HeaderStorageOffset + HeaderStorageSlots:
+                    case < PbtKeyDerivation.HeaderStorageOffset or >= PbtKeyDerivation.HeaderStorageOffset + PbtSnapshotCodec.HeaderStorageSlots:
                         throw new InvalidDataException("Snapshot holds a leaf at a reserved account sub-index.");
                 }
             }
@@ -82,7 +82,7 @@ internal static class PbtLeafStaging
             PbtStorageTreeKey slotRunKey = SlotRun.RunKey(entry.Key);
             if (runKey != slotRunKey) FlushRun();
             runKey = slotRunKey;
-            ISlotRun previous = run;
+            PackedSlotRun previous = run;
             run = previous.With(SlotRun.IndexOf(entry.Key), EvmWordSlot.FromStripped(entry.Leaf.Bytes));
             SlotRun.Return(previous);
         }
@@ -103,11 +103,11 @@ internal static class PbtLeafStaging
             PbtAccount account;
             if (delegation is { } delegated)
             {
-                if (codeSize != DelegationLength || codeHash is not null || delegated.Bytes[DelegationLength..].IndexOfAnyExcept((byte)0) >= 0 ||
-                    !Eip7702Constants.IsDelegatedCode(delegated.Bytes[..DelegationLength]))
+                if (codeSize != PbtAccount.DelegationLength || codeHash is not null || delegated.Bytes[PbtAccount.DelegationLength..].IndexOfAnyExcept((byte)0) >= 0 ||
+                    !Eip7702Constants.IsDelegatedCode(delegated.Bytes[..PbtAccount.DelegationLength]))
                     throw new InvalidDataException("Invalid delegation header.");
                 account = new PbtAccount(basicData, delegated, IsDelegation: true);
-                batch.Next().SetCode(account.CodeHash, new CodeInfo(delegated.Bytes[..DelegationLength].ToArray()));
+                batch.Next().SetCode(account.CodeHash, new CodeInfo(delegated.Bytes[..PbtAccount.DelegationLength].ToArray()));
             }
             else
             {
@@ -116,7 +116,7 @@ internal static class PbtLeafStaging
                 {
                     if (account.HasCode) throw new InvalidDataException("Codeless account has a nonempty code hash.");
                 }
-                else if ((ulong)codeSize + ((ulong)codeSize + 30) / 31 * 32 > (ulong)maxBufferedCodeBytes)
+                else if ((ulong)codeSize + ((ulong)codeSize + 30) / 31 * 32 > MaxBufferedCodeBytes)
                     throw new PbtImageResourceLimitException("Code staging requires a larger local buffering budget.");
             }
             batch.Next().SetAccount(addressHash, account);
@@ -156,7 +156,7 @@ internal static class PbtLeafStaging
         IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
         try
         {
-            using IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> accounts = staged.EnumerateAccounts();
+            using IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> accounts = staged.EnumerateAccounts();
             while (accounts.MoveNext())
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -194,38 +194,36 @@ internal static class PbtLeafStaging
         if (consumed != chunkCount) throw new InvalidDataException("Snapshot holds code chunks no account's code accounts for.");
     }
 
+    /// <summary>Reassembles <paramref name="size"/> bytes of code from its stored chunks, absent chunks reading as zeros,
+    /// then requires the stored chunks to be exactly the code's canonical ones.</summary>
     /// <returns>The stored chunks the code consumed.</returns>
     private static long Rebuild(IPbtPersistence.IReader staged, in ValueHash256 codeHash, int size, IPbtPersistence.IWriteBatch batch, CancellationToken cancellationToken)
     {
-        byte[] code = Assemble(staged, codeHash, size, cancellationToken);
+        byte[] code = new byte[size];
+        int chunkCount = (int)(((long)size + 30) / 31);
+        using ArrayPoolList<ValueHash256> leaves = new(chunkCount, chunkCount);
+        using ArrayPoolList<bool> stored = new(chunkCount, chunkCount);
+        for (int chunk = 0; chunk < chunkCount; chunk++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            stored[chunk] = staged.TryGetCodeLeaf(PbtStateKey.Code(codeHash, chunk), out ValueHash256 value);
+            leaves[chunk] = value;
+            if (stored[chunk]) value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
+        }
+
         if (ValueKeccak.Compute(code) != codeHash || Eip7702Constants.IsDelegatedCode(code))
             throw new InvalidDataException("Code bytes do not match the account code hash or delegation representation.");
         using RefCountingMemory chunkMemory = PbtKeyDerivation.ChunkifyCode(code);
         ReadOnlySpan<byte> encodedChunks = chunkMemory.GetSpan();
         long consumed = 0;
-        for (int chunk = 0; chunk * 32 < encodedChunks.Length; chunk++)
+        for (int chunk = 0; chunk < chunkCount; chunk++)
         {
             ValueHash256 expected = new(encodedChunks.Slice(chunk * 32, 32));
-            bool stored = staged.TryGetCodeLeaf(PbtStateKey.Code(codeHash, chunk), out ValueHash256 actual);
-            if (actual != expected || stored != (expected != default))
+            if (leaves[chunk] != expected || stored[chunk] != (expected != default))
                 throw new InvalidDataException("Noncanonical code chunk or PUSHDATA count.");
-            if (stored) consumed++;
+            if (stored[chunk]) consumed++;
         }
         batch.SetCode(codeHash, new CodeInfo(code));
         return consumed;
-    }
-
-    /// <summary>Reassembles <paramref name="size"/> bytes of code from its stored chunks; absent chunks read as zeros.</summary>
-    private static byte[] Assemble(IPbtPersistence.IReader staged, in ValueHash256 codeHash, int size, CancellationToken cancellationToken)
-    {
-        byte[] code = new byte[size];
-        int chunks = (int)(((long)size + 30) / 31);
-        for (int chunk = 0; chunk < chunks; chunk++)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            if (staged.TryGetCodeLeaf(PbtStateKey.Code(codeHash, chunk), out ValueHash256 value))
-                value.Bytes.Slice(1, Math.Min(31, size - chunk * 31)).CopyTo(code.AsSpan(chunk * 31));
-        }
-        return code;
     }
 }

@@ -82,29 +82,6 @@ public sealed class PbtReadOnlySnapshotBundle(
         return result;
     }
 
-    internal IEnumerable<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts()
-    {
-        GuardDispose();
-        SortedDictionary<ValueHash256, PbtAccount?> visible = new(Comparer<ValueHash256>.Create(static (left, right) => left.Bytes.SequenceCompareTo(right.Bytes)));
-        using (IPbtIterator<KeyValuePair<ValueHash256, PbtAccount>> accounts = reader.EnumerateAccounts())
-            while (accounts.MoveNext()) visible[accounts.Current.Key] = accounts.Current.Value;
-        foreach (PbtSnapshot snapshot in snapshots)
-            foreach ((ValueHash256 hash, PbtAccount? account) in snapshot.Content.Accounts) visible[hash] = account;
-        foreach ((ValueHash256 hash, PbtAccount? account) in visible)
-            if (account is { } value) yield return new(hash, value);
-    }
-
-    internal IEnumerable<KeyValuePair<PbtStorageTreeKey, EvmWord>> EnumerateStorage()
-    {
-        GuardDispose();
-        SortedDictionary<PbtStorageTreeKey, EvmWord> visible = new(PbtStorageKeyLayout.Comparer);
-        using (IPbtIterator<KeyValuePair<PbtStorageTreeKey, EvmWord>> storage = reader.EnumerateStorage())
-            while (storage.MoveNext()) visible[storage.Current.Key] = storage.Current.Value;
-        foreach (PbtSnapshot snapshot in snapshots) snapshot.Content.ApplyStorage(visible);
-        foreach ((PbtStorageTreeKey key, EvmWord value) in visible)
-            if (!EvmWordSlot.IsZero(value)) yield return new(key, value);
-    }
-
     public PbtAccount? GetAccount(Address address) => GetAccount(PbtStateKey.AddressKeyHash(address));
 
     internal PbtAccount? GetAccount(in ValueHash256 addressHash)
@@ -135,14 +112,14 @@ public sealed class PbtReadOnlySnapshotBundle(
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out ISlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabels[labelIndex]);
                 return run?.Get(index) ?? default;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        ISlotRun persisted = reader.GetSlotRun(runKey.Key);
+        PackedSlotRun persisted = reader.GetSlotRun(runKey.Key);
         EvmWord result = persisted.Get(index);
         SlotRun.Return(persisted);
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabels : _readStoragePersistenceLabels)[labelIndex]);
@@ -150,7 +127,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>A caller-owned copy of the whole run keyed by <paramref name="runKey"/> as this view sees it.</summary>
-    internal ISlotRun RentRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    internal PackedSlotRun RentRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -158,14 +135,14 @@ public sealed class PbtReadOnlySnapshotBundle(
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)
         {
             PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out ISlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readRunSnapshotLabels[labelIndex]);
                 return run?.Clone() ?? SlotRun.Empty;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        ISlotRun persisted = reader.GetSlotRun(runKey.Key);
+        PackedSlotRun persisted = reader.GetSlotRun(runKey.Key);
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (persisted.Count == 0 ? _readRunPersistenceNullLabels : _readRunPersistenceLabels)[labelIndex]);
         return persisted;
     }
@@ -192,7 +169,6 @@ public sealed class PbtReadOnlySnapshotBundle(
 
     protected override void CleanUp()
     {
-        if (_isDisposed) return;
         _isDisposed = true;
         try
         {

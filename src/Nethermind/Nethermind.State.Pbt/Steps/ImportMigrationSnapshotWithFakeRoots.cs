@@ -31,7 +31,7 @@ internal sealed class ImportMigrationSnapshotWithFakeRoots(
         BlockHeader genesis = blockTree.Genesis ?? throw new InvalidDataException("Snapshot import requires an initialized genesis.");
         BlockHeader anchor = blockTree.FindHeader((ulong)config.MigrationAnchor!.Value, BlockTreeLookupOptions.RequireCanonical)
             ?? throw new InvalidDataException($"Snapshot anchor {config.MigrationAnchor} is not in the canonical chain.");
-        string scratch = Path.Combine(dbFactory.GetFullDbPath(new DbSettings("migration-work", "migration-work")), "bootstrap");
+        string scratch = PbtMigrationAnchor.ScratchDirectory(dbFactory, "bootstrap");
 
         await using FileStream snapshot = File.Open(config.MigrationSnapshotPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
         await using FileStream preimages = File.Open(config.MigrationPreimagesPath!, FileMode.Open, FileAccess.Read, FileShare.Read);

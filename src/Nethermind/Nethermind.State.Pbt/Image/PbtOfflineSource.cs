@@ -48,7 +48,6 @@ internal static class PbtOfflineSource
     {
         ArgumentOutOfRangeException.ThrowIfLessThan(sortBufferBytes, 1024);
         ArgumentOutOfRangeException.ThrowIfNegative(workerCount);
-        ArgumentOutOfRangeException.ThrowIfNegative(anchor.MaxBufferedCodeBytes);
         cancellationToken.ThrowIfCancellationRequested();
         if (!source.IsPreimageMode || source.CurrentState.BlockNumber != anchor.Header.Number ||
             anchor.Header.StateRoot is null || source.CurrentState.StateRoot != anchor.Header.StateRoot.ValueHash256 ||
@@ -62,10 +61,10 @@ internal static class PbtOfflineSource
         try
         {
             int spoolBytes = preimages is null ? sortBufferBytes : sortBufferBytes / 2;
-            using PbtSortedSpool leaves = new(directory, spoolBytes, workers, logManager, cancellationToken)
-            { FinalMerge = () => LogFinalMerge("leaves"), MaxConcurrentPreMerges = workers };
-            using PbtSortedSpool? rawKeys = preimages is null ? null : new(directory, spoolBytes, workers, logManager, cancellationToken)
-            { FinalMerge = () => LogFinalMerge("preimages"), MaxConcurrentPreMerges = workers };
+            using PbtSortedSpool leaves = new("export leaves", directory, spoolBytes, workers, logManager, cancellationToken)
+            { MaxConcurrentPreMerges = workers };
+            using PbtSortedSpool? rawKeys = preimages is null ? null : new("export preimages", directory, spoolBytes, workers, logManager, cancellationToken)
+            { MaxConcurrentPreMerges = workers };
             ScanTotals totals = new();
             Scan();
 
@@ -73,10 +72,11 @@ internal static class PbtOfflineSource
             ulong accountCount = (ulong)totals.Accounts;
             // The preimage stream needs nothing from the leaves, so its spool drains alongside the leaf spool's.
             using CancellationTokenSource failed = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            Task<ValueHash256> snapshotDigest = StartDrain(() => PbtArtifactWriter.WriteSnapshot(snapshot, SnapshotLeaves(),
+            Task<ValueHash256> snapshotDigest = StartDrain(() => PbtArtifactWriter.WriteDigested(snapshot, destination => PbtSnapshotCodec.Write(destination, SnapshotLeaves(),
                 written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, workers, failed.Token),
-                failed.Token));
-            Task<ValueHash256>? preimageDigest = preimages is null ? null : StartDrain(() => PbtArtifactWriter.WritePreimages(preimages, Accounts(), failed.Token));
+                failed.Token)));
+            Task<ValueHash256>? preimageDigest = preimages is null ? null
+                : StartDrain(() => PbtArtifactWriter.WriteDigested(preimages, destination => PbtPreimageCodec.Write(destination, Accounts(), failed.Token)));
             // Joined without the token for the same reason as the scan workers.
             try
             {
@@ -106,11 +106,6 @@ internal static class PbtOfflineSource
                 }
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
-            void LogFinalMerge(string spool)
-            {
-                if (logger.IsInfo) logger.Info($"PBT export: merging the sorted {spool}.");
-            }
-
             // Workers claim address ranges on demand; the spools restore the total order the walk does not have.
             void Scan()
             {
@@ -127,7 +122,7 @@ internal static class PbtOfflineSource
                 {
                     using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
                     using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
-                    ScanWorker worker = new(codeSource, anchor, leafWriter, rawKeyWriter, progress, keyspace, totals);
+                    ScanWorker worker = new(codeSource, leafWriter, rawKeyWriter, progress, keyspace, totals);
                     int partition;
                     while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
                     {
@@ -221,7 +216,6 @@ internal static class PbtOfflineSource
     /// interleave through one preimage key and corrupt the preimage stream.</remarks>
     private sealed class ScanWorker(
         IReadOnlyKeyValueStore codeSource,
-        PbtImageAnchor anchor,
         PbtSortedSpool.Writer leaves,
         PbtSortedSpool.Writer? rawKeys,
         ProgressReporter progress,
@@ -267,8 +261,6 @@ internal static class PbtOfflineSource
             if (account.HasCode)
             {
                 byte[] bytes = codeSource.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException("Missing source code.");
-                if ((long)bytes.Length + ((long)bytes.Length + 30) / 31 * 32 > anchor.MaxBufferedCodeBytes)
-                    throw new PbtImageResourceLimitException("Source code requires a larger local buffering budget.");
                 if (Keccak.Compute(bytes) != account.CodeHash) throw new InvalidDataException("Source code hash mismatch.");
                 code = new CodeInfo(bytes);
             }
@@ -286,7 +278,7 @@ internal static class PbtOfflineSource
                     ValueHash256 slot = slots.CurrentKey;
                     EvmWord value = EvmWordSlot.FromStripped(slots.CurrentValue);
                     if (EvmWordSlot.IsZero(value)) throw new InvalidDataException("Source contains a zero storage slot.");
-                    AddLeaf(PbtStateKey.Storage(address, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
+                    AddLeaf(PbtStateKey.Storage(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
                     if (rawKeys is not null)
                     {
                         addressHash.Bytes.CopyTo(_preimageKey);

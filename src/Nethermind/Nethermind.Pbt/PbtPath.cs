@@ -45,7 +45,7 @@ public readonly struct PbtPath : IPbtKey<PbtPath>
 
     public int GetBit(int bitIndex) => TrieUpdater.GetBit(Bytes, bitIndex);
 
-    public int FirstDifferingBit(in PbtPath other, int startBit = 0) =>
+    public int FirstDifferingBit(in PbtPath other, int startBit) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
     public int CompareTo(PbtPath other) => Bytes.SequenceCompareTo(other.Bytes);

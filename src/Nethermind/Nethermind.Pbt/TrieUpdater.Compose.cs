@@ -4,7 +4,6 @@
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
-using static Nethermind.Pbt.TrieUpdater;
 
 namespace Nethermind.Pbt;
 
@@ -55,21 +54,6 @@ internal static partial class TrieUpdater<TKey, TPath>
         PbtBitPrefix.CopyBits(prefix.Bytes, 0, prefix.BitCount, encoding[3..], riseBitCount);
         PbtNodeCodec.WriteRebasedBranchTrailer(encoding[PbtNodeCodec.BranchPreimageLength(bitCount)..], stored, fromKeyOffset, toKeyOffset, path.Bytes);
         return new(node.Offset, length, default);
-    }
-
-    /// <summary>Detaches the group's root, the last entry, as a result anchored at <paramref name="resultDepth"/>, and drops it from the group.</summary>
-    internal static void TakeRoot(PbtNodeGroupWriter<TPath> writer, PbtTraversalPath path, int resultDepth, in ComposedNode root, ref FoldResult result)
-    {
-        if (root.IsEmpty)
-        {
-            result = default;
-            return;
-        }
-        ReadOnlyMemory<byte> encoding = writer.Entry(root.Offset, root.Length);
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-        if (node.IsLeaf) result = new(TKey.Create(node.Key), root.Hash);
-        else new BoundaryNode(encoding, path.BitDepth, root.Hash, LeafSource.None).ToFoldResult(path, resultDepth, ref result);
-        writer.DropLast(PbtFourLevelGroupGeometry.RootPosition);
     }
 
     private struct ComposeFrame
