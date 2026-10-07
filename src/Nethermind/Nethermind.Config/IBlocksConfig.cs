@@ -99,6 +99,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The share of runs ahead, in percent, that must still hold for the prewarmer to keep running ahead of every block; 0 to always run ahead. Requires PreWarmLookAhead.", DefaultValue = "30", HiddenFromDocs = true)]
     int PreWarmLookAheadMinHoldPercent { get; set; }
 
+    [ConfigItem(Description = "Keep running queued blocks ahead through the state root, until the commit, instead of stopping with the block's transactions. Requires PreWarmLookAhead.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmLookAheadUntilCommit { get; set; }
+
     /// <summary>Whether sync takes over pre-warm runs whose read-modify-written slots moved, checked by the block's roots.</summary>
     /// <remarks>
     /// A counter every transaction bumps makes every run but the first stale. Replaying such a run with its writes shifted by

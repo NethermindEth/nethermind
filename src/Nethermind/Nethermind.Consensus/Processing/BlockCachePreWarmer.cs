@@ -68,6 +68,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private ISpecProvider? _specProvider;
     private int _lookAheadDepth;
     private int _lookAheadConcurrency;
+    // Whether runs ahead go on through the block's state root, competing with its parallel commit, or stop with its transactions.
+    private bool _lookAheadUntilCommit;
     // How many runs ahead still held, or no longer held, when their block's own pass reached them; folded into
     // _aheadHoldRate at each block's start.
     private int _aheadHeld;
@@ -148,6 +150,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // Under All nothing is pinned, and the near workers are sized around where the processing thread is pinned.
         _coreSplit = blocksConfig.PreWarmCoreSplit ? PerformanceCores.PrewarmFor(blocksConfig.ProcessingCores) : null;
         _shiftedHold = blocksConfig.ShiftedSyncReplay;
+        _lookAheadUntilCommit = blocksConfig.PreWarmLookAheadUntilCommit;
         if (lookAhead is not null && specProvider is not null)
         {
             EnableLookAhead(lookAhead, specProvider, blocksConfig.PreWarmLookAhead, blocksConfig.PreWarmLookAheadConcurrency,
@@ -258,7 +261,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         PrewarmingSession session = new(cancellationToken, _logger);
-        CancellationToken token = session.UntilDrainedToken;
+        CancellationToken token = _lookAheadUntilCommit ? session.UntilDrainedToken : session.Token;
         session.Start(() =>
         {
             using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
@@ -354,10 +357,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ? null
                 : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
-            // Runs ahead start with the block's own pass and go on until the session is drained before the commit: they are
-            // what the next blocks start from, and the block's transactions ending early would otherwise cut them short.
+            // Runs ahead start with the block's own pass: run after it, they got little time on blocks the main thread mostly
+            // replays. They stop with the block's transactions, as the pass does, unless told to go on until the commit.
             bool runAhead = _lookAheadDepth > 0 && suggestedBlock is not BlockToProduce && ShouldRunAhead();
-            CancellationToken aheadToken = session.UntilDrainedToken;
+            CancellationToken aheadToken = _lookAheadUntilCommit ? session.UntilDrainedToken : token;
             session.Start(() =>
             {
                 // The coordinator owns the caller slot; all nested fan-outs share the remaining workers.
