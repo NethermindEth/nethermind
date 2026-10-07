@@ -52,8 +52,14 @@ Command verifyCommand = new("verify", "Checks that the manifests list the accumu
 };
 verifyCommand.SetAction((parseResult, cancellationToken) => RunCommand(async () =>
 {
+    string directory = parseResult.GetValue(directoryArgument)!;
     IReadOnlyList<string> mismatches = await EraManifestGenerator.VerifyAsync(
-        parseResult.GetValue(directoryArgument)!, parseResult.GetValue(networkOption)!, fileSystem, cancellationToken);
+        directory, parseResult.GetValue(networkOption)!, fileSystem, cancellationToken);
+    if (!fileSystem.File.Exists(Path.Combine(directory, EraExporter.AccumulatorFileName)))
+    {
+        Console.WriteLine($"{EraExporter.AccumulatorFileName} not found; skipping the optional accumulator manifest.");
+    }
+
     foreach (string mismatch in mismatches)
     {
         Console.Error.WriteLine(mismatch);
