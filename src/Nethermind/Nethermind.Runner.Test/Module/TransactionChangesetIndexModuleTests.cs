@@ -398,6 +398,7 @@ public class TransactionChangesetIndexModuleTests
     [TestCase(1, 8, 1, TestName = "TraceBudget_WithBothKeysSet_TakesTheDeprecatedKeyAndWarns")]
     [TestCase(8, 2, 8, TestName = "TraceBudget_WithBothKeysSetTheOtherWay_TakesTheDeprecatedKeyAndWarns")]
     [TestCase(64, null, 16, TestName = "TraceBudget_WithTheDeprecatedKeyAboveTheCap_ClampsToSixteenAndWarns")]
+    [TestCase(-1, 8, 1, TestName = "TraceBudget_WithTheDeprecatedKeyNegative_ClampsToOneAndWarns")]
     public void TraceBudget_WithTheDeprecatedKeySet_KeepsItsOldMeaningAndWarns(int legacy, int? traceBlock, int expected)
     {
         (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(legacy, traceBlock);
@@ -410,26 +411,15 @@ public class TransactionChangesetIndexModuleTests
         }
     }
 
-    [Test]
-    public void TraceBudget_WithTheDeprecatedKeySetToZero_UsesTheProcessorCountAndWarns()
+    [TestCase(null, 4, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockDefaultWithoutWarning")]
+    [TestCase(2, 2, TestName = "TraceBudget_WithTheDeprecatedKeyAtItsDefault_FollowsTheTraceBlockSettingWithoutWarning")]
+    public void TraceBudget_WithTheDeprecatedKeyAtZero_FollowsTheTraceBlockSettingWithoutWarning(int? traceBlock, int configured)
     {
-        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(0, null);
+        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(0, traceBlock);
         using (container)
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(budget.Degree, Is.EqualTo(Math.Min(Environment.ProcessorCount, 16)), "zero keeps its old meaning: the processor count capped at 16");
-            Assert.That(logger.LogList, Has.Some.Contains("FlatDb.HistoryTransactionIndexTraceParallelism is deprecated"));
-        }
-    }
-
-    [Test]
-    public void TraceBudget_WithoutTheDeprecatedKey_FollowsTheTraceBlockDefaultWithoutWarning()
-    {
-        (ParallelTraceBudget budget, TestLogger logger, IContainer container) = ResolveTraceBudget(null, null);
-        using (container)
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(budget.Degree, Is.EqualTo(Math.Min(4, Environment.ProcessorCount)), "the trace block default of four applies");
+            Assert.That(budget.Degree, Is.EqualTo(Math.Min(configured, Environment.ProcessorCount)), "zero, the published default, means the deprecated key is not set");
             Assert.That(logger.LogList, Has.None.Contains("deprecated"));
         }
     }
@@ -511,7 +501,7 @@ public class TransactionChangesetIndexModuleTests
         stopper.Received(1).AddStoppable(builder);
     }
 
-    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveTraceBudget(int? legacy, int? traceBlock)
+    private static (ParallelTraceBudget Budget, TestLogger Logger, IContainer Container) ResolveTraceBudget(int legacy, int? traceBlock)
     {
         JsonRpcConfig rpc = new();
         if (traceBlock is int workers) rpc.TraceBlockParallelism = workers;

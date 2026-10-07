@@ -130,16 +130,17 @@ public class RpcModules(IJsonRpcConfig jsonRpcConfig) : Module
     }
 
     /// <summary>The one budget every parallel block trace on this node draws on, whichever seed the block takes. The
-    /// deprecated FlatDb key, while an operator still sets it, sizes it with its old meaning and wins over
-    /// <see cref="IJsonRpcConfig.TraceBlockParallelism"/>.</summary>
+    /// deprecated FlatDb key keeps its published <c>int</c> shape, so its default <c>0</c> stands for "not set"; any other
+    /// value an operator still sets sizes the budget and wins over <see cref="IJsonRpcConfig.TraceBlockParallelism"/>.</summary>
     private ParallelTraceBudget CreateTraceBudget(IFlatDbConfig flatDbConfig, ILogManager logManager)
     {
-        if (flatDbConfig.HistoryTransactionIndexTraceParallelism is not int legacy)
+        int legacy = flatDbConfig.HistoryTransactionIndexTraceParallelism;
+        if (legacy == 0)
             return ParallelTraceBudget.Bounded(jsonRpcConfig.TraceBlockParallelism);
 
         ILogger logger = logManager.GetClassLogger<RpcModules>();
         if (logger.IsWarn) logger.Warn($"FlatDb.{nameof(IFlatDbConfig.HistoryTransactionIndexTraceParallelism)} is deprecated, use JsonRpc.{nameof(IJsonRpcConfig.TraceBlockParallelism)} instead. Until it is removed, its value {legacy} sizes the parallel block trace budget in place of JsonRpc.{nameof(IJsonRpcConfig.TraceBlockParallelism)}.");
-        return new ParallelTraceBudget(legacy == 0 ? Environment.ProcessorCount : legacy);
+        return new ParallelTraceBudget(legacy);
     }
 
     /// <summary>Changeset seeds exist only where flat history captures the transaction index, the same switch that

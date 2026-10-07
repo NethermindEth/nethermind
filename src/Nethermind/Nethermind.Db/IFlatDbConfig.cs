@@ -55,8 +55,8 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Pre-Amsterdam only: BAL-enabled blocks are neither indexed nor seeded. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
     bool HistoryTransactionIndexEnabled { get; set; }
 
-    [ConfigItem(Description = "Deprecated. Use `JsonRpc.TraceBlockParallelism` instead. When set, it sizes the node-wide parallel block trace budget in place of `JsonRpc.TraceBlockParallelism`, with its old meaning: `0` uses the processor count capped at 16, other values are clamped to 1-16.", DefaultValue = "null", HiddenFromDocs = true)]
-    int? HistoryTransactionIndexTraceParallelism { get; set; }
+    [ConfigItem(Description = "Deprecated. Use `JsonRpc.TraceBlockParallelism` instead. `0`, the default, leaves the node-wide parallel block trace budget to `JsonRpc.TraceBlockParallelism`. Any other value sizes that budget in its place, clamped to 1-16.", DefaultValue = "0", HiddenFromDocs = true)]
+    int HistoryTransactionIndexTraceParallelism { get; set; }
 
     [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
     int HistoryTransactionIndexDutyCyclePercent { get; set; }
