@@ -801,8 +801,8 @@
   },
   {
     "pname": "Nethermind.Numerics.Int256",
-    "version": "1.10.0",
-    "hash": "sha256-kQPmDuI075MaubUjoA7x54zrZswUTpDe2veyZ98EMgM="
+    "version": "1.11.0",
+    "hash": "sha256-gGjIx/rXNkWtwF7oJzLOZMhiDIo9qyddbIi23ONy9HM="
   },
   {
     "pname": "Nethermind.RocksDbBindings",
