@@ -3,37 +3,24 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text.Json;
 using Autofac;
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Configs;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
-using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
-using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
-using Nethermind.History;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Logging;
-using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
-using Nethermind.State;
-using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using NSubstitute;
 
 namespace Nethermind.JsonRpc.Benchmark;
 
@@ -59,9 +46,7 @@ public class RpcResultSerializationBenchmarks
     private BlockForRpc _hashes = null!;
     private FilterLog[] _logs = null!;
     private IContainer _container = null!;
-    private FeeHistoryOracle _feeHistoryOracle = null!;
-    private HeadBlockSignal _headBlockSignal = null!;
-    private EthRpcModule _ethModule = null!;
+    private IEthRpcModule _ethModule = null!;
 
     [GlobalSetup]
     public void Setup()
@@ -97,12 +82,7 @@ public class RpcResultSerializationBenchmarks
     }
 
     [GlobalCleanup]
-    public void Cleanup()
-    {
-        _feeHistoryOracle.Dispose();
-        _headBlockSignal.Dispose();
-        _container.Dispose();
-    }
+    public void Cleanup() => _container.Dispose();
 
     [BenchmarkCategory("build BlockForRpc"), Benchmark(Baseline = true, Description = "full, 200 txs")]
     public BlockForRpc BuildFull() => new(_block, includeFullTransactionData: true, MainnetSpecProvider.Instance);
@@ -174,6 +154,8 @@ public class RpcResultSerializationBenchmarks
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule())
             .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+            .AddSingleton<ITxPool>(NullTxPool.Instance)
+            .AddSingleton<IWallet>(NullWallet.Instance)
             .Build();
 
         IBlockTree blockTree = _container.Resolve<IBlockTree>();
@@ -188,36 +170,7 @@ public class RpcResultSerializationBenchmarks
         blockTree.SuggestBlock(_block, BlockTreeSuggestOptions.None);
         blockTree.TryUpdateMainChain(_block.Header, wereProcessed: true, forceUpdateHeadBlock: true, _block);
 
-        ISpecProvider specProvider = _container.Resolve<ISpecProvider>();
-        _headBlockSignal = new HeadBlockSignal(blockTree);
-        _feeHistoryOracle = new FeeHistoryOracle(blockTree, NullReceiptStorage.Instance, specProvider);
-        _ethModule = new EthRpcModule(
-            _container.Resolve<IJsonRpcConfig>(),
-            _container.Resolve<IBlockchainBridgeFactory>().CreateBlockchainBridge(),
-            blockTree,
-            blockTree,
-            _container.Resolve<IReceiptFinder>(),
-            _container.Resolve<IStateReader>(),
-            NullTxPool.Instance,
-            NullTxSender.Instance,
-            NullWallet.Instance,
-            LimboLogs.Instance,
-            specProvider,
-            _container.Resolve<IGasPriceOracle>(),
-            _container.Resolve<IEthSyncingInfo>(),
-            _feeHistoryOracle,
-            _container.Resolve<IProtocolsManager>(),
-            _container.Resolve<IForkInfo>(),
-            new BlocksConfig().SecondsPerSlot,
-            _headBlockSignal,
-            new EthCapabilitiesProvider(
-                blockTree.AsReadOnly(),
-                _container.Resolve<IStateBoundary>(),
-                _container.Resolve<ISyncConfig>(),
-                Substitute.For<ISyncPointers>(),
-                Substitute.For<IHistoryConfig>(),
-                Substitute.For<IHistoryPruner>()),
-            new BlockForRpcFactory());
+        _ethModule = _container.Resolve<IRpcModuleFactory<IEthRpcModule>>().Create();
 
         if (_ethModule.eth_getBlockByNumber(new BlockParameter((ulong)_block.Number), true).Data?.Hash != _block.Hash)
         {
