@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -24,6 +26,8 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Facade;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
@@ -35,6 +39,7 @@ using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
 using Newtonsoft.Json.Linq;
+using ResultType = Nethermind.Core.ResultType;
 
 namespace Nethermind.JsonRpc.Test.Modules;
 
@@ -431,6 +436,63 @@ public class DebugModuleTests
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
+    [Test]
+    public void DebugTraceCallMany_PinsValidatedHeader([Values] bool streaming, [Values] bool latest, [Values] bool withOverrides)
+    {
+        Block validated = Build.A.Block.WithNumber(1).TestObject;
+        Block replacement = Build.A.Block.WithNumber(1).WithExtraData([0x01]).TestObject;
+        BlockParameter selector = latest ? BlockParameter.Latest : new BlockParameter(1UL);
+        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        _blockFinder.Head.Returns(validated);
+        _blockFinder.FindHeader(Arg.Any<BlockParameter>()).Returns(validated.Header, replacement.Header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _debugBridge.GetTransactionTrace(Arg.Any<Transaction>(), Arg.Any<BlockParameter>(),
+            Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>())
+            .Returns(new GethLikeTxTrace { ReturnValue = [] });
+        _debugBridge.GetBundleTraces(Arg.Any<TransactionBundle[]>(), Arg.Any<BlockParameter>(),
+            Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(Array.Empty<IEnumerable<GethLikeTxTrace>>());
+        _blockchainBridge.Simulate(Arg.Any<BlockHeader>(), Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(),
+            Arg.Any<ISimulateBlockTracerFactory<GethLikeTxTrace>>(), Arg.Any<ulong>(), Arg.Any<CancellationToken>())
+            .Returns(new SimulateOutput<GethLikeTxTrace> { Items = [] });
+        TransactionBundle[] bundles = [new()
+        {
+            Transactions = [new LegacyTransactionForRpc { To = TestItem.AddressA }],
+            StateOverrides = withOverrides ? new() { [TestItem.AddressA] = new() { Nonce = 66 } } : null
+        }];
+
+        using ResultWrapper<IEnumerable<IEnumerable<GethLikeTxTrace>>> actual = CreateModule().debug_traceCallMany(bundles, selector);
+
+        Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Success), actual.Result.Error);
+        if (actual.Data is GethLikeTxTraceStreamingBundleResult streamed)
+        {
+            using Utf8JsonWriter writer = new(new ArrayBufferWriter<byte>());
+            streamed.WriteAsJson(writer);
+        }
+        else
+        {
+            _ = actual.Data.ToArray();
+        }
+        if (withOverrides)
+        {
+            _blockchainBridge.Received(1).Simulate(Arg.Is<BlockHeader>(h => h.Hash == validated.Hash),
+                Arg.Any<SimulatePayload<TransactionWithSourceDetails>>(), Arg.Any<ISimulateBlockTracerFactory<GethLikeTxTrace>>(),
+                Arg.Any<ulong>(), Arg.Any<CancellationToken>());
+            _blockFinder.Received(1).FindHeader(Arg.Any<BlockParameter>());
+        }
+        else if (streaming)
+        {
+            _debugBridge.Received(1).GetTransactionTrace(Arg.Any<Transaction>(),
+                Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash), Arg.Any<CancellationToken>(),
+                Arg.Any<GethTraceOptions>(), Arg.Any<Utf8JsonWriter?>(), Arg.Any<PipeWriter?>());
+        }
+        else
+        {
+            _debugBridge.Received(1).GetBundleTraces(bundles, Arg.Is<BlockParameter>(p => p.BlockHash == validated.Hash),
+                Arg.Any<ulong?>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        }
     }
 
     [Test]
