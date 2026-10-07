@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
@@ -22,6 +23,7 @@ using Nethermind.State.Proofs;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.Core.Test;
+using Nethermind.Core.Test.Modules;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -997,7 +999,8 @@ public class ArchiveProofTests
     [Test]
     public void ServingMetadata_AfterEachPublishAndRaise_IsReadWithoutColumnGets()
     {
-        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using IContainer container = BuildMetadataContainer(EpochPolicy);
+        CommitmentMetadata metadata = container.Resolve<CommitmentMetadata>();
         ulong epoch = EpochPolicy.EpochBlocks;
         ServingMetadata empty = ReadServingMetadata(metadata);
 
@@ -1024,14 +1027,16 @@ public class ArchiveProofTests
     public void ServingMetadata_OverAPersistedColumn_LoadsEachValueOnce()
     {
         ulong epoch = EpochPolicy.EpochBlocks;
-        using (CommitmentMetadata writer = new(_historyColumns, EpochPolicy))
+        using (IContainer writerContainer = BuildMetadataContainer(EpochPolicy))
         {
+            CommitmentMetadata writer = writerContainer.Resolve<CommitmentMetadata>();
             writer.WriteStamp(EpochPolicy);
             writer.TryPublishVerifiedCoverage(0, 2 * epoch, out _, out _);
             writer.TryRaiseRetainedFromEpoch(1);
         }
 
-        using CommitmentMetadata restarted = new(_historyColumns, EpochPolicy);
+        using IContainer container = BuildMetadataContainer(EpochPolicy);
+        CommitmentMetadata restarted = container.Resolve<CommitmentMetadata>();
         ServingMetadata first = ReadServingMetadata(restarted);
         ServingMetadata second = ReadServingMetadata(restarted);
 
@@ -1045,7 +1050,8 @@ public class ArchiveProofTests
     [Test]
     public void ServingMetadata_AfterLayoutDiscard_DropsTheMirroredCoverageAndFloor()
     {
-        using CommitmentMetadata metadata = new(_historyColumns, EpochPolicy);
+        using IContainer container = BuildMetadataContainer(EpochPolicy);
+        CommitmentMetadata metadata = container.Resolve<CommitmentMetadata>();
         metadata.WriteStamp(EpochPolicy);
         metadata.TryPublishVerifiedCoverage(0, 2 * EpochPolicy.EpochBlocks, out _, out _);
         metadata.TryRaiseRetainedFromEpoch(1);
@@ -1975,6 +1981,21 @@ public class ArchiveProofTests
         && key[CommitmentKeyLayout.EpochLength] == tier;
 
     private static int ContractStorageItem => 256 + Keccak.Compute(Contract.Bytes).Bytes[0];
+
+    private IContainer BuildMetadataContainer(CommitmentDepthPolicy policy)
+    {
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(new FlatDbConfig
+            {
+                Enabled = true,
+                HistoryEnabled = true
+            }))
+            .AddSingleton<CommitmentDepthPolicy>(policy);
+        builder.RegisterInstance(_historyColumns)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        return builder.Build();
+    }
 
     private ServingMetadata ReadServingMetadata(CommitmentMetadata metadata)
     {
