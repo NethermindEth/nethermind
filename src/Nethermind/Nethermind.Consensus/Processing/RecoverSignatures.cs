@@ -34,6 +34,7 @@ namespace Nethermind.Consensus.Processing
         private readonly IEthereumEcdsa _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
         private readonly ISpecProvider _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         private readonly ILogger _logger = logManager?.GetClassLogger<RecoverSignatures>() ?? throw new ArgumentNullException(nameof(logManager));
+        private static readonly int RecoveryShare = int.TryParse(Environment.GetEnvironmentVariable("RECOVERY_SHARE"), out int share) ? share : 0;
 
         private Recovery? _current;
 
@@ -285,7 +286,9 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+                    using ParallelUnbalancedWork.WorkerScope workers = RecoveryShare > 0
+                        ? ParallelUnbalancedWork.BeginLimitedWorkerScope(Math.Min(RecoveryShare, concurrency))
+                        : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)
