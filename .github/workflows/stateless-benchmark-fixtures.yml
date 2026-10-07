@@ -7,6 +7,8 @@
 name: Stateless benchmark fixtures
 
 on:
+  push:
+    branches: [test/zkevm-benchmark-fixtures]
   schedule:
     - cron: '0 3 * * 6'
   workflow_dispatch:
@@ -44,7 +46,7 @@ jobs:
       - name: Plan shards
         id: plan
         env:
-          GAS_VALUES: ${{ inputs.gas_values || '30M,60M,100M,150M,200M' }}
+          GAS_VALUES: ${{ inputs.gas_values || (github.event_name == 'push' && '30M') || '30M,60M,100M,150M,200M' }}
         run: |
           set -euo pipefail
           # Eight shards per 30M of gas; GitHub caps a matrix at 256 jobs.
