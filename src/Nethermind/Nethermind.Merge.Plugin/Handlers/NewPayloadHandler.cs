@@ -125,17 +125,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     /// <param name="request">The execution payload to process.</param>
     /// <returns></returns>
-    public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
+    public Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request) => HandleAsync(request, null);
+
+    internal async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request, ExecutionPayloadPreparation? prepared)
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
 
-        using ExecutionPayloadPreparation preparation = new(request);
+        using ExecutionPayloadPreparation? ownedPreparation = prepared is null ? new(request) : null;
+        ExecutionPayloadPreparation preparation = prepared ?? ownedPreparation!;
         Result<Block> decodingResult;
         using (preparation.Workers.Enter())
         {
+            StartSenderRecovery(request);
             decodingResult = preparation.TryGetBlock(_poSSwitcher.FinalTotalDifficulty);
-            if (!decodingResult.IsError) StartSenderRecovery(request);
         }
         if (decodingResult.IsError)
         {

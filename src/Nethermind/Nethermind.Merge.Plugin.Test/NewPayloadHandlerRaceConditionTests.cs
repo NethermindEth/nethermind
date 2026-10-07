@@ -59,7 +59,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
 
     [Test]
-    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
+    public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash, [Values] bool prepared)
     {
         using ManualResetEventSlim finishRecovery = new();
         TaskCompletionSource<ParallelUnbalancedWork.WorkerGroup?> entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -82,8 +82,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         block.Header.IsPostMerge = true;
         TrackingExecutionPayload payload = TrackingExecutionPayload.Create(block);
         ParallelUnbalancedWork.WorkerGroup? decodingWorkers = null;
-        payload.OnDecoding = workers => decodingWorkers = workers;
         Transaction[] transactions = payload.TryGetTransactions().Data!;
+        ISenderRecoveryProgress? progressAtBlockConstruction = null;
+        payload.OnDecoding = workers =>
+        {
+            decodingWorkers = workers;
+            progressAtBlockConstruction = recovery.GetInFlight(transactions);
+        };
         if (invalidHash) payload.BlockHash = TestItem.KeccakB;
         using NewPayloadHandler handler = CreateHandler(block, AddBlockResult.AlreadyKnown,
             wasProcessed: true, validateSuggestedBlock: true, senderRecovery: recovery,
@@ -91,7 +96,10 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         ISenderRecoveryProgress? progress = null;
         try
         {
-            ResultWrapper<PayloadStatusV1> result = await handler.HandleAsync(payload);
+            using ExecutionPayloadPreparation? preparation = prepared ? new(payload) : null;
+            ResultWrapper<PayloadStatusV1> result = prepared
+                ? await handler.HandleAsync(payload, preparation)
+                : await handler.HandleAsync(payload);
             progress = recovery.GetInFlight(transactions);
             bool singleProcessor = Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor;
             ParallelUnbalancedWork.WorkerGroup? observed = singleProcessor
@@ -103,6 +111,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
                 Assert.That(entered.Task.IsCompleted, Is.EqualTo(!singleProcessor));
                 Assert.That(result.Data.Status, Is.EqualTo(invalidHash ? PayloadStatus.Invalid : PayloadStatus.Valid));
                 Assert.That(progress, singleProcessor ? Is.Null : Is.Not.Null);
+                Assert.That(progressAtBlockConstruction, Is.SameAs(progress));
             }
         }
         finally

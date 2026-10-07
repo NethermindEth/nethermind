@@ -267,13 +267,13 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid()
+    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid([Values(1, 31, 32, 64)] int transactionCount)
     {
         (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        payload.Transactions = [[0xC0]];
+        payload.Transactions = Enumerable.Repeat(new byte[] { 0xC0 }, transactionCount).ToArray();
 
         Hash256[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => new Hash256(h!)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
