@@ -12,6 +12,8 @@ using Nethermind.Evm.Tracing.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using EvmMetrics = Nethermind.Evm.Metrics;
+using System.Collections.Generic;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -53,22 +55,57 @@ public class PrewarmerTxAdapter(
                 return result;
             }
 
-            if (HandoffDiagnostics.Enabled)
+            // Experiment only: the slots the transaction writes, reported once it is committed.
+            bool feedback = RewarmCounters.Feedback && RewarmCounters.Enabled;
+            if (feedback)
             {
-                HandoffDiagnostics.Observing = true;
-                try
+                HandoffDiagnostics.WrittenCells.Clear();
+                HandoffDiagnostics.CollectingWrites = true;
+            }
+
+            try
+            {
+                if (HandoffDiagnostics.Enabled)
                 {
-                    return baseAdapter.Execute(transaction, txTracer);
+                    HandoffDiagnostics.Observing = true;
+                    try
+                    {
+                        return baseAdapter.Execute(transaction, txTracer);
+                    }
+                    finally
+                    {
+                        HandoffDiagnostics.Observing = false;
+                        HandoffDiagnostics.Count(outcome, start, transaction);
+                    }
                 }
-                finally
+
+                return baseAdapter.Execute(transaction, txTracer);
+            }
+            finally
+            {
+                if (feedback)
                 {
-                    HandoffDiagnostics.Observing = false;
-                    HandoffDiagnostics.Count(outcome, start, transaction);
+                    HandoffDiagnostics.CollectingWrites = false;
+                    if (HandoffDiagnostics.WrittenCells.Count > 0) ReportWrites();
                 }
             }
         }
 
         return baseAdapter.Execute(transaction, txTracer);
+    }
+
+    // The committed values: a write a revert undid reads back as the value before it.
+    private void ReportWrites()
+    {
+        List<(StorageCell Cell, UInt256 Value)> writes = new(HandoffDiagnostics.WrittenCells.Count);
+        foreach (StorageCell cell in HandoffDiagnostics.WrittenCells)
+        {
+            worldState.Get(in cell, out UInt256 value);
+            writes.Add((cell, value));
+        }
+
+        HandoffDiagnostics.WrittenCells.Clear();
+        preWarmer.ReportExecutedWrites(writes);
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)

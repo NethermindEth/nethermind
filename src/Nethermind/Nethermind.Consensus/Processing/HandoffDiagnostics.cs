@@ -69,11 +69,19 @@ public static class HandoffDiagnostics
     /// <summary>Set by block processing around transactions it executes, so their storage writes are attributed.</summary>
     public static bool Observing;
 
+    /// <summary>Experiment only: whether block processing's world state is decorated to observe storage writes.</summary>
+    public static bool ObservesWrites => Enabled || RewarmCounters.Feedback;
+
+    /// <summary>Experiment only: set by block processing around a transaction it executes; the slots it wrote, for the re-warm feedback.</summary>
+    internal static bool CollectingWrites;
+    internal static readonly HashSet<StorageCell> WrittenCells = [];
+
     internal static BlockFootprints? Block;
     private static long _firstTxStart, _lastTxEnd;
     private static int _lastAbsence = -1;
     private static long _built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late;
     private static long _marked, _unchanged, _stored, _dropped, _overtaken, _rewarmTicks;
+    private static long _feedbackTxs, _feedbackWrites, _feedbackMarked;
 
     internal static void TxStarted(long timestamp, int txIndex)
     {
@@ -312,10 +320,14 @@ public static class HandoffDiagnostics
                 writer.WriteNumber("dropped", dropped - _dropped);
                 writer.WriteNumber("overtaken", overtaken - _overtaken);
                 writer.WriteNumber("run_ms", Math.Round((rewarmTicks - _rewarmTicks) * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteNumber("feedback_txs", RewarmCounters.FeedbackTxs - _feedbackTxs);
+                writer.WriteNumber("feedback_writes", RewarmCounters.FeedbackWrites - _feedbackWrites);
+                writer.WriteNumber("feedback_marked", RewarmCounters.FeedbackMarked - _feedbackMarked);
                 writer.WriteEndObject();
             }
 
             (_marked, _unchanged, _stored, _dropped, _overtaken, _rewarmTicks) = (marked, unchanged, stored, dropped, overtaken, rewarmTicks);
+            (_feedbackTxs, _feedbackWrites, _feedbackMarked) = (RewarmCounters.FeedbackTxs, RewarmCounters.FeedbackWrites, RewarmCounters.FeedbackMarked);
 
             writer.WriteStartObject("storage_writers");
             writer.WriteNumber("replay_only_accounts", replayOnly);
@@ -373,16 +385,19 @@ public static class HandoffDiagnostics
 public sealed class HandoffWriteObserver(IWorldState state) : WorldStateDecorator(state), IWorldState
 {
     private static bool Observed => HandoffDiagnostics.Observing && ProcessingThread.IsBlockProcessingThread;
+    private static bool Collected => HandoffDiagnostics.CollectingWrites && ProcessingThread.IsBlockProcessingThread;
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue)
     {
         if (Observed) HandoffDiagnostics.RecordExecutedWrite(storageCell.Address);
+        if (Collected) HandoffDiagnostics.WrittenCells.Add(storageCell);
         base.Set(in storageCell, in newValue);
     }
 
     public override void Set(in StorageCell storageCell, in UInt256 newValue, in UInt256 currentValue)
     {
         if (Observed) HandoffDiagnostics.RecordExecutedWrite(storageCell.Address);
+        if (Collected) HandoffDiagnostics.WrittenCells.Add(storageCell);
         State.Set(in storageCell, in newValue, in currentValue);
     }
 

@@ -236,6 +236,62 @@ internal sealed class BlockFootprints(Block block)
     private static void InsertVersion(List<(int Position, UInt256 Value)> versions, int position, in UInt256 value) =>
         versions.Insert(FirstAtOrAfter(versions, position), (position, value));
 
+    /// <summary>
+    /// Experiment only: replaces what the footprint at <paramref name="position"/> predicted with the writes block processing
+    /// made when it executed the transaction, and marks the later footprints that read those slots at other values.
+    /// </summary>
+    public void ApplyExecuted(int position, List<(StorageCell Cell, UInt256 Value)> writes)
+    {
+        if (!RewarmCounters.Enabled || (uint)position >= (uint)_footprints.Length) return;
+        bool marked = false;
+        lock (_versionsLock)
+        {
+            bool hadKeys = _keysByPosition.Remove(position, out (StorageCell[] Written, StorageCell[] Read) previous);
+            if (hadKeys)
+            {
+                foreach (StorageCell cell in previous.Written)
+                {
+                    if (_slotVersions.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions)) versions.RemoveAll(v => v.Position == position);
+                }
+
+                // The transaction is done: its reads no longer make it stale.
+                foreach (StorageCell cell in previous.Read)
+                {
+                    if (_slotReaders.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers)) readers.RemoveAll(r => r.Position == position);
+                }
+            }
+
+            List<StorageCell> written = new(writes.Count);
+            foreach ((StorageCell cell, UInt256 value) in writes)
+            {
+                if (_hotSlots.Contains(cell)) continue;
+                ref List<(int Position, UInt256 Value)>? versions = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotVersions, cell, out _);
+                if ((versions ??= []).Count >= MaxTrackedPerSlot)
+                {
+                    MakeHot(cell);
+                    continue;
+                }
+
+                written.Add(cell);
+                InsertVersion(versions, position, value);
+            }
+
+            long before = RewarmCounters.Marked;
+            foreach (StorageCell cell in written) marked |= MarkReaders(cell, position);
+            if (hadKeys)
+            {
+                foreach (StorageCell cell in previous.Written) marked |= MarkReaders(cell, position);
+            }
+
+            _keysByPosition[position] = ([.. written], []);
+            Interlocked.Increment(ref RewarmCounters.FeedbackTxs);
+            Interlocked.Add(ref RewarmCounters.FeedbackWrites, written.Count);
+            Interlocked.Add(ref RewarmCounters.FeedbackMarked, RewarmCounters.Marked - before);
+        }
+
+        if (marked) _staleSignal.Release();
+    }
+
     /// <summary>The value the block's earlier footprints leave <paramref name="cell"/> at before <paramref name="position"/>.</summary>
     public UInt256? SlotBefore(in StorageCell cell, int position)
     {

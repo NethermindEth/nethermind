@@ -447,6 +447,31 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void A_write_block_processing_executes_marks_the_later_footprints_that_read_another_value([Values] bool sameValue)
+    {
+        RewarmCounters.Enabled = true;
+        try
+        {
+            Transaction[] txs = [Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+                Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyD).TestObject];
+            Block block = Build.A.Block.WithTransactions(txs).TestObject;
+            BlockFootprints footprints = new(block);
+            StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+            footprints.Store(2, new TransactionFootprint(txs[2], [], [new SlotPrecondition { Cell = cell, Value = 5, Read = true }], [], default, default, default));
+
+            footprints.ApplyExecuted(0, [(cell, sameValue ? (UInt256)5 : 9)]);
+
+            Assert.That(footprints.TryTakeStale(-1, out int position), Is.EqualTo(!sameValue));
+            if (!sameValue) Assert.That(position, Is.EqualTo(2));
+        }
+        finally
+        {
+            RewarmCounters.Enabled = false;
+        }
+    }
+
+    [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
@@ -585,6 +610,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     {
         // Experiment: the re-warm changes which footprints are rejected; the tests that count rejections expect it off.
         RewarmCounters.Enabled = false;
+        RewarmCounters.Feedback = false;
         Initialize(handoff: true);
     }
 

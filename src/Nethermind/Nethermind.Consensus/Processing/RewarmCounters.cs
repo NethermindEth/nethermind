@@ -20,4 +20,13 @@ internal static class RewarmCounters
     private const int DefaultSweepers = 1;
 
     public static long Marked, Unchanged, Stored, Dropped, Overtaken, Ticks;
+
+    /// <summary>
+    /// Experiment only: block processing reports the storage writes of the transactions it executes, so the footprints
+    /// that read those slots are warmed again on the values the block really leaves. NETHERMIND_EXP_REWARM_FEEDBACK=0 off.
+    /// </summary>
+    /// <remarks>Settable for tests.</remarks>
+    public static bool Feedback { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_EXP_REWARM_FEEDBACK") != "0";
+
+    public static long FeedbackTxs, FeedbackWrites, FeedbackMarked;
 }
