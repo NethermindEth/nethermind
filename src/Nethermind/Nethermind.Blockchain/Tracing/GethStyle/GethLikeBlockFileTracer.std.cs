@@ -16,7 +16,6 @@ using System.IO.Abstractions;
 
 namespace Nethermind.Blockchain.Tracing.GethStyle;
 
-#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLikeTxFileTracer>, IDisposable
 {
     private const string Alphabet = "abcdefghijklmnopqrstuvwxyz0123456789";
