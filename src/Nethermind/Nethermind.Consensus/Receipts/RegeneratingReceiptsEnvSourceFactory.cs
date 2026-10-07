@@ -61,8 +61,6 @@ public sealed class RegeneratingReceiptsEnvSourceFactory(
     {
         public static readonly NoIndexTablesFactory Instance = new();
 
-        public IIndexTableStore Store { get; } = new IndexTableStore();
-
         public IIndexTableHandler Create(ITransactionProcessor transactionProcessor, IWorldState worldState) => NullIndexTableHandler.Instance;
     }
 

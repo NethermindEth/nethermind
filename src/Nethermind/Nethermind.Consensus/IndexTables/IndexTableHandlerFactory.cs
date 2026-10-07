@@ -15,13 +15,10 @@ public sealed class IndexTableHandlerFactory(
     IIndexTableStore store,
     ISpecProvider specProvider,
     IBlockTree? blockTree = null,
-    IReceiptStorage? receiptStorage = null,
+    IReceiptFinder? receiptFinder = null,
     ILogManager? logManager = null) : IIndexTableHandlerFactory
 {
     /// <inheritdoc />
-    public IIndexTableStore Store => store;
-
-    /// <inheritdoc />
     public IIndexTableHandler Create(ITransactionProcessor transactionProcessor, IWorldState worldState) =>
-        new IndexTableHandler(transactionProcessor, store, specProvider, worldState, blockTree, receiptStorage, logManager);
+        new IndexTableHandler(transactionProcessor, store, specProvider, worldState, blockTree, receiptFinder, logManager);
 }

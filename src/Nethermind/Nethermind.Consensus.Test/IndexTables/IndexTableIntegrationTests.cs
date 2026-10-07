@@ -20,6 +20,7 @@ using Nethermind.Evm;
 using Nethermind.State;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
@@ -37,6 +38,10 @@ public class IndexTableIntegrationTests
 {
     private static readonly Address IndexContract = TestItem.AddressF;
 
+    // Runtime code of the index contract from https://eips.ethereum.org/EIPS/eip-8304#bytecode
+    internal static readonly byte[] IndexContractCode = Bytes.FromHexString(
+        "3373fffffffffffffffffffffffffffffffffffffffe1460605760403603605c576020358060801c605c576104008160048104430304828202925f35818106605c5704908103196103ff10605c570601548015605c575f5260205ff35b5f5ffd5b604035602035610400818102915f350406015500");
+
     private static async Task<BasicTestBlockchain> CreateChain(bool enableBal = false, ISpecProvider? specProvider = null)
     {
         specProvider ??= new TestSpecProvider(new OverridableReleaseSpec(Amsterdam.Instance)
@@ -51,7 +56,7 @@ public class IndexTableIntegrationTests
             .AddScoped<IGenesisPostProcessor, IWorldState>(worldState => new FunctionalGenesisPostProcessor(_ =>
             {
                 worldState.CreateAccount(IndexContract, 0);
-                worldState.InsertCode(IndexContract, new[] { (byte)Instruction.STOP }, specProvider.GenesisSpec);
+                worldState.InsertCode(IndexContract, IndexContractCode, specProvider.GenesisSpec);
                 worldState.RecalculateStateRoot();
             })));
     }
@@ -80,6 +85,52 @@ public class IndexTableIntegrationTests
             Assert.That(store.Get(0, (long)processed.Number, processed.Hash), Is.Not.Null);
             Assert.That(processed.GeneratedBlockAccessList!.HasAccount(IndexContract), Is.True, "BAL should record the access to Eip8304ContractAddress");
         }
+    }
+
+    [Test]
+    public async Task BlockProcessing_stores_table_roots_in_index_contract([Values] bool enableBal)
+    {
+        using BasicTestBlockchain chain = await CreateChain(enableBal);
+
+        await chain.BuildSomeBlocks(4);
+
+        List<IndexEntry>[] tables = new List<IndexEntry>[5];
+        for (int number = 0; number < tables.Length; number++)
+        {
+            Block block = chain.BlockTree.FindBlock((ulong)number, BlockTreeLookupOptions.RequireCanonical)!;
+            tables[number] = [];
+            IndexEntryGenerator.GenerateEntries(block.Header, block.Transactions, chain.ReceiptStorage.Get(block), block.Header.ParentHash, tables[number]);
+            tables[number].Sort();
+        }
+
+        List<IndexEntry> level1Table = [.. tables[0], .. tables[1], .. tables[2], .. tables[3]];
+        level1Table.Sort();
+
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        Assert.That(head.Number, Is.EqualTo(4UL));
+        using (Assert.EnterMultipleScope())
+        {
+            for (int number = 1; number < tables.Length; number++)
+            {
+                Assert.That(GetStoredRoot(chain, head, tableSize: 1, firstBlock: number), Is.EqualTo(SszRoot(tables[number])), $"level-0 root of block {number}");
+            }
+
+            Assert.That(GetStoredRoot(chain, head, tableSize: 4, firstBlock: 0), Is.EqualTo(SszRoot(level1Table)), "level-1 root of blocks 0-3");
+        }
+    }
+
+    private static byte[] GetStoredRoot(BasicTestBlockchain chain, BlockHeader header, int tableSize, int firstBlock)
+    {
+        UInt256 slot = (UInt256)(tableSize * Eip8304Constants.TablesPerLevel + firstBlock / tableSize % Eip8304Constants.TablesPerLevel);
+        chain.StateReader.GetStorage(header, IndexContract, slot, out UInt256 word);
+        return word.ToBigEndian();
+    }
+
+    private static byte[] SszRoot(List<IndexEntry> sortedEntries)
+    {
+        byte[] root = new byte[32];
+        IndexTableRootCalculator.ComputeRoot(sortedEntries).ToLittleEndian(root);
+        return root;
     }
 
     [Test]
@@ -174,7 +225,7 @@ public class IndexTableIntegrationTests
     {
         using BasicTestBlockchain chain = await CreateChain();
 
-        IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
+        IndexTableStore store = chain.Container.Resolve<IndexTableStore>();
 
         await chain.BuildSomeBlocks(3);
 
@@ -251,7 +302,6 @@ public class IndexTableIntegrationTests
         using ILifetimeScope simScope = processingScope.BeginLifetimeScope(builder =>
         {
             builder.AddSingleton<IIndexTableStore, IndexTableStore>();
-            builder.AddSingleton<IIndexTableHandlerFactory, IndexTableHandlerFactory>();
         });
 
         using IDisposable simWorldScope = simScope.Resolve<IWorldState>().BeginScope(chain.BlockTree.Head!.Header);

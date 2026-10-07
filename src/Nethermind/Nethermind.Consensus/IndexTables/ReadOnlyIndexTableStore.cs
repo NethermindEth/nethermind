@@ -12,7 +12,8 @@ namespace Nethermind.Consensus.IndexTables;
 /// <remarks>
 /// Tracing and other read-only environments re-execute blocks, possibly with altered transactions, under their
 /// canonical hashes, so their tables must never reach the node's store. Nothing is cached locally either: a pooled
-/// environment would otherwise serve one call's tables to the next.
+/// environment would otherwise serve one call's tables to the next. As a result, re-executing a publication block whose
+/// sub-tables the node no longer holds rebuilds them from historical bodies and receipts on every call.
 /// </remarks>
 public sealed class ReadOnlyIndexTableStore(IIndexTableStore baseStore) : IIndexTableStore
 {

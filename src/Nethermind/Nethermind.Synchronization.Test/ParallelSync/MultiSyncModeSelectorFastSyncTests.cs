@@ -256,6 +256,17 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .AndGoodPeersAreKnown()
                 .TheSyncModeShouldBe(SyncMode.Full | fastBlocksState.GetSyncMode(true));
 
+        [TestCase(FastBlocksState.FinishedHeaders, SyncMode.FastBodies | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedBodies, SyncMode.FastReceipts | SyncMode.FastBlockAccessLists)]
+        [TestCase(FastBlocksState.FinishedReceipts, SyncMode.Full | SyncMode.FastBlockAccessLists)]
+        public void Full_sync_waits_for_receipts_when_consensus_requires_them(FastBlocksState fastBlocksState, SyncMode expected) =>
+            Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .WhenConsensusRequiresToWaitForReceipts()
+                .IfThisNodeJustFinishedStateSyncAndFastBlocks(fastBlocksState)
+                .When_FastSync_NoSnapSync_Configured()
+                .AndGoodPeersAreKnown()
+                .TheSyncModeShouldBe(expected);
+
         [TestCase(FastBlocksState.None)]
         [TestCase(FastBlocksState.FinishedHeaders)]
         [TestCase(FastBlocksState.FinishedBodies)]

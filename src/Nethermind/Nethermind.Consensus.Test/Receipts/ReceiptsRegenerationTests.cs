@@ -380,7 +380,7 @@ public class ReceiptsRegenerationTests
             blocks.Add(await chain.AddBlock(Transfer(nonce)));
         }
 
-        IIndexTableStore store = chain.Container.Resolve<IIndexTableStore>();
+        IndexTableStore store = chain.Container.Resolve<IndexTableStore>();
         for (int level = 0; level < Eip8304Constants.TableSizes.Length; level++)
         {
             for (long firstBlock = 0; firstBlock < 4; firstBlock++)

@@ -51,12 +51,24 @@ namespace Nethermind.Init.Steps
 
         private void ValidateEip8304Config()
         {
-            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is not null && receiptConfig is not null && !receiptConfig.StoreReceipts)
+            if (chainSpec?.Parameters.Eip8304TransitionTimestamp is not ulong transitionTimestamp)
+                return;
+
+            if (receiptConfig is not null && !receiptConfig.StoreReceipts)
+                throw Incompatible($"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled");
+
+            if (syncConfig.FastSync)
             {
-                throw new InvalidConfigurationException(
-                    $"EIP-8304 is configured (eip8304TransitionTimestamp={chainSpec.Parameters.Eip8304TransitionTimestamp}) but " +
-                    $"Receipt.{nameof(IReceiptConfig.StoreReceipts)} is disabled. Historical receipts must be stored to compute index tables.", -1);
+                if (!syncConfig.DownloadBodiesInFastSync || !syncConfig.DownloadReceiptsInFastSync)
+                    throw Incompatible($"Sync.{nameof(ISyncConfig.DownloadBodiesInFastSync)} or Sync.{nameof(ISyncConfig.DownloadReceiptsInFastSync)} is disabled");
+
+                if (syncConfig.AncientReceiptsBarrierCalc > 1 && syncConfig.AncientReceiptsBarrierCalc + (ulong)Eip8304Constants.SyncRecoveryBlocks > syncConfig.PivotNumber)
+                    throw Incompatible($"the ancient bodies or receipts barrier ({syncConfig.AncientReceiptsBarrierCalc}) is within {Eip8304Constants.SyncRecoveryBlocks} blocks of the pivot");
             }
+
+            InvalidConfigurationException Incompatible(string reason) => new(
+                $"EIP-8304 is configured (eip8304TransitionTimestamp={transitionTimestamp}) but {reason}. " +
+                $"Index tables are merged from the bodies and receipts of the last {Eip8304Constants.SyncRecoveryBlocks} blocks.", -1);
         }
 
         private void ValidateEip8304History()

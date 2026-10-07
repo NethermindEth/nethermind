@@ -39,7 +39,6 @@ public class IndexTableMergerTests
     [Test]
     public void Merge_four_sources_produces_sorted_output()
     {
-        // Create 4 sorted sources (simulating 4 level-0 tables)
         List<IndexEntry> s0 = [IndexEntry.CreateBlock(TestItem.KeccakA, 0)];
         List<IndexEntry> s1 = [IndexEntry.CreateBlock(TestItem.KeccakB, 1)];
         List<IndexEntry> s2 = [IndexEntry.CreateBlock(TestItem.KeccakC, 2)];
@@ -49,7 +48,6 @@ public class IndexTableMergerTests
 
         Assert.That(result.Count, Is.EqualTo(4));
 
-        // Verify sorted order
         for (int i = 1; i < result.Count; i++)
         {
             Assert.That(result[i - 1].CompareTo(result[i]), Is.LessThanOrEqualTo(0),

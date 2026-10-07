@@ -50,6 +50,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private readonly IBeaconSyncStrategy _beaconSyncStrategy = beaconSyncStrategy;
         private readonly IBetterPeerStrategy _betterPeerStrategy = betterPeerStrategy;
         private readonly bool _needToWaitForHeaders = syncConfig.NeedToWaitForHeader;
+        private readonly bool _needToWaitForReceipts = syncConfig.NeedToWaitForReceipts;
         private readonly ILogger _logger = logManager.GetClassLogger<MultiSyncModeSelector>();
         private readonly Lock _modeLock = new();
 
@@ -65,6 +66,7 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private bool FastBlockAccessListsFinished => !FastBlockAccessListsEnabled || _syncProgressResolver.IsFastBlockAccessListsFinished();
         private bool NotNeedToWaitForHeaders => !_needToWaitForHeaders || FastBlocksHeadersFinished;
+        private bool NotNeedToWaitForReceipts => !_needToWaitForReceipts || FastBlocksReceiptsFinished;
         private ulong TotalSyncLag => _syncConfig.StateMinDistanceFromHead + _syncConfig.HeaderStateDistance;
 
         private CancellationTokenSource? _cancellation = new();
@@ -364,6 +366,7 @@ namespace Nethermind.Synchronization.ParallelSync
             bool notInFastSync = !best.IsInFastSync;
             bool notInStateSync = !best.IsInStateSync;
             bool notNeedToWaitForHeaders = NotNeedToWaitForHeaders;
+            bool notNeedToWaitForReceipts = NotNeedToWaitForReceipts;
 
             bool result = notInBeaconModes &&
                           desiredPeerKnown &&
@@ -371,7 +374,8 @@ namespace Nethermind.Synchronization.ParallelSync
                           hasFastSyncBeenActive &&
                           notInFastSync &&
                           notInStateSync &&
-                          notNeedToWaitForHeaders;
+                          notNeedToWaitForHeaders &&
+                          notNeedToWaitForReceipts;
 
             if (_logger.IsTrace)
             {
@@ -382,7 +386,8 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(notInFastSync), notInFastSync),
                     (nameof(notInStateSync), notInStateSync),
-                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders));
+                    (nameof(notNeedToWaitForHeaders), notNeedToWaitForHeaders),
+                    (nameof(notNeedToWaitForReceipts), notNeedToWaitForReceipts));
             }
 
             return result;

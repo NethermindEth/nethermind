@@ -21,8 +21,7 @@ public class IndexTableStoreTests
         store.Store(0, 0, entries);
 
         IReadOnlyList<IndexEntry> retrieved = store.Get(0, 0);
-        Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved.Count, Is.EqualTo(1));
+        Assert.That(retrieved, Is.Not.Null.And.Count.EqualTo(1));
     }
 
     [Test]
@@ -60,7 +59,6 @@ public class IndexTableStoreTests
         {
             Assert.That(level0, Is.Not.Null);
             Assert.That(level1, Is.Not.Null);
-            // They should be different entries
             Assert.That(level0, Is.Not.SameAs(level1));
         }
     }
@@ -164,7 +162,6 @@ public class IndexTableStoreTests
         const long height = 100;
         List<Hash256> storedHashes = [];
 
-        // Insert 100 distinct hashes at the same height
         for (int i = 0; i < 100; i++)
         {
             byte[] hashBytes = new byte[32];
@@ -188,9 +185,7 @@ public class IndexTableStoreTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(retainedCount, Is.LessThanOrEqualTo(IndexTableStore.MaxVariantsPerHeight));
-            // The very first hash should have been evicted
             Assert.That(store.Get(0, height, storedHashes[0]), Is.Null);
-            // The latest hash should be present
             Assert.That(store.Get(0, height, storedHashes[^1]), Is.Not.Null);
         }
     }
@@ -230,9 +225,7 @@ public class IndexTableStoreTests
 
         using (Assert.EnterMultipleScope())
         {
-            // KeccakD variant is gone
             Assert.That(store.Get(0, 50, TestItem.KeccakD), Is.Null);
-            // KeccakC variant is still there
             Assert.That(store.Get(0, 50, TestItem.KeccakC), Is.Not.Null);
             // The no-hash Get should still resolve to branchA (the promoted variant)
             Assert.That(store.Get(0, 50), Is.Not.Null);

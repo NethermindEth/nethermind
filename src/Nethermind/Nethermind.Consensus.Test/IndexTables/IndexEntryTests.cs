@@ -237,11 +237,9 @@ public class IndexEntryTests
             IndexEntry.CreateLogTopic(0, TestItem.KeccakC, 11, 0, 0, frameIndex: 256),
         ];
 
-        // Sort by CompareTo
         List<IndexEntry> sortedByCompare = [.. entries];
         sortedByCompare.Sort();
 
-        // Sort by binary encoding
         List<(byte[] encoded, IndexEntry entry)> sortedByBytes = [];
         foreach (IndexEntry entry in entries)
         {
@@ -251,7 +249,6 @@ public class IndexEntryTests
         }
         sortedByBytes.Sort((x, y) => x.encoded.AsSpan().SequenceCompareTo(y.encoded.AsSpan()));
 
-        // Both orderings should produce the same sequence
         for (int i = 0; i < entries.Length; i++)
         {
             Assert.That(sortedByCompare[i].CompareTo(sortedByBytes[i].entry), Is.EqualTo(0));

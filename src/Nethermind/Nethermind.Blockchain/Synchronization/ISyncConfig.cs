@@ -187,6 +187,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for header to completely sync first.", DefaultValue = "false", HiddenFromDocs = true)]
     bool NeedToWaitForHeader { get; set; }
 
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector will wait for receipts to completely sync before full sync.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool NeedToWaitForReceipts { get; set; }
+
     [ConfigItem(Description = "_Technical._ Run verify trie on state sync is finished.", DefaultValue = "false", HiddenFromDocs = true)]
     bool VerifyTrieOnStateSyncFinished { get; set; }
 

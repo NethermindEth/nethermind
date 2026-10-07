@@ -125,12 +125,10 @@ public class IndexEntryGeneratorTests
 
         Assert.That(txEntries.Count, Is.EqualTo(2));
 
-        // Encode tx0 and check cumulative log count (last 4 bytes)
         byte[] buf0 = new byte[txEntries[0].EncodedLength];
         txEntries[0].Encode(buf0);
         uint cumulativeLogCount0 = (uint)(buf0[46] << 24 | buf0[47] << 16 | buf0[48] << 8 | buf0[49]);
 
-        // Encode tx1 and check cumulative log count
         byte[] buf1 = new byte[txEntries[1].EncodedLength];
         txEntries[1].Encode(buf1);
         uint cumulativeLogCount1 = (uint)(buf1[46] << 24 | buf1[47] << 16 | buf1[48] << 8 | buf1[49]);
@@ -313,9 +311,12 @@ public class IndexEntryGeneratorTests
         List<IndexEntry> entries = [];
         IndexEntryGenerator.GenerateEntries(header, [], [], parentHash, entries);
 
-        Assert.That(entries.Count, Is.EqualTo(1));
-        Assert.That(entries[0].Type, Is.EqualTo(IndexEntryType.Block));
-        Assert.That(entries[0].BlockNumber, Is.EqualTo(99));
+        Assert.That(entries, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries[0].Type, Is.EqualTo(IndexEntryType.Block));
+            Assert.That(entries[0].BlockNumber, Is.EqualTo(99));
+        }
     }
 
     [Test]

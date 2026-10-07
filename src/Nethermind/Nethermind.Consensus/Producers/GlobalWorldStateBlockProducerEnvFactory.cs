@@ -59,7 +59,7 @@ namespace Nethermind.Consensus.Producers
                 ConfigureBuilder(builder).AddScoped(worldState);
                 // Blocks built on the main state are not processed again, so they publish the node's index tables themselves.
                 if (worldState == worldStateManager.GlobalWorldState)
-                    builder.Bind<IIndexTableHandlerFactory, IndexTableHandlerFactory>();
+                    builder.Bind<IIndexTableStore, IndexTableStore>();
             });
             blockProducerEnv = scope.Resolve<IBlockProducerEnv>();
             return scope;

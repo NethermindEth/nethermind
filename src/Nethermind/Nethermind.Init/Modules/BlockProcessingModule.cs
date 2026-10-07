@@ -8,7 +8,6 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.ExecutionRequests;
@@ -81,15 +80,10 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
             .AddScoped<IWithdrawalProcessor, WithdrawalProcessor>()
             .AddSingleton<IWithdrawalProcessorFactory, WithdrawalProcessorFactory>()
             .AddScoped<IExecutionRequestsProcessor, ExecutionRequestsProcessor>()
-            .AddSingleton<IIndexTableStore, IndexTableStore>()
-            .AddSingleton<IndexTableHandlerFactory>()
+            .AddSingleton<IndexTableStore>()
             // Writes the node's tables only where bound explicitly; every other env re-executes blocks under their canonical hashes.
-            .AddSingleton<IIndexTableHandlerFactory>(static ctx => new IndexTableHandlerFactory(
-                new ReadOnlyIndexTableStore(ctx.Resolve<IIndexTableStore>()),
-                ctx.Resolve<ISpecProvider>(),
-                ctx.ResolveOptional<IBlockTree>(),
-                ctx.ResolveOptional<IReceiptStorage>(),
-                ctx.ResolveOptional<ILogManager>()))
+            .AddSingleton<IIndexTableStore, IndexTableStore>(static store => new ReadOnlyIndexTableStore(store))
+            .AddScoped<IIndexTableHandlerFactory, IndexTableHandlerFactory>()
             .AddScoped<IIndexTableHandler, IIndexTableHandlerFactory, ITransactionProcessor, IWorldState>(
                 static (factory, txProcessor, worldState) => factory.Create(txProcessor, worldState))
 

@@ -13,11 +13,6 @@ namespace Nethermind.Consensus.IndexTables;
 public interface IIndexTableHandlerFactory
 {
     /// <summary>
-    /// Gets the underlying index table store used by handlers created by this factory.
-    /// </summary>
-    IIndexTableStore Store { get; }
-
-    /// <summary>
     /// Creates a new <see cref="IIndexTableHandler"/> configured with the given transaction processor and world state.
     /// </summary>
     /// <param name="transactionProcessor">The transaction processor to use for system contract execution.</param>

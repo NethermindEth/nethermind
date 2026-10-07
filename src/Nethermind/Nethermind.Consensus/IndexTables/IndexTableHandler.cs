@@ -44,7 +44,7 @@ public class IndexTableHandler(
     ISpecProvider specProvider,
     IWorldState worldState,
     IBlockTree? blockTree = null,
-    IReceiptStorage? receiptStorage = null,
+    IReceiptFinder? receiptFinder = null,
     ILogManager? logManager = null) : IIndexTableHandler
 {
     private Hash256? _lastCommittedBlockHash;
@@ -56,7 +56,7 @@ public class IndexTableHandler(
     /// <inheritdoc />
     public void CommitIndexTableRoots(Block block, TxReceipt[] receipts, IReleaseSpec spec, ITxTracer tracer)
     {
-        if (!spec.IsEip8304Enabled)
+        if (!spec.IsEip8304Enabled || block.IsGenesis)
             return;
 
         if (spec.Eip8304ContractAddress is null)
@@ -265,7 +265,7 @@ public class IndexTableHandler(
 
     private IReadOnlyList<IndexEntry>? RecoverHistoricalEntries(long blockNumber, Hash256? branchBlockHash)
     {
-        if (blockTree is null || receiptStorage is null)
+        if (blockTree is null || receiptFinder is null)
             return null;
 
         Block? histBlock = branchBlockHash is not null
@@ -275,7 +275,7 @@ public class IndexTableHandler(
         if (histBlock is null)
             return null;
 
-        TxReceipt[]? histReceipts = receiptStorage.Get(histBlock);
+        TxReceipt[]? histReceipts = receiptFinder.Get(histBlock);
         if (histReceipts is null && histBlock.Transactions.Length > 0)
             return null;
 

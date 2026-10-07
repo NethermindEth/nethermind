@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
+using Nethermind.Core.Exceptions;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
@@ -43,22 +44,8 @@ public class ReviewBlockTreeEip8304Tests
             storedReceipts.Insert(block, allReceipts.Get(block));
         }
 
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters { Eip8304TransitionTimestamp = tree.FindHeader((ulong)activationBlock, BlockTreeLookupOptions.None)!.Timestamp }
-        };
-        ReviewBlockTree step = new(
-            Substitute.For<IWorldStateManager>(),
-            Substitute.For<IInitConfig>(),
-            new SyncConfig(),
-            Substitute.For<IBlockProcessingQueue>(),
-            tree,
-            Substitute.For<IBlockTreeHealer>(),
-            LimboLogs.Instance,
-            chainSpec,
-            storedReceipts);
-
-        Task execute = step.Execute(CancellationToken.None);
+        ulong activationTimestamp = tree.FindHeader((ulong)activationBlock, BlockTreeLookupOptions.None)!.Timestamp;
+        Task execute = CreateStep(tree, activationTimestamp, new SyncConfig(), storedReceipts).Execute(CancellationToken.None);
 
         if (throws)
         {
@@ -69,4 +56,44 @@ public class ReviewBlockTreeEip8304Tests
             Assert.DoesNotThrowAsync(() => execute);
         }
     }
+
+    [TestCase(true, true, 0UL, false)]
+    [TestCase(false, true, 0UL, true)]
+    [TestCase(true, false, 0UL, true)]
+    [TestCase(true, true, 500UL, false)]
+    [TestCase(true, true, 900UL, true)]
+    public void Startup_rejects_fast_sync_that_skips_index_history(bool downloadBodies, bool downloadReceipts, ulong ancientReceiptsBarrier, bool throws)
+    {
+        SyncConfig syncConfig = new()
+        {
+            FastSync = true,
+            PivotNumber = 1000,
+            DownloadBodiesInFastSync = downloadBodies,
+            DownloadReceiptsInFastSync = downloadReceipts,
+            AncientReceiptsBarrier = ancientReceiptsBarrier
+        };
+        BlockTree tree = CoreBuild.A.BlockTree().OfChainLength(1).TestObject;
+
+        Task execute = CreateStep(tree, activationTimestamp: 0, syncConfig, new InMemoryReceiptStorage()).Execute(CancellationToken.None);
+
+        if (throws)
+        {
+            Assert.ThrowsAsync<InvalidConfigurationException>(() => execute);
+        }
+        else
+        {
+            Assert.DoesNotThrowAsync(() => execute);
+        }
+    }
+
+    private static ReviewBlockTree CreateStep(BlockTree tree, ulong activationTimestamp, ISyncConfig syncConfig, IReceiptStorage receiptStorage) => new(
+        Substitute.For<IWorldStateManager>(),
+        Substitute.For<IInitConfig>(),
+        syncConfig,
+        Substitute.For<IBlockProcessingQueue>(),
+        tree,
+        Substitute.For<IBlockTreeHealer>(),
+        LimboLogs.Instance,
+        new ChainSpec { Parameters = new ChainParameters { Eip8304TransitionTimestamp = activationTimestamp } },
+        receiptStorage);
 }

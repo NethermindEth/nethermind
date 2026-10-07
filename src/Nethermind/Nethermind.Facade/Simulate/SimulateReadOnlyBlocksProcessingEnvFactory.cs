@@ -54,7 +54,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
             tmpHeaderStore, tmpBlockStore, tmpChainLevelInfoRepository, mainBalStore);
         BlockTreeOverlay overrideBlockTree = new(baseBlockTree, tempBlockTree);
         OverlayIndexTableStore tmpIndexTableStore = new(rootLifetimeScope.ResolveOptional<IIndexTableStore>());
-        IReceiptStorage baseReceiptStorage = rootLifetimeScope.ResolveOptional<IReceiptStorage>() ?? NullReceiptStorage.Instance;
 
         ILifetimeScope envLifetimeScope = rootLifetimeScope.BeginLifetimeScope((builder) => builder
             .AddModule(overridableEnv) // worldstate related override here
@@ -81,9 +80,6 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
                 txProcessor => new SimulateTransactionProcessorAdapter(txProcessor, state))
             .AddSingleton<IReceiptStorage>(NullReceiptStorage.Instance)
             .AddSingleton<IIndexTableStore>(tmpIndexTableStore)
-            // Index tables merge history the simulation never stores receipts for, so reads go to the node's receipts.
-            .AddSingleton<IIndexTableHandlerFactory>(ctx => new IndexTableHandlerFactory(
-                tmpIndexTableStore, specProvider, ctx.Resolve<IBlockTree>(), baseReceiptStorage, logManager))
             .AddScoped<SimulateRequestState>()
             .BindScoped<IBlobBaseFeeOverrideProvider, SimulateRequestState>()
             .AddScoped<SimulateReadOnlyBlocksProcessingEnv>());

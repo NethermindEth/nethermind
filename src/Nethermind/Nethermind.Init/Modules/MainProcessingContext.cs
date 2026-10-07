@@ -45,7 +45,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
                 .AddSingleton<IWorldStateScopeProvider>(worldState)
                 .AddModule(blockValidationModules)
                 .AddSingleton<BlockProcessor.BlockValidationTransactionsExecutor.ITransactionProcessedEventHandler>(this)
-                .Bind<IIndexTableHandlerFactory, IndexTableHandlerFactory>()
+                .Bind<IIndexTableStore, IndexTableStore>()
                 .AddModule(mainProcessingModules)
 
                 .AddScoped<BlockchainProcessor.Options, IReceiptConfig, IBlocksConfig>((receiptConfig, blocksConfig) => new()
