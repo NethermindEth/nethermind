@@ -1470,7 +1470,10 @@ public class BlockCachePreWarmerTests
             GroupingTx(TestItem.PrivateKeyC, nonce: 0, gasLimit: 1_000_000),
             GroupingTx(TestItem.PrivateKeyA, nonce: 0, gasLimit: 5_000_000)).TestObject;
 
+        // Experiment: hoisting is off by default on this branch.
+        BlockCachePreWarmer.HoistsHeavyJobs = true;
         ArrayPoolList<BlockCachePreWarmer.WarmupJob> groups = BlockCachePreWarmer.GroupTransactionsBySender(block, maxWorkers: 4);
+        BlockCachePreWarmer.HoistsHeavyJobs = false;
         try
         {
             Assert.That(groups.Count, Is.EqualTo(3));

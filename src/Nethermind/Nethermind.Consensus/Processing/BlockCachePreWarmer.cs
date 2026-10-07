@@ -1284,6 +1284,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>Groups into <paramref name="scratch"/>, whose lists and dictionary are reused block after block.</summary>
+    /// <summary>Experiment only; settable for tests.</summary>
+    internal static bool HoistsHeavyJobs { get; set; } = Environment.GetEnvironmentVariable("NETHERMIND_EXP_HOIST") == "1";
+
     private static void GroupTransactionsBySender(Block block, int maxWorkers, ISet<Hash256>? speculativelyWarmed, int[]? claimed, GroupingScratch scratch)
     {
         Dictionary<AddressAsKey, ArrayPoolList<(int Index, Transaction Tx)>> groups = scratch.Groups;
@@ -1352,7 +1355,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         // deterministic under the unstable span sort.
         result.AsSpan().Sort(static (a, b) =>
         {
-            if (a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
+            // Experiment only: NETHERMIND_EXP_HOIST=1 hoists heavy jobs; off by default, every job keeps block order.
+            if (HoistsHeavyJobs && a.IsHoisted != b.IsHoisted) return a.IsHoisted ? -1 : 1;
             if (a.IsHoisted)
             {
                 int byGas = b.GasEstimate.CompareTo(a.GasEstimate);
