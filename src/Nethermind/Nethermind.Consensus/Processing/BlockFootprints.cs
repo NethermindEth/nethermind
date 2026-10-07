@@ -4,6 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Numerics;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,13 +38,14 @@ internal sealed class BlockFootprints(Block block)
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
 
     private readonly Lock _lock = new();
-    // By slot: the values footprints write, in ascending position, and the values footprints read.
-    private readonly Dictionary<StorageCell, List<(int Position, UInt256 Value)>> _writes = [];
-    private readonly Dictionary<StorageCell, List<(int Position, UInt256 Value)>> _reads = [];
-    private readonly Dictionary<int, (StorageCell[] Written, StorageCell[] Read)> _indexed = [];
-    private readonly HashSet<StorageCell> _untracked = [];
+    // The writes and reads of each slot point into what is indexed at their position: the footprint stored there, or the
+    // writes block processing reported for it, so indexing a footprint copies none of it.
+    private readonly Dictionary<StorageCell, Slot> _slots = [];
+    private readonly object?[] _indexed = new object?[block.Transactions.Length];
     private readonly bool[] _executed = new bool[block.Transactions.Length];
-    private readonly SortedSet<int> _invalidated = [];
+    private readonly ulong[] _invalidated = new ulong[(block.Transactions.Length + 63) >> 6];
+    private int _invalidatedCount;
+    private int _untrackedCount;
     private int _refreshesRun;
 
     // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
@@ -96,7 +101,11 @@ internal sealed class BlockFootprints(Block block)
     /// </summary>
     public UInt256? ValueBefore(in StorageCell cell, int position)
     {
-        lock (_lock) return ValueBeforeLocked(in cell, position);
+        lock (_lock)
+        {
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, cell);
+            return Unsafe.IsNullRef(ref slot) || slot.Untracked ? null : ValueBefore(in slot.Writers, position);
+        }
     }
 
     /// <summary>Whether the footprint read a slot too many transactions write for its writes to be tracked.</summary>
@@ -104,10 +113,11 @@ internal sealed class BlockFootprints(Block block)
     {
         lock (_lock)
         {
-            if (_untracked.Count == 0) return false;
-            foreach (ref readonly SlotPrecondition slot in footprint.Slots)
+            if (_untrackedCount == 0) return false;
+            foreach (ref readonly SlotPrecondition read in footprint.Slots)
             {
-                if (_untracked.Contains(slot.Cell)) return true;
+                ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, read.Cell);
+                if (!Unsafe.IsNullRef(ref slot) && slot.Untracked) return true;
             }
 
             return false;
@@ -119,13 +129,20 @@ internal sealed class BlockFootprints(Block block)
     {
         lock (_lock)
         {
-            while (_invalidated.Count > 0 && _refreshesRun < MaxRefreshesPerBlock)
+            if (_invalidatedCount > 0 && _refreshesRun < MaxRefreshesPerBlock)
             {
-                int first = _invalidated.Min;
-                _invalidated.Remove(first);
-                if (first <= after) continue;
-                position = first;
-                return true;
+                int first = after + 1;
+                int word = first >> 6;
+                for (int i = 0; i < word && i < _invalidated.Length; i++) Drop(i, ulong.MaxValue);
+                if (word < _invalidated.Length) Drop(word, (1UL << (first & 63)) - 1);
+                for (; word < _invalidated.Length; word++)
+                {
+                    if (_invalidated[word] == 0) continue;
+                    position = (word << 6) + BitOperations.TrailingZeroCount(_invalidated[word]);
+                    _invalidated[word] &= _invalidated[word] - 1;
+                    _invalidatedCount--;
+                    return true;
+                }
             }
         }
 
@@ -145,7 +162,7 @@ internal sealed class BlockFootprints(Block block)
         get
         {
             if (!_reported.IsEmpty) return true;
-            lock (_lock) return _invalidated.Count > 0 && _refreshesRun < MaxRefreshesPerBlock;
+            lock (_lock) return _invalidatedCount > 0 && _refreshesRun < MaxRefreshesPerBlock;
         }
     }
 
@@ -171,16 +188,7 @@ internal sealed class BlockFootprints(Block block)
     /// Waits until a footprint is invalidated, block processing reports writes, the warm pass ends or the pass stops
     /// waiting for block processing.
     /// </summary>
-    public void WaitForWork(CancellationToken token)
-    {
-        try
-        {
-            _changed.Wait(token);
-        }
-        catch (OperationCanceledException)
-        {
-        }
-    }
+    public void WaitForWork(CancellationToken token) => _changed.Wait(token);
 
     /// <summary>
     /// Queues the storage writes block processing committed when it executed the transaction at <paramref name="position"/>;
@@ -204,30 +212,12 @@ internal sealed class BlockFootprints(Block block)
     private void ApplyExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
     {
         if ((uint)position >= (uint)_footprints.Length) return;
-        bool invalidated = false;
+        bool invalidated;
         lock (_lock)
         {
             // The transaction is done: its reads no longer invalidate it, and its writes are the ones it made.
             _executed[position] = true;
-            StorageCell[]? predicted = Unindex(position);
-            List<StorageCell> written = new(writes?.Count ?? 0);
-            if (writes is not null)
-            {
-                foreach ((StorageCell cell, UInt256 value) in writes)
-                {
-                    if (WritesOf(in cell) is not { } versions) continue;
-                    Insert(versions, position, in value);
-                    written.Add(cell);
-                }
-            }
-
-            foreach (StorageCell cell in written) invalidated |= InvalidateReaders(in cell, position);
-            if (predicted is not null)
-            {
-                foreach (StorageCell cell in predicted) invalidated |= InvalidateReaders(in cell, position);
-            }
-
-            _indexed[position] = ([.. written], []);
+            invalidated = Replace(position, writes);
         }
 
         if (invalidated) _changed.Release();
@@ -235,148 +225,241 @@ internal sealed class BlockFootprints(Block block)
 
     private void Index(int position, TransactionFootprint footprint)
     {
-        Dictionary<StorageCell, UInt256>? writes = null;
-        foreach (ref readonly StateEffect effect in footprint.Effects)
-        {
-            if (effect.Kind == EffectKind.SetStorage) (writes ??= [])[new StorageCell(effect.Address, in effect.Index)] = effect.Value;
-        }
-
-        ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
-        bool invalidated = false;
+        bool invalidated;
         lock (_lock)
         {
             // A run that ends after block processing executed its transaction does not replace the writes it made.
             if (_executed[position]) return;
+            invalidated = Replace(position, footprint);
 
-            // A refreshed footprint replaces what the previous one wrote and read.
-            StorageCell[]? previous = Unindex(position);
-            List<StorageCell> written = new(writes?.Count ?? 0);
-            if (writes is not null)
-            {
-                foreach ((StorageCell cell, UInt256 value) in writes)
-                {
-                    if (WritesOf(in cell) is not { } versions) continue;
-                    Insert(versions, position, in value);
-                    written.Add(cell);
-                }
-            }
-
-            foreach (StorageCell cell in written) invalidated |= InvalidateReaders(in cell, position);
-            if (previous is not null)
-            {
-                foreach (StorageCell cell in previous) invalidated |= InvalidateReaders(in cell, position);
-            }
-
-            List<StorageCell> read = new(reads.Length);
+            ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
             bool outdated = false;
-            foreach (ref readonly SlotPrecondition slot in reads)
+            for (int i = 0; i < reads.Length; i++)
             {
-                outdated |= ValueBeforeLocked(in slot.Cell, position) is { } value && value != slot.Value;
-                if (ReadersOf(in slot.Cell) is not { } readers) continue;
-                readers.Add((position, slot.Value));
-                read.Add(slot.Cell);
+                ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
+                if (slot.Untracked) continue;
+                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value;
+                if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
             }
 
-            _indexed[position] = ([.. written], [.. read]);
-            if (outdated) invalidated |= _invalidated.Add(position);
+            if (outdated) invalidated |= Invalidate(position);
         }
 
         if (invalidated) _changed.Release();
     }
 
-    // Drops what the position's previous footprint, or the transaction executed there, wrote and read; returns what it wrote.
-    private StorageCell[]? Unindex(int position)
+    // Puts what the position now writes, from a refreshed footprint or the transaction executed there, in place of what
+    // was indexed for it, and marks the later readers of the slots either writes.
+    private bool Replace(int position, object? source)
     {
-        if (!_indexed.Remove(position, out (StorageCell[] Written, StorageCell[] Read) previous)) return null;
-        foreach (StorageCell cell in previous.Written)
+        object? previous = _indexed[position];
+        if (previous is not null) Unindex(position, previous);
+        _indexed[position] = source;
+        foreach ((StorageCell cell, int index) in WritesOf(source))
         {
-            if (_writes.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions)) RemovePosition(versions, position);
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, cell, out _);
+            if (!slot.Untracked && !slot.Writers.Put(new Entry(position, index), MaxIndexedPerSlot)) Untrack(ref slot);
         }
 
-        foreach (StorageCell cell in previous.Read)
-        {
-            if (_reads.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers)) RemovePosition(readers, position);
-        }
-
-        return previous.Written;
+        bool invalidated = false;
+        foreach ((StorageCell cell, _) in WritesOf(source)) invalidated |= InvalidateReaders(in cell, position);
+        foreach ((StorageCell cell, _) in WritesOf(previous)) invalidated |= InvalidateReaders(in cell, position);
+        return invalidated;
     }
 
-    // The slot's writes, created on first use; null for a slot too many footprints write, which is then no longer
-    // tracked: its writes and its readers leave the index.
-    private List<(int Position, UInt256 Value)>? WritesOf(in StorageCell cell)
+    private void Unindex(int position, object previous)
     {
-        if (_untracked.Contains(cell)) return null;
-        if (!_writes.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions))
+        foreach ((StorageCell cell, _) in WritesOf(previous))
         {
-            versions = [];
-            _writes[cell] = versions;
-            return versions;
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, cell);
+            if (!Unsafe.IsNullRef(ref slot)) slot.Writers.Remove(position);
         }
 
-        if (versions.Count < MaxIndexedPerSlot) return versions;
-        _untracked.Add(cell);
-        _writes.Remove(cell);
-        _reads.Remove(cell);
-        return null;
+        if (previous is not TransactionFootprint footprint) return;
+        foreach (ref readonly SlotPrecondition read in footprint.Slots)
+        {
+            ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, read.Cell);
+            if (!Unsafe.IsNullRef(ref slot)) slot.Readers.Remove(position);
+        }
     }
 
-    // The slot's readers, created on first use; null for a slot no longer tracked, or one with as many readers as are
-    // indexed, whose writes stay tracked.
-    private List<(int Position, UInt256 Value)>? ReadersOf(in StorageCell cell)
+    // A slot too many footprints write is no longer tracked: its writes and its readers leave the index.
+    private void Untrack(ref Slot slot)
     {
-        if (_untracked.Contains(cell)) return null;
-        if (!_reads.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers))
-        {
-            readers = [];
-            _reads[cell] = readers;
-            return readers;
-        }
-
-        return readers.Count < MaxIndexedPerSlot ? readers : null;
+        slot.Untracked = true;
+        slot.Writers.Clear();
+        slot.Readers.Clear();
+        _untrackedCount++;
     }
 
     // Marks the later footprints that read the slot at a value other than the one the block now leaves before them. With
     // no earlier write left, the slot is back at its parent value, which only a refresh reads: its readers are marked.
     private bool InvalidateReaders(in StorageCell cell, int position)
     {
-        if (!_reads.TryGetValue(cell, out List<(int Position, UInt256 Value)>? readers)) return false;
+        ref Slot slot = ref CollectionsMarshal.GetValueRefOrNullRef(_slots, cell);
+        if (Unsafe.IsNullRef(ref slot)) return false;
         bool invalidated = false;
-        foreach ((int reader, UInt256 read) in readers)
+        for (int i = 0; i < slot.Readers.Count; i++)
         {
-            if (reader > position && (ValueBeforeLocked(in cell, reader) is not { } value || value != read)) invalidated |= _invalidated.Add(reader);
+            Entry reader = slot.Readers[i];
+            if (reader.Position > position && (ValueBefore(in slot.Writers, reader.Position) is not { } value || value != ReadValue(reader)))
+            {
+                invalidated |= Invalidate(reader.Position);
+            }
         }
 
         return invalidated;
     }
 
-    private UInt256? ValueBeforeLocked(in StorageCell cell, int position)
+    private bool Invalidate(int position)
     {
-        if (!_writes.TryGetValue(cell, out List<(int Position, UInt256 Value)>? versions)) return null;
-        int at = FirstAtOrAfter(versions, position);
-        return at == 0 ? null : versions[at - 1].Value;
+        ref ulong word = ref _invalidated[position >> 6];
+        ulong bit = 1UL << (position & 63);
+        if ((word & bit) != 0) return false;
+        word |= bit;
+        _invalidatedCount++;
+        return true;
     }
 
-    private static int FirstAtOrAfter(List<(int Position, UInt256 Value)> versions, int position)
+    private void Drop(int word, ulong mask)
     {
-        int low = 0, high = versions.Count;
-        while (low < high)
+        ulong dropped = _invalidated[word] & mask;
+        _invalidated[word] &= ~dropped;
+        _invalidatedCount -= BitOperations.PopCount(dropped);
+    }
+
+    private UInt256? ValueBefore(in Entries writers, int position)
+    {
+        int at = writers.FirstAtOrAfter(position);
+        return at == 0 ? null : WrittenValue(writers[at - 1]);
+    }
+
+    private UInt256 WrittenValue(Entry writer) => _indexed[writer.Position] switch
+    {
+        TransactionFootprint footprint => footprint.Effects[writer.Index].Value,
+        List<(StorageCell Cell, UInt256 Value)> writes => writes[writer.Index].Value,
+        _ => throw new UnreachableException()
+    };
+
+    private UInt256 ReadValue(Entry reader) => ((TransactionFootprint)_indexed[reader.Position]!).Slots[reader.Index].Value;
+
+    private static WrittenSlots WritesOf(object? source) => new(source);
+
+    // A position, and where in what is indexed there the slot's write or read is.
+    private readonly record struct Entry(int Position, int Index);
+
+    private struct Slot
+    {
+        public Entries Writers;
+        public Entries Readers;
+        public bool Untracked;
+    }
+
+    // One slot's writers, in ascending position, or its readers: inline while there is one, in a list from the second.
+    private struct Entries
+    {
+        private Entry _one;
+        private List<Entry>? _many;
+        private int _count;
+
+        public readonly int Count => _count;
+
+        public readonly Entry this[int i] => _many is null ? _one : _many[i];
+
+        public void Add(Entry entry)
         {
-            int mid = (low + high) >>> 1;
-            if (versions[mid].Position < position) low = mid + 1;
-            else high = mid;
+            if (_many is not null) _many.Add(entry);
+            else if (_count == 0) _one = entry;
+            else _many = [_one, entry];
+            _count++;
         }
 
-        return low;
+        // Keeps ascending position and one entry per position; false when as many entries as allowed are taken.
+        public bool Put(Entry entry, int capacity)
+        {
+            int at = FirstAtOrAfter(entry.Position);
+            if (at < _count && this[at].Position == entry.Position)
+            {
+                if (_many is null) _one = entry;
+                else _many[at] = entry;
+                return true;
+            }
+
+            if (_count >= capacity) return false;
+            if (_many is not null) _many.Insert(at, entry);
+            else if (_count == 0) _one = entry;
+            else _many = at == 0 ? [entry, _one] : [_one, entry];
+            _count++;
+            return true;
+        }
+
+        public void Remove(int position)
+        {
+            if (_many is null)
+            {
+                if (_count == 1 && _one.Position == position) _count = 0;
+                return;
+            }
+
+            for (int i = _many.Count - 1; i >= 0; i--)
+            {
+                if (_many[i].Position == position) _many.RemoveAt(i);
+            }
+
+            _count = _many.Count;
+        }
+
+        public void Clear()
+        {
+            _many = null;
+            _count = 0;
+        }
+
+        public readonly int FirstAtOrAfter(int position)
+        {
+            int low = 0, high = _count;
+            while (low < high)
+            {
+                int mid = (low + high) >>> 1;
+                if (this[mid].Position < position) low = mid + 1;
+                else high = mid;
+            }
+
+            return low;
+        }
     }
 
-    private static void Insert(List<(int Position, UInt256 Value)> versions, int position, in UInt256 value) =>
-        versions.Insert(FirstAtOrAfter(versions, position), (position, value));
-
-    private static void RemovePosition(List<(int Position, UInt256 Value)> entries, int position)
+    // The slots a footprint's storage effects or reported writes write, with where each write is in them.
+    private struct WrittenSlots(object? source)
     {
-        for (int i = entries.Count - 1; i >= 0; i--)
+        private int _index = -1;
+
+        public (StorageCell Cell, int Index) Current { get; private set; }
+
+        public readonly WrittenSlots GetEnumerator() => this;
+
+        public bool MoveNext()
         {
-            if (entries[i].Position == position) entries.RemoveAt(i);
+            switch (source)
+            {
+                case TransactionFootprint footprint:
+                    ReadOnlySpan<StateEffect> effects = footprint.Effects;
+                    while (++_index < effects.Length)
+                    {
+                        ref readonly StateEffect effect = ref effects[_index];
+                        if (effect.Kind != EffectKind.SetStorage) continue;
+                        Current = (new StorageCell(effect.Address, in effect.Index), _index);
+                        return true;
+                    }
+
+                    return false;
+                case List<(StorageCell Cell, UInt256 Value)> writes:
+                    if (++_index >= writes.Count) return false;
+                    Current = (writes[_index].Cell, _index);
+                    return true;
+                default:
+                    return false;
+            }
         }
     }
 }

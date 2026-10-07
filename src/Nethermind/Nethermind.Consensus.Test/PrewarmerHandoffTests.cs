@@ -524,6 +524,16 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void A_footprint_writing_a_slot_twice_leaves_its_last_write()
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d), (cell, 2 * 0x4e4d)]));
+
+        Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
+    }
+
+    [Test]
     public void A_footprint_stored_after_its_transaction_was_executed_leaves_the_executed_writes()
     {
         (BlockFootprints footprints, Transaction[] txs) = Footprints(2);

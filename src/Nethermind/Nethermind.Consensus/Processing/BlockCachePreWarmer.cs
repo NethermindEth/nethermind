@@ -1440,6 +1440,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 }
 
                 int processing = MainThreadTxIndex;
+                // Checked only when the worker wakes: block processing moving on signals nothing, so after the last report
+                // the worker waits for the session to end, holding no env.
                 if (processing >= footprints.Count - 1) return;
                 // A pass waited on before block processing ends with what it has refreshed.
                 if (processing < 0 && !footprints.WaitsForBlockProcessing && footprints.WarmPassEnded && !footprints.HasWork) return;
