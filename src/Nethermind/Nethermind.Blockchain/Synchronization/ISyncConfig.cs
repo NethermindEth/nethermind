@@ -24,6 +24,9 @@ public interface ISyncConfig : IConfig
         DefaultValue = "false")]
     bool FastSync { get; set; }
 
+    [ConfigItem(Description = "Whether to catch up consensus-finalized blocks by applying their EIP-7928 block access lists instead of executing them. State and receipts roots are verified; unfinalized blocks, and blocks whose data is unavailable or mismatched, execute normally.", DefaultValue = "true")]
+    bool ReconstructFinalizedStateFromBlockAccessLists { get; set; }
+
     [Obsolete]
     [ConfigItem(Description = "Deprecated. Long range catch-up sync has been removed.", DefaultValue = "8192", HiddenFromDocs = true)]
     long? FastSyncCatchUpHeightDelta { get; set; }
