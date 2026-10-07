@@ -1,0 +1,255 @@
+# Runs the tests-zkevm-benchmark worst-case blocks through the ZisK guest and reports their cost.
+#
+# The release ships one archive per block gas value, each with ~1,200 compute benchmarks. A 30M block
+# emulates in 5-15 s, and emulation time grows roughly with gas, so the blocks are spread over shards
+# whose count scales with the gas value to keep every shard around 25 minutes. The host-side job runs
+# the same archives through nethtest, which also covers the setup blocks the guest jobs skip.
+name: Stateless benchmark fixtures
+
+on:
+  schedule:
+    - cron: '0 3 * * 6'
+  workflow_dispatch:
+    inputs:
+      release:
+        description: Release tag
+        default: tests-zkevm-benchmark@v21.0.5
+        type: string
+      gas_values:
+        description: Gas values
+        default: 30M,60M,100M,150M,200M
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  FIXTURES_REPOSITORY: ethereum/execution-specs
+  RELEASE: ${{ inputs.release || 'tests-zkevm-benchmark@v21.0.5' }}
+  GUEST_DIR: src/Nethermind/Nethermind.Stateless.ZiskGuest
+
+jobs:
+  matrix:
+    name: Plan shards
+    runs-on: ubuntu-latest
+    outputs:
+      gas_values: ${{ steps.plan.outputs.gas_values }}
+      shards: ${{ steps.plan.outputs.shards }}
+      shard_counts: ${{ steps.plan.outputs.shard_counts }}
+    steps:
+      - name: Plan shards
+        id: plan
+        env:
+          GAS_VALUES: ${{ inputs.gas_values || '30M,60M,100M,150M,200M' }}
+        run: |
+          set -euo pipefail
+          # Eight shards per 30M of gas; GitHub caps a matrix at 256 jobs.
+          jq -cn --arg values "$GAS_VALUES" '
+            [$values | split(",")[] | gsub("\\s"; "") | select(length > 0)
+              | if test("^[0-9]+M$") then . else error("invalid gas value: \(.)") end] | unique
+            | map({gas: ., shards: ((((.[:-1] | tonumber) * 8 + 29) / 30) | floor)}) as $plan
+            | {
+                gas_values: ($plan | map(.gas)),
+                shards: [$plan[] | .gas as $gas | .shards as $n | range($n) | {gas: $gas, shard: ., shards: $n}],
+                shard_counts: ($plan | map({(.gas): .shards}) | add)
+              }
+            | if (.shards | length) > 256 then error("more than 256 shards") else . end
+          ' > "$RUNNER_TEMP/plan.json"
+          for key in gas_values shards shard_counts; do
+            echo "$key=$(jq -c ".$key" "$RUNNER_TEMP/plan.json")" >> "$GITHUB_OUTPUT"
+          done
+          jq . "$RUNNER_TEMP/plan.json"
+
+  build:
+    name: Build ZisK guest
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Build Nethermind
+        working-directory: ${{ env.GUEST_DIR }}
+        run: make build
+
+      - name: Upload guest binary
+        uses: actions/upload-artifact@v7
+        with:
+          name: nethermind-zisk
+          path: ${{ env.GUEST_DIR }}/bin/nethermind
+          if-no-files-found: error
+          retention-days: 1
+
+  host:
+    name: Host ${{ matrix.gas }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        gas: ${{ fromJSON(needs.matrix.outputs.gas_values) }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Build nethtest
+        working-directory: src/Nethermind
+        run: dotnet build Nethermind.Test.Runner/Nethermind.Test.Runner.csproj -c release
+
+      - name: Download fixtures
+        env:
+          GAS: ${{ matrix.gas }}
+        run: |
+          set -euo pipefail
+          archive="fixtures_zkevm-benchmark_$(printf '%04d' "${GAS%M}")M.tar.gz"
+          mkdir -p "$RUNNER_TEMP/fixtures"
+          curl -fsSL --retry 3 "https://github.com/$FIXTURES_REPOSITORY/releases/download/$RELEASE/$archive" \
+            | tar -xz -C "$RUNNER_TEMP/fixtures"
+
+      - name: Run nethtest
+        working-directory: src/Nethermind
+        run: |
+          set -euo pipefail
+          results="$RUNNER_TEMP/nethtest.json"
+          artifacts/bin/Nethermind.Test.Runner/release/nethtest --zkevmTest -p 4 \
+            -i "$RUNNER_TEMP/fixtures/fixtures/blockchain_tests" > "$results"
+          # nethtest exits zero on failed cases, so the verdict comes from its JSON.
+          jq -r '.[] | select(.pass != true) | "::error::\(.name): \(.error // "failed")"' "$results"
+          total=$(jq 'length' "$results")
+          failed=$(jq '[.[] | select(.pass != true)] | length' "$results")
+          echo "Host stateless execution: $((total - failed)) of $total blocks passed" | tee -a "$GITHUB_STEP_SUMMARY"
+          [[ "$total" -gt 0 && "$failed" -eq 0 ]]
+
+  guest:
+    name: ZisK ${{ matrix.gas }} ${{ matrix.shard }}
+    needs: [matrix, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      max-parallel: 64
+      matrix:
+        include: ${{ fromJSON(needs.matrix.outputs.shards) }}
+    env:
+      GAS: ${{ matrix.gas }}
+      SHARD: ${{ matrix.shard }}
+      SHARDS: ${{ matrix.shards }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Download guest binary
+        uses: actions/download-artifact@v8
+        with:
+          name: nethermind-zisk
+          path: ${{ env.GUEST_DIR }}/bin
+
+      - name: Prepare inputs
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/fixtures.tar.gz"
+          curl -fsSL --retry 3 \
+            "https://github.com/$FIXTURES_REPOSITORY/releases/download/$RELEASE/fixtures_zkevm-benchmark_$(printf '%04d' "${GAS%M}")M.tar.gz" \
+            -o "$archive"
+          fixtures="$RUNNER_TEMP/fixtures"
+          mkdir -p "$fixtures"
+          tar -xzf "$archive" -C "$fixtures" fixtures/.meta/index.json
+          # Only this shard's files: the 200M archive alone unpacks to several gigabytes.
+          scripts/zkevm-benchmark/inputs.cs paths \
+            --index "$fixtures/fixtures/.meta/index.json" --shard "$SHARD" --shards "$SHARDS" \
+            | sed 's|^|fixtures/|' > "$RUNNER_TEMP/paths.txt"
+          tar -xzf "$archive" -C "$fixtures" -T "$RUNNER_TEMP/paths.txt"
+          rm "$archive"
+          scripts/zkevm-benchmark/inputs.cs frame \
+            --index "$fixtures/fixtures/.meta/index.json" --shard "$SHARD" --shards "$SHARDS" \
+            --root "$fixtures/fixtures" --out "$GUEST_DIR/bin" --manifest "$RUNNER_TEMP/manifest.json"
+          rm -rf "$fixtures"
+          chmod +x "$GUEST_DIR/bin/nethermind"
+
+      - name: Measure
+        working-directory: ${{ env.GUEST_DIR }}
+        run: |
+          set -euo pipefail
+          echo '[]' > "$RUNNER_TEMP/current.json"
+          failed=0
+          while read -r input output id; do
+            echo "::group::${input} ${id}"
+            status=0
+            timeout 15m make stats INPUT="$input" < /dev/null > "$RUNNER_TEMP/stats.log" 2>&1 || status=$?
+            cat "$RUNNER_TEMP/stats.log"
+            echo "::endgroup::"
+            if [[ "$status" -ne 0 ]]; then
+              echo "::error::${id}: the guest exited with $status"; failed=$((failed + 1))
+            elif ! grep -Fxq "$output" "$RUNNER_TEMP/stats.log"; then
+              echo "::error::${id}: output mismatch"; failed=$((failed + 1))
+            elif grep -qE 'Exception|Invalid Block' "$RUNNER_TEMP/stats.log"; then
+              echo "::error::${id}: the run logged an exception or an invalid block"; failed=$((failed + 1))
+            else
+              python3 -I "$GITHUB_WORKSPACE/scripts/zisk-bench/parse-stats.py" \
+                --input "$input" --log "$RUNNER_TEMP/stats.log" --into "$RUNNER_TEMP/current.json"
+            fi
+            rm -f "bin/$input"
+          done < <(jq -r '.[] | "\(.input) \(.output) \(.id)"' "$RUNNER_TEMP/manifest.json")
+          [[ "$failed" -eq 0 ]] || { echo "::error::$failed block(s) failed"; exit 1; }
+          mkdir -p "$RUNNER_TEMP/results"
+          jq --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
+            ($manifest[0] | INDEX(.input)) as $ids | map({gas: $gas, id: $ids[.input].id} + del(.input))
+          ' "$RUNNER_TEMP/current.json" > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+
+      - name: Upload results
+        uses: actions/upload-artifact@v7
+        with:
+          name: results-${{ matrix.gas }}-${{ matrix.shard }}
+          path: ${{ runner.temp }}/results
+          if-no-files-found: error
+          retention-days: 1
+
+  report:
+    name: Report
+    needs: [matrix, guest]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v6
+
+      - name: Download results
+        uses: actions/download-artifact@v8
+        with:
+          pattern: results-*
+          path: ${{ runner.temp }}/results
+          merge-multiple: true
+
+      - name: Summarize
+        env:
+          SHARD_COUNTS: ${{ needs.matrix.outputs.shard_counts }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          scripts/zkevm-benchmark/summarize.cs \
+            --results "$RUNNER_TEMP/results" --release "$RELEASE" --commit "$GITHUB_SHA" \
+            --shards "$SHARD_COUNTS" --into "$RUNNER_TEMP/zkevm-benchmark.json" --summary "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload merged results
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: zkevm-benchmark-results
+          path: ${{ runner.temp }}/zkevm-benchmark.json
+          if-no-files-found: warn
+          retention-days: 90
