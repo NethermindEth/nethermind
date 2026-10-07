@@ -1074,6 +1074,55 @@ public partial class DebugRpcModuleTests
     }
 
     [Test]
+    public async Task Captured_step_callbacks_keep_allocation_close_to_legacy()
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        const int calls = 1000;
+        long Measure(bool capture)
+        {
+            using Engine engine = new(Prague.Instance);
+            using GethLikeJavaScriptTxTracer tracer = CreateTracer(engine, chain,
+                "{count:0,fault:function(){},step:function(){this.count++;},result:function(){return this.count;}}", capture);
+            for (int i = 0; i < calls; i++) tracer.SetOperationStack(default);
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < calls; i++) tracer.SetOperationStack(default);
+            long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+            using GethLikeTxTrace result = tracer.BuildResult();
+            Assert.That(JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions), Is.EqualTo("2000"));
+            return allocated;
+        }
+        long legacy = Measure(false);
+        long captured = Measure(true);
+        // Allow bridge bookkeeping without accepting a fresh host delegate on each opcode.
+        Assert.That(captured - legacy, Is.LessThanOrEqualTo(128L * calls));
+    }
+
+    [Test]
+    public void Nested_capture_does_not_mark_the_callers_host_failure()
+    {
+        using Engine engine = new(Prague.Instance);
+        engine.PrepareNullThrowCapture();
+        using ScriptObject receiver = (ScriptObject)engine.CreateTracer("{throwing:function(){throw null;},outer:function(callback){callback();}}");
+        using ScriptObject throwing = (ScriptObject)receiver.GetProperty("throwing");
+        using ScriptObject outer = (ScriptObject)receiver.GetProperty("outer");
+        Action nested = () =>
+        {
+            bool innerObserved = false;
+            Assert.Throws<ScriptEngineException>(() => engine.InvokeCapturingNull(receiver, throwing, null, null, false, out innerObserved));
+            Assert.That(innerObserved, Is.True);
+            throw new ScriptEngineException("opaque host failure");
+        };
+        bool observed = false;
+        Exception failure = Assert.Catch(() => engine.InvokeCapturingNull(receiver, outer, nested, null, false, out observed))!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(observed, Is.False);
+            Assert.That(JavaScriptTraceFailure.IsRecoverable(failure, observed), Is.False);
+            Assert.That(failure.Message, Does.Contain("opaque host failure"));
+        }
+    }
+
+    [Test]
     public void Capture_preserves_receiver_getter_count_and_arguments([Values] bool twoArguments)
     {
         using Engine engine = new(Prague.Instance);

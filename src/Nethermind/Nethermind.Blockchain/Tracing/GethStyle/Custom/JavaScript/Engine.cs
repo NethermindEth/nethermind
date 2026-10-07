@@ -24,6 +24,7 @@ public class Engine : IDisposable
     private readonly bool _ownsRuntime;
 
     private ScriptObject? _nullThrowInvoker;
+    private NullThrowObserver? _availableNullThrowObserver;
     private dynamic _bigInteger;
     private dynamic _createUint8Array;
     private int _disposed;
@@ -245,17 +246,29 @@ public class Engine : IDisposable
     internal object? InvokeCapturingNull(object receiver, ScriptObject callback, object? first, object? second, bool hasSecond, out bool observedNullThrow)
     {
         observedNullThrow = false;
-        bool caughtNull = false;
-        Action markNull = () => caughtNull = true;
+        NullThrowObserver observer = Interlocked.Exchange(ref _availableNullThrowObserver, null) ?? new();
         try
         {
-            return _nullThrowInvoker!.Invoke(false, receiver, callback, markNull, first, second, hasSecond);
+            return _nullThrowInvoker!.Invoke(false, receiver, callback, observer.MarkNull, first, second, hasSecond);
         }
         catch
         {
             // Publish before rethrow: the caller's exception filter runs before this frame's finally blocks.
-            observedNullThrow = caughtNull;
+            observedNullThrow = observer.CaughtNull;
             throw;
         }
+        finally
+        {
+            observer.CaughtNull = false;
+            Interlocked.CompareExchange(ref _availableNullThrowObserver, observer, null);
+        }
+    }
+
+    private sealed class NullThrowObserver
+    {
+        public bool CaughtNull;
+        public Action MarkNull { get; }
+
+        public NullThrowObserver() => MarkNull = () => CaughtNull = true;
     }
 }

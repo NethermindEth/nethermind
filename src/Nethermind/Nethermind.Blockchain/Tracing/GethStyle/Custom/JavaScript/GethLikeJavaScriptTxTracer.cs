@@ -112,7 +112,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer
             if (_traceError is null)
                 result.CustomTracerResult = new GethLikeCustomTrace { Value = MaterializeResult(value) };
         }
-        catch (Exception exception) when (_captureErrors && JavaScriptTraceFailure.IsRecoverable(exception))
+        catch (Exception exception) when (JavaScriptTraceFailure.IsRecoverable(exception))
         {
             _traceError = exception.Message;
         }
