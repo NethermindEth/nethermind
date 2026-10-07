@@ -29,10 +29,9 @@ namespace Nethermind.Core.Test.Collections
                 Assert.That(journalSet, Is.EqualTo(Enumerable.Range(0, 10)));
                 Assert.That(Enumerable.Range(0, 10).All(item => journalSet.Contains(item)), Is.True, "the older items stay");
                 Assert.That(Enumerable.Range(10, newerItems).Any(item => journalSet.Contains(item)), Is.False, "the newer items are gone");
+                Assert.That(journalSet.Add(10 + newerItems / 2), Is.True, "a dropped item adds again");
+                Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
             }
-
-            Assert.That(journalSet.Add(10 + newerItems / 2), Is.True, "a dropped item adds again");
-            Assert.That(journalSet.Add(3), Is.False, "a kept item is still present");
         }
 
         [Test]

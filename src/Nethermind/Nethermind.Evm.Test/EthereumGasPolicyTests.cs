@@ -58,16 +58,22 @@ public class EthereumGasPolicyTests
         {
             returnedState = first.AccessedAddresses;
             first.WarmUp(in cell);
-            Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
-            Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(first.IsCold(in cell), Is.False, "sets the memo");
+                Assert.That(first.WarmUp(TestItem.AddressA), Is.True);
+            }
         }
 
         using StackAccessTracker second = new();
-        // Without this the assertion below also holds for a fresh state, so it could not fail if the
-        // reuse it claims to exercise ever stopped happening.
+        // Without this the assertions below also hold for a fresh state, so they could not fail if the
+        // reuse they claim to exercise ever stopped happening.
         Assert.That(second.AccessedAddresses, Is.SameAs(returnedState), "precondition: the pool reused the state");
-        Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
-        Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second.IsCold(in cell), Is.True, "a pooled reset must forget the warm cell");
+            Assert.That(second.WarmUp(TestItem.AddressA), Is.True, "a pooled reset must forget the warm address");
+        }
     }
 
     /// <summary>The memo must answer for the cell it remembers, not for a different one.</summary>
@@ -96,10 +102,13 @@ public class EthereumGasPolicyTests
         using StackAccessTracker tracker = new();
         Assert.That(tracker.WarmUp(TestItem.AddressA), Is.True);
 
-        Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
-        Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
-        Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm");
-        Assert.That(tracker.AccessedAddresses.Select(static key => key.Value), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tracker.WarmUp(new Address(TestItem.AddressA.Bytes)), Is.False, "an equal instance is warm");
+            Assert.That(tracker.WarmUp(TestItem.AddressB), Is.True, "another address is still cold");
+            Assert.That(tracker.WarmUp(TestItem.AddressA), Is.False, "and the first stays warm");
+            Assert.That(tracker.AccessedAddresses.Select(static key => key.Value), Is.EqualTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+        }
     }
 
     /// <summary>
@@ -123,10 +132,13 @@ public class EthereumGasPolicyTests
             cells[level] = new StorageCell(addresses[level], (UInt256)(uint)level);
             frames[level] = parent;
             frames[level].TakeSnapshot();
-            Assert.That(frames[level].WarmUp(addresses[level]), Is.True);
-            Assert.That(frames[level].WarmUp(addresses[level]), Is.False);
-            Assert.That(frames[level].WarmUp(in cells[level]), Is.True);
-            Assert.That(frames[level].WarmUp(in cells[level]), Is.False);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(frames[level].WarmUp(addresses[level]), Is.True);
+                Assert.That(frames[level].WarmUp(addresses[level]), Is.False);
+                Assert.That(frames[level].WarmUp(in cells[level]), Is.True);
+                Assert.That(frames[level].WarmUp(in cells[level]), Is.False);
+            }
         }
 
         for (int level = depth - 1; level >= 0; level--)
@@ -144,8 +156,11 @@ public class EthereumGasPolicyTests
             Assert.That(parent.WarmUp(TestItem.AddressA), Is.False);
         }
 
-        Assert.That(parent.WarmUp(addresses[^1]), Is.EqualTo(!tracing));
-        Assert.That(parent.WarmUp(in cells[^1]), Is.EqualTo(!tracing));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parent.WarmUp(addresses[^1]), Is.EqualTo(!tracing));
+            Assert.That(parent.WarmUp(in cells[^1]), Is.EqualTo(!tracing));
+        }
     }
 
     [Test]
