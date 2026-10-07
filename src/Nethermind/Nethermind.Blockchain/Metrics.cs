@@ -73,6 +73,30 @@ public static class Metrics
     [Description("Transactions executed after their pre-warm run failed to apply")]
     public static long PrewarmHandoffFailures { get; set; }
 
+    [CounterMetric]
+    [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
+    public static long PrewarmRefreshes { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes not run: a slot the run read is not tracked, or none of them moved")]
+    public static long PrewarmRefreshesSkipped { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes stopped because block processing reached their transaction")]
+    public static long PrewarmRefreshesCancelled { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshes whose run left no footprint")]
+    public static long PrewarmRefreshesFailed { get; set; }
+
+    [CounterMetric]
+    [Description("Refreshed pre-warm runs stored for block processing to take over")]
+    public static long PrewarmRefreshesStored { get; set; }
+
+    [CounterMetric]
+    [Description("Transactions block processing took over from a refreshed pre-warm run")]
+    public static long PrewarmRefreshesTakenOver { get; set; }
+
     [GaugeMetric]
     [Description("Gas Used in processed blocks")]
     public static ulong GasUsed { get; set; }

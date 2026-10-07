@@ -43,9 +43,26 @@ public class PrewarmerTxAdapter(
             {
                 return result;
             }
+
+            // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
+            if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
         }
 
         return baseAdapter.Execute(transaction, txTracer);
+    }
+
+    private TransactionResult ExecuteReportingWrites(Transaction transaction, ITxTracer txTracer, CommittedStorageWrites committed)
+    {
+        committed.Begin();
+        try
+        {
+            return baseAdapter.Execute(transaction, txTracer);
+        }
+        finally
+        {
+            // Reported also when there are none: the writes its footprint predicted were not made.
+            preWarmer.ReportExecutedWrites(committed.End());
+        }
     }
 
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
@@ -112,6 +129,7 @@ public class PrewarmerTxAdapter(
 
         Tally = Tally with { Replayed = Tally.Replayed + 1 };
         Blockchain.Metrics.PrewarmHandoffs++;
+        if (footprint.Refreshed) Blockchain.Metrics.PrewarmRefreshesTakenOver++;
         result = footprint.Result;
         return true;
     }

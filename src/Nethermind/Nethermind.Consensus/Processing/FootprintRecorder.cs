@@ -96,7 +96,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         State.ResetTransient();
     }
 
-    public TransactionFootprint? Finish(Transaction tx, in TransactionResult result)
+    /// <param name="refreshed">Whether the run refreshes an invalidated footprint.</param>
+    public TransactionFootprint? Finish(Transaction tx, in TransactionResult result, bool refreshed = false)
     {
         _active = false;
         if (_opaque || !result || !Outcome.HasResult) return null;
@@ -134,7 +135,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         StateEffect[] effects = _effectCount == 0 ? [] : _effects.AsSpan(0, _effectCount).ToArray();
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value);
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed };
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
