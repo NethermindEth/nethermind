@@ -317,10 +317,12 @@ public class FlatTrieVerifier
                 }
 
                 verifiedTriePaths.TryAdd(hashKey, 0);
-                TreePath triePath = TreePath.FromPath(trieHash.Bytes);
-                if (triePath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
+                // Progress follows the raw address: flat iterates in address order, so its prefix only advances,
+                // whereas consecutive hashed prefixes differ almost every time and would each count as progress.
+                TreePath addressPath = TreePath.FromPath(flatKey.Bytes);
+                if (addressPath.Truncate(VisitorProgressTracker.Level3Depth) != progressPath)
                 {
-                    progressPath = triePath.Truncate(VisitorProgressTracker.Level3Depth);
+                    progressPath = addressPath.Truncate(VisitorProgressTracker.Level3Depth);
                     progressTracker.OnNodeVisited(progressPath, isStorage: false);
                 }
 
