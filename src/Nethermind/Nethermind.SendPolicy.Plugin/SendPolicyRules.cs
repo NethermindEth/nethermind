@@ -14,32 +14,37 @@ namespace Nethermind.SendPolicy.Plugin;
 /// <list type="bullet">
 /// <item><c>from &lt;address&gt;</c>: a guarded sender. Senders not listed are never checked.</item>
 /// <item><c>to &lt;address&gt; [&lt;max wei per transaction&gt;]</c>: a destination a guarded sender may call; the limit defaults to zero.</item>
+/// <item><c>token &lt;address&gt;</c>: a destination where a guarded sender may make only the token calls that <see cref="SendPolicyCheck"/> decodes, with no value.</item>
 /// <item><c>grant &lt;address&gt;</c>: an address that may receive tokens, an allowance or a guarded account's EIP-7702 delegation.</item>
 /// <item><c>fee &lt;max wei&gt;</c>: the ceiling on gas limit times max fee per gas.</item>
+/// <item><c>cap &lt;max wei&gt; &lt;seconds&gt;</c>: the most value plus fee ceiling one guarded sender may submit through this node in any period of that length.</item>
 /// </list>
 /// </remarks>
 public sealed class SendPolicyRules
 {
-    public static readonly SendPolicyRules Empty = new([], [], [], null, null);
+    public static readonly SendPolicyRules Empty = new([], [], [], null, null, null);
 
     private SendPolicyRules(
         HashSet<Address> guardedSenders,
-        Dictionary<Address, (UInt256 MaxValue, int Line)> destinations,
+        Dictionary<Address, (UInt256 MaxValue, int Line, bool TokenOnly)> destinations,
         HashSet<Address> grants,
         UInt256? maxFee,
+        (UInt256 MaxWei, ulong Seconds)? cap,
         string? error)
     {
         GuardedSenders = guardedSenders;
         Destinations = destinations;
         Grants = grants;
         MaxFee = maxFee;
+        Cap = cap;
         Error = error;
     }
 
     public IReadOnlySet<Address> GuardedSenders { get; }
-    public IReadOnlyDictionary<Address, (UInt256 MaxValue, int Line)> Destinations { get; }
+    public IReadOnlyDictionary<Address, (UInt256 MaxValue, int Line, bool TokenOnly)> Destinations { get; }
     public IReadOnlySet<Address> Grants { get; }
     public UInt256? MaxFee { get; }
+    public (UInt256 MaxWei, ulong Seconds)? Cap { get; }
 
     /// <summary>
     /// Why the file could not be used, or <c>null</c> when it was parsed.
@@ -53,9 +58,10 @@ public sealed class SendPolicyRules
     public static SendPolicyRules Parse(IEnumerable<string> lines)
     {
         HashSet<Address> guardedSenders = [];
-        Dictionary<Address, (UInt256 MaxValue, int Line)> destinations = [];
+        Dictionary<Address, (UInt256 MaxValue, int Line, bool TokenOnly)> destinations = [];
         HashSet<Address> grants = [];
         UInt256? maxFee = null;
+        (UInt256 MaxWei, ulong Seconds)? cap = null;
         int lineNumber = 0;
         foreach (string raw in lines)
         {
@@ -67,10 +73,12 @@ public sealed class SendPolicyRules
                 switch (words[0], words.Length)
                 {
                     case ("from", 2): guardedSenders.Add(new Address(words[1])); break;
-                    case ("to", 2): destinations[new Address(words[1])] = (UInt256.Zero, lineNumber); break;
-                    case ("to", 3): destinations[new Address(words[1])] = (ParseWei(words[2]), lineNumber); break;
+                    case ("to", 2): destinations[new Address(words[1])] = (UInt256.Zero, lineNumber, false); break;
+                    case ("to", 3): destinations[new Address(words[1])] = (ParseWei(words[2]), lineNumber, false); break;
+                    case ("token", 2): destinations[new Address(words[1])] = (UInt256.Zero, lineNumber, true); break;
                     case ("grant", 2): grants.Add(new Address(words[1])); break;
                     case ("fee", 2): maxFee = ParseWei(words[1]); break;
+                    case ("cap", 3): cap = (ParseWei(words[1]), ParseSeconds(words[2])); break;
                     default: throw new FormatException($"unknown rule '{words[0]}' with {words.Length - 1} argument(s)");
                 }
             }
@@ -80,12 +88,15 @@ public sealed class SendPolicyRules
             }
         }
 
-        return new SendPolicyRules(guardedSenders, destinations, grants, maxFee, null);
+        return new SendPolicyRules(guardedSenders, destinations, grants, maxFee, cap, null);
     }
 
     public static SendPolicyRules Unusable(SendPolicyRules lastGood, string reason) =>
-        new([.. lastGood.GuardedSenders], [], [], null, reason);
+        new([.. lastGood.GuardedSenders], [], [], null, null, reason);
 
     private static UInt256 ParseWei(string value) =>
         value.Length > 0 && value.All(char.IsAsciiDigit) ? UInt256.Parse(value) : throw new FormatException($"'{value}' is not a decimal wei amount");
+
+    private static ulong ParseSeconds(string value) =>
+        value.Length > 0 && value.All(char.IsAsciiDigit) && ulong.Parse(value) > 0 ? ulong.Parse(value) : throw new FormatException($"'{value}' is not a positive number of seconds");
 }

@@ -28,6 +28,7 @@ public class SendPolicyTxSenderTests
     private static readonly Address Token = TestItem.AddressD;
     private static readonly Address Spender = TestItem.AddressE;
     private static readonly Address Unlisted = TestItem.AddressF;
+    private static readonly Address Collection = Address.FromNumber(0x1155);
     private static readonly UInt256 OneEther = 1.Ether;
 
     private static readonly string[] Rules =
@@ -37,7 +38,10 @@ public class SendPolicyTxSenderTests
         $"to    {Token}",
         $"grant {Spender}",
         "fee   10000000000000000",
+        $"token {Collection}",
     ];
+
+    private static readonly UInt256 FeeCeiling = 60_000 * 3.GWei;
 
     private static IEnumerable<TestCaseData> Sends()
     {
@@ -60,6 +64,12 @@ public class SendPolicyTxSenderTests
         yield return Case("owner transfer to an unlisted recipient", () => Call(Owner, Token, "a9059cbb", Unlisted, 5), $"{Unlisted} may not receive");
         yield return Case("owner transferFrom to an unlisted recipient", () => Call(Owner, Token, "23b872dd", Owner.Address, Unlisted, 5), $"{Unlisted} may not receive");
         yield return Case("owner truncated approve calldata", () => SendData(Owner, Token, Bytes.FromHexString("095ea7b3" + new string('0', 64))), "short calldata for a token call");
+        yield return Case("owner transfer at a token destination to a granted recipient", () => Call(Owner, Collection, "a9059cbb", Spender, 5), null);
+        yield return Case("owner ERC-1155 transfer at a token destination to an unlisted recipient", () => Call(Owner, Collection, "f242432a", Owner.Address, Unlisted, 7, 1), $"{Unlisted} may not receive");
+        yield return Case("owner unknown call at a token destination", () => Call(Owner, Collection, "d505accf", Spender, 5), $"call 0xd505accf is not allowed at 'token {Collection}'");
+        yield return Case("owner empty call at a token destination", () => Send(Owner, Collection, 0), $"only token calls are allowed at 'token {Collection}'");
+        yield return Case("owner ether to a token destination", () => Send(Owner, Collection, 1), "value 1 wei is over the limit 0 of rule line 6");
+        yield return Case("owner fee ceiling that overflows", () => Send(Owner, Friend, 1, maxFeePerGas: UInt256.MaxValue), "fee ceiling");
         yield return Case("stranger carrying the owner's delegation to unlisted code", () => Delegate(Stranger, Owner, Unlisted), $"delegation of {Owner.Address} to {Unlisted} needs 'grant {Unlisted}'");
         yield return Case("owner delegating itself to unlisted code", () => Delegate(Owner, Owner, Unlisted), $"delegation of {Owner.Address} to {Unlisted}");
         yield return Case("stranger carrying the owner's delegation to granted code", () => Delegate(Stranger, Owner, Spender), null);
@@ -73,7 +83,7 @@ public class SendPolicyTxSenderTests
         ITxSender inner = AcceptingSender();
         Transaction tx = build();
 
-        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, rules.Path).SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, RulesFile(rules)).SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
 
         if (expectedRefusal is null)
         {
@@ -94,7 +104,7 @@ public class SendPolicyTxSenderTests
         ITxSender inner = AcceptingSender();
         Transaction tx = Send(Owner, Unlisted, 1);
 
-        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, rules.Path, warnOnly: true).SendTransaction(tx, TxHandlingOptions.None);
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, RulesFile(rules), warnOnly: true).SendTransaction(tx, TxHandlingOptions.None);
 
         await inner.Received(1).SendTransaction(tx, TxHandlingOptions.None);
         Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
@@ -102,7 +112,7 @@ public class SendPolicyTxSenderTests
 
     private static IEnumerable<TestCaseData> SendsUnderUnusableRules()
     {
-        yield return Case("owner to a listed address", () => Send(Owner, Friend, 1), "rule file unusable (line 6: unknown rule 'bogus' with 0 argument(s))");
+        yield return Case("owner to a listed address", () => Send(Owner, Friend, 1), "rule file unusable (line 7: unknown rule 'bogus' with 0 argument(s))");
         yield return Case("stranger carrying the owner's delegation to granted code", () => Delegate(Stranger, Owner, Spender), "rule file unusable");
         yield return Case("stranger to an unlisted address", () => Send(Stranger, Unlisted, 1), null);
     }
@@ -112,9 +122,9 @@ public class SendPolicyTxSenderTests
     {
         using TempPath rules = WriteRules(Rules);
         ITxSender inner = AcceptingSender();
-        SendPolicyTxSender sender = CreateSender(inner, rules.Path);
+        SendPolicyTxSender sender = CreateSender(inner, RulesFile(rules));
         await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
-        File.AppendAllLines(rules.Path, ["bogus"]);
+        File.AppendAllLines(RulesFile(rules), ["bogus"]);
         inner.ClearReceivedCalls();
 
         (Hash256 _, AcceptTxResult? result) = await sender.SendTransaction(build(), TxHandlingOptions.None);
@@ -128,10 +138,10 @@ public class SendPolicyTxSenderTests
     {
         using TempPath rules = WriteRules(Rules);
         ITxSender inner = AcceptingSender();
-        SendPolicyTxSender sender = CreateSender(inner, rules.Path);
+        SendPolicyTxSender sender = CreateSender(inner, RulesFile(rules));
         (Hash256 _, AcceptTxResult? before) = await sender.SendTransaction(Send(Owner, Unlisted, 1), TxHandlingOptions.None);
 
-        File.AppendAllLines(rules.Path, [$"to {Unlisted} 1"]);
+        File.AppendAllLines(RulesFile(rules), [$"to {Unlisted} 1"]);
         (Hash256 _, AcceptTxResult? after) = await sender.SendTransaction(Send(Owner, Unlisted, 1), TxHandlingOptions.None);
 
         using (Assert.EnterMultipleScope())
@@ -141,7 +151,66 @@ public class SendPolicyTxSenderTests
         }
     }
 
+    private static IEnumerable<TestCaseData> SendsUnderCap()
+    {
+        yield return CapCase("third send in the period", true, (0, 0, true), (1, 0, true), (2, 0, true));
+        yield return CapCase("third send after the period", false, (0, 0, true), (1, 0, true), (2, 3601, true));
+        yield return CapCase("replacement of a counted nonce", false, (0, 0, true), (0, 0, true), (1, 0, true));
+        yield return CapCase("send after one the pool rejected", false, (0, 0, false), (0, 0, true), (1, 0, true));
+    }
+
+    private static TestCaseData CapCase(string name, bool lastIsRefused, params (ulong Nonce, int SecondsLater, bool PoolAccepts)[] sends) =>
+        new TestCaseData(sends, lastIsRefused).SetName(name);
+
+    [TestCaseSource(nameof(SendsUnderCap))]
+    public async Task Cap_counts_value_and_fee_ceiling_of_accepted_sends_in_the_period((ulong Nonce, int SecondsLater, bool PoolAccepts)[] sends, bool lastIsRefused)
+    {
+        using TempPath rules = WriteRules([.. Rules, $"cap {OneEther + 2 * FeeCeiling} 3600"]);
+        ITxSender inner = Substitute.For<ITxSender>();
+        ManualTimestamper clock = new();
+        SendPolicyTxSender sender = CreateSender(inner, RulesFile(rules), clock: clock);
+        AcceptTxResult? last = null;
+
+        foreach ((ulong nonce, int secondsLater, bool poolAccepts) in sends)
+        {
+            clock.UtcNow += TimeSpan.FromSeconds(secondsLater);
+            inner.SendTransaction(default!, default).ReturnsForAnyArgs(new ValueTask<(Hash256, AcceptTxResult?)>((Keccak.Zero, poolAccepts ? AcceptTxResult.Accepted : AcceptTxResult.Invalid)));
+            (_, last) = await sender.SendTransaction(Send(Owner, Friend, OneEther / 2, nonce: nonce), TxHandlingOptions.None);
+        }
+
+        if (!lastIsRefused) Assert.That(last, Is.EqualTo(AcceptTxResult.Accepted));
+        else Assert.That(last?.ToString(), Does.StartWith($"send policy, over 'cap {OneEther + 2 * FeeCeiling} 3600': {3 * (OneEther / 2 + FeeCeiling)} wei"));
+    }
+
+    [Test]
+    public async Task Cap_counts_sends_journaled_before_a_restart()
+    {
+        using TempPath rules = WriteRules([.. Rules, $"cap {OneEther + 2 * FeeCeiling} 3600"]);
+        ITxSender inner = AcceptingSender();
+        ManualTimestamper clock = new();
+        SendPolicyTxSender beforeRestart = CreateSender(inner, RulesFile(rules), clock: clock);
+        await beforeRestart.SendTransaction(Send(Owner, Friend, OneEther / 2, nonce: 0), TxHandlingOptions.None);
+        await beforeRestart.SendTransaction(Send(Owner, Friend, OneEther / 2, nonce: 1), TxHandlingOptions.None);
+
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, RulesFile(rules), clock: clock).SendTransaction(Send(Owner, Friend, OneEther / 2, nonce: 2), TxHandlingOptions.None);
+
+        Assert.That(result?.ToString(), Does.Contain("over 'cap"));
+    }
+
+    [Test]
+    public async Task Cap_refuses_when_the_journal_is_unusable()
+    {
+        using TempPath rules = WriteRules([.. Rules, $"cap {OneEther} 3600"]);
+        File.WriteAllLines(RulesFile(rules) + ".journal", ["not a journal line"]);
+
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(AcceptingSender(), RulesFile(rules)).SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+
+        Assert.That(result?.ToString(), Does.Contain("journal unusable"));
+    }
+
     [TestCase("bogus 0x01")]
+    [TestCase("cap 1")]
+    [TestCase("cap 1 0")]
     [TestCase("from")]
     [TestCase("to 0x01 1 2")]
     [TestCase("fee -1")]
@@ -165,8 +234,9 @@ public class SendPolicyTxSenderTests
         using IContainer container = new ContainerBuilder()
             .AddSingleton(inner)
             .AddModule(new SendPolicyModule())
-            .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = rules.Path })
+            .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = RulesFile(rules) })
             .AddSingleton<IEthereumEcdsa>(Ecdsa)
+            .AddSingleton<ITimestamper>(Timestamper.Default)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .Build();
 
@@ -178,10 +248,13 @@ public class SendPolicyTxSenderTests
 
     private static TempPath WriteRules(IEnumerable<string> lines)
     {
-        TempPath path = TempPath.GetTempFile();
-        File.WriteAllLines(path.Path, lines);
-        return path;
+        TempPath directory = TempPath.GetTempDirectory();
+        Directory.CreateDirectory(directory.Path);
+        File.WriteAllLines(RulesFile(directory), lines);
+        return directory;
     }
+
+    private static string RulesFile(TempPath directory) => Path.Combine(directory.Path, "rules");
 
     private static ITxSender AcceptingSender()
     {
@@ -191,21 +264,22 @@ public class SendPolicyTxSenderTests
         return sender;
     }
 
-    private static SendPolicyTxSender CreateSender(ITxSender inner, string rulesPath, bool warnOnly = false)
+    private static SendPolicyTxSender CreateSender(ITxSender inner, string rulesPath, bool warnOnly = false, ITimestamper? clock = null)
     {
         SendPolicyConfig config = new() { Enabled = true, RulesPath = rulesPath, WarnOnly = warnOnly };
-        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
+        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, LimboLogs.Instance), new SendPolicyJournal(config, clock ?? Timestamper.Default, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
     }
 
-    private static Transaction Send(PrivateKey from, Address? to, UInt256 value, TxType type = TxType.EIP1559, ulong gasLimit = 60_000) =>
+    private static Transaction Send(PrivateKey from, Address? to, UInt256 value, TxType type = TxType.EIP1559, ulong gasLimit = 60_000, ulong nonce = 0, UInt256? maxFeePerGas = null) =>
         Build.A.Transaction
             .WithType(type)
             .WithChainId(ChainId)
+            .WithNonce(nonce)
             .To(to)
             .WithValue(value)
             .WithGasLimit(gasLimit)
-            .WithGasPrice(3.GWei)
-            .WithMaxFeePerGas(3.GWei)
+            .WithGasPrice(maxFeePerGas ?? 3.GWei)
+            .WithMaxFeePerGas(maxFeePerGas ?? 3.GWei)
             .SignedAndResolved(Ecdsa, from)
             .TestObject;
 

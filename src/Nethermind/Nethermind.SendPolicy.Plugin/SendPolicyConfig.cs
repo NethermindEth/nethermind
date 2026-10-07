@@ -7,5 +7,6 @@ public class SendPolicyConfig : ISendPolicyConfig
 {
     public bool Enabled { get; set; } = false;
     public string? RulesPath { get; set; } = null;
+    public string? JournalPath { get; set; } = null;
     public bool WarnOnly { get; set; } = false;
 }

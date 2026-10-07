@@ -13,6 +13,9 @@ public interface ISendPolicyConfig : IConfig
     [ConfigItem(DefaultValue = "null", Description = "The path to the rule file. The file is re-read when it changes.")]
     string? RulesPath { get; set; }
 
+    [ConfigItem(DefaultValue = "null", Description = "The path to the journal of transactions submitted by guarded senders. Defaults to the rule file path with `.journal` appended.")]
+    string? JournalPath { get; set; }
+
     [ConfigItem(DefaultValue = "false", Description = "Whether to log a transaction that breaks a rule and submit it anyway.")]
     bool WarnOnly { get; set; }
 }

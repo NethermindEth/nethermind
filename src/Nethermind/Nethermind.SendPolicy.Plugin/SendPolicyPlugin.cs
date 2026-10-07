@@ -22,5 +22,6 @@ public class SendPolicyModule : Module
 {
     protected override void Load(ContainerBuilder builder) => builder
         .AddSingleton<SendPolicyRuleFile>()
+        .AddSingleton<SendPolicyJournal>()
         .AddDecorator<ITxSender, SendPolicyTxSender>();
 }
