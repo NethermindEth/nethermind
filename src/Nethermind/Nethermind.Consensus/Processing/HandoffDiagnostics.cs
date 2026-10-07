@@ -34,10 +34,31 @@ public static class HandoffDiagnostics
 
     public const int NotStarted = 0, Running = 1, Stored = 2, Overtaken = 3, FailedRun = 4, Sender = 5, Unfunded = 6,
         OpaqueTryGetAccount = 7, OpaqueEmptyIfDeleted = 8, OpaqueReset = 9, OpaqueCommit = 10, OpaqueOverlay = 11,
-        OpaqueAmbiguousRestore = 12, OpaqueUnplacedRestore = 13, OpaqueChangedRead = 14, OtherTransaction = 15;
+        OpaqueAmbiguousRestore = 12, OpaqueUnplacedRestore = 13, OpaqueChangedRead = 14, OtherTransaction = 15, ChainQueued = 16;
     internal static readonly string[] StatusNames = ["not_started", "running", "stored", "overtaken", "failed_run", "sender", "unfunded",
         "opaque_try_get_account", "opaque_empty_if_deleted", "opaque_reset", "opaque_commit", "opaque_overlay",
-        "opaque_ambiguous_restore", "opaque_unplaced_restore", "opaque_changed_read", "other_tx"];
+        "opaque_ambiguous_restore", "opaque_unplaced_restore", "opaque_changed_read", "other_tx", "chain_queued"];
+
+    public const int SlotRejectionHot = 0, SlotRejectionCap = 1, SlotRejectionMarkedPending = 2, SlotRejectionMarkedTaken = 3,
+        SlotRejectionMarkedPassed = 4, SlotRejectionRewarmPending = 5, SlotRejectionRewarmTaken = 6, SlotRejectionRewarmPassed = 7,
+        SlotRejectionRewarmMispredicted = 8, SlotRejectionRewarmUnexplained = 9, SlotRejectionNoWriter = 10, SlotRejectionMispredicted = 11,
+        SlotRejectionUnmarkedOther = 12, SlotRejectionNoSlot = 13;
+    private static readonly string[] SlotRejectionNames = ["hot", "cap", "marked_pending", "marked_taken", "marked_passed",
+        "rewarm_pending", "rewarm_taken", "rewarm_passed", "rewarm_mispredicted", "rewarm_unexplained",
+        "unmarked_no_writer", "unmarked_mispredicted", "unmarked_other", "no_slot"];
+    private static readonly long[] SlotRejections = new long[SlotRejectionNames.Length];
+    private static readonly long[] SlotRejectionGas = new long[SlotRejectionNames.Length];
+    private static readonly long[] SlotRejectionTicks = new long[SlotRejectionNames.Length];
+    private static int _lastSlotRejection = -1;
+
+    // By tenth of the block: the outcomes, and the missing transactions by run status.
+    private const int Deciles = 10;
+    private static readonly int[] DecileStatuses = [NotStarted, Running, ChainQueued];
+    private static readonly long[,] DecileCounts = new long[OutcomeNames.Length, Deciles];
+    private static readonly long[,] DecileTicks = new long[OutcomeNames.Length, Deciles];
+    private static readonly long[,] DecileAbsence = new long[DecileStatuses.Length, Deciles];
+    private static readonly long[,] DecileAbsenceTicks = new long[DecileStatuses.Length, Deciles];
+    private static int _txIndex;
     private static readonly long[] Absences = new long[StatusNames.Length];
     private static readonly long[] AbsenceGas = new long[StatusNames.Length];
     private static readonly long[] AbsenceTicks = new long[StatusNames.Length];
@@ -54,9 +75,10 @@ public static class HandoffDiagnostics
     private static long _built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late;
     private static long _marked, _unchanged, _stored, _dropped, _overtaken, _rewarmTicks;
 
-    internal static void TxStarted(long timestamp)
+    internal static void TxStarted(long timestamp, int txIndex)
     {
         if (_firstTxStart == 0) _firstTxStart = timestamp;
+        _txIndex = txIndex;
     }
 
     internal static void Count(int outcome, long start, Transaction tx)
@@ -65,14 +87,34 @@ public static class HandoffDiagnostics
         Counts[outcome]++;
         Ticks[outcome] += end - start;
         Gas[outcome] += (long)tx.SpentGas;
+        int txCount = Block?.Count ?? 0;
+        int decile = txCount > 0 ? Math.Clamp(_txIndex * Deciles / txCount, 0, Deciles - 1) : 0;
+        DecileCounts[outcome, decile]++;
+        DecileTicks[outcome, decile] += end - start;
         if (outcome == Missing && _lastAbsence >= 0)
         {
             AbsenceTicks[_lastAbsence] += end - start;
             AbsenceGas[_lastAbsence] += (long)tx.SpentGas;
+            int status = Array.IndexOf(DecileStatuses, _lastAbsence);
+            if (status >= 0)
+            {
+                DecileAbsence[status, decile]++;
+                DecileAbsenceTicks[status, decile] += end - start;
+            }
         }
 
+        if (outcome == Rejected && _lastSlotRejection >= 0) SlotRejectionTicks[_lastSlotRejection] += end - start;
+
         _lastAbsence = -1;
+        _lastSlotRejection = -1;
         _lastTxEnd = end;
+    }
+
+    internal static void CountSlotRejection(int kind, Transaction tx)
+    {
+        SlotRejections[kind]++;
+        SlotRejectionGas[kind] += (long)tx.GasLimit;
+        _lastSlotRejection = kind;
     }
 
     internal static void CountMismatch(int code, Transaction tx)
@@ -103,6 +145,19 @@ public static class HandoffDiagnostics
         count++;
     }
 
+    private static void WriteDeciles(Utf8JsonWriter writer, string name, long[,] counts, long[,] ticks, int row)
+    {
+        bool any = false;
+        for (int d = 0; d < Deciles; d++) any |= counts[row, d] != 0;
+        if (!any) return;
+        writer.WriteStartArray(name);
+        for (int d = 0; d < Deciles; d++) writer.WriteNumberValue(counts[row, d]);
+        writer.WriteEndArray();
+        writer.WriteStartArray(name + "_ms");
+        for (int d = 0; d < Deciles; d++) writer.WriteNumberValue(Math.Round(ticks[row, d] * 1000.0 / Stopwatch.Frequency, 3));
+        writer.WriteEndArray();
+    }
+
     /// <summary>The block's diagnostics as a JSON object; clears them for the next block.</summary>
     public static string? TakeBlockJson()
     {
@@ -123,6 +178,28 @@ public static class HandoffDiagnostics
                 if (Mismatches[i] == 0) continue;
                 writer.WriteNumber(MismatchNames[i], Mismatches[i]);
                 writer.WriteNumber(MismatchNames[i] + "_gas_limit", MismatchGas[i]);
+            }
+
+            writer.WriteEndObject();
+            writer.WriteStartObject("slot_rejection");
+            for (int i = 0; i < SlotRejectionNames.Length; i++)
+            {
+                if (SlotRejections[i] == 0) continue;
+                writer.WriteNumber(SlotRejectionNames[i], SlotRejections[i]);
+                writer.WriteNumber(SlotRejectionNames[i] + "_ms", Math.Round(SlotRejectionTicks[i] * 1000.0 / Stopwatch.Frequency, 3));
+                writer.WriteNumber(SlotRejectionNames[i] + "_gas_limit", SlotRejectionGas[i]);
+            }
+
+            writer.WriteEndObject();
+            writer.WriteStartObject("deciles");
+            for (int o = 0; o < OutcomeNames.Length; o++)
+            {
+                WriteDeciles(writer, OutcomeNames[o], DecileCounts, DecileTicks, o);
+            }
+
+            for (int s = 0; s < DecileStatuses.Length; s++)
+            {
+                WriteDeciles(writer, StatusNames[DecileStatuses[s]], DecileAbsence, DecileAbsenceTicks, s);
             }
 
             writer.WriteEndObject();
@@ -207,6 +284,12 @@ public static class HandoffDiagnostics
                 writer.WriteNumber("prewarm_start_to_first_tx_ms", ToMs(_firstTxStart - block.CreatedAt));
                 writer.WriteNumber("txs_ms", ToMs(_lastTxEnd - _firstTxStart));
                 if (warmed != 0) writer.WriteNumber("warmup_done_before_last_tx_ms", ToMs(_lastTxEnd - warmed));
+                long exhausted = Volatile.Read(ref block.JobsExhaustedAt);
+                if (exhausted != 0)
+                {
+                    writer.WriteNumber("jobs_exhausted_after_first_tx_ms", ToMs(exhausted - _firstTxStart));
+                    writer.WriteNumber("jobs_exhausted_before_last_tx_ms", ToMs(_lastTxEnd - exhausted));
+                }
             }
 
             writer.WriteEndObject();
@@ -220,6 +303,14 @@ public static class HandoffDiagnostics
         Array.Clear(Absences);
         Array.Clear(AbsenceGas);
         Array.Clear(AbsenceTicks);
+        Array.Clear(SlotRejections);
+        Array.Clear(SlotRejectionGas);
+        Array.Clear(SlotRejectionTicks);
+        Array.Clear(DecileCounts);
+        Array.Clear(DecileTicks);
+        Array.Clear(DecileAbsence);
+        Array.Clear(DecileAbsenceTicks);
+        _lastSlotRejection = -1;
         ReplayWrites.Clear();
         ExecutedWrites.Clear();
         _firstTxStart = 0;

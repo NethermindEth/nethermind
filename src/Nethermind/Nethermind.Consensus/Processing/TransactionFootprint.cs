@@ -41,6 +41,27 @@ internal sealed class TransactionFootprint(
 
     public bool Matches(IWorldState state) => Mismatch(state) == 0;
 
+    /// <summary>Experiment only: whether the run that recorded the footprint warmed the transaction again.</summary>
+    public bool Rewarmed;
+
+    /// <summary>Experiment only: the first slot the run read that no longer holds the value it read.</summary>
+    public bool FirstStaleSlot(IWorldState state, out SlotPrecondition stale, out UInt256 actual)
+    {
+        foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
+        {
+            state.Get(in slot.Cell, out actual);
+            if (actual != slot.Value)
+            {
+                stale = slot;
+                return true;
+            }
+        }
+
+        stale = default;
+        actual = default;
+        return false;
+    }
+
     /// <summary>Experiment only: the first precondition that does not hold, 0 when all do.</summary>
     public int Mismatch(IWorldState state)
     {

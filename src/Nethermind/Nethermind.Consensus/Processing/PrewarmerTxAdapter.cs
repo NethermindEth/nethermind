@@ -39,7 +39,7 @@ public class PrewarmerTxAdapter(
         {
             preWarmer.OnBeforeTxExecution();
             long start = HandoffDiagnostics.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.TxStarted(start);
+            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.TxStarted(start, preWarmer.MainThreadTxIndex);
             int outcome = HandoffDiagnostics.NotEligible;
             if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
                 && TryReplay(footprint, transaction, txTracer, out TransactionResult result, out outcome))
@@ -104,7 +104,11 @@ public class PrewarmerTxAdapter(
             Tally = Tally with { Rejected = Tally.Rejected + 1 };
             Blockchain.Metrics.PrewarmHandoffsRejected++;
             outcome = HandoffDiagnostics.Rejected;
-            if (HandoffDiagnostics.Enabled) HandoffDiagnostics.CountMismatch(mismatch, tx);
+            if (HandoffDiagnostics.Enabled)
+            {
+                HandoffDiagnostics.CountMismatch(mismatch, tx);
+                if (mismatch == 7) HandoffDiagnostics.CountSlotRejection(preWarmer.ClassifySlotRejection(footprint, worldState), tx);
+            }
             return false;
         }
 

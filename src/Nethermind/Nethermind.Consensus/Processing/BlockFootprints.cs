@@ -22,6 +22,15 @@ internal sealed class BlockFootprints(Block block)
     private readonly int[] _status = new int[block.Transactions.Length];
     public readonly long CreatedAt = System.Diagnostics.Stopwatch.GetTimestamp();
     public long WarmedAt;
+    // When the first worker found the warm pass's jobs all handed out.
+    public long JobsExhaustedAt;
+
+    public void MarkJobsExhausted() => Interlocked.CompareExchange(ref JobsExhaustedAt, System.Diagnostics.Stopwatch.GetTimestamp(), 0);
+
+    // Where each position stands with the re-warm: never marked, marked, taken by a sweeper, passed by block
+    // processing before a sweeper took it, or stored from a re-warm and not marked since.
+    private const int Unmarked = 0, Marked = 1, Taken = 2, Passed = 3, RewarmStored = 4;
+    private readonly int[] _rewarmMark = new int[block.Transactions.Length];
 
     public void SetStatus(int index, int status) => Volatile.Write(ref _status[index], status);
 
@@ -150,7 +159,12 @@ internal sealed class BlockFootprints(Block block)
             if (stale && _stale.Add(position))
             {
                 marked = true;
+                _rewarmMark[position] = Marked;
                 Interlocked.Increment(ref RewarmCounters.Marked);
+            }
+            else if (footprint.Rewarmed && !_stale.Contains(position))
+            {
+                _rewarmMark[position] = RewarmStored;
             }
         }
 
@@ -168,6 +182,7 @@ internal sealed class BlockFootprints(Block block)
             if (_stale.Add(reader))
             {
                 marked = true;
+                _rewarmMark[reader] = Marked;
                 Interlocked.Increment(ref RewarmCounters.Marked);
             }
         }
@@ -239,9 +254,12 @@ internal sealed class BlockFootprints(Block block)
                 if (first > after)
                 {
                     _rewarmsTaken++;
+                    _rewarmMark[first] = Taken;
                     position = first;
                     return true;
                 }
+
+                _rewarmMark[first] = Passed;
             }
         }
 
@@ -273,6 +291,38 @@ internal sealed class BlockFootprints(Block block)
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    /// <summary>Experiment only: why the footprint at <paramref name="position"/> read <paramref name="cell"/> at a value block processing no longer has.</summary>
+    public int ClassifySlotRejection(int position, TransactionFootprint footprint, in StorageCell cell, in UInt256 read, in UInt256 actual)
+    {
+        lock (_versionsLock)
+        {
+            if (_hotSlots.Contains(cell)) return HandoffDiagnostics.SlotRejectionHot;
+            int mark = (uint)position < (uint)_rewarmMark.Length ? _rewarmMark[position] : Unmarked;
+            bool capped = _rewarmsTaken >= MaxRewarmsPerBlock;
+            UInt256? predicted = VersionBefore(cell, position);
+            if (footprint.Rewarmed)
+            {
+                return mark switch
+                {
+                    Marked => capped ? HandoffDiagnostics.SlotRejectionCap : HandoffDiagnostics.SlotRejectionRewarmPending,
+                    Taken => HandoffDiagnostics.SlotRejectionRewarmTaken,
+                    Passed => HandoffDiagnostics.SlotRejectionRewarmPassed,
+                    _ => predicted == actual ? HandoffDiagnostics.SlotRejectionRewarmUnexplained : HandoffDiagnostics.SlotRejectionRewarmMispredicted,
+                };
+            }
+
+            return mark switch
+            {
+                Marked => capped ? HandoffDiagnostics.SlotRejectionCap : HandoffDiagnostics.SlotRejectionMarkedPending,
+                Taken => HandoffDiagnostics.SlotRejectionMarkedTaken,
+                Passed => HandoffDiagnostics.SlotRejectionMarkedPassed,
+                _ => predicted is null ? HandoffDiagnostics.SlotRejectionNoWriter
+                    : predicted == read ? HandoffDiagnostics.SlotRejectionMispredicted
+                    : HandoffDiagnostics.SlotRejectionUnmarkedOther,
+            };
         }
     }
 

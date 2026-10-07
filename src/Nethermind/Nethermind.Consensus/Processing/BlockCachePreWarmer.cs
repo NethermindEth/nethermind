@@ -224,8 +224,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 using ParallelUnbalancedWork.BackgroundWork? discoveryWork = discoveryCandidates is null ? null
                     : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions,
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
-                using ParallelUnbalancedWork.BackgroundWork? rewarmWork = footprints is null || !RewarmCounters.Enabled ? null
-                    : ParallelUnbalancedWork.BackgroundFor(0, 1, HelperOptions, _ => RewarmStale(blockState, footprints, token));
                 try
                 {
                     PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
@@ -234,10 +232,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     {
                         Volatile.Write(ref footprints.WarmedAt, Stopwatch.GetTimestamp());
                         footprints.EndWarmPass();
+                        // A block whose workers never ran dry of jobs starts its sweepers here; they end once nothing is stale.
+                        StartRewarm(blockState);
                         if (PredictsStorageRoots && !token.IsCancellationRequested) PredictStorageRoots(footprints, token);
                     }
                     discoveryWork?.WaitForCompletion();
-                    rewarmWork?.WaitForCompletion();
                 }
                 finally
                 {
@@ -986,6 +985,30 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private static readonly TimeSpan StaleWait = TimeSpan.FromMilliseconds(2);
 
+    /// <summary>
+    /// Experiment only: starts the block's re-warm sweepers once its warm pass has handed out all its jobs, so they take
+    /// the capacity the pass leaves idle rather than a share of the pass. Joined with the block's discovery hand-offs.
+    /// </summary>
+    private void StartRewarm(BlockState blockState)
+    {
+        if (blockState.Footprints is not { } footprints || !RewarmCounters.Enabled || blockState.Token.IsCancellationRequested
+            || !blockState.TryClaimRewarmStart())
+        {
+            return;
+        }
+
+        int sweepers = RewarmCounters.Sweepers;
+        CancellationToken token = blockState.Token;
+        blockState.AddDiscoveryHandOff(ParallelUnbalancedWork.BackgroundFor(0, sweepers, new ParallelOptions { MaxDegreeOfParallelism = sweepers + 1 },
+            _ => RewarmStale(blockState, footprints, token)));
+    }
+
+    /// <summary>Experiment only: why the footprint of the transaction block processing just started was rejected on a slot.</summary>
+    internal int ClassifySlotRejection(TransactionFootprint footprint, IWorldState state) =>
+        Volatile.Read(ref _footprints) is { } footprints && footprint.FirstStaleSlot(state, out SlotPrecondition stale, out UInt256 actual)
+            ? footprints.ClassifySlotRejection(_mainThreadTxIndex, footprint, stale.Cell, stale.Value, actual)
+            : HandoffDiagnostics.SlotRejectionNoSlot;
+
     /// <summary>Experiment only: warms again the footprints the block's earlier footprints invalidate, ahead of block processing.</summary>
     /// <remarks>Ends once the warm pass has ended and nothing is stale, or when the block's transactions are done.</remarks>
     private void RewarmStale(BlockState blockState, BlockFootprints footprints, CancellationToken token)
@@ -1057,6 +1080,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (result && recorder.Finish(tx, in result) is { } footprint)
             {
+                footprint.Rewarmed = true;
                 footprints.Store(position, footprint);
                 Interlocked.Increment(ref RewarmCounters.Stored);
             }
@@ -1922,6 +1946,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// <summary>Whether the block may hand one more transaction to discovery.</summary>
         public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= MaxDiscoveryCandidates;
 
+        private int _rewarmStarted;
+
+        /// <summary>Experiment only: whether this caller starts the block's re-warm sweepers; only the first does.</summary>
+        public bool TryClaimRewarmStart() => Interlocked.Exchange(ref _rewarmStarted, 1) == 0;
+
         /// <summary>The cells the block's hand-offs may still discover between them.</summary>
         public StrongBox<int> HandOffCells => LazyInitializer.EnsureInitialized(ref _handOffCells, static () => new StrongBox<int>(MaxDiscoveredCells));
 
@@ -2443,6 +2472,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     Warm(job.Transactions.AsSpan(), job.LastIndex);
                 }
 
+                // The jobs are all handed out: from here the sweepers take what this worker leaves idle.
+                queue.BlockState.Footprints?.MarkJobsExhausted();
+                preWarmer.StartRewarm(queue.BlockState);
+
                 if (far) return;
 
                 bool waiter = false;
@@ -2534,6 +2567,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             scope.TransactionProcessor.SetBlockExecutionContext(context);
             CancellationTxTracer tracer = _queue.Tracer;
             FootprintRecorder? recorder = _env.Recorder;
+            if (HandoffDiagnostics.Enabled && blockState.Footprints is { } footprints)
+            {
+                // Experiment only: a sender's later transactions wait behind its earlier ones.
+                for (int i = 1; i < transactions.Length; i++) footprints.SetStatus(transactions[i].Index, HandoffDiagnostics.ChainQueued);
+            }
 
             foreach ((int txIndex, Transaction tx) in transactions)
             {
