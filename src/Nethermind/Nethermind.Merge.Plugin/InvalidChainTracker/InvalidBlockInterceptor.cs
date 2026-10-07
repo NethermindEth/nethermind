@@ -18,6 +18,12 @@ public class InvalidBlockInterceptor(
 
     public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error) => blockValidator.ValidateOrphanedBlock(block, out error);
 
+    internal BlockValidator.TransactionValidation? PrepareTransactions(Block block) =>
+        GetType() == typeof(InvalidBlockInterceptor) && blockValidator is BlockValidator validator ? validator.PrepareTransactions(block) : null;
+
+    internal bool ValidateOrphanedBlock(Block block, out string? error, BlockValidator.TransactionValidation transactions) =>
+        ((BlockValidator)blockValidator).ValidateOrphanedBlock(block, out error, transactions);
+
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
         TrackValidationResult(header, blockValidator.Validate(header, parent, isUncle, out error));
 
@@ -43,9 +49,14 @@ public class InvalidBlockInterceptor(
     public bool ValidateOrphaned(BlockHeader header, [NotNullWhen(false)] out string? error) =>
         blockValidator.ValidateOrphaned(header, out error);
 
-    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true)
+    public bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes = true) =>
+        ValidateSuggestedBlock(block, parent, out error, validateHashes, null);
+
+    internal bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? error, bool validateHashes, BlockValidator.TransactionValidation? transactions)
     {
-        bool result = blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes);
+        bool result = transactions is null
+            ? blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes)
+            : ((BlockValidator)blockValidator).ValidateSuggestedBlock(block, parent, out error, validateHashes, transactions);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");

@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Messages;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Int256;
@@ -83,13 +84,51 @@ public class BlockValidator(
     public bool ValidateSuggestedBlock(Block block, BlockHeader parent, out string? errorMessage, bool validateHashes = true) =>
         ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes);
 
-    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true) where TOrphaned : struct, IFlag
+    private const int MinTransactionsForBackgroundValidation = 32;
+
+    internal TransactionValidation? PrepareTransactions(Block block)
+    {
+        if (GetType() != typeof(BlockValidator) || block.Transactions.Length < MinTransactionsForBackgroundValidation || Core.Cpu.RuntimeInformation.IsSingleProcessor)
+            return null;
+
+        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
+        return new(this, block, spec);
+    }
+
+    internal bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? errorMessage, TransactionValidation transactions) =>
+        ValidateBlock<OnFlag>(block, null, out errorMessage, transactions: transactions);
+
+    internal bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? errorMessage, bool validateHashes, TransactionValidation transactions) =>
+        ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes, transactions);
+
+    internal sealed class TransactionValidation : IDisposable
+    {
+        private readonly ParallelUnbalancedWork.BackgroundWork _work;
+        private bool _valid;
+        private string? _error;
+
+        public TransactionValidation(BlockValidator validator, Block block, IReleaseSpec spec) =>
+            _work = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
+                _ => _valid = validator.ValidateTransactions(block, spec, ref _error));
+
+        public bool Validate(ref string? error)
+        {
+            // Observe failures here so block-size errors retain precedence over transaction errors.
+            _work.WaitForCompletion();
+            error = _error;
+            return _valid;
+        }
+
+        public void Dispose() => _work.Dispose();
+    }
+
+    private bool ValidateBlock<TOrphaned>(Block block, BlockHeader? parent, out string? errorMessage, bool validateHashes = true, TransactionValidation? transactions = null) where TOrphaned : struct, IFlag
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
         errorMessage = null;
 
         return ValidateBlockSize(block, spec, ref errorMessage) &&
-               ValidateTransactions(block, spec, ref errorMessage) &&
+               (transactions?.Validate(ref errorMessage) ?? ValidateTransactions(block, spec, ref errorMessage)) &&
                ValidateHeader<TOrphaned>(block, parent, validateHashes, ref errorMessage) &&
                ValidateUncles<TOrphaned>(block, spec, validateHashes, ref errorMessage) &&
                ValidateTxRootMatchesTxs(block, validateHashes, ref errorMessage) &&

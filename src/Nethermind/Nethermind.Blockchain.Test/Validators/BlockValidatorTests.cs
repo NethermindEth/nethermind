@@ -17,6 +17,7 @@ using NUnit.Framework;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -101,6 +102,113 @@ public class BlockValidatorTests
         Block block = Build.A.Block.WithParent(header).WithEncodedSize(Eip7934Constants.DefaultMaxRlpBlockSize).TestObject;
         bool result = _blockValidator.ValidateSuggestedBlock(block, header, out _);
         Assert.That(result, Is.True);
+    }
+
+    [Test]
+    public void Prepared_transactions_preserve_order_and_are_validated_once([Values(-1, 0, 17, 31)] int firstInvalid)
+    {
+        Assume.That(Core.Cpu.RuntimeInformation.IsSingleProcessor, Is.False);
+        ITxValidator txValidator = Substitute.For<ITxValidator>();
+        List<ulong> checkedNonces = [];
+        txValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>())
+            .Returns(call =>
+            {
+                ulong nonce = (ulong)call.Arg<Transaction>().Nonce;
+                checkedNonces.Add(nonce);
+                return firstInvalid >= 0 && nonce >= (ulong)firstInvalid ? new ValidationResult($"invalid {nonce}") : ValidationResult.Success;
+            });
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new TestSingleReleaseSpecProvider(Byzantium.Instance), LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent)
+            .WithTransactions(Enumerable.Range(0, 32).Select(i => Build.A.Transaction.WithNonce((ulong)i).TestObject).ToArray()).TestObject;
+        using BlockValidator.TransactionValidation? prepared = sut.PrepareTransactions(block);
+        Assert.That(prepared, Is.Not.Null);
+
+        bool valid = sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes: false, prepared!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(firstInvalid < 0));
+            Assert.That(error, Is.EqualTo(firstInvalid < 0 ? null : $"invalid {firstInvalid}"));
+            Assert.That(checkedNonces, Is.EqualTo(Enumerable.Range(0, firstInvalid < 0 ? 32 : firstInvalid + 1).Select(i => (ulong)i)));
+        }
+    }
+
+    [Test]
+    public void Prepared_transaction_exception_preserves_block_size_error_precedence([Values] bool oversized)
+    {
+        Assume.That(Core.Cpu.RuntimeInformation.IsSingleProcessor, Is.False);
+        using ManualResetEventSlim started = new();
+        ITxValidator txValidator = Substitute.For<ITxValidator>();
+        txValidator.IsWellFormed(Arg.Any<Transaction>(), Arg.Any<IReleaseSpec>(), Arg.Any<ulong>())
+            .Returns(_ =>
+            {
+                started.Set();
+                throw new InvalidOperationException("transaction validation failed");
+            });
+        ReleaseSpec spec = new() { IsEip7934Enabled = true, Eip7934MaxRlpBlockSize = 1024 };
+        BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, new TestSingleReleaseSpecProvider(spec), LimboLogs.Instance);
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        Block block = Build.A.Block.WithParent(parent)
+            .WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, 32).ToArray())
+            .WithEncodedSize(oversized ? 1025 : 1024).TestObject;
+        using BlockValidator.TransactionValidation? prepared = sut.PrepareTransactions(block);
+        Assert.That(prepared, Is.Not.Null);
+        Assert.That(started.Wait(TimeSpan.FromSeconds(10)), Is.True);
+
+        if (oversized)
+        {
+            Assert.That(sut.ValidateSuggestedBlock(block, parent, out string? error, validateHashes: false, prepared!), Is.False);
+            Assert.That(error, Does.StartWith("ExceededBlockSizeLimit"));
+        }
+        else
+        {
+            Assert.That(() => sut.ValidateSuggestedBlock(block, parent, out _, validateHashes: false, prepared!),
+                Throws.InvalidOperationException.With.Message.EqualTo("transaction validation failed"));
+        }
+    }
+
+    [Test]
+    public void Background_validation_preserves_custom_validators_and_small_blocks(
+        [Values(31, 32)] int count, [Values] bool senderDependent, [Values] bool custom)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(new ReleaseSpec { IsEip2780Enabled = senderDependent });
+        BlockValidator sut = custom
+            ? Substitute.ForPartsOf<BlockValidator>(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance)
+            : new BlockValidator(Always.Valid, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Block block = Build.A.Block.WithTransactions(Enumerable.Repeat(Build.A.Transaction.TestObject, count).ToArray()).TestObject;
+
+        using BlockValidator.TransactionValidation? prepared = sut.PrepareTransactions(block);
+
+        bool eligible = count >= 32 && !custom && !Core.Cpu.RuntimeInformation.IsSingleProcessor;
+        Assert.That(prepared is not null, Is.EqualTo(eligible));
+    }
+
+    [Test]
+    public void Prepared_transactions_recover_senders_before_Eip2780_intrinsic_gas(
+        [Values] bool selfTransfer, [Values] bool senderKnown)
+    {
+        Assume.That(Core.Cpu.RuntimeInformation.IsSingleProcessor, Is.False);
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Amsterdam.Instance);
+        BlockValidator sut = new(new TxValidator(specProvider.ChainId), Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+        Transaction[] transactions = Enumerable.Range(0, 32).Select(i => Build.A.Transaction
+            .WithNonce((ulong)i).WithChainId(specProvider.ChainId).WithGasLimit(12_000)
+            .WithTo(selfTransfer ? TestItem.PrivateKeyA.Address : TestItem.AddressB)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .WithSenderAddress(senderKnown ? TestItem.PrivateKeyA.Address : null).TestObject).ToArray();
+        Block block = Build.A.Block.WithTransactions(transactions).TestObject;
+        using BlockValidator.TransactionValidation? prepared = sut.PrepareTransactions(block);
+        Assert.That(prepared, Is.Not.Null);
+        string? error = null;
+
+        bool valid = prepared!.Validate(ref error);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(valid, Is.EqualTo(selfTransfer), error);
+            Assert.That(transactions[0].SenderAddress, Is.EqualTo(TestItem.PrivateKeyA.Address));
+            if (selfTransfer) Assert.That(transactions.All(tx => tx.SenderAddress == TestItem.PrivateKeyA.Address), Is.True);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]

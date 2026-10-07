@@ -7,6 +7,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
+    <InternalsVisibleTo Include="Nethermind.Merge.Plugin" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 
