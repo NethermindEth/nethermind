@@ -611,9 +611,10 @@ public class Eth72ProtocolHandlerTests
 
     // A prefix that approves and then fails a later filter cost the full validation, so its charge must not come back;
     // a rejection before any validation work (a duplicate) must refund it.
-    [TestCase(true, 2, TestName = "Peer_validation_budget_stays_charged_when_the_pool_rejects_after_validating")]
-    [TestCase(false, 3, TestName = "Peer_validation_budget_refunds_a_rejection_before_validation")]
-    public void Peer_validation_budget_charges_rejections_after_validation(bool validationRan, int expectedSubmitted)
+    [TestCase(true, false, 2, TestName = "Peer_validation_budget_stays_charged_when_the_pool_rejects_after_validating")]
+    [TestCase(false, false, 3, TestName = "Peer_validation_budget_refunds_a_rejection_before_validation")]
+    [TestCase(true, true, 3, TestName = "Peer_validation_budget_refunds_a_deferral_after_signature_verification")]
+    public void Peer_validation_budget_charges_rejections_after_validation(bool validationRan, bool deferred, int expectedSubmitted)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
@@ -625,7 +626,9 @@ public class Eth72ProtocolHandlerTests
             {
                 call[1] = false;
                 call[2] = validationRan;
-                return validationRan ? AcceptTxResult.FrameTxPayerExposureExceeded : AcceptTxResult.AlreadyKnown;
+                return deferred ? AcceptTxResult.FrameSimulationDeferred
+                    : validationRan ? AcceptTxResult.FrameTxPayerExposureExceeded
+                    : AcceptTxResult.AlreadyKnown;
             });
         _transactionPool = pool;
         RecreateHandler();
