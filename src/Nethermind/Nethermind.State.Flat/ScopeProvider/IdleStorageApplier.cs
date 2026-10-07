@@ -115,6 +115,13 @@ internal sealed class IdleStorageApplier
 
     private void LowerPriority()
     {
+        // BENCH ONLY: BENCH_EARLY_APPLY_NORMAL=1 keeps this thread at normal priority (A/B of its CPU share).
+        if (Environment.GetEnvironmentVariable("BENCH_EARLY_APPLY_NORMAL") == "1")
+        {
+            if (_logger.IsInfo) _logger.Info("BENCH: early storage apply thread left at normal priority");
+            return;
+        }
+
         // Best effort: an exception here, e.g. from resolving the libc import, would otherwise end the process.
         try
         {

@@ -51,6 +51,7 @@ public class PrewarmerTxAdapter(
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
         _blockExecutionContext = blockExecutionContext;
+        if (!prewarmerState.IsPrewarmer) HandoffRejectDiag.OnBlock(blockExecutionContext.Header, _logger); // BENCH ONLY
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
 

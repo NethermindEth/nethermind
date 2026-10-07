@@ -43,13 +43,21 @@ internal sealed class TransactionFootprint(
     {
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
         {
-            if (!account.IsMet(state)) return false;
+            if (!account.IsMet(state))
+            {
+                HandoffRejectDiag.Account(Transaction, account.Address, account.FailedField(state)); // BENCH ONLY
+                return false;
+            }
         }
 
         foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
         {
             state.Get(in slot.Cell, out UInt256 value);
-            if (value != slot.Value) return false;
+            if (value != slot.Value)
+            {
+                HandoffRejectDiag.Slot(Transaction, in slot.Cell); // BENCH ONLY
+                return false;
+            }
         }
 
         return true;
@@ -115,6 +123,25 @@ internal struct AccountPrecondition
 
         if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return false;
         return true;
+    }
+
+    /// <summary>BENCH ONLY: the first check of <see cref="IsMet"/> that fails, in the same order.</summary>
+    public readonly string FailedField(IWorldState state)
+    {
+        AccountFields fields = Fields;
+        Address address = Address;
+        if ((fields & AccountFields.Existence) != 0 && state.AccountExists(address) != Exists) return "Existence";
+        if ((fields & AccountFields.Liveness) != 0 && state.IsDeadAccount(address) != IsDead) return "Liveness";
+        if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return "Nonce";
+        if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance)) != 0)
+        {
+            ref readonly UInt256 balance = ref state.GetBalance(address);
+            if ((fields & AccountFields.Balance) != 0 && balance != Balance) return "Balance";
+            if (balance < MinimumBalance) return "MinimumBalance";
+        }
+
+        if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return "Code";
+        return "Unknown";
     }
 }
 
