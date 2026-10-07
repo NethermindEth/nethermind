@@ -276,6 +276,27 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
+    /// <summary>Counts EIP-8279 block access list bytes; <see langword="false"/> means out of gas.</summary>
+    /// <remarks>Always succeeds for a transaction that is not metered (system calls, frame transactions).</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
+
+    /// <summary>Whether accessing <paramref name="address"/> now is the cold, first-touch access EIP-8279 meters.</summary>
+    /// <remarks>
+    /// Mirrors the cold charge: precompiles are always warm, and access-list tracing prices every access warm.
+    /// </remarks>
+    internal bool IsColdBalAccess(Address address) =>
+        !IsTracingAccess && _currentState.AccessTracker.IsCold(address) && !_blockExecutionContext.Spec.IsPrecompile(address);
+
+    /// <inheritdoc cref="IsColdBalAccess(Address)"/>
+    internal bool IsColdBalAccess(in StorageCell storageCell) =>
+        !IsTracingAccess && _currentState.AccessTracker.IsCold(in storageCell);
+
+    /// <summary>Meters the address bytes a cold access to <paramref name="address"/> is about to add.</summary>
+    /// <returns><see langword="false"/> when the access is cold and metering it runs out of gas.</returns>
+    internal bool TryMeterColdBalAccess(Address address) =>
+        !IsColdBalAccess(address) || TryMeterBalData(Eip8279Constants.AddressBytes);
+
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
     internal ExecutionMetricsCounters MetricsCounters;
@@ -728,7 +749,10 @@ public partial class VirtualMachine<TGasPolicy>(
         if (hasEnoughGas && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost);
+            // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
+            // there fails the deposit.
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
+                && TryMeterBalData((ulong)code.Length);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;

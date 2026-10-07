@@ -13,15 +13,19 @@ public static partial class EvmInstructions
 {
     internal interface IAccessSpec
     {
+        /// <summary>Whether EIP-8279 meters the block access list bytes this handler adds.</summary>
+        static abstract bool IsEip8279Enabled { get; }
         static abstract bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
     }
 
-    internal readonly struct AccessSpec<Eip2929, Eip8038> : IAccessSpec
+    internal readonly struct AccessSpec<Eip2929, Eip8038, Eip8279> : IAccessSpec
         where Eip2929 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
+        where Eip8279 : struct, IFlag
     {
+        public static bool IsEip8279Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8279.IsActive; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
@@ -39,13 +43,15 @@ public static partial class EvmInstructions
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
     }
 
-    internal readonly struct CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038> : ICallSpec
+    internal readonly struct CallSpec<Eip2929, Eip150, Eip158, Eip2780, Eip8038, Eip8279> : ICallSpec
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag
         where Eip158 : struct, IFlag
         where Eip2780 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
+        where Eip8279 : struct, IFlag
     {
+        public static bool IsEip8279Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8279.IsActive; }
         public static bool UseHotAndColdStorage { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2929.IsActive; }
         public static bool ClearEmptyAccountWhenTouched { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip158.IsActive; }
         public static bool IsEip2780Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2780.IsActive; }
@@ -65,6 +71,8 @@ public static partial class EvmInstructions
     {
         static abstract bool UseHotAndColdStorage { get; }
         static abstract bool IsEip3860Enabled { get; }
+        /// <inheritdoc cref="IAccessSpec.IsEip8279Enabled"/>
+        static abstract bool IsEip8279Enabled { get; }
         static abstract bool TryReserveChildGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec, out ulong childGas)
             where TGasPolicy : struct, IGasPolicy<TGasPolicy>;
         static abstract bool TryConsumeCreateGas<TGasPolicy, Eip8037, TOpCreate>(ref TGasPolicy gas, IReleaseSpec spec, ulong words)
@@ -73,12 +81,14 @@ public static partial class EvmInstructions
             where TOpCreate : struct, IOpCreate;
     }
 
-    internal readonly struct CreateSpec<Eip2929, Eip150, Eip3860, Eip8038> : ICreateSpec
+    internal readonly struct CreateSpec<Eip2929, Eip150, Eip3860, Eip8038, Eip8279> : ICreateSpec
         where Eip2929 : struct, IFlag
         where Eip150 : struct, IFlag
         where Eip3860 : struct, IFlag
         where Eip8038 : struct, IEip8038Flag
+        where Eip8279 : struct, IFlag
     {
+        public static bool IsEip8279Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8279.IsActive; }
         public static bool UseHotAndColdStorage { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip2929.IsActive; }
         public static bool IsEip3860Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip3860.IsActive; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -115,6 +125,7 @@ public static partial class EvmInstructions
         public static bool SelfdestructOnlyOnSameTransaction { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip6780.IsActive; }
         public static bool RemoveSelfdestructBurn { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8246.IsActive; }
         public static bool IsEip8038Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => Eip8038.IsActive; }
+        public static bool IsEip8279Enabled { [MethodImpl(MethodImplOptions.AggressiveInlining)] get => TAccess.IsEip8279Enabled; }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public static bool TryConsumeAccountAccessGas<TGasPolicy>(ref TGasPolicy gas, IReleaseSpec spec,
             ref readonly StackAccessTracker tracker, bool tracing, Address address, AccountAccessKind kind = AccountAccessKind.Default)
