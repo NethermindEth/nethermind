@@ -52,8 +52,9 @@ public partial class EngineModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(line, Does.StartWith($"Received New Block:  {payload.BlockNumber} ({payload.BlockHash.ToShortString()})      | limit {payload.GasLimit,13:N0} "));
-            Assert.That(line, Does.EndWith($" | {extraData}"));
+            // The handler's first payload, block 1, raises the gas limit from the zero it starts from: "up".
+            Assert.That(payload.BlockNumber, Is.EqualTo(1UL));
+            Assert.That(line, Is.EqualTo($"Received New Block:  {payload.BlockNumber} ({payload.BlockHash.ToShortString()})      | limit {payload.GasLimit,13:N0} \U0001F446 | {extraData}"));
             Assert.That(receivedLogger.Lines, Is.EqualTo(1));
         }
     }
