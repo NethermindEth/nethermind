@@ -64,13 +64,24 @@ public abstract class TransactionForRpc
     [JsonConstructor]
     protected TransactionForRpc() { }
 
-    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
+    // ReSharper disable once VirtualMemberCallInConstructor
+    protected TransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData) => Populate(transaction, extraData);
+
+    /// <summary>Sets every property from <paramref name="transaction"/>, so one instance can be reused for each transaction of a block.</summary>
+    /// <remarks>
+    /// The constructor runs it, so construction and reuse share one implementation. Overrides call the base first and then
+    /// assign every property they declare, including back to null or default, because a reused instance carries the previous
+    /// transaction's values. Types in other assemblies cannot override it and are never reused.
+    /// </remarks>
+    internal virtual void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
         Hash = transaction.Hash;
         TransactionIndex = extraData.TxIndex;
         BlockHash = extraData.BlockHash;
         BlockNumber = extraData.BlockNumber;
         BlockTimestamp = extraData.BlockTimestamp;
+        Gas = null;
+        IsTypeDefaulted = false;
     }
 
     public virtual Result<Transaction> ToTransaction(bool validateUserInput = false, ulong? gasCap = null, IReleaseSpec? spec = null)
@@ -156,6 +167,8 @@ public abstract class TransactionForRpc
     {
         private static readonly List<TxTypeInfo> _txTypes = [];
         private static readonly TxTypeInfo?[] _txTypesByType = new TxTypeInfo?[byte.MaxValue + 1];
+        private static int _repopulatableSlotCount;
+        private readonly GeneratedJsonDispatch _generated = new();
         private delegate TransactionForRpc FromTransactionFunc(Transaction tx, in TransactionForRpcContext extraData);
 
         /// <summary>
@@ -171,6 +184,15 @@ public abstract class TransactionForRpc
             RegisterTransactionType<FrameTransactionForRpc>();
         }
 
+        /// <summary>Gets the RPC type registered for <paramref name="txType"/>, or <see langword="null"/> when none is.</summary>
+        internal static Type? GetRegisteredType(TxType txType) => _txTypesByType[(byte)txType]?.Type;
+
+        /// <summary>The number of slots allocated to registered types that support refilling.</summary>
+        internal static int RepopulatableSlotCount => _repopulatableSlotCount;
+
+        /// <summary>Gets the registered type's refill slot, or -1 when it does not support refilling.</summary>
+        internal static int GetRepopulatableSlot(TxType txType) => _txTypesByType[(byte)txType]?.RepopulatableSlot ?? -1;
+
         internal static void RegisterTransactionType<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties)] T>() where T : TransactionForRpc, IFromTransaction<T>, ITxTyped
         {
             Type txType = typeof(T);
@@ -178,10 +200,18 @@ public abstract class TransactionForRpc
                 .Where(p => p.GetCustomAttribute<JsonDiscriminatorAttribute>() is not null)
                 .Select(p => p.Name).ToArray();
 
+            int slot = -1;
+            if (txType.IsDefined(typeof(RepopulatableTransactionAttribute), inherit: false))
+            {
+                slot = GetRepopulatableSlot(T.TxType);
+                if (slot < 0) slot = _repopulatableSlotCount++;
+            }
+
             TxTypeInfo typeInfo = new()
             {
                 TxType = T.TxType,
                 Type = txType,
+                RepopulatableSlot = slot,
                 FromTransactionFunc = T.FromTransaction,
                 DiscriminatorPropertiesUtf8 = Array.ConvertAll(uniqueProperties, static p => Encoding.UTF8.GetBytes(p.ToLowerInvariant()))
             };
@@ -347,7 +377,7 @@ public abstract class TransactionForRpc
             return true;
         }
 
-        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => TypeInfoJsonSerializer.Serialize(writer, value, value.GetType(), options);
+        public override void Write(Utf8JsonWriter writer, TransactionForRpc value, JsonSerializerOptions options) => writer.WriteAsRuntimeType(value, _generated, options);
 
         public static TransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => _txTypesByType[(byte)tx.Type]?.FromTransactionFunc(tx, extraData)
                 ?? throw new ArgumentException("No converter for transaction type");
@@ -356,6 +386,7 @@ public abstract class TransactionForRpc
         {
             public TxType TxType { get; set; }
             public Type Type { get; set; }
+            public int RepopulatableSlot { get; set; } = -1;
             public FromTransactionFunc FromTransactionFunc { get; set; }
             public byte[][] DiscriminatorPropertiesUtf8 { get; set; } = [];
         }
@@ -375,3 +406,7 @@ public sealed class JsonDiscriminatorAttribute : Attribute
 {
     public JsonDiscriminatorAttribute() { }
 }
+
+/// <summary>Marks an exact RPC transaction type whose Populate implementation resets every field for reuse.</summary>
+[AttributeUsage(AttributeTargets.Class, Inherited = false)]
+internal sealed class RepopulatableTransactionAttribute : Attribute;

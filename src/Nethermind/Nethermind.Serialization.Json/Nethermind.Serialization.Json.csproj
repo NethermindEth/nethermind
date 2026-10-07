@@ -6,6 +6,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- Generated JSON writers derive from internal runtime types; JsonWriterGeneratorProbe is the generator tests' in-memory compilation. -->
+    <InternalsVisibleTo Include="Nethermind.Facade" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc.Benchmark" />
+    <InternalsVisibleTo Include="Nethermind.JsonRpc.Test" />
+    <InternalsVisibleTo Include="Nethermind.Runner.Test" />
+    <InternalsVisibleTo Include="Nethermind.Serialization.JsonGenerator.Test" />
+    <InternalsVisibleTo Include="JsonWriterGeneratorProbe" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\Nethermind.Core\Nethermind.Core.csproj" />
     <PackageReference Include="Microsoft.ClearScript.V8" />
   </ItemGroup>
