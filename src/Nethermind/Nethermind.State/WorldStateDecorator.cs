@@ -27,6 +27,8 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual bool MayHaveChangedInBlock(Address address) => State.MayHaveChangedInBlock(address);
 
     public virtual bool MayHaveStorageChangedInBlock(Address address) => State.MayHaveStorageChangedInBlock(address);
+
+    public virtual bool MayHaveStorageChangedInBlock(in StorageCell cell) => State.MayHaveStorageChangedInBlock(in cell);
     public bool IsInScope => State.IsInScope;
     public IWorldStateScopeProvider ScopeProvider => State.ScopeProvider;
 

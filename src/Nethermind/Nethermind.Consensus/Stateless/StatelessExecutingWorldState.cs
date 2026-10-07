@@ -22,6 +22,8 @@ public class StatelessExecutingWorldState(IWorldState state) : WorldStateDecorat
 
     public override bool MayHaveStorageChangedInBlock(Address address) => true;
 
+    public override bool MayHaveStorageChangedInBlock(in StorageCell cell) => true;
+
     // The code the last bytecode access checked: code resolution checks an account's code and then
     // loads the same code by hash, so the load is answered here rather than from the code store again.
     private ValueHash256 _checkedCodeHash;

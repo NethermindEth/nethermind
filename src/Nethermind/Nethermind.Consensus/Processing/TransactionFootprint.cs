@@ -56,22 +56,9 @@ internal sealed class TransactionFootprint(
             if (!account.IsMet(state)) { Count(skipped, compared); return false; }
         }
 
-        Address? lastContract = null;
-        bool lastContractChanged = true;
         foreach (ref readonly SlotPrecondition slot in slots.AsSpan())
         {
-            if (skip)
-            {
-                Address contract = slot.Cell.Address;
-                if (!ReferenceEquals(contract, lastContract))
-                {
-                    lastContract = contract;
-                    lastContractChanged = state.MayHaveStorageChangedInBlock(contract);
-                }
-
-                if (!lastContractChanged) { skipped++; continue; }
-            }
-
+            if (skip && !state.MayHaveStorageChangedInBlock(in slot.Cell)) { skipped++; continue; }
             compared++;
             state.Get(in slot.Cell, out UInt256 value);
             if (value != slot.Value) { Count(skipped, compared); return false; }

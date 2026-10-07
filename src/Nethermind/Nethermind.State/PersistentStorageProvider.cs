@@ -773,6 +773,16 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _changes.Count != 0 || _storageClearJournal.Count != 0
         || (_storages.TryGetValue(address, out PerContractState? state) && (state.WasWritten || state.WasCleared || state.HasJournalledWrites));
 
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): <see langword="false"/> only when nothing is pending in the transaction journal, the
+    /// contract was not cleared this block, and its block record has no pending write for the slot. The record holds
+    /// Before == After for read slots, and <see cref="PerContractState.ProcessStorageChanges"/> resets every entry to that at
+    /// the end of a block.
+    /// </summary>
+    internal bool MayHaveChangedInBlock(in StorageCell cell) =>
+        _changes.Count != 0 || _storageClearJournal.Count != 0
+        || (_storages.TryGetValue(cell.Address, out PerContractState? state) && state.SlotMayHaveChangedInBlock(in cell.Index));
+
     public override void ClearStorage(Address address)
     {
         IWorldStateScopeProvider.IScope currentScope = CurrentScope;
@@ -1259,6 +1269,14 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         }
 
         public bool WasCleared => _wasCleared;
+
+        /// <summary>BENCH (bench/handoff-matches-skip): see <see cref="PersistentStorageProvider.MayHaveChangedInBlock(in StorageCell)"/>.</summary>
+        public bool SlotMayHaveChangedInBlock(in UInt256 index)
+        {
+            if (_wasCleared || BlockChange.HasClear) return true;
+            ref StorageChangeTrace trace = ref BlockChange.GetValueRefOrNullRef(in index);
+            return !System.Runtime.CompilerServices.Unsafe.IsNullRef(ref trace) && trace.IsPendingWrite;
+        }
 
         public void RestoreClear(DefaultableDictionary.ClearSnapshot snapshot, bool wasCleared)
         {

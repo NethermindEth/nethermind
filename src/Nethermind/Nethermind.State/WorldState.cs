@@ -39,6 +39,9 @@ namespace Nethermind.State
 
         // BENCH (bench/handoff-matches-skip)
         public bool MayHaveStorageChangedInBlock(Address address) => _persistentStorageProvider.MayHaveChangedInBlock(address);
+
+        // BENCH (bench/handoff-matches-skip)
+        public bool MayHaveStorageChangedInBlock(in StorageCell cell) => _persistentStorageProvider.MayHaveChangedInBlock(in cell);
         private readonly TransientStorageProvider _transientStorageProvider;
         // Per-scope counter accumulator shared with the providers and scope; folded into the global
         // Metrics in Commit/EndScope to avoid per-increment cross-thread contention.

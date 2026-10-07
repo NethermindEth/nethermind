@@ -30,6 +30,8 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override bool MayHaveStorageChangedInBlock(Address address) => true;
 
+    public override bool MayHaveStorageChangedInBlock(in StorageCell cell) => true;
+
     private ReadOnlyBlockAccessList? _suggestedBlockAccessList;
     private BlockHeader? _suggestedBlockHeader;
     private IWorldState? _parentReader;

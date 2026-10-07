@@ -31,6 +31,8 @@ public class WitnessGeneratingWorldState(
 
     public override bool MayHaveStorageChangedInBlock(Address address) => true;
 
+    public override bool MayHaveStorageChangedInBlock(in StorageCell cell) => true;
+
     private readonly Dictionary<AddressAsKey, HashSet<UInt256>> _storageSlots = [];
     private readonly Dictionary<ValueHash256, byte[]> _bytecodes =
         new(GenericEqualityComparer.GetOptimized<ValueHash256>());

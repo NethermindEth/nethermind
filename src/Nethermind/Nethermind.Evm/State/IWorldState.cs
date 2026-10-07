@@ -35,6 +35,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     bool MayHaveStorageChangedInBlock(Address address) => true;
 
+    /// <summary>
+    /// BENCH (bench/handoff-matches-skip): whether the slot <paramref name="cell"/> may hold a different value than at the
+    /// start of the current block. Conservative: <see langword="true"/> unless the implementation knows otherwise.
+    /// </summary>
+    bool MayHaveStorageChangedInBlock(in StorageCell cell) => true;
+
     // For scope to create genesis.
     const BlockHeader? PreGenesis = null;
 
