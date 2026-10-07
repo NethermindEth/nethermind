@@ -1083,6 +1083,17 @@
           "Nethermind.JsonRpc": "[2.2.0-preview, )"
         }
       },
+      "nethermind.sendpolicy.plugin": {
+        "type": "Project",
+        "dependencies": {
+          "Nethermind.Api": "[2.2.0-preview, )",
+          "Nethermind.Config": "[2.2.0-preview, )",
+          "Nethermind.Core": "[2.2.0-preview, )",
+          "Nethermind.Crypto": "[2.2.0-preview, )",
+          "Nethermind.Logging": "[2.2.0-preview, )",
+          "Nethermind.TxPool": "[2.2.0-preview, )"
+        }
+      },
       "nethermind.seq": {
         "type": "Project",
         "dependencies": {

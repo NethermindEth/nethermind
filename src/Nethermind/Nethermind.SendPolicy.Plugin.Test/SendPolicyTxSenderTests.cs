@@ -1,0 +1,263 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Autofac;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.TxPool;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.SendPolicy.Plugin.Test;
+
+[Parallelizable(ParallelScope.All)]
+public class SendPolicyTxSenderTests
+{
+    private const ulong ChainId = TestBlockchainIds.ChainId;
+    private static readonly EthereumEcdsa Ecdsa = new(ChainId);
+    private static readonly PrivateKey Owner = TestItem.PrivateKeyA;
+    private static readonly PrivateKey Stranger = TestItem.PrivateKeyB;
+    private static readonly Address Friend = TestItem.AddressC;
+    private static readonly Address Token = TestItem.AddressD;
+    private static readonly Address Spender = TestItem.AddressE;
+    private static readonly Address Unlisted = TestItem.AddressF;
+    private static readonly UInt256 OneEther = 1.Ether;
+
+    private static readonly string[] Rules =
+    [
+        $"from  {Owner.Address}",
+        $"to    {Friend} {OneEther}   # up to one ether per transaction",
+        $"to    {Token}",
+        $"grant {Spender}",
+        "fee   10000000000000000",
+    ];
+
+    private static IEnumerable<TestCaseData> Sends()
+    {
+        yield return Case("stranger to an unlisted address", () => Send(Stranger, Unlisted, 1), null);
+        yield return Case("owner to a listed address within its limit", () => Send(Owner, Friend, OneEther / 2), null);
+        yield return Case("owner over the per-transaction limit", () => Send(Owner, Friend, 2 * OneEther), $"over the limit {OneEther} of rule line 2");
+        yield return Case("owner to an unlisted address", () => Send(Owner, Unlisted, 1), $"send policy, unlisted destination {Unlisted}, add 'to {Unlisted}'");
+        yield return Case("owner legacy transaction to an unlisted address", () => Send(Owner, Unlisted, 1, type: TxType.Legacy), $"unlisted destination {Unlisted}");
+        yield return Case("owner with the sender not yet recovered", () => Unresolved(Send(Owner, Unlisted, 1)), $"unlisted destination {Unlisted}");
+        yield return Case("owner contract creation", () => Send(Owner, null, 0), "contract creation is not allowed");
+        yield return Case("owner blob transaction", () => Blob(Owner, Friend), "blob transaction is not allowed");
+        yield return Case("owner ether to a destination without a limit", () => Send(Owner, Token, 1), "value 1 wei is over the limit 0 of rule line 3");
+        yield return Case("owner fee ceiling over the fee rule", () => Send(Owner, Friend, 1, gasLimit: 10_000_000), "fee ceiling 30000000000000000 wei is over 'fee 10000000000000000'");
+        yield return Case("owner cancellation by a zero self-send", () => Send(Owner, Owner.Address, 0), null);
+        yield return Case("owner approve to a granted spender", () => Call(Owner, Token, "095ea7b3", Spender, UInt256.MaxValue), null);
+        yield return Case("owner approve to an unlisted spender", () => Call(Owner, Token, "095ea7b3", Unlisted, UInt256.MaxValue), $"{Unlisted} may not receive tokens or an allowance, add 'grant {Unlisted}'");
+        yield return Case("owner revoke by a zero approve", () => Call(Owner, Token, "095ea7b3", Unlisted, UInt256.Zero), null);
+        yield return Case("owner setApprovalForAll to an unlisted operator", () => Call(Owner, Token, "a22cb465", Unlisted, UInt256.One), $"{Unlisted} may not receive");
+        yield return Case("owner revoke by setApprovalForAll false", () => Call(Owner, Token, "a22cb465", Unlisted, UInt256.Zero), null);
+        yield return Case("owner transfer to an unlisted recipient", () => Call(Owner, Token, "a9059cbb", Unlisted, 5), $"{Unlisted} may not receive");
+        yield return Case("owner transferFrom to an unlisted recipient", () => Call(Owner, Token, "23b872dd", Owner.Address, Unlisted, 5), $"{Unlisted} may not receive");
+        yield return Case("owner truncated approve calldata", () => SendData(Owner, Token, Bytes.FromHexString("095ea7b3" + new string('0', 64))), "short calldata for a token call");
+        yield return Case("stranger carrying the owner's delegation to unlisted code", () => Delegate(Stranger, Owner, Unlisted), $"delegation of {Owner.Address} to {Unlisted} needs 'grant {Unlisted}'");
+        yield return Case("owner delegating itself to unlisted code", () => Delegate(Owner, Owner, Unlisted), $"delegation of {Owner.Address} to {Unlisted}");
+        yield return Case("stranger carrying the owner's delegation to granted code", () => Delegate(Stranger, Owner, Spender), null);
+        yield return Case("stranger delegating itself", () => Delegate(Stranger, Stranger, Unlisted), null);
+    }
+
+    [TestCaseSource(nameof(Sends))]
+    public async Task Send_is_forwarded_or_refused_by_the_rules(Func<Transaction> build, string? expectedRefusal)
+    {
+        using TempPath rules = WriteRules(Rules);
+        ITxSender inner = AcceptingSender();
+        Transaction tx = build();
+
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, rules.Path).SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+
+        if (expectedRefusal is null)
+        {
+            await inner.Received(1).SendTransaction(tx, TxHandlingOptions.PersistentBroadcast);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        }
+        else
+        {
+            await inner.DidNotReceiveWithAnyArgs().SendTransaction(default!, default);
+            Assert.That(result?.ToString(), Does.Contain(expectedRefusal));
+        }
+    }
+
+    [Test]
+    public async Task Warn_only_forwards_a_refused_send()
+    {
+        using TempPath rules = WriteRules(Rules);
+        ITxSender inner = AcceptingSender();
+        Transaction tx = Send(Owner, Unlisted, 1);
+
+        (Hash256 _, AcceptTxResult? result) = await CreateSender(inner, rules.Path, warnOnly: true).SendTransaction(tx, TxHandlingOptions.None);
+
+        await inner.Received(1).SendTransaction(tx, TxHandlingOptions.None);
+        Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+    }
+
+    private static IEnumerable<TestCaseData> SendsUnderUnusableRules()
+    {
+        yield return Case("owner to a listed address", () => Send(Owner, Friend, 1), "rule file unusable (line 6: unknown rule 'bogus' with 0 argument(s))");
+        yield return Case("stranger carrying the owner's delegation to granted code", () => Delegate(Stranger, Owner, Spender), "rule file unusable");
+        yield return Case("stranger to an unlisted address", () => Send(Stranger, Unlisted, 1), null);
+    }
+
+    [TestCaseSource(nameof(SendsUnderUnusableRules))]
+    public async Task Unusable_rule_file_refuses_guarded_accounts_with_the_file_error(Func<Transaction> build, string? expectedRefusal)
+    {
+        using TempPath rules = WriteRules(Rules);
+        ITxSender inner = AcceptingSender();
+        SendPolicyTxSender sender = CreateSender(inner, rules.Path);
+        await sender.SendTransaction(Send(Owner, Friend, 1), TxHandlingOptions.None);
+        File.AppendAllLines(rules.Path, ["bogus"]);
+        inner.ClearReceivedCalls();
+
+        (Hash256 _, AcceptTxResult? result) = await sender.SendTransaction(build(), TxHandlingOptions.None);
+
+        if (expectedRefusal is null) Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+        else Assert.That(result?.ToString(), Does.Contain(expectedRefusal));
+    }
+
+    [Test]
+    public async Task Edited_rule_file_applies_without_restart()
+    {
+        using TempPath rules = WriteRules(Rules);
+        ITxSender inner = AcceptingSender();
+        SendPolicyTxSender sender = CreateSender(inner, rules.Path);
+        (Hash256 _, AcceptTxResult? before) = await sender.SendTransaction(Send(Owner, Unlisted, 1), TxHandlingOptions.None);
+
+        File.AppendAllLines(rules.Path, [$"to {Unlisted} 1"]);
+        (Hash256 _, AcceptTxResult? after) = await sender.SendTransaction(Send(Owner, Unlisted, 1), TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before?.ToString(), Does.Contain("unlisted destination"));
+            Assert.That(after, Is.EqualTo(AcceptTxResult.Accepted));
+        }
+    }
+
+    [TestCase("bogus 0x01")]
+    [TestCase("from")]
+    [TestCase("to 0x01 1 2")]
+    [TestCase("fee -1")]
+    [TestCase("from not-an-address")]
+    public void Parse_rejects_a_malformed_line_and_names_it(string line) =>
+        Assert.That(() => SendPolicyRules.Parse(["# header", line]), Throws.TypeOf<FormatException>().With.Message.StartsWith("line 2:"));
+
+    [Test]
+    public void Rule_file_requires_a_path() =>
+        Assert.That(() => new SendPolicyRuleFile(new SendPolicyConfig { Enabled = true }, LimboLogs.Instance), Throws.TypeOf<InvalidConfigurationException>());
+
+    [Test]
+    public void Plugin_enabled_follows_config([Values] bool enabled) =>
+        Assert.That(new SendPolicyPlugin(new SendPolicyConfig { Enabled = enabled }).Enabled, Is.EqualTo(enabled));
+
+    [Test]
+    public void Module_decorates_the_node_tx_sender()
+    {
+        using TempPath rules = WriteRules(Rules);
+        ITxSender inner = AcceptingSender();
+        using IContainer container = new ContainerBuilder()
+            .AddSingleton(inner)
+            .AddModule(new SendPolicyModule())
+            .AddSingleton<ISendPolicyConfig>(new SendPolicyConfig { Enabled = true, RulesPath = rules.Path })
+            .AddSingleton<IEthereumEcdsa>(Ecdsa)
+            .AddSingleton<ILogManager>(LimboLogs.Instance)
+            .Build();
+
+        Assert.That(container.Resolve<ITxSender>(), Is.TypeOf<SendPolicyTxSender>());
+    }
+
+    private static TestCaseData Case(string name, Func<Transaction> build, string? expectedRefusal) =>
+        new TestCaseData(build, expectedRefusal).SetName(name);
+
+    private static TempPath WriteRules(IEnumerable<string> lines)
+    {
+        TempPath path = TempPath.GetTempFile();
+        File.WriteAllLines(path.Path, lines);
+        return path;
+    }
+
+    private static ITxSender AcceptingSender()
+    {
+        ITxSender sender = Substitute.For<ITxSender>();
+        sender.SendTransaction(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(ci => new ValueTask<(Hash256, AcceptTxResult?)>((ci.Arg<Transaction>().Hash!, AcceptTxResult.Accepted)));
+        return sender;
+    }
+
+    private static SendPolicyTxSender CreateSender(ITxSender inner, string rulesPath, bool warnOnly = false)
+    {
+        SendPolicyConfig config = new() { Enabled = true, RulesPath = rulesPath, WarnOnly = warnOnly };
+        return new SendPolicyTxSender(inner, new SendPolicyRuleFile(config, LimboLogs.Instance), config, Ecdsa, LimboLogs.Instance);
+    }
+
+    private static Transaction Send(PrivateKey from, Address? to, UInt256 value, TxType type = TxType.EIP1559, ulong gasLimit = 60_000) =>
+        Build.A.Transaction
+            .WithType(type)
+            .WithChainId(ChainId)
+            .To(to)
+            .WithValue(value)
+            .WithGasLimit(gasLimit)
+            .WithGasPrice(3.GWei)
+            .WithMaxFeePerGas(3.GWei)
+            .SignedAndResolved(Ecdsa, from)
+            .TestObject;
+
+    private static Transaction SendData(PrivateKey from, Address to, byte[] data) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(ChainId)
+            .To(to)
+            .WithValue(0)
+            .WithData(data)
+            .WithGasLimit(60_000)
+            .WithMaxFeePerGas(3.GWei)
+            .SignedAndResolved(Ecdsa, from)
+            .TestObject;
+
+    private static Transaction Call(PrivateKey from, Address to, string selector, params object[] arguments) =>
+        SendData(from, to, Bytes.FromHexString(selector + string.Concat(arguments.Select(Word))));
+
+    private static string Word(object argument) => argument switch
+    {
+        Address address => address.ToString(false, false).PadLeft(64, '0'),
+        UInt256 value => value.ToBigEndian().ToHexString(false),
+        int value => value.ToString("x64"),
+        _ => throw new ArgumentException(argument.GetType().Name)
+    };
+
+    private static Transaction Blob(PrivateKey from, Address to) =>
+        Build.A.Transaction
+            .WithShardBlobTxTypeAndFields()
+            .WithChainId(ChainId)
+            .To(to)
+            .WithValue(0)
+            .WithGasLimit(60_000)
+            .WithMaxFeePerGas(3.GWei)
+            .SignedAndResolved(Ecdsa, from)
+            .TestObject;
+
+    private static Transaction Delegate(PrivateKey sender, PrivateKey authority, Address code) =>
+        Build.A.Transaction
+            .WithType(TxType.SetCode)
+            .WithChainId(ChainId)
+            .To(Friend)
+            .WithValue(0)
+            .WithGasLimit(200_000)
+            .WithMaxFeePerGas(3.GWei)
+            .WithAuthorizationCode(Ecdsa.Sign(authority, ChainId, code, 0))
+            .SignedAndResolved(Ecdsa, sender)
+            .TestObject;
+
+    private static Transaction Unresolved(Transaction tx)
+    {
+        tx.SenderAddress = null;
+        return tx;
+    }
+}
