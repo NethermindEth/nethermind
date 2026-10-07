@@ -555,12 +555,15 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                     throw;
                 }
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not OperationCanceledException)
             {
+                // One block failing to recover must not tear the loop down and strand every block queued behind it;
+                // mirror the processing loop, which degrades the failed block and moves on. OperationCanceledException
+                // is still allowed to propagate so the loop stops on shutdown, exactly as the processing loop does.
+                if (_logger.IsWarn) _logger.Warn($"Recovering block failed. Block: {blockRef}, Exception: {e}");
                 // Once per queued copy. A second removal for the same block takes a copy off whatever entry the
                 // hash names by then, which after a re-enqueue is a live one, and releases its waiters early.
                 if (!notified) DecrementQueue(blockRef.BlockHash, ProcessingResult.Exception, e);
-                throw;
             }
         }
     }

@@ -807,6 +807,37 @@ public class BlockchainProcessorTests
         await executedCopy.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
+    /// <summary>
+    /// A block that throws while recovering is degraded like a processing failure and the recovery loop keeps going,
+    /// so a block queued behind the failed one is still recovered and processed into the head.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Recovery_loop_continues_after_a_block_throws_during_recovery()
+    {
+        // A block held in the processor keeps the queue non-empty, so the next two blocks go through the recovery
+        // queue. The second has the higher difficulty so it is suggested behind the first rather than ignored.
+        ProcessingTestContext context = When.ProcessingBlocks
+            .FullyProcessed(_block0).BecomesGenesis()
+            .CountIs(0)
+            .Suggested(_block1D2)
+            .Recovered(_block1D2)
+            .HeldAfterVerdict(_block1D2)
+            .Suggested(_block2D4)
+            .Suggested(_blockC2D100);
+
+        Task failedRemoved = context.WaitUntilRemoved(_block2D4);
+        Assert.That(failedRemoved.IsCompleted, Is.False, "the failing block is still queued for recovery");
+
+        context.RecoveryFails(_block2D4).Recovered(_blockC2D100);
+
+        // The failed block is released rather than left for a caller to wait on forever.
+        await failedRemoved.WaitAsync(TimeSpan.FromSeconds(10));
+
+        // The loop survived the failure: the block queued behind it is recovered and processed into the head.
+        context.Processed(_block1D2).BecomesNewHead()
+            .Processed(_blockC2D100).BecomesNewHead();
+    }
+
     // Same hash, but a header of its own without the author recovery sets, so the recovery step sees it afresh.
     private static Block UnrecoveredCopy(Block block)
     {
