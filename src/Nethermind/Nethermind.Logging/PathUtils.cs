@@ -17,6 +17,8 @@ public static class PathUtils
             || processName.Equals("ReSharperTestRunner", StringComparison.OrdinalIgnoreCase)))
             // A workaround for tests in JetBrains Rider ignoring MTP:
             // https://youtrack.jetbrains.com/projects/RIDER/issues/RIDER-131530
+            // Under a native host (Nethermind.FFI) the process is the host binary, not the node's.
+            || AppContext.GetData("Nethermind.Hosted") is "true"
             ? AppContext.BaseDirectory
             : Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
     }

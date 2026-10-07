@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- Emits runtimeconfig.json and copies dependencies so the native shim can initialize the runtime from this assembly. -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <UserRuntimeConfig>..\Nethermind.Runner\runtimeconfig.template.json</UserRuntimeConfig>
+    <ConcurrentGarbageCollection>true</ConcurrentGarbageCollection>
+    <GarbageCollectionAdaptationMode>0</GarbageCollectionAdaptationMode>
+    <ServerGarbageCollection>true</ServerGarbageCollection>
+    <TieredPGO>true</TieredPGO>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Nethermind.Runner\Nethermind.Runner.csproj" />
+  </ItemGroup>
+
+</Project>

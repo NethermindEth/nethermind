@@ -73,6 +73,7 @@
     <Project Path="Nethermind.Ethash.Test/Nethermind.Ethash.Test.csproj" />
     <Project Path="Nethermind.EthStats.Test/Nethermind.EthStats.Test.csproj" />
     <Project Path="Nethermind.Evm.Test/Nethermind.Evm.Test.csproj" />
+    <Project Path="Nethermind.FFI.Test/Nethermind.FFI.Test.csproj" />
     <Project Path="Nethermind.Facade.Test/Nethermind.Facade.Test.csproj" />
     <Project Path="Nethermind.HealthChecks.Test/Nethermind.HealthChecks.Test.csproj" />
     <Project Path="Nethermind.History.Test/Nethermind.History.Test.csproj" />
@@ -131,6 +132,7 @@
   <Project Path="Nethermind.Evm.Fody/Nethermind.Evm.Fody.csproj" />
   <Project Path="Nethermind.Evm.Precompiles/Nethermind.Evm.Precompiles.csproj" />
   <Project Path="Nethermind.Evm/Nethermind.Evm.csproj" />
+  <Project Path="Nethermind.FFI/Nethermind.FFI.csproj" />
   <Project Path="Nethermind.Facade/Nethermind.Facade.csproj" />
   <Project Path="Nethermind.HealthChecks/Nethermind.HealthChecks.csproj" />
   <Project Path="Nethermind.History/Nethermind.History.csproj" />
