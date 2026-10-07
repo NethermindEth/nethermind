@@ -460,7 +460,9 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             StorageCell cell = new(TestItem.AddressC, 0x4e4d);
             footprints.Store(2, new TransactionFootprint(txs[2], [], [new SlotPrecondition { Cell = cell, Value = 5, Read = true }], [], default, default, default));
 
-            footprints.ApplyExecuted(0, [(cell, sameValue ? (UInt256)5 : 9)]);
+            footprints.QueueExecuted(0, [(cell, sameValue ? (UInt256)5 : 9)]);
+            Assert.That(footprints.TryTakeStale(-1, out _), Is.False, "queued writes take effect once a sweeper applies them");
+            footprints.ApplyQueuedExecuted();
 
             Assert.That(footprints.TryTakeStale(-1, out int position), Is.EqualTo(!sameValue));
             if (!sameValue) Assert.That(position, Is.EqualTo(2));

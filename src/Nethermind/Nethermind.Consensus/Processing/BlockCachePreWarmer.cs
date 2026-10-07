@@ -1018,17 +1018,20 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             while (!token.IsCancellationRequested)
             {
-                // The next position is the one block processing reaches next; leave it to execution.
+                // The next position is the one block processing reaches next; leave it to execution. What block processing
+                // reported is applied first, so the re-warms start from the values the block really leaves.
+                footprints.ApplyQueuedExecuted();
                 while (footprints.TryTakeStale(MainThreadTxIndex + 1, out int position))
                 {
                     if (token.IsCancellationRequested) return;
                     Rewarm(env ??= _envPool.Get(), blockState, footprints, position, token);
+                    footprints.ApplyQueuedExecuted();
                 }
 
                 // With the feedback on, block processing marks readers stale until it reaches the last transaction.
                 int mainThread = MainThreadTxIndex;
                 bool awaitingFeedback = RewarmCounters.Feedback && mainThread >= 0 && mainThread < footprints.Count - 1;
-                if (footprints.WarmPassEnded && !footprints.HasStale && !awaitingFeedback) return;
+                if (footprints.WarmPassEnded && !footprints.HasStale && !footprints.HasQueuedExecuted && !awaitingFeedback) return;
                 footprints.WaitForStale(StaleWait, token);
             }
         }
@@ -1106,7 +1109,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>Experiment only: the storage writes of the transaction the main thread just executed.</summary>
     internal void ReportExecutedWrites(List<(StorageCell Cell, UInt256 Value)> writes) =>
-        Volatile.Read(ref _footprints)?.ApplyExecuted(_mainThreadTxIndex, writes);
+        Volatile.Read(ref _footprints)?.QueueExecuted(_mainThreadTxIndex, writes);
 
     /// <summary>Experiment only: what the run of the transaction the main thread just started came to.</summary>
     internal int FootprintStatus(Transaction tx) => Volatile.Read(ref _footprints)?.Status(_mainThreadTxIndex, tx) ?? HandoffDiagnostics.OtherTransaction;

@@ -240,6 +240,24 @@ internal sealed class BlockFootprints(Block block)
     /// Experiment only: replaces what the footprint at <paramref name="position"/> predicted with the writes block processing
     /// made when it executed the transaction, and marks the later footprints that read those slots at other values.
     /// </summary>
+    // Experiment only: writes block processing reported, applied by a sweeper so block processing never takes the lock.
+    private readonly System.Collections.Concurrent.ConcurrentQueue<(int Position, List<(StorageCell Cell, UInt256 Value)> Writes)> _executed = new();
+
+    /// <summary>Experiment only: queues the writes of the transaction block processing executed at <paramref name="position"/>.</summary>
+    public void QueueExecuted(int position, List<(StorageCell Cell, UInt256 Value)> writes)
+    {
+        _executed.Enqueue((position, writes));
+        _staleSignal.Release();
+    }
+
+    /// <summary>Experiment only: applies the writes block processing reported, in the order it executed them.</summary>
+    public void ApplyQueuedExecuted()
+    {
+        while (_executed.TryDequeue(out (int Position, List<(StorageCell Cell, UInt256 Value)> Writes) executed)) ApplyExecuted(executed.Position, executed.Writes);
+    }
+
+    public bool HasQueuedExecuted => !_executed.IsEmpty;
+
     public void ApplyExecuted(int position, List<(StorageCell Cell, UInt256 Value)> writes)
     {
         if (!RewarmCounters.Enabled || (uint)position >= (uint)_footprints.Length) return;
