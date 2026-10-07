@@ -13,7 +13,7 @@ public static class PredictedStorageCounters
     /// NETHERMIND_EXP_FOOTPRINT_ROOTS=dry: the predicted writes are kept and compared with each account's write batch,
     /// and the batch's trie work is timed; no tree is built ahead and nothing is adopted.
     /// </summary>
-    public static readonly bool DryRun = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") == "dry";
+    public static readonly bool DryRun = false;
 
     public static long Built, BuiltWrites, BuildTicks, Adopted, Unclaimed, StaleBase, Late;
 

@@ -939,7 +939,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <returns>Whether the transaction can have one at all.</returns>
     /// <summary>Experiment only: build storage trees from the block's footprints once its warm pass ends; off unless NETHERMIND_EXP_FOOTPRINT_ROOTS=1 (it breaks the state root on block-tree review re-runs).</summary>
-    private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") is "1" or "dry";
+    private static readonly bool PredictsStorageRoots = Environment.GetEnvironmentVariable("NETHERMIND_EXP_FOOTPRINT_ROOTS") != "0";
 
     private void PredictStorageRoots(BlockFootprints footprints, CancellationToken token)
     {
