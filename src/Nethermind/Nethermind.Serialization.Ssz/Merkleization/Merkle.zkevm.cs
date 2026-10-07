@@ -45,13 +45,31 @@ public static partial class Merkle
 
     /// <summary>Writes the parent of two nodes at <paramref name="level"/> into <paramref name="parent"/>, which may alias either child.</summary>
     /// <remarks>
-    /// Hashes two zero subtrees rather than looking them up as the host does: padding never forms such a pair
-    /// in the level loop, so only zero chunks in the data do, and testing every pair costs the guest more than
-    /// the rare hash it saves.
+    /// Padding never forms a pair of zero subtrees in the level loop, so only zero chunks in the data do.
+    /// ZisK looks such pairs up as the host does: its compressions fill Sha256f instances of fixed capacity,
+    /// so the two each pair saves can drop a whole instance from the proof. The other zkVMs hash them, as
+    /// testing every pair costs them more than the rare hash it saves.
     /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent) =>
+    private static void HashNodes(in UInt256 left, in UInt256 right, int level, out UInt256 parent)
+    {
+        if (ZiskSha256FFlag.IsActive && IsZeroSubtree(in left, level) && IsZeroSubtree(in right, level))
+        {
+            parent = ZeroHash(level + 1);
+            return;
+        }
+
         HashPair(in left, in right, out parent);
+    }
+
+    /// <summary>Whether <paramref name="node"/> is the root of an all-zero subtree at <paramref name="level"/>.</summary>
+    /// <remarks>Compares in place, a limb at a time, so the usual node rejects on its first limb.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsZeroSubtree(in UInt256 node, int level)
+    {
+        ref readonly UInt256 zeroHash = ref Unsafe.Add(ref Unsafe.As<byte, UInt256>(ref MemoryMarshal.GetReference(ZeroHashData)), level);
+        return node.u0 == zeroHash.u0 && node.u1 == zeroHash.u1 && node.u2 == zeroHash.u2 && node.u3 == zeroHash.u3;
+    }
 
     /// <summary>Hashes the 64-byte concatenation of two chunks with ZisK's SHA-256 compression precompile.</summary>
     /// <remarks>
