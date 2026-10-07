@@ -597,6 +597,26 @@ public class FlatWorldStateScopeProviderTests
         Assert.That(scope.Get(address), Is.Null);
     }
 
+    [Test]
+    public void WriteBatch_DeletingEmptyAccount_RecordsAStorageClearThatShadowsItsStorage([Values] bool hasStorage)
+    {
+        // An EIP-161 deletion only sets the account to null, yet flat history must still record a clear for its
+        // storage: an empty account can hold storage, and history readers treat slots older than the clear as dead.
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        ctx.PersistenceReader.GetAccount(address).Returns(new Account(0, 0, hasStorage ? TestItem.KeccakA : Keccak.EmptyTreeHash, Keccak.OfAnEmptyString));
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, null);
+        }
+        scope.Commit(1);
+
+        Assert.That(ctx.LastCommittedSnapshot!.SelfDestructedStorageAddresses,
+            Does.Contain(new KeyValuePair<HashedKey<Address>, bool>(address, !hasStorage)));
+    }
+
     #endregion
 
     #region Selfdestruct Interaction Tests
