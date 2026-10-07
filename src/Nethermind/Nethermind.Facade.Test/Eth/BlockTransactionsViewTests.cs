@@ -45,17 +45,14 @@ public class BlockTransactionsViewTests
     [Test]
     public void Derived_transaction_type_does_not_inherit_reuse()
     {
-        TransactionForRpc.RegisterTransactionType<CustomTransactionForRpc>();
-
-        Assert.That(TransactionForRpc.TransactionJsonConverter.GetRepopulatableSlot(CustomTransactionForRpc.TxType), Is.EqualTo(-1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(typeof(LegacyTransactionForRpc).IsDefined(typeof(RepopulatableTransactionAttribute), inherit: true), Is.True);
+            Assert.That(typeof(CustomTransactionForRpc).IsDefined(typeof(RepopulatableTransactionAttribute), inherit: true), Is.False);
+        }
     }
 
-    private sealed class CustomTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<CustomTransactionForRpc>
-    {
-        public new static TxType TxType => (TxType)0x7e;
-
-        public new static CustomTransactionForRpc FromTransaction(Transaction tx, in TransactionForRpcContext extraData) => new();
-    }
+    private sealed class CustomTransactionForRpc : LegacyTransactionForRpc;
 
     [Test]
     public void Refilling_an_instance_writes_what_a_fresh_one_writes()
