@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
@@ -10,14 +11,14 @@ using Int256;
 
 public static unsafe partial class EvmInstructions
 {
-    // Each routine keeps the software UInt256 path unless the ZisK guest switched ZiskArith256Flag on, so
+    // Each routine keeps the software UInt256 path unless the ZisK guest switched ZiskFlag on, so
     // every other guest and every zkEVM test on the host runs it. The operands are pinned rather than
     // copied: DIV and MOD read them in place from stack slots, and a pinned local is free on NativeAOT.
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void AddMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
     {
-        if (!ZiskArith256Flag.IsActive)
+        if (!ZiskFlag.IsActive)
         {
             UInt256.AddMod(in a, in b, in m, out result);
             return;
@@ -31,7 +32,7 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void MulMod256(in UInt256 a, in UInt256 b, in UInt256 m, out UInt256 result)
     {
-        if (!ZiskArith256Flag.IsActive)
+        if (!ZiskFlag.IsActive)
         {
             UInt256.MultiplyMod(in a, in b, in m, out result);
             return;
@@ -45,7 +46,7 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Divide256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
-        if (!ZiskArith256Flag.IsActive)
+        if (!ZiskFlag.IsActive)
         {
             UInt256.Divide(in a, in b, out result);
             return;
@@ -60,7 +61,7 @@ public static unsafe partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static partial void Mod256(in UInt256 a, in UInt256 b, out UInt256 result)
     {
-        if (!ZiskArith256Flag.IsActive)
+        if (!ZiskFlag.IsActive)
         {
             UInt256.Mod(in a, in b, out result);
             return;

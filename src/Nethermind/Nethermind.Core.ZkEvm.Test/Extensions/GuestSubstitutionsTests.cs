@@ -14,8 +14,8 @@ namespace Nethermind.Core.ZkEvm.Test.Extensions;
 /// <summary>
 /// Resolves every method the ZisK guest's substitutions.xml names. ILC applies a substitution only to a
 /// method it finds and otherwise keeps the original body, so a renamed member or a stale signature would
-/// quietly undo the substitution - <c>ZkEvmBitOperations.HasByteReverse</c> would stay false and ZisK would
-/// go back to the mask form without any build noticing.
+/// quietly undo the substitution - <c>ZiskFlag</c> would stay false and ZisK would lose its accelerators
+/// without any build noticing.
 /// </summary>
 public class GuestSubstitutionsTests
 {

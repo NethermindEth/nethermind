@@ -62,7 +62,7 @@ public partial class BlockProcessor
             Metrics.ResetBlockStats();
             inner.SetupTxTimingMetrics(block);
 
-            TxReceipt[] receipts = ExecutionFlags.ParallelExecution && !block.IsGenesis && balManager.ParallelExecutionEnabled
+            TxReceipt[] receipts = !ZkEvmFlag.IsActive && !block.IsGenesis && balManager.ParallelExecutionEnabled
                 ? ProcessTransactionsParallel(block, processingOptions, receiptsTracer, token)
                 : ProcessTransactionsSequential(block, processingOptions, receiptsTracer, token);
 

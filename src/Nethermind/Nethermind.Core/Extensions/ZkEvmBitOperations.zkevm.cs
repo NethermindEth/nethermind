@@ -14,12 +14,12 @@ public static partial class ZkEvmBitOperations
 
     /// <summary>Whether the guest's zkVM reverses a word's bytes in one instruction (Zbb's <c>rev8</c>).</summary>
     /// <remarks>
-    /// False here, for the zkVMs that decode rv64im only. A guest whose zkVM has Zbb substitutes true in its
-    /// substitutions.xml, and ILC folds every branch on it away, so each guest compiles only its own form:
+    /// Of the guests' zkVMs only ZisK has Zbb; the others decode rv64im only. ILC folds every branch on
+    /// <see cref="ZiskFlag"/> away, so each guest compiles only its own form:
     /// <see cref="BinaryPrimitives.ReverseEndianness(ulong)"/> is one <c>rev8</c> with Zbb and a slower
     /// software sequence than <see cref="Swap"/> without it.
     /// </remarks>
-    internal static bool HasByteReverse => false;
+    internal static bool HasByteReverse => ZiskFlag.IsActive;
 
     // Without Zbb, RISC-V has no byte-swap instruction and this all-64-bit form beats the BCL's ReverseEndianness.
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

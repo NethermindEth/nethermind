@@ -25,7 +25,7 @@ namespace Nethermind.Consensus.Processing;
 public sealed class BlockAccessListRecoveryStep(IBlockAccessListStore balStore, IBlocksConfig blocksConfig, ILogManager logManager, ISyncConfig? syncConfig = null) : IBlockPreprocessorStep
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListRecoveryStep>();
-    private readonly bool _hasConsumer = (ExecutionFlags.ParallelExecution && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead
+    private readonly bool _hasConsumer = (!ZkEvmFlag.IsActive && blocksConfig.ParallelExecution) || blocksConfig.ParallelExecutionBatchRead
         || syncConfig?.ReconstructFinalizedStateFromBlockAccessLists == true;
 
     /// <inheritdoc/>

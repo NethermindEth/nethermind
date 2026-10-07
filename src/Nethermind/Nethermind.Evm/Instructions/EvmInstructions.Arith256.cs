@@ -9,7 +9,7 @@ using Int256;
 /// The 256-bit division and modular arithmetic behind DIV, MOD, ADDMOD and MULMOD, split per target.
 /// The standard build is the <see cref="UInt256"/> routine each opcode always called. The zkEVM build
 /// hands the operation to ZisK's native 256-bit arithmetic when the ZisK guest switches on
-/// <c>ZiskArith256Flag</c>, because in software a MULMOD alone runs about 1,800 guest steps.
+/// <c>ZiskFlag</c>, because in software a MULMOD alone runs about 1,800 guest steps.
 /// Every caller has already taken the opcode's zero-divisor or zero-modulus branch, so none of these
 /// sees a zero <c>b</c> or <c>m</c>. See <c>EvmInstructions.Arith256.std.cs</c> and <c>.zkevm.cs</c>.
 /// </remarks>
