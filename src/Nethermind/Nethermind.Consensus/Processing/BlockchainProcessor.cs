@@ -349,7 +349,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             options |= ProcessingOptions.StoreReceipts;
         }
 
-        if (_options.ShiftedReplayOfSuggestedBlocks)
+        // Only a settled block: ending in its roots then proves its execution. A block near the head could be an invalid one
+        // crafted to end in whatever a shifted replay computes.
+        if (_options.ShiftedReplayOfSuggestedBlocks && blockEventArgs.Block is { } suggested && IsFinalized(suggested))
         {
             options |= ProcessingOptions.ShiftedReplay;
         }
@@ -372,6 +374,22 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 t_writerKeepsThread = false;
             }
         }
+    }
+
+    /// <summary>Beacon-chain blocks this far below the best known one are past finality as the chain normally runs.</summary>
+    private const ulong SettledDepth = 256;
+
+    /// <summary>At or below the finalized block, or, while sync has not been told one, deep under the beacon chain it follows.</summary>
+    private bool IsFinalized(Block block)
+    {
+        if (_blockTree.FinalizedHash is Hash256 finalizedHash
+            && _blockTree.FindHeader(finalizedHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded) is { } finalized)
+        {
+            return block.Number <= finalized.Number;
+        }
+
+        ulong bestBeacon = _blockTree.BestKnownBeaconNumber;
+        return bestBeacon > SettledDepth && block.Number <= bestBeacon - SettledDepth;
     }
 
     public async ValueTask Enqueue(Block block, ProcessingOptions processingOptions)
