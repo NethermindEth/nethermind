@@ -53,8 +53,12 @@ public partial class FrameTxFloodMeasurement
     /// <summary>Ceilings swept against the per-peer validation gas budget, from the 300k the budget is sized on.</summary>
     private static readonly ulong[] PeerBudgetCeilings = [300_000, 400_000, 500_000];
 
-    /// <summary>The per-peer budget under test: what one peer gets processed at 300k today, 100 tx/s times 300k.</summary>
-    private const ulong PeerValidationGasPerSecond = 30_000_000;
+    /// <summary>The per-peer budget under test: by default what one peer gets processed at 300k today, 100 tx/s times
+    /// 300k; <c>FRAME_PEER_BUDGET_GAS_PER_S</c> overrides it for a node that absorbs less.</summary>
+    private static readonly ulong PeerValidationGasPerSecond =
+        ulong.TryParse(Environment.GetEnvironmentVariable("FRAME_PEER_BUDGET_GAS_PER_S"), out ulong gasPerSecond) && gasPerSecond > 0
+            ? gasPerSecond
+            : 30_000_000;
 
     /// <summary>Invalid frame transactions one peer gets processed per second under the flood controller, as the peer
     /// flood measurement finds; the attacker offers this at every ceiling.</summary>

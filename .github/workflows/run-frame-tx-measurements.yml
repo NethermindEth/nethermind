@@ -28,6 +28,11 @@ on:
         required: false
         type: string
         default: ''
+      peer_budget_gas_per_s:
+        description: Per-peer validation gas budget for the peer-budget suite, in gas per second. Empty is 30000000.
+        required: false
+        type: string
+        default: ''
       machine_type:
         description: >-
           GCE machine type of the runner created for this run, or reproducible-benchmarks for the shared bare-metal
@@ -184,6 +189,7 @@ jobs:
         env:
           SUITE: ${{ inputs.suite }}
           RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
+          FRAME_PEER_BUDGET_GAS_PER_S: ${{ inputs.peer_budget_gas_per_s }}
           MACHINE_TYPE: ${{ inputs.machine_type }}
         run: |
           set -uo pipefail
