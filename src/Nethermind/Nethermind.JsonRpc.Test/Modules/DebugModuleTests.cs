@@ -317,16 +317,20 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock)
+    public void DebugStandardTraceBlockToFile_WhenStateAvailable_ReturnsFileNames([Values] bool isBadBlock, [Values] bool poststateAvailable)
     {
         Hash256 blockHash = Keccak.EmptyTreeHash;
 
         static IEnumerable<string> GetFileNames(Hash256 hash) =>
             new[] { $"block_{hash.ToShortString()}-0", $"block_{hash.ToShortString()}-1" };
 
-        BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithHash(blockHash).TestObject;
         _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
+        if (isBadBlock) _debugBridge.GetBadBlocks().Returns([new Block(header)]);
 
         if (isBadBlock)
         {
@@ -365,10 +369,14 @@ public class DebugModuleTests
     public void DebugStandardTraceBlockToFile_WhenStateUnavailable_ReturnsResourceUnavailable([Values] bool isBadBlock)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader header = Build.A.BlockHeader.WithHash(blockHash).WithNumber(100).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(99).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithHash(blockHash).TestObject;
 
         _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(false);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(false);
+        _blockchainBridge.HasStateForBlock(header).Returns(true);
+        if (isBadBlock) _debugBridge.GetBadBlocks().Returns([new Block(header)]);
 
         ResultWrapper<IEnumerable<string>> actual = StandardTraceToFile(CreateModule(), isBadBlock, blockHash);
 
@@ -378,12 +386,15 @@ public class DebugModuleTests
     }
 
     [Test]
-    public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots()
+    public void DebugIntermediateRoots_WhenStateAvailable_ReturnsRoots([Values] bool poststateAvailable)
     {
         Hash256 blockHash = TestItem.KeccakA;
-        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(0).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).TestObject;
         _blockFinder.FindHeader(blockHash).Returns(header);
-        _blockchainBridge.HasStateForBlock(Arg.Is(header)).Returns(true);
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        _blockchainBridge.HasStateForBlock(header).Returns(poststateAvailable);
 
         Hash256[] expected = [TestItem.KeccakB, TestItem.KeccakC];
         _debugBridge
@@ -431,6 +442,75 @@ public class DebugModuleTests
         Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
         Assert.That(actual.Result.Error, Does.Contain(expectedErrorSubstring));
+    }
+
+    [Test]
+    public void DebugDiagnosticReplay_ForBadStoreBlock_UsesRetainedParent([Values] bool intermediateRoots, [Values] bool headerRetained)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        Block block = Build.A.Block.WithHeader(Build.A.BlockHeader.WithParent(parent).WithNumber(2).TestObject).TestObject;
+        _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        if (headerRetained) _blockFinder.FindHeader(block.Hash!).Returns(block.Header);
+        _blockchainBridge.HasStateForBlock(parent).Returns(true);
+        _debugBridge.GetBadBlocks().Returns([block]);
+        _debugBridge.GetBlockIntermediateRoots(block.Hash!, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(new[] { TestItem.KeccakA });
+        _debugBridge.TraceBadBlockToFile(block.Hash!, Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>())
+            .Returns(new[] { "trace.jsonl" });
+
+        DebugRpcModule module = CreateModule();
+        ResultType actual = intermediateRoots
+            ? module.debug_intermediateRoots(block.Hash!).Result.ResultType
+            : module.debug_standardTraceBadBlockToFile(block.Hash!).Result.ResultType;
+
+        Assert.That(actual, Is.EqualTo(ResultType.Success));
+        _blockchainBridge.Received(1).HasStateForBlock(parent);
+        _blockchainBridge.DidNotReceive().HasStateForBlock(block.Header);
+    }
+
+    [Test]
+    public void DebugDiagnosticReplay_WhenParentUnavailable_DoesNotTrace(
+        [Values("roots", "file", "badFile")] string method, [Values] bool parentHeaderAvailable)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).TestObject;
+        BlockHeader header = Build.A.BlockHeader.WithParent(parent).WithNumber(2).TestObject;
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        if (parentHeaderAvailable)
+            _blockFinder.FindHeader(parent.Hash!, BlockTreeLookupOptions.None, parent.Number).Returns(parent);
+        _blockchainBridge.HasStateForBlock(header).Returns(true);
+        _debugBridge.GetBadBlocks().Returns([new Block(header)]);
+        DebugRpcModule module = CreateModule();
+
+        IResultWrapper actual = method == "roots"
+            ? module.debug_intermediateRoots(header.Hash!)
+            : StandardTraceToFile(module, method == "badFile", header.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceUnavailable));
+            Assert.That(actual.Result.Error, Does.Contain(parentHeaderAvailable ? "No state available" : "Cannot find parent header"));
+        }
+        _debugBridge.DidNotReceive().GetBlockIntermediateRoots(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
+    }
+
+    [Test]
+    public void DebugStandardTraceBadBlockToFile_WhenOnlyTreeHeaderExists_ReturnsResourceNotFound()
+    {
+        BlockHeader header = Build.A.BlockHeader.WithNumber(1).TestObject;
+        _blockFinder.FindHeader(header.Hash!).Returns(header);
+        _blockchainBridge.HasStateForBlock(Arg.Any<BlockHeader>()).Returns(true);
+
+        using ResultWrapper<IEnumerable<string>> actual = CreateModule().debug_standardTraceBadBlockToFile(header.Hash!);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.Result.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(actual.ErrorCode, Is.EqualTo(ErrorCodes.ResourceNotFound));
+        }
+        _debugBridge.DidNotReceive().TraceBadBlockToFile(Arg.Any<Hash256>(), Arg.Any<CancellationToken>(), Arg.Any<GethTraceOptions>());
     }
 
     [Test]
