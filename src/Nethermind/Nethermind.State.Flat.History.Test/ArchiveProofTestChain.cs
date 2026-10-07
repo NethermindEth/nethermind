@@ -101,7 +101,7 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
 
             slots[slotHash] = value;
             _storageChanges.Add(address);
-            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address, slotHash, block, value);
+            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address.ToAccountPath, slotHash, block, value);
             return this;
         }
 
