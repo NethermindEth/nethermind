@@ -405,6 +405,47 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 .TheSyncModeShouldBe(SyncMode.Full);
 
         [Test]
+        public void When_node_has_been_offline_for_long_time_and_the_pivot_moves_up_to_its_state_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeHasBeenOfflineForLongTime()
+                .AndPeersMovedForward()
+                .When_FastSync_NoSnapSync_Configured()
+                .WhenSnapSyncIsConfigured()
+                .AndThenThePivotMovesTo(Scenario.ChainHead.Number - Scenario.LargeDistanceBehindHead, SyncMode.Full)
+                .TheSyncModeShouldBe(SyncMode.Full);
+
+        [Test]
+        public void When_fully_synced_and_the_pivot_moves_to_the_head_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeIsFullySynced()
+                .AndPeersMovedForward()
+                .ThenInAnyFastSyncConfiguration()
+                .AndThenThePivotMovesTo(Scenario.ChainHead.Number, SyncMode.Full)
+                .TheSyncModeShouldBe(SyncMode.Full);
+
+        [Test]
+        public void When_state_sync_just_finished_and_the_pivot_moves_up_to_the_state_stays_in_full_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedStateSyncAndFastBlocks()
+                .AndGoodPeersAreKnown()
+                .ThenInAnyFastSyncConfiguration()
+                .AndThenThePivotMovesTo(Scenario.ChainHead.Number - Scenario.FastSyncLag, SyncMode.Full)
+                .TheSyncModeShouldBe(SyncMode.Full);
+
+        [Test]
+        public void When_state_syncing_and_the_pivot_moves_up_to_the_best_header_stays_in_state_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeJustFinishedFastBlocksAndFastSync()
+                .AndGoodPeersAreKnown()
+                .WhenSnapSyncIsConfigured()
+                .AndThenThePivotMovesTo(Scenario.ChainHead.Number - Scenario.FastSyncLag, SyncMode.StateNodes)
+                .TheSyncModeShouldBe(SyncMode.StateNodes);
+
+        [Test]
+        public void When_fast_syncing_and_the_pivot_moves_ahead_of_the_best_header_stays_in_fast_sync() => Scenario.GoesLikeThis(_needToWaitForHeaders)
+                .IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState.FinishedHeaders)
+                .AndGoodPeersAreKnown()
+                .WhenSnapSyncIsConfigured()
+                .AndThenThePivotMovesTo(Scenario.Pivot.Number * 2, SyncMode.FastSync)
+                .TheSyncModeShouldBe(SyncMode.FastSync);
+
+        [Test]
         public void Does_not_move_back_to_state_sync_mistakenly_when_in_full_sync_because_of_thinking_that_it_needs_to_catch_up() => Scenario.GoesLikeThis(_needToWaitForHeaders)
                 .IfPeersMovedForwardBeforeThisNodeProcessedFirstFullBlock()
                 .AndPeersMovedSlightlyForwardWithFastSyncLag()
