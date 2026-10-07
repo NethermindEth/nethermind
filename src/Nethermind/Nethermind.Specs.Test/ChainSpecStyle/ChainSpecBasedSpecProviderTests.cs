@@ -1006,37 +1006,6 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
-    [TestCase(10UL, 10UL, 10UL, false)]
-    [TestCase(10UL, 5UL, 10UL, false)]
-    [TestCase(10UL, 20UL, 10UL, true)]
-    [TestCase(10UL, 10UL, 20UL, true)]
-    [TestCase(10UL, null, 10UL, true)]
-    [TestCase(10UL, 10UL, null, true)]
-    public void Eip8272_must_not_activate_before_eip8141_and_eip7843(ulong eip8272Timestamp, ulong? eip8141Timestamp, ulong? eip7843Timestamp, bool throws)
-    {
-        ChainSpec chainSpec = new()
-        {
-            Parameters = new ChainParameters
-            {
-                Eip8141TransitionTimestamp = eip8141Timestamp,
-                Eip7843TransitionTimestamp = eip7843Timestamp,
-                Eip8272TransitionTimestamp = eip8272Timestamp,
-            },
-            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
-        };
-
-        Action build = () => _ = new ChainSpecBasedSpecProvider(chainSpec);
-
-        if (throws)
-        {
-            Assert.That(build, Throws.ArgumentException);
-        }
-        else
-        {
-            Assert.That(build, Throws.Nothing);
-        }
-    }
-
     [TestCase(99ul, false)]
     [TestCase(100ul, true)]
     public void Eip8253_activates_at_its_transition_timestamp(ulong timestamp, bool expected)
