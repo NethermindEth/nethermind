@@ -447,7 +447,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
-    public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
+    public void A_run_stops_once_block_processing_moves_past_its_transaction_and_is_undone()
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent))
@@ -464,6 +464,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 Assert.That(outcome.IsCancelable, Is.True);
                 Assert.That(outcome.IsCancelled, Is.False);
                 progress.MainThreadTxIndex = 2;
+                Assert.That(outcome.IsCancelled, Is.False);
+                progress.MainThreadTxIndex = 3;
                 Assert.That(outcome.IsCancelled, Is.True);
             }
 

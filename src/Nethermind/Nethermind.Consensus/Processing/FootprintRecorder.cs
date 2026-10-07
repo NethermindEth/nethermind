@@ -551,8 +551,14 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         public bool IsCancelable => true;
 
+        // Experiment only: once block processing reaches the transaction the run no longer hands anything off, but it is
+        // ahead of block processing on the same reads, so by default it keeps warming them until processing moves past.
+        // NETHERMIND_EXP_CANCEL_OVERTAKEN=reached stops it as soon as processing reaches the transaction.
+        private static readonly bool CancelOnceReached = Environment.GetEnvironmentVariable("NETHERMIND_EXP_CANCEL_OVERTAKEN") == "reached";
+
         // Block processing executes a transaction it reaches before the run ends.
-        public bool IsCancelled => _token.IsCancellationRequested || (_progress is not null && _progress.MainThreadTxIndex >= _txIndex);
+        public bool IsCancelled => _token.IsCancellationRequested
+            || (_progress is not null && (CancelOnceReached ? _progress.MainThreadTxIndex >= _txIndex : _progress.MainThreadTxIndex > _txIndex));
 
         public bool HasResult { get; private set; }
         public bool Success { get; private set; }
