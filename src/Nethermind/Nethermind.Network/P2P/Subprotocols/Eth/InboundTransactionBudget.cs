@@ -32,31 +32,43 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
         int charge = Math.Max(bytes, MinimumCharge);
-        lock (_shared)
+        sharedLimitExceeded = false;
+        // A peer at its own limit must not erase flood evidence, even if the shared budget is also full.
+        if (!TryCharge(ref _used, charge, PeerLimit)) return null;
+        if (!TryCharge(ref _shared.Used, charge, GlobalLimit))
         {
-            sharedLimitExceeded = false;
-            // A peer at its own limit must not erase flood evidence, even if the shared budget is also full.
-            if (charge > PeerLimit - _used)
-                return null;
-            if (charge > GlobalLimit - _shared.Used)
-            {
-                sharedLimitExceeded = true;
-                return null;
-            }
-            Reservation reservation = new(this, charge);
-            _used += charge;
-            _shared.Used += charge;
-            return reservation;
+            Interlocked.Add(ref _used, -charge);
+            sharedLimitExceeded = true;
+            return null;
         }
+
+        try
+        {
+            return new Reservation(this, charge);
+        }
+        catch
+        {
+            Release(charge);
+            throw;
+        }
+    }
+
+    private static bool TryCharge(ref int used, int charge, int limit)
+    {
+        int current = Volatile.Read(ref used);
+        while (charge <= limit - current)
+        {
+            int observed = Interlocked.CompareExchange(ref used, current + charge, current);
+            if (observed == current) return true;
+            current = observed;
+        }
+        return false;
     }
 
     private void Release(int charge)
     {
-        lock (_shared)
-        {
-            _used -= charge;
-            _shared.Used -= charge;
-        }
+        Interlocked.Add(ref _shared.Used, -charge);
+        Interlocked.Add(ref _used, -charge);
     }
 
     private sealed class SharedBudget

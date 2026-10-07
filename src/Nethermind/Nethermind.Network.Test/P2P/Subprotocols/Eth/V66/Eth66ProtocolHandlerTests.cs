@@ -473,6 +473,64 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Concurrent_transaction_reservations_respect_both_limits([Values(1, 2, 8)] int peers)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget[] budgets = new InboundTransactionBudget[peers];
+            for (int i = 0; i < peers; i++) budgets[i] = new(scheduler);
+            const int charge = InboundTransactionBudget.PeerLimit / 4;
+
+            for (int round = 0; round < 32; round++)
+            {
+                InboundTransactionBudget.Reservation?[] reservations = new InboundTransactionBudget.Reservation?[128];
+                try
+                {
+                    Parallel.For(0, reservations.Length, i => reservations[i] = budgets[i % peers].TryReserve(charge));
+                    int[] admitted = new int[peers];
+                    for (int i = 0; i < reservations.Length; i++)
+                        if (reservations[i] is not null) admitted[i % peers] += charge;
+                    Assert.That(admitted, Is.All.LessThanOrEqualTo(InboundTransactionBudget.PeerLimit));
+                    Assert.That(admitted.Sum(), Is.EqualTo(Math.Min(peers * InboundTransactionBudget.PeerLimit, InboundTransactionBudget.GlobalLimit)));
+                }
+                finally
+                {
+                    Parallel.ForEach(reservations, reservation => reservation?.Dispose());
+                }
+            }
+        }
+
+        [Test]
+        public void Shared_budget_rejection_rolls_back_peer_charge()
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget rejectedPeer = new(scheduler);
+            using (CompositeDisposable reservations = [])
+            {
+                for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+                for (int i = 0; i < 100; i++)
+                {
+                    Assert.That(rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit, out bool sharedLimitExceeded), Is.Null);
+                    Assert.That(sharedLimitExceeded, Is.True);
+                }
+            }
+            using InboundTransactionBudget.Reservation? available = rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(available, Is.Not.Null);
+        }
+
+        [Test]
+        public void Concurrent_disposal_releases_transaction_budget_once()
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            InboundTransactionBudget.Reservation reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
+            Parallel.For(0, 32, _ => reservation.Dispose());
+            using InboundTransactionBudget.Reservation? replacement = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(replacement, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
         public void Can_handle_get_node_data()
         {
             using GetNodeDataMessage msg63 = new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
