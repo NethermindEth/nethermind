@@ -44,6 +44,7 @@ public partial class FrameTxFloodMeasurement
     public const string ImportTailsSuite = "frame-tx-import-tails";
     public const string HonestSuite = "frame-tx-honest";
     public const string PeerBudgetSuite = "frame-tx-peer-budget";
+    public const string FairShareSuite = "frame-tx-fair-share";
 
     /// <summary>100,000 is today's EIP value: the reference the other ceilings are compared against.</summary>
     private static readonly ulong[] ProducerCeilings = [100_000, 235_800, 250_000, 300_000, 400_000, 500_000];
@@ -52,6 +53,9 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Ceilings swept against the per-peer validation gas budget, from the 300k the budget is sized on.</summary>
     private static readonly ulong[] PeerBudgetCeilings = [300_000, 400_000, 500_000];
+
+    /// <summary>Attacker peers against one honest peer: a lone attacker, and a few sybil peers that each get a share.</summary>
+    private static readonly int[] FairShareAttackers = [1, 3];
 
     /// <summary>The per-peer budget under test: by default what one peer gets processed at 300k today, 100 tx/s times
     /// 300k; <c>FRAME_PEER_BUDGET_GAS_PER_S</c> overrides it for a node that absorbs less.</summary>
@@ -157,12 +161,79 @@ public partial class FrameTxFloodMeasurement
         from budget in new[] { "off", "on" }
         select new TestCaseData(ceiling, budget);
 
+    private static IEnumerable<TestCaseData> FairShareHonestCases() =>
+        from ceiling in PeerBudgetCeilings
+        from attackers in FairShareAttackers
+        from protection in new[] { "off", "gas", "fair" }
+        select new TestCaseData(ceiling, protection, attackers);
+
+    /// <summary>How spam, and honest traffic, reach the pool for one protection setting.</summary>
+    private interface IPeerArm
+    {
+        string Fields { get; }
+        int Gated { get; }
+        Func<Transaction, AcceptTxResult> WrapSpam(Func<Transaction, AcceptTxResult> submit);
+        Func<Transaction, AcceptTxResult> WrapHonest(Func<Transaction, AcceptTxResult> submit);
+    }
+
+    /// <summary><paramref name="attackers"/> attacker peers, offering <see cref="PeerProcessedRate"/> each, and one honest
+    /// peer. <c>off</c>: no protection. <c>gas</c>: a <see cref="PeerValidationGasPerSecond"/> budget per attacker, charged
+    /// as the handler of #14394 does. <c>fair</c>: the pool's fair share of the per-head validation time (#14414), so
+    /// every submission carries its peer.</summary>
+    private sealed class FairShareArm(string protection, int attackers, ITxPool pool) : IPeerArm
+    {
+        private readonly object[] _attackerPeers = Enumerable.Range(0, attackers).Select(static _ => new object()).ToArray();
+        private readonly object _honestPeer = new();
+        private readonly PeerValidationGasBudget[] _budgets = protection == "gas"
+            ? Enumerable.Range(0, attackers).Select(static _ => new PeerValidationGasBudget(PeerValidationGasPerSecond, burstSeconds: 1)).ToArray()
+            : [];
+        private int _next = -1;
+        private int _gated;
+
+        public int Gated => Volatile.Read(ref _gated);
+
+        public string Fields => $"protection={protection} attacker_peers={attackers} honest_peers=1 peer_offered_rate={PeerProcessedRate} "
+                                + $"peer_budget_gas_per_s={(protection == "gas" ? PeerValidationGasPerSecond : 0)} ";
+
+        public Func<Transaction, AcceptTxResult> WrapSpam(Func<Transaction, AcceptTxResult> submit) => protection switch
+        {
+            "gas" => tx =>
+            {
+                PeerValidationGasBudget budget = _budgets[NextAttacker()];
+                ulong gas = FrameTxValidation.ValidationWorkGas(tx);
+                if (!budget.TryReserve(gas))
+                {
+                    Interlocked.Increment(ref _gated);
+                    return AcceptTxResult.FramePeerValidationBudgetSpent;
+                }
+
+                AcceptTxResult result = submit(tx);
+                // As the handler: a rejection stays charged, a deferral for the node's own bound does not.
+                if (result || result == AcceptTxResult.FrameSimulationDeferred) budget.Refund(gas);
+                return result;
+            },
+            "fair" => tx =>
+            {
+                AcceptTxResult result = ((IRecyclableTxPool)pool).SubmitOwnedTx(tx, _attackerPeers[NextAttacker()], out _);
+                if (result == AcceptTxResult.FramePeerValidationBudgetSpent) Interlocked.Increment(ref _gated);
+                return result;
+            },
+            _ => submit,
+        };
+
+        public Func<Transaction, AcceptTxResult> WrapHonest(Func<Transaction, AcceptTxResult> submit) => protection == "fair"
+            ? tx => ((IRecyclableTxPool)pool).SubmitOwnedTx(tx, _honestPeer, out _)
+            : submit;
+
+        private int NextAttacker() => (int)((uint)Interlocked.Increment(ref _next) % (uint)attackers);
+    }
+
     /// <summary>Declared gas per second one attacker peer offers at <paramref name="ceiling"/>, in millions.</summary>
     private static int OnePeerMillions(ulong ceiling) => (int)(PeerProcessedRate * ceiling / 1_000_000);
 
     /// <summary>Gates spam through one peer's validation gas budget, as a node would before validating, and counts
     /// what it deferred. With <paramref name="budget"/> off the spam passes unchanged.</summary>
-    private sealed class PeerGate(string budget)
+    private sealed class PeerGate(string budget) : IPeerArm
     {
         private readonly PeerValidationGasBudget? _budget = budget == "on"
             ? new PeerValidationGasBudget(PeerValidationGasPerSecond, burstSeconds: 1)
@@ -174,7 +245,9 @@ public partial class FrameTxFloodMeasurement
         public string Fields => $"peer_budget={budget} peer_budget_gas_per_s={(_budget is null ? 0 : PeerValidationGasPerSecond)} "
                                 + $"peers=1 peer_offered_rate={PeerProcessedRate} ";
 
-        public Func<Transaction, AcceptTxResult> Wrap(Func<Transaction, AcceptTxResult> submit) => _budget is null
+        public Func<Transaction, AcceptTxResult> WrapHonest(Func<Transaction, AcceptTxResult> submit) => submit;
+
+        public Func<Transaction, AcceptTxResult> WrapSpam(Func<Transaction, AcceptTxResult> submit) => _budget is null
             ? submit
             : tx =>
             {
@@ -233,7 +306,7 @@ public partial class FrameTxFloodMeasurement
         Func<long>? rejectionCounter = RejectionCounterFor(shape);
         GossipSubmitter submitter = new(_chain, scheduled: false, static () => false);
         PeerGate gate = new(budget);
-        Func<Transaction, AcceptTxResult> submit = gate.Wrap(submitter.Submit);
+        Func<Transaction, AcceptTxResult> submit = gate.WrapSpam(submitter.Submit);
 
         RunLevels(ceiling, shape, "peer_budget_producer_level", "victim=producer_pass gossip_path=direct " + gate.Fields,
             [OnePeerMillions(ceiling)],
@@ -369,20 +442,30 @@ public partial class FrameTxFloodMeasurement
     [TestCaseSource(nameof(HonestCases))]
     [Category(HonestSuite)]
     public Task Honest_frame_tx_admission_under_spam(ulong ceiling) =>
-        RunHonestLevels(ceiling, HonestLevelsMillions, "honest_level", gate: null);
+        RunHonestLevels(ceiling, HonestLevelsMillions, "honest_level", arm: null);
 
     /// <summary>Honest frame transactions while one attacker peer floods at <see cref="PeerProcessedRate"/>, with its
     /// validation gas budget off or on, under the stock per-head budget. Level 0 is the control.</summary>
     [TestCaseSource(nameof(PeerBudgetHonestCases))]
     [Category(PeerBudgetSuite)]
     public Task Honest_admission_under_peer_validation_budget(ulong ceiling, string budget) =>
-        RunHonestLevels(ceiling, [0, OnePeerMillions(ceiling)], "peer_budget_honest_level", new PeerGate(budget));
+        RunHonestLevels(ceiling, [0, OnePeerMillions(ceiling)], "peer_budget_honest_level", _ => new PeerGate(budget));
 
-    private async Task RunHonestLevels(ulong ceiling, int[] levelsMillions, string rowCase, PeerGate? gate)
+    /// <summary>Honest frame transactions from one honest peer while <paramref name="attackers"/> attacker peers flood at
+    /// <see cref="PeerProcessedRate"/> each, under no protection, the per-peer gas budget, or the fair share of the
+    /// per-head validation time, all under the stock per-head budget. Level 0 is the control.</summary>
+    [TestCaseSource(nameof(FairShareHonestCases))]
+    [Category(FairShareSuite)]
+    public Task Honest_admission_under_peer_fair_share(ulong ceiling, string protection, int attackers) =>
+        RunHonestLevels(ceiling, [0, attackers * OnePeerMillions(ceiling)], "fair_share_honest_level",
+            pool => new FairShareArm(protection, attackers, pool), fairShare: protection == "fair");
+
+    private async Task RunHonestLevels(ulong ceiling, int[] levelsMillions, string rowCase, Func<ITxPool, IPeerArm>? arm, bool fairShare = false)
     {
         SkipUnlessSingleCore();
         Eip8141MeasurementGuards.SkipIfCeilingUnreachable(ceiling);
-        await BuildChain("keccak-wide", ceiling, shedding: true, honestSenders: HonestSenderCount);
+        await BuildChain("keccak-wide", ceiling, shedding: true, honestSenders: HonestSenderCount, fairShare: fairShare);
+        IPeerArm? gate = arm?.Invoke(_chain.TxPool);
         ulong declaredGasPerTx = FrameTxValidation.ValidationWorkGas(FloodFrameTx(0));
 
         int cursor = 0;
@@ -586,7 +669,7 @@ public partial class FrameTxFloodMeasurement
 
     /// <summary>Runs honest traffic, and spam when <paramref name="spamRate"/> is positive, over whole slots, each
     /// opened by a new head.</summary>
-    private HonestOutcome RunHonestSlots(int spamRate, int slots, ref int cursor, PeerGate? gate = null)
+    private HonestOutcome RunHonestSlots(int spamRate, int slots, ref int cursor, IPeerArm? gate = null)
     {
         TimeSpan span = SlotLength * slots;
         int honestCount = HonestTxCount(slots);
@@ -597,7 +680,9 @@ public partial class FrameTxFloodMeasurement
         cursor += honestCount;
 
         HonestOutcome outcome = new();
-        using FloodGenerator honestGenerator = new(tx => outcome.RecordHonest(_chain.TxPool.SubmitTx(tx, TxHandlingOptions.None)), honest, HonestRate);
+        Func<Transaction, AcceptTxResult> submitHonest = tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
+        if (gate is not null) submitHonest = gate.WrapHonest(submitHonest);
+        using FloodGenerator honestGenerator = new(tx => outcome.RecordHonest(submitHonest(tx)), honest, HonestRate);
 
         void Slots()
         {
@@ -624,7 +709,7 @@ public partial class FrameTxFloodMeasurement
         Transaction[] spam = BuildFloodTransactions(_saltCursor, spamCount);
         _saltCursor += spamCount;
         Func<Transaction, AcceptTxResult> submitSpam = tx => _chain.TxPool.SubmitTx(tx, TxHandlingOptions.None);
-        if (gate is not null) submitSpam = gate.Wrap(submitSpam);
+        if (gate is not null) submitSpam = gate.WrapSpam(submitSpam);
         using FloodGenerator spamGenerator = new(tx => outcome.RecordSpam(submitSpam(tx)), spam, spamRate);
         start = Stopwatch.GetTimestamp();
         honestGenerator.Run(() => spamGenerator.Run(() => { Slots(); return 0; }));

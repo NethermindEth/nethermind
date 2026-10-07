@@ -449,7 +449,7 @@ public partial class FrameTxFloodMeasurement
     /// Builds the production-wired pool and block processor, seeding both state views with identical attacker
     /// code because simulation and block processing intentionally use separate world-state scopes.
     /// </summary>
-    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false, bool computeVictim = false, int honestSenders = 0)
+    private async Task BuildChain(string shape, ulong ceiling, bool shedding = false, bool computeVictim = false, int honestSenders = 0, bool fairShare = false)
     {
         byte[] attackCode = LoadAttackCode(shape, ceiling);
         byte[] computeVictimCode = FrameTxPrefixShapes.Code("keccak-wide");
@@ -457,7 +457,7 @@ public partial class FrameTxFloodMeasurement
 
         _shedding = shedding;
         ulong verifyGasCeiling = shape == "signature-stuffed" ? ceiling : 0;
-        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, computeVictim, builder =>
+        _chain = await FloodTestBlockchain.CreateFlood(verifyGasCeiling, shedding, computeVictim, fairShare, builder =>
         {
             builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Eip8141Prototype.Instance));
             builder.AddScoped<IGenesisPostProcessor, IWorldState, ISpecProvider>((worldState, specProvider) =>
@@ -653,11 +653,12 @@ public partial class FrameTxFloodMeasurement
         private ulong _verifyGasCeiling;
         private bool _shedding;
         private bool _computeVictim;
+        private bool _fairShare;
 
         public static async Task<FloodTestBlockchain> CreateFlood(
-            ulong verifyGasCeiling, bool shedding, bool computeVictim, Action<ContainerBuilder>? configurer = null)
+            ulong verifyGasCeiling, bool shedding, bool computeVictim, bool fairShare, Action<ContainerBuilder>? configurer = null)
         {
-            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling, _shedding = shedding, _computeVictim = computeVictim };
+            FloodTestBlockchain chain = new() { _verifyGasCeiling = verifyGasCeiling, _shedding = shedding, _computeVictim = computeVictim, _fairShare = fairShare };
             await chain.Build(configurer);
             return chain;
         }
@@ -673,6 +674,7 @@ public partial class FrameTxFloodMeasurement
             {
                 FrameTxMaxVerifyGas = _verifyGasCeiling,
                 FrameTxSimulationBudgetPerHeadMs = _shedding ? new TxPoolConfig().FrameTxSimulationBudgetPerHeadMs : int.MaxValue,
+                FrameTxPeerSimulationFairShare = _fairShare,
             },
         ];
     }

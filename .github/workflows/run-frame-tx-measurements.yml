@@ -17,6 +17,7 @@ on:
           - import-tails
           - honest
           - peer-budget
+          - fair-share
         default: cost
       groth16_artifacts_version:
         description: frame-verify-gas release tag for the Groth16 artifacts, e.g. v2.0.0. Needed by cost only.
@@ -86,7 +87,7 @@ jobs:
           local_ssd_count: 1
           provisioning_model: STANDARD
           # Suite timeout plus boot, checkout and build.
-          max_run_duration: ${{ fromJSON('{"cost":"50m","producer":"70m","import":"70m","import-tails":"160m","honest":"50m","peer-budget":"90m"}')[inputs.suite] }}
+          max_run_duration: ${{ fromJSON('{"cost":"50m","producer":"70m","import":"70m","import-tails":"160m","honest":"50m","peer-budget":"90m","fair-share":"80m"}')[inputs.suite] }}
           zones: ${{ vars.GCP_ZONES }}
           project_id: ${{ vars.GCP_PROJECT_ID }}
           workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
@@ -100,7 +101,7 @@ jobs:
     if: ${{ !cancelled() && (needs.create_runner.result == 'success' || needs.create_runner.result == 'skipped') }}
     runs-on: ${{ inputs.machine_type == 'reproducible-benchmarks' && 'reproducible-benchmarks' || needs.create_runner.outputs.runner_label }}
     # Suite budget plus build and setup; see the campaign SPEC.
-    timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30,"peer-budget":70}')[inputs.suite] }}
+    timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30,"peer-budget":70,"fair-share":60}')[inputs.suite] }}
     steps:
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
@@ -200,7 +201,7 @@ jobs:
           projects=()
           case "${SUITE}" in
             cost)                   projects=(Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test Nethermind.Network.Test) ;;
-            producer|import|import-tails|honest|peer-budget) projects=(Nethermind.Blockchain.Test) ;;
+            producer|import|import-tails|honest|peer-budget|fair-share) projects=(Nethermind.Blockchain.Test) ;;
             *)                      echo "::error::no build mapping for suite '${SUITE}'"; exit 1 ;;
           esac
 
@@ -394,6 +395,19 @@ jobs:
                     echo "::error::peer-budget honest ceiling=${ceiling} has ${n} of 4 rows; inspect its log."
                     status=1
                   fi
+                fi
+              done
+              ;;
+            fair-share)
+              run_harness Nethermind.Blockchain.Test "FrameTx-${SUITE}" "TestCategory=frame-tx-${SUITE}" pin "case=fair_share_" || status=1
+              results="${OUTPUT_DIR}/FrameTx-${SUITE}-results.txt"
+              # Two levels (control, attackers) per protection (off, gas, fair) for each attacker count (1, 3).
+              for ceiling in 300000 400000 500000; do
+                if (( ceiling > compiled_max_verify_gas )); then continue; fi
+                n=$(grep -cE "^RESULT case=fair_share_honest_level shape=keccak-wide ceiling=${ceiling} " "${results}" 2>/dev/null || true)
+                if [[ "${n}" != "12" ]]; then
+                  echo "::error::fair-share honest ceiling=${ceiling} has ${n} of 12 rows; inspect its log."
+                  status=1
                 fi
               done
               ;;
