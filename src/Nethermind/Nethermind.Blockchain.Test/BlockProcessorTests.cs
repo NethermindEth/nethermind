@@ -832,8 +832,8 @@ public partial class BlockProcessorTests
         Assert.That(seeds.TryOpenBlock(three, out ICoveredBlock? covered), Is.True);
         StateReadOverlaySlot slot = new();
         Assert.That(covered!.CreateWorkerSeeds().TrySeed(three, 0, slot), Is.True);
-        bool chained = slot.Current!.TryGetAccount(TestItem.AddressB, null, out _);
-        bool withdrawalRecipientRefused = !slot.Current.TryGetAccount(TestItem.AddressC, null, out _);
+        bool chained = slot.ParentState!.TryGetAccount(TestItem.AddressB, null, out _);
+        bool withdrawalRecipientRefused = !slot.ParentState.TryGetAccount(TestItem.AddressC, null, out _);
         covered.Dispose();
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, third, three,

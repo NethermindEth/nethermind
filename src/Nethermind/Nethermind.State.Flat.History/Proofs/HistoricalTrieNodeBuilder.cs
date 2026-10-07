@@ -30,10 +30,16 @@ internal sealed class HistoricalTrieNodeBuilder
         _fanOutOptions = new ParallelOptions { MaxDegreeOfParallelism = Math.Max(1, fanOut), CancellationToken = budget.CancellationToken };
     }
 
-    public byte[] LoadRlp(in TreePath path, Hash256 expectedHash)
+    /// <param name="fromCache">True when the node cache served the node; a prefetched or rebuilt node is a miss.</param>
+    public byte[] LoadRlp(in TreePath path, in ValueHash256 expected, out bool fromCache)
     {
-        ValueHash256 expected = expectedHash.ValueHash256;
-        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null) return cached;
+        if (_cache is not null && _cache.TryGet(expected, out byte[]? cached) && cached is not null)
+        {
+            fromCache = true;
+            return cached;
+        }
+
+        fromCache = false;
 
         if (_prefetched is not null && _prefetched.TryRemove(path, out byte[]? prefetched) && ValueKeccak.Compute(prefetched) == expected) return Publish(expected, prefetched);
 
@@ -46,7 +52,7 @@ internal sealed class HistoricalTrieNodeBuilder
 
         throw new StateUnavailableException(
             $"The node at {path} as of block {_block} rebuilt to {(rlp is null ? "nothing" : ValueKeccak.Compute(rlp).ToString())} instead of the " +
-            $"{expectedHash} its parent commits to. The flat history rows below that path do not reproduce the proven " +
+            $"{expected} its parent commits to. The flat history rows below that path do not reproduce the proven " +
             "state root, so no proof is served for this height.");
     }
 

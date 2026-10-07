@@ -18,6 +18,10 @@ namespace Nethermind.Wallet
         bool LockAccount(Address address);
         bool IsUnlocked(Address address);
         Address[] GetAccounts();
+
+        /// <summary>Whether this wallet can sign for <paramref name="address"/>, once unlocked where it has to be.</summary>
+        bool HasKey(Address address) => Array.IndexOf(GetAccounts(), address) >= 0;
+
         event EventHandler<AccountLockedEventArgs> AccountLocked;
         event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
