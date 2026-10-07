@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Consensus.Stateless;
 using Nethermind.Core.Collections;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.Stateless.Execution.IO;
@@ -28,7 +29,7 @@ public partial struct ExecutionWitness
         SszWitnessCodes[] codes = new SszWitnessCodes[witness.Codes.Count];
 
         for (int i = 0; i < codes.Length; i++)
-            codes[i] = new() { Bytes = witness.Codes[i] };
+            codes[i] = new() { Bytes = new WitnessCode(witness.Codes[i].AsMemory()) };
 
         SszWitnessHeader[] headers = new SszWitnessHeader[witness.Headers.Count];
 
@@ -50,12 +51,6 @@ public partial struct ExecutionWitness
 
     public readonly Witness ToWitness()
     {
-        ArrayPoolList<byte[]> codes = new(Codes.Length, Codes.Length);
-        Span<byte[]> codesSpan = codes.AsSpan();
-
-        for (int i = 0; i < Codes.Length; i++)
-            codesSpan[i] = Codes[i].Bytes;
-
         ArrayPoolList<byte[]> headers = new(Headers.Length, Headers.Length);
         Span<byte[]> headersSpan = headers.AsSpan();
 
@@ -64,7 +59,7 @@ public partial struct ExecutionWitness
 
         return new()
         {
-            Codes = codes,
+            Codes = new CodeList(Codes),
             Headers = headers,
             Keys = ArrayPoolList<byte[]>.Empty(),
             State = new StateNodeList(State)
@@ -97,13 +92,63 @@ public partial struct ExecutionWitness
 
         public void Dispose() { }
     }
+
+    /// <summary>The decoded codes, read in place as the memory they were decoded into, or as arrays copied on request.</summary>
+    /// <remarks>The witness code store reads the memory, so the zkVM guest runs each code without copying it again.</remarks>
+    private sealed class CodeList(SszWitnessCodes[] codes) : IOwnedReadOnlyList<byte[]>, IReadOnlyList<ReadOnlyMemory<byte>>
+    {
+        public int Count => codes.Length;
+
+        public byte[] this[int index] => codes[index].Bytes.Code.ToArray();
+
+        ReadOnlyMemory<byte> IReadOnlyList<ReadOnlyMemory<byte>>.this[int index] => codes[index].Bytes.Code;
+
+        public ReadOnlySpan<byte[]> AsSpan()
+        {
+            byte[][] arrays = new byte[codes.Length][];
+            for (int i = 0; i < arrays.Length; i++)
+                arrays[i] = this[i];
+
+            return arrays;
+        }
+
+        public IEnumerator<byte[]> GetEnumerator()
+        {
+            foreach (SszWitnessCodes code in codes)
+                yield return code.Bytes.Code.ToArray();
+        }
+
+        IEnumerator<ReadOnlyMemory<byte>> IEnumerable<ReadOnlyMemory<byte>>.GetEnumerator()
+        {
+            foreach (SszWitnessCodes code in codes)
+                yield return code.Bytes.Code;
+        }
+
+        IEnumerator IEnumerable.GetEnumerator() => GetEnumerator();
+
+        public void Dispose() { }
+    }
 }
 
 [SszContainer(isCollectionItself: true)]
 public partial struct SszWitnessCodes
 {
     [SszList(0x1_0000)]
-    public byte[] Bytes { get; set; }
+    public WitnessCode Bytes { get; set; }
+}
+
+/// <summary>A witness code.</summary>
+public sealed class WitnessCode
+{
+    /// <summary>Copies <paramref name="code"/> into executable code memory, which the EVM runs it from without another copy.</summary>
+    public WitnessCode(ReadOnlySpan<byte> code) => Code = ExecutableCodeMemory.Copy(code);
+
+    /// <summary>Wraps <paramref name="code"/> as it is.</summary>
+    internal WitnessCode(ReadOnlyMemory<byte> code) => Code = code;
+
+    public ReadOnlyMemory<byte> Code { get; }
+
+    public ReadOnlySpan<byte> AsSpan() => Code.Span;
 }
 
 [SszContainer(isCollectionItself: true)]

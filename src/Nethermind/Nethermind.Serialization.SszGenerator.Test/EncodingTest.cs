@@ -123,11 +123,37 @@ public class EncodingTest
     }
 
     [Test]
-    public void Decode_collection_itself_byte_lists_enforces_item_limit()
+    public void Span_built_byte_lists_match_byte_array_lists()
+    {
+        ByteListItself[] arrays = [new() { Bytes = [] }, new() { Bytes = [1, 2, 3] }];
+        byte[] encoded = ByteListItself.Encode(arrays);
+
+        SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] decoded);
+        ByteListItself.Merkleize(arrays[1], out UInt256 expectedRoot);
+        SpanBuiltByteListItself.Merkleize(decoded[1], out UInt256 root);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(decoded, Has.Length.EqualTo(2));
+            Assert.That(decoded[0].Bytes!.AsSpan().ToArray(), Is.Empty);
+            Assert.That(decoded[1].Bytes!.AsSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(SpanBuiltByteListItself.Encode(decoded), Is.EqualTo(encoded));
+            Assert.That(root, Is.EqualTo(expectedRoot));
+        }
+    }
+
+    [Test]
+    public void Decode_collection_itself_byte_lists_enforces_item_limit([Values] bool spanBuilt)
     {
         byte[] encoded = [8, 0, 0, 0, 12, 0, 0, 0, 1, 2, 3, 4];
 
-        Assert.That(() => ByteListItself.Decode(encoded, out ByteListItself[] _), Throws.InstanceOf<InvalidDataException>());
+        Assert.That(
+            () =>
+            {
+                if (spanBuilt) SpanBuiltByteListItself.Decode(encoded, out SpanBuiltByteListItself[] _);
+                else ByteListItself.Decode(encoded, out ByteListItself[] _);
+            },
+            Throws.InstanceOf<InvalidDataException>());
     }
 
     [TestCase(new byte[] { 8, 0, 0, 0, 4, 0, 0, 0 }, "offsets are out of order (4 < 8).")]
