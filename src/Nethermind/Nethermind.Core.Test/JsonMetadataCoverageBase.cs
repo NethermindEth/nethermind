@@ -7,6 +7,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
@@ -51,7 +52,7 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
                 // The serializer asks about every ancestor of a polymorphic value while looking for a declared base; absence is the answer it expects.
                 // A value written by its runtime type falls back to a covered collection interface, but a declared type must be covered itself.
                 if (!stackTrace.Contains("FindNearestPolymorphicBaseType", StringComparison.Ordinal) &&
-                    !(IsRuntimeTypeDispatch(stackTrace) && HasCoveredCollectionInterface(type, options)))
+                    !((IsRuntimeTypeDispatch(stackTrace) || IsUnnameable(type)) && HasCoveredCollectionInterface(type, options)))
                 {
                     Uncovered.TryAdd(type, stackTrace);
                     throw new InvalidOperationException($"{type} has no source-generated JSON metadata; add it to the JSON context of the assembly that owns it.");
@@ -137,6 +138,12 @@ public abstract class JsonMetadataCoverageBase(params IReadOnlyDictionary<Type, 
     private static bool IsRuntimeTypeDispatch(string stackTrace) =>
         stackTrace.Contains("RpcPayloadTypeInfo", StringComparison.Ordinal) ||
         stackTrace.Contains("ResolvePolymorphicConverter", StringComparison.Ordinal);
+
+    // No code that serializes can declare a compiler-generated or another library's non-public type, so such a type is always a runtime type.
+    // The dispatch frames prove nothing once the JIT inlines them, which optimized code may do at any point in a run.
+    private static bool IsUnnameable(Type type) =>
+        type.IsDefined(typeof(CompilerGeneratedAttribute), false) ||
+        !type.Assembly.GetName().Name!.StartsWith("Nethermind", StringComparison.Ordinal);
 
     private static bool IsTestOwned(Type type) =>
         type.Assembly.GetName().Name!.EndsWith(".Test", StringComparison.Ordinal) ||
