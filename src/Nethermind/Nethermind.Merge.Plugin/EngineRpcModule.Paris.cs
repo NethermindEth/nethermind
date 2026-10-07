@@ -24,8 +24,6 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], ExecutionPayload?> _getPayloadHandlerV1 = getPayloadHandlerV1;
     private readonly IAsyncHandler<ExecutionPayload, PayloadStatusV1> _newPayloadV1Handler = newPayloadV1Handler;
-    /// <summary>The handler when it can take a preparation started here, before the parameter checks decode the transactions.</summary>
-    private readonly NewPayloadHandler? _newPayloadHandler = newPayloadV1Handler as NewPayloadHandler;
     private readonly IForkchoiceUpdatedHandler _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
     private readonly IHandler<TransitionConfigurationV1, TransitionConfigurationV1> _transitionConfigurationHandler = transitionConfigurationHandler;
     private readonly IEngineRequestsTracker _engineRequestsTracker = engineRequestsTracker;
@@ -117,15 +115,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         // The converter reads "0x" as the EIP-7668 bloom; before the fork it is the zero bloom, as it always was.
         if (executionPayload.LogsBloom is { IsZeroLength: true } && !releaseSpec.IsEip7668Enabled) executionPayload.LogsBloom = new Bloom();
 
-        // Started before the parameter checks, which decode the transactions from V3 on, so the transactions-trie root
-        // hashes alongside that decode rather than after it; the handler joins it when it builds the block.
-        using ExecutionPayloadPreparation? preparation = _newPayloadHandler is not null ? new(executionPayload) : null;
-        ValidationResult validationResult;
-        string? error;
-        using (preparation?.Workers.Enter())
-        {
-            validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out error);
-        }
+        ValidationResult validationResult = executionPayloadParams.ValidateParams(releaseSpec, version, out string? error);
         if (validationResult != ValidationResult.Success)
         {
             if (_logger.IsWarn) _logger.Warn(error!);
@@ -142,9 +132,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
                 try
                 {
-                    ResultWrapper<PayloadStatusV1> result = _newPayloadHandler is not null
-                        ? await _newPayloadHandler.HandleAsync(executionPayload, preparation)
-                        : await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);
