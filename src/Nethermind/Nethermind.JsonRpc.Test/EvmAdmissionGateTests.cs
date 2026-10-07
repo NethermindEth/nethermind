@@ -55,10 +55,8 @@ public class EvmAdmissionGateTests
     }
 
     // After every step, at most the permits hold a slot, and a request waits only while every slot is taken.
-    [TestCase(1)]
-    [TestCase(2)]
-    [TestCase(4)]
-    public async Task Random_admissions_and_releases_keep_the_cap_and_leave_no_waiter_behind_a_free_slot(int permits)
+    [Test]
+    public async Task Random_admissions_and_releases_keep_the_cap_and_leave_no_waiter_behind_a_free_slot([Values(1, 2, 4)] int permits)
     {
         const int Admissions = 2_000;
         EvmAdmissionGate gate = CreateGate(permits: permits);

@@ -3,7 +3,6 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Pipelines;
@@ -14,6 +13,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
+using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
@@ -1727,10 +1727,8 @@ public class JsonRpcServiceTests
 
         held.Dispose();
         cancellation.Cancel();
-        continuations.RunUntilCompleted(response, TestTimeout);
-        Assert.That(response.IsCompleted, Is.True, "finished once its continuations ran");
-
-        Assert.That(async () => await response, Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(() => continuations.RunUntilCompleted(response, TestTimeout), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That(response.IsCanceled, Is.True, "cancelled by its caller once its continuations ran, not stopped by the pump's time limit");
         ethRpcModule.DidNotReceiveWithAnyArgs().eth_call(null!);
         Assert.That(service.EvmGate.InFlight, Is.Zero);
     }
@@ -1833,17 +1831,36 @@ public class JsonRpcServiceTests
     /// <summary>Holds the continuations posted to it until <see cref="RunUntilCompleted"/> runs them on the calling thread.</summary>
     private sealed class HeldContinuations : SynchronizationContext
     {
-        private readonly ConcurrentQueue<(SendOrPostCallback Callback, object? State)> _posted = new();
+        private readonly Channel<(SendOrPostCallback Callback, object? State)> _posted = Channel.CreateUnbounded<(SendOrPostCallback, object?)>();
 
-        public override void Post(SendOrPostCallback d, object? state) => _posted.Enqueue((d, state));
+        public override void Post(SendOrPostCallback d, object? state) => _posted.Writer.TryWrite((d, state));
 
+        /// <summary>Runs the posted continuations until <paramref name="task"/> completes, then returns its result or throws its exception.</summary>
+        /// <exception cref="OperationCanceledException"><paramref name="task"/> did not complete within <paramref name="timeout"/>.</exception>
         public void RunUntilCompleted(Task task, TimeSpan timeout)
         {
-            long deadline = Environment.TickCount64 + (long)timeout.TotalMilliseconds;
-            while (!task.IsCompleted && Environment.TickCount64 < deadline)
+            using CancellationTokenSource cancellation = new(timeout);
+            try
             {
-                if (_posted.TryDequeue(out (SendOrPostCallback Callback, object? State) posted)) posted.Callback(posted.State);
-                else Thread.Sleep(1);
+                while (!task.IsCompleted)
+                {
+                    while (_posted.Reader.TryRead(out (SendOrPostCallback Callback, object? State) posted))
+                    {
+                        posted.Callback(posted.State);
+                    }
+
+                    if (!task.IsCompleted)
+                    {
+                        Task ready = _posted.Reader.WaitToReadAsync(cancellation.Token).AsTask();
+                        Task.WhenAny(task, ready).WaitAsync(cancellation.Token).GetAwaiter().GetResult();
+                    }
+                }
+
+                task.GetAwaiter().GetResult();
+            }
+            finally
+            {
+                cancellation.Cancel();
             }
         }
     }

@@ -25,9 +25,8 @@ public class EvmExecutionEnvironmentPoolTests
 
     // The EVM admission gate runs up to EthModuleConcurrentInstances gated calls at once. A pool that held fewer environments
     // would refuse a call after the gate admitted it.
-    [TestCase(1)]
-    [TestCase(3)]
-    public async Task Simulate_environment_pool_holds_every_call_the_admission_gate_runs_at_once(int ethModuleConcurrentInstances)
+    [Test]
+    public async Task Simulate_environment_pool_holds_every_call_the_admission_gate_runs_at_once([Values(1, 3)] int ethModuleConcurrentInstances)
     {
         JsonRpcConfig config = new() { EthModuleConcurrentInstances = ethModuleConcurrentInstances };
         int maxConcurrent = config.GetEvmExecutionSlots();
