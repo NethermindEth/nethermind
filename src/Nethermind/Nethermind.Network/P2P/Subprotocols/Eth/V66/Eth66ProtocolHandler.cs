@@ -34,7 +34,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler, IStaticProtocolInfo
     {
-        private readonly ClockCache<long, byte> _pooledTransactionRequests = new(2048, lockPartition: 1);
+        private ClockCache<long, byte>? _pooledTransactionRequests;
 
         private readonly MessageDictionary<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
@@ -96,7 +96,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     {
                         if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
                             throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage)}.");
-                        if (!_pooledTransactionRequests.Delete(requestId))
+                        if (Volatile.Read(ref _pooledTransactionRequests)?.Delete(requestId) != true)
                         {
                             ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage)} response ignored", size);
                             return true;
@@ -185,7 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private protected override void TrackPooledTransactionRequest(P2PMessage message)
         {
             if (message is GetPooledTransactionsMessage request)
-                _pooledTransactionRequests.Set(request.RequestId, 0);
+                LazyInitializer.EnsureInitialized(ref _pooledTransactionRequests, static () => new(2048, lockPartition: 1)).Set(request.RequestId, 0);
         }
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);

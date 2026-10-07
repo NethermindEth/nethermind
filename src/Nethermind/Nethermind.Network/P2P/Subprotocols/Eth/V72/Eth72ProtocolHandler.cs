@@ -95,7 +95,7 @@ public class Eth72ProtocolHandler(
     private readonly Dictionary<ValueHash256, CellRequestState> _pendingCellRequests = [];
     private readonly Dictionary<ValueHash256, CellRequestState> _sentCellRequests = [];
     private readonly Dictionary<long, SentCellRequest> _sentCellRequestIds = [];
-    private readonly ClockCache<long, ValueHash256[]> _sentPooledTransactionRequests = new(MaxSentCellRequests, lockPartition: 1);
+    private readonly PooledTransactionRequests _sentPooledTransactionRequests = new(MaxSentCellRequests);
     private readonly ClockCache<ValueHash256, byte> _countedBlobAnnouncements = new(MaxCountedBlobAnnouncements, lockPartition: 1);
     private readonly ClockCache<ValueHash256, BlobCellMask> _announcedBlobTransactionMasks = new(MemoryAllowance.TxHashCacheSize, lockPartition: 1);
     private readonly ClockCache<ValueHash256, DateTimeOffset> _partialCellResponseBackoff = new(MemoryAllowance.TxHashCacheSize / 10, lockPartition: 1);
@@ -183,16 +183,17 @@ public class Eth72ProtocolHandler(
                         throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
                     }
 
-                    if (!TryClaimPooledTransactionRequest(requestId, out ValueHash256[] requestedHashes))
+                    if (!_sentPooledTransactionRequests.TryClaim(requestId, out PooledTransactionRequests.Request requestedHashes))
                     {
                         ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage66)} response ID {requestId} ignored", size);
                         return true;
                     }
 
+                    using PooledTransactionRequests.Request snapshot = requestedHashes;
                     if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions, pooledResponse: true))
                         return true;
                     ReportIn(pooledTransactions, size);
-                    if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
+                    if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), snapshot.Hashes))
                     {
                         ReturnUnsubmittedTransactions(pooledTransactions.EthMessage.Transactions.AsSpan());
                         pooledTransactions.Dispose();
@@ -381,6 +382,7 @@ public class Eth72ProtocolHandler(
 
     protected override void OnDisposed()
     {
+        _sentPooledTransactionRequests.Dispose();
         _txPool.NewPending -= OnNewPending;
         _sparseBlobPoolPeerRegistry.RemovePeer(this);
         lock (_cellStateLock)
@@ -522,11 +524,8 @@ public class Eth72ProtocolHandler(
     private protected override void TrackPooledTransactionRequest(P2PMessage message)
     {
         if (message is GetPooledTransactionsMessage66 request)
-            _sentPooledTransactionRequests.Set(request.RequestId, request.EthMessage.Hashes.AsSpan().ToArray());
+            _sentPooledTransactionRequests.Add(request.RequestId, request.EthMessage.Hashes.AsSpan());
     }
-
-    private bool TryClaimPooledTransactionRequest(long requestId, out ValueHash256[] requestedHashes)
-        => _sentPooledTransactionRequests.Delete(requestId, out requestedHashes!);
 
     private static bool MatchesPooledTransactionRequest(ReadOnlySpan<Transaction> transactions, ReadOnlySpan<ValueHash256> requestedHashes)
     {
