@@ -9,6 +9,10 @@ SRC_DIR := /nethermind/src
 
 GUEST_LIBC := sp1
 
+# A 64-bit memcpy in place of libc's 32-bit one; SP1 has no DMA copy to hand copies to.
+GUEST_OBJECTS := memcpy.o
+GUEST_LDFLAGS := --wrap=memcpy
+
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
