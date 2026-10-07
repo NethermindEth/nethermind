@@ -33,9 +33,11 @@ public class BranchProcessor(
 
     private const int MaxUncommittedBlocks = 64;
 
-    // Blocks processed without shifted replays after one whose roots rejected them.
+    // Blocks processed without shifted replays after one whose roots rejected them, doubling with each rejection in a row.
     private const int ShiftedReplayCooldownBlocks = 32;
+    private const int MaxShiftedReplayCooldownShift = 10;
     private int _shiftedReplayCooldown;
+    private int _shiftedReplayRejections;
 
     public event EventHandler<BlockExecutedEventArgs>? BlockExecuted;
 
@@ -176,7 +178,7 @@ public class BranchProcessor(
                 {
                     if (_logger.IsDebug) _logger.Debug($"Processing {suggestedBlock.ToString(Block.Format.Short)} again without shifted replays.");
                     Blockchain.Metrics.ShiftedReplayRetries++;
-                    _shiftedReplayCooldown = ShiftedReplayCooldownBlocks;
+                    _shiftedReplayCooldown = ShiftedReplayCooldownBlocks << Math.Min(_shiftedReplayRejections++, MaxShiftedReplayCooldownShift);
                     CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);
                     DrainAndClear(ref prewarming);
 
@@ -184,6 +186,9 @@ public class BranchProcessor(
                     worldStateCloser = BeginTargetScope(suggestedBlock);
                     (processedBlock, receipts) = blockProcessor.ProcessOne(suggestedBlock, blockOptions & ~ProcessingOptions.ShiftedReplay, blockTracer, spec, token);
                 }
+
+                // Shifted replays that held earn back the shortest cooldown.
+                if (ShiftedReplay.Used > 0 && blockOptions.ContainsFlag(ProcessingOptions.ShiftedReplay)) _shiftedReplayRejections = 0;
 
                 // Block is processed, ensure background tasks are cancelled (may already be via TransactionsExecuted event)
                 CancellationTokenExtensions.CancelDisposeAndClear(ref backgroundCancellation);

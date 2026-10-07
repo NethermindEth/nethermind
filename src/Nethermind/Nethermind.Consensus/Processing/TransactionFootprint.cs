@@ -85,7 +85,19 @@ internal sealed class TransactionFootprint(
             shifts.Add(new SlotShift(slot.Cell, shift));
         }
 
-        return shifts.Count > 0;
+        // Every write must be to a moved slot: a write elsewhere may sit at a key the moved value picked, as an array's
+        // element does under its length.
+        return shifts.Count > 0 && WritesOnlyTo(shifts);
+    }
+
+    private bool WritesOnlyTo(List<SlotShift> shifts)
+    {
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage && !FindShift(shifts, effect.Address, in effect.Index, out _)) return false;
+        }
+
+        return true;
     }
 
     /// <summary>Replays the run with every write to a slot in <paramref name="shifts"/> moved by that slot's shift.</summary>
