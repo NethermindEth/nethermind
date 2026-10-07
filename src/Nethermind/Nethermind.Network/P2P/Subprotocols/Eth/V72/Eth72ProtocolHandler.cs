@@ -21,6 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
@@ -188,7 +189,7 @@ public class Eth72ProtocolHandler(
                         return true;
                     }
 
-                    if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions))
+                    if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions, pooledResponse: true))
                         return true;
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
@@ -515,15 +516,13 @@ public class Eth72ProtocolHandler(
         return new PooledTransactionsMessage66(message.RequestId, pooledTransactions);
     }
 
-    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<ValueHash256> hashes)
-    {
-        GetPooledTransactionsMessage66 message = GetPooledTransactionsMessage66.New(hashes);
-        ReadOnlySpan<ValueHash256> hashesSpan = hashes.AsSpan();
-        ValueHash256[] requestedHashes = hashesSpan.ToArray();
+    private void SendPooledTransactionsRequest(IOwnedReadOnlyList<ValueHash256> hashes) =>
+        SendPooledTransactionRequest<GetPooledTransactionsMessage66>(hashes);
 
-        _sentPooledTransactionRequests.Set(message.RequestId, requestedHashes);
-        ReportPooledTransactionRequest(hashesSpan);
-        Send(message);
+    private protected override void TrackPooledTransactionRequest(P2PMessage message)
+    {
+        if (message is GetPooledTransactionsMessage66 request)
+            _sentPooledTransactionRequests.Set(request.RequestId, request.EthMessage.Hashes.AsSpan().ToArray());
     }
 
     private bool TryClaimPooledTransactionRequest(long requestId, out ValueHash256[] requestedHashes)

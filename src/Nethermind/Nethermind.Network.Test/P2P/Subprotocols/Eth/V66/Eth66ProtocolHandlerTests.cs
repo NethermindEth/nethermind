@@ -289,27 +289,53 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Full_transaction_budget_skips_decode_without_penalizing_peer()
+        public async Task Full_transaction_budget_preserves_unrelated_flood_statistics([Values] bool peerLimit, [Values] bool pooledResponse)
         {
-            RecordingBackgroundTaskScheduler scheduler = new();
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
             _handler.Dispose();
             _handler = CreateHandler(scheduler);
             HandleIncomingStatusMessage();
             Transaction tx = Build.A.Transaction.SignedAndResolved().TestObject;
             long requestId = RequestTransaction(tx);
             using CompositeDisposable reservations = [];
-            for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
-                new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
-            using Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage response = new(
-                requestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty));
-            using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
-            packet.EnsureWritable(1);
-            packet.WriteByte(0);
-            packet.ReadByte();
+            try
+            {
+                if (peerLimit)
+                {
+                    using TransactionsMessage emptyBroadcast = new(IOwnedReadOnlyList<Transaction>.Empty);
+                    for (int i = 0; i < InboundTransactionBudget.PeerLimit / InboundTransactionBudget.MinimumCharge; i++)
+                        HandleZeroMessage(emptyBroadcast, emptyBroadcast.PacketType);
+                }
+                else
+                {
+                    for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                        new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+                }
+                Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(1));
+                int scheduled = scheduler.ScheduledFulfillFuncs.Count;
+                using P2PMessage response = pooledResponse
+                    ? new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(
+                        requestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty))
+                    : new TransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty);
+                using DisposableByteBuffer packet = (pooledResponse
+                    ? _svc.ZeroSerialize((Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage)response)
+                    : _svc.ZeroSerialize((TransactionsMessage)response)).AsDisposable();
+                packet.EnsureWritable(1);
+                packet.WriteByte(0);
+                packet.ReadByte();
 
-            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }), Throws.Nothing);
-            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-            Assert.That(scheduler.ScheduledFulfillFuncs, Is.Empty);
+                Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(!peerLimit && pooledResponse ? 0 : 1));
+                    Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(scheduled));
+                    _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+                }
+            }
+            finally
+            {
+                await scheduler.Drain(new CancellationToken(true));
+            }
         }
 
         [Test]
@@ -403,14 +429,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
-        public void Transaction_budget_is_shared_and_released_with_owned_list()
+        public void Transaction_budget_is_shared_and_released_with_owned_list([Values] bool sharedBudgetFull)
         {
             RecordingBackgroundTaskScheduler scheduler = new();
             InboundTransactionBudget budget = new(scheduler);
             using InboundTransactionBudget.Reservation reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;
             IOwnedReadOnlyList<Transaction> transactions = Substitute.For<IOwnedReadOnlyList<Transaction>>();
             reservation.Attach(transactions);
-            Assert.That(budget.TryReserve(1), Is.Null);
+            using CompositeDisposable otherPeers = [];
+            if (sharedBudgetFull)
+            {
+                for (int i = 1; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(otherPeers);
+            }
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(budget.TryReserve(1, out bool sharedLimitExceeded), Is.Null);
+                Assert.That(sharedLimitExceeded, Is.False);
+            }
             reservation.Dispose();
             reservation.Dispose();
             using InboundTransactionBudget.Reservation replacement = budget.TryReserve(InboundTransactionBudget.PeerLimit)!;

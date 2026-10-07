@@ -251,14 +251,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NotifyProtocolInitialized(eventArgs);
         }
 
-        private protected bool TryDeserializeTransactions<T>(ZeroPacket packet, [NotNullWhen(true)] out T? message)
+        private protected bool TryDeserializeTransactions<T>(ZeroPacket packet, [NotNullWhen(true)] out T? message, bool pooledResponse = false)
             where T : P2PMessage
         {
             message = null;
-            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, out bool sharedLimitExceeded);
             if (reservation is null)
             {
-                IgnorePooledTransactionResponse();
+                if (pooledResponse && sharedLimitExceeded)
+                    IgnorePooledTransactionResponse();
                 ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);
                 return false;
             }

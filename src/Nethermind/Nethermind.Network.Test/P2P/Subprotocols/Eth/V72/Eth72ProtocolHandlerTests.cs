@@ -1121,6 +1121,35 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
+    public void should_accept_batched_retry_response_once([Values] bool announced)
+    {
+        Transaction first = Build.A.Transaction.WithNonce(0).SignedAndResolved().TestObject;
+        Transaction second = Build.A.Transaction.WithNonce(1).SignedAndResolved().TestObject;
+        ValueHash256[] hashes = [first.Hash!.ValueHash256, second.Hash!.ValueHash256];
+        HandleIncomingStatusMessage();
+        if (announced)
+        {
+            using NewPooledTransactionHashesMessage72 announcement = new(
+                [(byte)first.Type, (byte)second.Type], [first.GetLength(), second.GetLength()], hashes, BlobCellMask.Empty.ToBytes());
+            HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+        }
+        _handler.HandleMessages(hashes);
+        long requestId = GetLastGetPooledTransactionsRequestId(first.Hash!);
+        Assert.That(GetLastGetPooledTransactionsRequestId(second.Hash!), Is.EqualTo(requestId));
+        using PooledTransactionsMessage66 response = new(requestId, new PooledTransactionsMessage65(new[] { first, second }.ToPooledList()));
+
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+        HandleZeroMessage(response, Eth66MessageCode.PooledTransactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            _transactionPool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == first.Hash), Arg.Any<TxHandlingOptions>());
+            _transactionPool.Received(1).SubmitTx(Arg.Is<Transaction>(tx => tx.Hash == second.Hash), Arg.Any<TxHandlingOptions>());
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    [Test]
     public void should_ignore_duplicate_pooled_response_before_sampling_validation()
     {
         Transaction tx = Build.A.Transaction
