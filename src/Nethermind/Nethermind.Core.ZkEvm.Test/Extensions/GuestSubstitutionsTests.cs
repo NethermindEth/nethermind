@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.ZkEvm.Test.Extensions;
 
 /// <summary>
-/// Resolves every method the ZisK guest's substitutions.xml names. ILC applies a substitution only to a
+/// Resolves every method the ZisK and SP1 guests' substitutions.xml name. ILC applies a substitution only to a
 /// method it finds and otherwise keeps the original body, so a renamed member or a stale signature would
 /// quietly undo the substitution - <c>ZkEvmBitOperations.HasByteReverse</c> would stay false and ZisK would
 /// go back to the mask form without any build noticing.
@@ -22,9 +22,12 @@ public class GuestSubstitutionsTests
     private const BindingFlags AnyMethod =
         BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.Instance | BindingFlags.DeclaredOnly;
 
-    private static IEnumerable<TestCaseData> SubstitutedMethods()
+    private static IEnumerable<TestCaseData> SubstitutedMethods() =>
+        SubstitutedMethodsOf("ZiskGuest.substitutions.xml").Concat(SubstitutedMethodsOf("Sp1Guest.substitutions.xml"));
+
+    private static IEnumerable<TestCaseData> SubstitutedMethodsOf(string file)
     {
-        XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, "ZiskGuest.substitutions.xml"));
+        XDocument document = XDocument.Load(Path.Combine(TestContext.CurrentContext.TestDirectory, file));
         foreach (XElement assembly in document.Root!.Elements("assembly"))
         {
             foreach (XElement type in assembly.Elements("type"))
@@ -34,7 +37,7 @@ public class GuestSubstitutionsTests
                     string assemblyName = (string)assembly.Attribute("fullname")!;
                     string typeName = (string)type.Attribute("fullname")!;
                     string signature = (string)method.Attribute("signature")!;
-                    yield return new TestCaseData(assemblyName, typeName, signature).SetName($"{typeName} {signature}");
+                    yield return new TestCaseData(assemblyName, typeName, signature).SetName($"{file}: {typeName} {signature}");
                 }
             }
         }

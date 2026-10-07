@@ -15,4 +15,11 @@
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Core">
+    <!-- SP1 rejects misaligned accesses, so its JIT guards every access it cannot prove aligned; the flag
+         rounds pointers already on a boundary down to it, which lets the JIT prove the accesses through them. -->
+    <type fullname="Nethermind.Core.Extensions.StrictAlignmentFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>

@@ -192,7 +192,15 @@ public unsafe partial class VirtualMachine<TGasPolicy>
 
         /// <summary>The slot at <paramref name="index"/>, counted up from <paramref name="bottom"/>, for callers that have bounded the index.</summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref bottom, index * EvmStack.WordSize);
+        private static ref byte SlotAt(ref byte bottom, nint index) => ref Unsafe.Add(ref AlignedBottom(ref bottom), index * EvmStack.WordSize);
+
+        /// <summary><paramref name="bottom"/>, rounded down to the word boundary it is already on where <see cref="StrictAlignmentFlag"/> is on.</summary>
+        /// <remarks>The rounding is a no-op the JIT sees through (dotnet-riscv perf-67), so it proves every slot access word aligned and drops its alignment test.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static unsafe ref byte AlignedBottom(ref byte bottom) =>
+            ref StrictAlignmentFlag.IsActive
+                ? ref Unsafe.AsRef<byte>((void*)((nuint)Unsafe.AsPointer(ref bottom) & ~(nuint)(EvmStack.WordSize - 1)))
+                : ref bottom;
 
         /// <summary>The big-endian 16-bit value in the two lowest bytes of <paramref name="bytes"/>; the bytes above them are ignored.</summary>
         /// <remarks>The full-width byte reversal leaves it zero-extended by its shift, where a 16-bit one needs one more instruction to clear the bits above it.</remarks>
