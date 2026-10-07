@@ -62,9 +62,12 @@ public static class EnginePathDiag
 
     public static Record? Current => Enabled ? _current.Value : null;
 
+    /// <remarks>
+    /// The last handler wins: StartupPipelineWarmer builds a throwaway node with LimboLogs (every level on, no output) and
+    /// its NewPayloadHandler is constructed before the live one, so keeping the first logger sent every line nowhere.
+    /// </remarks>
     public static void SetLogger(ILogger logger)
     {
-        if (_hasLogger) return;
         _logger = logger;
         _hasLogger = true;
     }
