@@ -280,7 +280,7 @@ jobs:
               run_status=${PIPESTATUS[0]}
               set -e
 
-              output_hex="$(grep -Eio '(0x)?[0-9a-f]{66,}' "$log_file" | sed 's/^0x//' | awk 'length($0) >= 66 { value=$0 } END { print value }' || true)"
+              output_hex="$(grep -Eio '(0x)?[0-9a-f]{66,}' "$log_file" | sed 's/^0x//' | tr 'A-F' 'a-f' | awk 'length($0) >= 66 { value=$0 } END { print value }' || true)"
 
               if [ "$run_status" -ne 0 ]; then
                 record_failure "$block_number" "$block_hash" "guest exited $run_status"
