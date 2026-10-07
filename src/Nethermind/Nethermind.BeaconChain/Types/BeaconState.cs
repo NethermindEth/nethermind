@@ -8,7 +8,7 @@ using Nethermind.Serialization.Ssz;
 
 namespace Nethermind.BeaconChain.Types;
 
-/// <summary>Electra <c>BeaconState</c> (mainnet preset limits).</summary>
+/// <summary>Electra <c>BeaconState</c>.</summary>
 [SszContainer]
 public partial class BeaconStateElectra
 {
@@ -24,7 +24,7 @@ public partial class BeaconStateElectra
     [SszList(16_777_216)]
     public Hash256[]? HistoricalRoots { get; set; }
     public Eth1Data? Eth1Data { get; set; }
-    [SszList(Presets.Eth1DataVotesLimit)]
+    [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
     public Eth1Data[]? Eth1DataVotes { get; set; }
     public ulong Eth1DepositIndex { get; set; }
     [SszList(1_099_511_627_776)]
@@ -72,7 +72,7 @@ public partial class BeaconStateElectra
 public partial class BeaconStateFulu : BeaconStateElectra
 {
     /// <remarks>Length is <c>(MIN_SEED_LOOKAHEAD + 1) * SLOTS_PER_EPOCH</c>.</remarks>
-    [SszVector((int)Presets.ProposerLookaheadSlots)]
+    [SszVector((int)Presets.DefaultProposerLookaheadSlots, AlternateLength = 32)]
     public ulong[]? ProposerLookahead { get; set; }
 }
 
@@ -108,7 +108,7 @@ public partial class BeaconStateGloas
     public Eth1Data? Eth1Data { get; set; }
     /// <remarks>Unmodified in Gloas: still a plain bounded list, not progressive.</remarks>
     [SszField(9)]
-    [SszList(Presets.Eth1DataVotesLimit)]
+    [SszList(Presets.DefaultEth1DataVotesLimit, AlternateLimit = 1024)]
     public Eth1Data[]? Eth1DataVotes { get; set; }
     [SszField(10)]
     public ulong Eth1DepositIndex { get; set; }
@@ -183,7 +183,7 @@ public partial class BeaconStateGloas
     public PendingConsolidation[]? PendingConsolidations { get; set; }
     /// <remarks>Unmodified in Gloas (EIP-7917), unlike its siblings: still a plain fixed vector.</remarks>
     [SszField(37)]
-    [SszVector((int)Presets.ProposerLookaheadSlots)]
+    [SszVector((int)Presets.DefaultProposerLookaheadSlots, AlternateLength = 32)]
     public ulong[]? ProposerLookahead { get; set; }
     /// <remarks>[New in Gloas:EIP7732]. The builder registry.</remarks>
     [SszField(38)]
@@ -206,7 +206,7 @@ public partial class BeaconStateGloas
     /// to a zero-filled array on encode; callers must supply all entries explicitly.
     /// </remarks>
     [SszField(41)]
-    [SszVector((int)Presets.BuilderPendingPaymentsLength)]
+    [SszVector((int)Presets.DefaultBuilderPendingPaymentsLength, AlternateLength = 32)]
     public BuilderPendingPayment[]? BuilderPendingPayments { get; set; }
     /// <remarks>[New in Gloas:EIP7732].</remarks>
     [SszField(42)]
@@ -225,6 +225,6 @@ public partial class BeaconStateGloas
     /// a null value does not default, so callers must supply all entries.
     /// </remarks>
     [SszField(45)]
-    [SszVector((int)Presets.PtcWindowLength)]
+    [SszVector((int)Presets.DefaultPtcWindowLength, AlternateLength = 48)]
     public PayloadTimelinessCommittee[]? PtcWindow { get; set; }
 }

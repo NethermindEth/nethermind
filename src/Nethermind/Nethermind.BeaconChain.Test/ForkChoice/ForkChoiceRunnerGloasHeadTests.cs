@@ -200,7 +200,7 @@ public class ForkChoiceRunnerGloasHeadTests
     [Test]
     public void A_pruned_fork_block_still_withholds_the_boost_until_finality_passes_its_slot()
     {
-        const ulong FinalizedSlot = 10 * Presets.SlotsPerEpoch;
+        ulong FinalizedSlot = 10 * Presets.SlotsPerEpoch;
         GloasForkChoiceHarness harness = new();
         GloasForkChoiceHarness.Block first = harness.First;
         harness.TickTo(FinalizedSlot + 1, secondsIntoSlot: 8);

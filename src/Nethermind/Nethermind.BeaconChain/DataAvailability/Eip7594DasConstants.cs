@@ -29,7 +29,7 @@ public static class Eip7594DasConstants
     public const int NumberOfColumns = 128;
 
     /// <summary>Epoch window a node MUST be able to serve DataColumnSidecarsByRange/ByRoot requests for. <c>2**12</c>.</summary>
-    public const ulong MinEpochsForDataColumnSidecarsRequests = 4096;
+    public static ulong MinEpochsForDataColumnSidecarsRequests => Spec.Presets.IsGnosis ? 16_384UL : 4096UL;
 
     /// <summary>
     /// Merkle proof depth for <c>DataColumnSidecar.kzg_commitments_inclusion_proof</c>: the whole

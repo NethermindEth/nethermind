@@ -10,6 +10,7 @@
   <Folder Name="/Plugins/BeaconChain/">
     <Project Path="Nethermind.BeaconChain/Nethermind.BeaconChain.csproj" />
     <Project Path="Nethermind.BeaconChain.Test/Nethermind.BeaconChain.Test.csproj" />
+    <Project Path="Nethermind.BeaconChain.Gnosis.Test/Nethermind.BeaconChain.Gnosis.Test.csproj" />
   </Folder>
   <Folder Name="/Plugins/PortfolioViewer/">
     <Project Path="Nethermind.PortfolioViewer.Plugin.Test/Nethermind.PortfolioViewer.Plugin.Test.csproj" />

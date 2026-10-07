@@ -100,10 +100,10 @@ public sealed class GossipRouter(BeaconChainSpec spec, SlotClock slotClock, ILog
     private const int SeenSlashedIndexCacheSize = 8192;
 
     // p2p-interface.md Seen: retain two epochs of TARGET_AGGREGATORS_PER_COMMITTEE aggregators per committee and slot.
-    private const int SeenAggregatorCacheSize = 2 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot * (int)Presets.TargetAggregatorsPerCommittee;
+    private static readonly int SeenAggregatorCacheSize = 2 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot * (int)Presets.TargetAggregatorsPerCommittee;
 
     // p2p-interface.md Seen: retain two epochs of two distinct votes per committee; eviction only permits repeat verification.
-    private const int SeenAggregateDataCacheSize = 4 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot;
+    private static readonly int SeenAggregateDataCacheSize = 4 * (int)Presets.SlotsPerEpoch * Presets.MaxCommitteesPerSlot;
     private const int SeenAggregateBitsPerData = (int)Presets.TargetAggregatorsPerCommittee;
 
     /// <summary>The most payload attestations raised for fork choice to verify per (slot, validator) pair while none has verified.</summary>

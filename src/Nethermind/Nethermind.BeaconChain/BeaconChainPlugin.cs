@@ -48,7 +48,11 @@ public class BeaconChainModule : Module
             .AddSingleton<ProcessStallWatchdog>()
             // The network comes from the execution layer's chain id so both sides follow the same chain;
             // only the Gloas schedule can be overridden by config.
-            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) => BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion))
+            .AddSingleton<BeaconChainSpec, ISpecProvider, IBeaconChainConfig>((specProvider, chainConfig) =>
+            {
+                BeaconPresetSelection.Initialize(specProvider.ChainId);
+                return BeaconChainSpec.ForChainId(specProvider.ChainId).WithGloasForkOverride(chainConfig.GloasForkEpoch, chainConfig.GloasForkVersion);
+            })
             .AddSingleton<BeaconChainStore>()
             .AddSingleton<PubkeyCache>()
             .AddSingleton<CheckpointSync>()
