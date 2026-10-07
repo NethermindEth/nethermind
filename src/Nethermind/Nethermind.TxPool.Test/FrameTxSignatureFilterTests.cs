@@ -128,9 +128,7 @@ internal class FrameTxSignatureFilterTests
         long invalid = Metrics.PendingTransactionsFrameTxSignatureInvalid;
         long preempted = Metrics.FrameTxSignatureVerificationsPreempted;
 
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         AcceptTxResult result = filter.Accept(tx, ref state, options);
@@ -151,9 +149,7 @@ internal class FrameTxSignatureFilterTests
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         headInfo.IsProcessingBlock.Returns(true);
         headInfo.IsBuildingBlock.Returns(true);
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
         Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
@@ -166,9 +162,7 @@ internal class FrameTxSignatureFilterTests
     {
         IChainHeadInfoProvider headInfo = Substitute.For<IChainHeadInfoProvider>();
         headInfo.IsProcessingBlock.Returns(true);
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
+        FrameTxSignatureFilter filter = CreateFilter(headInfo);
         Transaction tx = FrameTx(TestItem.AddressA, [], SelfVerify(PrefixFrameGas));
         tx.FrameSignatures =
         [
@@ -190,14 +184,19 @@ internal class FrameTxSignatureFilterTests
 
     private static AcceptTxResult Accept(Transaction tx, out bool signaturesVerified)
     {
-        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
-        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
-        FrameTxSignatureFilter filter = new(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>());
+        FrameTxSignatureFilter filter = CreateFilter();
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
         AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
         signaturesVerified = state.FrameSignaturesVerified;
         return result;
+    }
+
+    private static FrameTxSignatureFilter CreateFilter(IChainHeadInfoProvider? headInfo = null)
+    {
+        IChainHeadSpecProvider specProvider = Substitute.For<IChainHeadSpecProvider>();
+        specProvider.GetCurrentHeadSpec().Returns(Eip8141Prototype.Instance);
+        return new FrameTxSignatureFilter(specProvider, EthereumEcdsa, LimboLogs.Instance.GetClassLogger<FrameTxSignatureFilterTests>(), headInfo);
     }
 
     private static Transaction Signed(PrivateKey key, Address? signer)
