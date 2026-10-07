@@ -53,6 +53,9 @@ public record GethTraceOptions
 
     internal GethTraceCancellation? ExecutionCancellation { get; init; }
 
+    /// <summary>Collects only completed transactions; chain replay retains cleanup ownership after failures.</summary>
+    internal bool CollectCompletedTransactions { get; init; }
+
     public string Tracer { get; init; }
 
     public Hash256? TxHash { get; init; }

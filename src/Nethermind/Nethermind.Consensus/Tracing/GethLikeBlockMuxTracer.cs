@@ -28,6 +28,9 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     };
 
     private readonly Hash256? _txHash;
+    private readonly bool _collectCompletedTransactions;
+    private int _completedTransactions;
+    private bool _tracingTransaction;
     private readonly CompositeBlockTracer _composite = new();
     private readonly Dictionary<string, IBlockTracer<GethLikeTxTrace>> _children = [];
     private readonly List<Hash256?> _transactions = [];
@@ -37,6 +40,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     internal GethLikeBlockMuxTracer(GethTraceOptions options, Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild)
     {
         _txHash = options.TxHash;
+        _collectCompletedTransactions = options.CollectCompletedTransactions;
         try
         {
             foreach ((string name, JsonElement config) in ParseConfig(options.TracerConfig))
@@ -83,14 +87,17 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         _results = null;
         _releasedResults = false;
         _transactions.Clear();
+        _completedTransactions = 0;
+        _tracingTransaction = false;
         _composite.StartNewBlockTrace(block);
     }
 
     /// <inheritdoc/>
     public ITxTracer StartNewTxTrace(Transaction? tx)
     {
-        if (tx is not null && (_txHash is null || _txHash == tx.Hash))
-            _transactions.Add(tx.Hash);
+        _tracingTransaction = tx is not null && (_txHash is null || _txHash == tx.Hash);
+        if (_tracingTransaction)
+            _transactions.Add(tx!.Hash);
         List<ITxTracer> started = new(_children.Count);
         try
         {
@@ -109,7 +116,7 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
         catch (Exception exception)
         {
             foreach (ITxTracer tracer in started) tracer.Dispose();
-            Dispose();
+            if (!_collectCompletedTransactions) Dispose();
             if (exception is ArgumentException or JsonException or FileNotFoundException)
                 throw new InvalidDataException(exception.Message, exception);
             throw;
@@ -117,7 +124,12 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     }
 
     /// <inheritdoc/>
-    public void EndTxTrace() => _composite.EndTxTrace();
+    public void EndTxTrace()
+    {
+        _composite.EndTxTrace();
+        if (_tracingTransaction) _completedTransactions++;
+        _tracingTransaction = false;
+    }
     /// <inheritdoc/>
     public void EndBlockTrace() => _composite.EndBlockTrace();
     /// <inheritdoc/>
@@ -128,8 +140,9 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
     public IReadOnlyCollection<GethLikeTxTrace> BuildResult()
     {
         if (_results is not null) return _results;
-        Dictionary<string, JsonElement>[] values = new Dictionary<string, JsonElement>[_transactions.Count];
-        GethLikeTxTrace[] results = new GethLikeTxTrace[_transactions.Count];
+        int count = _collectCompletedTransactions ? _completedTransactions : _transactions.Count;
+        Dictionary<string, JsonElement>[] values = new Dictionary<string, JsonElement>[count];
+        GethLikeTxTrace[] results = new GethLikeTxTrace[count];
         for (int i = 0; i < results.Length; i++)
         {
             values[i] = new Dictionary<string, JsonElement>(_children.Count);
@@ -145,9 +158,13 @@ internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, ID
             {
                 int index = 0;
                 foreach (GethLikeTxTrace trace in child.BuildResult())
-                    values[index++].Add(name, JsonSerializer.SerializeToElement(trace,
-                        TypeInfoJsonSerializer.GetTypeInfo<GethLikeTxTrace>(EthereumJsonSerializer.JsonOptions)));
-                if (index != results.Length)
+                {
+                    if (!_collectCompletedTransactions || index < results.Length)
+                        values[index].Add(name, JsonSerializer.SerializeToElement(trace,
+                            TypeInfoJsonSerializer.GetTypeInfo<GethLikeTxTrace>(EthereumJsonSerializer.JsonOptions)));
+                    index++;
+                }
+                if (index < results.Length || index > _transactions.Count)
                     throw new InvalidOperationException("Mux child returned a different number of transaction traces.");
             }
             for (int i = 0; i < results.Length; i++)

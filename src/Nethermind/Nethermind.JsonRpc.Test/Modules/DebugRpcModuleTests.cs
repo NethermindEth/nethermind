@@ -1029,10 +1029,10 @@ public partial class DebugRpcModuleTests
 
     [Test]
     [NonParallelizable]
-    public void Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure)
+    public void Debug_traceCall_mux_releases_engines_when_a_child_fails([Values] bool resultFailure, [Values] bool collectCompleted)
     {
         const string first = "{step:function(){},fault:function(){},result:function(){return {};}}";
-        const string failing = "{step:function(){},fault:function(){},result:function(){throw Error('mux child result failure');}}";
+        string failing = "{step:function(){},fault:function(){},result:function(ctx){if(ctx.txIndex==" + (collectCompleted ? 1 : 0) + ")throw Error('mux child result failure');return {};}}";
         List<GethLikeBlockJavaScriptTracer> children = [];
         List<Microsoft.ClearScript.V8.V8Runtime> runtimes = [];
         List<Engine> engines = [];
@@ -1040,6 +1040,8 @@ public partial class DebugRpcModuleTests
         {
             TracerConfig = JsonSerializer.SerializeToElement(new Dictionary<string, object> { [first] = new { }, [failing] = new { } })
         };
+        typeof(GethTraceOptions).GetProperty("CollectCompletedTransactions", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!
+            .SetValue(options, collectCompleted);
         Func<GethTraceOptions, IBlockTracer<GethLikeTxTrace>> createChild = childOptions =>
         {
             if (!resultFailure && children.Count == 1) throw new ArgumentException("child construction failure");
@@ -1061,10 +1063,23 @@ public partial class DebugRpcModuleTests
             {
                 mux = CreateMux();
                 mux.StartNewBlockTrace(Build.A.Block.TestObject);
-                mux.StartNewTxTrace(Build.A.Transaction.WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject);
+                if (collectCompleted)
+                {
+                    using (mux.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject))
+                    {
+                        foreach (GethLikeBlockJavaScriptTracer child in children)
+                            engines.Add(Field<Engine>(Field<object>(child, "_currentTxTracer"), "_engine"));
+                        mux.EndTxTrace();
+                    }
+                }
+                using ITxTracer txTracer = mux.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakB).WithSenderAddress(TestItem.AddressA).WithTo(TestItem.AddressB).TestObject);
                 foreach (GethLikeBlockJavaScriptTracer child in children)
                     engines.Add(Field<Engine>(Field<object>(child, "_currentTxTracer"), "_engine"));
                 Assert.That(() => mux.EndTxTrace(), Throws.Exception.With.Message.Contains("mux child result failure"));
+                if (collectCompleted)
+                    Assert.That(mux.BuildResult(), Has.Count.EqualTo(1));
+                else
+                    Assert.That(() => mux.BuildResult(), Throws.TypeOf<InvalidOperationException>().With.Message.EqualTo("Mux child returned a different number of transaction traces."));
             }
         }
         finally
@@ -1075,7 +1090,7 @@ public partial class DebugRpcModuleTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(runtimes.Count, Is.EqualTo(resultFailure ? 2 : 1));
-            Assert.That(engines.Count, Is.EqualTo(resultFailure ? 2 : 0));
+            Assert.That(engines.Count, Is.EqualTo(resultFailure ? collectCompleted ? 4 : 2 : 0));
             foreach (Microsoft.ClearScript.V8.V8Runtime runtime in runtimes)
                 Assert.That(() => { using Microsoft.ClearScript.V8.V8ScriptEngine engine = runtime.CreateScriptEngine(); }, Throws.TypeOf<ObjectDisposedException>());
             foreach (Engine engine in engines)

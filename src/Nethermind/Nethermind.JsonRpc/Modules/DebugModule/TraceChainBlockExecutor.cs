@@ -24,7 +24,7 @@ internal sealed class TraceChainBlockExecutor(
         if (block.Transactions.Length == 0) return [];
         BlockLogIndex logIndex = new();
         GethTraceCancellation cancellation = new() { Token = token };
-        GethTraceOptions tracerOptions = options.ToTraceOptions() with { ExecutionCancellation = cancellation };
+        GethTraceOptions tracerOptions = options.ToTraceOptions() with { ExecutionCancellation = cancellation, CollectCompletedTransactions = true };
         IBlockTracer<GethLikeTxTrace> inner;
         try
         {
@@ -115,8 +115,14 @@ internal sealed class TraceChainBlockTracer(Block block, IBlockTracer<GethLikeTx
     public void Dispose()
     {
         _transactionCancellation?.Dispose();
-        if (!_transferred)
-            foreach (GethLikeTxTrace trace in inner.BuildResult()) trace.Dispose();
-        inner.TryDispose();
+        try
+        {
+            if (!_transferred)
+                foreach (GethLikeTxTrace trace in inner.BuildResult()) trace.Dispose();
+        }
+        finally
+        {
+            inner.TryDispose();
+        }
     }
 }

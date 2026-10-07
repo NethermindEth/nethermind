@@ -1069,6 +1069,18 @@ public class DebugModuleTests
         resource.Received(1).Dispose();
     }
 
+    [Test]
+    public void TraceChain_aborted_block_disposes_inner_when_result_building_throws()
+    {
+        IBlockTracer<GethLikeTxTrace> inner = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+        InvalidOperationException failure = new("result failed");
+        inner.BuildResult().Returns(_ => throw failure);
+        TraceChainBlockTracer tracer = new(Build.A.Block.TestObject, inner);
+
+        Assert.That(Assert.Throws<InvalidOperationException>(tracer.Dispose), Is.SameAs(failure));
+        ((IDisposable)inner).Received(1).Dispose();
+    }
+
     [TestCase("0", false)]
     [TestCase("1h", false)]
     [TestCase("bad", true)]
