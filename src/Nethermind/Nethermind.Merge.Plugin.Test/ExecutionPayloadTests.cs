@@ -49,8 +49,8 @@ public class ExecutionPayloadTests
         {
             Interlocked.Increment(ref factoryCalls);
             return new Transaction();
-        }, [.. encoded, control], original);
-        Rlp.RegisterDecoder(typeof(Transaction), decoder);
+        });
+        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, decoder, original));
         try
         {
             string? error;
@@ -88,8 +88,7 @@ public class ExecutionPayloadTests
         }
     }
 
-    private sealed class FactoryTrackingDecoder(
-        Func<Transaction> factory, byte[][] inputs, IRlpDecoder<Transaction> fallback) : TxDecoder<Transaction>(factory)
+    private sealed class FactoryTrackingDecoder(Func<Transaction> factory) : TxDecoder<Transaction>(factory)
     {
         private int _trackedDecodes;
 
@@ -97,30 +96,42 @@ public class ExecutionPayloadTests
 
         protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            // Background work may still decode through the registry; only track this test's buffers.
+            Interlocked.Increment(ref _trackedDecodes);
+            return base.DecodeInternal(ref reader, behaviors);
+        }
+    }
+
+    /// <summary>Decodes the test's own buffers with <paramref name="own"/> and any other buffer with <paramref name="fallback"/>.</summary>
+    /// <remarks>
+    /// Tests register it process-wide. NUnit runs a parameterized method inline on the fixture's parallel worker, so
+    /// <see cref="NonParallelizableAttribute"/> on it does not stop the fixture's other tests from decoding meanwhile
+    /// (nunit/nunit#3371); they, and any background work, must keep getting the decoder that was replaced.
+    /// </remarks>
+    private sealed class InputScopedDecoder(byte[][] inputs, IRlpDecoder<Transaction> own, IRlpDecoder<Transaction> fallback)
+        : TxDecoder<Transaction>
+    {
+        protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
             foreach (byte[] input in inputs)
             {
-                if (reader.Data.Overlaps(input))
-                {
-                    Interlocked.Increment(ref _trackedDecodes);
-                    return base.DecodeInternal(ref reader, behaviors);
-                }
+                if (reader.Data.Overlaps(input)) return own.Decode(ref reader, behaviors);
             }
             return fallback.Decode(ref reader, behaviors);
         }
     }
 
     [Test]
-    public void Factory_tracking_forwards_unrelated_buffers()
+    public void Input_scoped_decoder_forwards_unrelated_buffers()
     {
         byte[] tracked = EncodeTx(TxType.Legacy);
         byte[] unrelated = tracked.ToArray();
         int factoryCalls = 0;
-        FactoryTrackingDecoder decoder = new(() =>
+        FactoryTrackingDecoder tracking = new(() =>
         {
             factoryCalls++;
             return new Transaction();
-        }, [tracked], new PayloadTestDecoder());
+        });
+        InputScopedDecoder decoder = new([tracked], tracking, new PayloadTestDecoder());
         RlpReader reader = new(unrelated);
 
         Transaction transaction = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
@@ -128,7 +139,7 @@ public class ExecutionPayloadTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transaction.Nonce, Is.EqualTo(1000), "The fallback decoder must handle the unrelated buffer.");
-            Assert.That(decoder.TrackedDecodes, Is.Zero);
+            Assert.That(tracking.TrackedDecodes, Is.Zero);
             Assert.That(factoryCalls, Is.Zero);
         }
     }
@@ -138,7 +149,7 @@ public class ExecutionPayloadTests
     {
         byte[][] encoded = EncodeTxs(count);
         IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
-        Rlp.RegisterDecoder(typeof(Transaction), new PayloadTestDecoder());
+        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, new PayloadTestDecoder(), original));
         try
         {
             Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
