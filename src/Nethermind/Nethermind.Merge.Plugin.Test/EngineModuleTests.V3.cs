@@ -267,18 +267,34 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid([Values(1, 31, 32, 64)] int transactionCount)
+    public async Task NewPayloadV3_EmptyRlpListTransaction_IsRejectedAsInvalid()
     {
         (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
         using MergeTestBlockchain disposeChain = chain;
         ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
-        payload.Transactions = Enumerable.Repeat(new byte[] { 0xC0 }, transactionCount).ToArray();
+        payload.Transactions = [[0xC0]];
 
         Hash256[] blobVersionedHashes = transactions.SelectMany(static tx => tx.BlobVersionedHashes ?? []).Select(static h => new Hash256(h!)).ToArray();
         ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
 
         AssertInvalidNewPayload(result, expectedValidationErrorPrefix: "Transaction 0 is not valid");
+    }
+
+    [Test]
+    public async Task NewPayloadV3_IntrinsicGasFailure_IsRejectedWithValidatorError([Values(31, 32)] int transactionCount)
+    {
+        (IEngineRpcModule rpcModule, string? payloadId, _, MergeTestBlockchain chain) = await BuildAndGetPayloadV3Result(Cancun.Instance);
+        using MergeTestBlockchain disposeChain = chain;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
+        payload.Transactions = Enumerable.Range(0, transactionCount).Select(i => TxDecoder.Instance.EncodeTx(
+            Build.A.Transaction.WithNonce((ulong)i).WithGasLimit(1).SignedAndResolved(TestItem.PrivateKeyA).TestObject,
+            RlpBehaviors.SkipTypedWrapping).Bytes).ToArray();
+        payload.BlockHash = payload.TryGetBlock().Data!.CalculateHash();
+
+        ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(payload, [], payload.ParentBeaconBlockRoot);
+
+        AssertInvalidNewPayload(result, expectedValidationErrorPrefix: Nethermind.Core.Messages.TxErrorMessages.IntrinsicGasTooLow);
     }
 
     [Test]

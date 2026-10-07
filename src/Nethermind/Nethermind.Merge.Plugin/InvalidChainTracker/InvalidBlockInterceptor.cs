@@ -21,9 +21,6 @@ public class InvalidBlockInterceptor(
     internal BlockValidator.TransactionValidation? PrepareTransactions(Block block) =>
         GetType() == typeof(InvalidBlockInterceptor) && blockValidator is BlockValidator validator ? validator.PrepareTransactions(block) : null;
 
-    internal bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error, BlockValidator.TransactionValidation transactions) =>
-        ((BlockValidator)blockValidator).ValidateOrphanedBlock(block, out error, transactions);
-
     public bool Validate(BlockHeader header, BlockHeader parent, bool isUncle, [NotNullWhen(false)] out string? error) =>
         TrackValidationResult(header, blockValidator.Validate(header, parent, isUncle, out error));
 

@@ -95,9 +95,6 @@ public class BlockValidator(
         return new(this, block, spec);
     }
 
-    internal bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? errorMessage, TransactionValidation transactions) =>
-        ValidateBlock<OnFlag>(block, null, out errorMessage, transactions: transactions);
-
     internal bool ValidateSuggestedBlock(Block block, BlockHeader parent, [NotNullWhen(false)] out string? errorMessage, bool validateHashes, TransactionValidation transactions) =>
         ValidateBlock<OffFlag>(block, parent, out errorMessage, validateHashes, transactions);
 
