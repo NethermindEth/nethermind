@@ -63,8 +63,11 @@ public class EraManifestGeneratorTests
         string[] eraFiles = Directory.GetFiles(MainnetTestDataPath, "*.era1").Order(StringComparer.Ordinal).ToArray();
         string[] accumulators = await File.ReadAllLinesAsync(Path.Combine(output.Path, EraExporter.AccumulatorFileName));
         string[] checksums = await File.ReadAllLinesAsync(Path.Combine(output.Path, EraExporter.ChecksumsFileName));
-        Assert.That(accumulators, Has.Length.EqualTo(eraFiles.Length));
-        Assert.That(checksums, Has.Length.EqualTo(eraFiles.Length));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accumulators, Has.Length.EqualTo(eraFiles.Length));
+            Assert.That(checksums, Has.Length.EqualTo(eraFiles.Length));
+        }
 
         for (int i = 0; i < eraFiles.Length; i++)
         {
