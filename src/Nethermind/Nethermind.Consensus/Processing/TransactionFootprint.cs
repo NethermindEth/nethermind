@@ -24,7 +24,8 @@ internal sealed class TransactionFootprint(
     StateEffect[] effects,
     in FootprintReceipt receipt,
     in TransactionResult result,
-    in ExecutionCounts counts)
+    in ExecutionCounts counts,
+    bool recordedOnParentState)
 {
     private readonly FootprintReceipt _receipt = receipt;
     private readonly TransactionResult _result = result;
@@ -44,10 +45,11 @@ internal sealed class TransactionFootprint(
 
     public bool Matches(IWorldState state)
     {
-        // A footprint is recorded against the block's parent state, which the main thread reads through the same
-        // pre-block cache. A precondition on an account, or on a slot of a contract, that has not changed since the block
-        // started therefore still holds; only keys the block has changed so far need reading.
-        bool skip = SkipUnchanged;
+        // A footprint recorded on the block's parent state, which the main thread reads through the same pre-block cache,
+        // still holds on an account or a slot the block has not changed so far; only the changed keys need reading. One
+        // recorded on the writes of runs warmed before it in the same scope (a sender's later transactions) or on an
+        // adjusted sender holds values the parent never had, and is compared in full.
+        bool skip = SkipUnchanged && recordedOnParentState;
         long skipped = 0, compared = 0;
         foreach (ref readonly AccountPrecondition account in accounts.AsSpan())
         {

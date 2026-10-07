@@ -1282,10 +1282,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         return true;
     }
 
+    /// <param name="onParentState">Whether nothing has run in <paramref name="scope"/> before, so it still holds the parent state.</param>
     private static void WarmupSingleTransaction(
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
+        bool onParentState,
         BlockState blockState,
         FootprintRecorder? recorder,
         CancellationTxTracer tracer,
@@ -1303,6 +1305,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (!worldState.AccountExists(senderAddress))
             {
                 worldState.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                onParentState = false;
             }
 
             // eip-2930; cancellation-responsive so an over-declared access list can't stall the end-of-block join.
@@ -1320,7 +1323,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             try
             {
                 result = blockState.Footprints is { } footprints && recorder is not null && BlockFootprints.IsRecordable(tx)
-                    ? WarmupWithFootprint(scope, tx, txIndex, blockState, footprints, recorder, tracer, cancellationToken)
+                    ? WarmupWithFootprint(scope, tx, txIndex, onParentState, blockState, footprints, recorder, tracer, cancellationToken)
                     : scope.TransactionProcessor.Warmup(tx, tracer);
             }
             finally
@@ -1348,6 +1351,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         IReadOnlyTxProcessingScope scope,
         Transaction tx,
         int txIndex,
+        bool onParentState,
         BlockState blockState,
         BlockFootprints footprints,
         FootprintRecorder recorder,
@@ -1357,8 +1361,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         TransactionResult result;
         // A heavy sender's transactions are warmed apart on the parent state; each starts at its own nonce.
         Address sender = tx.SenderAddress!;
-        if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
-        recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        if (recorder.GetNonce(sender) < tx.Nonce)
+        {
+            recorder.SetNonce(sender, tx.Nonce);
+            onParentState = false;
+        }
+
+        recorder.Start(blockState.PreWarmer, txIndex, onParentState, cancellationToken);
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
@@ -2374,10 +2383,13 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             CancellationTxTracer tracer = _queue.Tracer;
             FootprintRecorder? recorder = _env.Recorder;
 
+            // Only the scope's first run starts on the parent state; each later one runs on the writes of those before it.
+            bool onParentState = true;
             foreach ((int txIndex, Transaction tx) in transactions)
             {
                 if (token.IsCancellationRequested) return;
-                WarmupSingleTransaction(scope, tx, txIndex, blockState, recorder, tracer, token);
+                WarmupSingleTransaction(scope, tx, txIndex, onParentState, blockState, recorder, tracer, token);
+                onParentState = false;
             }
         }
 

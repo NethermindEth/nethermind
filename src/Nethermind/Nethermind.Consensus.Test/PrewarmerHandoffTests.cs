@@ -475,7 +475,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Progress progress = new() { MainThreadTxIndex = 1 };
             UInt256 before = worldState.GetBalance(TestItem.AddressC);
 
-            recorder.Start(progress, txIndex: 2, CancellationToken.None);
+            recorder.Start(progress, txIndex: 2, onParentState: true, CancellationToken.None);
             recorder.AddToBalance(TestItem.AddressC, 0x4e4d, Spec, out _);
             ITxTracer outcome = recorder.Outcome;
             using (Assert.EnterMultipleScope())

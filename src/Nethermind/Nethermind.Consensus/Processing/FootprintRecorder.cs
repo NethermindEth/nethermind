@@ -25,6 +25,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 {
     private bool _active;
     private bool _opaque;
+    private bool _onParentState;
 
     private readonly Dictionary<AddressAsKey, int> _accountIndex = [];
     private AccountPrecondition[] _accounts = new AccountPrecondition[32];
@@ -47,8 +48,10 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     public OutcomeTracer Outcome { get; } = new();
 
-    public void Start(IBlockProcessingProgress progress, int txIndex, CancellationToken token)
+    /// <param name="onParentState">Whether the run starts on the block's parent state, with nothing written in the scope before it.</param>
+    public void Start(IBlockProcessingProgress progress, int txIndex, bool onParentState, CancellationToken token)
     {
+        _onParentState = onParentState;
         _accountIndex.Clear();
         _accountCount = 0;
         _slotIndex.Clear();
@@ -134,7 +137,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         StateEffect[] effects = _effectCount == 0 ? [] : _effects.AsSpan(0, _effectCount).ToArray();
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value);
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value, _onParentState);
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
