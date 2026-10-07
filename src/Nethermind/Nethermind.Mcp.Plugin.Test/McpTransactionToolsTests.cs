@@ -23,6 +23,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Eth.RpcTransaction;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Data;
@@ -599,8 +600,19 @@ public class McpTransactionToolsTests
         Assert.That(summary, Does.Not.Contain("received"));
     }
 
+    [Test]
+    public async Task Truncated_movements_do_not_infer_a_swap_when_a_refund_is_beyond_the_display_limit(
+        [Values("explain_transaction", "simulate_transaction")] string tool)
+    {
+        List<McpTokenMovement> movements = [MixedSwapMove(SwapTokens[0], 1, 2, "100000000"), MixedSwapMove(SwapTokens[1], 2, 1, "1000000000000000000")];
+        while (movements.Count < McpTransactionTools.MaxTokenTransfers) movements.Add(MixedSwapMove(SwapTokens[0], 2, 3, "1"));
+        movements.Add(MixedSwapMove(SwapTokens[0], 2, 1, "100000000"));
+        string summary = await ExplainMovementSummary(movements, tool: tool);
+        Assert.That(summary, Does.Not.Contain("swapped"));
+    }
+
     private static async Task<string> ExplainMovementSummary(List<McpTokenMovement> movements, UInt256 value = default,
-        List<McpValueTransfer>? nativeTransfers = null, byte? status = 1)
+        List<McpValueTransfer>? nativeTransfers = null, byte? status = 1, string tool = "explain_transaction")
     {
         await using McpTestNode node = await McpTestNode.Create(configureContainer: builder => builder
             .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
@@ -641,6 +653,27 @@ public class McpTransactionToolsTests
         FaultInjectingRpcModuleProvider provider = (FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>();
         provider.Override(nameof(IEthRpcModule.eth_getTransactionByHash), eth);
         provider.Override(nameof(IEthRpcModule.eth_call), eth);
+        if (tool == "simulate_transaction")
+        {
+            eth.eth_getHeaderByNumber(Arg.Any<BlockParameter>()).Returns(ResultWrapper<BlockHeaderForRpc?>.Success(
+                new BlockHeaderForRpc(block.Header, node.Chain.SpecProvider)));
+            SimulateBlockResult<SimulateCallResult> simulated = new(block, false, node.Chain.SpecProvider)
+            {
+                Calls = [new SimulateCallResult
+                {
+                    Status = 1,
+                    ReturnData = [],
+                    GasUsed = 50_000,
+                    Logs = movements.Select(MovementLog).Select(static log => new Log
+                    {
+                        Address = log.Address!, Data = log.Data!, Topics = log.Topics!
+                    }).ToArray()
+                }]
+            };
+            eth.eth_simulateV1(Arg.Any<SimulatePayload<TransactionForRpc>>(), Arg.Any<BlockParameter?>())
+                .Returns(ResultWrapper<IReadOnlyList<SimulateBlockResult<SimulateCallResult>>>.Success([simulated]));
+            provider.Override(nameof(IEthRpcModule.eth_simulateV1), eth);
+        }
         if (nativeTransfers is not null)
         {
             IDebugRpcModule debug = Substitute.For<IDebugRpcModule>();
@@ -655,9 +688,18 @@ public class McpTransactionToolsTests
         }
         await using McpClient client = await node.CreateClient();
 
-        CallToolResult call = await McpToolCalls.Call(client, "explain_transaction", [("hash", TestItem.KeccakA.ToString())]);
+        CallToolResult call = await McpToolCalls.Call(client, tool, tool == "explain_transaction"
+            ? [("hash", TestItem.KeccakA.ToString())] : [("to", SwapAccount(4).ToString())]);
         JsonElement result = McpAssert.Success(call);
-        await McpToolCalls.AssertConformsToOutputSchema(client, "explain_transaction", call);
+        await McpToolCalls.AssertConformsToOutputSchema(client, tool, call);
+        if (movements.Count > McpTransactionTools.MaxTokenTransfers)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result.TryGetProperty("netTokenFlows", out _), Is.False);
+                Assert.That(result.GetProperty("notes").EnumerateArray().Select(static n => n.GetString()), Has.Some.Contains("truncated"));
+            }
+        }
         return result.GetProperty("summary").GetString()!;
     }
 
@@ -915,9 +957,12 @@ public class McpTransactionToolsTests
         CallToolResult call = await McpToolCalls.Call(client, "diagnose_transaction", [("hash", tx.Hash!.ToString())]);
         JsonElement result = McpAssert.Success(call);
 
-        Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("mined"));
-        Assert.That(result.GetProperty("succeeded").Deserialize<bool?>(), Is.EqualTo(succeeded));
-        Assert.That(result.TryGetProperty("transactionIndex", out _), Is.False);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("mined"));
+            Assert.That(result.GetProperty("succeeded").Deserialize<bool?>(), Is.EqualTo(succeeded));
+            Assert.That(result.TryGetProperty("transactionIndex", out _), Is.False);
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }
 
@@ -1100,11 +1145,14 @@ public class McpTransactionToolsTests
             [(byAddress ? "address" : "hash", byAddress ? TestItem.AddressB.ToString() : later.Hash!.ToString())]);
         JsonElement result = McpAssert.Success(call);
         JsonElement diagnosis = byAddress ? result.GetProperty("transactions")[1] : result;
-        Assert.That(diagnosis.GetProperty("status").GetString(), Is.EqualTo("pending_blocked"));
-        Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("nonce").GetString(), Is.EqualTo("5"));
-        Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("hash").GetString(), Is.EqualTo(blocker.Hash!.ToString()));
-        Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("reason").GetString(), Is.EqualTo(blob ? "blob_underpriced" : "underpriced"));
-        Assert.That(diagnosis.GetProperty("recommendations")[0].GetString(), Does.Contain("nonce 5").And.Contain("first"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(diagnosis.GetProperty("status").GetString(), Is.EqualTo("pending_blocked"));
+            Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("nonce").GetString(), Is.EqualTo("5"));
+            Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("hash").GetString(), Is.EqualTo(blocker.Hash!.ToString()));
+            Assert.That(diagnosis.GetProperty("blockedBy").GetProperty("reason").GetString(), Is.EqualTo(blob ? "blob_underpriced" : "underpriced"));
+            Assert.That(diagnosis.GetProperty("recommendations")[0].GetString(), Does.Contain("nonce 5").And.Contain("first"));
+        }
         await McpToolCalls.AssertConformsToOutputSchema(client, "diagnose_transaction", call);
     }
 
@@ -1603,7 +1651,7 @@ public class McpTransactionToolsTests
             """;
         JsonElement result = await Success("simulate_transaction",
             ("from", TestItem.AddressB.ToString()),
-            ("calls", JsonDocument.Parse(calls).RootElement));
+            ("calls", JsonSerializer.Deserialize<JsonElement>(calls)));
 
         JsonElement results = result.GetProperty("calls");
         using (Assert.EnterMultipleScope())
@@ -1623,7 +1671,7 @@ public class McpTransactionToolsTests
         string overrides = $$$"""{"{{{empty}}}":{"code":"{{{McpTxScenario.RevertRuntimeCode.ToHexString(true)}}}","balance":"0x1"}}""";
         JsonElement result = await Success("simulate_transaction",
             ("to", empty.ToString()),
-            ("stateOverrides", JsonDocument.Parse(overrides).RootElement));
+            ("stateOverrides", JsonSerializer.Deserialize<JsonElement>(overrides)));
 
         Assert.That(result.GetProperty("status").GetString(), Is.EqualTo("reverted"));
     }
@@ -1646,13 +1694,13 @@ public class McpTransactionToolsTests
             [("to", to), ("gas", (_node.Config.MaxCallGas + 1).ToString())],
             [("to", to), ("gas", "0")],
             [("to", to), ("data", "0x" + new string('a', 2 * (_node.Config.MaxCallDataSize + 1)))],
-            [("calls", JsonDocument.Parse(nineCalls).RootElement)],
-            [("calls", JsonDocument.Parse(excessiveBatchGas).RootElement)],
-            [("to", to), ("calls", JsonDocument.Parse($$"""[{"to":"{{to}}"}]""").RootElement)],
-            [("calls", JsonDocument.Parse($$"""[{"to":"{{to}}","nonce":"0x1"}]""").RootElement)],
-            [("to", to), ("stateOverrides", JsonDocument.Parse(nineAccounts.ToString()).RootElement)],
-            [("to", to), ("stateOverrides", JsonDocument.Parse($$$$"""{"{{{{to}}}}":{"state":{}}}""").RootElement)],
-            [("to", to), ("stateOverrides", JsonDocument.Parse($$$"""{"{{{to}}}":{"movePrecompileToAddress":"{{{to}}}"}}""").RootElement)],
+            [("calls", JsonSerializer.Deserialize<JsonElement>(nineCalls))],
+            [("calls", JsonSerializer.Deserialize<JsonElement>(excessiveBatchGas))],
+            [("to", to), ("calls", JsonSerializer.Deserialize<JsonElement>($$"""[{"to":"{{to}}"}]"""))],
+            [("calls", JsonSerializer.Deserialize<JsonElement>($$"""[{"to":"{{to}}","nonce":"0x1"}]"""))],
+            [("to", to), ("stateOverrides", JsonSerializer.Deserialize<JsonElement>(nineAccounts.ToString()))],
+            [("to", to), ("stateOverrides", JsonSerializer.Deserialize<JsonElement>($$$$"""{"{{{{to}}}}":{"state":{}}}"""))],
+            [("to", to), ("stateOverrides", JsonSerializer.Deserialize<JsonElement>($$$"""{"{{{to}}}":{"movePrecompileToAddress":"{{{to}}}"}}"""))],
             [("data", "0x")],
             [("to", to), ("block", "pending")],
         ];
@@ -1672,7 +1720,7 @@ public class McpTransactionToolsTests
         await using McpClient client = await node.CreateClient();
 
         CallToolResult result = await McpToolCalls.Call(client, "simulate_transaction",
-            [("calls", JsonDocument.Parse(calls).RootElement)]);
+            [("calls", JsonSerializer.Deserialize<JsonElement>(calls))]);
 
         JsonElement error = McpAssert.Error(result, McpAssert.InvalidInput);
         Assert.That(error.GetProperty("message").GetString(), Does.Contain("cannot assign at least 1 gas"));
@@ -1695,6 +1743,22 @@ public class McpTransactionToolsTests
     [Test]
     public async Task Simulate_unknown_block_is_not_found() =>
         McpAssert.Error(await Call("simulate_transaction", ("to", _scenario.TokenContract.ToString()), ("block", "0xffffff")), McpAssert.NotFound);
+
+    [Test]
+    public async Task Block_summary_classifies_a_deposit_by_its_destination()
+    {
+        await using McpTestNode node = await McpTestNode.Create(configureContainer: builder => builder
+            .AddDecorator<IRpcModuleProvider>(static (_, inner) => new FaultInjectingRpcModuleProvider(inner)));
+        Block block = (await node.Seed()).Block;
+        IEthRpcModule eth = Substitute.For<IEthRpcModule>();
+        BlockForRpc resultBlock = new(block, true, node.Chain.SpecProvider) { Transactions = [new DepositRpc()] };
+        eth.eth_getBlockByNumber(Arg.Any<BlockParameter>(), true).Returns(ResultWrapper<BlockForRpc>.Success(resultBlock));
+        eth.eth_getBlockReceipts(Arg.Any<BlockParameter>()).Returns(ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success([]));
+        ((FaultInjectingRpcModuleProvider)node.Chain.Container.Resolve<IRpcModuleProvider>()).Override(nameof(IEthRpcModule.eth_getBlockByNumber), eth);
+        await using McpClient client = await node.CreateClient();
+        JsonElement result = McpAssert.Success(await McpToolCalls.Call(client, "block_summary", [("block", "latest")]));
+        Assert.That(result.GetProperty("contractCreations").GetInt32(), Is.Zero);
+    }
 
     [Test]
     public async Task Block_summary_of_the_scenario_block()

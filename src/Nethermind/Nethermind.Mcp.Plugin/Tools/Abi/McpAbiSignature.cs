@@ -453,9 +453,9 @@ public sealed class McpAbiSignature
         private static bool TrySuffix(string name, string prefix, out int value)
         {
             value = 0;
+            if (!name.StartsWith(prefix, StringComparison.Ordinal)) return false;
             ReadOnlySpan<char> digits = name.AsSpan(prefix.Length);
-            return name.StartsWith(prefix, StringComparison.Ordinal)
-                && digits.Length is > 0 and <= 3
+            return digits.Length is > 0 and <= 3
                 && digits[0] != '0'
                 && int.TryParse(digits, NumberStyles.None, CultureInfo.InvariantCulture, out value);
         }

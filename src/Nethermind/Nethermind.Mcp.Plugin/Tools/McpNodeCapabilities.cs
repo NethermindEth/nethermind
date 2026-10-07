@@ -11,6 +11,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.History;
+using Nethermind.Init;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -78,11 +79,11 @@ public sealed class McpNodeCapabilities(
     IEthCapabilitiesProvider? capabilitiesProvider = null,
     IStateReader? stateReader = null,
     IReceiptStorage? receiptStorage = null,
-    IWorldStateManager? worldStateManager = null,
     IEthSyncingInfo? syncingInfo = null,
     IHistoryPruner? historyPruner = null,
     Lazy<INodeStorageFactory>? nodeStorageFactory = null,
-    IHistoryConfig? historyConfig = null)
+    IHistoryConfig? historyConfig = null,
+    FlatStateActivationPolicy? flatStateActivationPolicy = null)
 {
     // Availability is read on every failing check and by node_status; a short cache keeps bursts cheap while staying fresh.
     private const long CacheMilliseconds = 1000;
@@ -479,7 +480,7 @@ public sealed class McpNodeCapabilities(
 
     private McpStateStorage DetectStorage()
     {
-        if (worldStateManager is FlatWorldStateManager)
+        if (flatStateActivationPolicy?.ShouldTurnOnFlatDb() == true)
         {
             if (!flatDbConfig.HistoryEnabled)
             {

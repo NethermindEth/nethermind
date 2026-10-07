@@ -193,10 +193,13 @@ public class McpPriceSemanticsTests
     public void Real_feed_tables_resolve_symbols_and_only_their_verified_addresses(ulong chain, string symbol, string address, string pair)
     {
         McpChainProfile profile = Profile(chain);
-        Assert.That(profile.Tokens.Single(token => token.Symbol == symbol).Address, Is.EqualTo(new Address(address)));
-        Assert.That(profile.PriceFeed(symbol)?.Symbol, Is.EqualTo(pair));
-        Assert.That(profile.PriceFeed(address), Is.SameAs(profile.PriceFeed(symbol)));
-        Assert.That(profile.PriceFeed(TestItem.AddressA.ToString()), Is.Null);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(profile.Tokens.Single(token => token.Symbol == symbol).Address, Is.EqualTo(new Address(address)));
+            Assert.That(profile.PriceFeed(symbol)?.Symbol, Is.EqualTo(pair));
+            Assert.That(profile.PriceFeed(address), Is.SameAs(profile.PriceFeed(symbol)));
+            Assert.That(profile.PriceFeed(TestItem.AddressA.ToString()), Is.Null);
+        }
     }
 
     [TestCase(1UL, "WBTC", "BTC/USD (WBTC assumed 1:1)")]

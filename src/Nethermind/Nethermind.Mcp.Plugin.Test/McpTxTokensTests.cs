@@ -153,16 +153,24 @@ public class McpTxTokensTests
     [Test]
     public void Token_lookup_checks_the_deadline_before_every_metadata_call()
     {
-        IEthRpcModule eth = SlowToken(TimeSpan.FromMilliseconds(200), out Func<int> calls);
-        Stopwatch clock = Stopwatch.StartNew();
+        IEthRpcModule eth = SlowToken(TimeSpan.Zero, out _);
+        int calls = 0;
+        bool expired = false;
+        eth.eth_call(Arg.Any<SignableTransactionForRpc>(), Arg.Any<BlockParameter?>(), Arg.Any<Dictionary<Address, AccountOverride>?>(), Arg.Any<BlockOverride?>())
+            .Returns(_ =>
+            {
+                calls++;
+                expired = true;
+                return ResultWrapper<HexBytes>.Success(new HexBytes(TestContracts.AbiString("SLOW")));
+            });
 
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(
             new McpTokenMetadata(), eth, [TestItem.AddressA], BlockParameter.Latest, 10, CancellationToken.None,
-            () => clock.Elapsed > TimeSpan.FromMilliseconds(50));
+            () => expired);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(calls(), Is.EqualTo(1), "no further eth_call is started once the deadline passed");
+            Assert.That(calls, Is.EqualTo(1), "no further eth_call is started once the deadline passed");
             Assert.That(found, Is.Empty, "an interrupted lookup yields no metadata");
             Assert.That(skipped, Is.EqualTo(1), "and is reported as not looked up");
         }
@@ -183,9 +191,12 @@ public class McpTxTokensTests
         (Dictionary<AddressAsKey, McpTokenInfo> found, int skipped) = McpTxTokens.LookUp(metadata, eth,
             [TestItem.AddressA, .. cached], BlockParameter.Latest, 1, CancellationToken.None, () => spent);
 
-        Assert.That(found.Keys.Select(static key => (Address)key), Is.EquivalentTo(cached), "cached tokens are independent of the RPC count and time budgets");
-        Assert.That(skipped, Is.EqualTo(1));
-        Assert.That(eth.ReceivedCalls().Count(), Is.EqualTo(interrupted ? 2 : 0), "only the uncached token may start RPC calls");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(found.Keys.Select(static key => (Address)key), Is.EquivalentTo(cached), "cached tokens are independent of the RPC count and time budgets");
+            Assert.That(skipped, Is.EqualTo(1));
+            Assert.That(eth.ReceivedCalls().Count(), Is.EqualTo(interrupted ? 2 : 0), "only the uncached token may start RPC calls");
+        }
     }
 
     [Test]
@@ -604,15 +615,16 @@ public class McpTxTokensTests
                 TimeSpan.FromMilliseconds(50), token);
             return executor.Success(new { price = quote?.PriceUsd, reason });
         }, CancellationToken.None);
-        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
         CallToolResult result;
         try
         {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
             result = await call.WaitAsync(TimeSpan.FromSeconds(5));
         }
         finally
         {
             release.Set();
+            await call.WaitAsync(TimeSpan.FromSeconds(5));
         }
 
         Assert.That(McpAssert.Success(result).GetProperty("reason").GetString(), Does.Contain("deadline"));

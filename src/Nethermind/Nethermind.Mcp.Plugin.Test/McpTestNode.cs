@@ -62,18 +62,29 @@ internal sealed class McpTestNode : IAsyncDisposable
     /// <param name="configureContainer">Extra container overrides, applied after the MCP module.</param>
     /// <param name="withAuth">Writes <see cref="TestToken"/> to a temporary file and sets it as <see cref="IMcpConfig.AuthTokenFile"/>.</param>
     /// <param name="start">Whether to start the MCP listener.</param>
+    /// <param name="cancellationToken">Cancels token-file writes and listener startup.</param>
     public static async Task<McpTestNode> Create(
         Action<McpConfig>? configure = null,
         Action<ContainerBuilder>? configureContainer = null,
         bool withAuth = false,
-        bool start = true)
+        bool start = true,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         McpConfig config = new() { Enabled = true, Port = 0 };
         TempPath? tokenFile = null;
         if (withAuth)
         {
             tokenFile = TempPath.GetTempFile();
-            await File.WriteAllTextAsync(tokenFile.Path, TestToken);
+            try
+            {
+                await File.WriteAllTextAsync(tokenFile.Path, TestToken, cancellationToken);
+            }
+            catch
+            {
+                tokenFile.Dispose();
+                throw;
+            }
             config.AuthTokenFile = tokenFile.Path;
         }
 
@@ -101,7 +112,7 @@ internal sealed class McpTestNode : IAsyncDisposable
         {
             try
             {
-                await node.Host.StartAsync(CancellationToken.None);
+                await node.Host.StartAsync(cancellationToken);
             }
             catch
             {
@@ -426,9 +437,9 @@ internal static class McpHttp
     }
 
     /// <summary>Reads a JSON-RPC response from either a JSON body or a single-event SSE stream.</summary>
-    public static async Task<JsonElement> ReadJsonRpc(HttpResponseMessage response)
+    public static async Task<JsonElement> ReadJsonRpc(HttpResponseMessage response, CancellationToken cancellationToken = default)
     {
-        string body = await response.Content.ReadAsStringAsync();
+        string body = await response.Content.ReadAsStringAsync(cancellationToken);
         string json = body;
         if (response.Content.Headers.ContentType?.MediaType == "text/event-stream")
         {

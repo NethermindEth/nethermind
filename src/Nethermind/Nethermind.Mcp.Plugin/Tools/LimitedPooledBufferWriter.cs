@@ -10,8 +10,9 @@ namespace Nethermind.Mcp.Plugin.Tools;
 /// </summary>
 /// <remarks>
 /// <see cref="System.Text.Json.Utf8JsonWriter"/> commits its pending bytes through <see cref="Advance"/> every time it
-/// needs more room, so an oversized payload is rejected with <see cref="ResultTooLargeException"/> after at most about
-/// twice the limit has been buffered, instead of being materialized in full first.
+/// needs more room. Capacity requests are bounded to six times the byte limit plus 4096 bytes for the JSON writer's
+/// escaping estimate and minimum growth; the pool may round rentals up. <see cref="Advance"/> enforces the exact
+/// serialized byte limit, rejecting oversized payloads before they are materialized in full.
 /// </remarks>
 internal sealed class LimitedPooledBufferWriter(int maxSize) : IBufferWriter<byte>, IDisposable
 {
@@ -81,11 +82,13 @@ internal sealed class LimitedPooledBufferWriter(int maxSize) : IBufferWriter<byt
             throw new ResultTooLargeException();
         }
 
-        long newSize = Math.Max((long)_buffer.Length * 2, (long)_written + required);
-        if (newSize > Array.MaxLength)
+        long maximumCapacity = Math.Min(Array.MaxLength, 6L * maxSize + 4096);
+        long requiredCapacity = (long)_written + required;
+        if (requiredCapacity > maximumCapacity)
         {
             throw new ResultTooLargeException();
         }
+        long newSize = Math.Min(maximumCapacity, Math.Max((long)_buffer.Length * 2, requiredCapacity));
 
         byte[] newBuffer = ArrayPool<byte>.Shared.Rent((int)newSize);
         _buffer.AsSpan(0, _written).CopyTo(newBuffer);

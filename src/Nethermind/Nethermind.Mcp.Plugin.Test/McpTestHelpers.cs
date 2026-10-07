@@ -19,9 +19,9 @@ internal static class McpToolCalls
     }
 
     /// <summary>Asserts that a successful <paramref name="result"/> of <paramref name="toolName"/> conforms to the output schema the server advertises for it.</summary>
-    public static async Task AssertConformsToOutputSchema(McpClient client, string toolName, CallToolResult result)
+    public static async Task AssertConformsToOutputSchema(McpClient client, string toolName, CallToolResult result, CancellationToken cancellationToken = default)
     {
-        McpClientTool tool = (await client.ListToolsAsync()).Single(t => t.Name == toolName);
+        McpClientTool tool = (await client.ListToolsAsync(cancellationToken: cancellationToken)).Single(t => t.Name == toolName);
         Assert.That(tool.ProtocolTool.OutputSchema, Is.Not.Null, $"{toolName} must declare an output schema");
         Assert.That(result.StructuredContent, Is.Not.Null, $"{toolName} must return structured content");
         McpSchemaValidator.AssertConforms(tool.ProtocolTool.OutputSchema!.Value, result.StructuredContent!.Value);

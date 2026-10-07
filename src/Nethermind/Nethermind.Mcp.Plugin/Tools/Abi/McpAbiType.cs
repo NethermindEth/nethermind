@@ -69,18 +69,27 @@ public sealed class McpAbiType
         Element = element;
         Components = components ?? [];
         CanonicalName = BuildName();
+        bool tupleDynamic = false;
+        long tupleHeadSize = 0;
+        int tupleDepth = 0;
+        foreach (McpAbiParam component in Components)
+        {
+            tupleDynamic |= component.Type.IsDynamic;
+            tupleHeadSize += component.Type.HeadSize;
+            tupleDepth = Math.Max(tupleDepth, component.Type.Depth);
+        }
         IsDynamic = kind switch
         {
             McpAbiTypeKind.Bytes or McpAbiTypeKind.String or McpAbiTypeKind.Array => true,
             McpAbiTypeKind.FixedArray => element!.IsDynamic,
-            McpAbiTypeKind.Tuple => Components.Any(static c => c.Type.IsDynamic),
+            McpAbiTypeKind.Tuple => tupleDynamic,
             _ => false
         };
 
         long encodedHeadSize = kind switch
         {
             McpAbiTypeKind.FixedArray => (long)size * element!.HeadSize,
-            McpAbiTypeKind.Tuple => Components.Sum(static c => (long)c.Type.HeadSize),
+            McpAbiTypeKind.Tuple => tupleHeadSize,
             _ => WordSize
         };
 
@@ -93,7 +102,7 @@ public sealed class McpAbiType
         Depth = kind switch
         {
             McpAbiTypeKind.Array or McpAbiTypeKind.FixedArray => element!.Depth + 1,
-            McpAbiTypeKind.Tuple => 1 + (Components.Count == 0 ? 0 : Components.Max(static c => c.Type.Depth)),
+            McpAbiTypeKind.Tuple => 1 + tupleDepth,
             _ => 0
         };
 

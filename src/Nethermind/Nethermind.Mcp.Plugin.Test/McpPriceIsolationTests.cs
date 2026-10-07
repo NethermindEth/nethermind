@@ -58,14 +58,20 @@ public class McpPriceIsolationTests
         switch (tool)
         {
             case "fee_estimate":
-                Assert.That(result.GetProperty("transferCost").TryGetProperty("valueUsd", out _), Is.False);
-                Assert.That(result.GetProperty("usdNote").GetString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.GetProperty("transferCost").TryGetProperty("valueUsd", out _), Is.False);
+                    Assert.That(result.GetProperty("usdNote").GetString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+                }
                 break;
             case "token_balances":
-                Assert.That(result.GetProperty("tokens").GetArrayLength(), Is.EqualTo(1));
-                Assert.That(result.GetProperty("tokens")[0].GetProperty("symbol").GetString(), Is.EqualTo("WETH"));
-                Assert.That(result.TryGetProperty("omitted", out _), Is.False);
-                Assert.That(result.GetProperty("usdNotes").ToString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(result.GetProperty("tokens").GetArrayLength(), Is.EqualTo(1));
+                    Assert.That(result.GetProperty("tokens")[0].GetProperty("symbol").GetString(), Is.EqualTo("WETH"));
+                    Assert.That(result.TryGetProperty("omitted", out _), Is.False);
+                    Assert.That(result.GetProperty("usdNotes").ToString(), Does.Contain("USD omitted because the price lookup deadline was reached."));
+                }
                 break;
             default:
                 Assert.That(result.GetProperty("tokenTransfers")[0].TryGetProperty("symbol", out JsonElement symbol) ? symbol.GetString() : null, Is.EqualTo("WETH"));

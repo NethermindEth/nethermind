@@ -103,10 +103,10 @@ public class McpConfigValidatorTests
         config.Host = host;
 
         using McpListenerSettings settings = McpConfigValidator.Load(config, EnabledRpc());
+        Assert.That(settings.Certificate, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(settings.IsRemote, Is.True);
-            Assert.That(settings.Certificate, Is.Not.Null);
             Assert.That(settings.Certificate!.HasPrivateKey, Is.True);
             Assert.That(settings.AuthToken, Is.EqualTo(ValidToken));
             Assert.That(settings.AllowedHosts, Is.EqualTo(new[] { new McpAllowedHost("node.example.com", null) }));

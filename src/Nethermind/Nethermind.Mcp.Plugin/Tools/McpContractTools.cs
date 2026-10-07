@@ -6,6 +6,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using ModelContextProtocol.Protocol;
@@ -14,6 +15,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Facade.Eth.RpcTransaction;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -850,6 +852,10 @@ internal sealed class McpContractTools(
 
     private (string Standard, string Evidence) DetectStandard(IEthRpcModule eth, Address address, BlockParameter block, McpTokenInfo? info, UInt256? totalSupply)
     {
+        if (Erc165TransactionGas(address, Erc165Id, block) > _maxCallGas)
+        {
+            return ("unknown", "The configured call gas cap prevents a full ERC-165 interface probe.");
+        }
         if (SupportsInterface(eth, address, Erc165Id, block) && !SupportsInterface(eth, address, InvalidInterfaceId, block))
         {
             if (SupportsInterface(eth, address, Erc721Id, block)) return (McpKnownAbi.Erc721, "supportsInterface(0x80ac58cd) is true (ERC-165)");
@@ -871,8 +877,19 @@ internal sealed class McpContractTools(
     {
         byte[] word = new byte[32];
         interfaceId.CopyTo(word, 0);
-        CallOutcome outcome = CallContract(eth, address, Concat(SupportsInterfaceSelector, word), block, Math.Min(Erc165Gas, _maxCallGas));
+        byte[] input = Concat(SupportsInterfaceSelector, word);
+        CallOutcome outcome = CallContract(eth, address, input, block, Erc165TransactionGas(address, interfaceId, block));
         return ReturnsTrue(outcome.Data);
+    }
+
+    private ulong Erc165TransactionGas(Address target, byte[] interfaceId, BlockParameter block)
+    {
+        byte[] word = new byte[32];
+        interfaceId.CopyTo(word, 0);
+        Transaction probe = new() { To = target, Data = Concat(SupportsInterfaceSelector, word) };
+        IReleaseSpec spec = specProvider.GetSpec(blockFinder.SearchForHeader(block).Object!);
+        EthereumIntrinsicGas intrinsic = IntrinsicGasCalculator.Calculate(probe, spec);
+        return Math.Max(intrinsic.FloorGas, checked(intrinsic.Standard + Erc165Gas));
     }
 
     private JsonObject? DetectProxy(IEthRpcModule eth, Address address, byte[] code, BlockParameter block)
@@ -1071,8 +1088,13 @@ internal sealed class McpContractTools(
             cancellation.ThrowIfCancellationRequested();
             byte[] interfaceWord = new byte[32];
             McpEns.ResolveSelector.CopyTo(interfaceWord, 0);
-            CallOutcome interfaceCall = CallContract(eth, parentResolver, Concat(SupportsInterfaceSelector, interfaceWord), block,
-                Math.Min(Erc165Gas, _maxCallGas));
+            ulong interfaceGas = Erc165TransactionGas(parentResolver, McpEns.ResolveSelector, block);
+            if (interfaceGas > _maxCallGas)
+            {
+                return new EnsResolution(node, owner, parentResolver, null, "none",
+                    "The configured call gas cap prevents a full ERC-165 wildcard interface probe.");
+            }
+            CallOutcome interfaceCall = CallContract(eth, parentResolver, Concat(SupportsInterfaceSelector, interfaceWord), block, interfaceGas);
             if (interfaceCall.Transient)
             {
                 return new EnsResolution(node, owner, parentResolver, null, "none", null, Transient: true);
@@ -1128,15 +1150,15 @@ internal sealed class McpContractTools(
                 block, UniversalResolverCallGas);
             if (outcome.Data is { Length: > 0 } data)
             {
-                return McpAbiCodec.TryDecode([McpAbiType.String, McpAbiType.Address, McpAbiType.Address], data, out object?[]? values, out _)
-                    && values[0] is string { Length: > 0 } primary
+                return McpAbiCodec.TryDecode([McpAbiType.Bytes, McpAbiType.Address, McpAbiType.Address], data, out object?[]? values, out _)
+                    && DecodePrimaryName(values[0]) is { Length: > 0 } primary
                     ? PrimaryName(primary, verified: true)
                     : null;
             }
 
             if (outcome.RevertData is { Length: >= 4 } revert && revert.AsSpan(0, 4).SequenceEqual(McpEns.ReverseAddressMismatchSelector)
-                && McpAbiCodec.TryDecode([McpAbiType.String, McpAbiType.Bytes], revert.AsSpan(4), out object?[]? mismatch, out _)
-                && mismatch[0] is string { Length: > 0 } claimed)
+                && McpAbiCodec.TryDecode([McpAbiType.Bytes, McpAbiType.Bytes], revert.AsSpan(4), out object?[]? mismatch, out _)
+                && DecodePrimaryName(mismatch[0]) is { Length: > 0 } claimed)
             {
                 return PrimaryName(claimed, verified: false);
             }
@@ -1149,6 +1171,21 @@ internal sealed class McpContractTools(
         }
 
         return chain.EnsRegistryAddress is { } registry ? ReverseResolveViaRegistry(eth, registry, account, block, cancellation) : null;
+    }
+
+    // ABI strings normally sanitize display text; ENSIP-19 must verify the resolver's original UTF-8 name.
+    private static string? DecodePrimaryName(object? value)
+    {
+        if (value is not string rawHex || rawHex.Length > 2 + MaxEnsNameLength * 8) return null;
+        try
+        {
+            string name = new UTF8Encoding(false, true).GetString(Convert.FromHexString(rawHex.AsSpan(2)));
+            return name.Length <= MaxEnsNameLength ? name : null;
+        }
+        catch (DecoderFallbackException)
+        {
+            return null;
+        }
     }
 
     // A primary name is shown as verified only if it also passes this tool's strict normalisation unchanged; anything else is shown sanitised and unverified.
@@ -1180,15 +1217,15 @@ internal sealed class McpContractTools(
 
         cancellation.ThrowIfCancellationRequested();
         byte[]? data = CallContract(eth, resolver, Concat(McpEns.NameSelector, reverseNode.Bytes.ToArray()), block, InternalGas).Data;
-        if (data is null || !McpAbiCodec.TryDecode([McpAbiType.String], data, out object?[]? values, out _)
-            || values[0] is not string { Length: > 0 and <= MaxEnsNameLength } reverseName)
+        if (data is null || !McpAbiCodec.TryDecode([McpAbiType.Bytes], data, out object?[]? values, out _)
+            || DecodePrimaryName(values[0]) is not { Length: > 0 } reverseName)
         {
             return null;
         }
 
         // A reverse record is a free-form claim; it only counts once the name resolves back to the same address.
         // A verified name is normalized (a-z, 0-9, '-', '_' and dots, at most 255 characters), so it is shown exactly as verified.
-        string? verifiedName = McpEns.TryNormalize(reverseName, out string? normalized, out _)
+        string? verifiedName = McpEns.TryNormalize(reverseName, out string? normalized, out _) && normalized == reverseName
             && ResolveViaRegistry(eth, registry, normalized, block, cancellation).Resolved == account ? normalized : null;
         return new JsonObject
         {

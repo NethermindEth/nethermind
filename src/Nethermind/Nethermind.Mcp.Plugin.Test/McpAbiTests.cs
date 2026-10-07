@@ -64,6 +64,9 @@ public class McpAbiTests
 
     [TestCase("", "empty")]
     [TestCase("foo(MyStruct)", "unknown type 'MyStruct'")]
+    [TestCase("f(a)", "unknown type 'a'")]
+    [TestCase("f(Foo)", "unknown type 'Foo'")]
+    [TestCase("f(int0)", "unknown type 'int0'")]
     [TestCase("foo(uint7)", "integer width 7")]
     [TestCase("foo(uint264)", "integer width 264")]
     [TestCase("foo(bytes33)", "bytes33")]
@@ -81,8 +84,11 @@ public class McpAbiTests
     {
         bool parsed = McpAbiSignature.TryParse(text, McpAbiSignatureKind.Function, out _, out string? error);
 
-        Assert.That(parsed, Is.False);
-        Assert.That(error, Does.Contain(expected));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parsed, Is.False);
+            Assert.That(error, Does.Contain(expected));
+        }
     }
 
     [Test]

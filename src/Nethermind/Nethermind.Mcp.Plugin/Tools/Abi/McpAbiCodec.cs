@@ -224,9 +224,16 @@ public static class McpAbiCodec
         null => "null",
         string s => s,
         bool b => b ? "true" : "false",
-        List<object?> list => "[" + string.Join(", ", list.Select(FormatValue)) + "]",
+        List<object?> list => FormatList(list),
         _ => value.ToString() ?? string.Empty
     };
+
+    private static string FormatList(List<object?> list)
+    {
+        string[] values = new string[list.Count];
+        for (int i = 0; i < list.Count; i++) values[i] = FormatValue(list[i]);
+        return "[" + string.Join(", ", values) + "]";
+    }
 
     private static bool IsHashedWhenIndexed(McpAbiType type) =>
         type.Kind is McpAbiTypeKind.Bytes or McpAbiTypeKind.String or McpAbiTypeKind.Array or McpAbiTypeKind.FixedArray or McpAbiTypeKind.Tuple;

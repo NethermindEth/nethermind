@@ -104,6 +104,30 @@ public class McpNodeToolsTests
     }
 
     [Test]
+    public async Task Node_status_tracing_features_follow_operator_gates([Values] bool enabled, [Values] bool exposed)
+    {
+        await using McpTestNode node = await McpTestNode.Create(config => config.EnableTracing = enabled,
+            configureContainer: builder => builder.AddSingleton<IJsonRpcConfig>(new JsonRpcConfig
+            {
+                EnabledModules = exposed ? ["eth", "debug"] : ["eth", "net", "web3"]
+            }));
+        await using McpClient client = await node.CreateClient();
+        JsonElement features = McpAssert.Success(await McpToolCalls.Call(client, "node_status", [])).GetProperty("features");
+        if (!enabled || !exposed)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(features.GetProperty("trace").GetBoolean(), Is.False);
+                Assert.That(features.GetProperty("debug").GetBoolean(), Is.False);
+            }
+        }
+        else
+        {
+            Assert.That(features.GetProperty("debug").GetBoolean(), Is.True);
+        }
+    }
+
+    [Test]
     public async Task Node_status_conforms_to_its_output_schema()
     {
         CallToolResult result = await NodeStatus();

@@ -3,6 +3,7 @@
 
 using System.Globalization;
 using System.Text.Json;
+using Autofac;
 using ModelContextProtocol.Client;
 using ModelContextProtocol.Protocol;
 using Nethermind.Api;
@@ -72,6 +73,15 @@ public class McpNodeCapabilitiesTests
             Assert.That(capabilities.CheckState((long)Head - 5), Is.Null, "recent state is available");
             Assert.That(capabilities.GetAvailability().StateRetentionBlocks, Is.EqualTo(128));
         }
+    }
+
+    [Test]
+    public async Task Flat_backend_uses_the_selected_policy_when_the_manager_is_wrapped()
+    {
+        await using McpTestNode node = await McpTestNode.Create(configureContainer: builder => builder
+            .AddSingleton<IFlatDbConfig>(new FlatDbConfig { Enabled = true })
+            .AddDecorator<IWorldStateManager, WrappedWorldStateManager>(), start: false);
+        Assert.That(node.Chain.Container.Resolve<McpNodeCapabilities>().GetStateStorage()?.Backend, Is.EqualTo("Flat"));
     }
 
     [Test]
@@ -501,6 +511,20 @@ public class McpNodeCapabilitiesTests
         return error.GetProperty("message").GetString()!;
     }
 
+    private sealed class WrappedWorldStateManager(IWorldStateManager inner) : IWorldStateManager
+    {
+        public Nethermind.Evm.State.IWorldStateScopeProvider GlobalWorldState => inner.GlobalWorldState;
+        public IStateReader GlobalStateReader => inner.GlobalStateReader;
+        public Nethermind.State.SnapServer.ISnapStateServer SnapStateServer => inner.SnapStateServer;
+        public IReadOnlyKeyValueStore? HashServer => inner.HashServer;
+        public Nethermind.Evm.State.IWorldStateScopeProvider CreateResettableWorldState() => inner.CreateResettableWorldState();
+        public IOverridableWorldScope CreateOverridableWorldScope() => inner.CreateOverridableWorldScope();
+        public Nethermind.Trie.Pruning.IReadOnlyTrieStore CreateReadOnlyTrieStore() => inner.CreateReadOnlyTrieStore();
+        public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) => inner.VerifyTrie(stateAtBlock, cancellationToken);
+        public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
+        public void DropStateNotReachableFrom(BlockHeader head) => inner.DropStateNotReachableFrom(head);
+    }
+
     /// <summary>
     /// Substituted node services; every block header exists, and by default no state, body or receipts are stored.
     /// <see cref="BodiesFrom"/> and <see cref="ReceiptsFrom"/> store bodies (and the genesis body) and receipts from a block up.
@@ -547,7 +571,7 @@ public class McpNodeCapabilitiesTests
                 ? new EthCapabilitiesProvider(BlockTree, StateBoundary, Sync, Pointers, History, HistoryPruner)
                 : null;
             return new McpNodeCapabilities(BlockTree, Sync, Receipts, Pruning, Flat, Init, LimboLogs.Instance,
-                provider, StateReader, ReceiptStorage, worldStateManager: null, SyncingInfo, HistoryPruner, historyConfig: History);
+                provider, StateReader, ReceiptStorage, SyncingInfo, HistoryPruner, historyConfig: History);
         }
 
         private BlockHeader Header(ulong number)

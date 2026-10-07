@@ -81,9 +81,9 @@ internal sealed class McpTestCertificate : IDisposable
         {
             System.IO.Directory.Delete(Directory, recursive: true);
         }
-        catch (IOException)
+        catch (IOException exception)
         {
-            // Best effort: the temp directory is reclaimed by the OS anyway.
+            TestContext.Progress.WriteLine($"Temporary certificate cleanup failed: {exception.Message}");
         }
     }
 }
@@ -106,7 +106,8 @@ public class McpRemoteModeTests
         Assert.That(node.Endpoint.Scheme, Is.EqualTo(Uri.UriSchemeHttps));
 
         using HttpClient https = certificate.CreateHttpClient();
-        using HttpResponseMessage response = await https.SendAsync(McpHttp.Post(node.Endpoint, McpHttp.InitializeBody()));
+        using HttpRequestMessage responseRequest = McpHttp.Post(node.Endpoint, McpHttp.InitializeBody());
+        using HttpResponseMessage response = await https.SendAsync(responseRequest);
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
 
         await AssertPlainHttpRefused(new UriBuilder(node.Endpoint) { Scheme = Uri.UriSchemeHttp }.Uri);
@@ -123,7 +124,11 @@ public class McpRemoteModeTests
         });
 
         using HttpClient untrusting = new();
-        Assert.CatchAsync<HttpRequestException>(() => untrusting.SendAsync(McpHttp.Post(node.Endpoint, McpHttp.InitializeBody())),
+        using HttpRequestMessage request = McpHttp.Post(node.Endpoint, McpHttp.InitializeBody());
+        Assert.CatchAsync<HttpRequestException>(async () =>
+        {
+            using HttpResponseMessage response = await untrusting.SendAsync(request);
+        },
             "a self-signed certificate must fail default validation, proving TLS is really negotiated");
     }
 
@@ -135,8 +140,8 @@ public class McpRemoteModeTests
         Uri endpoint = LoopbackEndpoint(node);
 
         using HttpClient https = certificate.CreateHttpClient();
-        using HttpResponseMessage response = await https.SendAsync(
-            McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: $"{McpTestCertificate.DnsName}:{endpoint.Port}", bearer: Token));
+        using HttpRequestMessage responseRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: $"{McpTestCertificate.DnsName}:{endpoint.Port}", bearer: Token);
+        using HttpResponseMessage response = await https.SendAsync(responseRequest);
 
         Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
         JsonElement result = (await McpHttp.ReadJsonRpc(response)).GetProperty("result");
@@ -183,8 +188,8 @@ public class McpRemoteModeTests
         Uri endpoint = LoopbackEndpoint(node);
 
         using HttpClient https = certificate.CreateHttpClient();
-        using HttpResponseMessage response = await https.SendAsync(
-            McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host.Replace("{port}", endpoint.Port.ToString()), bearer: Token));
+        using HttpRequestMessage responseRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host.Replace("{port}", endpoint.Port.ToString()), bearer: Token);
+        using HttpResponseMessage response = await https.SendAsync(responseRequest);
 
         Assert.That(response.StatusCode, Is.EqualTo(expected));
     }
@@ -197,8 +202,8 @@ public class McpRemoteModeTests
         Uri endpoint = LoopbackEndpoint(node);
 
         using HttpClient https = certificate.CreateHttpClient();
-        using HttpResponseMessage response = await https.SendAsync(
-            McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: $"{McpTestCertificate.DnsName}:{endpoint.Port}", bearer: bearer));
+        using HttpRequestMessage responseRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: $"{McpTestCertificate.DnsName}:{endpoint.Port}", bearer: bearer);
+        using HttpResponseMessage response = await https.SendAsync(responseRequest);
 
         using (Assert.EnterMultipleScope())
         {
@@ -219,12 +224,15 @@ public class McpRemoteModeTests
 
         for (int i = 0; i < McpAuthFailureLimiter.MaxFailures; i++)
         {
-            using HttpResponseMessage failed = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: $"wrong-{i}"));
+            using HttpRequestMessage failedRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: $"wrong-{i}");
+            using HttpResponseMessage failed = await https.SendAsync(failedRequest);
             Assert.That(failed.StatusCode, Is.EqualTo(HttpStatusCode.Unauthorized));
         }
 
-        using HttpResponseMessage throttled = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: "wrong-again"));
-        using HttpResponseMessage authorized = await https.SendAsync(McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: Token));
+        using HttpRequestMessage throttledRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: "wrong-again");
+        using HttpResponseMessage throttled = await https.SendAsync(throttledRequest);
+        using HttpRequestMessage authorizedRequest = McpHttp.Post(endpoint, McpHttp.InitializeBody(), host: host, bearer: Token);
+        using HttpResponseMessage authorized = await https.SendAsync(authorizedRequest);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(throttled.StatusCode, Is.EqualTo(HttpStatusCode.TooManyRequests));
@@ -371,9 +379,9 @@ public class McpRemoteModeTests
             Assert.That(response.IsSuccessStatusCode, Is.False, "plain HTTP must not be served on a TLS listener");
             Assert.That(await response.Content.ReadAsStringAsync(), Does.Not.Contain("serverInfo"));
         }
-        catch (HttpRequestException)
+        catch (HttpRequestException exception)
         {
-            // Kestrel dropping the connection is also a refusal.
+            TestContext.Progress.WriteLine($"Plain HTTP was refused: {exception.Message}");
         }
     }
 

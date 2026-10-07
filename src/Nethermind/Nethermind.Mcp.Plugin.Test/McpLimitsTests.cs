@@ -68,8 +68,11 @@ public class McpLimitsTests
     {
         JsonElement page = McpAssert.Success(await Limited("get_logs", ("fromBlock", "earliest"), ("toBlock", "latest")));
 
-        Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
-        Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
+            Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
+        }
     }
 
     [Test]
@@ -79,8 +82,11 @@ public class McpLimitsTests
 
         JsonElement page = McpAssert.Success(await Limited("get_logs", ("fromBlock", block), ("toBlock", block)));
 
-        Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
-        Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(page.GetProperty("truncated").GetBoolean(), Is.True);
+            Assert.That(page.GetProperty("nextCursor").GetString(), Is.Not.Empty);
+        }
     }
 
     [Test]
@@ -126,6 +132,34 @@ public class McpLimitsTests
         CallToolResult result = await McpToolCalls.Call(client, toolName, toolName == "get_block" ? [("block", "latest")] : []);
 
         McpAssert.NoInternals(McpAssert.Error(result, McpAssert.ResourceExhausted));
+    }
+
+    [Test]
+    public void Result_writer_rejects_excessive_capacity_before_growth()
+    {
+        using LimitedPooledBufferWriter buffer = new(1024);
+        Assert.Throws<ResultTooLargeException>(() => buffer.GetMemory(4 * 1024 * 1024));
+    }
+
+    [TestCase('a', 1010)]
+    [TestCase('"', 160)]
+    [TestCase('☃', 160)]
+    public void Result_writer_accepts_near_limit_ascii_escaped_and_unicode_strings(char character, int count)
+    {
+        string value = new(character, count);
+        using LimitedPooledBufferWriter buffer = new(1024);
+        using Utf8JsonWriter writer = new(buffer);
+        writer.WriteStringValue(value);
+        writer.Flush();
+        Assert.That(JsonSerializer.Deserialize<string>(buffer.WrittenSpan), Is.EqualTo(value));
+    }
+
+    [Test]
+    public void Result_writer_rejects_large_scalar_output()
+    {
+        using LimitedPooledBufferWriter buffer = new(1024);
+        using Utf8JsonWriter writer = new(buffer);
+        Assert.Throws<ResultTooLargeException>(() => writer.WriteStringValue(new string('a', 4 * 1024 * 1024)));
     }
 
     [Test]
@@ -188,14 +222,23 @@ public class McpLimitsTests
         await using McpClient client = await node.CreateClient();
 
         Task<CallToolResult> inFlight = GetBalance(client);
-        await blocking.Entered.WaitAsync(WaitLimit);
-        Task<CallToolResult> queued = McpToolCalls.Call(client, "chain_info", []);
-        await Task.Delay(300);
-        blocking.Release();
+        Task<CallToolResult>? queued = null;
+        try
+        {
+            await blocking.Entered.WaitAsync(WaitLimit);
+            queued = McpToolCalls.Call(client, "chain_info", []);
+            await Task.Delay(300);
+        }
+        finally
+        {
+            blocking.Release();
+            await inFlight.WaitAsync(WaitLimit);
+            if (queued is not null) await queued.WaitAsync(WaitLimit);
+        }
 
         using (Assert.EnterMultipleScope())
         {
-            McpAssert.Success(await queued.WaitAsync(WaitLimit));
+            McpAssert.Success(await queued!.WaitAsync(WaitLimit));
             McpAssert.Success(await inFlight.WaitAsync(WaitLimit));
         }
     }
@@ -295,14 +338,21 @@ public class McpLimitsTests
             entered.TrySetResult();
             return gate.Task;
         }, CancellationToken.None);
-        await entered.Task.WaitAsync(WaitLimit);
-
-        using CancellationTokenSource budget = new(TimeSpan.FromMilliseconds(100));
-        Task stop = node.Host.StopAsync(budget.Token);
-        bool stoppedWhileRunning = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(1))) == stop;
-        gate.SetResult(McpToolExecutor.Error(McpToolErrorCodes.InternalError, "done"));
-        await stop.WaitAsync(WaitLimit);
-        await stuck.WaitAsync(WaitLimit);
+        Task? stop = null;
+        bool stoppedWhileRunning;
+        try
+        {
+            await entered.Task.WaitAsync(WaitLimit);
+            using CancellationTokenSource budget = new(TimeSpan.FromMilliseconds(100));
+            stop = node.Host.StopAsync(budget.Token);
+            stoppedWhileRunning = await Task.WhenAny(stop, Task.Delay(TimeSpan.FromSeconds(1))) == stop;
+        }
+        finally
+        {
+            gate.TrySetResult(McpToolExecutor.Error(McpToolErrorCodes.InternalError, "done"));
+            await stuck.WaitAsync(WaitLimit);
+            if (stop is not null) await stop.WaitAsync(WaitLimit);
+        }
 
         using (Assert.EnterMultipleScope())
         {
@@ -348,14 +398,19 @@ public class McpLimitsTests
         await using McpClient client = await node.CreateClient();
 
         Task<CallToolResult> inFlight = GetBalance(client);
-        await blocking.Entered.WaitAsync(WaitLimit);
-
-        CallToolResult rejected = await McpToolCalls.Call(client, "chain_info", []);
-        McpAssert.Error(rejected, McpAssert.ResourceExhausted);
-        McpAssert.Success(await McpToolCalls.Call(client, "node_status", []));
-
-        blocking.Release();
-        McpAssert.Quantity(McpAssert.Success(await inFlight.WaitAsync(WaitLimit)).GetProperty("balance"), McpAssert.Hex(BlockingEthModule.Balance));
+        try
+        {
+            await blocking.Entered.WaitAsync(WaitLimit);
+            CallToolResult rejected = await McpToolCalls.Call(client, "chain_info", []);
+            McpAssert.Error(rejected, McpAssert.ResourceExhausted);
+            McpAssert.Success(await McpToolCalls.Call(client, "node_status", []));
+        }
+        finally
+        {
+            blocking.Release();
+            await inFlight.WaitAsync(WaitLimit);
+        }
+        McpAssert.Quantity(McpAssert.Success(await inFlight).GetProperty("balance"), McpAssert.Hex(BlockingEthModule.Balance));
 
         await WaitUntil(() => provider.Returned == 1, "the module must be returned");
         McpAssert.Success(await McpToolCalls.Call(client, "chain_info", []));
@@ -383,12 +438,25 @@ public class McpLimitsTests
 
         using CancellationTokenSource cts = new();
         Task<CallToolResult> cancelled = GetBalance(client, cts.Token);
-        await blocking.Entered.WaitAsync(WaitLimit);
-        await cts.CancelAsync();
-
-        Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
-
-        blocking.Release();
+        try
+        {
+            await blocking.Entered.WaitAsync(WaitLimit);
+            await cts.CancelAsync();
+            Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
+        }
+        finally
+        {
+            blocking.Release();
+            await cts.CancelAsync();
+            try
+            {
+                await cancelled.WaitAsync(WaitLimit);
+            }
+            catch (OperationCanceledException)
+            {
+                TestContext.Progress.WriteLine("The cancelled balance call finished cancellation.");
+            }
+        }
         await WaitUntil(() => provider.Returned == 1, "the module must be returned after the cancelled call unwinds");
         await WaitUntilAsync(async () => (await McpToolCalls.Call(client, "chain_info", [])).IsError != true,
             "the concurrency slot must be released after a cancelled call");

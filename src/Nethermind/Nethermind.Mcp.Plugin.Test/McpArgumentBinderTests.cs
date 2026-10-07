@@ -64,9 +64,9 @@ public class McpArgumentBinderTests
     {
         Dictionary<string, JsonElement>? result = McpArgumentBinder.Normalize(Parameters, Parse("""{"text": "a", "list": null, "count": null}"""), out string? error);
 
+        Assert.That(result, Is.Not.Null, error);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(result, Is.Not.Null, error);
             Assert.That(result!.ContainsKey("list"), Is.False);
             Assert.That(result.ContainsKey("count"), Is.False);
         }

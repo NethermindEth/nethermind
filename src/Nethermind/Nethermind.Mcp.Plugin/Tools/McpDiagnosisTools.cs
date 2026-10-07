@@ -379,7 +379,12 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
             else if (ownFeeStatus == "blob_underpriced") detail += $"; its own maxFeePerBlobGas {Gwei(blobCap)} gwei is below blob base fee {Gwei(blobFee)} gwei";
             else if (ownFeeStatus == "fee_unavailable") detail += "; its own fee readiness is unknown because fee data is unavailable";
         }
-        if (nonceGaps.Count > 0) detail += "; missing nonce ranges " + string.Join(", ", nonceGaps.Select(static gap => $"{gap!["from"]}..{gap["to"]}"));
+        if (nonceGaps.Count > 0)
+        {
+            string[] ranges = new string[nonceGaps.Count];
+            for (int i = 0; i < nonceGaps.Count; i++) ranges[i] = $"{nonceGaps[i]!["from"]}..{nonceGaps[i]!["to"]}";
+            detail += "; missing nonce ranges " + string.Join(", ", ranges);
+        }
         JsonObject result = NewResult(status, $"{Short(hash ?? tx.Hash)} (nonce {nonce}) {detail}. This tool cannot send transactions.");
         result["ownFeeStatus"] = ownFeeStatus;
         result["nonceGaps"] = nonceGaps.DeepClone();
@@ -471,11 +476,18 @@ internal sealed class McpDiagnosisTools(McpToolExecutor executor, IMcpConfig con
         return result;
     }
 
+    private static byte[][] CopyHashes(byte[]?[] hashes)
+    {
+        byte[][] copied = new byte[hashes.Length][];
+        for (int i = 0; i < hashes.Length; i++) copied[i] = hashes[i]!;
+        return copied;
+    }
+
     private static LegacyTransactionForRpc PoolTransaction(Transaction transaction)
     {
         LegacyTransactionForRpc result = transaction.Type switch
         {
-            TxType.Blob => new BlobTransactionForRpc { MaxFeePerBlobGas = transaction.MaxFeePerBlobGas, BlobVersionedHashes = transaction.BlobVersionedHashes?.Select(static hash => hash!).ToArray() },
+            TxType.Blob => new BlobTransactionForRpc { MaxFeePerBlobGas = transaction.MaxFeePerBlobGas, BlobVersionedHashes = transaction.BlobVersionedHashes is { } hashes ? CopyHashes(hashes) : null },
             TxType.SetCode => new SetCodeTransactionForRpc(),
             TxType.EIP1559 => new EIP1559TransactionForRpc(),
             TxType.AccessList => new AccessListTransactionForRpc(),

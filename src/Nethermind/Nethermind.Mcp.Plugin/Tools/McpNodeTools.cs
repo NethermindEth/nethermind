@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db.LogIndex;
 using Nethermind.Facade.Eth;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Synchronization;
@@ -36,6 +37,7 @@ internal sealed class McpNodeTools(
     ISyncConfig syncConfig,
     IMcpConfig config,
     ILogManager logManager,
+    IJsonRpcConfig rpcConfig,
     IEthSyncingInfo? syncingInfo = null,
     ISyncPeerPool? peerPool = null,
     ISyncPointers? syncPointers = null,
@@ -262,8 +264,8 @@ internal sealed class McpNodeTools(
             peerCount,
             peerMax,
             availability,
-            TryValue<bool>(() => rpcModuleProvider.Resolve("trace_transaction") is not null) ?? false,
-            TryValue<bool>(() => rpcModuleProvider.Resolve("debug_traceTransaction") is not null) ?? false,
+            McpTraceTools.TracingDisabledReason(config, rpcConfig) is null && (TryValue<bool>(() => rpcModuleProvider.Resolve("trace_transaction") is not null) ?? false),
+            McpTraceTools.TracingDisabledReason(config, rpcConfig) is null && (TryValue<bool>(() => rpcModuleProvider.Resolve("debug_traceTransaction") is not null) ?? false),
             TryValue<bool>(() => logIndexStorage?.Enabled),
             TryValue<int>(() => logIndexStorage?.MinBlockNumber),
             TryValue<int>(() => logIndexStorage?.MaxBlockNumber),

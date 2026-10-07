@@ -43,6 +43,8 @@ public class McpContractToolsTests
     private static readonly Address EnsRegistry = new("0x00000000000C2E074eC69A0dFb2997BA6C7d2e1e");
     private static readonly Address Holder = TestItem.AddressC;
     private static readonly Address EnsTarget = TestItem.AddressB;
+    private static readonly Address MalformedEnsTarget = TestItem.AddressC;
+    private static readonly Address MalformedEnsResolver = new("0x00000000000000000000000000000000000e5508");
     private static readonly Address LongEnsResolver = new("0x00000000000000000000000000000000000e5502");
     private static readonly Address WildcardEnsResolver = new("0x00000000000000000000000000000000000e5505");
     private static readonly Address NoDecimalsToken = new("0x00000000000000000000000000000000000e5506");
@@ -143,8 +145,11 @@ public class McpContractToolsTests
     {
         JsonElement result = await Success("call_function", ("to", Hex(_deployed.Token)), ("signature", "decimals()(string)"));
 
-        Assert.That(result.GetProperty("outputs").ValueKind, Is.EqualTo(JsonValueKind.Null));
-        Assert.That(result.GetProperty("decodeError").GetString(), Does.Contain("(string)"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("outputs").ValueKind, Is.EqualTo(JsonValueKind.Null));
+            Assert.That(result.GetProperty("decodeError").GetString(), Does.Contain("(string)"));
+        }
     }
 
     [TestCase("fail()", "fail() reverted: \"nope\"", "Error")]
@@ -567,6 +572,27 @@ public class McpContractToolsTests
     }
 
     [Test]
+    public async Task Registry_reverse_name_is_not_verified_after_display_sanitization()
+    {
+        JsonElement result = await Success("lookup_address", ("address", Hex(MalformedEnsTarget)));
+        Assert.That(result.GetProperty("ens").GetProperty("verified").GetBoolean(), Is.False);
+    }
+
+    [Test]
+    public async Task Token_info_reports_when_the_gas_cap_prevents_an_erc165_probe()
+    {
+        await using McpTestNode node = await McpTestNode.Create(config => config.MaxCallGas = 30_000);
+        Deployed deployed = await Deploy(node);
+        await using McpClient client = await node.CreateClient();
+        JsonElement result = McpAssert.Success(await Call(client, "token_info", ("token", Hex(deployed.NftToken))));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("standard").GetString(), Is.EqualTo("unknown"));
+            Assert.That(result.GetProperty("standardEvidence").GetString(), Does.Contain("gas cap"));
+        }
+    }
+
+    [Test]
     public async Task Lookup_address_returns_a_long_verified_ens_name_in_full()
     {
         JsonElement ens = (await Success("lookup_address", ("address", Hex(LongEnsTarget)))).GetProperty("ens");
@@ -696,6 +722,13 @@ public class McpContractToolsTests
             state.InsertCode(EnsResolver, TestContracts.Resolver("alice.eth"), spec, isGenesis: true);
             state.Set(new StorageCell(EnsResolver, Slot(alice)), Value(EnsTarget));
 
+            Hash256 malformedName = McpEns.NameHash("evil.eth");
+            state.Set(new StorageCell(EnsRegistry, Slot(malformedName) + UInt256.One), Value(MalformedEnsResolver));
+            state.Set(new StorageCell(EnsRegistry, Slot(McpEns.NameHash(McpEns.ReverseName(MalformedEnsTarget))) + UInt256.One), Value(MalformedEnsResolver));
+            state.CreateAccount(MalformedEnsResolver, UInt256.Zero);
+            state.InsertCode(MalformedEnsResolver, TestContracts.Resolver("ev\u200dil.eth"), spec, isGenesis: true);
+            state.Set(new StorageCell(MalformedEnsResolver, Slot(malformedName)), Value(MalformedEnsTarget));
+
             Hash256 longName = McpEns.NameHash(LongEnsName);
             state.Set(new StorageCell(EnsRegistry, Slot(longName) + UInt256.One), Value(LongEnsResolver));
             state.Set(new StorageCell(EnsRegistry, Slot(McpEns.NameHash(McpEns.ReverseName(LongEnsTarget))) + UInt256.One), Value(LongEnsResolver));
@@ -818,7 +851,10 @@ internal static class TestContracts
 
         if (erc721)
         {
-            asm.Label("supportsInterface").Push(4).Op(Instruction.CALLDATALOAD)
+            asm.Label("supportsInterface");
+            // Five cold reads fit ERC-165's 30,000 execution gas but exceed the old probe's allowance after intrinsic gas.
+            for (ulong i = 1; i <= 5; i++) asm.Push(i).Op(Instruction.SLOAD).Op(Instruction.POP);
+            asm.Push(4).Op(Instruction.CALLDATALOAD)
                 .Op(Instruction.DUP1).PushWord(LeftAligned("0x01ffc9a7")).Op(Instruction.EQ)
                 .Op(Instruction.SWAP1).PushWord(LeftAligned("0x80ac58cd")).Op(Instruction.EQ)
                 .Op(Instruction.OR).ReturnTop();

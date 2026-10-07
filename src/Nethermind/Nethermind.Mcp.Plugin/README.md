@@ -912,8 +912,8 @@ a `decimals()` result that is unavailable.
   gets `timeout` right away, but the work keeps its concurrency slot until the underlying RPC call returns (bounded
   by `JsonRpc.Timeout`), so runaway work can't pile up.
 - **Clean shutdown.** When the node stops, the MCP server first rejects new tool calls (`unavailable`: the node is
-  shutting down), cancels running ones and waits for them within the 5-second stop budget, so no tool call still reads
-  the databases while the node closes them. A call stuck inside an uninterruptible RPC method is logged instead.
+  shutting down) and cancels running ones. It waits for up to the larger of `JsonRpc.Timeout` and `Mcp.ToolTimeout`
+  plus 5 seconds so calls can finish before the databases close. A call that outlives that budget is logged as an error.
 
 ## Troubleshooting
 

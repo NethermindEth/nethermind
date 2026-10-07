@@ -496,8 +496,15 @@ internal sealed class McpTransactionTools(
             // Batch entries beyond McpTxTokens.MaxBatchMovements are counted in the tally, not materialized.
             int transfersOmitted = movements.Count - transfers.Count + tally.Omitted;
             if (transfersOmitted > 0) json["tokenTransfersOmitted"] = transfersOmitted;
-            JsonArray flows = McpTxTokens.NetFlows(movements, tokens, MaxNetFlows);
-            if (flows.Count > 0) json["netTokenFlows"] = flows;
+            if (tally.Omitted == 0)
+            {
+                JsonArray flows = McpTxTokens.NetFlows(movements, tokens, MaxNetFlows);
+                if (flows.Count > 0) json["netTokenFlows"] = flows;
+            }
+            else
+            {
+                context.Notes.Add("Token movements were truncated; net token flows and swap inference are unavailable.");
+            }
         }
 
         // The call trace gives internal transfers and the failing frame; skip it when no code can have run.
@@ -534,7 +541,7 @@ internal sealed class McpTransactionTools(
             json["failure"] = Failure(context, receipt!, trace);
         }
 
-        json["summary"] = Summarize(context, receipt, succeeded, blockNumber, movements, tokens, trace);
+        json["summary"] = Summarize(context, receipt, succeeded, blockNumber, movements, tokens, trace, tally.Omitted == 0);
         json["notes"] = NotesJson(context.Notes);
     }
 
@@ -789,12 +796,12 @@ internal sealed class McpTransactionTools(
     }
 
     private string Summarize(ExplainContext context, ReceiptForRpc? receipt, bool? succeeded, ulong blockNumber,
-        List<McpTokenMovement> movements, Dictionary<AddressAsKey, McpTokenInfo> tokens, TraceFacts? trace)
+        List<McpTokenMovement> movements, Dictionary<AddressAsKey, McpTokenInfo> tokens, TraceFacts? trace, bool movementsComplete)
     {
         LegacyTransactionForRpc tx = context.Tx;
         StringBuilder summary = new();
         summary.Append(tx.From is null ? "Unknown sender" : McpTxFormat.Short(tx.From)).Append(' ');
-        bool described = succeeded == true && tx.From is not null && AppendSenderSummary(summary, context, movements, tokens, trace);
+        bool described = movementsComplete && succeeded == true && tx.From is not null && AppendSenderSummary(summary, context, movements, tokens, trace);
         if (!described)
         {
             if (succeeded is null)
@@ -804,7 +811,7 @@ internal sealed class McpTransactionTools(
             }
             else
             {
-                AppendAction(summary, context, receipt?.ContractAddress, succeeded == true ? SenderMovements(tx.From, movements) : [], tokens);
+                AppendAction(summary, context, receipt?.ContractAddress, succeeded == true && movementsComplete ? SenderMovements(tx.From, movements) : [], tokens);
             }
         }
 
@@ -1390,8 +1397,15 @@ internal sealed class McpTransactionTools(
             ["calls"] = callsArray
         };
 
-        JsonArray flows = McpTxTokens.NetFlows(allMovements, tokens, MaxNetFlows);
-        if (flows.Count > 0) result["netTokenFlows"] = flows;
+        if (batchOmitted.Count == 0)
+        {
+            JsonArray flows = McpTxTokens.NetFlows(allMovements, tokens, MaxNetFlows);
+            if (flows.Count > 0) result["netTokenFlows"] = flows;
+        }
+        else
+        {
+            notes.Add("Token movements were truncated; net token flows are unavailable.");
+        }
 
         StringBuilder summary = new();
         summary.Append(callJsons.Count == 1 ? "The call" : $"The {callJsons.Count} calls");
@@ -1722,6 +1736,7 @@ internal sealed class McpTransactionTools(
         SortedDictionary<string, int> types = new(StringComparer.Ordinal);
         Dictionary<AddressAsKey, int> recipients = [];
         int creations = 0;
+        int classificationsOmitted = 0;
         foreach (object item in transactions)
         {
             if (item is not TransactionForRpc tx)
@@ -1731,7 +1746,13 @@ internal sealed class McpTransactionTools(
 
             string typeName = TypeName(tx.Type ?? TxType.Legacy);
             types[typeName] = types.TryGetValue(typeName, out int typeCount) ? typeCount + 1 : 1;
-            if (tx is LegacyTransactionForRpc { To: { } to })
+            LegacyTransactionForRpc? readable = ReadableTransaction(tx);
+            if (readable is null)
+            {
+                classificationsOmitted++;
+                continue;
+            }
+            if (readable.To is { } to)
             {
                 recipients[to] = recipients.TryGetValue(to, out int count) ? count + 1 : 1;
             }
@@ -1741,6 +1762,7 @@ internal sealed class McpTransactionTools(
             }
         }
 
+        if (classificationsOmitted > 0) notes.Add($"Recipient and creation classification omitted for {classificationsOmitted} unsupported transaction(s).");
         json["transactionCount"] = transactions.Length;
         JsonObject typesJson = [];
         foreach ((string typeName, int count) in types) typesJson[typeName] = count;

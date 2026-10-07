@@ -130,6 +130,22 @@ public class McpEnsUniversalResolverTests
         }
     }
 
+    [Test]
+    public async Task Reverse_names_preserve_raw_utf8_until_verification([Values] bool invalidUtf8)
+    {
+        Address address = invalidUtf8 ? TestItem.AddressC : TestItem.AddressA;
+        JsonElement result = await Success("lookup_address", ("address", address.ToString()));
+        if (invalidUtf8)
+        {
+            Assert.That(result.TryGetProperty("ens", out _), Is.False);
+        }
+        else
+        {
+            Assert.That(result.GetProperty("ens").GetProperty("verified").GetBoolean(), Is.False,
+                "a ZWJ removed for display must not turn a different original name into a verified one");
+        }
+    }
+
     [TestCase(BlockchainIds.Mainnet, true, true)]
     [TestCase(BlockchainIds.Sepolia, true, false)]
     [TestCase(BlockchainIds.Holesky, true, true)]
@@ -205,6 +221,8 @@ public class McpEnsUniversalResolverTests
                 (ResolveAddrCall("noaddr.eth"), Encode("UnsupportedResolverProfile(bytes4)", "0x3b3b57de"), true),
                 (ReverseCall(V2Target), EncodeTuple("string,address,address", "v2only.eth", V2Resolver.ToString(), V2Resolver.ToString()), false),
                 (ReverseCall(MismatchedAccount), Encode("ReverseAddressMismatch(string,bytes)", "v2only.eth", Hex(V2Target.Bytes.ToArray())), true),
+                (ReverseCall(TestItem.AddressA), EncodeTuple("bytes,address,address", Hex(Encoding.UTF8.GetBytes("ali\u200dce.eth")), V2Resolver.ToString(), V2Resolver.ToString()), false),
+                (ReverseCall(TestItem.AddressC), EncodeTuple("bytes,address,address", "0xff", V2Resolver.ToString(), V2Resolver.ToString()), false),
             ];
 
             state.CreateAccount(UniversalResolver, UInt256.Zero);
