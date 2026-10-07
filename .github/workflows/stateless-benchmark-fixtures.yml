@@ -9,7 +9,7 @@ name: Stateless benchmark fixtures
 
 on:
   push:
-    branches: [test/zkevm-benchmark-fixtures]
+    branches: ['test/zkevm-benchmark-fixtures**']
   schedule:
     - cron: '0 3 * * 6'
   workflow_dispatch:
