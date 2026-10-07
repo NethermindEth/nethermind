@@ -10,7 +10,11 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public struct StackAccessTracker(bool isTracingAccess) : IDisposable
+/// <param name="keepAccessSetsOnRestore">
+/// Keeps the warm address and storage sets when a frame restores: EIP-8374 makes them append-only, and access
+/// tracing needs every touched entry for the generated list.
+/// </param>
+public struct StackAccessTracker(bool keepAccessSetsOnRestore) : IDisposable
 {
     public StackAccessTracker() : this(false) { }
 
@@ -20,7 +24,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
     public readonly JournalSet<Address> DestroyList => _trackingState.DestroyList;
     public readonly HashSet<AddressAsKey> CreateList => _trackingState.CreateList;
 
-    private readonly bool _isTracingAccess = isTracingAccess;
+    private readonly bool _keepAccessSetsOnRestore = keepAccessSetsOnRestore;
     private TrackingState _trackingState = TrackingState.RentState();
 
     private int _addressesSnapshots;
@@ -67,9 +71,7 @@ public struct StackAccessTracker(bool isTracingAccess) : IDisposable
 
     public readonly void Restore()
     {
-        // When tracing access, don't restore the access sets on sub-frame revert.
-        // The generated list will pre-warm all touched addresses.
-        if (!_isTracingAccess)
+        if (!_keepAccessSetsOnRestore)
         {
             _trackingState.AccessedAddresses.Restore(_addressesSnapshots);
             _trackingState.AccessedStorageCells.Restore(_storageKeysSnapshots);

@@ -242,7 +242,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
         // EIP-2929 warm/cold journal shared across frames (EIP-8141 § Cross-frame interactions): targets
         // per frame, sender and coinbase once per transaction. ENTRY_POINT-as-caller is unspecified: left cold.
-        using StackAccessTracker accessTracker = new(TTracing.IsActive && _tracerFlags.IsTracingAccess);
+        using StackAccessTracker accessTracker = new((TTracing.IsActive && _tracerFlags.IsTracingAccess) || spec.IsEip8374Enabled);
         if (spec.UseHotAndColdStorage)
         {
             if (spec.AddCoinbaseToTxAccessList)
@@ -633,7 +633,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         Snapshot txSnapshot = WorldState.TakeSnapshot();
         try
         {
-            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
+            using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess || spec.IsEip8374Enabled);
             TransactionResult prepared = PrepareValidationPrefixSimulation(
                 tx, opts, header, spec, in accessTracker,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
@@ -913,7 +913,8 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             WorldState.SubtractFromBalance(caller, in value, spec);
         }
 
-        // EIP-8141: a reverting frame also reverts its warm/cold touches, so snapshot before warming.
+        // EIP-8141: a reverting frame also reverts its warm/cold touches (unless EIP-8374 keeps them), so
+        // snapshot before warming.
         StackAccessTracker frameTracker = accessTracker;
         frameTracker.TakeSnapshot();
         if (spec.UseHotAndColdStorage)

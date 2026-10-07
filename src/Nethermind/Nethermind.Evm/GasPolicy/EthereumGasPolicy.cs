@@ -403,7 +403,8 @@ public partial struct EthereumGasPolicy : IGasPolicy<EthereumGasPolicy>
             return gasAvailable;
         }
 
-        // Warming before the charge is unobservable: running out of gas halts the frame, whose restore drops the cell again.
+        // Warms before the charge, as EIP-2929's SLOAD does; an out-of-gas halt drops the cell again unless
+        // EIP-8374 keeps it.
         if (accessTracker.WarmUp(in storageCell))
             return UpdateGas(ref gas, TMode.IsEip8038Enabled(spec) ? Eip8038Constants.ColdStorageAccess : GasCostOf.ColdSLoad);
 

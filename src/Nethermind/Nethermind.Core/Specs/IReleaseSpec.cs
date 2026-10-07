@@ -522,6 +522,12 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-8374: Accessed addresses and storage keys are not rolled back when a call frame reverts or
+        /// exceptionally halts, so they stay warm for the rest of the transaction.
+        /// </summary>
+        public bool IsEip8374Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>

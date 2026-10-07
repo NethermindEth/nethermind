@@ -21,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
 
@@ -655,35 +656,51 @@ public class Eip8141ScenarioTests
             "warm cost must be stable across further frames");
     }
 
-    // EIP-8141 § Cross-frame interactions: a reverted frame's touches must not warm later frames.
+    // EIP-8141 § Cross-frame interactions: a reverted frame's touches, or those of a frame in an unrolled
+    // atomic batch, must not warm later frames, unless EIP-8374 keeps them warm for the rest of the transaction.
     [Test]
-    public void WarmColdJournal_RevertedFrameTouchesAreReverted()
+    public void WarmColdJournal_RevertedFrameTouches_WarmthDependsOnEip8374([Values] bool eip8374, [Values] bool batchUnroll)
     {
+        ((TestSpecProvider)_specProvider).GenesisSpec = new OverridableReleaseSpec(Bogota.Instance)
+        {
+            IsEip8141Enabled = true,
+            IsEip8374Enabled = eip8374,
+        };
         Address probed = TestItem.AddressF;
-        Address toucherThatReverts = TestItem.AddressE;
+        Address toucher = TestItem.AddressE;
         Address prober = TestItem.AddressD;
+        Address reverter = Recipient;
+        Prepare touch = Prepare.EvmCode.PushData(probed).Op(Instruction.BALANCE).Op(Instruction.POP);
         DeployContract(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), 1.Ether);
-        DeployContract(toucherThatReverts, Prepare.EvmCode
-            .PushData(probed).Op(Instruction.BALANCE).Op(Instruction.POP)
-            .PushData(0).PushData(0).Op(Instruction.REVERT).Done);
+        // In a batch the toucher succeeds and the next frame's revert unrolls it; alone, the toucher reverts.
+        DeployContract(toucher, (batchUnroll ? touch.Op(Instruction.STOP) : touch.PushData(0).PushData(0).Op(Instruction.REVERT)).Done);
+        DeployContract(reverter, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
         DeployContract(prober, Prepare.EvmCode
             .PushData(probed).Op(Instruction.BALANCE).Op(Instruction.POP).Op(Instruction.STOP).Done);
 
-        Transaction tx = FrameTx(Sender, nonce: 0,
-            SelfVerifyFrame(),
-            SenderFrame(toucherThatReverts),
-            SenderFrame(prober),
-            SenderFrame(prober));
+        Transaction tx = batchUnroll
+            ? FrameTx(Sender, nonce: 0,
+                SelfVerifyFrame(),
+                SenderFrame(toucher, flags: FrameFlags.AtomicBatch),
+                SenderFrame(reverter),
+                SenderFrame(prober),
+                SenderFrame(prober))
+            : FrameTx(Sender, nonce: 0,
+                SelfVerifyFrame(),
+                SenderFrame(toucher),
+                SenderFrame(prober),
+                SenderFrame(prober));
 
         TxReceipt receipt = ProcessBlock(tx)[0];
 
-        Assert.That(FrameStatuses(receipt), Is.EqualTo(new[]
-        {
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusFailure,
-            TxFrameReceipt.StatusSuccess, TxFrameReceipt.StatusSuccess,
-        }));
-        Assert.That(receipt.FrameReceipts![2].GasUsed, Is.GreaterThan(receipt.FrameReceipts[3].GasUsed),
-            "the first probe must pay cold access — the reverted frame's touch was rolled back");
+        int firstProbe = batchUnroll ? 3 : 2;
+        byte[] statuses = FrameStatuses(receipt);
+        Assert.That(statuses[firstProbe - 1], Is.EqualTo(TxFrameReceipt.StatusFailure));
+        Assert.That(statuses[firstProbe..], Has.All.EqualTo(TxFrameReceipt.StatusSuccess));
+        // The first probe also pays its own cold entry access, which the second probe finds warm.
+        Assert.That(receipt.FrameReceipts![firstProbe].GasUsed - receipt.FrameReceipts[firstProbe + 1].GasUsed,
+            Is.EqualTo((eip8374 ? 1UL : 2UL) * (Eip8038Constants.ColdAccountAccess - Eip8038Constants.WarmAccess)),
+            "the first probe pays cold access only if the rolled-back touch was forgotten");
     }
 
     // Cumulative gas must chain across the type boundary. The regular transfer targets a fresh account,
