@@ -22,7 +22,7 @@ public partial class Blake2FPrecompile
         // ZisK reads the state, message and offset as 64-bit words and faults unless each is 8-byte
         // aligned, while the input places the message and offset at 4 mod 8. The three are contiguous
         // in the input, so a single copy into a word buffer aligns them all.
-        Span<byte> words = MemoryMarshal.AsBytes(stackalloc ulong[26]);
+        Span<byte> words = MemoryMarshal.AsBytes(stackalloc ulong[(64 + 128 + 16) / sizeof(ulong)]);
 
         inputSpan.Slice(sizeof(uint), words.Length).CopyTo(words);
 
