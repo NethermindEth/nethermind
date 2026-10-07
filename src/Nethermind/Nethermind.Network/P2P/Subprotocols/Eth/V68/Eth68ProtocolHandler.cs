@@ -52,7 +52,7 @@ public class Eth68ProtocolHandler(ISession session,
 
     private readonly PeerValidationGasBudget? _frameValidationBudget = txPoolConfig.FrameTxPeerValidationGasPerSecond == 0
         ? null
-        : new PeerValidationGasBudget(txPoolConfig.FrameTxPeerValidationGasPerSecond, burstSeconds: 1);
+        : new PeerValidationGasBudget(txPoolConfig.FrameTxPeerValidationGasPerSecond, txPoolConfig.FrameTxMaxVerifyGas);
 
     private protected override PeerValidationGasBudget? FrameValidationBudget => _frameValidationBudget;
 

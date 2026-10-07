@@ -363,9 +363,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             ulong validationGas = budget is null ? 0 : FrameTxValidation.ValidationWorkGas(tx);
             if (budget is not null && !budget.TryReserve(validationGas))
             {
-                // Out of budget: dropped unvalidated, and reported as load shed rather than as the peer's failure.
-                _floodController.Report(AcceptTxResult.FrameSimulationDeferred);
-                if (isTrace) Log(tx, AcceptTxResult.FrameSimulationDeferred);
+                // Out of budget: dropped unvalidated, and counted against the peer whose failing validations spent it.
+                _floodController.Report(AcceptTxResult.FramePeerValidationBudgetSpent);
+                if (isTrace) Log(tx, AcceptTxResult.FramePeerValidationBudgetSpent);
                 ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
                 return;
             }

@@ -578,19 +578,22 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
-    // Two 300k transactions spend a 600k burst; the third arrives before the bucket refills.
-    [TestCase("failed", 2, TestName = "Peer_validation_budget_drops_frame_txs_once_failing_validation_spends_it")]
-    [TestCase("accepted", 3, TestName = "Peer_validation_budget_refunds_admitted_frame_txs")]
-    [TestCase("off", 3, TestName = "Peer_validation_budget_off_submits_every_frame_tx")]
-    public void Peer_validation_budget_bounds_failing_frame_tx_validation(string outcome, int expectedSubmitted)
+    // Three 300k transactions against a one-second bucket; the later ones arrive before it refills.
+    [TestCase(600_000UL, 0UL, false, 2, TestName = "Peer_validation_budget_drops_frame_txs_once_failing_validation_spends_it")]
+    [TestCase(600_000UL, 0UL, true, 3, TestName = "Peer_validation_budget_refunds_admitted_frame_txs")]
+    [TestCase(0UL, 0UL, false, 3, TestName = "Peer_validation_budget_off_submits_every_frame_tx")]
+    [TestCase(200_000UL, 0UL, false, 1, TestName = "Peer_validation_budget_below_one_tx_still_admits_one_per_refill")]
+    [TestCase(300_000UL, 200_000UL, false, 3, TestName = "Peer_validation_budget_leaves_txs_above_max_verify_gas_to_the_pool")]
+    public void Peer_validation_budget_bounds_failing_frame_tx_validation(ulong gasPerSecond, ulong maxVerifyGas, bool admitted, int expectedSubmitted)
     {
         IReleaseSpec spec = Substitute.For<IReleaseSpec>();
         spec.IsEip8141Enabled.Returns(true);
         _specProvider.GetCurrentHeadSpec().Returns(spec);
-        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(outcome == "off" ? 0UL : 600_000UL);
+        _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(gasPerSecond);
+        _txPoolConfig.FrameTxMaxVerifyGas.Returns(maxVerifyGas);
         RecreateHandler();
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
-            .Returns(outcome == "accepted" ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed);
+            .Returns(admitted ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed);
 
         Transaction[] transactions =
         [
@@ -603,11 +606,7 @@ public class Eth72ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(message, Eth62MessageCode.Transactions);
 
-        using (Assert.EnterMultipleScope())
-        {
-            _transactionPool.Received(expectedSubmitted).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
-            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
-        }
+        _transactionPool.Received(expectedSubmitted).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
     }
 
     // This handler has its own submission loop, so it needs the same stop once an invalid transaction closes the session.
