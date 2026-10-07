@@ -37,7 +37,8 @@ public record GethTraceOptions
     /// </summary>
     /// <remarks>Buffered traces can stop earlier than Geth or streamed traces, especially for repeated storage accesses
     /// and small stack values. Storage updates are counted without tracking distinct slots for the estimate.
-    /// File budgets count JSON Lines records including each terminating line feed.</remarks>
+    /// JSON Lines file budgets count emitted records including their terminating line feeds and suppress
+    /// the final summary once the budget has been exceeded.</remarks>
     [JsonConverter(typeof(LimitConverter))]
     public long Limit { get; init; }
 

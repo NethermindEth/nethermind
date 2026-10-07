@@ -69,6 +69,8 @@ public abstract class GethLikeTxTracer : TxTracer, ITraceImplicitStop, ITraceOpe
         EvmExceptionType.OutOfGas => "out of gas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };

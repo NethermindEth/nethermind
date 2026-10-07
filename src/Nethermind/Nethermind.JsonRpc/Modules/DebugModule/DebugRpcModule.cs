@@ -172,7 +172,7 @@ public class DebugRpcModule(
             return headerError;
         }
 
-        if (options?.TxIndex is not null) blockParameter = new BlockParameter(header!.Hash!);
+        blockParameter = new BlockParameter(header!.Hash!);
 
         if (options?.BlockOverrides is { } blockOverrides)
         {
@@ -184,10 +184,10 @@ public class DebugRpcModule(
 
         if (options?.StateOverrides is { } stateOverrides)
         {
-            foreach (Address address in stateOverrides.Keys)
+            foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
             {
-                if (stateOverrides[address] is { State: not null, StateDiff: not null })
-                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+                if (accountOverride is { State: not null, StateDiff: not null })
+                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
             }
         }
 
@@ -913,6 +913,8 @@ public class DebugRpcModule(
         {
             return headerError;
         }
+
+        if (options?.TxIndex is not null) options = options with { TxIndex = null };
 
         return bundles.Any(b => b.BlockOverride is not null || b.StateOverrides is not null)
             ? TraceCallManyWithOverrides(bundles, options, header)

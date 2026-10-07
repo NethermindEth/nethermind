@@ -23,6 +23,8 @@ public static class EvmExceptionExtensions
             EvmExceptionType.Revert => "execution reverted",
             EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
             EvmExceptionType.CallDepthExceeded => "max call depth exceeded",
+            EvmExceptionType.ReturnStackOverflow => "return stack limit reached",
+            EvmExceptionType.ReturnStackUnderflow => "return stack underflow",
             EvmExceptionType.NonceOverflow => "nonce uint64 overflow",
             _ => "error"
         };

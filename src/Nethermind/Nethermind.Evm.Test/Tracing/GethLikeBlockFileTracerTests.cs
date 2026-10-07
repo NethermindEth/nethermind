@@ -40,6 +40,16 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(Instruction.REVERT, "0x6")]
+    [TestCase(Instruction.RETURN, "0x6")]
+    public void File_summary_reports_execution_gas_after_top_level_action(Instruction exit, string gasUsed)
+    {
+        byte[] code = Prepare.EvmCode.PushData(0).PushData(0).Op(exit).Done;
+        string file = TraceFile(code);
+        using JsonDocument summary = JsonDocument.Parse(file.Split('\n', StringSplitOptions.RemoveEmptyEntries)[^1]);
+        Assert.That(summary.RootElement.GetProperty("gasUsed").GetString(), Is.EqualTo(gasUsed));
+    }
+
     [Test]
     public void File_summary_preserves_output_larger_than_stack_buffer()
     {

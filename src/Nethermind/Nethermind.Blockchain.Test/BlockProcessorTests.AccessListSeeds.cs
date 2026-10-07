@@ -32,6 +32,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.OverridableEnv;
@@ -440,6 +441,62 @@ public partial class BlockProcessorTests
                 .WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1)
                 .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyD, chainId, codeSource, authorityNonce))
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeyC).TestObject;
+    }
+
+    /// <remarks>EIP-8253 bumps the listed nonces at block access index 0, so every trace of the fork block, replayed or
+    /// seeded from its access list, starts from the bumped state.</remarks>
+    [Test]
+    public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[0];
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider)
+            .WithGenesisPostProcessor((_, state) => state.CreateAccount(target, 1.Ether)));
+        await chain.AddBlock();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await chain.AddBlock(
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(2).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject));
+        Assert.That(block.Number, Is.EqualTo(specProvider.ForkOnBlockNumber), "precondition: the transactions landed in the fork block");
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
+
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Hash256 hash = block.Transactions[i].Hash!;
+            GethTraceOptions prestate = new() { Tracer = "prestateTracer", TxHash = hash };
+            GethTraceOptions diff = prestate with { TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+            string replayedPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds: null, new ExecutionCounter()));
+            string seededPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds, new ExecutionCounter()));
+            string replayedDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds: null, new ExecutionCounter()));
+            string seededDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds, new ExecutionCounter()));
+            string replayedParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds: null, new ExecutionCounter()), true));
+            string seededParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds, new ExecutionCounter()), true));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PrestateNonce(replayedPrestate, target), Is.EqualTo(1), $"transaction {i} starts after the bump");
+                Assert.That(seededPrestate, Is.EqualTo(replayedPrestate), $"seeded prestate of transaction {i}");
+                Assert.That(seededDiff, Is.EqualTo(replayedDiff), $"seeded prestate diff of transaction {i}");
+                Assert.That(seededParity, Is.EqualTo(replayedParity), $"seeded trace and state diff of transaction {i}");
+            }
+        }
+
+        static ulong? PrestateNonce(string json, Address address)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            foreach (JsonProperty account in document.RootElement[0].GetProperty("result").EnumerateObject())
+            {
+                if (new Address(account.Name) == address)
+                    return account.Value.TryGetProperty("nonce", out JsonElement nonce) ? nonce.GetUInt64() : 0;
+            }
+
+            return null;
+        }
     }
 
     private static Task<BasicTestBlockchain> CreateAccessListSeedChain(Action<ContainerBuilder>? configure = null) =>

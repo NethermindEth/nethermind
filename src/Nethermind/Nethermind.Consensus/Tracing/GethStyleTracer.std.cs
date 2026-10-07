@@ -106,8 +106,9 @@ public class GethStyleTracer(
         (BlockHeader callHeader, IReleaseSpec callSpec) = PrepareCallHeader(block, options);
         using Scope<BlockProcessingComponents> scope = blockProcessingEnv.BuildAndOverride(FindParent(block));
         IWorldState state = scope.Component.WorldState;
+        bool tracePreceding = WantsLogIndex(options);
         using GethLikeBlockCallDeadlineTracer tracer = new(options with { TxHash = call.Hash }, cancellationToken,
-            timedOptions => CreateIndexedCallTracer(callHeader, call, timedOptions, state, callSpec, cancellationToken, writer, pipeWriter));
+            timedOptions => CreateIndexedCallTracer(callHeader, call, timedOptions, state, callSpec, cancellationToken, writer, pipeWriter, tracePreceding));
         TransactionProcessorAdapterFactory previous = transactionProcessorAdapter.CurrentAdapterFactory;
         try
         {
@@ -117,7 +118,7 @@ public class GethStyleTracer(
             IBlockTracer boundary = TransactionTraceBoundary.Wrap(callTracer, call.Hash);
             scope.Component.BlockchainProcessor.Process(replay, TraceProcessingOptions.ReadOnlyReplay, boundary, tracer.Token);
             if (!callTracer.IsPrepared) throw new InvalidOperationException($"The synthetic call at index {index} in block {block.Hash} was not prepared for tracing.");
-            return tracer.BuildResult().SingleOrDefault();
+            return (tracePreceding ? KeepTrace(tracer.BuildResult(), call.Hash) : tracer.BuildResult()).SingleOrDefault();
         }
         catch (Exception ex) when (tracer.Expired)
         {
@@ -162,11 +163,12 @@ public class GethStyleTracer(
 
     private IBlockTracer<GethLikeTxTrace> CreateIndexedCallTracer(BlockHeader header, Transaction call,
         GethTraceOptions options, IWorldState state, IReleaseSpec spec, CancellationToken cancellationToken,
-        Utf8JsonWriter? writer, PipeWriter? pipeWriter)
+        Utf8JsonWriter? writer, PipeWriter? pipeWriter, bool tracePreceding)
     {
-        GethTraceOptions filtered = options with { TxHash = call.Hash };
+        GethTraceOptions filtered = options with { TxHash = tracePreceding ? null : call.Hash };
+        BlockLogIndex logIndex = new();
         return writer is null
-            ? CreateOptionsTracer(header, filtered, state, specProvider, null, isTraceCall: true)
+            ? CreateOptionsTracer(header, filtered, state, specProvider, tracePreceding ? (_, _) => logIndex : null, isTraceCall: true)
             : new GethLikeBlockStreamingMemoryTracer(filtered, writer, pipeWriter, cancellationToken, (long)spec.GasCosts.DestroyRefund);
     }
 
