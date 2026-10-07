@@ -44,7 +44,7 @@ internal sealed class TracingProducedBlockProcessor(
     private readonly DumpOptions _dumpOptions = miningConfig.DumpProducedBlocks;
     private readonly ILogger _logger = logManager.GetClassLogger<TracingProducedBlockProcessor>();
 
-    internal string DumpDirectory { get; init; } = dumpDirectory?.Path ?? DefaultDumpDirectory;
+    internal string DumpDirectory { get; } = dumpDirectory?.Path ?? DefaultDumpDirectory;
 
     internal int MaxDumpFiles { get; init; } = 256;
 

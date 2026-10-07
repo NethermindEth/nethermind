@@ -176,9 +176,9 @@ public class TracingProducedBlockProcessorTests
     }
 
     private static TracingProducedBlockProcessor CreateProcessor(IBlockchainProcessor inner, DumpOptions dumpOptions, string dumpDirectory, int maxDumpFiles = 256) =>
-        new(inner, new MiningConfig { DumpProducedBlocks = dumpOptions }, MainnetSpecProvider.Instance, LimboLogs.Instance)
+        new(inner, new MiningConfig { DumpProducedBlocks = dumpOptions }, MainnetSpecProvider.Instance, LimboLogs.Instance,
+            new ProducedBlockDumpDirectory(dumpDirectory))
         {
-            DumpDirectory = dumpDirectory,
             MaxDumpFiles = maxDumpFiles
         };
 
