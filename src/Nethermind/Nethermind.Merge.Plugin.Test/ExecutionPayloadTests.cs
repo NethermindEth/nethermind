@@ -34,6 +34,9 @@ public class ExecutionPayloadTests
         }
     }
 
+    /// <summary>Keeps swaps of the registry's <see cref="Transaction"/> decoder from interleaving, whatever NUnit schedules.</summary>
+    private static readonly Lock DecoderSwapLock = new();
+
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test, NonParallelizable]
@@ -44,6 +47,7 @@ public class ExecutionPayloadTests
         byte[] control = EncodeTx(TxType.Legacy);
         if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
         int factoryCalls = 0;
+        using Lock.Scope _ = DecoderSwapLock.EnterScope();
         IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
         FactoryTrackingDecoder decoder = new(() =>
         {
@@ -148,6 +152,7 @@ public class ExecutionPayloadTests
     public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
     {
         byte[][] encoded = EncodeTxs(count);
+        using Lock.Scope _ = DecoderSwapLock.EnterScope();
         IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
         Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, new PayloadTestDecoder(), original));
         try
