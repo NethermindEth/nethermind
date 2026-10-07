@@ -1,10 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
+using System.Linq;
+using System.Security;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
+using Nethermind.Crypto;
+using Nethermind.KeyStore;
+using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NUnit.Framework;
 
@@ -88,6 +100,46 @@ public partial class EthRpcModuleTests
         Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected), serialized);
     }
 
+    [TestCase("""{"type":"0x2","maxFeePerGas":"0xa","maxPriorityFeePerGas":"0x3b9aca00"}""", "maxFeePerGas (0xa) < maxPriorityFeePerGas (0x3b9aca00)", TestName = "Fee rule broken before signing")]
+    [TestCase("""{"gasPrice":"0x9184e72a000"}""", "insufficient funds for gas * price + value, Balance is zero, cannot pay gas", TestName = "Rejected by the pool after signing")]
+    public async Task Send_from_a_key_the_account_list_misses_keeps_the_real_error(string feeFields, string expected)
+    {
+        using UnlistedKeyWallet unlisted = new(unlocked: true);
+        using Context ctx = await Context.CreateWithLondonEnabled(unlisted.Wallet);
+
+        string serialized = await ctx.Test.TestEthRpc("eth_sendTransaction", FeeDefaultsRequest(feeFields, UnlistedKeyWallet.Account));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo(expected),
+            "the node can sign for a key file the account list does not name, so its real error must not become an unknown account");
+    }
+
+    [Test]
+    public async Task Sign_from_a_locked_key_the_account_list_misses_needs_authentication()
+    {
+        using UnlistedKeyWallet unlisted = new(unlocked: false);
+        using Context ctx = await Context.CreateWithLondonEnabled(unlisted.Wallet);
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+
+        string serialized = await ctx.Test.TestEthRpc("eth_signTransaction", FeeDefaultsRequest("""{"gasPrice":"0x9184e72a000"}""", UnlistedKeyWallet.Account));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("authentication needed: password or unlock"),
+            "the node holds a key for the account, it only has to be unlocked");
+    }
+
+    [TestCase("eth_sendTransaction", TestName = "Send")]
+    [TestCase("eth_signTransaction", TestName = "Sign")]
+    public async Task Request_from_an_account_without_a_key_file_reports_an_unknown_account(string method)
+    {
+        using UnlistedKeyWallet unlisted = new(unlocked: true);
+        using Context ctx = await Context.CreateWithLondonEnabled(unlisted.Wallet);
+        ctx.Test.RpcConfig.EnableEthSignTransaction = true;
+
+        string serialized = await ctx.Test.TestEthRpc(method, FeeDefaultsRequest("""{"gasPrice":"0x9184e72a000"}""", ForeignAccount));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("unknown account"),
+            "a key file named after another account must not make this one held");
+    }
+
     private async Task<string?> FeeDefaultsError(string method, string feeFields, bool london)
     {
         using Context ctx = london ? await Context.CreateWithLondonEnabled() : await Context.Create();
@@ -106,5 +158,33 @@ public partial class EthRpcModuleTests
         request["gas"] = "0x76c0";
         request["nonce"] = "0x0";
         return JsonSerializer.Deserialize<object>(request.ToJsonString());
+    }
+
+    /// <summary>A key store wallet whose one key file is named so that the account list does not name it.</summary>
+    private sealed class UnlistedKeyWallet : IDisposable
+    {
+        public static readonly string Account = TestItem.AddressD.ToString();
+
+        private readonly TempPath _directory = TempPath.GetTempDirectory();
+
+        public UnlistedKeyWallet(bool unlocked)
+        {
+            using SecureString passphrase = "passphrase".Secure();
+            KeyStoreConfig config = new() { KeyStoreDirectory = _directory.Path, KdfparamsN = 1024 };
+            FileKeyStore keyStore = new(config, new EthereumJsonSerializer(), new AesEncrypter(config, LimboLogs.Instance),
+                new CryptoRandom(), LimboLogs.Instance, new PrivateKeyStoreIOSettingsProvider(config));
+            keyStore.StoreKey(TestItem.PrivateKeyD, passphrase);
+            string keyFile = Directory.GetFiles(_directory.Path).Single();
+            File.Move(keyFile, Path.Combine(_directory.Path, $"{TestItem.AddressD.ToString(false, false)}.json"));
+
+            Wallet = new DevKeyStoreWallet(keyStore, LimboLogs.Instance, createTestAccounts: false);
+            Assert.That(Wallet.GetAccounts(), Does.Not.Contain(TestItem.AddressD), "precondition: the account list misses the key file");
+            if (unlocked)
+                Assert.That(Wallet.UnlockAccount(TestItem.AddressD, passphrase), Is.True, "precondition: the key file unlocks");
+        }
+
+        public DevKeyStoreWallet Wallet { get; }
+
+        public void Dispose() => _directory.Dispose();
     }
 }

@@ -325,6 +325,23 @@ namespace Nethermind.KeyStore
             }
         }
 
+        public bool HasKey(Address address)
+        {
+            if (address == Address.Zero)
+            {
+                return false;
+            }
+
+            try
+            {
+                return FindKeyFiles(address).Length > 0;
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return false;
+            }
+        }
+
         private Result Validate(KeyStoreItem keyStoreItem)
         {
             if (keyStoreItem.Crypto?.CipherParams is null || keyStoreItem.Crypto.KDFParams is null)

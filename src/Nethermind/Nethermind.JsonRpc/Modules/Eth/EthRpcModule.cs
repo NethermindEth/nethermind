@@ -357,8 +357,8 @@ public partial class EthRpcModule(
         ReportUnknownAccountFirst(rpcTx, await SignAndSendTransaction(rpcTx));
 
     /// <summary>
-    /// A request from an account this node does not hold fails as an unknown account whatever else is wrong with
-    /// it, so the wallet is asked only once <paramref name="result"/> has failed.
+    /// A request from an account this node holds no key for fails as an unknown account whatever else is wrong
+    /// with it, so the wallet is asked only once <paramref name="result"/> has failed.
     /// </summary>
     protected ResultWrapper<Hash256> ReportUnknownAccountFirst(SignableTransactionForRpc rpcTx, ResultWrapper<Hash256> result) =>
         result.Result.ResultType == ResultType.Failure && !HoldsAccount((rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero)
@@ -459,7 +459,7 @@ public partial class EthRpcModule(
         return BuildSignedResult(tx);
     }
 
-    private bool HoldsAccount(Address? address) => Array.IndexOf(_wallet.GetAccounts(), address) >= 0;
+    private bool HoldsAccount(Address? address) => address is not null && _wallet.HasKey(address);
 
     private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
     {
