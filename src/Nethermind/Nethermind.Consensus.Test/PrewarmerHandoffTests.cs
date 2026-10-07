@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
@@ -196,8 +197,13 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
             Call(TestItem.PrivateKeyB, 0, FreshFactory, gasLimit: 300_000, data: [1]),
             Call(TestItem.PrivateKeyD, 0, FreshFactory, gasLimit: 300_000))).Tally;
 
-        // The later deployments read the factory's nonce, which the first one increments.
-        Assert.That(replayed, Is.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            // The later deployments read the factory's nonce, which the first one increments.
+            Assert.That(replayed, Is.EqualTo(1));
+            // Their creations clear the storage the first one wrote, so their runs read it as cleared whatever the seed.
+            Assert.That(PreWarmer.Footprints!.RefreshesRun, Is.LessThanOrEqualTo(4));
+        }
     }
 
     [Test]
@@ -524,6 +530,67 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void A_refreshed_run_that_reads_a_seeded_slot_at_another_value_is_taken_again_only_after_a_write_changes([Values] bool writeChanges)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]));
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.True);
+
+        int seededAt = footprints.WritesVersion;
+        if (writeChanges) footprints.Store(0, Footprint(txs[0], writes: [(cell, 2 * 0x4e4d)]));
+        footprints.Store(1, Footprint(txs[1], reads: [(cell, UInt256.Zero)]), seededAt);
+
+        Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.EqualTo(writeChanges));
+    }
+
+    [Test]
+    public void A_reader_past_a_slots_indexed_readers_is_still_checked_against_the_writes_before_it()
+    {
+        int readers = BlockFootprints.MaxIndexedPerSlot + 1;
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(readers + 1);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        for (int i = 1; i < readers; i++) footprints.Store(i, Footprint(txs[i], reads: [(cell, 0x4e4d)]));
+        footprints.Store(readers, Footprint(txs[readers], reads: [(cell, UInt256.Zero)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(footprints.TryTakeInvalidated(-1, out int position), Is.True);
+            Assert.That(position, Is.EqualTo(readers));
+        }
+    }
+
+    [Test]
+    public void A_refresh_that_fails_leaves_the_block_its_other_refreshes()
+    {
+        PreBlockCaches caches = ProcessingScope.Resolve<PreBlockCaches>();
+        StrongBox<int> seeds = new();
+        using BlockCachePreWarmer preWarmer = new(
+            new OuterDecoratedEnvs(ProcessingScope.Resolve<PrewarmerEnvFactory>(), caches, state => new FirstSeedFails(state, seeds)),
+            minPoolSize: 4,
+            concurrency: 3,
+            parallelExecutionBatchRead: true,
+            ProcessingScope.Resolve<NodeStorageCache>(),
+            caches,
+            LimboLogs.Instance,
+            handoff: true);
+
+        RunPreWarmCaches(preWarmer, BuildBlock(
+            Call(TestItem.PrivateKeyA, 0, Counter),
+            Call(TestItem.PrivateKeyB, 0, Counter),
+            Call(TestItem.PrivateKeyD, 0, Counter)));
+
+        BlockFootprints footprints = preWarmer.Footprints!;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(seeds.Value, Is.GreaterThan(1), "a refresh seeded after the one that failed");
+            Assert.That(footprints.Get(1)!.Refreshed || footprints.Get(2)!.Refreshed, Is.True);
+        }
+    }
+
+    [Test]
     public void A_footprint_writing_a_slot_twice_leaves_its_last_write()
     {
         (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
@@ -717,13 +784,14 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     /// <summary>Envs whose scopes expose their world state through one more decorator than the recorder.</summary>
-    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches) : IPooledObjectPolicy<IPrewarmerEnv>
+    private sealed class OuterDecoratedEnvs(PrewarmerEnvFactory factory, PreBlockCaches caches, Func<IWorldState, IWorldState>? decorate = null)
+        : IPooledObjectPolicy<IPrewarmerEnv>
     {
-        public IPrewarmerEnv Create() => new Env(factory.Create(caches));
+        public IPrewarmerEnv Create() => new Env(factory.Create(caches), decorate ?? (static state => new Forwarding(state)));
 
         public bool Return(IPrewarmerEnv obj) => true;
 
-        private sealed class Env(IPrewarmerEnv inner) : IPrewarmerEnv
+        private sealed class Env(IPrewarmerEnv inner, Func<IWorldState, IWorldState> decorate) : IPrewarmerEnv
         {
             public ReadOnlySpan<IHasAccessList> SystemAccessLists => inner.SystemAccessLists;
 
@@ -731,28 +799,38 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
             public bool TryBuild(BlockHeader? baseBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
-                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                scope = inner.TryBuild(baseBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built, decorate) : null;
                 return scope is not null;
             }
 
             public bool TryBuildAtTarget(BlockHeader targetBlock, [NotNullWhen(true)] out IReadOnlyTxProcessingScope? scope)
             {
-                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built) : null;
+                scope = inner.TryBuildAtTarget(targetBlock, out IReadOnlyTxProcessingScope? built) ? new Scope(built, decorate) : null;
                 return scope is not null;
             }
 
             public void Dispose() => inner.Dispose();
         }
 
-        private sealed class Scope(IReadOnlyTxProcessingScope inner) : IReadOnlyTxProcessingScope
+        private sealed class Scope(IReadOnlyTxProcessingScope inner, Func<IWorldState, IWorldState> decorate) : IReadOnlyTxProcessingScope
         {
             public ITransactionProcessor TransactionProcessor => inner.TransactionProcessor;
-            public IWorldState WorldState { get; } = new Forwarding(inner.WorldState);
+            public IWorldState WorldState { get; } = decorate(inner.WorldState);
             public void Reset() => inner.Reset();
             public void Dispose() => inner.Dispose();
         }
 
         private sealed class Forwarding(IWorldState state) : WorldStateDecorator(state);
+    }
+
+    /// <summary>A scope's world state that fails the first slot a refresh seeds: only a refresh sets one through it.</summary>
+    private sealed class FirstSeedFails(IWorldState state, StrongBox<int> seeds) : WorldStateDecorator(state)
+    {
+        public override void Set(in StorageCell storageCell, in UInt256 newValue)
+        {
+            if (Interlocked.Increment(ref seeds.Value) == 1) throw new InvalidOperationException("The first seed fails.");
+            base.Set(in storageCell, in newValue);
+        }
     }
 }
 
@@ -955,7 +1033,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             using IDisposable? session = PreWarmer.PreWarmCaches(block, Parent, Spec);
             BlockFootprints footprints = PreWarmer.Footprints!;
             return ProcessInScope(block, ProductionAdapter,
-                beforeTransaction: index => SpinWait.SpinUntil(() => ready(footprints, index), TimeSpan.FromSeconds(10)),
+                beforeTransaction: index => Assert.That(SpinWait.SpinUntil(() => ready(footprints, index), TimeSpan.FromSeconds(10)), Is.True,
+                    $"the footprints were not ready before transaction {index}"),
                 transactionsExecuted: () => session?.Dispose());
         }
     }

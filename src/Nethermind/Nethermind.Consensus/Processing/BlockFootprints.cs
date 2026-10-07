@@ -47,6 +47,7 @@ internal sealed class BlockFootprints(Block block)
     private int _invalidatedCount;
     private int _untrackedCount;
     private int _refreshesRun;
+    private int _writesVersion;
 
     // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
     private readonly ConcurrentQueue<(int Position, List<(StorageCell Cell, UInt256 Value)>? Writes)> _reported = new();
@@ -80,10 +81,23 @@ internal sealed class BlockFootprints(Block block)
 
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
-    public void Store(int index, TransactionFootprint footprint)
+    /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
+    public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
     {
         Volatile.Write(ref _footprints[index], footprint);
-        Index(index, footprint);
+        Index(index, footprint, seededAt);
+    }
+
+    /// <summary>Changes whenever writes the footprints leave are replaced.</summary>
+    public int WritesVersion => Volatile.Read(ref _writesVersion);
+
+    /// <summary>Refreshes the block has run.</summary>
+    public int RefreshesRun
+    {
+        get
+        {
+            lock (_lock) return _refreshesRun;
+        }
     }
 
     /// <summary>The footprint of <paramref name="tx"/>, at <paramref name="index"/> in the block <paramref name="header"/> heads.</summary>
@@ -223,13 +237,17 @@ internal sealed class BlockFootprints(Block block)
         if (invalidated) _changed.Release();
     }
 
-    private void Index(int position, TransactionFootprint footprint)
+    private void Index(int position, TransactionFootprint footprint, int seededAt)
     {
         bool invalidated;
         lock (_lock)
         {
             // A run that ends after block processing executed its transaction does not replace the writes it made.
             if (_executed[position]) return;
+            // With no write replaced since the refresh seeded the slots the footprint before it read, a refreshed run
+            // that read one of them at another value than its seed changed it itself first (a creation clears the
+            // storage), and running it again reads the same.
+            TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position] as TransactionFootprint : null;
             invalidated = Replace(position, footprint);
 
             ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
@@ -238,7 +256,7 @@ internal sealed class BlockFootprints(Block block)
             {
                 ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, reads[i].Cell, out _);
                 if (slot.Untracked) continue;
-                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value;
+                outdated |= ValueBefore(in slot.Writers, position) is { } value && value != reads[i].Value && (seeded is null || !Reads(seeded, reads[i].Cell));
                 if (slot.Readers.Count < MaxIndexedPerSlot) slot.Readers.Add(new Entry(position, i));
             }
 
@@ -255,6 +273,7 @@ internal sealed class BlockFootprints(Block block)
         object? previous = _indexed[position];
         if (previous is not null) Unindex(position, previous);
         _indexed[position] = source;
+        _writesVersion++;
         foreach ((StorageCell cell, int index) in WritesOf(source))
         {
             ref Slot slot = ref CollectionsMarshal.GetValueRefOrAddDefault(_slots, cell, out _);
@@ -344,6 +363,16 @@ internal sealed class BlockFootprints(Block block)
     private UInt256 ReadValue(Entry reader) => ((TransactionFootprint)_indexed[reader.Position]!).Slots[reader.Index].Value;
 
     private static WrittenSlots WritesOf(object? source) => new(source);
+
+    private static bool Reads(TransactionFootprint footprint, in StorageCell cell)
+    {
+        foreach (ref readonly SlotPrecondition read in footprint.Slots)
+        {
+            if (read.Cell.Equals(cell)) return true;
+        }
+
+        return false;
+    }
 
     // A position, and where in what is indexed there the slot's write or read is.
     private readonly record struct Entry(int Position, int Index);

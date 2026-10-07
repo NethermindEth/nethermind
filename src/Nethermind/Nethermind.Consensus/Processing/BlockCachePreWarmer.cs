@@ -1476,6 +1476,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         bool running = false;
         try
         {
+            int seededAt = footprints.WritesVersion;
             bool moved = false;
             foreach (ref readonly SlotPrecondition slot in invalidated.Slots)
             {
@@ -1511,7 +1512,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
             if (result && recorder.Finish(tx, in result, refreshed: true) is { } footprint)
             {
-                footprints.Store(position, footprint);
+                footprints.Store(position, footprint, seededAt);
                 Blockchain.Metrics.PrewarmRefreshesStored++;
             }
             else
