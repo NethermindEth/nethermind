@@ -1613,17 +1613,12 @@ namespace Nethermind.TxPool
                 state = new(tx, _accounts, headSpec);
                 long validationStarted = Stopwatch.GetTimestamp();
                 accepted = FilterTransactions(tx, handlingOptions, ref state, ref canRecycle);
+                // The filters are the validation; insertion and eviction after them are not the peer's to pay for.
+                long validationTicks = Stopwatch.GetTimestamp() - validationStarted;
                 if (accepted)
                 {
                     canRecycle = false;
                     accepted = AddCore(tx, ref state, startBroadcast);
-                }
-
-                // Validation that ran and still ended in a rejection is the peer's to pay, whichever step rejected it,
-                // unless this node deferred it for a bound of its own: that load is the node's, not the peer's.
-                if (shares is not null && !accepted && accepted != AcceptTxResult.FrameSimulationDeferred && state.FrameValidationRan)
-                {
-                    shares.Charge(peer!, headGeneration, Stopwatch.GetTimestamp() - validationStarted);
                 }
                 else
                 {
@@ -1634,6 +1629,13 @@ namespace Nethermind.TxPool
 
                     Metrics.PendingTransactionsDiscarded++;
                     PooledBlobBuffers.Return(tx);
+                }
+
+                // Validation that ran and still ended in a rejection is the peer's to pay, whichever step rejected it,
+                // unless this node deferred it for a bound of its own: that load is the node's, not the peer's.
+                if (shares is not null && !accepted && accepted != AcceptTxResult.FrameSimulationDeferred && state.FrameValidationRan)
+                {
+                    shares.Charge(peer!, headGeneration, validationTicks);
                 }
             }
             finally

@@ -4642,6 +4642,27 @@ namespace Nethermind.TxPool.Test
             }
         }
 
+        // The share's charge sits beside the accept/reject branches of submission, never between them: an accepted
+        // transaction must not run the rejection cleanup.
+        [TestCase(false, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded")]
+        [TestCase(true, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded_WithFairShares")]
+        public void SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded(bool fairShare)
+        {
+            CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address),
+                config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = fairShare });
+            Transaction tx = Build.A.Transaction.WithNonce(0).WithGasPrice(1.GWei).SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            long discarded = Metrics.PendingTransactionsDiscarded;
+
+            AcceptTxResult result = ((IRecyclableTxPool)_txPool).SubmitOwnedTx(tx, new object(), out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(Metrics.PendingTransactionsDiscarded, Is.EqualTo(discarded));
+            }
+        }
+
         [Test]
         public void SubmitOwnedTx_PeerThatSpentItsShare_IsDroppedBeforeValidation()
         {
