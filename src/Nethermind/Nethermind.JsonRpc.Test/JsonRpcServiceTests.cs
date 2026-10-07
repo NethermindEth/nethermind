@@ -108,6 +108,7 @@ public class JsonRpcServiceTests
     private JsonRpcContext _context = null!;
 
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(10);
+    private const string StateOverrideJson = """{"0x0000000000000000000000000000000000000001":{"balance":"0x1"}}""";
 
     private static HexBytes ToHexBytes(string value) => new(Bytes.FromHexString(value));
 
@@ -1663,7 +1664,7 @@ public class JsonRpcServiceTests
         LegacyTransactionForRpc large = new() { Input = new byte[EvmAdmissionGate.BytesPerWeightUnit] };
         LegacyTransactionForRpc small = new() { Input = new byte[1] };
         JsonRpcRequest[] requests = [.. new[] { large, small }.Select(transaction => rawParams
-            ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)}]")
+            ? BuildRawRequest("eth_call", $"[{new EthereumJsonSerializer().Serialize(transaction)},\"latest\",{StateOverrideJson}]")
             : EthCall(transaction))];
 
         Task<JsonRpcResponse>[] responses;
@@ -1734,6 +1735,65 @@ public class JsonRpcServiceTests
         Assert.That(service.EvmGate.InFlight, Is.Zero);
     }
 
+    [Test]
+    public async Task Evm_request_is_gated_only_when_it_runs_in_an_environment_pool_of_its_own(
+        [ValueSource(nameof(EvmGatingCases))] (string Method, string ParamsJson, bool Gated) gating, [Values] bool rawParams)
+    {
+        IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
+        JsonRpcService service = CreateGatedService(ethRpcModule);
+        JsonElement parsed = JsonSerializer.Deserialize<JsonElement>(gating.ParamsJson);
+        JsonRpcRequest request = rawParams
+            ? new() { JsonRpc = "2.0", Method = gating.Method, ParamsUtf8 = Encoding.UTF8.GetBytes(gating.ParamsJson), ParamsKind = parsed.ValueKind, Id = 67 }
+            : new() { JsonRpc = "2.0", Method = gating.Method, Params = parsed, Id = 67 };
+
+        Task<JsonRpcResponse> response;
+        using (await HoldSlot(service))
+        {
+            response = service.SendRequestAsync(request, _context).AsTask();
+            if (gating.Gated)
+            {
+                Assert.That((service.EvmGate.Queued, ethRpcModule.ReceivedCalls().Count()), Is.EqualTo((1, 0)), "waits for the held slot");
+            }
+            else
+            {
+                using JsonRpcResponse completed = await response.WaitAsync(TestTimeout);
+                Assert.That(completed is JsonRpcErrorResponse { Error.Code: ErrorCodes.LimitExceeded }, Is.False, "not refused");
+                Assert.That(service.EvmGate.Queued, Is.Zero, "ran while every slot was held");
+            }
+        }
+
+        using JsonRpcResponse _ = await response.WaitAsync(TestTimeout);
+        Assert.That(service.EvmGate.InFlight, Is.Zero);
+    }
+
+    private static IEnumerable<(string Method, string ParamsJson, bool Gated)> EvmGatingCases()
+    {
+        const string Tx = """{"to":"0x0000000000000000000000000000000000000002"}""";
+        const string Latest = "\"latest\"";
+        const string Missing = "\"\"";
+        yield return ("eth_call", Params(Tx), false);
+        yield return ("eth_call", Params(Tx, Latest), false);
+        yield return ("eth_call", Params(Tx, Latest, "null"), false);
+        yield return ("eth_call", Params(Tx, Latest, "{}"), false);
+        yield return ("eth_call", Params(Tx, Latest, Missing), false);
+        yield return ("eth_call", Params(Tx, Latest, StateOverrideJson), true);
+        yield return ("eth_call", Params(Tx, Latest, "null", "null"), false);
+        yield return ("eth_call", Params(Tx, Latest, "{}", Missing), false);
+        yield return ("eth_call", Params(Tx, Latest, "null", "{}"), true);
+        yield return ("eth_call", Params(Tx, Latest, "{}", """{"number":"0x1"}"""), true);
+        // Binding parses a string as JSON too.
+        yield return ("eth_call", Params(Tx, Latest, JsonSerializer.Serialize(StateOverrideJson)), true);
+        yield return ("eth_call", Params(Tx, Latest, "null", JsonSerializer.Serialize("{}")), true);
+        yield return ("eth_estimateGas", Params(Tx, Latest, "null", "{}"), true);
+        yield return ("eth_createAccessList", Params(Tx, Latest, "null", "true"), false);
+        yield return ("eth_createAccessList", Params(Tx, Latest, "{}", "false"), false);
+        yield return ("eth_createAccessList", Params(Tx, Latest, StateOverrideJson, "true"), true);
+        yield return ("eth_simulateV1", Params("""{"blockStateCalls":[]}"""), true);
+        yield return ("eth_call", Tx, false);
+
+        static string Params(params string[] items) => $"[{string.Join(',', items)}]";
+    }
+
     private JsonRpcService CreateGatedService(
         IEthRpcModule ethRpcModule, int maxQueueWaitMs = 60_000, int webSocketsProcessingConcurrency = 1, int queueLimit = 500, ManualClock? clock = null) =>
         CreateService(
@@ -1747,8 +1807,9 @@ public class JsonRpcServiceTests
             },
             clock);
 
+    // With a state override, so the call is gated.
     private static JsonRpcRequest EthCall(object? transaction = null) =>
-        RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc());
+        RpcTest.BuildJsonRequest("eth_call", transaction ?? new LegacyTransactionForRpc(), "latest", JsonSerializer.Deserialize<JsonElement>(StateOverrideJson));
 
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
         service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);

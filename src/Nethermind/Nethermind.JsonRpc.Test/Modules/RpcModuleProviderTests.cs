@@ -239,17 +239,24 @@ public class RpcModuleProviderTests
     }
 
     [Test]
-    public void Evm_execution_flag_marks_exactly_the_evm_executing_methods()
+    public void Evm_execution_flag_marks_exactly_the_methods_with_an_environment_pool_of_their_own_and_finds_their_overrides()
     {
         // The Engine API is swept too: a gated engine method would shed consensus-client calls under load.
-        IEnumerable<string> flagged = new[] { typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly }
+        Dictionary<string, (int State, int Block)> flagged = new[] { typeof(IRpcModule).Assembly, typeof(IEngineRpcModule).Assembly }
             .SelectMany(static a => a.GetTypes())
             .Where(static t => t.IsInterface && typeof(IRpcModule).IsAssignableFrom(t))
             .SelectMany(static t => t.GetMethods())
             .Where(static m => m.GetCustomAttribute<JsonRpcMethodAttribute>()?.IsEvmExecution == true)
-            .Select(static m => m.Name);
+            .Select(static m => new RpcModuleProvider.ResolvedMethodInfo(ModuleType.Eth, m, true, RpcEndpoint.All, true))
+            .ToDictionary(static m => m.MethodInfo.Name, static m => (m.StateOverrideIndex, m.BlockOverrideIndex));
 
-        Assert.That(flagged, Is.EquivalentTo(new[] { "eth_call", "eth_estimateGas", "eth_createAccessList", "eth_simulateV1", "eth_fillTransaction" }));
+        Assert.That(flagged, Is.EquivalentTo(new Dictionary<string, (int State, int Block)>
+        {
+            ["eth_call"] = (2, 3),
+            ["eth_estimateGas"] = (2, 3),
+            ["eth_createAccessList"] = (2, -1),
+            ["eth_simulateV1"] = (-1, -1),
+        }));
     }
 
     [Test]

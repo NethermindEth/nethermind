@@ -14,6 +14,8 @@ using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Text.Json.Serialization.Metadata;
+using Nethermind.Core;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using System.Threading;
@@ -407,6 +409,15 @@ namespace Nethermind.JsonRpc.Modules
                     Type? converterType = null;
                     ParameterKind kind = ParameterKind.Typed;
 
+                    if (paramType == typeof(Dictionary<Address, AccountOverride>))
+                    {
+                        StateOverrideIndex = i;
+                    }
+                    else if (paramType == typeof(BlockOverride))
+                    {
+                        BlockOverrideIndex = i;
+                    }
+
                     if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
                         ConstructorInfo constructorInfo = paramType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, [])
@@ -495,6 +506,13 @@ namespace Nethermind.JsonRpc.Modules
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
             internal bool IsEvmExecution { get; }
+
+            /// <summary>Position of the state override parameter, or -1 when the method has none.</summary>
+            internal int StateOverrideIndex { get; } = -1;
+
+            /// <summary>Position of the block override parameter, or -1 when the method has none.</summary>
+            internal int BlockOverrideIndex { get; } = -1;
+
             internal Type? ResultWrapperType { get; }
             internal Type? SuccessPayloadType { get; }
             internal Type? ErrorDataPayloadType { get; }

@@ -51,11 +51,15 @@ namespace Nethermind.JsonRpc
         /// <summary>Signals that the caller has gone, e.g. the connection was closed.</summary>
         internal CancellationToken CancellationToken { get; set; }
 
+        /// <summary>The raw <c>params</c> element, taken from the request bytes or the parsed element without parsing anything; empty when the request carries none.</summary>
+        /// <remarks>Read it before the parameters are bound: disposing the parsed document invalidates it.</remarks>
+        internal ReadOnlySpan<byte> RawParamsUtf8 => !ParamsUtf8.IsEmpty
+            ? ParamsUtf8.Span
+            : _params.ValueKind == JsonValueKind.Undefined ? default : JsonMarshal.GetRawUtf8Value(_params);
+
         /// <summary>Byte length of the raw <c>params</c> element, or zero when the request carries none.</summary>
         /// <remarks>Read it before the parameters are bound: disposing the parsed document invalidates it.</remarks>
-        internal int ParamsUtf8Length => !ParamsUtf8.IsEmpty
-            ? ParamsUtf8.Length
-            : _params.ValueKind == JsonValueKind.Undefined ? 0 : JsonMarshal.GetRawUtf8Value(_params).Length;
+        internal int ParamsUtf8Length => RawParamsUtf8.Length;
 
         internal void DisposeParsedParamsDocument()
         {

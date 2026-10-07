@@ -61,7 +61,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         try
         {
-            ValueTask<JsonRpcResponse> responseTask = method!.IsEvmExecution
+            ValueTask<JsonRpcResponse> responseTask = IsGated(rpcRequest, method!)
                 ? ExecuteGatedAsync(rpcRequest, methodName, method, context)
                 : ExecuteAsync(rpcRequest, methodName, method, context);
             return responseTask.IsCompletedSuccessfully
@@ -117,6 +117,50 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         ex is OutOfMemoryException or { InnerException: OutOfMemoryException }
             ? $"Id:{request.Id}, {request.Method}(params omitted)"
             : request.ToString();
+
+    // Gates the calls that run in an environment pool of their own: those without override parameters, such as
+    // eth_simulateV1, always; eth_call and the like only with an override, as BlockchainBridge.HasOverrides decides.
+    private static bool IsGated(JsonRpcRequest request, ResolvedMethodInfo method) =>
+        method.IsEvmExecution
+        && (method is { StateOverrideIndex: < 0, BlockOverrideIndex: < 0 }
+            || CarriesOverride(request.RawParamsUtf8, method.StateOverrideIndex, method.BlockOverrideIndex));
+
+    /// <summary>
+    /// Whether the <c>params</c> array carries a state or block override at the given positions: any value there but a missing
+    /// one and, for the state override, an empty object. Reads forward only, up to the last of them, without binding anything.
+    /// </summary>
+    /// <remarks>
+    /// Binding parses a string as JSON too, so a string other than a missing value counts. Params that are not an array
+    /// carry none; binding rejects them.
+    /// </remarks>
+    private static bool CarriesOverride(ReadOnlySpan<byte> paramsUtf8, int stateOverrideIndex, int blockOverrideIndex)
+    {
+        if (paramsUtf8.IsEmpty)
+        {
+            return false;
+        }
+
+        Utf8JsonReader reader = new(paramsUtf8);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartArray)
+        {
+            return false;
+        }
+
+        int last = Math.Max(stateOverrideIndex, blockOverrideIndex);
+        for (int i = 0; i <= last && reader.Read() && reader.TokenType != JsonTokenType.EndArray; i++)
+        {
+            if ((i == stateOverrideIndex || i == blockOverrideIndex)
+                && !IsMissingParameterMarker(in reader)
+                && !(i == stateOverrideIndex && reader.TokenType == JsonTokenType.StartObject && reader.Read() && reader.TokenType == JsonTokenType.EndObject))
+            {
+                return true;
+            }
+
+            reader.Skip();
+        }
+
+        return false;
+    }
 
     private async ValueTask<JsonRpcResponse> ExecuteGatedAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
