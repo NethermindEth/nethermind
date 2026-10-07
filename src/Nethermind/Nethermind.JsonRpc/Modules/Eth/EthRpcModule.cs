@@ -353,26 +353,31 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
-    {
-        ResultWrapper<Hash256> result = await SignAndSendTransaction(rpcTx);
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndSendTransaction(rpcTx));
 
-        // A request from an account this node does not hold fails as an unknown account whatever else is wrong with
-        // it, so the wallet is asked only once the request has failed.
-        return result.Result.ResultType == ResultType.Failure && !HoldsAccount((rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero)
+    /// <summary>
+    /// A request from an account this node does not hold fails as an unknown account whatever else is wrong with
+    /// it, so the wallet is asked only once <paramref name="result"/> has failed.
+    /// </summary>
+    protected ResultWrapper<Hash256> ReportUnknownAccountFirst(SignableTransactionForRpc rpcTx, ResultWrapper<Hash256> result) =>
+        result.Result.ResultType == ResultType.Failure && !HoldsAccount((rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero)
             ? ResultWrapper<Hash256>.Fail(UnknownAccount, ErrorCodes.InvalidInput)
             : result;
-    }
+
+    /// <summary>The fee rule <paramref name="rpcTx"/> breaks as a transaction to send, or null when its fees pass.</summary>
+    /// <remarks>Blob transactions are not sent this way, so they are not checked.</remarks>
+    protected ResultWrapper<Hash256>? CheckSendTransactionFees(SignableTransactionForRpc rpcTx) =>
+        rpcTx is not BlobTransactionForRpc
+        && _blockFinder.Head?.Header is { } head
+        && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError
+            ? ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput)
+            : null;
 
     private Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
-        // Blob transactions are not sent this way.
-        if (rpcTx is not BlobTransactionForRpc
-            && _blockFinder.Head?.Header is { } head
-            && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError)
-        {
-            return Task.FromResult(ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput));
-        }
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return Task.FromResult(feeError);
 
         Result<Transaction> txResult = rpcTx.ToValidatedTransaction();
         if (!txResult.Success(out Transaction tx, out string error))
