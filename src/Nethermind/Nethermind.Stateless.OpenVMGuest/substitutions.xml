@@ -15,4 +15,10 @@
       <method signature="System.Object ChangeType(System.Object,System.Type,System.IFormatProvider)" body="remove" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only OpenVM's runtime exports the 256-bit multiplication MUL runs on. -->
+    <type fullname="Nethermind.Evm.OpenVmBigIntFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>

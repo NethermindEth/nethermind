@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using Nethermind.Zkvm.Abstractions;
 
 namespace Nethermind.Evm;
@@ -70,4 +71,12 @@ public static unsafe partial class EvmInstructions
         fixed (UInt256* pa = &a, pb = &b, pr = &result)
             Accelerators.ReduceMod256((ulong*)pa, (ulong*)pb, (ulong*)pr);
     }
+
+    /// <summary>OpenVM's 256-bit multiplication: the low 256 bits of <c>a * b</c> into <paramref name="result"/>.</summary>
+    /// <remarks>
+    /// One instruction of OpenVM's bigint extension, from <c>Nethermind.OpenVM.Runtime</c>. Every pointer must be 8-byte
+    /// aligned. Both factors are read before the product is written, so <paramref name="result"/> may alias either.
+    /// </remarks>
+    [DllImport("__Internal", EntryPoint = "zkvm_u256_mul", ExactSpelling = true), SuppressGCTransition]
+    internal static extern void OpenVmMultiply256(ulong* result, ulong* a, ulong* b);
 }
