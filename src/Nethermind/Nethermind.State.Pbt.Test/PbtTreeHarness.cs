@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
+using System.Numerics;
 using FastEnumUtility;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -200,12 +201,23 @@ internal static class PbtStoreTestExtensions
         writer.SetNodeGroup(groupKey, groupHash, payload);
     }
 
-    internal static PbtNodeGroupReader ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
+    internal static GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         PbtNodeGroupCodec.ValidateNodes(cursor, payload);
-        return PbtNodeGroupReader.FromValidated(cursor, payload);
+        return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth, default);
+    }
+
+    internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader)
+    {
+        List<(int Position, ReadOnlyMemory<byte> Encoding)> nodes = [];
+        for (uint stored = reader.StoredPositions; stored != 0; stored &= stored - 1)
+        {
+            int position = BitOperations.TrailingZeroCount(stored);
+            nodes.Add((position, reader.GetEncoding(position)));
+        }
+        return nodes;
     }
 
     /// <summary>Asserts every stored descendant size equals the summed payload lengths of the groups keyed below that boundary slot.</summary>
@@ -426,13 +438,13 @@ internal static class PbtStoreTestExtensions
         PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
         using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
+        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
         return ResolveNode(reader, location.GroupKey, location.Position);
     }
 
-    private static byte[]? ResolveNode<TPath>(PbtNodeGroupReader reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
+    private static byte[]? ResolveNode<TPath>(GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
-        ReadOnlySpan<byte> encoding = reader.GetNode(position);
+        ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
         if (!encoding.IsEmpty) return encoding.ToArray();
         TPath path = PbtTestPaths.PathOf(groupKey, position);
         int relativeDepth = path.BitDepth - groupKey.BitDepth;
@@ -452,12 +464,10 @@ internal static class PbtStoreTestExtensions
         List<PbtNodeRecord> records = [];
         if (priorPayload is not null)
         {
-            PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload.GetSpan());
-            PbtNodeGroupReader.Enumerator enumerator = reader.EnumerateNodes();
-            while (enumerator.MoveNext())
+            foreach ((int position, ReadOnlyMemory<byte> node) in PbtStoreTestExtensions.ReadGroup(location.GroupKey, priorPayload.GetSpan()).Nodes())
             {
-                if (enumerator.CurrentPosition != location.Position)
-                    records.Add(new PbtNodeRecord(PbtTestPaths.PathOf(location.GroupKey, enumerator.CurrentPosition).ToPath<PbtStorageNodePath>(), enumerator.Current));
+                if (position != location.Position)
+                    records.Add(new PbtNodeRecord(PbtTestPaths.PathOf(location.GroupKey, position).ToPath<PbtStorageNodePath>(), node.Span));
             }
         }
         if (encoding is not null) records.Add(new PbtNodeRecord(path.ToPath<PbtStorageNodePath>(), encoding));

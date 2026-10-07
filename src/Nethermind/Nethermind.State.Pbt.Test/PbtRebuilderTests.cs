@@ -135,8 +135,7 @@ public class PbtRebuilderTests
         foreach (PbtStorageNodePath groupKey in PbtStoreTestExtensions.PersistedNodeGroupKeys(db))
         {
             using RefCountingMemory payload = reader.GetNodeGroup(groupKey)!;
-            PbtNodeGroupReader group = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
-            physicalNodeCount += group.Count;
+            physicalNodeCount += PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).Nodes().Count;
         }
         Assert.That(physicalNodeCount, Is.LessThan(incrementalStore.EnumerateRecords().Count));
         using (Assert.EnterMultipleScope())

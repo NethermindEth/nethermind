@@ -17,7 +17,7 @@ namespace Nethermind.Core.Memory;
 /// runs cleanup exactly once. An <see cref="Owning"/> instance returns its buffer to
 /// <see cref="ArrayPool{T}.Shared"/> on that last release, an <see cref="OwningRocksDb"/> instance
 /// disposes its memory manager, an <see cref="OwningNative"/> instance frees its block through its
-/// <see cref="SlabMemoryAllocator"/>.
+/// <see cref="SlabMemoryAllocator"/>, and a <see cref="Wrapping"/> instance leaves its array to the GC.
 /// </summary>
 /// <remarks>
 /// The lease counter is lock-free via <see cref="RefCountingLease"/>, so leases may be acquired and
@@ -31,6 +31,7 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
         Pooled,
         RocksDb,
         Native,
+        Managed,
     }
 
     private readonly byte[]? _buffer;
@@ -75,6 +76,9 @@ public sealed unsafe class RefCountingMemory : MemoryManager<byte>
     /// occupies its first <paramref name="length"/> bytes); the last release returns it to the pool.
     /// </summary>
     public static RefCountingMemory Owning(byte[] pooledBuffer, int length) => new(pooledBuffer, length, BackingKind.Pooled);
+
+    /// <summary>Wraps a managed array that the GC owns; the last release does nothing to it.</summary>
+    public static RefCountingMemory Wrapping(byte[] buffer) => new(buffer, buffer.Length, BackingKind.Managed);
 
     /// <summary>
     /// Adopts memory owned by RocksDB without copying it; the last release disposes its manager.

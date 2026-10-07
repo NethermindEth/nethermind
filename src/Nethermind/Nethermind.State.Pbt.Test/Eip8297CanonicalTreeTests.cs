@@ -941,10 +941,9 @@ public class Eip8297CanonicalTreeTests
                 foreach (PbtPhysicalPayload payload in tree.Bulk.PhysicalPayloads)
                 {
                     int postfixLength = shared.Length - (payload.Key.BitDepth >> 3);
-                    PbtNodeGroupReader.Enumerator nodes = PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span).EnumerateNodes();
-                    while (nodes.MoveNext())
+                    foreach ((int _, ReadOnlyMemory<byte> encoding) in PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span).Nodes())
                     {
-                        PbtNodeReader node = PbtNodeReader.FromValidated(nodes.Current);
+                        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
                         if (node.IsLeaf) continue;
                         if (!node.LeftKeyPostfix.IsEmpty) Assert.That(node.LeftKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
                         if (!node.RightKeyPostfix.IsEmpty) Assert.That(node.RightKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
@@ -1353,16 +1352,15 @@ public class Eip8297CanonicalTreeTests
         Assert.That(payloads, Has.Count.EqualTo(singlePair ? 1 : 2));
         PbtStorageNodePath groupKey = singlePair ? new([], 0) : new(Bytes.FromHexString("00"), 8);
         PbtPhysicalPayload group = payloads.Single(payload => payload.Key.Equals(groupKey));
-        PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(groupKey, group.Payload.Span);
+        List<(int Position, ReadOnlyMemory<byte> Encoding)> nodes = PbtStoreTestExtensions.ReadGroup(groupKey, group.Payload.Span).Nodes();
         List<PbtNodeRecord> records = [];
-        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
-        while (nodes.MoveNext())
-            records.Add(new(PbtTestPaths.PathOf(groupKey, nodes.CurrentPosition), nodes.Current));
+        foreach ((int position, ReadOnlyMemory<byte> encoding) in nodes)
+            records.Add(new(PbtTestPaths.PathOf(groupKey, position), encoding.Span));
         byte[] expectedPayload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(reader.Count, Is.EqualTo(storedNodes));
+            Assert.That(nodes, Has.Count.EqualTo(storedNodes));
             Assert.That(group.Payload.Length, Is.EqualTo(PbtNodeGroupCodec.HeaderLength + storedNodes * pairBranchLength
                 + storedNodes * sizeof(ushort) + sizeof(uint) + PbtNodeGroupCodec.DescendantMaskLength));
             Assert.That(group.Payload.ToArray(), Is.EqualTo(expectedPayload));
@@ -1388,8 +1386,7 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath branchGroupKey = new(Bytes.FromHexString("00"), 8);
         using (RefCountingMemory? original = store.GetPhysicalNodeGroup(branchGroupKey))
         {
-            PbtNodeGroupReader reader = PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan());
-            PbtNodeReader branch = PbtNodeReader.FromValidated(reader.GetNode(18));
+            PbtNodeReader branch = PbtNodeReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(18).Span);
             Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 12));
         }
         root = store.Fold(root, [(sibling, null)]);
@@ -1397,12 +1394,12 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(left, Value(1));
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
-        PbtNodeGroupReader updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
-        PbtNodeReader promoted = PbtNodeReader.FromValidated(updatedReader.GetNode(30));
+        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
+        PbtNodeReader promoted = PbtNodeReader.FromValidated(updatedReader.GetEncoding(30).Span);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
-            Assert.That(updatedReader.Count, Is.EqualTo(1));
+            Assert.That(updatedReader.Nodes(), Has.Count.EqualTo(1));
             Assert.That(promoted.Prefix.BitCount, Is.EqualTo(prefixBits));
             Assert.That(promoted.Prefix.Bytes.ToArray(), Is.EqualTo(Bytes.FromHexString(prefixHex)));
         }

@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory.Slab;
 using Nethermind.Core.Memory;
 using NUnit.Framework;
@@ -158,6 +159,27 @@ public class RefCountingMemoryTests
             Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCount, Is.EqualTo(initialNativeCount));
             Assert.That(RefCountingMemoryMetrics.ActiveNativeRefCountingMemoryCapacity, Is.EqualTo(initialNativeCapacity));
         }
+    }
+
+    [Test]
+    public void Wrapping_adopts_the_array_without_copying_or_tracking_metrics()
+    {
+        long initialPooledCount = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCount;
+        long initialPooledCapacity = RefCountingMemoryMetrics.ActivePooledRefCountingMemoryCapacity;
+        byte[] array = Bytes.FromHexString("010203");
+        RefCountingMemory memory = RefCountingMemory.Wrapping(array);
+        array[1] = 4;
+        memory.AcquireLease();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(memory.GetSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("010403")), "wrapped memory is not copied");
+            AssertMetrics(initialPooledCount, initialPooledCapacity);
+        }
+
+        ((IDisposable)memory).Dispose();
+        ((IDisposable)memory).Dispose();
+        Assert.Throws<ObjectDisposedException>(() => ((IDisposable)memory).Dispose());
     }
 
     [Test]

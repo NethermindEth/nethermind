@@ -30,7 +30,8 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
         : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth, groupHash) { }
 
-    private GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash)
+    /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
+    internal GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash)
     {
         BitDepth = bitDepth;
         _groupHash = groupHash;

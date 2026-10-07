@@ -3,8 +3,10 @@
 
 using System.Buffers.Binary;
 using System.Diagnostics;
+using System.Numerics;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
@@ -155,16 +157,17 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     {
         PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupPath);
         PbtNodeGroupCodec.ValidateNodes(traversalPath, value);
-        PbtNodeGroupReader reader = PbtNodeGroupReader.FromValidated(traversalPath, value);
+        using GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(RefCountingMemory.Wrapping(value.ToArray()), groupPath.BitDepth, default);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
-        stats.GroupsByOccupancy[reader.Count]++;
-        PbtNodeGroupReader.Enumerator nodes = reader.EnumerateNodes();
-        while (nodes.MoveNext())
+        stats.GroupsByOccupancy[BitOperations.PopCount(reader.StoredPositions)]++;
+        for (uint stored = reader.StoredPositions; stored != 0; stored &= stored - 1)
         {
+            int position = BitOperations.TrailingZeroCount(stored);
+            ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
             stats.NodeCount++;
-            stats.NodeEncodingBytes += nodes.Current.Length;
-            PbtNodeReader node = PbtNodeReader.FromValidated(nodes.Current);
+            stats.NodeEncodingBytes += encoding.Length;
+            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
             if (node.IsLeaf) stats.LeafCount++;
             else
             {
@@ -172,7 +175,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                 if (!node.LeftKeyPostfix.IsEmpty) stats.LeafCount++;
                 if (!node.RightKeyPostfix.IsEmpty) stats.LeafCount++;
             }
-            stats.NodesByDepth[groupPath.BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(nodes.CurrentPosition).Length]++;
+            stats.NodesByDepth[groupPath.BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length]++;
         }
         for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
         {
