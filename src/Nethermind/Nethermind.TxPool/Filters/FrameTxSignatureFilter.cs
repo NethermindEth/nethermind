@@ -46,6 +46,7 @@ internal sealed class FrameTxSignatureFilter(
         IPrecompile? p256Precompile = spec.IsPrecompile(FrameTxSignatureValidator.P256VerifyPrecompileAddress)
             ? SecP256r1Precompile.Instance
             : null;
+        state.FrameValidationRan = true;
         if (!FrameTxSignatureValidator.Validate(tx, ecdsa, p256Precompile, spec, out string? error))
         {
             Metrics.PendingTransactionsFrameTxSignatureInvalid++;
