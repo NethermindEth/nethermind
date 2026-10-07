@@ -138,8 +138,11 @@ public static partial class EvmInstructions
             return EvmExceptionType.StackOverflow;
         }
         if (!TTracingInst.IsActive &&
-            ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI
-                || (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)))
+            (TCallSub.IsActive
+                // Non-short-circuit so the common unfused case takes one branch; the flag-off arm keeps master's code.
+                ? ((nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI)
+                    | nextInstruction == Instruction.CALLSUB
+                : (nextInstruction = (Instruction)Unsafe.Add(ref bytes, programCounter + Size)) is Instruction.JUMP or Instruction.JUMPI))
         {
             // If next instruction is a JUMP we can skip the PUSH+POP from stack
             ushort destination = Unsafe.As<byte, ushort>(ref Unsafe.Add(ref bytes, programCounter));
@@ -152,7 +155,12 @@ public static partial class EvmInstructions
                 && !(nextInstruction == Instruction.JUMPI && stack.PeekUInt256IsZero()))
                 goto Unfused;
 
-            if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
+            if (nextInstruction == Instruction.JUMP)
+            {
+                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
+                if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
+            }
+            else if (TCallSub.IsActive && nextInstruction == Instruction.CALLSUB)
             {
                 IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
                 if (!TGasPolicy.UpdateGas<CallSubGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
@@ -160,12 +168,6 @@ public static partial class EvmInstructions
                 programCounter += Size + 1;
                 return CallSubTo<TGasPolicy, OnFlag, TUseVmCounter>(
                     ref stack, ref gas, vm, JumpDestination((int)destination, ref stack), ref programCounter, ref fusedOpCodeCount);
-            }
-
-            if (nextInstruction == Instruction.JUMP)
-            {
-                IncrementFusedOpCodeCount<TGasPolicy, TUseVmCounter>(ref vm, ref fusedOpCodeCount);
-                if (!TGasPolicy.UpdateGas<JumpGasCost>(ref gas)) return EvmExceptionType.OutOfGas;
             }
             else
             {
