@@ -17,7 +17,7 @@ internal static class RewarmCounters
         ? sweepers
         : DefaultSweepers;
 
-    private const int DefaultSweepers = 1;
+    private const int DefaultSweepers = 3;
 
     public static long Marked, Unchanged, Stored, Dropped, Overtaken, Ticks;
 }
