@@ -61,6 +61,8 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
 
         public void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes) => innerScope.HintPredictedStorage(address, writes);
 
+        public void HintPredictedAccounts(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts) => innerScope.HintPredictedAccounts(accounts);
+
         public void Dispose()
         {
             innerScope.Dispose();

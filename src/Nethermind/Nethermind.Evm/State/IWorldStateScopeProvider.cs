@@ -71,6 +71,10 @@ public interface IWorldStateScopeProvider
         /// <remarks>Called from worker threads; a backend may build the storage tree ahead and reconcile it at the block's write batch.</remarks>
         void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes) { }
 
+        /// <summary>Experiment only: the account changes the block's footprints make, by account in transaction order.</summary>
+        /// <remarks>Called from worker threads; the scope takes ownership of the dictionary.</remarks>
+        void HintPredictedAccounts(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts) { }
+
         /// <summary>
         /// Get the account information for the following address.
         /// Note: Do not rely on <see cref="Account.StorageRoot"/> as it may be modified after write. Instead use <see cref="IStorageTree.RootHash"/>.

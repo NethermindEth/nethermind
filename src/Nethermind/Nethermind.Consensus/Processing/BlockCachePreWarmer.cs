@@ -976,6 +976,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             work.Add((address, writes));
         }
 
+        if (PredictedStorageCounters.DryRun) mainScope.HintPredictedAccounts(FoldAccounts(footprints));
+
         // Largest first, so the long builds start early.
         work.Sort(static (left, right) => right.Writes.Count.CompareTo(left.Writes.Count));
         ParallelOptions options = new() { MaxDegreeOfParallelism = _concurrencyLevel, CancellationToken = token };
@@ -987,6 +989,38 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             // Block processing finished its transactions; what is built is offered, the rest is not.
         }
+    }
+
+    /// <summary>Experiment only: every account change of the block's footprints, by account in transaction order.</summary>
+    private static Dictionary<AddressAsKey, List<PredictedAccountEffect>> FoldAccounts(BlockFootprints footprints)
+    {
+        Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts = [];
+        for (int i = 0; i < footprints.Count; i++)
+        {
+            if (footprints.Get(i) is not { } footprint) continue;
+            foreach (ref readonly StateEffect effect in footprint.Effects)
+            {
+                PredictedAccountOp? op = effect.Kind switch
+                {
+                    EffectKind.AddToBalance => PredictedAccountOp.AddBalance,
+                    EffectKind.AddToBalanceAndCreateIfNotExists => PredictedAccountOp.AddBalanceCreate,
+                    EffectKind.SubtractFromBalance => PredictedAccountOp.SubtractBalance,
+                    EffectKind.IncrementNonce => PredictedAccountOp.IncrementNonce,
+                    EffectKind.DecrementNonce => PredictedAccountOp.DecrementNonce,
+                    EffectKind.SetNonce => PredictedAccountOp.SetNonce,
+                    EffectKind.CreateAccount => PredictedAccountOp.Create,
+                    EffectKind.CreateAccountIfNotExists => PredictedAccountOp.CreateIfNotExists,
+                    EffectKind.DeleteAccount => PredictedAccountOp.Delete,
+                    EffectKind.InsertCode => PredictedAccountOp.InsertCode,
+                    _ => null,
+                };
+                if (op is not { } kind) continue;
+                ref List<PredictedAccountEffect>? list = ref CollectionsMarshal.GetValueRefOrAddDefault(accounts, effect.Address, out _);
+                (list ??= []).Add(new PredictedAccountEffect(kind, effect.Value, effect.Nonce, effect.CodeHash));
+            }
+        }
+
+        return accounts;
     }
 
     private static readonly TimeSpan StaleWait = TimeSpan.FromMilliseconds(2);

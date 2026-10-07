@@ -146,6 +146,7 @@ public static class HandoffDiagnostics
     }
 
     private static readonly long[] _dryLast = new long[11];
+    private static readonly long[] _dryAccountsLast = new long[6];
 
     // Per-block deltas of the dry run's process-wide sums; the maxima are taken and reset.
     private static void WriteDryRun(Utf8JsonWriter writer)
@@ -171,6 +172,23 @@ public static class HandoffDiagnostics
         writer.WriteNumber("exact_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.DryExactMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
         writer.WriteNumber("inexact_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.DryInexactMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
         writer.WriteNumber("unpredicted_max_ms", Math.Round(Interlocked.Exchange(ref PredictedStorageCounters.UnpredictedMaxTicks, 0) * 1000.0 / Stopwatch.Frequency, 3));
+        writer.WriteEndObject();
+
+        long[] accounts =
+        [
+            PredictedStorageCounters.DryAccountsTotal, PredictedStorageCounters.DryAccountsExact, PredictedStorageCounters.DryAccountsInexact,
+            PredictedStorageCounters.DryAccountsUnpredicted, PredictedStorageCounters.DryAccountsLeftover, PredictedStorageCounters.DryStateSetTicks,
+        ];
+        string[] accountNames = ["set", "exact", "inexact", "unpredicted", "leftover", "state_set_ms"];
+        writer.WriteStartObject("account_prediction");
+        for (int i = 0; i < accounts.Length; i++)
+        {
+            long delta = accounts[i] - _dryAccountsLast[i];
+            if (i == accounts.Length - 1) writer.WriteNumber(accountNames[i], Math.Round(delta * 1000.0 / Stopwatch.Frequency, 3));
+            else writer.WriteNumber(accountNames[i], delta);
+            _dryAccountsLast[i] = accounts[i];
+        }
+
         writer.WriteEndObject();
     }
 

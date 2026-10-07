@@ -56,6 +56,8 @@ public class WorldStateMetricsScopeProvider(IWorldStateScopeProvider baseProvide
 
         public void HintPredictedStorage(Address address, IReadOnlyList<(UInt256 Slot, UInt256 Value)> writes) => baseScope.HintPredictedStorage(address, writes);
 
+        public void HintPredictedAccounts(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts) => baseScope.HintPredictedAccounts(accounts);
+
         public void Dispose()
         {
             baseScope.Dispose();

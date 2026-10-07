@@ -39,6 +39,9 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     // Experiment only: storage trees built ahead from predicted final writes, taken by the block's write batch.
     private ConcurrentDictionary<AddressAsKey, PredictedStorage>? _predictedStorages;
     private volatile bool _predictionsClosed;
+    // Experiment only, dry run: the account changes the footprints predict; taken by the block's write batch.
+    private Dictionary<AddressAsKey, List<PredictedAccountEffect>>? _predictedAccounts;
+    private Dictionary<AddressAsKey, List<PredictedAccountEffect>>? _batchPredictedAccounts;
     // Closing and offering share it, so nothing is offered once a write batch has started.
     private readonly Lock _predictionsLock = new();
     // The warmer adapter only sees the scope's base, so predictions only serve its first block.
@@ -603,6 +606,103 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         }
     }
 
+    public void HintPredictedAccounts(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts)
+    {
+        if (!PredictedStorageCounters.DryRun || _committedBlocks != 0) return;
+        lock (_predictionsLock)
+        {
+            if (!_predictionsClosed) _predictedAccounts = accounts;
+        }
+    }
+
+    // Experiment only: the account the predicted changes make of the pre-block one (storage root left out), null when gone.
+    private static (bool Exists, ulong Nonce, UInt256 Balance, ValueHash256 CodeHash) SimulateAccount(Account? parent, List<PredictedAccountEffect> effects)
+    {
+        bool exists = parent is not null;
+        ulong nonce = parent?.Nonce ?? 0;
+        UInt256 balance = parent?.Balance ?? UInt256.Zero;
+        ValueHash256 codeHash = parent?.CodeHash.ValueHash256 ?? Keccak.OfAnEmptyString.ValueHash256;
+        bool touched = false;
+        foreach (PredictedAccountEffect effect in effects)
+        {
+            switch (effect.Op)
+            {
+                case PredictedAccountOp.AddBalance:
+                case PredictedAccountOp.AddBalanceCreate:
+                    if (!exists)
+                    {
+                        exists = true;
+                        nonce = 0;
+                        balance = UInt256.Zero;
+                        codeHash = Keccak.OfAnEmptyString.ValueHash256;
+                    }
+
+                    balance += effect.Value;
+                    touched = true;
+                    break;
+                case PredictedAccountOp.SubtractBalance:
+                    balance -= effect.Value;
+                    touched = true;
+                    break;
+                case PredictedAccountOp.IncrementNonce:
+                    nonce += effect.Nonce;
+                    break;
+                case PredictedAccountOp.DecrementNonce:
+                    nonce -= effect.Nonce;
+                    break;
+                case PredictedAccountOp.SetNonce:
+                    nonce = effect.Nonce;
+                    break;
+                case PredictedAccountOp.Create:
+                    (exists, nonce, balance, codeHash) = (true, effect.Nonce, effect.Value, Keccak.OfAnEmptyString.ValueHash256);
+                    break;
+                case PredictedAccountOp.CreateIfNotExists:
+                    if (!exists) (exists, nonce, balance, codeHash) = (true, effect.Nonce, effect.Value, Keccak.OfAnEmptyString.ValueHash256);
+                    break;
+                case PredictedAccountOp.Delete:
+                    (exists, nonce, balance, codeHash) = (false, 0, UInt256.Zero, Keccak.OfAnEmptyString.ValueHash256);
+                    break;
+                case PredictedAccountOp.InsertCode:
+                    codeHash = effect.CodeHash;
+                    break;
+            }
+        }
+
+        // EIP-158: a touched account left empty is removed.
+        if (exists && touched && nonce == 0 && balance.IsZero && codeHash == Keccak.OfAnEmptyString.ValueHash256) exists = false;
+        return (exists, nonce, balance, codeHash);
+    }
+
+    private static bool SameFields((bool Exists, ulong Nonce, UInt256 Balance, ValueHash256 CodeHash) predicted, Account? account) =>
+        account is null
+            ? !predicted.Exists
+            : predicted.Exists && predicted.Nonce == account.Nonce && predicted.Balance == account.Balance && predicted.CodeHash == account.CodeHash.ValueHash256;
+
+    // Experiment only, dry run: compares an account the write batch sets with the prediction, before the bundle takes it.
+    private void CompareAccount(AddressAsKey key, Account? account)
+    {
+        Interlocked.Increment(ref PredictedStorageCounters.DryAccountsTotal);
+        if (_batchPredictedAccounts is not { } predicted || !predicted.Remove(key, out List<PredictedAccountEffect>? effects))
+        {
+            Interlocked.Increment(ref PredictedStorageCounters.DryAccountsUnpredicted);
+            return;
+        }
+
+        bool exact = SameFields(SimulateAccount(_snapshotBundle.GetAccount(key), effects), account);
+        Interlocked.Increment(ref exact ? ref PredictedStorageCounters.DryAccountsExact : ref PredictedStorageCounters.DryAccountsInexact);
+    }
+
+    // Experiment only, dry run: predicted changes to accounts the block left as they were.
+    private void CountAccountLeftovers()
+    {
+        if (Interlocked.Exchange(ref _batchPredictedAccounts, null) is not { } predicted) return;
+        foreach ((AddressAsKey key, List<PredictedAccountEffect> effects) in predicted)
+        {
+            Account? parent = _snapshotBundle.GetAccount(key);
+            if (!SameFields(SimulateAccount(parent, effects), parent)) Interlocked.Increment(ref PredictedStorageCounters.DryAccountsLeftover);
+        }
+    }
+
     private ConcurrentDictionary<AddressAsKey, PredictedStorage> InitializePredictedStorages()
     {
         ConcurrentDictionary<AddressAsKey, PredictedStorage> created = new();
@@ -622,7 +722,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
-        lock (_predictionsLock) _predictionsClosed = true;
+        lock (_predictionsLock)
+        {
+            _predictionsClosed = true;
+            if (PredictedStorageCounters.DryRun) _batchPredictedAccounts ??= Interlocked.Exchange(ref _predictedAccounts, null);
+        }
+
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 
@@ -728,6 +833,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
         public void Set(Address key, Account? account)
         {
+            if (PredictedStorageCounters.DryRun) scope.CompareAccount(key, account);
             _dirtyAccounts[key] = account;
 
             if (account is null)
@@ -788,6 +894,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
+                    long started = PredictedStorageCounters.DryRun ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
                     if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
                     {
                         scope.StateTree.SetAccounts(_dirtyAccounts);
@@ -799,6 +906,12 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                         {
                             stateSetter.Set(kv.Key, kv.Value);
                         }
+                    }
+
+                    if (PredictedStorageCounters.DryRun)
+                    {
+                        Interlocked.Add(ref PredictedStorageCounters.DryStateSetTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
+                        scope.CountAccountLeftovers();
                     }
                 }
             }
