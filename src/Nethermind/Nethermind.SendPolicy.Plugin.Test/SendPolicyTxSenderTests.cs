@@ -60,7 +60,9 @@ public class SendPolicyTxSenderTests
         yield return Case("owner cancellation by a zero self-send", () => Send(Owner, Owner.Address, 0), null);
         yield return Case("owner approve to a granted spender", () => Call(Owner, Token, "095ea7b3", Spender, UInt256.MaxValue), null);
         yield return Case("owner approve to an unlisted spender", () => Call(Owner, Token, "095ea7b3", Unlisted, UInt256.MaxValue), $"{Unlisted} may not receive tokens or an allowance, add 'grant {Unlisted}'");
-        yield return Case("owner revoke by a zero approve", () => Call(Owner, Token, "095ea7b3", Unlisted, UInt256.Zero), null);
+        yield return Case("owner approve of zero to an unlisted spender", () => Call(Owner, Token, "095ea7b3", Unlisted, UInt256.Zero), $"{Unlisted} may not receive");
+        yield return Case("owner revoke by an approve to the zero address", () => Call(Owner, Token, "095ea7b3", Address.Zero, 7), null);
+        yield return Case("owner transfer to the zero address", () => Call(Owner, Token, "a9059cbb", Address.Zero, 5), $"{Address.Zero} may not receive");
         yield return Case("owner setApprovalForAll to an unlisted operator", () => Call(Owner, Token, "a22cb465", Unlisted, UInt256.One), $"{Unlisted} may not receive");
         yield return Case("owner revoke by setApprovalForAll false", () => Call(Owner, Token, "a22cb465", Unlisted, UInt256.Zero), null);
         yield return Case("owner transfer to an unlisted recipient", () => Call(Owner, Token, "a9059cbb", Unlisted, 5), $"{Unlisted} may not receive");

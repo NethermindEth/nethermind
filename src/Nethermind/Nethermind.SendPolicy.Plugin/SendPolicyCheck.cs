@@ -85,7 +85,9 @@ public static class SendPolicyCheck
 
     /// <remarks>
     /// Covers the ERC-20, ERC-721 and ERC-1155 calls that hand tokens or an allowance to an address named in the
-    /// calldata. A zero <c>approve</c> or a <c>false</c> <c>setApprovalForAll</c> only revokes and always passes.
+    /// calldata. An <c>approve</c> to the zero address or a <c>false</c> <c>setApprovalForAll</c> only revokes and
+    /// always passes. An <c>approve</c> with a zero second argument does not: ERC-20 and ERC-721 share the selector,
+    /// and in ERC-721 that argument is the token id.
     /// At a <paramref name="tokenOnly"/> destination every other call is refused.
     /// </remarks>
     private static string? BeneficiaryRefusal(ReadOnlySpan<byte> data, SendPolicyRules rules, Address? tokenOnly)
@@ -101,7 +103,12 @@ public static class SendPolicyCheck
         if (beneficiaryArgument < 0) return tokenOnly is null ? null : $"call 0x{selector:x8} is not allowed at 'token {tokenOnly}'";
         if (data.Length < 4 + 32 * (beneficiaryArgument + 2)) return "short calldata for a token call";
         Address beneficiary = new(data.Slice(4 + 32 * beneficiaryArgument + 12, Address.Size));
-        bool revokes = selector is Approve or SetApprovalForAll && data.Slice(4 + 32, 32).IndexOfAnyExcept((byte)0) < 0;
+        bool revokes = selector switch
+        {
+            Approve => beneficiary == Address.Zero,
+            SetApprovalForAll => data.Slice(4 + 32, 32).IndexOfAnyExcept((byte)0) < 0,
+            _ => false
+        };
         return revokes || rules.Grants.Contains(beneficiary) ? null : $"{beneficiary} may not receive tokens or an allowance, add 'grant {beneficiary}'";
     }
 }
