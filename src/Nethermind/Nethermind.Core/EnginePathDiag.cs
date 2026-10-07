@@ -38,6 +38,9 @@ public static class EnginePathDiag
     private static readonly ConcurrentDictionary<ValueHash256, Record> _byHash = new();
     private static ILogger _logger;
     private static bool _hasLogger;
+    // Which way the records met (7 Oct: the first image never logged; these say why): Attach found the HTTP record /
+    // found none; ModuleDone merged a separate HTTP record; EndHttp calls / EndHttp on an attached record.
+    private static int _attachHttp, _attachNoHttp, _moduleMerged, _endHttp, _endHttpAttached;
 
     public sealed class Record
     {
@@ -53,6 +56,7 @@ public static class EnginePathDiag
         internal long RegionPauseTicks;
         internal ValueHash256 Hash;
         internal bool Attached;
+        internal Record? Linked;
         internal long Created = Stopwatch.GetTimestamp();
     }
 
@@ -103,10 +107,12 @@ public static class EnginePathDiag
         Record? r = _current.Value;
         if (r is null)
         {
+            Interlocked.Increment(ref _attachNoHttp);
             r = new Record();
             _current.Value = r;
             Snap(r, 0);
         }
+        else Interlocked.Increment(ref _attachHttp);
 
         r.Hash = hash.ValueHash256;
         r.Number = number;
@@ -143,14 +149,60 @@ public static class EnginePathDiag
         Complete(r, StopwatchDone);
     }
 
+    /// <summary>
+    /// The engine module got the handler's answer: completes the request side of the payload's record, found by block hash
+    /// (not through the async flow, which the first image showed cannot be relied on), after copying in the HTTP-side points
+    /// of the request's own record when that is a different object.
+    /// </summary>
+    public static void ModuleDone(Hash256? hash)
+    {
+        if (!Enabled || hash is null || !_byHash.TryGetValue(hash.ValueHash256, out Record? r)) return;
+        if (_current.Value is { } http && !ReferenceEquals(http, r))
+        {
+            Interlocked.Increment(ref _moduleMerged);
+            for (int i = 0; i <= (int)P.RegionQueued; i++) CopyPoint(http, r, i);
+            CopyPoint(http, r, (int)P.RegionEntryStart);
+            CopyPoint(http, r, (int)P.RegionEntryEnd);
+            if (http.Snapped[0])
+            {
+                Array.Copy(http.Gc, 0, r.Gc, 0, 3);
+                r.Pause[0] = http.Pause[0];
+                r.Snapped[0] = true;
+            }
+
+            r.UnixUsStart = http.UnixUsStart;
+            r.Bytes = http.Bytes;
+            r.RegionStarted = Volatile.Read(ref http.RegionStarted);
+            r.RegionGc0 = http.RegionGc0;
+            r.RegionGc1 = http.RegionGc1;
+            r.RegionGc2 = http.RegionGc2;
+            r.RegionPauseTicks = http.RegionPauseTicks;
+            http.Linked = r;
+        }
+
+        Set(r, P.ModuleReturn);
+        Complete(r, HttpDone);
+    }
+
     /// <summary>The HTTP answer is complete: the response was written and the body reader released.</summary>
     public static void EndHttp()
     {
         if (!Enabled || _current.Value is not { } r) return;
-        Set(r, P.HttpEnd);
-        Snap(r, 3);
-        r.UnixUsEnd = UnixUs();
-        if (r.Attached) Complete(r, HttpDone);
+        Interlocked.Increment(ref _endHttp);
+        Record target = r.Linked ?? r;
+        if (target.Attached) Interlocked.Increment(ref _endHttpAttached);
+        Set(target, P.HttpEnd);
+        Snap(target, 3);
+        target.UnixUsEnd = UnixUs();
+    }
+
+    private static void CopyPoint(Record from, Record to, int i)
+    {
+        long t = Volatile.Read(ref from.T[i]);
+        if (t == 0) return;
+        to.Tid[i] = from.Tid[i];
+        to.CpuNs[i] = from.CpuNs[i];
+        Volatile.Write(ref to.T[i], t);
     }
 
     /// <summary>The no-GC region entry, on its own pool thread: GCs and pause time inside <c>GC.TryStartNoGCRegion</c>.</summary>
@@ -195,7 +247,8 @@ public static class EnginePathDiag
 
     private static void Complete(Record r, int bit)
     {
-        if ((Interlocked.Or(ref r.Done, bit) | bit) != (HttpDone | StopwatchDone)) return;
+        int before = Interlocked.Or(ref r.Done, bit);
+        if ((before | bit) != (HttpDone | StopwatchDone) || before == (HttpDone | StopwatchDone)) return;
         _byHash.TryRemove(r.Hash, out _);
         if (!_hasLogger || !_logger.IsInfo) return;
         try
@@ -214,6 +267,7 @@ public static class EnginePathDiag
         double us = 1e6 / Stopwatch.Frequency;
         StringBuilder sb = new();
         sb.Append($"EngineDiag n={r.Number} txs={r.Txs} bytes={r.Bytes} unix_us={r.UnixUsStart}..{r.UnixUsEnd}");
+        sb.Append($" dbg={_attachHttp}/{_attachNoHttp}/{_moduleMerged}/{_endHttp}/{_endHttpAttached}");
         string[] seg = ["pre", "proc", "post"];
         for (int k = 0; k < 3; k++)
         {

@@ -137,7 +137,7 @@ public partial class EngineRpcModule : IEngineRpcModule
                 try
                 {
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
-                    EnginePathDiag.Mark(EnginePathDiag.P.ModuleReturn);
+                    EnginePathDiag.ModuleDone(executionPayload.BlockHash);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);

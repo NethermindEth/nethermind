@@ -535,12 +535,18 @@ public class Startup : IStartup
         {
             try
             {
-                if (responseSink is not null)
+                try
                 {
-                    await responseSink.CompleteAsync(ctx.RequestAborted);
+                    if (responseSink is not null)
+                    {
+                        await responseSink.CompleteAsync(ctx.RequestAborted);
+                    }
+                }
+                finally
+                {
+                    Nethermind.Core.EnginePathDiag.EndHttp();
                 }
 
-                Nethermind.Core.EnginePathDiag.EndHttp();
                 Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, collectedBody.BytesRead);
             }
             finally
