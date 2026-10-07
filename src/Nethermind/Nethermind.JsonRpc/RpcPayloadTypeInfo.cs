@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 using System.Threading;
@@ -26,6 +27,8 @@ internal static class RpcPayloadTypeInfo
             ? GetCanonical(type)
             : _cache.GetOrAdd((options, type), static key => GetOrObject(key.Options, key.Type));
 
+    // Metadata coverage distinguishes runtime probes from declared contracts by this stack frame.
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private static JsonTypeInfo GetOrObject(JsonSerializerOptions options, Type type) =>
         options.TryGetTypeInfo(type, out JsonTypeInfo? typeInfo) ? typeInfo : options.GetTypeInfo(typeof(object));
 
