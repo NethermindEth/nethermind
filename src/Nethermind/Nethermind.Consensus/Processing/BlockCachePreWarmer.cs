@@ -234,6 +234,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         footprints.EndWarmPass();
                         // A block whose workers never ran dry of jobs starts its sweepers here; they end once nothing is stale.
                         StartRewarm(blockState);
+                        // Experiment only: the account trie update the footprints predict, built here on the coordinator.
+                        if (PredictsAccounts && !PredictedStorageCounters.DryRun && !token.IsCancellationRequested && _preBlockCaches?.MainScope is { } accountScope)
+                        {
+                            accountScope.HintPredictedAccounts(FoldAccounts(footprints));
+                        }
                         if (PredictsStorageRoots && !token.IsCancellationRequested) PredictStorageRoots(footprints, token);
                     }
                     discoveryWork?.WaitForCompletion();
@@ -990,6 +995,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // Block processing finished its transactions; what is built is offered, the rest is not.
         }
     }
+
+    /// <summary>Experiment only: NETHERMIND_EXP_ACCOUNT_ROOTS=0 stops building the account trie update ahead.</summary>
+    private static readonly bool PredictsAccounts = Environment.GetEnvironmentVariable("NETHERMIND_EXP_ACCOUNT_ROOTS") != "0";
 
     /// <summary>Experiment only: every account change of the block's footprints, by account in transaction order.</summary>
     private static Dictionary<AddressAsKey, List<PredictedAccountEffect>> FoldAccounts(BlockFootprints footprints)

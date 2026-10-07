@@ -47,6 +47,10 @@ public static class PredictedStorageCounters
     // predict them, or not, or with no prediction; predicted changes the block did not make; the account trie update.
     public static long DryAccountsExact, DryAccountsInexact, DryAccountsUnpredicted, DryAccountsLeftover, DryAccountsTotal, DryStateSetTicks;
 
+    // The account trie update built ahead from the footprints: builds, the accounts in them, their ticks; adoptions, the
+    // accounts the write batch then still set, the ones it kept from the prediction; builds that arrived too late.
+    public static long StatesBuilt, StateAccounts, StateBuildTicks, StatesAdopted, StateAccountsSet, StateAccountsKept, StatesLate, StateSetTicks;
+
     public static void Max(ref long target, long value)
     {
         long current;

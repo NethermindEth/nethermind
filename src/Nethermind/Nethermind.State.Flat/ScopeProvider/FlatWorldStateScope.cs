@@ -41,6 +41,11 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private volatile bool _predictionsClosed;
     // Experiment only, dry run: the account changes the footprints predict; taken by the block's write batch.
     private Dictionary<AddressAsKey, List<PredictedAccountEffect>>? _predictedAccounts;
+    // Experiment only: the account trie with the predicted changes applied, and the accounts it holds them for.
+    internal sealed record PredictedState(StateTree Tree, Dictionary<AddressAsKey, Account?> Applied);
+    private PredictedState? _predictedState;
+    // Whether the block's state write batch has moved the account trie off its pre-block root.
+    private bool _stateTreeWritten;
     private Dictionary<AddressAsKey, List<PredictedAccountEffect>>? _batchPredictedAccounts;
     // Closing and offering share it, so nothing is offered once a write batch has started.
     private readonly Lock _predictionsLock = new();
@@ -608,11 +613,116 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintPredictedAccounts(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts)
     {
-        if (!PredictedStorageCounters.DryRun || _committedBlocks != 0) return;
+        if (_committedBlocks != 0) return;
+        if (!PredictedStorageCounters.DryRun)
+        {
+            BuildPredictedState(accounts);
+            return;
+        }
+
         lock (_predictionsLock)
         {
             if (!_predictionsClosed) _predictedAccounts = accounts;
         }
+    }
+
+    /// <summary>
+    /// Experiment only: applies the predicted account changes to the pre-block account trie and hashes it, so the block's
+    /// write batch only has to set the accounts that came out otherwise. Storage roots stay at their pre-block values: the
+    /// batch sets every account whose storage root changed.
+    /// </summary>
+    private void BuildPredictedState(Dictionary<AddressAsKey, List<PredictedAccountEffect>> accounts)
+    {
+        if (accounts.Count == 0 || _predictionsClosed || IsDisposed || _isReadOnly || _trieless || _configuration.VerifyWithTrie
+            || _snapshotBundle._usage != ResourcePool.Usage.MainBlockProcessing) return;
+        if (!_snapshotBundle.TryLeaseReadOnlyBundle()) return;
+
+        long start = System.Diagnostics.Stopwatch.GetTimestamp();
+        try
+        {
+            Dictionary<AddressAsKey, Account?> applied = new(accounts.Count);
+            foreach ((AddressAsKey key, List<PredictedAccountEffect> effects) in accounts)
+            {
+                Account? parent = _snapshotBundle.GetAccount(key);
+                (bool exists, ulong nonce, UInt256 balance, ValueHash256 codeHash) = SimulateAccount(parent, effects);
+                // An unreliable simulation: the write batch sets the account as usual.
+                if (nonce == ulong.MaxValue && balance == UInt256.MaxValue) continue;
+                Account? predicted = exists ? new Account(nonce, balance, parent?.StorageRoot ?? Keccak.EmptyTreeHash, new Hash256(codeHash)) : null;
+                if (SameAccount(predicted, parent)) continue;
+                applied[key] = predicted;
+            }
+
+            if (applied.Count == 0) return;
+
+            // Resetting the objects loads the pre-block root through the warmer, which reads what the scope started from.
+            StateTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager) { RootHash = _initialStateRoot };
+            using (StateTree.StateTreeBulkSetter setter = tree.BeginSet(applied.Count))
+            {
+                foreach ((AddressAsKey key, Account? account) in applied) setter.Set(key, account);
+            }
+
+            tree.UpdateRootHash(canBeParallel: false);
+            lock (_predictionsLock)
+            {
+                if (_predictionsClosed)
+                {
+                    Interlocked.Increment(ref PredictedStorageCounters.StatesLate);
+                    return;
+                }
+
+                _predictedState = new PredictedState(tree, applied);
+            }
+
+            Interlocked.Increment(ref PredictedStorageCounters.StatesBuilt);
+            Interlocked.Add(ref PredictedStorageCounters.StateAccounts, applied.Count);
+        }
+        catch (Exception)
+        {
+            // A prediction that fails to build is simply not offered.
+        }
+        finally
+        {
+            Interlocked.Add(ref PredictedStorageCounters.StateBuildTicks, System.Diagnostics.Stopwatch.GetTimestamp() - start);
+            _snapshotBundle.ReleaseReadOnlyBundleLease();
+        }
+    }
+
+    private static bool SameAccount(Account? left, Account? right) =>
+        left is null || right is null
+            ? left is null && right is null
+            : left.Nonce == right.Nonce && left.Balance == right.Balance && left.StorageRoot == right.StorageRoot && left.CodeHash == right.CodeHash;
+
+    /// <summary>
+    /// Experiment only: puts the predicted account trie in place of the pre-block one and returns the accounts the write
+    /// batch must still set: those that came out otherwise, and those the prediction changed that the block did not.
+    /// </summary>
+    internal Dictionary<AddressAsKey, Account?>? AdoptPredictedState(Dictionary<AddressAsKey, Account?> dirty)
+    {
+        PredictedState? predicted = Interlocked.Exchange(ref _predictedState, null);
+        if (predicted is null || _stateTreeWritten) return null;
+
+        StateTree.RootRef = predicted.Tree.RootRef;
+        Dictionary<AddressAsKey, Account?> applied = predicted.Applied;
+        Dictionary<AddressAsKey, Account?> toSet = new(dirty.Count / 4 + applied.Count / 8 + 8);
+        int kept = 0;
+        foreach ((AddressAsKey key, Account? account) in dirty)
+        {
+            if (applied.Remove(key, out Account? expected) && SameAccount(expected, account))
+            {
+                kept++;
+                continue;
+            }
+
+            toSet[key] = account;
+        }
+
+        // Accounts the block left untouched are at their pre-block values in the bundle.
+        foreach (AddressAsKey key in applied.Keys) toSet[key] = _snapshotBundle.GetAccount(key);
+
+        Interlocked.Increment(ref PredictedStorageCounters.StatesAdopted);
+        Interlocked.Add(ref PredictedStorageCounters.StateAccountsSet, toSet.Count);
+        Interlocked.Add(ref PredictedStorageCounters.StateAccountsKept, kept);
+        return toSet;
     }
 
     // Experiment only: the account the predicted changes make of the pre-block one (storage root left out), null when gone.
@@ -761,6 +871,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         _pausePrewarmer = true;
         _committedBlocks++;
+        _stateTreeWritten = false;
+        Volatile.Write(ref _predictedState, null);
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
         // after the block was reported valid; otherwise the batches already committed them. The nodes must be in the
@@ -920,19 +1032,24 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
                 // normal scope additionally bulk-applies the dirty accounts into the state trie.
                 if (!scope._trieless)
                 {
-                    long started = PredictedStorageCounters.DryRun ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
-                    if (Avx2.IsSupported && _dirtyAccounts.Count >= KeyHashBatch.MinimumBatchSize)
+                    long started = System.Diagnostics.Stopwatch.GetTimestamp();
+                    // Experiment only: with a predicted account trie in place only what it got wrong is set.
+                    Dictionary<AddressAsKey, Account?> toSet = scope.AdoptPredictedState(_dirtyAccounts) ?? _dirtyAccounts;
+                    if (Avx2.IsSupported && toSet.Count >= KeyHashBatch.MinimumBatchSize)
                     {
-                        scope.StateTree.SetAccounts(_dirtyAccounts);
+                        scope.StateTree.SetAccounts(toSet);
                     }
                     else
                     {
-                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(_dirtyAccounts.Count);
-                        foreach (KeyValuePair<AddressAsKey, Account?> kv in _dirtyAccounts)
+                        using StateTree.StateTreeBulkSetter stateSetter = scope.StateTree.BeginSet(toSet.Count);
+                        foreach (KeyValuePair<AddressAsKey, Account?> kv in toSet)
                         {
                             stateSetter.Set(kv.Key, kv.Value);
                         }
                     }
+
+                    scope._stateTreeWritten = true;
+                    Interlocked.Add(ref PredictedStorageCounters.StateSetTicks, System.Diagnostics.Stopwatch.GetTimestamp() - started);
 
                     if (PredictedStorageCounters.DryRun)
                     {

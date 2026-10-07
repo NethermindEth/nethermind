@@ -155,6 +155,7 @@ public static class HandoffDiagnostics
 
     private static readonly long[] _dryLast = new long[11];
     private static readonly long[] _dryAccountsLast = new long[6];
+    private static readonly long[] _statesLast = new long[8];
 
     // Per-block deltas of the dry run's process-wide sums; the maxima are taken and reset.
     private static void WriteDryRun(Utf8JsonWriter writer)
@@ -195,6 +196,28 @@ public static class HandoffDiagnostics
             if (i == accounts.Length - 1) writer.WriteNumber(accountNames[i], Math.Round(delta * 1000.0 / Stopwatch.Frequency, 3));
             else writer.WriteNumber(accountNames[i], delta);
             _dryAccountsLast[i] = accounts[i];
+        }
+
+        writer.WriteEndObject();
+    }
+
+    // Per-block deltas of the predicted account trie counters.
+    private static void WritePredictedState(Utf8JsonWriter writer)
+    {
+        long[] now =
+        [
+            PredictedStorageCounters.StatesBuilt, PredictedStorageCounters.StateAccounts, PredictedStorageCounters.StateBuildTicks,
+            PredictedStorageCounters.StatesAdopted, PredictedStorageCounters.StateAccountsSet, PredictedStorageCounters.StateAccountsKept,
+            PredictedStorageCounters.StatesLate, PredictedStorageCounters.StateSetTicks,
+        ];
+        string[] names = ["built", "accounts", "build_ms", "adopted", "set", "kept", "late", "set_ms"];
+        writer.WriteStartObject("account_trie");
+        for (int i = 0; i < now.Length; i++)
+        {
+            long delta = now[i] - _statesLast[i];
+            if (names[i].EndsWith("_ms", StringComparison.Ordinal)) writer.WriteNumber(names[i], Math.Round(delta * 1000.0 / Stopwatch.Frequency, 3));
+            else writer.WriteNumber(names[i], delta);
+            _statesLast[i] = now[i];
         }
 
         writer.WriteEndObject();
@@ -308,6 +331,7 @@ public static class HandoffDiagnostics
             (_built, _builtWrites, _buildTicks, _adopted, _unclaimed, _stale, _late) = (built, builtWrites, buildTicks, adopted, unclaimed, stale, late);
 
             if (PredictedStorageCounters.DryRun) WriteDryRun(writer);
+            WritePredictedState(writer);
 
             long marked = RewarmCounters.Marked, unchanged = RewarmCounters.Unchanged, stored = RewarmCounters.Stored;
             long dropped = RewarmCounters.Dropped, overtaken = RewarmCounters.Overtaken, rewarmTicks = RewarmCounters.Ticks;

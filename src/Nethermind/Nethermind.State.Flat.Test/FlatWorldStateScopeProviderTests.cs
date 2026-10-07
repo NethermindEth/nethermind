@@ -175,8 +175,10 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IPersistenceReader PersistenceReader => field ??= Container.Resolve<IPersistence.IPersistenceReader>();
         public Snapshot? LastCommittedSnapshot { get; set; }
 
-        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null)
+        public TestContext(IBlockTree? blockTree = null, FlatDbConfig? config = null, ITrieWarmer? trieWarmer = null, bool historical = false, ITrieNodeCache? trieNodeCache = null,
+            StateId? scopeState = null)
         {
+            _scopeState = scopeState ?? new StateId(0, Keccak.EmptyTreeHash);
             config ??= new FlatDbConfig();
 
             _containerBuilder = new ContainerBuilder()
@@ -256,9 +258,11 @@ public class FlatWorldStateScopeProviderTests
                 .WithParameter(TypedParameter.From(ResourcePool.Usage.MainBlockProcessing))
                 .ExternallyOwned();
 
+        private readonly StateId _scopeState;
+
         private void ConfigureFlatWorldStateScope() => _containerBuilder.RegisterType<FlatWorldStateScope>()
                 .SingleInstance()
-                .WithParameter(TypedParameter.From(new StateId(0, Keccak.EmptyTreeHash)))
+                .WithParameter(TypedParameter.From(_scopeState))
                 ;
 
         public FlatWorldStateScope Scope => Container.Resolve<FlatWorldStateScope>();
@@ -934,6 +938,111 @@ public class FlatWorldStateScopeProviderTests
              new PredictedAccountEffect(PredictedAccountOp.IncrementNonce, 0, 1, default)]);
 
         Assert.That((exists, nonce, balance), Is.EqualTo((true, 2UL, (UInt256)(5 + 0x4e4d - 4))));
+    }
+
+    [Test]
+    public void PredictedState_OnAnExistingTrieReachesTheSameRoot([Values(1, 2, 3)] int seed, [Values(0, 3)] int storageChanges)
+    {
+        long adopted = PredictedStorageCounters.StatesAdopted;
+        Hash256 predicted = RunAccountBlock(seed, storageChanges, predict: true);
+        Assert.That(PredictedStorageCounters.StatesAdopted, Is.GreaterThan(adopted));
+        Assert.That(predicted, Is.EqualTo(RunAccountBlock(seed, storageChanges, predict: false)));
+    }
+
+    // Block 1 in a scope of its own builds 300 accounts, which a second scope reads as persisted state; block 2 changes a
+    // third of them, creates and deletes some, against a prediction that is partly right, partly other values and partly
+    // changes the block does not make.
+    private static Hash256 RunAccountBlock(int seed, int storageChanges, bool predict)
+    {
+        const int baseAccounts = 300;
+        Random random = new(seed);
+        Address[] addresses = new Address[baseAccounts + 20];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            byte[] bytes = new byte[20];
+            random.NextBytes(bytes);
+            addresses[i] = new Address(bytes);
+        }
+
+        Dictionary<Address, Account> state = [];
+        using TestContext first = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false });
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = first.Scope.StartWriteBatch(baseAccounts))
+        {
+            for (int i = 0; i < baseAccounts; i++)
+            {
+                Account account = new((ulong)random.Next(0, 100), (UInt256)random.Next(1_000, int.MaxValue));
+                state[addresses[i]] = account;
+                writeBatch.Set(addresses[i], account);
+            }
+        }
+
+        first.Scope.UpdateRootHash();
+        Hash256 baseRoot = first.Scope.RootHash;
+        first.Scope.Commit(1);
+        Snapshot persisted = first.LastCommittedSnapshot!;
+
+        using TestContext second = new(config: new FlatDbConfig { ApplyStorageWritesOnIdleThread = false }, scopeState: new StateId(1, baseRoot));
+        second.AddSnapshot(content =>
+        {
+            foreach (KeyValuePair<HashedKey<Address>, Account?> account in persisted.Accounts) content.Accounts[account.Key] = account.Value;
+            foreach (KeyValuePair<HashedKey<(Address, UInt256)>, UInt256?> slot in persisted.Storages) content.Storages[slot.Key] = slot.Value;
+            foreach (KeyValuePair<HashedKey<(Hash256, TreePath)>, TrieNode> node in persisted.StorageNodes) content.StorageNodes[node.Key] = node.Value;
+            foreach (KeyValuePair<HashedKey<TreePath>, TrieNode> node in persisted.StateNodes) content.StateNodes[node.Key] = node.Value;
+        });
+        FlatWorldStateScope scope = second.Scope;
+
+        Dictionary<Address, Account?> final = [];
+        Dictionary<AddressAsKey, List<PredictedAccountEffect>> predictions = [];
+        for (int i = 0; i < addresses.Length; i++)
+        {
+            Address address = addresses[i];
+            state.TryGetValue(address, out Account? before);
+            UInt256 delta = (UInt256)random.Next(1, 1_000);
+            switch (random.Next(9))
+            {
+                case 0 when before is not null: // changed as predicted
+                    final[address] = new Account(before.Nonce + 1, before.Balance + delta);
+                    predictions[address] = [new(PredictedAccountOp.AddBalance, delta, 0, default), new(PredictedAccountOp.IncrementNonce, 0, 1, default)];
+                    break;
+                case 1 when before is not null: // changed, predicted at another value
+                    final[address] = new Account(before.Nonce, before.Balance - delta);
+                    predictions[address] = [new(PredictedAccountOp.SubtractBalance, delta + 1, 0, default)];
+                    break;
+                case 2 when before is not null: // a predicted change the block does not make
+                    predictions[address] = [new(PredictedAccountOp.AddBalance, delta, 0, default)];
+                    break;
+                case 3 when before is not null: // changed, not predicted
+                    final[address] = new Account(before.Nonce + 2, before.Balance);
+                    break;
+                case 4 when before is not null: // deleted as predicted
+                    final[address] = null;
+                    predictions[address] = [new(PredictedAccountOp.Delete, 0, 0, default)];
+                    break;
+                case 5 when before is null: // created as predicted
+                    final[address] = new Account(0, delta);
+                    predictions[address] = [new(PredictedAccountOp.Create, delta, 0, default)];
+                    break;
+            }
+        }
+
+        if (predict) scope.HintPredictedAccounts(predictions);
+
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(final.Count))
+        {
+            foreach ((Address address, Account? account) in final) writeBatch.Set(address, account);
+            // Accounts whose storage the block writes: the batch updates their storage roots.
+            for (int i = 0; i < storageChanges; i++)
+            {
+                Address address = addresses[i * 7];
+                if (final.TryGetValue(address, out Account? set) && set is null) continue;
+                using IWorldStateScopeProvider.IStorageWriteBatch storageBatch = writeBatch.CreateStorageWriteBatch(address, 2);
+                storageBatch.Set(1, 0x4e4d);
+                storageBatch.Set((UInt256)(i + 2), (UInt256)(i + 7));
+            }
+        }
+
+        scope.UpdateRootHash();
+        return scope.RootHash;
     }
 
     [Test]
