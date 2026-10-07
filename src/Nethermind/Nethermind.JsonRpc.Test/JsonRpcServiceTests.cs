@@ -1614,12 +1614,12 @@ public class JsonRpcServiceTests
 
     [TestCase(RpcEndpoint.Http, true, TestName = "Authenticated HTTP")]
     [TestCase(RpcEndpoint.IPC, false, TestName = "IPC")]
-    public async Task Trusted_evm_request_queues_in_arrival_order_and_is_refused_for_a_full_queue(RpcEndpoint endpoint, bool authenticatedUrl)
+    public async Task Authenticated_and_ipc_evm_requests_queue_in_arrival_order_and_are_refused_for_a_full_queue(RpcEndpoint endpoint, bool authenticatedUrl)
     {
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         JsonRpcService service = CreateGatedService(ethRpcModule, queueLimit: 2);
         List<(ulong? Nonce, int InFlight, int Queued)> calls = RecordEthCalls(ethRpcModule, service);
-        using JsonRpcContext trusted = CreateTrustedContext(endpoint, authenticatedUrl);
+        using JsonRpcContext authenticated = CreateAuthenticatedContext(endpoint, authenticatedUrl);
 
         Task<JsonRpcResponse>[] queued;
         using (await HoldSlot(service))
@@ -1627,12 +1627,12 @@ public class JsonRpcServiceTests
             queued =
             [
                 service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 1 }), _context).AsTask(),
-                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 2 }), trusted).AsTask(),
+                service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 2 }), authenticated).AsTask(),
             ];
-            using JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), trusted).AsTask().WaitAsync(TestTimeout);
+            using JsonRpcResponse refused = await service.SendRequestAsync(EthCall(new LegacyTransactionForRpc { Nonce = 3 }), authenticated).AsTask().WaitAsync(TestTimeout);
             AssertJsonRpcError(refused, ErrorCodes.LimitExceeded, "Too many requests");
             Assert.That((service.EvmGate.InFlight, service.EvmGate.Queued, service.EvmGate.QueueFullRejections), Is.EqualTo((1, 2, 1L)),
-                "no slot above the others and no exemption from the queue limit");
+                "authenticated and IPC requests queue like any other, within the queue limit");
         }
 
         foreach (Task<JsonRpcResponse> response in queued)
@@ -1812,7 +1812,7 @@ public class JsonRpcServiceTests
     private static ValueTask<EvmAdmissionGate.Lease> HoldSlot(JsonRpcService service) =>
         service.EvmGate.AdmitAsync(0, TimeSpan.Zero, CancellationToken.None);
 
-    private static JsonRpcContext CreateTrustedContext(RpcEndpoint endpoint, bool authenticatedUrl) =>
+    private static JsonRpcContext CreateAuthenticatedContext(RpcEndpoint endpoint, bool authenticatedUrl) =>
         new(endpoint, url: authenticatedUrl ? new JsonRpcUrl(string.Empty, string.Empty, 0, endpoint, true, [ModuleType.Eth]) : null);
 
     // Records each eth_call's nonce with the gate's state while it runs.
