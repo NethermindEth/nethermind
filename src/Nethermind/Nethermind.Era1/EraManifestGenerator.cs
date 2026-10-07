@@ -41,7 +41,7 @@ public static class EraManifestGenerator
     }
 
     /// <summary>
-    /// Checks that the manifests in <paramref name="directory"/> list the era1 files of <paramref name="network"/> in that directory, one line per epoch in epoch order.
+    /// Checks that the manifests in <paramref name="directory"/> list the accumulator and checksum of each era1 file of <paramref name="network"/>, one line per epoch in epoch order.
     /// </summary>
     /// <param name="directory">The directory containing the era1 files and their manifests.</param>
     /// <param name="network">The network name that prefixes the era1 file names.</param>
