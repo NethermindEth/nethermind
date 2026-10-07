@@ -269,10 +269,10 @@ internal sealed class BlockFootprints(Block block)
     // Puts what the position now writes, from a refreshed footprint or the transaction executed there, in place of what
     // was indexed for it, and marks the later readers of the slots either writes. A slot written many times is handled
     // once per pass; its entry keeps the last write.
-    private bool Replace(int position, Indexed source)
+    private bool Replace(int position, in Indexed source)
     {
         Indexed previous = _indexed[position];
-        Unindex(position, previous);
+        Unindex(position, in previous);
         _indexed[position] = source;
         _writesVersion++;
         foreach ((StorageCell cell, int index) in source.Writes)
@@ -288,7 +288,7 @@ internal sealed class BlockFootprints(Block block)
         return invalidated;
     }
 
-    private void Unindex(int position, Indexed previous)
+    private void Unindex(int position, in Indexed previous)
     {
         int visit = ++_visit;
         foreach ((StorageCell cell, _) in previous.Writes)
