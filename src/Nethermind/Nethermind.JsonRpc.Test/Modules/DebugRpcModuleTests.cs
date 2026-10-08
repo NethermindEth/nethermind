@@ -588,9 +588,13 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // Opcode logs from the fourth on carry the 64 KiB of memory MSTORE8 grows, so this cap ends the buffered trace at the first of them.
+    private const long BufferedTraceCap = 141613;
+
     [TestCase(false, 0L, 4)]
-    [TestCase(false, 141614L, 4)]
+    [TestCase(false, long.MaxValue, 4)]
     [TestCase(false, 224L, 1)]
+    [TestCase(false, -1L, 0)]
     [TestCase(true, 0L, 6)]
     public async Task Debug_traceCall_buffered_opcode_logs_are_capped_by_config(bool streamMode, long limit, int expectedCount)
     {
@@ -604,7 +608,7 @@ public partial class DebugRpcModuleTests
         config.MaxBufferedTraceLogSize = 0;
         string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             call, "latest", new { streamMode, enableMemory = true, stateOverrides });
-        config.MaxBufferedTraceLogSize = 141613;
+        config.MaxBufferedTraceLogSize = BufferedTraceCap;
         string cappedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
             call, "latest", new { streamMode, enableMemory = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
 
