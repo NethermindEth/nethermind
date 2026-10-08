@@ -28,6 +28,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -132,14 +133,16 @@ public class EthereumRunnerTests
         logger.Received(fail ? 1 : 0).Warn(Arg.Is<string>(message => message.Contains("warmup failure")));
     }
 
-    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, Supported }
+    public enum WarmupScenario { Disabled, Diagnostic, CustomSpec, MissingMerge, CustomPipeline, CustomPipelineBehindCatchUp, Supported, SupportedBehindCatchUp }
 
     [TestCase(WarmupScenario.Disabled, "disabled by configuration.")]
     [TestCase(WarmupScenario.Diagnostic, "a database diagnostic mode is enabled.")]
     [TestCase(WarmupScenario.CustomSpec, "the chain uses a custom spec provider.")]
     [TestCase(WarmupScenario.MissingMerge, "the standard Merge plugin is not enabled.")]
     [TestCase(WarmupScenario.CustomPipeline, "the chain uses a custom processing pipeline.")]
+    [TestCase(WarmupScenario.CustomPipelineBehindCatchUp, "the chain uses a custom processing pipeline.")]
     [TestCase(WarmupScenario.Supported, null)]
+    [TestCase(WarmupScenario.SupportedBehindCatchUp, null)]
     public async Task Startup_pipeline_warmup_checks_supported_configuration(WarmupScenario scenario, string? expectedReason)
     {
         ChainSpec spec = LoadWarmupChainSpec();
@@ -156,7 +159,15 @@ public class EthereumRunnerTests
         api.Config<IInitConfig>().Returns(config);
         api.SpecProvider.Returns(scenario == WarmupScenario.CustomSpec ? null : new ChainSpecBasedSpecProvider(spec));
         api.Plugins.Returns(scenario == WarmupScenario.MissingMerge ? [] : new INethermindPlugin[] { new MergePlugin(spec, new MergeConfig()) });
-        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(container.Resolve<IMainProcessingContext>());
+        IMainProcessingContext main = container.Resolve<IMainProcessingContext>();
+        if (scenario == WarmupScenario.Supported) api.MainProcessingContext.Returns(main);
+        if (scenario is WarmupScenario.CustomPipelineBehindCatchUp or WarmupScenario.SupportedBehindCatchUp)
+        {
+            IBlockProcessor wrapped = scenario == WarmupScenario.SupportedBehindCatchUp ? main.BlockProcessor : Substitute.For<IBlockProcessor>();
+            api.MainProcessingContext!.BlockProcessor.Returns(new FinalizedBlockAccessListProcessor(wrapped,
+                container.Resolve<FinalizedBlockAccessListPolicy>(), main.WorldState, container.Resolve<IReceiptStorage>(), NullLogManager.Instance));
+            api.MainProcessingContext.TransactionProcessor.Returns(main.TransactionProcessor);
+        }
 
         Assert.That(StartRpc.GetPipelineWarmupSkipReason(api), Is.EqualTo(expectedReason));
     }
@@ -175,6 +186,7 @@ public class EthereumRunnerTests
     [TestCase("bogota", false, false)]
     [TestCase("foundation", false, false, WarmupSecretChange.None, 10_000_000_000UL)]
     [TestCase("foundation", false, true, WarmupSecretChange.None, 0UL, true)]
+    [TestCase("amsterdam", false, true, WarmupSecretChange.None, 0UL, true)]
     public async Task Startup_pipeline_warmup_processes_payload(string chain, bool flatState, bool authenticated,
         WarmupSecretChange secretChange = WarmupSecretChange.None, ulong minGasPrice = 0, bool throughStartRpc = false)
     {

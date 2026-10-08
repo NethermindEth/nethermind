@@ -302,6 +302,27 @@ public class FrameTxValidationPrefixSimulationTests
         }
     }
 
+    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheDefaultBudget_RejectedAsOverBudget")]
+    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheDefaultBudget_ResolvesPayerUnderARaisedBudget")]
+    public void Simulate_PrefixAboveTheDefaultBudget_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
+    {
+        byte[] countdownFrom15400 = [0x61, 0x3c, 0x28, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50];
+        DeployContract(Sender, [.. countdownFrom15400, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 450_000, UInt256.Zero, default));
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, maxVerifyGas: maxVerifyGas);
+
+        TransactionResult result = Run(tx, tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(resolves));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(resolves ? Sender : null));
+            Assert.That(result.ErrorDescription ?? string.Empty, resolves ? Is.Empty : Does.Contain("MAX_VERIFY_GAS"));
+        }
+    }
+
     [Test]
     public void Simulate_PrefixCallsCodelessTarget_RecordsViolation()
     {

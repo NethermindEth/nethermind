@@ -943,6 +943,34 @@ public class ChainSpecBasedSpecProviderTests
         }
     }
 
+    private static IEnumerable<TestCaseData> FloorEipTransitions()
+    {
+        yield return new TestCaseData(new ChainParameters { Eip8131TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8131Enabled))
+            .SetName("Eip8131_activates_only_at_its_own_transition_timestamp");
+        yield return new TestCaseData(new ChainParameters { Eip7805TransitionTimestamp = 10, Eip8279TransitionTimestamp = 20 }, (Func<IReleaseSpec, bool>)(static s => s.IsEip8279Enabled))
+            .SetName("Eip8279_activates_only_at_its_own_transition_timestamp");
+    }
+
+    [TestCaseSource(nameof(FloorEipTransitions))]
+    public void Floor_eip_activates_only_at_its_own_transition_timestamp(ChainParameters parameters, Func<IReleaseSpec, bool> isEnabled)
+    {
+        const ulong transitionTimestamp = 20;
+        ChainSpec chainSpec = new()
+        {
+            Parameters = parameters,
+            AmsterdamTimestamp = 10,
+            EngineChainSpecParametersProvider = TestChainSpecParametersProvider.NethDev
+        };
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(isEnabled(provider.GetSpec(ForkActivation.TimestampOnly(transitionTimestamp - 1))), Is.False);
+            Assert.That(isEnabled(provider.GetSpec(ForkActivation.TimestampOnly(transitionTimestamp))), Is.True);
+        }
+    }
+
     [Test]
     public void Eip8131_activates_only_at_its_own_transition_timestamp()
     {

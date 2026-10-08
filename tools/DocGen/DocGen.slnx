@@ -75,4 +75,5 @@
     <Project Path="../../src/Nethermind/Nethermind.Xdc/Nethermind.Xdc.csproj" />
   </Folder>
   <Project Path="DocGen.csproj" />
+  <Project Path="../DocGen.Test/Nethermind.DocGen.Test.csproj" />
 </Solution>

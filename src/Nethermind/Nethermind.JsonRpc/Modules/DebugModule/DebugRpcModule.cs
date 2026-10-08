@@ -120,6 +120,15 @@ public class DebugRpcModule(
 
         blockParameter = new BlockParameter(header!.Hash!);
 
+        if (options?.StateOverrides is { } stateOverrides)
+        {
+            foreach ((Address address, AccountOverride accountOverride) in stateOverrides)
+            {
+                if (accountOverride is { State: not null, StateDiff: not null })
+                    return ResultWrapper<GethLikeTxTrace>.Fail($"account {address.ToString(withEip55Checksum: true)} has both 'state' and 'stateDiff'", ErrorCodes.InvalidInput);
+            }
+        }
+
         Result<Transaction> txResult = call.ToValidatedTransaction(gasCap: jsonRpcConfig.GasCap, spec: specProvider.GetSpec(header!));
         if (!txResult.Success(out Transaction? tx, out string? error))
         {

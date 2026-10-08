@@ -5,9 +5,12 @@ using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Facade.Eth.RpcTransaction;
 
+[GenerateJsonWriter(RegisterWithSerializer = false)]
+[RepopulatableTransaction]
 public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransaction<AccessListTransactionForRpc>
 {
     public new static TxType TxType => TxType.AccessList;
@@ -28,8 +31,11 @@ public class AccessListTransactionForRpc : LegacyTransactionForRpc, IFromTransac
     public AccessListTransactionForRpc() { }
 
     public AccessListTransactionForRpc(Transaction transaction, in TransactionForRpcContext extraData)
-        : base(transaction, extraData)
+        : base(transaction, extraData) { }
+
+    internal override void Populate(Transaction transaction, in TransactionForRpcContext extraData)
     {
+        base.Populate(transaction, extraData);
         AccessList = AccessListForRpc.FromAccessList(transaction.AccessList);
         YParity = transaction.Signature?.RecoveryId ?? 0;
         ChainId = transaction.ChainId ?? extraData.ChainId ?? BlockchainIds.Mainnet;

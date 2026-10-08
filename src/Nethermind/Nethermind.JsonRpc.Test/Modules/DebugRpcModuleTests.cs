@@ -765,6 +765,52 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    [Test]
+    public async Task Debug_traceCall_rejects_conflicting_storage_before_fee_validation(
+        [Values] bool streaming, [Values] bool mixedFees, [Values] bool explicitType)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        const string address = "0x000000000000000000000000000000000000dead";
+        Dictionary<string, object> call = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = address,
+            ["gas"] = "0x186a0"
+        };
+        if (mixedFees)
+        {
+            call["gasPrice"] = "0x1";
+            call["maxFeePerGas"] = "0x2";
+        }
+        if (explicitType) call["type"] = "0x2";
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new { stateOverrides = new Dictionary<string, object> { [address] = new { code = "0x00", state = new { }, stateDiff = new { } } } });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("account 0x000000000000000000000000000000000000dEaD has both 'state' and 'stateDiff'"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_accepts_single_storage_override([Values] bool streaming, [Values("state", "stateDiff")] string field)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new Dictionary<string, object> { [field] = new { }, ["code"] = "0x00" } } });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+        }
+    }
+
     [TestCase(
         "Nonce override doesn't cause failure",
         """{"from":"0x7f554713be84160fdf0178cc8df86f5aabd33397","to":"0xc200000000000000000000000000000000000000"}""",

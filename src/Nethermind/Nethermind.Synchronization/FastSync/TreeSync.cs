@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
             _logger = logManager?.GetClassLogger<TreeSync>() ?? throw new ArgumentNullException(nameof(logManager));
 
             byte[] progress = _codeDb.Get(_fastSyncProgressKey);
-            _data = new DetailedProgress(_blockTree.NetworkId, progress);
+            _data = new DetailedProgress(_blockTree.NetworkId, progress, syncConfig.SnapSync);
             _pendingItems = new PendingSyncItems(syncConfig.SnapSync);
             _branchProgress = new BranchProgress(0, _logger);
         }
