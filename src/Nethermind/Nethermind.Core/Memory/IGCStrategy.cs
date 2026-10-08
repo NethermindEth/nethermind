@@ -17,6 +17,8 @@ public interface IGCStrategy
     bool CanStartNoGCRegion();
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
+    /// <summary>Gets the slot length the region's slot pre-entry follows (BENCH).</summary>
+    ulong SecondsPerSlot => 12;
 }
 
 public enum GcLevel

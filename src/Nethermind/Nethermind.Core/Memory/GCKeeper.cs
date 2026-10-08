@@ -42,13 +42,18 @@ public class GCKeeper : IDisposable
     private readonly Func<long> _timestamp;
     private readonly CancellationTokenSource _preEntryCts = new();
     private int _preEntryScheduled;
+    // BENCH (bench/gc-region-pre-slot): entry ahead of the slot, see OnNewHead.
+    private readonly PreEntrySettings _settings;
+    private readonly Func<long> _unixTimeMs;
+    private long _headTimestamp;
+    private int _slotLoopRunning;
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
-        : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
+        : this(gcStrategy, logManager, GcRegionRuntime.Instance, settings: PreEntrySettings.FromEnvironment()) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
         Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null,
-        Func<long>? timestamp = null)
+        Func<long>? timestamp = null, PreEntrySettings? settings = null, Func<long>? unixTimeMs = null)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
@@ -58,6 +63,9 @@ public class GCKeeper : IDisposable
         // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
         _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
         _timestamp = timestamp ?? Stopwatch.GetTimestamp;
+        _settings = settings ?? PreEntrySettings.Default;
+        _unixTimeMs = unixTimeMs ?? (static () => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+        if (_logger.IsInfo) _logger.Info($"No-GC region pre-entry: {_settings}");
     }
 
     public void Dispose()
@@ -130,12 +138,12 @@ public class GCKeeper : IDisposable
                 switch (preEntered.TryHandOver())
                 {
                     case PreEntryHandOver.TakenOver:
-                        Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesTakenOver);
+                        Count(ref Metrics.NoGcRegionPreEntriesTakenOver, ref Metrics.NoGcRegionPreSlotEntriesTakenOver, preEntered.Trigger);
                         // The payload owns the region now: its lease ends the region, and its own region (never
                         // admitted) carries its collection, exactly as when it admits a region itself.
                         return new SharedRegionLease(preEntered, region, ownerLease: true);
                     case PreEntryHandOver.Stale:
-                        Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesStale);
+                        Count(ref Metrics.NoGcRegionPreEntriesStale, ref Metrics.NoGcRegionPreSlotEntriesStale, preEntered.Trigger);
                         // Claimed for retirement; ended below, outside the keeper's lock.
                         stale = preEntered;
                         break;
@@ -218,6 +226,7 @@ public class GCKeeper : IDisposable
     /// </remarks>
     public void SchedulePrepareNoGCRegion()
     {
+        if ((_settings.Mode & PreEntryMode.GetBlobs) == 0) return;
         if (!_gcStrategy.CanStartNoGCRegion() || Interlocked.Exchange(ref _preEntryScheduled, 1) != 0) return;
         _ = PrepareAfterDelayAsync();
     }
@@ -241,12 +250,65 @@ public class GCKeeper : IDisposable
     }
 
     /// <summary>
+    /// BENCH: anchors the slot clock on the timestamp of a new head and, while the region is allowed, keeps one loop
+    /// that enters the region <see cref="PreEntrySettings.SlotLeadMs"/> before each next slot starts, so blocks without
+    /// blobs (no getBlobs call) find it entered too and the entry's pause lands on an idle node.
+    /// </summary>
+    public void OnNewHead(ulong timestamp)
+    {
+        if ((_settings.Mode & PreEntryMode.Slot) == 0 || _preEntryCts.IsCancellationRequested) return;
+        Volatile.Write(ref _headTimestamp, (long)timestamp);
+        if (!_gcStrategy.CanStartNoGCRegion() || Interlocked.Exchange(ref _slotLoopRunning, 1) != 0) return;
+        _ = RunSlotLoopAsync();
+    }
+
+    private async Task RunSlotLoopAsync()
+    {
+        try
+        {
+            // Stops when the region is no longer allowed (e.g. syncing); the next head while it is starts it again.
+            while (!_preEntryCts.IsCancellationRequested && _gcStrategy.CanStartNoGCRegion())
+            {
+                long slotMs = (long)Math.Max(1UL, _gcStrategy.SecondsPerSlot) * 1000;
+                long now = _unixTimeMs();
+                long fireAt = NextSlotStartMs(Volatile.Read(ref _headTimestamp) * 1000, slotMs, now, _settings.SlotLeadMs) - _settings.SlotLeadMs;
+                if (!await _delay((int)Math.Min(int.MaxValue, fireAt - now), _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+                PrepareNoGCRegion(PreEntryTrigger.Slot);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region slot pre-entry failed.", e);
+        }
+        finally
+        {
+            Volatile.Write(ref _slotLoopRunning, 0);
+        }
+    }
+
+    /// <summary>The start of the first slot after the head whose lead has not begun at <paramref name="nowMs"/>.</summary>
+    /// <remarks>Slots follow the head every <paramref name="slotMs"/>, so missed slots are skipped over; a head ahead of
+    /// the clock still gives the slot after it.</remarks>
+    internal static long NextSlotStartMs(long headMs, long slotMs, long nowMs, long leadMs)
+    {
+        long target = nowMs + leadMs;
+        long slots = target < headMs + slotMs ? 1 : (target - headMs) / slotMs + 1;
+        return headMs + slots * slotMs;
+    }
+
+    private static void Count(ref long all, ref long slot, PreEntryTrigger trigger)
+    {
+        Interlocked.Increment(ref all);
+        if (trigger == PreEntryTrigger.Slot) Interlocked.Increment(ref slot);
+    }
+
+    /// <summary>
     /// Enters a no-GC region owned by no payload, which the next payload takes over (see
     /// <see cref="TryStartNoGCRegion"/>) or which ends by itself after <see cref="PreEntryTimeoutMs"/>.
     /// </summary>
     /// <remarks>Does nothing when the strategy disallows a region, or a region is pending or active.</remarks>
     /// <returns>Whether an entry was queued.</returns>
-    internal bool PrepareNoGCRegion()
+    internal bool PrepareNoGCRegion(PreEntryTrigger trigger = PreEntryTrigger.GetBlobs)
     {
         if (!_gcStrategy.CanStartNoGCRegion()) return false;
         NoGCRegion region;
@@ -254,19 +316,19 @@ public class GCKeeper : IDisposable
         {
             if (_disposed || _region is not null) return false;
             // Nothing to collect after it: a pre-entry that expires unused leaves the post-block collections as they were.
-            region = new NoGCRegion(this, GCScheduler.MarkGCPaused(), scheduleGC: false, preEntry: true);
+            region = new NoGCRegion(this, GCScheduler.MarkGCPaused(), scheduleGC: false, trigger);
             _region = region;
             _pendingEntries++;
         }
 
-        Interlocked.Increment(ref Metrics.NoGcRegionPreEntries);
+        Count(ref Metrics.NoGcRegionPreEntries, ref Metrics.NoGcRegionPreSlotEntries, trigger);
         try
         {
             _queue(region);
         }
         catch
         {
-            Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesFailed);
+            Count(ref Metrics.NoGcRegionPreEntriesFailed, ref Metrics.NoGcRegionPreSlotEntriesFailed, trigger);
             region.Dispose();
             CompleteEntry();
             throw;
@@ -280,8 +342,8 @@ public class GCKeeper : IDisposable
     {
         try
         {
-            if (!await _delay(PreEntryTimeoutMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
-            if (region.ExpirePreEntry()) Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesExpired);
+            if (!await _delay(region.TimeoutMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+            if (region.ExpirePreEntry()) Count(ref Metrics.NoGcRegionPreEntriesExpired, ref Metrics.NoGcRegionPreSlotEntriesExpired, region.Trigger);
         }
         catch (Exception e)
         {
@@ -326,7 +388,52 @@ public class GCKeeper : IDisposable
         }
     }
 
-    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC, bool preEntry = false)
+    internal enum PreEntryTrigger
+    {
+        None,
+        GetBlobs,
+        Slot,
+    }
+
+    /// <summary>BENCH: which triggers enter the region ahead of the payload.</summary>
+    [Flags]
+    internal enum PreEntryMode
+    {
+        Off = 0,
+        GetBlobs = 1,
+        Slot = 2,
+        Both = GetBlobs | Slot,
+    }
+
+    /// <summary>BENCH knobs: <c>BENCH_GC_PREENTRY_MODE</c> (off, getblobs, slot, both), <c>BENCH_GC_PRESLOT_LEAD_MS</c>,
+    /// <c>BENCH_GC_PRESLOT_EXPIRY_MS</c>, <c>BENCH_GC_PREENTRY_MAX_ALLOC_MB</c>; unset or malformed ones take defaults.</summary>
+    internal sealed record PreEntrySettings(PreEntryMode Mode, int SlotLeadMs, int SlotExpiryMs, long MaxAllocatedBytes)
+    {
+        public static PreEntrySettings Default { get; } = new(PreEntryMode.Both, 1_000, 6_000, PreEntryMaxAllocatedBytes);
+
+        public static PreEntrySettings FromEnvironment() => Parse(
+            Environment.GetEnvironmentVariable("BENCH_GC_PREENTRY_MODE"),
+            Environment.GetEnvironmentVariable("BENCH_GC_PRESLOT_LEAD_MS"),
+            Environment.GetEnvironmentVariable("BENCH_GC_PRESLOT_EXPIRY_MS"),
+            Environment.GetEnvironmentVariable("BENCH_GC_PREENTRY_MAX_ALLOC_MB"));
+
+        public static PreEntrySettings Parse(string? mode, string? leadMs, string? expiryMs, string? maxAllocMb) => new(
+            mode?.Trim().ToLowerInvariant() switch
+            {
+                "off" => PreEntryMode.Off,
+                "getblobs" => PreEntryMode.GetBlobs,
+                "slot" => PreEntryMode.Slot,
+                _ => PreEntryMode.Both,
+            },
+            int.TryParse(leadMs, out int lead) && lead >= 0 ? lead : Default.SlotLeadMs,
+            int.TryParse(expiryMs, out int expiry) && expiry > 0 ? expiry : Default.SlotExpiryMs,
+            long.TryParse(maxAllocMb, out long mb) && mb >= 0 ? mb.MB : Default.MaxAllocatedBytes);
+
+        public override string ToString() =>
+            $"mode {Mode}, slot lead {SlotLeadMs} ms, slot expiry {SlotExpiryMs} ms, takeover allocation cap {MaxAllocatedBytes / 1.MB} MB";
+    }
+
+    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC, PreEntryTrigger trigger = PreEntryTrigger.None)
         : IDisposable, IThreadPoolWorkItem
     {
         private readonly Lock _stateLock = new();
@@ -337,10 +444,15 @@ public class GCKeeper : IDisposable
         private int _leases = 1;
         private bool _ownerReleased;
         // Entered ahead of the payload: the lease is held by no payload until one takes it over or it expires.
-        private readonly bool _isPreEntry = preEntry;
-        private bool _preEntryOwned = preEntry;
+        private readonly bool _isPreEntry = trigger != PreEntryTrigger.None;
+        private bool _preEntryOwned = trigger != PreEntryTrigger.None;
         private bool _entered;
-        private readonly long _createdTimestamp = preEntry ? keeper._timestamp() : 0;
+        private readonly long _createdTimestamp = trigger != PreEntryTrigger.None ? keeper._timestamp() : 0;
+
+        public PreEntryTrigger Trigger { get; } = trigger;
+
+        /// <summary>How long a pre-entered region waits for its payload: a slot's covers the lead and the slot's start.</summary>
+        public int TimeoutMs => Trigger == PreEntryTrigger.Slot ? keeper._settings.SlotExpiryMs : PreEntryTimeoutMs;
         private long _allocatedAtEntry;
         private bool _takenOver;
 
@@ -363,9 +475,9 @@ public class GCKeeper : IDisposable
                 if (_takenOver) return PreEntryHandOver.None;
                 if (!_preEntryOwned || _released || _ownerReleased) return PreEntryHandOver.Ending;
                 _preEntryOwned = false;
-                bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < PreEntryTimeoutMs
+                bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < TimeoutMs
                     && (_active
-                        ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < PreEntryMaxAllocatedBytes
+                        ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < keeper._settings.MaxAllocatedBytes
                         // Still queued or being entered: the payload takes the entry over as if it had queued it.
                         : !_entered);
                 if (usable)
@@ -465,7 +577,8 @@ public class GCKeeper : IDisposable
             if (started) EndRegion();
             else keeper.ReleaseRegion(this);
             // A failed pre-entry nobody took over lets go of the scheduler pause now rather than at its expiry.
-            if (!started && _isPreEntry && ExpirePreEntry()) Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesFailed);
+            if (!started && _isPreEntry && ExpirePreEntry())
+                Count(ref Metrics.NoGcRegionPreEntriesFailed, ref Metrics.NoGcRegionPreSlotEntriesFailed, Trigger);
         }
 
         /// <summary>Released by the payload that admitted the region, after which it takes no new leases.</summary>
@@ -478,6 +591,7 @@ public class GCKeeper : IDisposable
         {
             bool end;
             bool release;
+            bool byPayload;
             lock (_stateLock)
             {
                 if (_released) return;
@@ -489,21 +603,28 @@ public class GCKeeper : IDisposable
                 end = _active;
                 _active = false;
                 release = !_starting;
+                // The last payload in it lets go (not an unused pre-entry's expiry, nor shutdown).
+                byPayload = !force && (!_isPreEntry || _takenOver);
             }
 
             if (pausedGCScheduler) GCScheduler.MarkGCResumed();
-            if (end) EndRegion();
+            if (end) EndRegion(byPayload);
             else if (release) keeper.ReleaseRegion(this);
             if (scheduleGC) keeper.ScheduleGC();
         }
 
-        private void EndRegion()
+        private void EndRegion(bool byPayload = false)
         {
             try
             {
                 if (keeper._runtime.IsActive)
                 {
                     keeper._runtime.End();
+                }
+                else if (byPayload)
+                {
+                    // The runtime left the region under the payload, its budget spent before the payload was done.
+                    Interlocked.Increment(ref Metrics.NoGcRegionEndedByRuntime);
                 }
             }
             catch (InvalidOperationException e)

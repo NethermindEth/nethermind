@@ -107,6 +107,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     {
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+        // BENCH: anchors the slot clock of the region's slot pre-entry.
+        _gcKeeper.OnNewHead(executionPayload.Timestamp);
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 

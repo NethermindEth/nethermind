@@ -490,6 +490,8 @@ public class GCKeeperTests
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
+        /// <summary>The runtime leaves the region by itself, as when its budget is spent.</summary>
+        public void EndByRuntime() => IsActive = false;
         public long AllocatedBytes { get; set; }
         public bool TryStart(long totalSize, long lohSize)
         {
@@ -1054,17 +1056,199 @@ public class GCKeeperTests
         Assert.That(rig.PendingDelays(GCKeeper.PreEntryDelayMs), Is.EqualTo(1));
     }
 
+    // BENCH gc-region-pre-slot: the region entered ahead of the slot.
+
+    [TestCase(500, 0, 12_000, TestName = "Early in the head's slot")]
+    [TestCase(10_999, 0, 12_000, TestName = "Just before the next slot's lead")]
+    [TestCase(11_000, 0, 24_000, TestName = "Next slot's lead begun")]
+    [TestCase(40_000, 0, 48_000, TestName = "Missed slots")]
+    [TestCase(-30_000, 0, 12_000, TestName = "Head ahead of the clock")]
+    [TestCase(12_000, 1, 24_000, TestName = "No lead, at the slot start")]
+    public void Next_slot_start_follows_the_head(long nowSinceHeadMs, int noLead, long expectedSinceHeadMs)
+    {
+        const long head = 1_700_000_000_000;
+        long lead = noLead == 1 ? 0 : 1_000;
+        Assert.That(GCKeeper.NextSlotStartMs(head, 12_000, head + nowSinceHeadMs, lead) - head, Is.EqualTo(expectedSinceHeadMs));
+    }
+
+    [Test]
+    public void Slot_trigger_enters_the_region_its_lead_before_the_slot_and_re_arms()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        const ulong head = 1_700_000_000;
+        rig.UnixMs = (long)head * 1000 + 2_000;
+        long slotEntries = Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntries);
+
+        keeper.OnNewHead(head);
+        keeper.OnNewHead(head);
+        Assert.That(() => rig.PendingDelays(9_000), Is.EqualTo(1).After(5000, 10), "one loop, firing 1 s before the next slot");
+        Assert.That(rig.Queued, Is.Empty);
+
+        rig.UnixMs += 9_000;
+        rig.CompleteDelays(9_000);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => rig.Queued.Count, Is.EqualTo(1).After(5000, 10));
+            Assert.That(() => rig.PendingDelays(12_000), Is.EqualTo(1).After(5000, 10), "re-armed for the following slot");
+            Assert.That(rig.PendingDelays(GCKeeper.PreEntrySettings.Default.SlotExpiryMs), Is.EqualTo(1), "expiry measured from entry");
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntries) - slotEntries, Is.EqualTo(1));
+        }
+    }
+
+    [TestCase("off", false, false)]
+    [TestCase("getblobs", true, false)]
+    [TestCase("slot", false, true)]
+    [TestCase("both", true, true)]
+    [TestCase(null, true, true)]
+    public void Mode_selects_the_triggers(string? mode, bool getBlobs, bool slot)
+    {
+        PreEntryRig rig = new(settings: GCKeeper.PreEntrySettings.Parse(mode, null, null, null));
+        using GCKeeper keeper = rig.Keeper;
+        rig.UnixMs = 1_700_000_000_000 + 2_000;
+        keeper.SchedulePrepareNoGCRegion();
+        keeper.OnNewHead(1_700_000_000);
+        Thread.Sleep(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.PendingDelays(GCKeeper.PreEntryDelayMs), Is.EqualTo(getBlobs ? 1 : 0));
+            Assert.That(rig.PendingDelays(9_000), Is.EqualTo(slot ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Bench_settings_parse_with_defaults()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(GCKeeper.PreEntrySettings.Parse(null, null, null, null), Is.EqualTo(GCKeeper.PreEntrySettings.Default));
+            Assert.That(GCKeeper.PreEntrySettings.Default, Is.EqualTo(new GCKeeper.PreEntrySettings(GCKeeper.PreEntryMode.Both, 1_000, 6_000, 128_000_000)));
+            Assert.That(GCKeeper.PreEntrySettings.Parse(" Slot ", "500", "4000", "64"),
+                Is.EqualTo(new GCKeeper.PreEntrySettings(GCKeeper.PreEntryMode.Slot, 500, 4_000, 64_000_000)));
+            Assert.That(GCKeeper.PreEntrySettings.Parse("x", "-1", "0", "y"), Is.EqualTo(GCKeeper.PreEntrySettings.Default));
+        }
+    }
+
+    [Test]
+    public void Payload_takes_over_a_slot_entered_region_within_its_window([Values] bool pastWindow)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        long takenOver = Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesTakenOver);
+        long stale = Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesStale);
+        Assert.That(keeper.PrepareNoGCRegion(GCKeeper.PreEntryTrigger.Slot), Is.True);
+        rig.Queued[0].Execute();
+        // Longer than a getBlobs pre-entry lives, within the slot's window unless past it.
+        rig.AdvanceMs(pastWindow ? GCKeeper.PreEntrySettings.Default.SlotExpiryMs : GCKeeper.PreEntrySettings.Default.SlotExpiryMs - 1_000);
+
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Queued, Has.Count.EqualTo(pastWindow ? 2 : 1));
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(pastWindow ? 1 : 0));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesTakenOver) - takenOver, Is.EqualTo(pastWindow ? 0 : 1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesStale) - stale, Is.EqualTo(pastWindow ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public void Unused_slot_entered_region_expires_after_its_configured_window()
+    {
+        PreEntryRig rig = new(settings: GCKeeper.PreEntrySettings.Default with { SlotExpiryMs = 4_500 });
+        using GCKeeper keeper = rig.Keeper;
+        long expired = Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesExpired);
+        keeper.PrepareNoGCRegion(GCKeeper.PreEntryTrigger.Slot);
+        rig.Queued[0].Execute();
+        Assert.That(rig.PendingDelays(4_500), Is.EqualTo(1));
+
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        Thread.Sleep(50);
+        Assert.That(rig.Runtime.IsActive, Is.True, "not at a getBlobs pre-entry's expiry");
+
+        rig.CompleteDelays(4_500);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => rig.Runtime.Ends, Is.EqualTo(1).After(5000, 10));
+            Assert.That(() => Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesExpired) - expired, Is.EqualTo(1).After(5000, 10));
+        }
+    }
+
+    [TestCase(0, true, 1, TestName = "Payload's own region ended by the runtime")]
+    [TestCase(1, true, 1, TestName = "Taken-over region ended by the runtime")]
+    [TestCase(0, false, 0, TestName = "Payload's own region ended by the payload")]
+    [TestCase(2, true, 0, TestName = "Unused pre-entry ended by the runtime")]
+    public void Region_ended_by_the_runtime_under_its_payload_is_counted(int kind, bool runtimeEnds, int expected)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        long ended = Interlocked.Read(ref Metrics.NoGcRegionEndedByRuntime);
+        long expired = Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesExpired);
+        IDisposable? payload = null;
+        if (kind == 0)
+        {
+            payload = keeper.TryStartNoGCRegion();
+            rig.Queued[0].Execute();
+        }
+        else
+        {
+            keeper.PrepareNoGCRegion(GCKeeper.PreEntryTrigger.Slot);
+            rig.Queued[0].Execute();
+            if (kind == 1) payload = keeper.TryStartNoGCRegion();
+        }
+
+        if (runtimeEnds) rig.Runtime.EndByRuntime();
+        if (payload is not null) payload.Dispose();
+        else rig.CompleteDelays(GCKeeper.PreEntrySettings.Default.SlotExpiryMs);
+
+        if (payload is null)
+        {
+            Assert.That(() => Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntriesExpired) - expired, Is.EqualTo(1).After(5000, 10));
+        }
+
+        Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEndedByRuntime) - ended, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void Dispose_stops_the_slot_loop()
+    {
+        PreEntryRig rig = new();
+        GCKeeper keeper = rig.Keeper;
+        rig.UnixMs = 1_700_000_000_000 + 2_000;
+        keeper.OnNewHead(1_700_000_000);
+        Assert.That(() => rig.PendingDelays(9_000), Is.EqualTo(1).After(5000, 10));
+
+        keeper.Dispose();
+        Assert.That(() => rig.PendingDelays(9_000), Is.Zero.After(5000, 10));
+        keeper.OnNewHead(1_700_000_012);
+        Thread.Sleep(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Delays, Has.Count.EqualTo(1), "no loop after dispose");
+            Assert.That(rig.Queued, Is.Empty);
+        }
+    }
+
     private sealed class PreEntryRig
     {
         private long _now = 1_000_000;
         private readonly List<(int Ms, TaskCompletionSource<bool> Done)> _pending = [];
 
-        public PreEntryRig(Action? beforeStart = null, Action? beforeEnd = null)
+        private long _unixMs;
+
+        public PreEntryRig(Action? beforeStart = null, Action? beforeEnd = null, GCKeeper.PreEntrySettings? settings = null)
         {
             Runtime = new RegionRuntime { BeforeStart = beforeStart, BeforeEnd = beforeEnd };
             Strategy.CanStartNoGCRegion().Returns(true);
             Strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
-            Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queue, Delay, () => Interlocked.Read(ref _now));
+            Strategy.SecondsPerSlot.Returns(12UL);
+            Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queue, Delay, () => Interlocked.Read(ref _now),
+                settings, () => Interlocked.Read(ref _unixMs));
+        }
+
+        public long UnixMs
+        {
+            get => Interlocked.Read(ref _unixMs);
+            set => Interlocked.Exchange(ref _unixMs, value);
         }
 
         public Action? OnQueue { get; set; }

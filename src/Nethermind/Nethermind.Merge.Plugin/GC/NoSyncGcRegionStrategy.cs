@@ -22,7 +22,10 @@ public class NoSyncGcRegionStrategy : IGCStrategy
         GcCompaction gcCompaction = (GcCompaction)Math.Min((int)GcCompaction.Full, (int)mergeConfig.CompactMemory);
         _gcParams = (gcLevel, gcCompaction);
         PostBlockDelayMs = mergeConfig.PostBlockGcDelayMs ?? (int)((mergeConfig.SecondsPerSlot * 1000) / 8);
+        SecondsPerSlot = mergeConfig.SecondsPerSlot;
     }
+
+    public ulong SecondsPerSlot { get; }
 
     public int CollectionsPerDecommit { get; }
     public int PostBlockDelayMs { get; }
