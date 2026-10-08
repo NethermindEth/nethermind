@@ -66,6 +66,23 @@ public class HashesOnlyBlockCacheTests
     }
 
     [Test]
+    public void Add_HashAlreadyCached_ReplacesTheBlock()
+    {
+        HashesOnlyBlockCache cache = new();
+        cache.Add(TestItem.KeccakA, CreateBlock(), cache.Generation);
+        HashesOnlyBlock replacement = new(Build.A.Block.TestObject, new ValueHash256[2 * TransactionCount]);
+
+        cache.Add(TestItem.KeccakA, replacement, cache.Generation);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.TryGet(TestItem.KeccakA, out HashesOnlyBlock? cached), Is.True, "the hash stays cached");
+            Assert.That(cached, Is.SameAs(replacement), "the newer block replaces the older one");
+            Assert.That(cache.Bytes, Is.EqualTo(replacement.EstimatedSize), "only the replacement is accounted");
+        }
+    }
+
+    [Test]
     public void Add_BlockReadBeforeAClear_IsNotCached()
     {
         HashesOnlyBlockCache cache = new();

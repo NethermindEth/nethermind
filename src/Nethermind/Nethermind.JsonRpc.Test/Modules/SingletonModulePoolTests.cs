@@ -14,6 +14,7 @@ using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Test.Builders;
@@ -71,7 +72,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IHistoryConfig>(),
                     Substitute.For<IHistoryPruner>()),
                 new BlockForRpcFactory(),
-                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), blockTree));
+                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>()));
             return Task.CompletedTask;
         }
 

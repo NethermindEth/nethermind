@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -43,7 +44,8 @@ public class HashesOnlyBlockBenchmarks
     {
         MemDb blockDb = new();
         _blockStore = new BlockStore(blockDb);
-        _reader = new HashesOnlyBlockReader(blockDb, new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Build.A.BlockTree().TestObject);
+        _reader = new HashesOnlyBlockReader(blockDb, new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()),
+            new HeaderStore(new MemDb(), new MemDb()), Build.A.BlockTree().TestObject, MainnetSpecProvider.Instance);
         _block = BuildBlock(Transactions);
         _blockStore.Insert(_block);
         _cached = _reader.Read(_block.Number, _block.Hash!)!;

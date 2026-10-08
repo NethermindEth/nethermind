@@ -44,8 +44,9 @@ internal sealed class HashesOnlyBlockCache(long byteBudget)
         return true;
     }
 
-    /// <summary>Adds <paramref name="block"/> unless it is cached already, larger than the whole budget, or read before
-    /// a <see cref="Clear"/> that <paramref name="generation"/> predates.</summary>
+    /// <summary>Adds <paramref name="block"/>, replacing a block cached under the same hash, unless it is larger than the
+    /// whole budget or was read before a <see cref="Clear"/> that <paramref name="generation"/> predates.</summary>
+    /// <remarks>A replaced block keeps its place in the eviction order.</remarks>
     public void Add(in ValueHash256 blockHash, HashesOnlyBlock block, long generation)
     {
         if (block.EstimatedSize > byteBudget)
@@ -55,13 +56,23 @@ internal sealed class HashesOnlyBlockCache(long byteBudget)
 
         lock (_lock)
         {
-            if (generation != _generation || !_blocks.TryAdd(blockHash, block))
+            if (generation != _generation)
             {
                 return;
             }
 
-            _insertionOrder.Enqueue(blockHash);
             long bytes = _bytes + block.EstimatedSize;
+            if (_blocks.TryGetValue(blockHash, out HashesOnlyBlock? replaced))
+            {
+                _blocks[blockHash] = block;
+                bytes -= replaced.EstimatedSize;
+            }
+            else
+            {
+                _blocks[blockHash] = block;
+                _insertionOrder.Enqueue(blockHash);
+            }
+
             int secondChances = _insertionOrder.Count;
             while (bytes > byteBudget)
             {

@@ -9,9 +9,12 @@ using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -54,17 +57,20 @@ public sealed class HashesOnlyBlock(Block block, ValueHash256[] transactionHashe
 /// left to the block tree, which holds them decoded already.
 /// </para>
 /// <para>
-/// A block hash fixes everything the response carries, total difficulty included, so a cached block stays right through
-/// a reorg, and only canonical blocks are cached. A hit by number costs the one level read that resolves the number,
-/// whose canonical entry also confirms the cached total difficulty; a hit by hash reads nothing unless the canonical
-/// check is asked for.
+/// A miss resolves the block as the block tree's lookup does: one level read gives the block's entry, its total
+/// difficulty and whether it is canonical, and the header is the one decoded from the stored block. A block hash fixes
+/// everything the response carries, so a cached block stays right through a reorg, and only canonical blocks are cached.
+/// A hit by number costs the one level read that resolves the number, whose canonical entry also confirms the cached
+/// total difficulty; a hit by hash reads nothing unless the canonical check is asked for. An entry that no longer
+/// matches is read again and replaced.
 /// </para>
 /// <para>
-/// What a hit cannot see is a block deleted from the store. Bodies pruned below
+/// What a hit by hash cannot see is a block deleted from the store. Bodies pruned below
 /// <see cref="IBlockFinder.LowestServedBlock"/> are not served, because history pruning publishes that boundary before
-/// it deletes them. Every other deletion of a block below the head window moves the head down first: deleting a chain
-/// slice and resetting the head both do, and invalid blocks are never canonical below the head. So the cache is cleared
-/// whenever the head moves down, and a read that started before the clear is not cached.
+/// it deletes them. Deleting a chain slice, which is how resetting the head and chain recovery remove blocks below the
+/// head window, moves the head down once it is done, and invalid blocks are never canonical below the head. So the cache
+/// is cleared whenever the head moves down, and a read that started before the clear is not cached. While a slice is
+/// being deleted, a hit by hash can still serve a block the slice is removing.
 /// </para>
 /// </remarks>
 public sealed class HashesOnlyBlockReader : IDisposable
@@ -74,7 +80,9 @@ public sealed class HashesOnlyBlockReader : IDisposable
     private readonly IDb _blockDb;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly IChainLevelInfoRepository _chainLevels;
+    private readonly IHeaderStore _headerStore;
     private readonly IBlockTree _blockTree;
+    private readonly ISpecProvider _specProvider;
     private readonly ulong _headWindow;
     private readonly HashesOnlyBlockCache _cache;
     private ulong _headNumber;
@@ -83,33 +91,41 @@ public sealed class HashesOnlyBlockReader : IDisposable
         [KeyFilter(DbNames.Blocks)] IDb blockDb,
         IHeaderDecoder headerDecoder,
         IChainLevelInfoRepository chainLevels,
-        IBlockTree blockTree)
-        : this(blockDb, headerDecoder, chainLevels, blockTree, BlockStore.CacheSize, HashesOnlyBlockCache.DefaultByteBudget)
+        IHeaderStore headerStore,
+        IBlockTree blockTree,
+        ISpecProvider specProvider)
+        : this(blockDb, headerDecoder, chainLevels, headerStore, blockTree, specProvider, BlockStore.CacheSize, HashesOnlyBlockCache.DefaultByteBudget)
     {
     }
 
     /// <param name="blockDb">The blocks database the block store writes.</param>
     /// <param name="headerDecoder">The chain's header decoder.</param>
     /// <param name="chainLevels">The chain levels the block tree reads.</param>
+    /// <param name="headerStore">The header store, for the number of a block requested by hash.</param>
     /// <param name="blockTree">The block tree whose head moving down clears the cache.</param>
+    /// <param name="specProvider">The chain's specs, for a total difficulty that is always zero.</param>
     /// <param name="headWindow">How many blocks below the head are left to the block tree.</param>
     /// <param name="cacheByteBudget">The estimated size the cached blocks may take.</param>
     internal HashesOnlyBlockReader(
         IDb blockDb,
         IHeaderDecoder headerDecoder,
         IChainLevelInfoRepository chainLevels,
+        IHeaderStore headerStore,
         IBlockTree blockTree,
+        ISpecProvider specProvider,
         ulong headWindow,
         long cacheByteBudget)
     {
         _blockDb = blockDb;
         _headerDecoder = headerDecoder;
         _chainLevels = chainLevels;
+        _headerStore = headerStore;
         _blockTree = blockTree;
-        _headNumber = blockTree.Head?.Number ?? 0;
-        blockTree.NewHeadBlock += OnNewHeadBlock;
+        _specProvider = specProvider;
         _headWindow = headWindow;
         _cache = new HashesOnlyBlockCache(cacheByteBudget);
+        _headNumber = blockTree.Head?.Number ?? 0;
+        blockTree.NewHeadBlock += OnNewHeadBlock;
     }
 
     /// <returns>The block, or <see langword="null"/> when it has to be looked up through the block tree.</returns>
@@ -123,7 +139,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
         ulong windowStart = head.Number - _headWindow;
         return blockParameter.Type switch
         {
-            BlockParameterType.BlockNumber => FindByNumber(blockFinder, blockParameter, windowStart),
+            BlockParameterType.BlockNumber => FindByNumber(blockFinder, blockParameter.BlockNumber!.Value, windowStart),
             BlockParameterType.BlockHash => FindByHash(blockFinder, blockParameter.BlockHash!, blockParameter.RequireCanonical, windowStart),
             _ => null
         };
@@ -131,18 +147,22 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
     /// <remarks>Resolves the number through its level, as the block tree does for a canonical block. A level with no
     /// canonical block is left to the block tree.</remarks>
-    private HashesOnlyBlock? FindByNumber(IBlockFinder blockFinder, BlockParameter blockParameter, ulong windowStart)
+    private HashesOnlyBlock? FindByNumber(IBlockFinder blockFinder, ulong number, ulong windowStart)
     {
-        ulong number = blockParameter.BlockNumber!.Value;
-        if (number >= windowStart || _chainLevels.LoadLevel(number)?.MainChainBlock is not { } blockInfo)
+        if (number >= windowStart || _chainLevels.LoadLevel(number) is not { MainChainBlock: { } blockInfo } level)
         {
             return null;
         }
 
         Hash256 blockHash = blockInfo.BlockHash;
+        if (blockHash == blockFinder.GenesisHash)
+        {
+            return null;
+        }
+
         return _cache.TryGet(blockHash.ValueHash256, out HashesOnlyBlock? cached) && IsCurrent(blockFinder, cached!, blockInfo)
             ? cached
-            : Load(blockFinder, blockHash, number, blockParameter.RequireCanonical, windowStart);
+            : Load(blockHash, number, level, requireCanonical: true);
     }
 
     private HashesOnlyBlock? FindByHash(IBlockFinder blockFinder, Hash256 blockHash, bool requireCanonical, ulong windowStart)
@@ -154,51 +174,63 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return cached;
         }
 
-        return Load(blockFinder, blockHash, blockNumber: null, requireCanonical, windowStart);
+        // The header cache answers for recent blocks, so a block in the head window costs no database read here.
+        if (blockHash == blockFinder.GenesisHash
+            || _headerStore.Get(blockHash) is not { } header
+            || header.Number >= windowStart
+            || _chainLevels.LoadLevel(header.Number) is not { } level)
+        {
+            return null;
+        }
+
+        return Load(blockHash, header.Number, level, requireCanonical);
     }
 
-    /// <summary>Whether a cached block can be served by number: <paramref name="blockInfo"/>, the level's canonical entry
-    /// the number resolved through, still reports the cached total difficulty.</summary>
-    private static bool IsCurrent(IBlockFinder blockFinder, HashesOnlyBlock cached, BlockInfo blockInfo) =>
-        cached.Block.Header.TotalDifficulty == blockInfo.TotalDifficulty
+    /// <summary>Whether a cached block can be served: <paramref name="blockInfo"/>, its canonical entry, still gives the
+    /// cached total difficulty, and its body has not been pruned.</summary>
+    private bool IsCurrent(IBlockFinder blockFinder, HashesOnlyBlock cached, BlockInfo blockInfo) =>
+        cached.Block.Header.TotalDifficulty == ResolveTotalDifficulty(blockInfo)
         && cached.Block.Number >= blockFinder.LowestServedBlock;
 
     private bool IsCanonical(HashesOnlyBlock cached, Hash256 blockHash) =>
         _chainLevels.LoadLevel(cached.Block.Number)?.MainChainBlock is { } blockInfo
         && blockInfo.BlockHash == blockHash
-        && cached.Block.Header.TotalDifficulty == blockInfo.TotalDifficulty;
+        && cached.Block.Header.TotalDifficulty == ResolveTotalDifficulty(blockInfo);
 
-    private HashesOnlyBlock? Load(IBlockFinder blockFinder, Hash256 blockHash, ulong? blockNumber, bool requireCanonical, ulong windowStart)
+    /// <remarks>A level without the block's entry is left to the block tree, which may create it.</remarks>
+    private HashesOnlyBlock? Load(Hash256 blockHash, ulong number, ChainLevelInfo level, bool requireCanonical)
     {
-        if (blockHash == blockFinder.GenesisHash)
+        bool isCanonical = level.MainChainBlock?.BlockHash == blockHash;
+        if ((requireCanonical && !isCanonical) || level.FindBlockInfo(blockHash) is not { } blockInfo)
         {
             return null;
         }
 
         long generation = _cache.Generation;
-
-        // Resolves total difficulty and the canonical check as the block lookup does.
-        BlockHeader? header = blockFinder.FindHeader(blockHash,
-            requireCanonical ? BlockTreeLookupOptions.RequireCanonical : BlockTreeLookupOptions.None, blockNumber);
-        if (header is null || header.Number >= windowStart)
-        {
-            return null;
-        }
-
-        HashesOnlyBlock? block = Read(header.Number, blockHash);
+        HashesOnlyBlock? block = Read(number, blockHash);
         if (block is null)
         {
             return null;
         }
 
-        block.Block.Header.TotalDifficulty = header.TotalDifficulty;
-        if (blockFinder.IsMainChain(header))
+        block.Block.Header.TotalDifficulty = ResolveTotalDifficulty(blockInfo);
+        if (isCanonical)
         {
             _cache.Add(blockHash.ValueHash256, block, generation);
         }
 
         return block;
     }
+
+    /// <summary>The total difficulty the block tree sets from a level entry on a block it has just decoded.</summary>
+    /// <remarks>A level written without a known total difficulty stores zero, which leaves the header's unset unless
+    /// the chain's total difficulty is always zero.</remarks>
+    private UInt256? ResolveTotalDifficulty(BlockInfo blockInfo) =>
+        !blockInfo.TotalDifficulty.IsZero
+            ? blockInfo.TotalDifficulty
+            : _blockTree.Genesis?.Difficulty == 0 && _specProvider.TerminalTotalDifficulty == 0
+                ? UInt256.Zero
+                : null;
 
     public void Dispose() => _blockTree.NewHeadBlock -= OnNewHeadBlock;
 
@@ -233,22 +265,23 @@ public sealed class HashesOnlyBlockReader : IDisposable
         }
     }
 
-    /// <returns>The block, or <see langword="null"/> when the stored layout is not the one this reader knows, so that a
-    /// body field a later fork adds leaves the block to the block tree's decoder instead of failing the request.</returns>
+    /// <returns>The block, or <see langword="null"/> when the stored block does not decode as the layout this reader
+    /// knows, so that a body field a later fork adds, or anything else unexpected, leaves the block to the block tree's
+    /// decoder instead of failing the request.</returns>
     private HashesOnlyBlock? Decode(Memory<byte> memory)
     {
         try
         {
             return DecodeKnownLayout(memory);
         }
-        catch (Exception e) when (e is RlpException or IndexOutOfRangeException or ArgumentOutOfRangeException)
+        catch (Exception)
         {
             return null;
         }
     }
 
-    /// <remarks>Mirrors <see cref="BlockDecoder"/> and <see cref="BlockBodyDecoder.DecodeUnwrapped"/>: header, then
-    /// transactions, uncles and optional withdrawals. The reader is span-backed so that nothing decoded keeps a slice of
+    /// <remarks>Mirrors <see cref="BlockDecoder"/> and <see cref="BlockBodyDecoder.DecodeUnwrapped"/>, with its count
+    /// limits: header, then transactions, uncles and optional withdrawals. The reader is span-backed so that nothing decoded keeps a slice of
     /// the database buffer, which is released on return.</remarks>
     private HashesOnlyBlock? DecodeKnownLayout(Memory<byte> memory)
     {
@@ -262,9 +295,9 @@ public sealed class HashesOnlyBlockReader : IDisposable
         int blockEnd = reader.Position + sequenceLength;
         BlockHeader header = _headerDecoder.DecodeGuardNotNull(ref reader);
         ValueHash256[] transactionHashes = ReadTransactionHashes(ref reader, memory, header);
-        BlockHeader[] uncles = reader.DecodeNonNullArray(_headerDecoder);
+        BlockHeader[] uncles = reader.DecodeNonNullArray(_headerDecoder, limit: BlockBodyDecoder.UnclesCountLimit);
         Withdrawal[]? withdrawals = reader.PeekNumberOfItemsRemaining(blockEnd, 1) > 0
-            ? reader.DecodeNonNullArray(WithdrawalDecoder)
+            ? reader.DecodeNonNullArray(WithdrawalDecoder, limit: BlockBodyDecoder.WithdrawalsCountLimit)
             : null;
         if (reader.Position != blockEnd)
         {
@@ -278,12 +311,14 @@ public sealed class HashesOnlyBlockReader : IDisposable
         return new HashesOnlyBlock(block, transactionHashes);
     }
 
-    /// <remarks>Hashes through <see cref="ReceiptRecoveryBlock"/>, which hashes each envelope the way the transaction
-    /// decoder sets <see cref="Transaction.Hash"/>.</remarks>
+    /// <remarks>Hashes through <see cref="ReceiptRecoveryBlock.GetNextTransactionValueHash"/>, which hashes each envelope
+    /// the way the transaction decoder sets <see cref="Transaction.Hash"/>.</remarks>
     private static ValueHash256[] ReadTransactionHashes(ref RlpReader reader, Memory<byte> memory, BlockHeader header)
     {
         int contentLength = reader.ReadSequenceLength();
-        int count = reader.PeekNumberOfItemsRemaining(reader.Position + contentLength);
+        RlpLimit limit = BlockBodyDecoder.TransactionsCountLimit;
+        int count = reader.PeekNumberOfItemsRemaining(reader.Position + contentLength, limit.Limit + 1);
+        reader.GuardLimit(count, limit);
         ReceiptRecoveryBlock transactions = new(null, header, memory.Slice(reader.Position, contentLength), count);
         reader.SkipBytes(contentLength);
         if (count == 0)
@@ -294,7 +329,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
         ValueHash256[] hashes = new ValueHash256[count];
         for (int i = 0; i < hashes.Length; i++)
         {
-            hashes[i] = transactions.GetNextTransactionHash().ValueHash256;
+            hashes[i] = transactions.GetNextTransactionValueHash();
         }
 
         return hashes;

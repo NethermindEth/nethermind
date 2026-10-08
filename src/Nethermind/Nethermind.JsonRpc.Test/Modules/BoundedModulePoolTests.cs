@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -72,7 +73,7 @@ public class BoundedModulePoolTests
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
-            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), blockTree)),
+            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Substitute.For<IHeaderStore>(), blockTree, Substitute.For<ISpecProvider>())),
              1, 1000);
 
         return Task.CompletedTask;
