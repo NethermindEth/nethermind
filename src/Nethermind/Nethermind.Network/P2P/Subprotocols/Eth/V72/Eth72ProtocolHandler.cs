@@ -1937,8 +1937,8 @@ public class Eth72ProtocolHandler(
         long RequestId,
         DateTimeOffset ExpiresAt,
         DateTimeOffset? RetryAt,
-        BlobCellMask RestoreMask,
-        long RestoreEpoch);
+        long RestoreEpoch,
+        BlobCellMask RestoreMask);
 
     /// <summary>Why an in-flight cell request is being returned to the pending queue.</summary>
     private enum CellRequeueReason
