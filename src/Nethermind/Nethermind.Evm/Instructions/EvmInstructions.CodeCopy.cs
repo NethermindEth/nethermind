@@ -197,9 +197,6 @@ public static partial class EvmInstructions
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
 
-        // EIP-8279: the account enters the block access list on this first touch, metered before any charge.
-        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
-
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
         if (!TGasPolicy.TryConsumeDataCopyGas(ref gas, spec, isExternalCode: true, words)) return EvmExceptionType.OutOfGas;
@@ -218,6 +215,9 @@ public static partial class EvmInstructions
             // Update memory cost if the destination region requires expansion.
             if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
                 goto OutOfGas;
+
+            // EIP-8279: the account enters the block access list on the transaction's first touch, metered after every charge.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
             vm.WorldState.AddAccountRead(address);
 
@@ -238,6 +238,9 @@ public static partial class EvmInstructions
         }
         else
         {
+            // EIP-8279: as above; a zero-length copy expands no memory.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
+
             vm.WorldState.AddAccountRead(address);
             vm.WorldState.RecordBytecodeAccess(address);
         }
@@ -287,9 +290,6 @@ public static partial class EvmInstructions
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
 
-        // EIP-8279: the account enters the block access list on this first touch, metered before its charge.
-        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
-
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
             goto OutOfGas;
@@ -297,6 +297,9 @@ public static partial class EvmInstructions
         // EIP-8038 charges an extra warm access for the second DB read EXTCODESIZE performs.
         if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
+
+        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after its charge.
+        if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
 
         vm.WorldState.AddAccountRead(address);
 
