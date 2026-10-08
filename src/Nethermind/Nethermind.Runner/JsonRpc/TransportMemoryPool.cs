@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.AspNetCore.Connections;
 
@@ -145,10 +146,14 @@ internal sealed class TransportMemoryPoolFactory : IMemoryPoolFactory<byte>, IDi
 /// release them between slots and allocate them again for the next payload.
 /// </para>
 /// <para>
+/// Pooled blocks are allocated pinned and handed out as pre-pinned memory, as Kestrel's own blocks are, so a socket
+/// operation that pins its buffer, as every receive and send does on Windows, needs no GC handle for it.
+/// </para>
+/// <para>
 /// A rent no block can serve, larger than a large block or larger than a small one once the large blocks are all out,
-/// gets an ordinary array of its own. Kestrel's pipes ask for more than a small block only when a writer wants a
-/// bigger span, which is rare, and a short-lived array is cheapest left to gen0; the socket pins it only while an
-/// operation runs.
+/// gets an array from <see cref="ArrayPool{T}.Shared"/>, which is where a pipe takes a segment from when the size it
+/// wants is beyond its pool, as such rents were with Kestrel's own 4 KiB pool. The owner sees exactly the size it
+/// asked for and returns the array to the shared pool once.
 /// </para>
 /// </remarks>
 internal sealed class TransportMemoryPool : MemoryPool<byte>
@@ -194,7 +199,7 @@ internal sealed class TransportMemoryPool : MemoryPool<byte>
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (minBufferSize <= BlockSize && Large.TryRent() is { } large) return new Block(Large, large);
         if (minBufferSize <= SmallBlockSize && Small.TryRent() is { } small) return new Block(Small, small);
-        return new Block(null, GC.AllocateUninitializedArray<byte>(minBufferSize));
+        return new Block(ArrayPool<byte>.Shared.Rent(minBufferSize), minBufferSize);
     }
 
     /// <summary>Closes a demand window and releases part of the blocks its demand no longer needs.</summary>
@@ -311,16 +316,35 @@ internal sealed class TransportMemoryPool : MemoryPool<byte>
         }
     }
 
-    private sealed class Block(BlockList? list, byte[] array) : IMemoryOwner<byte>
+    private sealed class Block : IMemoryOwner<byte>
     {
+        private readonly BlockList? _list;
+        private readonly byte[] _array;
         private int _returned;
 
-        public Memory<byte> Memory => array;
+        /// <summary>A pooled block; only these arrays are allocated pinned, so only they may be exposed as pre-pinned.</summary>
+        public Block(BlockList list, byte[] array)
+        {
+            _list = list;
+            _array = array;
+            Memory = MemoryMarshal.CreateFromPinnedArray(array, 0, array.Length);
+        }
+
+        /// <summary>An array rented from <see cref="ArrayPool{T}.Shared"/>, which may be longer than asked for.</summary>
+        public Block(byte[] shared, int length)
+        {
+            _array = shared;
+            Memory = shared.AsMemory(0, length);
+        }
+
+        public Memory<byte> Memory { get; }
 
         public void Dispose()
         {
             // Once only: a second return would hand the same array to two owners.
-            if (Interlocked.Exchange(ref _returned, 1) == 0) list?.Return(array);
+            if (Interlocked.Exchange(ref _returned, 1) != 0) return;
+            if (_list is null) ArrayPool<byte>.Shared.Return(_array);
+            else _list.Return(_array);
         }
     }
 }

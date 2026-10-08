@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -144,25 +145,61 @@ public class TransportMemoryPoolTests
     }
 
     [Test]
-    public void While_the_large_blocks_are_out_a_rent_above_a_small_block_gets_an_ordinary_array()
+    public void While_the_large_blocks_are_out_a_rent_above_a_small_block_gets_a_shared_array_returned_once()
+    {
+        // Not a bucket size, so the shared pool hands out a longer array than asked for.
+        const int size = 3 * TransportMemoryPool.SmallBlockSize + 1;
+        using TransportMemoryPool pool = new();
+        List<IMemoryOwner<byte>> large = RentBlocks(pool, LargeCap);
+        byte[] primed = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(primed);
+
+        IMemoryOwner<byte> shared = pool.Rent(size);
+        bool fromSharedPool = MemoryMarshal.TryGetArray(shared.Memory, out ArraySegment<byte> segment) && ReferenceEquals(segment.Array, primed);
+        int sharedLength = shared.Memory.Length;
+        IMemoryOwner<byte> small = pool.Rent(TransportMemoryPool.SmallBlockSize);
+        int smallLength = small.Memory.Length;
+        shared.Dispose();
+        shared.Dispose();
+        small.Dispose();
+        ReturnBlocks(large);
+
+        byte[] first = ArrayPool<byte>.Shared.Rent(size);
+        byte[] second = ArrayPool<byte>.Shared.Rent(size);
+        ArrayPool<byte>.Shared.Return(second);
+        ArrayPool<byte>.Shared.Return(first);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(fromSharedPool, Is.True, "the array did not come from the shared pool");
+            Assert.That(sharedLength, Is.EqualTo(size), "the owner sees exactly the size it asked for");
+            Assert.That(first, Is.SameAs(primed), "the array went back to the shared pool");
+            Assert.That(second, Is.Not.SameAs(first), "the array went back to the shared pool twice");
+            Assert.That(smallLength, Is.EqualTo(TransportMemoryPool.SmallBlockSize));
+            Assert.That(pool.Large.Blocks, Is.EqualTo(LargeCap), "the cap holds");
+            Assert.That(pool.Small.Blocks, Is.EqualTo(1));
+            Assert.That(pool.Small.RetainedBlocks, Is.EqualTo(1), "the shared array is not pooled here");
+        }
+    }
+
+    [Test]
+    public void Pooled_blocks_pin_without_a_gc_handle_and_shared_arrays_with_one()
     {
         using TransportMemoryPool pool = new();
         List<IMemoryOwner<byte>> large = RentBlocks(pool, LargeCap);
-        IMemoryOwner<byte> exact = pool.Rent(2 * TransportMemoryPool.SmallBlockSize);
-        IMemoryOwner<byte> small = pool.Rent(TransportMemoryPool.SmallBlockSize);
-        int exactLength = exact.Memory.Length;
+        using IMemoryOwner<byte> small = pool.Rent();
+        using IMemoryOwner<byte> shared = pool.Rent(2 * TransportMemoryPool.SmallBlockSize);
+
+        bool[] pooledHandles = [.. new[] { large[0], small }.SelectMany(static o => new[] { PinsWithGcHandle(o.Memory), PinsWithGcHandle(o.Memory) })];
+        bool sharedHandle = PinsWithGcHandle(shared.Memory);
         int smallLength = small.Memory.Length;
-        exact.Dispose();
-        small.Dispose();
         ReturnBlocks(large);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(exactLength, Is.EqualTo(2 * TransportMemoryPool.SmallBlockSize));
             Assert.That(smallLength, Is.EqualTo(TransportMemoryPool.SmallBlockSize));
-            Assert.That(pool.Large.Blocks, Is.EqualTo(LargeCap), "the cap holds");
-            Assert.That(pool.Small.Blocks, Is.EqualTo(1));
-            Assert.That(pool.Small.RetainedBlocks, Is.EqualTo(1), "the ordinary array is not pooled");
+            Assert.That(pooledHandles, Is.All.False, "a pooled block is not handed out as pre-pinned memory");
+            Assert.That(sharedHandle, Is.True, "an array that is not pinned was handed out as pre-pinned memory");
         }
     }
 
@@ -535,6 +572,14 @@ public class TransportMemoryPoolTests
             Assert.That(payloadEcho, Is.EqualTo(payload));
             for (int i = 0; i < busyConnections; i++) Assert.That(busyEchoes[i], Is.EqualTo(busyBodies[i]), $"busy body {i}");
         }
+    }
+
+    private static bool PinsWithGcHandle(Memory<byte> memory)
+    {
+        FieldInfo handleField = typeof(MemoryHandle).GetField("_handle", BindingFlags.NonPublic | BindingFlags.Instance)
+            ?? throw new InvalidOperationException("MemoryHandle no longer keeps its GCHandle in _handle");
+        using MemoryHandle handle = memory.Pin();
+        return ((GCHandle)handleField.GetValue(handle)).IsAllocated;
     }
 
     private static WebApplication BuildHost(GCKeeper gcKeeper, int endpoints, int? ioQueues, RequestDelegate handler)
