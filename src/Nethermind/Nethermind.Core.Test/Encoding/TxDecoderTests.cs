@@ -398,6 +398,36 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(Decode, Throws.InstanceOf<RlpException>());
         }
 
+        [Test]
+        public void Decoder_registered_over_built_in_type_is_used_to_encode(
+            [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType)
+        {
+            // A plugin replacing a standard type's decoder must own its wire form, not the built-in encoder.
+            IsolatedTxDecoder decoder = new();
+            decoder.RegisterDecoder(new MarkerTxDecoder(txType));
+
+            Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+        }
+
+        private sealed class IsolatedTxDecoder : TxDecoder<Transaction>;
+
+        private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
+        {
+            public static readonly byte[] Encoding = [0xc1, 0x2a];
+
+            public TxType Type => txType;
+
+            public void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+                ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) => throw new NotSupportedException();
+
+            public void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+                bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+                where TWriter : struct, IRlpWriteBackend, allows ref struct => writer.Write(Encoding);
+
+            public int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
+                bool isEip155Enabled = false, ulong chainId = 0) => Encoding.Length;
+        }
+
         public static IEnumerable<(string, Hash256)> SkipTypedWrappingTestCases()
         {
             yield return

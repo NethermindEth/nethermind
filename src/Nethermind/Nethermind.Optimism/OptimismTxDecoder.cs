@@ -9,14 +9,27 @@ using Nethermind.Serialization.Rlp.TxDecoders;
 
 namespace Nethermind.Optimism;
 
-public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
-    : BaseEIP1559TxDecoder<T>(TxType.DepositTx, transactionFactory) where T : Transaction, new()
+public sealed class OptimismTxDecoder(Func<Transaction>? transactionFactory = null)
+    : BaseEIP1559TxDecoder(TxType.DepositTx, transactionFactory)
 {
-    protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
-
-    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
+    public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
     {
+        int contentLength = GetContentLength(transaction);
+        StartTypedTransaction(ref writer, TxType.DepositTx, Rlp.LengthOfSequence(contentLength), rlpBehaviors);
+        writer.StartSequence(contentLength);
+        writer.Encode(transaction.SourceHash);
+        writer.Encode(transaction.SenderAddress);
+        writer.Encode(transaction.To);
+        writer.Encode(transaction.Mint);
+        writer.Encode(in transaction.ValueRef);
+        writer.Encode(transaction.GasLimit);
+        writer.Encode(transaction.IsOPSystemTransaction);
+        writer.Encode(transaction.Data);
     }
+
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTypedTransactionLength(Rlp.LengthOfSequence(GetContentLength(transaction)), rlpBehaviors);
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
         RlpBehaviors rlpBehaviors)
@@ -36,7 +49,7 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
             ? fallbackSignature
             : base.DecodeSignature(v, rBytes, sBytes, fallbackSignature, rlpBehaviors);
 
-    protected override int GetPayloadLength(Transaction transaction) =>
+    private static int GetContentLength(Transaction transaction) =>
         Rlp.LengthOf(transaction.SourceHash)
         + Rlp.LengthOf(transaction.SenderAddress)
         + Rlp.LengthOf(transaction.To)
@@ -45,16 +58,4 @@ public sealed class OptimismTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.GasLimit)
         + Rlp.LengthOf(transaction.IsOPSystemTransaction)
         + Rlp.LengthOf(transaction.Data);
-
-    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-    {
-        writer.Encode(transaction.SourceHash);
-        writer.Encode(transaction.SenderAddress);
-        writer.Encode(transaction.To);
-        writer.Encode(transaction.Mint);
-        writer.Encode(in transaction.ValueRef);
-        writer.Encode(transaction.GasLimit);
-        writer.Encode(transaction.IsOPSystemTransaction);
-        writer.Encode(transaction.Data);
-    }
 }

@@ -23,7 +23,7 @@ public class OptimismCostHelperTests
     public void Setup()
     {
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
-        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
         TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
     }
 

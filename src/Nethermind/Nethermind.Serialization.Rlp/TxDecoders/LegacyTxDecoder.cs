@@ -7,47 +7,56 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public class LegacyTxDecoder<T>(Func<T>? transactionFactory = null) : BaseTxDecoder<T>(TxType.Legacy, transactionFactory) where T : Transaction, new()
+public class LegacyTxDecoder(Func<Transaction>? transactionFactory = null) : BaseTxDecoder(TxType.Legacy, transactionFactory)
 {
     private static bool IncludeSigChainIdHack(bool isEip155Enabled, ulong chainId) => isEip155Enabled && chainId != 0;
 
-    protected override ulong GetSignatureFirstElement(Signature signature) => signature.V;
+    public sealed override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref writer, forSigning, isEip155Enabled, chainId);
 
-    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning, bool isEip155Enabled, ulong chainId)
+    public sealed override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTransactionLength(transaction, forSigning, isEip155Enabled, chainId);
+
+    internal static int GetTransactionLength(Transaction transaction, bool forSigning, bool isEip155Enabled, ulong chainId) =>
+        Rlp.LengthOfSequence(GetContentLength(transaction, forSigning, isEip155Enabled, chainId));
+
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, bool forSigning, bool isEip155Enabled, ulong chainId)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        if (forSigning)
+        writer.StartSequence(GetContentLength(transaction, forSigning, isEip155Enabled, chainId));
+        EncodeLegacyFields(transaction, ref writer);
+
+        if (!forSigning)
         {
-            if (IncludeSigChainIdHack(isEip155Enabled, chainId))
-            {
-                writer.Encode(chainId);
-                writer.Encode(Rlp.OfEmptyByteArray);
-                writer.Encode(Rlp.OfEmptyByteArray);
-            }
+            Signature? signature = transaction.Signature;
+            EncodeSignature(signature, signature?.V ?? 0, ref writer);
         }
-        else
+        else if (IncludeSigChainIdHack(isEip155Enabled, chainId))
         {
-            base.EncodeSignature(signature, ref writer, false, isEip155Enabled, chainId);
+            writer.Encode(chainId);
+            writer.Encode(Rlp.OfEmptyByteArray);
+            writer.Encode(Rlp.OfEmptyByteArray);
         }
+    }
+
+    private static int GetContentLength(Transaction transaction, bool forSigning, bool isEip155Enabled, ulong chainId)
+    {
+        int contentLength = GetLegacyFieldsLength(transaction);
+
+        if (!forSigning)
+        {
+            Signature? signature = transaction.Signature;
+            contentLength += GetSignatureLength(signature, signature?.V ?? 0);
+        }
+        else if (IncludeSigChainIdHack(isEip155Enabled, chainId))
+        {
+            contentLength += Rlp.LengthOf(chainId) + 2;
+        }
+
+        return contentLength;
     }
 
     protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
         SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? fallbackSignature;
-
-    protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0)
-    {
-        if (forSigning)
-        {
-            int contentLength = 0;
-            if (IncludeSigChainIdHack(isEip155Enabled, chainId))
-            {
-                contentLength += Rlp.LengthOf(chainId);
-                contentLength += 1;
-                contentLength += 1;
-            }
-
-            return contentLength;
-        }
-
-        return base.GetSignatureLength(signature, false, isEip155Enabled, chainId);
-    }
 }

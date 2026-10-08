@@ -17,8 +17,8 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 /// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
-public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
-    : BaseTxDecoder<T>(TxType.FrameTx, transactionFactory) where T : Transaction, new()
+public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
+    : BaseTxDecoder(TxType.FrameTx, transactionFactory)
 {
     private static readonly RlpLimit FramesCountLimit = RlpLimit.For<Transaction>(Eip8141Constants.MaxFrames, nameof(Transaction.Frames));
 
@@ -142,9 +142,16 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
-        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0)
+        bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
+
+    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
+        GetTransactionLength(transaction, rlpBehaviors, forSigning);
+
+    internal static void EncodeTransaction<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors, bool forSigning)
+        where TWriter : struct, IRlpWriteBackend, allows ref struct
     {
-        int payloadContentLength = GetContentLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadContentLength = GetContentLength(transaction, forSigning);
         int payloadSequenceLength = Rlp.LengthOfSequence(payloadContentLength);
 
         // A sidecar-less blob carrier still serialises to the plain form that Decode refuses; see GetLength.
@@ -155,12 +162,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         int wrapperContentLength = wrapper is null ? 0 : payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors);
         int bodyLength = wrapper is null ? payloadSequenceLength : Rlp.LengthOfSequence(wrapperContentLength);
 
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == 0)
-        {
-            writer.StartByteArray(bodyLength + 1, false);
-        }
-
-        writer.WriteByte((byte)Type);
+        StartTypedTransaction(ref writer, TxType.FrameTx, bodyLength, rlpBehaviors);
 
         if (wrapper is null)
         {
@@ -177,10 +179,9 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         }
     }
 
-    public override int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false,
-        bool isEip155Enabled = false, ulong chainId = 0)
+    internal static int GetTransactionLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning)
     {
-        int payloadSequenceLength = base.GetLength(transaction, rlpBehaviors, forSigning, isEip155Enabled, chainId);
+        int payloadSequenceLength = Rlp.LengthOfSequence(GetContentLength(transaction, forSigning));
 
         // GetLength is the pool's sizing call, so it must stay total and Encode must agree with it.
         ShardBlobNetworkWrapper? wrapper = rlpBehaviors.HasFlag(RlpBehaviors.InMempoolForm)
@@ -191,13 +192,8 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
             ? payloadSequenceLength
             : Rlp.LengthOfSequence(payloadSequenceLength + ShardBlobNetworkWrapperRlp.GetFieldsLength(wrapper, rlpBehaviors));
 
-        return rlpBehaviors.HasFlag(RlpBehaviors.SkipTypedWrapping)
-            ? 1 + bodyLength
-            : Rlp.LengthOfSequence(1 + bodyLength);
+        return GetTypedTransactionLength(bodyLength, rlpBehaviors);
     }
-
-    protected override void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        EncodePayload(transaction, ref writer, elideCanonicalSignatureBytes: false);
 
     private static void EncodePayload<TWriter>(Transaction transaction, ref TWriter writer, bool elideCanonicalSignatureBytes)
         where TWriter : struct, IRlpWriteBackend, allows ref struct
@@ -257,8 +253,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + Rlp.LengthOf(transaction.DecodedMaxFeePerGas)
         + Rlp.LengthOf(transaction.MaxFeePerBlobGas.GetValueOrDefault());
 
-    protected override int GetContentLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
-        bool isEip155Enabled = false, ulong chainId = 0) =>
+    private static int GetContentLength(Transaction transaction, bool forSigning) =>
         Rlp.LengthOf(transaction.ChainId ?? 0)
         + FrameTxNonceCalldata.Length(transaction)
         + Rlp.LengthOf(transaction.SenderAddress)
@@ -266,13 +261,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
         + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
         + GetVersionedHashesLength(transaction.BlobVersionedHashes);
-
-    protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
-
-    protected override void EncodeSignature<TWriter>(Signature? signature, ref TWriter writer, bool forSigning,
-        bool isEip155Enabled = false, ulong chainId = 0)
-    {
-    }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingElement() => throw new RlpException("frame transaction must not carry a trailing element");

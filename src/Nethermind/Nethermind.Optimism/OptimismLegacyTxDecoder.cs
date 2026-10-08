@@ -12,7 +12,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder<Transaction>
+public sealed class OptimismLegacyTxDecoder : LegacyTxDecoder
 {
     protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None)

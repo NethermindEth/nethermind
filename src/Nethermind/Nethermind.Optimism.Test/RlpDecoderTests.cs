@@ -19,7 +19,7 @@ public class RlpDecoderTests
     public void Setup()
     {
         _decoder = TxDecoder.Instance;
-        _decoder.RegisterDecoder(new OptimismTxDecoder<Transaction>());
+        _decoder.RegisterDecoder(new OptimismTxDecoder());
         _decoder.RegisterDecoder(new OptimismLegacyTxDecoder());
     }
 
