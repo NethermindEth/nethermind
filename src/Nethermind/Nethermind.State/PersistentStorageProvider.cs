@@ -650,15 +650,25 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal void GetPureRead(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(in storageCell, out value);
 
-    /// <summary>Reads the value a slot held before the first storage clear of its contract in this commit round.</summary>
-    /// <returns><see langword="false"/> when the contract's storage was not cleared in this round.</returns>
+    /// <summary>Reads the value a slot held at the start of the current transaction when its contract's storage was cleared in it.</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared in the current transaction.</returns>
     internal bool TryGetBeforeClear(in StorageCell storageCell, out UInt256 value)
     {
+        if (_storageClearJournal.Count == 0)
+        {
+            value = default;
+            return false;
+        }
+
+        int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
         foreach (StorageClearChange clear in _storageClearJournal)
         {
-            if (clear.Address != storageCell.Address) continue;
+            if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot) continue;
 
-            if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
+            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
+            if (!Unsafe.IsNullRef(ref head) && head.OriginalIdx != -1)
+                value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
+            else if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
                 value = trace.After;
             else if (clear.BlockChange.MissingAreDefault)
                 value = default;
@@ -827,7 +837,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
         int journalIndex = _storageClearJournal.Count;
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared, _changes.Count));
         PushStorageClear(journalIndex);
     }
 
@@ -903,7 +913,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, UInt256>>? OriginalValues,
         bool? RootUpdate,
-        bool WasCleared);
+        bool WasCleared,
+        int ChangeIndex);
 
     /// <summary>A slot index as a map key.</summary>
     /// <remarks>

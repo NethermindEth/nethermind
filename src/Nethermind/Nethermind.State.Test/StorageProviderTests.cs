@@ -711,6 +711,60 @@ public class StorageProviderTests(bool useFlat)
     }
 
     [Test]
+    public void Storage_before_clear_is_the_value_at_the_start_of_the_stacked_transaction()
+    {
+        using Context ctx = new(useFlat, preBlockCaches: null);
+        WorldState provider = BuildStorageProvider(ctx);
+        StorageCell written = new(ctx.Address1, 1);
+        StorageCell untouched = new(ctx.Address1, 2);
+        provider.Set(written, (UInt256)5);
+        provider.Set(untouched, (UInt256)6);
+        provider.Commit(Frontier.Instance);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        provider.Set(written, (UInt256)7);
+        provider.ClearStorage(ctx.Address1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((true, (UInt256)5)), "tx0 wrote then cleared: its prestate");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((true, (UInt256)6)), "tx0 cleared an unwritten slot: its prestate");
+        }
+        provider.Set(written, (UInt256)8);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((false, UInt256.Zero)), "a clear by an earlier transaction is not this transaction's");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((false, UInt256.Zero)));
+        }
+        provider.Set(written, (UInt256)9);
+
+        provider.TakeSnapshot(newTransactionStart: true);
+        Snapshot beforeClears = provider.TakeSnapshot();
+        provider.ClearStorage(ctx.Address1);
+        provider.Set(written, (UInt256)10);
+        provider.ClearStorage(ctx.Address1);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((true, (UInt256)9)), "tx2 clears twice a slot tx1 wrote: tx1's value");
+            Assert.That(BeforeClear(provider, untouched), Is.EqualTo((true, UInt256.Zero)), "tx0's clear is tx2's prestate");
+        }
+
+        provider.Restore(beforeClears);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(BeforeClear(provider, written), Is.EqualTo((false, UInt256.Zero)), "a reverted clear is gone");
+            Assert.That(ReadSlot(provider, written), Is.EqualTo((UInt256)9));
+        }
+    }
+
+    private static (bool, UInt256) BeforeClear(WorldState provider, in StorageCell cell)
+    {
+        bool cleared = provider.TryGetStorageBeforeClear(in cell, out UInt256 value);
+        return (cleared, value);
+    }
+
+    [Test]
     public void Original_value_after_transaction_snapshots_unwind_is_the_block_original()
     {
         // 1. Block original 1 is committed.

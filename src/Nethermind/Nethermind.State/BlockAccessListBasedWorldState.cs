@@ -421,6 +421,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void ClearStorage(Address address) { }
 
+    public override bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
     // BAL-backed mutations do not own MPT changes; CommitTree still delegates to commit the parent tree.
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
 
