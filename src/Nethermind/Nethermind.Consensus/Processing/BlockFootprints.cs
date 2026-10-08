@@ -33,6 +33,9 @@ internal sealed class BlockFootprints(Block block)
     /// <summary>Refreshes one block may run.</summary>
     internal const int MaxRefreshesPerBlock = 128;
 
+    // Past it, block processing wakes the refresh worker for its writes without comparing them with the prediction.
+    private const int MaxComparedWrites = 16;
+
     private readonly Hash256? _blockHash = block.Hash;
     private readonly TransactionFootprint?[] _footprints = new TransactionFootprint?[block.Transactions.Length];
 
@@ -208,10 +211,47 @@ internal sealed class BlockFootprints(Block block)
     /// Queues the storage writes block processing committed when it executed the transaction at <paramref name="position"/>;
     /// null when it wrote none.
     /// </summary>
+    /// <remarks>
+    /// Writes its footprint predicted invalidate nothing, so they wait for the refresh worker's next wake: waking a
+    /// blocked worker costs block processing microseconds.
+    /// </remarks>
     public void QueueExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
     {
         _reported.Enqueue((position, writes));
-        _changed.Release();
+        if (!WerePredicted(position, writes)) _changed.Release();
+    }
+
+    private bool WerePredicted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    {
+        ReadOnlySpan<StateEffect> effects = (uint)position < (uint)_footprints.Length && Volatile.Read(ref _footprints[position]) is { } footprint
+            ? footprint.Effects
+            : default;
+        int predicted = 0;
+        foreach (ref readonly StateEffect effect in effects)
+        {
+            if (effect.Kind == EffectKind.SetStorage) predicted++;
+        }
+
+        int count = writes?.Count ?? 0;
+        if (predicted != count) return false;
+        if (count > MaxComparedWrites) return false;
+        // A footprint writes each slot once, and a commit reports each slot once.
+        foreach ((StorageCell cell, UInt256 value) in CollectionsMarshal.AsSpan(writes))
+        {
+            if (!Writes(effects, in cell, in value)) return false;
+        }
+
+        return true;
+    }
+
+    private static bool Writes(ReadOnlySpan<StateEffect> effects, in StorageCell cell, in UInt256 value)
+    {
+        foreach (ref readonly StateEffect effect in effects)
+        {
+            if (effect.Kind == EffectKind.SetStorage && effect.Value == value && effect.Index == cell.Index && effect.Address == cell.Address) return true;
+        }
+
+        return false;
     }
 
     /// <summary>Puts the writes block processing reported in place of what their footprints predicted, in the order it executed them.</summary>
