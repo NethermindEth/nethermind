@@ -600,6 +600,38 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
     }
 
+    public enum Report { AsPredicted, OtherValue, NoneWithoutFootprint, SomeWithoutFootprint }
+
+    [Test]
+    public void Block_processing_wakes_the_refresh_worker_only_for_writes_its_footprints_did_not_predict([Values] Report report)
+    {
+        (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
+        StorageCell cell = new(TestItem.AddressC, 0x4e4d);
+        bool predicted = report is Report.AsPredicted or Report.OtherValue;
+        if (predicted) footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+
+        footprints.QueueExecuted(0, report switch
+        {
+            Report.AsPredicted => [(cell, 0x4e4d)],
+            Report.NoneWithoutFootprint => null,
+            _ => [(cell, 2 * 0x4e4d)]
+        });
+
+        // Waking a blocked worker costs block processing microseconds; skipping a wake it needs delays its refreshes.
+        using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(100));
+        bool woken = true;
+        try
+        {
+            footprints.WaitForWork(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            woken = false;
+        }
+
+        Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.SomeWithoutFootprint));
+    }
+
     [Test]
     public void A_footprint_stored_after_its_transaction_was_executed_leaves_the_executed_writes()
     {
