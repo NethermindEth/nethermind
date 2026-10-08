@@ -309,7 +309,7 @@ public static class BaseTriePersistence
     ) : BasePersistence.ITrieReader
     {
         public byte[]? TryLoadStateRlp(in TreePath path, ReadFlags flags) =>
-            path.Length switch
+            TrieCommitProbe.CountReadThen(false, path.Length) switch
             {
                 <= StateNodesTopThreshold => stateTopNodes.Get(EncodeStateTopNodeKey(stackalloc byte[StateNodesTopPathLength], in path), flags: flags),
                 <= ShortenedPathThreshold => stateNodes.Get(EncodeShortenedStateNodeKey(stackalloc byte[ShortenedPathLength], in path), flags: flags),
@@ -317,7 +317,7 @@ public static class BaseTriePersistence
             };
 
         public byte[]? TryLoadStorageRlp(Hash256 address, in TreePath path, ReadFlags flags) =>
-            path.Length <= ShortenedPathThreshold
+            TrieCommitProbe.CountReadThen(true, path.Length) <= ShortenedPathThreshold
                 ? storageNodes.Get(EncodeShortenedStorageNodeKey(stackalloc byte[ShortenedStorageNodesKeyLength], address, in path), flags: flags)
                 : fallbackNodes.Get(EncodeFullStorageNodeKey(stackalloc byte[FullStorageNodesKeyLength], address, in path), flags: flags);
     }

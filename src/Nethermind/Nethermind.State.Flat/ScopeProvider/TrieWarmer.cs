@@ -112,6 +112,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void Execute(Processor processor)
     {
+        TrieCommitProbe.IsWarmerThread = true;
         try
         {
             while (true)

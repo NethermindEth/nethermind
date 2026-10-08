@@ -524,6 +524,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
     {
+        TrieCommitProbe.PendingAtBatch = Volatile.Read(ref _outstandingWarmups);
+        TrieCommitProbe.Phase = 1;
         CancelHintBal();
         _earlyApplyClosed = true;
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
@@ -531,6 +533,8 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void Commit(ulong blockNumber)
     {
+        if (!_isReadOnly) { ILogger probeLogger = _logManager.GetClassLogger<FlatWorldStateScope>(); if (probeLogger.IsInfo) probeLogger.Info($"TrieProbe block={blockNumber} {TrieCommitProbe.TakeLine()}"); }
+        TrieCommitProbe.Phase = 0;
         _pausePrewarmer = true;
 
         // With DeferStorageTrieCommit the write batches only hashed the storage trees, so their nodes are written here,
@@ -703,6 +707,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             {
                 _dirtyAccounts.Clear();
 
+                TrieCommitProbe.Phase = 2;
                 Interlocked.Increment(ref scope._hintSequenceId);
             }
 
