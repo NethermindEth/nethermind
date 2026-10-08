@@ -174,16 +174,16 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return cached;
         }
 
-        // The header cache answers for recent blocks, so a block in the head window costs no database read here.
+        // Only the number is needed here, and the header is decoded from the stored block, as the block tree's lookup does.
         if (blockHash == blockFinder.GenesisHash
-            || _headerStore.Get(blockHash) is not { } header
-            || header.Number >= windowStart
-            || _chainLevels.LoadLevel(header.Number) is not { } level)
+            || _headerStore.GetBlockNumber(blockHash) is not { } number
+            || number >= windowStart
+            || _chainLevels.LoadLevel(number) is not { } level)
         {
             return null;
         }
 
-        return Load(blockHash, header.Number, level, requireCanonical);
+        return Load(blockHash, number, level, requireCanonical);
     }
 
     /// <summary>Whether a cached block can be served: <paramref name="blockInfo"/>, its canonical entry, still gives the
