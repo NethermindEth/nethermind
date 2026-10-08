@@ -100,7 +100,6 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
-                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -136,7 +135,6 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
-                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -175,7 +173,6 @@ public class ProofWrapperServiceTests
             ? await service.AcceptInclusionListAsync(InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = [transaction],
-                ProvenDependencies = Eip8288Dependencies.Serialize([dependency]),
                 RecursiveStark = recursive
             }).Bytes)
             : await service.AcceptAsync(MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
@@ -789,7 +786,6 @@ public class ProofWrapperServiceTests
             byte[] encoded = InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
             {
                 Transactions = transactions,
-                ProvenDependencies = Eip8288Dependencies.Serialize(dependencies),
                 RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash(dependencies)))
             }).Bytes;
             Assert.ThrowsAsync<OperationCanceledException>(async () => { await service.AcceptInclusionListAsync(encoded, cancellation.Token); });

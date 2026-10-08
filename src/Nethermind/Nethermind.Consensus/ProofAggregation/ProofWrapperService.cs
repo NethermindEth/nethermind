@@ -147,15 +147,14 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     if (!AreAdmissionRootsValid(transaction)) return Result<Hash256[]>.Fail(TxPoolErrorMessages.FrameTxRecentRootUnmet);
                 }
             }
-            (bool valid, string? error) = await Task.Run(() =>
+            (bool valid, List<FrameDependency> canonical, string? error) = await Task.Run(() =>
             {
-                bool proofValid = InclusionListProofValidator.Validate(decoded, leanProofVerifier, out string? proofError);
-                return (proofValid, proofError);
+                bool proofValid = InclusionListProofValidator.Validate(decoded, leanProofVerifier, out List<FrameDependency> proven, out string? proofError);
+                return (proofValid, proven, proofError);
             }, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
             if (!valid) return Result<Hash256[]>.Fail(error!);
             cancellationToken.ThrowIfCancellationRequested();
-            List<FrameDependency> canonical = Eip8288Dependencies.Parse(decoded.ProvenDependencies ?? []);
             List<WrapperTransaction> transactions = [];
             foreach (Transaction transaction in decoded.Transactions)
                 transactions.Add(new WrapperTransaction(transaction));

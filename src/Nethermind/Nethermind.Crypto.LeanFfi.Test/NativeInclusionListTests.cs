@@ -29,7 +29,8 @@ namespace Nethermind.Crypto.LeanFfi.Test;
 [NonParallelizable]
 public class NativeInclusionListTests
 {
-    [TestCase("uncovered", false)]
+    // The package must prove dependencies(transactions) exactly, so an uncovered entry invalidates its proof.
+    [TestCase("uncovered", true)]
     [TestCase("malformed", false)]
     [TestCase("bad-proof", true)]
     public async Task Real_proof_membership_preserves_independent_inclusion_list_obligations(string scenario, bool frameSuppressed)

@@ -49,7 +49,8 @@ public class ProofInclusionListEnforcementTests
     [TestCase("mixed-included", true)]
     [TestCase("mixed-malformed-omit-frame", false)]
     [TestCase("mixed-malformed-omit-legacy", false)]
-    [TestCase("mixed-uncovered-omit-frame", false)]
+    // The package must prove dependencies(transactions) exactly, so an uncovered entry invalidates its proof.
+    [TestCase("mixed-uncovered-omit-frame", true)]
     [TestCase("mixed-invalid-proof-omit-legacy", false)]
     [TestCase("mixed-invalid-proof-frame-only", true)]
     public async Task Enforces_proven_frame_prefixes_through_production_processor(string scenario, bool satisfied)

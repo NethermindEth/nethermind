@@ -91,7 +91,8 @@ proofs and inclusion-list proof/dependency buffers and returning owned copies.
 * **aggregate:** `NLR3`, canonical dependency count/triples, then one mixed guest proof
   blob. A blob is its length followed by bytes. There is no generic-witness trailer or
   raw program carried in the header. Empty dependencies have exactly the 12-byte envelope
-  with zero dependency count and zero blob length.
+  with zero dependency count and zero blob length; it stays internal to the adapter, since an
+  EIP-8288 header, wrapper or FOCIL with no dependencies carries an empty `stark_proof`.
 
 The recursive key is the actual mixed guest's Fiat-Shamir seed, pinned in
 `Eip8288Constants.AggregatedVk`. The guest authenticates signature claims, generic program
@@ -304,15 +305,15 @@ fragments of one RLPx object.
 
 With both EIP-8288 and EIP-7805 active, FCUv5 payload attributes and newPayloadV6's
 execution payload accept `inclusionListRecursiveStark: {starkProof, blockDepsHash}` and
-`inclusionListProvenDependencies`, a hex string concatenating sorted, deduplicated 96-byte
-triples (at most 256 / 24 KiB). The explicit metadata hashes exactly to the proof's public
-commitment and is required for dependency-bearing entries. Proof-bearing FOCIL RLP is
-`[transactions, [stark_proof, deps_hash, proven_dependencies]]`; this prototype extension
-makes membership independently checkable when a committee contributes a bad entry.
-Verification precedes mandatory prefix checks. Malformed frames and frames declaring any
-uncovered dependency are ineligible; ordinary and zero-dependency frame obligations remain
-when the package proof is invalid or missing. Valid covered frames retain their obligations
-in a mixed list. Builders and validators use the same selection. Each build owns one decoded
+the optional `inclusionListProvenDependencies`, a hex string concatenating sorted,
+deduplicated 96-byte triples (at most 256 / 24 KiB). As in EIP-8288 and the EIP-8437 kind-3
+body, `deps_hash` must equal the commitment to `dependencies(transactions)`, the union over
+every entry, and the proof must pass the STARK check against it: an empty dependency list
+carries an empty proof. The optional metadata must equal that list. Proof-bearing FOCIL RLP
+is `[transactions, [stark_proof, deps_hash]]`.
+Verification precedes mandatory prefix checks. Malformed frames are ineligible; ordinary and
+zero-dependency frame obligations remain when the package proof is invalid, missing or does
+not cover every entry. Valid dependency-bearing frames retain their obligations in a mixed list. Builders and validators use the same selection. Each build owns one decoded
 snapshot and its verified parent proof even when shared witness storage is full. Bounded input
 snapshots are taken once to prevent caller mutation; later improvements reuse decoded entries
 and production order. `getPayload` echoes neither proof nor metadata; the consensus client
