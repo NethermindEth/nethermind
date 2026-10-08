@@ -26,30 +26,22 @@ public class FrameTxValidationTests
         Assert.That(error, Is.EqualTo(expectedError));
     }
 
-    [TestCase(true, null)]
-    [TestCase(false, FrameTxValidation.PostTxNotEnabled)]
-    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
+    [TestCase(FrameMode.PostTx, FrameFlags.None, true, null)]
+    [TestCase(FrameMode.PostTx, FrameFlags.None, false, FrameTxValidation.PostTxNotEnabled)]
+    [TestCase(FrameMode.Sender, FrameFlags.PostTxExempt, true, null)]
+    [TestCase(FrameMode.Sender, FrameFlags.PostTxExempt, false, FrameTxValidation.InvalidFlags)]
+    public void IsWellFormed_PostTxFrameGatedByItsFork_ReturnsExpectedError(FrameMode mode, FrameFlags flags, bool postTxEnabled, string? expectedError)
     {
-        Transaction tx = CreateValidFrameTx(static tx =>
-            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.PostTx)]);
+        Transaction tx = CreateValidFrameTx(tx =>
+            tx.Frames = [SelfVerifyFrame(), Frame(mode: mode, flags: flags)]);
 
         bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
 
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
-    }
-
-    [TestCase(true, null)]
-    [TestCase(false, FrameTxValidation.InvalidFlags)]
-    public void IsWellFormed_PostTxExemptFlagGatedByItsFork_ReturnsExpectedError(bool postTxEnabled, string? expectedError)
-    {
-        Transaction tx = CreateValidFrameTx(static tx =>
-            tx.Frames = [SelfVerifyFrame(), Frame(mode: FrameMode.Sender, flags: FrameFlags.PostTxExempt)]);
-
-        bool wellFormed = FrameTxValidation.IsWellFormed(tx, postTxEnabled, out string? error);
-
-        Assert.That(wellFormed, Is.EqualTo(expectedError is null));
-        Assert.That(error, Is.EqualTo(expectedError));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(wellFormed, Is.EqualTo(expectedError is null));
+            Assert.That(error, Is.EqualTo(expectedError));
+        }
     }
 
     private static IEnumerable<TestCaseData> ConstraintCases()
