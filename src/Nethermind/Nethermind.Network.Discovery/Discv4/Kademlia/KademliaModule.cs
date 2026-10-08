@@ -28,6 +28,6 @@ public sealed class KademliaModule(Node currentNode, IReadOnlyList<Node> bootNod
             .AddSingleton<IKademliaAdapter, KademliaAdapter>()
             .Bind<IDiscoveryMsgListener, IKademliaAdapter>()
             .Bind<IKademliaMessageSender<PublicKey, Node>, IKademliaAdapter>()
-            .AddSingleton<NettyDiscoveryHandler>()
+            .AddSingleton<DiscoveryHandler>()
             ;
 }
