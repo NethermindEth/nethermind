@@ -4,8 +4,8 @@
 
 namespace Nethermind.BeaconChain.Api.Endpoints;
 
-/// <summary>Every scalar key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.2 mainnet presets of the forks this node runs (phase0 to gloas), with its mainnet value.</summary>
-/// <remarks>The schedules (<c>BLOB_SCHEDULE</c>, <c>GAS_LIMIT_SCHEDULE</c>) are built from the network spec, not listed here.</remarks>
+/// <summary>Every scalar key of <c>configs/mainnet.yaml</c> and of the consensus-specs v1.7.0-beta.3 mainnet presets of the forks this node runs (phase0 to gloas), with its mainnet value.</summary>
+/// <remarks>The schedules (<c>BLOB_SCHEDULE</c>, <c>GAS_LIMIT_SCHEDULE</c>, <c>SLOT_DURATION_SCHEDULE</c>) are built from the network spec, not listed here.</remarks>
 internal static class SpecValues
 {
     public static readonly IReadOnlyDictionary<string, string> Mainnet = new Dictionary<string, string>
@@ -118,6 +118,8 @@ internal static class SpecValues
         ["HEZE_FORK_EPOCH"] = "18446744073709551615",
         ["EIP8321_FORK_VERSION"] = "0xe8321000",
         ["EIP8321_FORK_EPOCH"] = "18446744073709551615",
+        ["EIP8198_FORK_VERSION"] = "0xe8198000",
+        ["EIP8198_FORK_EPOCH"] = "18446744073709551615",
         ["SLOT_DURATION_MS"] = "12000",
         ["SECONDS_PER_ETH1_BLOCK"] = "14",
         ["MIN_VALIDATOR_WITHDRAWABILITY_DELAY"] = "256",
@@ -181,6 +183,7 @@ internal static class SpecValues
         ["MAX_REQUEST_INCLUSION_LIST"] = "16",
         ["MIN_SLOTS_FOR_INCLUSION_LISTS_REQUESTS"] = "1",
         ["MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST"] = "8192",
+        ["MIN_BLOB_DATA_RETENTION_MS"] = "1572864000",
         ["CONFIRMATION_BYZANTINE_THRESHOLD"] = "25",
     };
 }

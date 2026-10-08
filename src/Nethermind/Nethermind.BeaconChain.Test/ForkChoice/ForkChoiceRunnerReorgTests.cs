@@ -14,6 +14,21 @@ namespace Nethermind.BeaconChain.Test.ForkChoice;
 /// <summary>The 16-validator fixture has only odd-slot committees; boost is 6.4 ETH, weak-head threshold 3.2 ETH, strong-parent threshold 25.6 ETH.</summary>
 public class ForkChoiceRunnerReorgTests
 {
+    [Test]
+    public void Millisecond_ticks_preserve_slot_boundaries_and_reject_backwards_time([Values(11999UL, 12000UL, 12001UL)] ulong millisecondsSinceGenesis)
+    {
+        ForkChoiceRunner runner = CreateRunner(UnsignedChain.Create());
+        ulong timeMilliseconds = runner.GenesisTime * 1000 + millisecondsSinceGenesis;
+
+        runner.OnTickMilliseconds(timeMilliseconds);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(runner.TimeMilliseconds, Is.EqualTo(timeMilliseconds));
+        Assert.That(runner.Time, Is.EqualTo(timeMilliseconds / 1000));
+        Assert.That(runner.CurrentSlot, Is.EqualTo(millisecondsSinceGenesis / (Presets.SecondsPerSlot * 1000)));
+        Assert.That(() => runner.OnTickMilliseconds(timeMilliseconds - 1), Throws.TypeOf<ForkChoiceException>());
+    }
+
     [TestCase(1ul, 0ul, 2ul, true, TestName = "same_slot_and_proposer_reorgs_the_head")]
     [TestCase(null, 0ul, 2ul, false, TestName = "single_block_is_kept")]
     [TestCase(2ul, 0ul, 2ul, false, TestName = "same_proposer_in_another_slot_is_not_an_equivocation")]
@@ -126,18 +141,21 @@ public class ForkChoiceRunnerReorgTests
     }
 
     private abstract record LateHeadCase(string Name, bool Reorg);
-    private sealed record ProposalTime(ulong Seconds, bool ParentVoted, bool Expected) : LateHeadCase($"Late head at proposal +{Seconds}s, parent voted {ParentVoted}", Expected);
-    private sealed record ArrivalTime(ulong Seconds, bool Expected) : LateHeadCase($"Head arrives at +{Seconds}s", Expected);
+    private sealed record ProposalTime(ulong Milliseconds, bool ParentVoted, bool Expected) : LateHeadCase($"Late head at proposal +{Milliseconds}ms, parent voted {ParentVoted}", Expected);
+    private sealed record ArrivalTime(ulong Milliseconds, bool Expected) : LateHeadCase($"Head arrives at +{Milliseconds}ms", Expected);
     private sealed record EpochBoundary(string CaseName, ulong ParentSlot, ulong VoteSlot) : LateHeadCase(CaseName, true);
     private sealed record ParentStrength(string CaseName, long TotalOffsetGwei, bool Expected) : LateHeadCase(CaseName, Expected);
     private static readonly LateHeadCase[] LateHeadScenarios =
     [
         new ProposalTime(0, true, true),
-        new ProposalTime(2, true, true),
-        new ProposalTime(3, true, false),
+        new ProposalTime(2000, true, true),
+        new ProposalTime(2001, true, false),
+        new ProposalTime(3000, true, false),
         new ProposalTime(0, false, false),
-        new ArrivalTime(3, false),
-        new ArrivalTime(4, true),
+        new ArrivalTime(3000, false),
+        new ArrivalTime(3998, false),
+        new ArrivalTime(3999, true),
+        new ArrivalTime(4000, true),
         new EpochBoundary("proposal_in_the_last_slot_of_the_epoch", 29, 29),
         new EpochBoundary("proposal_in_the_first_slot_of_the_next_epoch", 30, 31),
         new ParentStrength("score_above_the_threshold_is_strong", -3200, true),
@@ -171,10 +189,10 @@ public class ForkChoiceRunnerReorgTests
         UnsignedChain.ChainBlock head = chain.Extend(parent.Root, slot: parentSlot + 1, payloadHashByte: 0xa2);
         TickTo(runner, slot: parentSlot);
         Import(runner, parent);
-        TickTo(runner, slot: parentSlot + 1, test is ArrivalTime arrival ? arrival.Seconds : 5);
+        runner.OnTickMilliseconds((runner.GenesisTime + (parentSlot + 1) * Presets.SecondsPerSlot) * 1000 + (test is ArrivalTime arrival ? arrival.Milliseconds : 5000));
         Import(runner, head);
         Hash256 boostRoot = runner.ProposerBoostRoot;
-        TickTo(runner, slot: parentSlot + 2, test is ProposalTime proposal ? proposal.Seconds : 0);
+        runner.OnTickMilliseconds((runner.GenesisTime + (parentSlot + 2) * Presets.SecondsPerSlot) * 1000 + (test is ProposalTime proposal ? proposal.Milliseconds : 0));
         if (test is not ProposalTime { ParentVoted: false }) runner.OnAttestation(chain.Vote(voteSlot, parent.Root), verifySignature: false);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         if (test is ArrivalTime) Assert.That(boostRoot, Is.EqualTo(test.Reorg ? Hash256.Zero : head.Root), "only a timely head is boosted");
@@ -203,8 +221,8 @@ public class ForkChoiceRunnerReorgTests
     private static ForkChoiceRunner CreateRunner(UnsignedChain chain, IForkChoiceStateProvider? states = null) =>
         new(chain.Spec, chain.Anchor.AnchorState, chain.Anchor.AnchorBlock.Message!, states ?? chain, chain.Anchor.Pubkeys);
 
-    private static void TickTo(ForkChoiceRunner runner, ulong slot, ulong secondsIntoSlot = 0) =>
-        runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot + secondsIntoSlot);
+    private static void TickTo(ForkChoiceRunner runner, ulong slot) =>
+        runner.OnTick(runner.GenesisTime + slot * Presets.SecondsPerSlot);
 
     private static void Import(ForkChoiceRunner runner, UnsignedChain.ChainBlock block, ExecutionStatus status = ExecutionStatus.Valid) =>
         runner.OnBlock(block.Block, block.PostState, status, (IReadOnlyList<DataColumnSidecar>?)null);

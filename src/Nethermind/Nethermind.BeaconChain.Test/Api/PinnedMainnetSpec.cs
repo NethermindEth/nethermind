@@ -3,7 +3,7 @@
 
 namespace Nethermind.BeaconChain.Test.Api;
 
-/// <summary>The consensus-specs v1.7.0-beta.2 mainnet presets of phase0 to gloas and <c>configs/mainnet.yaml</c>, with upstream commentary omitted, one section per file.</summary>
+/// <summary>The consensus-specs v1.7.0-beta.3 mainnet presets of phase0 to gloas and <c>configs/mainnet.yaml</c>, with upstream commentary omitted, one section per file.</summary>
 internal static class PinnedMainnetSpec
 {
     public const string Yaml = """
@@ -122,6 +122,8 @@ HEZE_FORK_VERSION: 0x08000000
 HEZE_FORK_EPOCH: 18446744073709551615
 EIP8321_FORK_VERSION: 0xe8321000
 EIP8321_FORK_EPOCH: 18446744073709551615
+EIP8198_FORK_VERSION: 0xe8198000
+EIP8198_FORK_EPOCH: 18446744073709551615
 SLOT_DURATION_MS: 12000
 SECONDS_PER_ETH1_BLOCK: 14
 MIN_VALIDATOR_WITHDRAWABILITY_DELAY: 256
@@ -185,12 +187,16 @@ MAX_REQUEST_PAYLOADS: 128
 MAX_REQUEST_INCLUSION_LIST: 16
 MIN_SLOTS_FOR_INCLUSION_LISTS_REQUESTS: 1
 MAX_TRANSACTIONS_BYTES_PER_INCLUSION_LIST: 8192
+MIN_BLOB_DATA_RETENTION_MS: 1572864000
 BLOB_SCHEDULE:
   - EPOCH: 412672  # December 9, 2025, 02:21:11pm UTC
     MAX_BLOBS_PER_BLOCK: 15
   - EPOCH: 419072  # January 7, 2026, 01:01:11am UTC
     MAX_BLOBS_PER_BLOCK: 21
 GAS_LIMIT_SCHEDULE: []
+SLOT_DURATION_SCHEDULE:
+  - EPOCH: 0
+    SLOT_DURATION_MS: 12000
 CONFIRMATION_BYZANTINE_THRESHOLD: 25
 """;
 }
