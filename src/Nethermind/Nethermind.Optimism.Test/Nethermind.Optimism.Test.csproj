@@ -17,4 +17,7 @@
     <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <EmbeddedResource Include="Rpc\BlockForRpcFixtures\*.json" />
+  </ItemGroup>
 </Project>
