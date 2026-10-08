@@ -266,6 +266,46 @@ public class TransactionJsonTest : GeneralStateTestBase
         }
     }
 
+    /// <summary>
+    /// A state-test fixture carries an EIP-8141 frame transaction's frames and sender only in its txbytes,
+    /// with no secret key, so conversion must decode them whether or not the fixture expects a rejection.
+    /// </summary>
+    [Test]
+    public void Frame_transaction_is_converted_from_txbytes([Values] bool expectException)
+    {
+        Nethermind.Core.Transaction frameTx = new()
+        {
+            Type = TxType.FrameTx,
+            ChainId = BlockchainIds.Mainnet,
+            SenderAddress = TestItem.AddressA,
+            Frames =
+            [
+                new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, null, 50_000, 0, default),
+                new TxFrame(FrameMode.Sender, FrameFlags.None, Recipient, 50_000, TransferredValue, default),
+            ],
+            FrameSignatures = [],
+            DecodedMaxFeePerGas = 7,
+        };
+
+        PostStateJson postStateJson = new()
+        {
+            Indexes = new IndexesJson(),
+            ExpectException = expectException ? "TransactionException.TYPE_6_INVALID_FRAME_FORMAT" : null,
+            Txbytes = Rlp.Encode(frameTx, RlpBehaviors.SkipTypedWrapping).Bytes,
+        };
+        TransactionJson transactionJson = new() { Sender = TestItem.AddressA };
+
+        Nethermind.Core.Transaction converted = JsonToEthereumTest.Convert(postStateJson, transactionJson);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(converted.Type, Is.EqualTo(TxType.FrameTx));
+            Assert.That(converted.SenderAddress, Is.EqualTo(TestItem.AddressA));
+            Assert.That(converted.Frames, Has.Length.EqualTo(2));
+            Assert.That(converted.Frames![1].Value, Is.EqualTo(TransferredValue));
+        }
+    }
+
     private static Dictionary<Address, AccountState> Accounts(Address sender, UInt256 senderBalance, ulong senderNonce, UInt256 recipientBalance) => new()
     {
         [sender] = new() { Balance = senderBalance, Nonce = senderNonce },

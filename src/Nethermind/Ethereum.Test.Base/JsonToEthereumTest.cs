@@ -150,12 +150,15 @@ namespace Ethereum.Test.Base
 
             // Invalid-tx state tests carry the actual signed tx in txbytes; the template below is
             // re-signed pre-EIP-155, which cannot reproduce signature-level invalidity (e.g. INVALID_CHAINID).
-            if (postStateJson.ExpectException is not null && postStateJson.Txbytes is not null)
+            // EIP-8141 frame transactions are always taken from txbytes: the template has no frames, and
+            // the sender is part of the payload rather than recovered from a signature.
+            bool isFrameTx = postStateJson.Txbytes is [(byte)TxType.FrameTx, ..];
+            if ((postStateJson.ExpectException is not null || isFrameTx) && postStateJson.Txbytes is not null)
             {
                 try
                 {
                     Transaction decoded = Rlp.Decode<Transaction>(postStateJson.Txbytes, RlpBehaviors.SkipTypedWrapping);
-                    decoded.SenderAddress = privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
+                    decoded.SenderAddress ??= privateKey?.Address ?? new EthereumEcdsa(chainId).RecoverAddress(decoded);
                     return decoded;
                 }
                 catch (RlpException)
