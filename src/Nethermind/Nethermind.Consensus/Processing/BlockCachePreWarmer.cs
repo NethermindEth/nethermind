@@ -1539,8 +1539,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
     }
 
-    /// <summary>Hands the storage writes of the transaction block processing just executed to the block's footprints; null when it wrote none.</summary>
-    internal void ReportExecutedWrites(List<(StorageCell Cell, UInt256 Value)>? writes) =>
+    /// <summary>Hands the storage writes of the transaction block processing just executed to the block's footprints; empty when it wrote none.</summary>
+    internal void ReportExecutedWrites(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes) =>
         Volatile.Read(ref _footprints)?.QueueExecuted(_mainThreadTxIndex, writes);
 
     /// <summary>Whether the block's footprints take the writes of the transactions block processing executes.</summary>
