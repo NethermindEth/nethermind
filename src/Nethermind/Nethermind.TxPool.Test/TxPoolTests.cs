@@ -3537,11 +3537,8 @@ namespace Nethermind.TxPool.Test
 
             await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(headSlot).TestObject);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
-                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(resubmittable));
-            }
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(resubmittable));
         }
 
         [TestCase(1UL, 1, TestName = "recent_root_frame_is_not_reread_on_a_head_extending_the_previous_one")]
@@ -3560,11 +3557,8 @@ namespace Nethermind.TxPool.Test
 
             await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(2).WithParent(head).WithSlotNumber(RecentRootSlot + slotsAfterWrite).TestObject);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
-                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(expectedPending == 0));
-            }
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(expectedPending));
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast) == AcceptTxResult.Accepted, Is.EqualTo(expectedPending == 0));
         }
 
         [Test]
@@ -3617,11 +3611,8 @@ namespace Nethermind.TxPool.Test
 
             await RaiseCanonicalHeadAndWait(Build.A.Block.WithNumber(1).WithSlotNumber(RecentRootSlot).TestObject);
 
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
-                Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
-            }
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero);
+            Assert.That(_txPool.SubmitTx(frameTx, TxHandlingOptions.PersistentBroadcast), Is.EqualTo(AcceptTxResult.Accepted));
         }
 
         [Test]
