@@ -156,7 +156,7 @@ public class ImportPbtFromPreimageFlatTests
         PbtColumns[] groupColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
         foreach (PbtColumns column in groupColumns)
             pbtDb.GetColumnDb(column)[maximumGroupKey] = Bytes.FromHexString("0x7f");
-        pbtDb.AfterCopy = () =>
+        pbtDb.BeforeFirstBatch = () =>
         {
             using (Assert.EnterMultipleScope())
             {
@@ -572,7 +572,7 @@ public class ImportPbtFromPreimageFlatTests
         private readonly SnapshotableMemColumnsDb<PbtColumns> _database = new("pbt");
         private readonly Dictionary<PbtColumns, IDb> _columns = [];
         public readonly ConcurrentDictionary<string, int> Rows = new();
-        public Action? AfterCopy;
+        public Action? BeforeFirstBatch;
         public Action? AfterGroupCommit;
         public Action<PbtColumns, byte[], byte[]>? ViewOpened;
         public bool Recording;
@@ -591,16 +591,17 @@ public class ImportPbtFromPreimageFlatTests
         public IDb GetColumnDb(PbtColumns key) => _columns[key];
         public IEnumerable<PbtColumns> ColumnKeys => _database.ColumnKeys;
         public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => _database.CreateSnapshot();
-        public IColumnsWriteBatch<PbtColumns> StartWriteBatch() => new RecordingBatch(this, _database.StartWriteBatch());
+        public IColumnsWriteBatch<PbtColumns> StartWriteBatch()
+        {
+            Interlocked.Exchange(ref BeforeFirstBatch, null)?.Invoke();
+            return new RecordingBatch(this, _database.StartWriteBatch());
+        }
+
         public void Dispose() => _database.Dispose();
         public void Flush(bool onlyWal = false)
         {
             _database.Flush(onlyWal);
-            if (!onlyWal && Interlocked.Exchange(ref _flushed, 1) == 0)
-            {
-                AfterCopy?.Invoke();
-                Recording = true;
-            }
+            if (!onlyWal && Interlocked.Exchange(ref _flushed, 1) == 0) Recording = true;
         }
 
         private sealed class RecordingBatch(RecordingColumnsDb owner, IColumnsWriteBatch<PbtColumns> batch) : IColumnsWriteBatch<PbtColumns>

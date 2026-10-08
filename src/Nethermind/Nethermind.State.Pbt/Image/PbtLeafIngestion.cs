@@ -13,65 +13,87 @@ using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
 
-/// <summary>Ingests an ascending PBT leaf stream into an empty target: stages its logical state, then folds its tree.</summary>
-/// <remarks>The stream is passed as a factory because staging and folding each take a pass over it.</remarks>
+/// <summary>Ingests an ascending PBT leaf stream into an empty target: stages its logical state while folding its tree.</summary>
 internal static class PbtLeafIngestion
 {
     // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
     internal const int BatchSize = 255;
-    private const string StagePhase = "PBT import stage";
-    private const string FoldPhase = "PBT import fold";
+    private const int FoldChunkSize = 2048;
+    private const string Phase = "PBT import";
 
-    /// <summary>Stages the logical accounts, slots and code of the leaves.</summary>
+    /// <summary>Stages the logical accounts, slots and code of the leaves while folding them into the tree, and publishes the tree
+    /// as <paramref name="targetState"/> once the staging is verified.</summary>
+    /// <remarks>
+    /// The stream is read once, feeding both. Up to a fold window of leaves is buffered ahead of the fold, so staging keeps
+    /// going while a window commits. The staging and the fold write disjoint columns and neither reads the other's writes,
+    /// so the only ordering is the publication, which waits for the staging and <paramref name="verifyStaged"/>, and is
+    /// refused when the root differs from <paramref name="expectedRoot"/>.
+    /// </remarks>
     /// <param name="fraction">The fraction of the pass done after the given number of leaves.</param>
     /// <param name="concurrency">Staging write flushers; zero uses the processor count.</param>
-    /// <returns>The staged accounts and slots.</returns>
-    public static (ulong Accounts, ulong Slots) Stage(PbtRocksDbPersistence target, Func<CancellationToken, IEnumerable<RebuildEntry>> leaves,
-        Func<ulong, float> fraction, int concurrency, ILogManager logManager, CancellationToken cancellationToken)
+    /// <param name="windowSize">Maximum leaves per fold window; zero uses the rebuilder's default.</param>
+    /// <param name="verifyStaged">Checks the staged accounts and slots before the tree is published.</param>
+    /// <returns>The tree root and the staged accounts and slots.</returns>
+    public static async Task<(ValueHash256 Root, ulong Accounts, ulong Slots)> Ingest(PbtRocksDbPersistence target, PbtRebuilder rebuilder,
+        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, int concurrency, StateId targetState, int windowSize,
+        ValueHash256? expectedRoot, Action<ulong, ulong, CancellationToken> verifyStaged, ILogManager logManager, CancellationToken cancellationToken)
+    {
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(
+            (windowSize > 0 ? windowSize : PbtRebuilder.DefaultWindowSize) / FoldChunkSize + 1);
+        Task<(ulong Accounts, ulong Slots)> staging = Task.Run(() =>
+        {
+            try
+            {
+                (ulong Accounts, ulong Slots) staged = Stage(target, Teed(Reported(Phase, leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
+                    concurrency, logManager, linked.Token);
+                verifyStaged(staged.Accounts, staged.Slots, linked.Token);
+                return staged;
+            }
+            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
+        }, CancellationToken.None);
+        try
+        {
+            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, linked.Token, windowSize, expectedRoot, staging);
+            (ulong accounts, ulong slots) = await staging;
+            return (root, accounts, slots);
+        }
+        finally
+        {
+            await linked.CancelAsync();
+            try { await staging; }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
+        }
+    }
+
+    private static (ulong Accounts, ulong Slots) Stage(PbtRocksDbPersistence target, IEnumerable<RebuildEntry> leaves, int concurrency,
+        ILogManager logManager, CancellationToken cancellationToken)
     {
         (ulong Accounts, ulong Slots, long CodeChunks) staged;
         using (LogicalBatch batch = new(target, concurrency > 0 ? concurrency : Environment.ProcessorCount, cancellationToken))
         {
-            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction, logManager), cancellationToken);
+            staged = PbtLeafStaging.Stage(batch, leaves, cancellationToken);
             batch.Commit();
         }
         PbtLeafStaging.RebuildCodes(target, staged.CodeChunks, logManager, cancellationToken);
         return (staged.Accounts, staged.Slots);
     }
 
-    /// <summary>Folds the leaves into the tree and publishes them as <paramref name="targetState"/>, unless the root differs from <paramref name="expectedRoot"/>.</summary>
-    /// <param name="windowSize">Maximum leaves per fold window; zero uses the rebuilder's default.</param>
-    public static async Task<ValueHash256> Fold(PbtRebuilder rebuilder, Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction,
-        StateId targetState, int windowSize, ValueHash256? expectedRoot, ILogManager logManager, CancellationToken cancellationToken)
+    /// <summary>Passes the leaves through while handing each to the fold, completing the fold's input once they run out.</summary>
+    private static IEnumerable<RebuildEntry> Teed(IEnumerable<RebuildEntry> leaves, ChannelWriter<ArrayPoolList<RebuildEntry>> fold,
+        CancellationToken cancellationToken)
     {
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(2);
-        Task producer = Task.Run(async () =>
+        using (PbtRebuilder.EntrySink sink = new(fold, FoldChunkSize, cancellationToken))
         {
-            try
+            foreach (RebuildEntry entry in leaves)
             {
-                using (PbtRebuilder.EntrySink sink = new(channel.Writer, 2048, linked.Token))
-                {
-                    foreach (RebuildEntry entry in Reported(FoldPhase, leaves(linked.Token), fraction, logManager)) await sink.Add(entry);
-                    await sink.Complete();
-                }
-                channel.Writer.TryComplete();
+                sink.Add(entry).AsTask().GetAwaiter().GetResult();
+                yield return entry;
             }
-            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
-        }, CancellationToken.None);
-        try
-        {
-            ValueHash256 root = await rebuilder.Rebuild(channel.Reader, targetState, linked.Token, windowSize, expectedRoot);
-            await producer;
-            return root;
+            sink.Complete().AsTask().GetAwaiter().GetResult();
         }
-        finally
-        {
-            await linked.CancelAsync();
-            try { await producer; }
-            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
-        }
+        fold.TryComplete();
     }
 
     /// <summary>The ascending leaves of a spool of tree keys and leaf values.</summary>

@@ -21,7 +21,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// <summary>Rebuilds PBT state from a preimage-flat database.</summary>
 /// <remarks>
 /// The source is scanned into a sorted leaf spool as the EIP-8347 export does, and the spool is then ingested as
-/// an imported snapshot is: its logical state staged, then its tree folded.
+/// an imported snapshot is: its logical state staged while its tree is folded.
 /// </remarks>
 [StepCommand("import-pbt", "Rebuild the PBT state from a preimage-flat database.")]
 [RunnerStepDependencies(typeof(InitializeBlockTree), typeof(StartMonitoring))]
@@ -72,10 +72,9 @@ public class ImportPbtFromPreimageFlat(
             using PbtSortedSpool leaves = new("import leaves", directory, config.ExportSortBufferBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
             float leafCount = PbtOfflineSource.Spool(reader, codeDb, leaves, rawKeys: null, workers, logManager, cancellationToken).Leaves;
-            PbtLeafIngestion.Stage(pbtPersistence, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount, workers, logManager, cancellationToken);
             // State is addressed by the source block header's root; the fold records its tree root beside it.
-            await PbtLeafIngestion.Fold(rebuilder, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount,
-                sourceState, config.ImportWindowSize, expectedRoot: null, logManager, cancellationToken);
+            await PbtLeafIngestion.Ingest(pbtPersistence, rebuilder, _ => PbtLeafIngestion.SpoolLeaves(leaves), read => read / leafCount, workers,
+                sourceState, config.ImportWindowSize, expectedRoot: null, static (_, _, _) => { }, logManager, cancellationToken);
         }
         finally
         {

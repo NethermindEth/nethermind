@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt;
 /// <summary>Rebuilds a canonical EIP-8297 tree in bounded staging windows, then publishes its state.</summary>
 public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config, int foldConcurrency, ILogManager logManager)
 {
-    private const int DefaultWindowSize = 2_000_000;
+    internal const int DefaultWindowSize = 2_000_000;
     private readonly ILogger _logger = logManager.GetClassLogger<PbtRebuilder>();
     private readonly ConcurrencyController _foldQuota = new(foldConcurrency > 0 ? foldConcurrency : Environment.ProcessorCount);
     private readonly FoldFanOut _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
@@ -40,15 +40,17 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
-        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, expectedRoot: null);
+        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
 
     /// <param name="expectedRoot">When set, a completed root that differs is refused before anything is published.</param>
+    /// <param name="publishAfter">Publication waits for it, and is abandoned when it fails.</param>
     internal async Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,
         CancellationToken cancellationToken,
         int windowSize,
-        ValueHash256? expectedRoot)
+        ValueHash256? expectedRoot,
+        Task publishAfter)
     {
         if (windowSize == 0) windowSize = DefaultWindowSize;
 
@@ -85,6 +87,8 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
         cancellationToken.ThrowIfCancellationRequested();
         if (expectedRoot is { } expected && root != expected)
             throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
+        await publishAfter;
+        cancellationToken.ThrowIfCancellationRequested();
         using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
         batch.Commit();
         if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
