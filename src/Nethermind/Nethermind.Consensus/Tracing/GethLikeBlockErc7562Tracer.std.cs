@@ -23,6 +23,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 internal sealed class GethLikeBlockErc7562Tracer : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     internal const string TracerName = "erc7562Tracer";

@@ -27,7 +27,11 @@ internal sealed class GethTraceOptionsConverter : JsonConverter<GethTraceOptions
     private static JsonSerializerOptions WireSerializerOptions(JsonSerializerOptions options) =>
         options.TryGetTypeInfo(typeof(WireOptions), out _) ? options : WireFallbacks.GetValue(options, static original => new(original)
         {
+#if ZK_EVM
+            TypeInfoResolver = JsonTypeInfoResolver.Combine(original.TypeInfoResolver, new DefaultJsonTypeInfoResolver())
+#else
             TypeInfoResolver = JsonTypeInfoResolver.Combine(original.TypeInfoResolver, TracingJsonContext.Default)
+#endif
         });
 
     // A separate wire contract retains the raw string without exposing another option or making

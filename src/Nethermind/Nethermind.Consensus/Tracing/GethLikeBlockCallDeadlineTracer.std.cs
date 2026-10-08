@@ -13,6 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 internal sealed class GethLikeBlockCallDeadlineTracer : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     private readonly GethTraceDeadline _deadline;
@@ -27,7 +28,7 @@ internal sealed class GethLikeBlockCallDeadlineTracer : IBlockTracer<GethLikeTxT
     {
         _options = options;
         _deadline = new(external, clock);
-        try { _inner = factory(options with { ExecutionCancellation = _deadline.Token }); }
+        try { _inner = factory(options with { ExecutionCancellation = new GethTraceCancellation { Token = _deadline.Token } }); }
         catch { _deadline.Dispose(); throw; }
     }
     internal CancellationToken Token => _deadline.Token;

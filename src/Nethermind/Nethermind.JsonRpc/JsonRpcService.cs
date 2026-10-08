@@ -133,8 +133,17 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         bool returnImmediately = methodName != GetLogsMethodName;
         Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
+        bool isDebugSubscription = method.MethodInfo.DeclaringType == typeof(Modules.DebugModule.IDebugSubscriptionRpcModule);
+        JsonRpcContext? previousContext = isDebugSubscription ? JsonRpcContext.Current.Value : null;
+        if (isDebugSubscription) JsonRpcContext.Current.Value = context;
         try
         {
+            if (isDebugSubscription && rpcModule is not Modules.DebugModule.IDebugSubscriptionRpcModule)
+            {
+                ReturnParameters(parameters, returnParametersToPool);
+                return GetErrorResponse(methodName, ErrorCodes.MethodNotFound, ErrorMessages.MethodNotFound(methodName), null, in request.IdRef);
+            }
+
             object? invocationResult = parameterCount switch
             {
                 0 when method.DirectNoParameterInvoker is { } directInvoker => directInvoker(rpcModule),
@@ -156,6 +165,11 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
                     break;
             }
 
+            if (isDebugSubscription && resultWrapper is Modules.DebugModule.PendingTraceChainResponse pending)
+            {
+                pending.Subscription.ConfigureRental((IExclusiveRpcModulePool)method.ModulePool!, method.ReturnModule);
+            }
+
             // A streamed result executes while the response is written, after this method has returned, on state the
             // module owns (its overridable world state env). Returning the module now would let the next rental run on
             // that same env concurrently, so the rental has to last until the response is disposed.
@@ -171,6 +185,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
         finally
         {
+            if (isDebugSubscription) JsonRpcContext.Current.Value = previousContext;
             if (returnImmediately)
             {
                 _rpcModuleProvider.Return(method, rpcModule);

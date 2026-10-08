@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO.Abstractions;
+using System.Text.Json;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -11,7 +13,6 @@ using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
 using Nethermind.Evm.State;
@@ -63,6 +64,100 @@ public class GethStyleTracerTests
                 Assert.That(tracer.Token.IsCancellationRequested, Is.True);
                 Assert.That(() => tracer.BuildResult(), Throws.TypeOf<TimeoutException>().With.Message.EqualTo("execution timeout"));
             }
+        }
+    }
+
+    [Test]
+    public void Mux_completed_prefix_counts_only_selected_transactions_and_resets([Values] bool collectCompleted, [Values] bool empty)
+    {
+        List<GethLikeTxTrace> traces = [];
+        IBlockTracer<GethLikeTxTrace> child = Substitute.For<IBlockTracer<GethLikeTxTrace>>();
+        child.BuildResult().Returns(traces);
+        child.StartNewTxTrace(Arg.Any<Transaction>()).Returns(NullTxTracer.Instance);
+        child.When(t => t.StartNewBlockTrace(Arg.Any<Block>())).Do(_ => traces.Clear());
+        GethTraceOptions options = new()
+        {
+            TxHash = TestItem.KeccakB,
+            CollectCompletedTransactions = collectCompleted,
+            TracerConfig = JsonSerializer.SerializeToElement(empty ? new Dictionary<string, object>() : new() { ["child"] = new { } })
+        };
+        using GethLikeBlockMuxTracer mux = new(options, _ => child);
+        mux.StartNewBlockTrace(Build.A.Block.TestObject);
+        foreach (Transaction transaction in new Transaction[] { null, Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject,
+            Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject, null })
+        {
+            using ITxTracer tracer = mux.StartNewTxTrace(transaction);
+            if (transaction?.Hash == options.TxHash) traces.Add(new GethLikeTxTrace { TxHash = transaction.Hash });
+            mux.EndTxTrace();
+        }
+        using (mux.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject))
+        {
+            if (collectCompleted || empty)
+                Assert.That(mux.BuildResult(), Has.Count.EqualTo(collectCompleted ? 1 : 2));
+            else
+                Assert.That(() => mux.BuildResult(), Throws.TypeOf<InvalidOperationException>());
+        }
+        mux.StartNewBlockTrace(Build.A.Block.TestObject);
+        Assert.That(mux.BuildResult(), Is.Empty);
+    }
+
+    [Test]
+    public void Mux_completed_prefix_releases_extra_results_and_started_tracers([Values] bool failOnStart, [Values] bool nested)
+    {
+        List<IDisposable> resources = [];
+        List<ITxTracer> started = [];
+        List<IBlockTracer<GethLikeTxTrace>> children = [];
+        int transaction = 0;
+        InvalidOperationException failure = new("child failed");
+        GethTraceOptions options = new()
+        {
+            CollectCompletedTransactions = true,
+            TracerConfig = JsonSerializer.SerializeToElement(new { first = new { }, second = new { } })
+        };
+        IBlockTracer<GethLikeTxTrace> CreateChild(GethTraceOptions childOptions)
+        {
+            List<GethLikeTxTrace> traces = [];
+            IBlockTracer<GethLikeTxTrace> child = Substitute.For<IBlockTracer<GethLikeTxTrace>, IDisposable>();
+            children.Add(child);
+            child.BuildResult().Returns(traces);
+            child.StartNewTxTrace(Arg.Any<Transaction>()).Returns(_ =>
+            {
+                if (transaction == 1 && childOptions.Tracer == "second" && failOnStart) throw failure;
+                ITxTracer tracer = Substitute.For<ITxTracer>();
+                started.Add(tracer);
+                return tracer;
+            });
+            child.When(t => t.EndTxTrace()).Do(_ =>
+            {
+                if (transaction == 1 && childOptions.Tracer == "second") throw failure;
+                IDisposable resource = Substitute.For<IDisposable>();
+                resources.Add(resource);
+                traces.Add(new GethLikeTxTrace(resource));
+            });
+            return child;
+        }
+        using (GethLikeBlockMuxTracer mux = nested
+            ? new(options with { TracerConfig = JsonSerializer.SerializeToElement(new { muxTracer = new { } }) },
+                _ => new GethLikeBlockMuxTracer(options, CreateChild))
+            : new(options, CreateChild))
+        {
+            mux.StartNewBlockTrace(Build.A.Block.TestObject);
+            using (mux.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakA).TestObject)) mux.EndTxTrace();
+            transaction = 1;
+            Assert.That(Assert.Throws<InvalidOperationException>(() =>
+            {
+                using ITxTracer tracer = mux.StartNewTxTrace(Build.A.Transaction.WithHash(TestItem.KeccakB).TestObject);
+                mux.EndTxTrace();
+            }), Is.SameAs(failure));
+            Assert.That(mux.BuildResult(), Has.Count.EqualTo(1));
+            Assert.That(mux.BuildResult(), Has.Count.EqualTo(1));
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resources, Has.Count.EqualTo(failOnStart ? 2 : 3));
+            foreach (IDisposable resource in resources) resource.Received(1).Dispose();
+            foreach (ITxTracer tracer in started) tracer.Received(1).Dispose();
+            foreach (IBlockTracer<GethLikeTxTrace> child in children) ((IDisposable)child).Received(1).Dispose();
         }
     }
 
