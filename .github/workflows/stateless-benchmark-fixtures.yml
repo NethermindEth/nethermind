@@ -186,11 +186,19 @@ jobs:
           set -euo pipefail
           # ziskemu is single-threaded, so one block runs per core. Each writes only its own directory
           # and the logs are printed afterwards in manifest order, so concurrent runs never interleave.
+          #
+          # The costliest 30M block runs ~1.7G steps, emulation time grows with gas, and a worker on a
+          # slow runner sharing it with three others manages ~5M steps/s: a quarter-minute per million
+          # gas leaves ~1.4x headroom over that.
+          BLOCK_MINUTES=$(( ${GAS%M} / 4 > 15 ? ${GAS%M} / 4 : 15 ))
+          export BLOCK_MINUTES
           measure() {
             local input=$1 output=$2 dir="$RUNNER_TEMP/blocks/$1" status=0 verdict=ok
             mkdir -p "$dir"
-            timeout 15m make stats INPUT="$input" < /dev/null > "$dir/stats.log" 2>&1 || status=$?
-            if [[ "$status" -ne 0 ]]; then
+            timeout "${BLOCK_MINUTES}m" make stats INPUT="$input" < /dev/null > "$dir/stats.log" 2>&1 || status=$?
+            if [[ "$status" -eq 124 ]]; then
+              verdict="timed out after $BLOCK_MINUTES minutes"
+            elif [[ "$status" -ne 0 ]]; then
               verdict="the guest exited with $status"
             elif ! grep -Fxq "$output" "$dir/stats.log"; then
               verdict="output mismatch"
