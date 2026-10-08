@@ -32,8 +32,11 @@ namespace Nethermind.State.Repositories
         {
             void LocalDelete()
             {
-                _blockInfoCache.Delete(new LevelNumber(number));
+                LevelNumber key = new(number);
+                _blockInfoCache.Delete(in key);
                 _blockInfoDb.Delete(number);
+                // A load that read the level before the db delete may have cached it since.
+                _blockInfoCache.Delete(in key);
             }
 
             if (batch is null || batch.Disposed)
@@ -83,6 +86,7 @@ namespace Nethermind.State.Repositories
 
             level = _blockInfoDb.Get(number, _decoder);
             // A level persisted while this load ran is newer than the one read, so it stays cached and is returned.
+            // A delete racing this load is not covered here; Delete itself clears the entry again after the db delete.
             if (level is not null
                 && !_blockInfoCache.TryAdd(in key, level)
                 && _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached))

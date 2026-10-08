@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -123,6 +124,24 @@ public class ChainLevelInfoRepositoryTests
     }
 
     [Test]
+    public void Delete_clears_a_level_loaded_before_the_db_delete()
+    {
+        RemoveHookDb db = new();
+        ChainLevelInfoRepository repository = new(db);
+        repository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        ((IClearableCache)repository).ClearCache();
+        db.BeforeRemove = () =>
+        {
+            db.BeforeRemove = null;
+            Assert.That(repository.LoadLevel(1), Is.Not.Null);
+        };
+
+        repository.Delete(1);
+
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
     public void PersistLevel_in_a_batch_replaces_the_cached_level()
     {
         MemDb db = new();
@@ -138,6 +157,17 @@ public class ChainLevelInfoRepositoryTests
         }
 
         AssertChainLevelInfo(new ChainLevelInfoRepository(db).LoadLevel(1), replacement);
+    }
+
+    private sealed class RemoveHookDb : TestMemDb
+    {
+        public Action BeforeRemove { get; set; }
+
+        public override void Remove(ReadOnlySpan<byte> key)
+        {
+            BeforeRemove?.Invoke();
+            base.Remove(key);
+        }
     }
 
     private static void AssertChainLevelInfo(ChainLevelInfo actual, ChainLevelInfo expected)
