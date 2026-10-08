@@ -9,7 +9,9 @@
 // Each row is one benchmark block: its gas value, test id, and the ziskemu step count and cost
 // buckets that scripts/zisk-bench/parse-stats.py extracts. The report lists, per gas value, the
 // costliest blocks and the costliest block of every test module, which is where a regression or a
-// new worst case shows first. `--shards` maps each gas value to its shard count, e.g. {"30M": 8}.
+// new worst case shows first. Blocks are ranked by the cost model's total rather than steps:
+// precompile calls cost far more than the few steps they take, so steps understate precompile-heavy
+// blocks. `--shards` maps each gas value to its shard count, e.g. {"30M": 8}.
 
 using System.Globalization;
 using System.Text;
@@ -73,7 +75,7 @@ report.AppendLine("## Stateless benchmark fixtures")
     .AppendLine()
     .AppendLine($"ZisK guest cost per benchmark block of `{options["release"]}`, built from `{options["commit"]}`.")
     .AppendLine()
-    .AppendLine("| Gas value | Shards | Blocks | Max steps | Total steps |")
+    .AppendLine("| Gas value | Shards | Blocks | Max cost | Total cost |")
     .AppendLine("| --- | ---: | ---: | ---: | ---: |");
 
 bool incomplete = false;
@@ -84,13 +86,13 @@ foreach (string gas in gasValues)
     int expected = shardCounts[gas];
     incomplete |= done != expected;
     string shardCell = done == expected ? $"{done}" : $"{done} of {expected}";
-    long max = measured.Count == 0 ? 0 : measured.Max(static row => row.Steps);
-    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {max:N0} | {measured.Sum(static row => row.Steps):N0} |");
+    long max = measured.Count == 0 ? 0 : measured.Max(static row => row.Total);
+    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
 }
 
 foreach (string gas in gasValues)
 {
-    List<Row> costliest = [.. rows.Where(row => row.Gas == gas).OrderByDescending(static row => row.Steps)];
+    List<Row> costliest = [.. rows.Where(row => row.Gas == gas).OrderByDescending(static row => row.Total)];
     if (costliest.Count == 0)
         continue;
 
@@ -103,7 +105,7 @@ foreach (string gas in gasValues)
     AppendTable(report, "Case", costliest.Take(Top), static row => Case(row.Id));
     report.AppendLine().AppendLine("</details>").AppendLine()
         .AppendLine("<details><summary>Costliest block per test module</summary>").AppendLine();
-    AppendTable(report, "Module", worstPerModule.Values.OrderByDescending(static row => row.Steps), static row => Module(row.Id));
+    AppendTable(report, "Module", worstPerModule.Values.OrderByDescending(static row => row.Total), static row => Module(row.Id));
     report.AppendLine().AppendLine("</details>");
 }
 
@@ -136,9 +138,9 @@ static string Module(string id)
 
 static void AppendTable(StringBuilder report, string header, IEnumerable<Row> rows, Func<Row, string> label)
 {
-    report.AppendLine($"| {header} | Steps | Cost |").AppendLine("| --- | ---: | ---: |");
+    report.AppendLine($"| {header} | Cost | Steps |").AppendLine("| --- | ---: | ---: |");
     foreach (Row row in rows)
-        report.AppendLine($"| `{label(row)}` | {row.Steps:N0} | {row.Total:N0} |");
+        report.AppendLine($"| `{label(row)}` | {row.Total:N0} | {row.Steps:N0} |");
 }
 
 static void WriteResults(string path, List<Row> rows)
