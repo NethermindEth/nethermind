@@ -17,12 +17,12 @@ namespace Nethermind.BeaconChain.P2P;
 /// Verified Gloas execution payload envelopes, serving <c>ExecutionPayloadEnvelopesByRange</c>/<c>ByRoot</c>.
 /// </summary>
 /// <remarks>
-/// With a store, every added envelope is persisted there and a read that misses the bounded in-memory
-/// cache falls through to it, so eviction and restarts lose nothing the store still retains; the store's
+/// With a store, every added envelope is persisted there and reads decode it on demand, so decoded payloads
+/// are not retained in memory and restarts lose nothing the store still retains; the store's
 /// <see cref="BeaconChainStore.PruneExecutionPayloadEnvelopes"/> bounds that retention. Only envelopes
 /// that passed every check, their signature included, may be added: both protocols serve what it holds.
 /// </remarks>
-/// <param name="capacity">The most envelopes held in memory.</param>
+/// <param name="capacity">The most envelopes held in memory when no store is provided.</param>
 /// <param name="store">Where envelopes are persisted and <see cref="GetCanonical"/> reads the chain from; <c>null</c> keeps envelopes in memory only and serves no range.</param>
 /// <param name="status">Where <see cref="GetCanonical"/> reads the head from; <c>null</c> serves no range.</param>
 /// <param name="logManager">Reports stored envelopes that cannot be read.</param>
@@ -44,7 +44,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
     public void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope)
         => Add(blockRoot, envelope, persisted: false);
 
-    /// <summary>Caches a verified envelope, skipping storage only when its importer already persisted it.</summary>
+    /// <summary>Makes a verified envelope available, skipping storage only when its importer already persisted it.</summary>
     internal void Add(Hash256 blockRoot, SignedExecutionPayloadEnvelope envelope, bool persisted)
     {
         if (store is null || persisted)
@@ -56,7 +56,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
             store.PutExecutionPayloadEnvelope(blockRoot, envelope);
         }
 
-        _byRoot.Set(blockRoot, envelope);
+        if (store is null) _byRoot.Set(blockRoot, envelope);
         _unreadable.Delete(blockRoot);
     }
 
@@ -83,7 +83,6 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
             return false;
         }
 
-        _byRoot.Set(blockRoot, envelope);
         return true;
     }
 

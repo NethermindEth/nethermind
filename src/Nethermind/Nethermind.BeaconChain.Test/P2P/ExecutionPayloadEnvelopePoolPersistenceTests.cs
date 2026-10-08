@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.P2P.ReqResp;
 using Nethermind.BeaconChain.P2P.ReqResp.Protocols;
@@ -18,6 +19,31 @@ namespace Nethermind.BeaconChain.Test.P2P;
 public class ExecutionPayloadEnvelopePoolPersistenceTests
 {
     private static readonly ulong Base = FirstGloasSlot + 10;
+
+    [Test]
+    public void Added_and_read_envelopes_are_retained_only_without_a_store([Values] bool withStore)
+    {
+        ExecutionPayloadEnvelopePool pool = new(store: withStore ? new BeaconChainStore(new MemColumnsDb<BeaconChainDbColumns>(), Sepolia) : null);
+        (WeakReference<SignedExecutionPayloadEnvelope> added, WeakReference<SignedExecutionPayloadEnvelope> read) = AddAndRead(pool);
+
+        GC.Collect(GC.MaxGeneration, GCCollectionMode.Forced, blocking: true, compacting: true);
+
+        using IDisposable assertionScope = Assert.EnterMultipleScope();
+        Assert.That(added.TryGetTarget(out _), Is.EqualTo(!withStore), "the imported envelope is retained only by a memory-only pool");
+        Assert.That(read.TryGetTarget(out _), Is.EqualTo(!withStore), "reading from the store must not refill a decoded payload cache");
+        GC.KeepAlive(pool);
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private static (WeakReference<SignedExecutionPayloadEnvelope>, WeakReference<SignedExecutionPayloadEnvelope>) AddAndRead(ExecutionPayloadEnvelopePool pool)
+    {
+        SignedExecutionPayloadEnvelope envelope = BeaconChainStoreEnvelopeTests.Envelope(Base);
+        Hash256 root = envelope.Message!.BeaconBlockRoot!;
+        pool.Add(root, envelope);
+        Assert.That(pool.TryGet(root, out SignedExecutionPayloadEnvelope? read), Is.True);
+        Assert.That(pool.TryGet(root, out _), Is.True, "repeated reads remain available");
+        return (new(envelope), new(read!));
+    }
 
     [Test]
     [CancelAfter(30_000)]
