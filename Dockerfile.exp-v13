@@ -1,0 +1,2 @@
+FROM nethermindeth/nethermind:kch-exp-gaps-36e56e6
+ENV EXP_ARM=v13 NETHERMIND_BLOCKSCONFIG_STREAMRECEIPTBLOOMS=true
