@@ -9,6 +9,7 @@ using FastEnumUtility;
 
 using Nethermind.Abi;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Blockchain.Contracts.Json;
 
@@ -19,7 +20,7 @@ public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
         writer.WriteStartArray();
         foreach (AbiBaseDescription item in value.Items)
         {
-            JsonSerializer.Serialize(writer, item, op);
+            TypeInfoJsonSerializer.Serialize(writer, item, op);
         }
 
         writer.WriteEndArray();
@@ -64,17 +65,17 @@ public class AbiDefinitionConverter : JsonConverter<AbiDefinition>
             switch (type)
             {
                 case AbiDescriptionType.Event:
-                    AbiEventDescription? eventDescription = definitionToken.Deserialize<AbiEventDescription>(op);
+                    AbiEventDescription? eventDescription = TypeInfoJsonSerializer.Deserialize<AbiEventDescription>(definitionToken, op);
                     if (eventDescription is not null)
                         value.Add(eventDescription);
                     break;
                 case AbiDescriptionType.Error:
-                    AbiErrorDescription? errorDescription = definitionToken.Deserialize<AbiErrorDescription>(op);
+                    AbiErrorDescription? errorDescription = TypeInfoJsonSerializer.Deserialize<AbiErrorDescription>(definitionToken, op);
                     if (errorDescription is not null)
                         value.Add(errorDescription);
                     break;
                 default:
-                    AbiFunctionDescription? functionDescription = definitionToken.Deserialize<AbiFunctionDescription>(op);
+                    AbiFunctionDescription? functionDescription = TypeInfoJsonSerializer.Deserialize<AbiFunctionDescription>(definitionToken, op);
                     if (functionDescription is not null)
                         value.Add(functionDescription);
                     break;

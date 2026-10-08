@@ -21,6 +21,11 @@
     <type fullname="Nethermind.Evm.ZiskArith256Flag">
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
+    <!-- Only this guest links jump_dest.S, the JUMPDEST bitmap precompile, so the shared build leaves the
+         flag off and this guest turns it on; ILC folds the check it gates. -->
+    <type fullname="Nethermind.Evm.CodeAnalysis.ZiskJumpDestFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
   </assembly>
   <assembly fullname="Nethermind.Serialization.Ssz">
     <!-- Only ZisK's runtime exports the SHA-256 compression precompile merkleization hashes pairs with, so the
@@ -30,6 +35,10 @@
     </type>
   </assembly>
   <assembly fullname="Nethermind.Core">
+    <!-- ZisK runs memmove as a precompile, so Bytes.Copy calls it directly rather than through corelib. -->
+    <type fullname="Nethermind.Core.Extensions.ZiskMemmoveFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
     <!-- ZisK lowers Zbb's rev8 to one native instruction, so byte swaps take ReverseEndianness. -->
     <type fullname="Nethermind.Core.Extensions.ZkEvmBitOperations">
       <method signature="System.Boolean get_HasByteReverse()" body="stub" value="true" />

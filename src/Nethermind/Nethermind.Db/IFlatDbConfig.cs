@@ -55,7 +55,7 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Index, per transaction, what each transaction of a block wrote, so that a trace of one transaction resolves the state before it instead of replaying the transactions ahead of it. Captured inline while syncing, when the node executes each block anyway, and re-executed in the background behind the history watermark at the tip and for the retrofit; never on the tip's processing path. Pre-Amsterdam only: BAL-enabled blocks are neither indexed nor seeded. Kept in its own column. Off by default; a node that leaves it off pays nothing.", DefaultValue = "false")]
     bool HistoryTransactionIndexEnabled { get; set; }
 
-    [ConfigItem(Description = "Maximum active indexed block-tracing workers shared by debug and trace RPC. 0 uses the processor count capped at 16; 1 disables parallel block tracing. Explicit values are clamped to 1-16. Each namespace keeps its own environment pool and up to twice this many background workers.", DefaultValue = "0")]
+    [ConfigItem(Description = "Deprecated. Use `JsonRpc.TraceBlockParallelism` instead. `0`, the default, leaves the node-wide parallel block trace budget to `JsonRpc.TraceBlockParallelism`. Any other value sizes that budget in its place, clamped to 1-16.", DefaultValue = "0", HiddenFromDocs = true)]
     int HistoryTransactionIndexTraceParallelism { get; set; }
 
     [ConfigItem(Description = "Share of its wall clock the transaction index builder may spend working; it sleeps out the rest so that re-executing blocks stays invisible to the RPC the node is serving. 100 lets it run flat out.", DefaultValue = "25")]
@@ -180,7 +180,7 @@ public interface IFlatDbConfig : IConfig
 
     /// <summary>Gets or sets the bits per storage key in the in-memory snapshot filter used by read-only execution.</summary>
     /// <remarks>Defaults to 14 bits per key. Set to 0 to disable the filter. Block processing does not use it.</remarks>
-    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
+    [ConfigItem(Description = "Bits per key for the negative filter over the slots written by the in-memory snapshots. It is built once per read-only snapshot bundle, on the first slot read of read-only execution (eth_call, eth_estimateGas, eth_createAccessList, eth_simulateV1, eth_getProof, debug and trace calls, Flashbots block validation, receipt regeneration and the transaction changeset index), and lets those reads skip the per-snapshot lookups for a slot no in-memory snapshot wrote. Block processing never uses it. Higher = lower false-positive rate but more RAM. 0 disables the filter.", DefaultValue = "14.0")]
     double InMemorySnapshotBloomBitsPerKey { get; set; }
 
     [ConfigItem(Description = "Persistent dedicated reader threads used to resolve hinted BAL read sets into the pre-block cache. -1 for 4x logical processor count capped at 64. Values below 1 are clamped to 1. Use --Blocks.ParallelExecutionBatchRead=false to disable BAL warming entirely.", DefaultValue = "-1")]

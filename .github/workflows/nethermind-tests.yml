@@ -91,6 +91,8 @@ jobs:
           - Nethermind.Optimism.Test
           - Nethermind.PortfolioViewer.Plugin.Test
           - Nethermind.Runner.Test
+          - Nethermind.SendPolicy.Plugin.Test
+          - Nethermind.Serialization.JsonGenerator.Test
           - Nethermind.Serialization.Ssz.Test
           - Nethermind.Serialization.SszGenerator.Test
           - Nethermind.Shutter.Test
@@ -123,7 +125,8 @@ jobs:
             chunk: ''
         include: # macOS only for OS-sensitive tests (I/O, networking, sockets)
           - { runner: macos-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: macos-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
           - { runner: macos-latest, project: Nethermind.KeyStore.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
           - { runner: macos-latest, project: Nethermind.Network.Dns.Test, chunk: '' }
@@ -152,7 +155,8 @@ jobs:
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 3of4 }
           - { runner: ubuntu-latest, project: Nethermind.Synchronization.Test, chunk: 4of4 }
           - { runner: windows-latest, project: Nethermind.Db.Test, chunk: '' }
-          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: '' }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 1of2 }
+          - { runner: windows-latest, project: Nethermind.JsonRpc.Test, chunk: 2of2 }
           - { runner: windows-latest, project: Nethermind.KeyStore.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.Network.Discovery.Test, chunk: '' }
           - { runner: windows-latest, project: Nethermind.Network.Dns.Test, chunk: '' }

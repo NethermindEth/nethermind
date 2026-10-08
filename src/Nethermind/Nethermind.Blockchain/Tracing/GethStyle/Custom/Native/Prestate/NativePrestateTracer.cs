@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -55,7 +54,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         _worldState = worldState;
         _txHash = txHash;
 
-        NativePrestateTracerConfig config = options.TracerConfig?.Deserialize<NativePrestateTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
+        NativePrestateTracerConfig config = TypeInfoJsonSerializer.Deserialize<NativePrestateTracerConfig>(options.TracerConfig, EthereumJsonSerializer.JsonOptions) ?? new NativePrestateTracerConfig();
         _diffMode = config.DiffMode;
         if (_diffMode)
         {
@@ -75,8 +74,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     /// <summary>Records the state an EIP-8141 transaction touches outside the VM, before anything reports it.</summary>
     /// <remarks>A frame transaction creates no contract. The payer, always a frame target, is charged at approval,
     /// which default code performs without entering the VM; approval also consumes EIP-8250 keyed nonces through
-    /// <c>NONCE_MANAGER</c> storage, and EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before
-    /// the first frame, so every frame target, consumed nonce slot and referenced root cell is read up front.</remarks>
+    /// <c>NONCE_MANAGER</c> storage, so every frame target and consumed nonce slot is read up front.</remarks>
     private void LookupFrameTxState(Address sender, Transaction transaction)
     {
         foreach (TxFrame frame in transaction.Frames!)
@@ -86,12 +84,6 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
         {
             foreach (UInt256 nonceKey in nonceKeys)
                 LookupStorage(KeyedNonceManager.StorageSlot(sender, nonceKey));
-        }
-
-        if (transaction.RecentRootReferences is { } references)
-        {
-            foreach (RecentRootReference reference in references)
-                LookupStorage(RecentRootStore.ReferenceCell(reference.SourceId, reference.Slot));
         }
     }
 

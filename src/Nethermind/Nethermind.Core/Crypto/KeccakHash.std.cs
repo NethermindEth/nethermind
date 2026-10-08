@@ -45,6 +45,17 @@ public sealed partial class KeccakHash
         return keccak;
     }
 
+    /// <inheritdoc cref="KeccakHash.ComputeHash256OfWitnessNodes" />
+    internal static partial void ComputeHash256OfWitnessNodes(byte[][] nodes, int count, Span<ValueHash256> hashes)
+    {
+        for (int i = 0; i < count; i++)
+            hashes[i] = ComputeHash256(nodes[i]);
+    }
+
+    /// <inheritdoc cref="KeccakHash.NoteWitnessNodeLoaded" />
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static partial void NoteWitnessNodeLoaded(nint tag) { }
+
     // update the state with given number of rounds
     private static partial void KeccakF(Span<ulong> st)
     {

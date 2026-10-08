@@ -27,6 +27,11 @@ internal sealed class NodeHealthReportCollector(
     internal const string EndpointName = "health";
     internal const string HttpCollectorKey = "nethermind-health-http";
 
+    /// <summary>Reads the HealthChecks UI notify-once setting, which is off when absent.</summary>
+    /// <remarks>Parses the value as <c>ConfigurationBinder.GetValue&lt;bool&gt;</c> does, without its reflection-based binding.</remarks>
+    internal static bool NotifiesOnceUntilChange(IConfiguration configuration) =>
+        configuration.GetSectionWithFallBack("HealthChecksUI", "HealthChecks-UI")["NotifyUnHealthyOneTimeUntilChange"] is { } value && bool.Parse(value);
+
     /// <inheritdoc />
     public async Task Collect(CancellationToken cancellationToken)
     {
@@ -34,7 +39,7 @@ internal sealed class NodeHealthReportCollector(
         // Retain the library collector for remote endpoints and its optional notification policy.
         // The library's effective notify-once setting is internal, so code-based enabling is not detected.
         if (endpoints.Count != 1 || endpoints[0].Name != EndpointName || endpoints[0].Uri != endpoint ||
-            configuration.GetSectionWithFallBack("HealthChecksUI", "HealthChecks-UI").GetValue<bool>("NotifyUnHealthyOneTimeUntilChange"))
+            NotifiesOnceUntilChange(configuration))
         {
             await httpCollector().Collect(cancellationToken);
             return;

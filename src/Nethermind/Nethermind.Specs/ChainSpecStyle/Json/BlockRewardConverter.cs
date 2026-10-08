@@ -22,7 +22,7 @@ public class BlockRewardConverter : JsonConverter<SortedDictionary<ulong, UInt25
         SortedDictionary<ulong, UInt256> value = [];
         if (reader.TokenType == JsonTokenType.String)
         {
-            UInt256 blockReward = JsonSerializer.Deserialize<UInt256>(ref reader, options);
+            UInt256 blockReward = TypeInfoJsonSerializer.Deserialize<UInt256>(ref reader, options);
             value.Add(0, blockReward);
         }
         else if (reader.TokenType == JsonTokenType.Number)

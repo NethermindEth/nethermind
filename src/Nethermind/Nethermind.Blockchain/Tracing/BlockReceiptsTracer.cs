@@ -47,6 +47,11 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         _currentFrameTxTracer?.ReportFramesRolledBack(fromFrameIndex, toFrameIndex);
 
     protected Block Block = null!;
+
+    /// <summary>Whether the current transaction is traced only for its receipt.</summary>
+    public bool IsTracingOnlyReceipts =>
+        ReferenceEquals(_otherTracer, NullBlockTracer.Instance) && ReferenceEquals(_currentTxTracer, NullTxTracer.Instance);
+
     public bool IsTracingReceipt => true;
     public bool IsCollectingLogs => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -171,7 +176,8 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
         TxReceipt txReceipt = CreateReceipt();
         txReceipt.Logs = logEntries;
         txReceipt.TxType = transaction.Type;
-        // Bloom calculated in parallel with other receipts
+        // Bloom calculated in parallel with other receipts, or never under EIP-7668
+        if (_bloomsRemoved) txReceipt.Bloom = Bloom.ZeroLength;
         txReceipt.GasUsedTotal = cumulativeReceiptGas;  // Post-refund cumulative
         txReceipt.StatusCode = statusCode;
         txReceipt.Recipient = transaction.IsContractCreation ? null : recipient;
@@ -337,6 +343,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     private readonly List<TxReceipt> _txReceipts = [];
     private readonly List<(ulong Execution, ulong State)> _cumulativeBlockGasPerTx = [];  // Track pre-refund block gas for restore (execution + EIP-8037 state)
     private ulong _cumulativeReceiptGas;  // Track cumulative post-refund gas for receipts
+
+    /// <summary>EIP-7668: the block's header bloom is zero-length, so receipts carry <see cref="Bloom.ZeroLength"/> and no bloom is accumulated.</summary>
+    private bool _bloomsRemoved;
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
     public TxReceipt LastReceipt => _txReceipts[^1];
@@ -397,6 +406,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public void StartNewBlockTrace(Block block)
     {
         Block = block;
+        _bloomsRemoved = block.Header.Bloom?.IsZeroLength == true;
         _currentIndex = 0;
         CurrentTx = null;
         _currentTxTracer = NullTxTracer.Instance;
@@ -478,7 +488,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     public void EndBlockTrace(bool accumulateBlockBloom)
     {
         _otherTracer.EndBlockTrace();
-        if (accumulateBlockBloom && _txReceipts.Count > 0)
+        if (accumulateBlockBloom && _txReceipts.Count > 0 && !_bloomsRemoved)
         {
             Bloom blockBloom = new();
             Block.Header.Bloom = blockBloom;

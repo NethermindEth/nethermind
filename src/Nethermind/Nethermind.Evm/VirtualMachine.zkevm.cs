@@ -35,6 +35,11 @@ public unsafe partial class VirtualMachine<TGasPolicy> where TGasPolicy : struct
         _executionHandlers = new ExecutionHandlers(Spec);
     }
 
+    /// <summary>Whether a fresh untraced table for <paramref name="spec"/> runs SLOAD on the guest handler.</summary>
+    /// <remarks>Built apart from the shared table, which keeps the handlers of the first fork it prepares.</remarks>
+    internal static bool LoadsStorageThroughGuestHandlerForTests(IReleaseSpec spec) =>
+        (nint)GenerateOpcodeHandlers<OffFlag, OffFlag>(spec)[(int)Instruction.SLOAD] == (nint)AsTableEntry(&RawCalliHelper.ExecuteSLoad);
+
     public object? ReturnData;
 
     /// <summary>

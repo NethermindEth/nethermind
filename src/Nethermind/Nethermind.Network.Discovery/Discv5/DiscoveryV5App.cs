@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
@@ -212,7 +213,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     private static string[] GetDefaultBootnodes() =>
-        JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
+        JsonSerializer.Deserialize(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!, BootnodesJsonContext.Default.StringArray) ?? [];
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
@@ -404,3 +405,6 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 }
+
+[JsonSerializable(typeof(string[]))]
+internal partial class BootnodesJsonContext : JsonSerializerContext;

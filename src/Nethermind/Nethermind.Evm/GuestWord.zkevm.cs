@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.Evm;
@@ -31,6 +32,23 @@ internal static class GuestWord
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
         leftLimb = Unsafe.Add(ref words, left + 2);
         rightLimb = Unsafe.Add(ref words, right + 2);
+        if (leftLimb != rightLimb) return leftLimb < rightLimb;
+        leftLimb = Unsafe.Add(ref words, left + 1);
+        rightLimb = Unsafe.Add(ref words, right + 1);
+        if (leftLimb != rightLimb) return leftLimb < rightLimb;
+        return Unsafe.Add(ref words, left) < Unsafe.Add(ref words, right);
+    }
+
+    /// <summary>As <see cref="IsBelow"/>, with both words read as two's complement.</summary>
+    /// <remarks>Only the top limbs carry the sign, so they compare signed and the rest as <see cref="IsBelow"/> does.</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool IsSignedBelow(ref ulong words, nint left, nint right)
+    {
+        long leftTop = (long)Unsafe.Add(ref words, left + 3);
+        long rightTop = (long)Unsafe.Add(ref words, right + 3);
+        if (leftTop != rightTop) return leftTop < rightTop;
+        ulong leftLimb = Unsafe.Add(ref words, left + 2);
+        ulong rightLimb = Unsafe.Add(ref words, right + 2);
         if (leftLimb != rightLimb) return leftLimb < rightLimb;
         leftLimb = Unsafe.Add(ref words, left + 1);
         rightLimb = Unsafe.Add(ref words, right + 1);
@@ -90,9 +108,15 @@ internal static class GuestWord
     }
 
     /// <summary>Shifts the word at <paramref name="value"/>, in limb layout, right by <paramref name="shift"/> bits, below 256.</summary>
-    /// <remarks>The mirror of <see cref="ShiftLeft"/>, working from the bottom limb up.</remarks>
+    /// <param name="value">The low limb of the word.</param>
+    /// <param name="shift">The shift, below 256.</param>
+    /// <param name="arithmetic">Whether the bits shifted in copy the sign, rather than being zero.</param>
+    /// <remarks>
+    /// The mirror of <see cref="ShiftLeft"/>, working from the bottom limb up. The top limb takes its own shift, which
+    /// brings in the sign of an arithmetic one, so only the limbs above it need the sign spread out.
+    /// </remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static void ShiftRight(ref ulong value, int shift)
+    internal static void ShiftRight(ref ulong value, int shift, bool arithmetic = false)
     {
         int bits = shift;
         int carry = 63 ^ shift;
@@ -106,7 +130,7 @@ internal static class GuestWord
             Unsafe.Add(ref value, 1) = (limb1 >> bits) | ((limb2 << 1) << carry);
             ulong limb3 = Unsafe.Add(ref value, 3);
             Unsafe.Add(ref value, 2) = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 3) = limb3 >> bits;
+            Unsafe.Add(ref value, 3) = ShiftTopLimb(limb3, bits, arithmetic);
         }
         else if (limbs == 1)
         {
@@ -115,25 +139,90 @@ internal static class GuestWord
             value = (limb1 >> bits) | ((limb2 << 1) << carry);
             ulong limb3 = Unsafe.Add(ref value, 3);
             Unsafe.Add(ref value, 1) = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 2) = limb3 >> bits;
-            Unsafe.Add(ref value, 3) = 0;
+            Unsafe.Add(ref value, 2) = ShiftTopLimb(limb3, bits, arithmetic);
+            Unsafe.Add(ref value, 3) = FillLimb(limb3, arithmetic);
         }
         else if (limbs == 2)
         {
             ulong limb2 = Unsafe.Add(ref value, 2);
             ulong limb3 = Unsafe.Add(ref value, 3);
             value = (limb2 >> bits) | ((limb3 << 1) << carry);
-            Unsafe.Add(ref value, 1) = limb3 >> bits;
-            Unsafe.Add(ref value, 2) = 0;
-            Unsafe.Add(ref value, 3) = 0;
+            Unsafe.Add(ref value, 1) = ShiftTopLimb(limb3, bits, arithmetic);
+            ulong fill = FillLimb(limb3, arithmetic);
+            Unsafe.Add(ref value, 2) = fill;
+            Unsafe.Add(ref value, 3) = fill;
         }
         else
         {
-            value = Unsafe.Add(ref value, 3) >> bits;
-            Unsafe.Add(ref value, 1) = 0;
-            Unsafe.Add(ref value, 2) = 0;
-            Unsafe.Add(ref value, 3) = 0;
+            ulong limb3 = Unsafe.Add(ref value, 3);
+            value = ShiftTopLimb(limb3, bits, arithmetic);
+            ulong fill = FillLimb(limb3, arithmetic);
+            Unsafe.Add(ref value, 1) = fill;
+            Unsafe.Add(ref value, 2) = fill;
+            Unsafe.Add(ref value, 3) = fill;
         }
+    }
+
+    /// <summary>The top limb shifted right by <paramref name="bits"/>, modulo 64, copying its sign when <paramref name="arithmetic"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong ShiftTopLimb(ulong limb, int bits, bool arithmetic) =>
+        arithmetic ? (ulong)((long)limb >> bits) : limb >> bits;
+
+    /// <summary>The limb a right shift fills in above the top one: its sign spread out when <paramref name="arithmetic"/>, or zero.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static ulong FillLimb(ulong top, bool arithmetic) => arithmetic ? (ulong)((long)top >> 63) : 0;
+
+    /// <summary>Reports whether the word at <paramref name="word"/>, in limb layout, is a power of two, and which.</summary>
+    /// <param name="word">The low limb of the word.</param>
+    /// <param name="log2">The exponent, below 256, when the word is a power of two.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static bool TryGetLog2(ref ulong word, out int log2)
+    {
+        ulong limb0 = word;
+        ulong limb1 = Unsafe.Add(ref word, 1);
+        ulong limb2 = Unsafe.Add(ref word, 2);
+        ulong limb3 = Unsafe.Add(ref word, 3);
+        // The highest nonzero limb, its offset in bits, and the limbs below it, which a power of two leaves clear.
+        ulong bit;
+        int limbBits;
+        ulong below;
+        if (limb3 != 0)
+        {
+            bit = limb3;
+            limbBits = 192;
+            below = limb0 | limb1 | limb2;
+        }
+        else if (limb2 != 0)
+        {
+            bit = limb2;
+            limbBits = 128;
+            below = limb0 | limb1;
+        }
+        else if (limb1 != 0)
+        {
+            bit = limb1;
+            limbBits = 64;
+            below = limb0;
+        }
+        else
+        {
+            bit = limb0;
+            limbBits = 0;
+            below = 0;
+        }
+
+        log2 = limbBits + BitOperations.TrailingZeroCount(bit);
+        return (below | (bit & (bit - 1))) == 0 && bit != 0;
+    }
+
+    /// <summary>Copies the word at <paramref name="source"/> over the one at <paramref name="destination"/>, both in limb layout.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static void CopyWord(ref ulong source, ref ulong destination)
+    {
+        destination = source;
+        Unsafe.Add(ref destination, 1) = Unsafe.Add(ref source, 1);
+        Unsafe.Add(ref destination, 2) = Unsafe.Add(ref source, 2);
+        Unsafe.Add(ref destination, 3) = Unsafe.Add(ref source, 3);
     }
 
     /// <summary>Loads a big-endian word into a stack slot in limb layout.</summary>

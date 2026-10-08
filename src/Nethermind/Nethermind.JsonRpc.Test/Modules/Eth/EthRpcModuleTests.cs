@@ -46,6 +46,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -1726,6 +1727,33 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_get_proof_and_transaction_count_show_the_eip8253_bump_from_the_fork_block()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[0];
+        TestSpecProvider specProvider = new(Bogota.Instance)
+        {
+            NextForkSpec = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true },
+            ForkOnBlockNumber = ulong.MaxValue,
+            ChainId = BlockchainIds.Mainnet,
+            AllowTestChainOverride = false,
+        };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(new TestRpcBlockchain()).Build(specProvider);
+        string preFork = chain.BlockTree.Head!.Number.ToHexString(true);
+        specProvider.ForkOnBlockNumber = chain.BlockTree.Head!.Number + 1;
+        await chain.AddBlock();
+
+        string proof = await chain.TestEthRpc("eth_getProof", target.ToString(), "[]", "latest");
+        string count = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), "latest");
+        string preForkCount = await chain.TestEthRpc("eth_getTransactionCount", target.ToString(), preFork);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(proof, Does.Contain("\"nonce\":\"0x1\""));
+            Assert.That(count, Does.Contain("\"result\":\"0x1\""));
+            Assert.That(preForkCount, Does.Contain("\"result\":\"0x0\""));
+        }
+    }
+
+    [Test]
     public async Task Eth_get_proof_withTrimmedAndDuplicatedStorageKey()
     {
         using Context ctx = await Context.Create();
@@ -2744,6 +2772,27 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_createAccessList_omits_entries_that_only_raise_the_eip8131_content_floor()
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(
+            new OverridableReleaseSpec(Bogota.Instance) { IsEip7981Enabled = false, IsEip8131Enabled = true }));
+        const string contractAddr = "0xc200000000000000000000000000000000000000";
+        const int calldataBytes = 1000;
+        // PUSH20 0xdeadbeef; BALANCE; POP; STOP: one cold account access, under a calldata-bound content floor.
+        string stateOverride = $$$"""{"{{{contractAddr}}}":{"code":"0x7300000000000000000000000000000000deadbeef315000"}}""";
+        string transaction = $$"""{"from":"{{CreateAccessListSender}}","to":"{{contractAddr}}","data":"0x{{new string('0', 2 * calldataBytes)}}"}""";
+
+        // The entry saves nothing at the standard rate but adds 20 bytes to the binding floor, so the empty list wins.
+        (JToken optimized, long optimizedGas) = await CallCreateAccessList(ctx, transaction, stateOverride, optimize: true);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(optimized["error"], Is.Null);
+            Assert.That(optimized["accessList"]!.ToArray(), Is.Empty);
+            Assert.That(optimizedGas, Is.EqualTo((long)(GasCostOf.TransactionEip2780 + Eip8038Constants.ColdAccountAccess + calldataBytes * Eip8131Constants.FloorGasPerByte)));
+        }
+    }
+
+    [Test]
     public async Task Eth_createAccessList_optimize_drops_caller_supplied_entries_that_do_not_reduce_gas()
     {
         using Context ctx = await Context.CreateWithAmsterdamEnabled();
@@ -3266,11 +3315,11 @@ public partial class EthRpcModuleTests
 
         private Context() { }
 
-        public static async Task<Context> CreateWithLondonEnabled()
+        public static async Task<Context> CreateWithLondonEnabled(IWallet? wallet = null)
         {
             OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
             TestSpecProvider specProvider = new(releaseSpec);
-            return await Create(specProvider);
+            return await Create(specProvider, wallet: wallet);
         }
 
         public static async Task<Context> CreateWithCancunEnabled()
@@ -3311,7 +3360,8 @@ public partial class EthRpcModuleTests
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
             bool? useFlatDb = null,
-            int estimateErrorMargin = 0)
+            int estimateErrorMargin = 0,
+            IWallet? wallet = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -3328,6 +3378,11 @@ public partial class EthRpcModuleTests
             if (useFlatDb is not null)
             {
                 testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
+            if (wallet is not null)
+            {
+                testBlockchainBuilder.WithWallet(wallet);
             }
 
             return Task.FromResult(new Context

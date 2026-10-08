@@ -17,6 +17,14 @@ namespace Nethermind.Evm;
 
 public static partial class EvmInstructions
 {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
+    {
+        if (state.GetBalance(account) < value) return false;
+        state.NoteMinimumBalance(account, in value);
+        return true;
+    }
+
     /// <summary>
     /// Interface defining the execution type for a call-like opcode.
     /// </summary>
@@ -157,16 +165,26 @@ public static partial class EvmInstructions
             !TGasPolicy.UpdateMemoryCost(ref gas, in outputOffset, outputLength, ref vm.VmState.Memory))
             goto OutOfGas;
 
+        bool meterCodeSource = TSpec.IsEip8279Enabled && vm.IsColdBalAccess(codeSource);
+
         // Charge gas for accessing the account's code (including delegation logic if applicable).
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
+        // EIP-8279: the account enters the block access list on this first touch.
+        if (meterCodeSource && !vm.TryMeterBalData(Eip8279Constants.AddressBytes)) goto OutOfGas;
+
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (TSpec.UseHotAndColdStorage &&
-            delegated is not null &&
-            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
-            goto OutOfGas;
+        if (TSpec.UseHotAndColdStorage && delegated is not null)
+        {
+            bool meterDelegated = TSpec.IsEip8279Enabled && vm.IsColdBalAccess(delegated);
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+                goto OutOfGas;
+
+            // EIP-8279: the delegation target enters the block access list on this first touch.
+            if (meterDelegated && !vm.TryMeterBalData(Eip8279Constants.AddressBytes)) goto OutOfGas;
+        }
 
         // Charge additional gas if the target account is new or considered empty.
         // EIP-8038 charges a value transfer to a dead recipient the NEW_ACCOUNT state cost, separate
@@ -182,6 +200,12 @@ public static partial class EvmInstructions
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
+
+        // EIP-8279: a CALL moving value to another account puts the recipient's post balance in the block access list,
+        // metered even if the call then fails on depth or balance.
+        if (TSpec.IsEip8279Enabled && TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer && target != env.ExecutingAccount
+            && !vm.TryMeterBalData(Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
         // EIP-7702: load delegated code after cold-access charge above.
         if (delegated is not null)
@@ -205,7 +229,7 @@ public static partial class EvmInstructions
 
         // Check call depth and balance of the caller.
         if (env.CallDepth >= MaxCallDepth ||
-            (hasValueTransfer && state.GetBalance(env.ExecutingAccount) < callValue))
+            (hasValueTransfer && !HasAtLeast(state, env.ExecutingAccount, in callValue)))
         {
             EvmExceptionType precheckError = env.CallDepth >= MaxCallDepth ? EvmExceptionType.CallDepthExceeded : EvmExceptionType.NotEnoughBalance;
             if (vm.IsTracingActions)

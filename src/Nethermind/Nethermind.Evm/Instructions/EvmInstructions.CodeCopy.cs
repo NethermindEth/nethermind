@@ -169,6 +169,9 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> that indicates whether tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The current virtual machine instance.</param>
     /// <param name="stack">The EVM stack for operand retrieval and memory copy operations.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
@@ -176,25 +179,13 @@ public static partial class EvmInstructions
     /// <see cref="EvmExceptionType.None"/> on success, or an appropriate error code on failure.
     /// </returns>
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
-        {
-            (true, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm),
-            (true, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm),
-            (false, true) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm),
-            (false, false) => InstructionExtCodeCopy<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm),
-        };
-
-    [SkipLocalsInit]
-    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+    internal static EvmExceptionType InstructionExtCodeCopy<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Retrieve the target account address.
@@ -205,6 +196,9 @@ public static partial class EvmInstructions
         if (address is null ||
             !stack.PopUInt256(out UInt256 a, out UInt256 b, out UInt256 result))
             goto StackUnderflow;
+
+        // EIP-8279: the account enters the block access list on this first touch, metered before any charge.
+        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
 
         // Deduct gas cost: cost for external code access plus memory expansion cost.
         ulong words = EvmCalculations.Div32Ceiling(in result, out bool outOfGas);
@@ -265,6 +259,9 @@ public static partial class EvmInstructions
     /// <typeparam name="TTracingInst">
     /// A struct implementing <see cref="IFlag"/> indicating if instruction tracing is active.
     /// </typeparam>
+    /// <typeparam name="Eip8038">Whether EIP-8038 access costs apply.</typeparam>
+    /// <typeparam name="Eip2929">Whether EIP-2929 warm/cold account access applies.</typeparam>
+    /// <typeparam name="Eip8279">Whether EIP-8279 block access list metering applies.</typeparam>
     /// <param name="vm">The virtual machine instance.</param>
     /// <param name="stack">The EVM stack from which the account address is popped and where the code size is pushed.</param>
     /// <param name="gas">The gas which is updated by the operation's cost.</param>
@@ -274,26 +271,13 @@ public static partial class EvmInstructions
     /// </returns>
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst>(
-        ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
-        where TGasPolicy : struct, IGasPolicy<TGasPolicy>
-        where TTracingInst : struct, IFlag
-        => (vm.Spec.IsEip8038Enabled, vm.Spec.UseHotAndColdStorage) switch
-        {
-            (true, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (true, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OnFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-            (false, true) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OnFlag>(ref stack, ref gas, vm, programCounter),
-            (false, false) => InstructionExtCodeSize<TGasPolicy, TTracingInst, OffFlag, OffFlag>(ref stack, ref gas, vm, programCounter),
-        };
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929>(
+    internal static OpcodeResult InstructionExtCodeSize<TGasPolicy, TTracingInst, Eip8038, Eip2929, Eip8279>(
         ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm, nint programCounter)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
         where TTracingInst : struct, IFlag
         where Eip8038 : struct, IFlag
         where Eip2929 : struct, IFlag
+        where Eip8279 : struct, IFlag
     {
         IReleaseSpec spec = vm.Spec;
         // Deduct the gas cost for external code access.
@@ -302,6 +286,9 @@ public static partial class EvmInstructions
         // Pop the account address from the stack.
         Address? address = stack.PopAddress(vm.AddressCache);
         if (address is null) goto StackUnderflow;
+
+        // EIP-8279: the account enters the block access list on this first touch, metered before its charge.
+        if (Eip8279.IsActive && !vm.TryMeterColdBalAccess(address)) goto OutOfGas;
 
         // Charge gas for accessing the account's state.
         if (!TGasPolicy.TryConsumeAccountAccessGas<Eip2929, Eip8038>(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, address))
@@ -341,11 +328,16 @@ public static partial class EvmInstructions
                 if (DispatchFlags.CountOpcodes)
                     vm.OpCodeCount++;
                 programCounter++;
-                // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
-                if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
 
                 // Determine if the account is a contract by checking the loaded CodeHash.
                 bool isCodeLengthNotZero = vm.WorldState.IsContract(address);
+                // EXTCODESIZE reads the code before the folded operation can run out of gas, so a witness must carry it.
+                if (isCodeLengthNotZero)
+                    vm.WorldState.RecordBytecodeAccess(address);
+
+                // Deduct very-low gas cost for the next operation (ISZERO, GT, or EQ).
+                if (!TGasPolicy.UpdateGas<VeryLowGasCost>(ref gas)) return new OpcodeResult(programCounter, EvmExceptionType.OutOfGas);
+
                 // If the original instruction was GT, invert the check to match the semantics.
                 if (nextInstruction == Instruction.GT)
                 {

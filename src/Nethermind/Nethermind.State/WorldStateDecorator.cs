@@ -167,6 +167,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void RecordBytecodeAccess(Address address)
         => State.RecordBytecodeAccess(address);
 
+    public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
+        => State.NoteMinimumBalance(address, in minimum);
+
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();
 }

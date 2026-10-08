@@ -237,7 +237,7 @@ public sealed class StreamingParityLikeBlockTracer : ParityLikeBlockTracer, IDis
         foreach (ParityTxTraceFromStore item in ParityTxTraceFromStore.FromTxTrace(trace))
         {
             if (_storeFilter is not null && !_storeFilter.ShouldUseTxTrace(item.Action)) continue;
-            JsonSerializer.Serialize(_writer, item, _jsonOptions);
+            TypeInfoJsonSerializer.Serialize(_writer, item, _jsonOptions);
         }
     }
 

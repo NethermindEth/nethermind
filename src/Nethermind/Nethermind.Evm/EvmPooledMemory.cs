@@ -144,7 +144,7 @@ public partial struct EvmPooledMemory
         Debug.Assert(location.u0 + (ulong)length <= Size);
         int intLocation = TruncateToInt32(location.u0);
         ulong preparedInitializedSize = PrepareOverwriteAfterGas(location.u0, (ulong)length, location.u0);
-        value.CopyTo(GetBackingSpan(intLocation, length));
+        Bytes.Copy(value, GetBackingSpan(intLocation, length));
         CommitOverwrite(preparedInitializedSize);
     }
 
@@ -173,7 +173,7 @@ public partial struct EvmPooledMemory
         {
             int intSourceOffset = TruncateToInt32(sourceOffset.u0);
             copiedLength = Math.Min(source.Length - intSourceOffset, length);
-            source.Slice(intSourceOffset, copiedLength).CopyTo(target);
+            Bytes.Copy(source.Slice(intSourceOffset, copiedLength), target);
         }
 
         if (copiedLength != length)
@@ -639,7 +639,7 @@ public partial struct EvmPooledMemory
             length,
             sourceEnd);
         Span<byte> target = GetBackingSpan(TruncateToInt32(destination.u0), intLength);
-        GetBackingSpan(TruncateToInt32(source.u0), intLength).CopyTo(target);
+        Bytes.Copy(GetBackingSpan(TruncateToInt32(source.u0), intLength), target);
         CommitOverwrite(preparedInitializedSize);
     }
 
