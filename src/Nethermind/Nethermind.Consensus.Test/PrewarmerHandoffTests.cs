@@ -799,7 +799,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         new(tx, [],
             [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
             [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Address = write.Cell.Address, Index = write.Cell.Index, Value = write.Value })],
-            default, default, default) { RestoredWrites = restoredWrites };
+            default, default, default)
+        { RestoredWrites = restoredWrites };
 
     [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
