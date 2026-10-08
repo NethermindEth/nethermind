@@ -55,7 +55,7 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
-            .AddSingleton<PbtAnchorPublication>()
+            .AddSingleton<PbtAnchorImport>()
             .AddSingleton<PbtMigrationBootstrap>()
             .AddSingleton<PbtMigrationImport>()
             .AddSingleton<PbtBalReplay>()

@@ -28,7 +28,7 @@ internal sealed class PbtMigrationBootstrap(
     IPersistence flatPersistence,
     IPbtPersistence pbtPersistence,
     IPbtDbManager pbtManager,
-    PbtAnchorPublication publication,
+    PbtAnchorImport anchorImport,
     IPbtConfig configuration,
     IInitConfig initConfiguration,
     ChainSpec chainSpec,
@@ -58,7 +58,7 @@ internal sealed class PbtMigrationBootstrap(
 
     /// <remarks>
     /// A snapshot is imported on its own, and preimages beside it only verify it; without a snapshot, the genesis source
-    /// is imported whole. The inputs stay open through publication.
+    /// is imported whole. The inputs stay open through the import.
     /// </remarks>
     private async Task Import(BlockHeader genesis, CancellationToken cancellationToken)
     {
@@ -78,7 +78,7 @@ internal sealed class PbtMigrationBootstrap(
             using Stream? verifyingPreimages = configuration.MigrationPreimagesPath is { } verifyingPath
                 ? File.Open(verifyingPath, FileMode.Open, FileAccess.Read, FileShare.Read)
                 : null;
-            await publication.PublishSnapshot(snapshot, verifyingPreimages, anchor, scratch, IsCurrent, cancellationToken);
+            await anchorImport.ImportSnapshot(snapshot, verifyingPreimages, anchor, scratch, IsCurrent, cancellationToken);
         }
         else
         {
@@ -96,7 +96,7 @@ internal sealed class PbtMigrationBootstrap(
                     configuration.ExportSortBufferBytes, configuration.ImportConcurrency, cancellationToken);
                 exportedSnapshot.Position = 0;
                 exportedPreimages.Position = 0;
-                await publication.PublishSnapshot(exportedSnapshot, exportedPreimages, anchor, scratch, IsCurrent, cancellationToken);
+                await anchorImport.ImportSnapshot(exportedSnapshot, exportedPreimages, anchor, scratch, IsCurrent, cancellationToken);
             }
             finally { Directory.Delete(directory, recursive: true); }
         }

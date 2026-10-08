@@ -58,9 +58,9 @@ public static class Metrics
 
     /// <remarks>Sealing the write buffer into a snapshot and handing it, with the block's transient resource, to the manager.</remarks>
     [DetailedMetric]
-    [Description("Time publishing a committed pbt snapshot to the db manager (Stopwatch ticks)")]
+    [Description("Time sealing a committed pbt snapshot and adding it to the db manager (Stopwatch ticks)")]
     [ExponentialPowerHistogramMetric(Start = 1000, Factor = 1.5, Count = 40)]
-    public static IMetricObserver PbtPublishSnapshotTime { get; set; } = new NoopMetricObserver();
+    public static IMetricObserver PbtAddSnapshotTime { get; set; } = new NoopMetricObserver();
 
     /// <remarks>Dominated by gathering the bundle: every snapshot of the unpersisted chain is leased, so it grows with <see cref="PbtSnapshotBundleSize"/>.</remarks>
     [DetailedMetric]

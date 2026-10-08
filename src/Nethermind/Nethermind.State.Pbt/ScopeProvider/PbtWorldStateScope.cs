@@ -143,7 +143,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {
-                long publishStart = Stopwatch.GetTimestamp();
+                long addSnapshotStart = Stopwatch.GetTimestamp();
                 PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot, out PbtTransientResource transientResource);
                 if (_isReadOnly)
                 {
@@ -151,7 +151,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                     transientResource.ReleaseLease();
                 }
                 else _commitTarget.AddSnapshot(snapshot, transientResource);
-                Metrics.PbtPublishSnapshotTime.Observe(Stopwatch.GetTimestamp() - publishStart);
+                Metrics.PbtAddSnapshotTime.Observe(Stopwatch.GetTimestamp() - addSnapshotStart);
                 _currentStateId = newStateId;
             }
             _currentHeader = _childHeader;

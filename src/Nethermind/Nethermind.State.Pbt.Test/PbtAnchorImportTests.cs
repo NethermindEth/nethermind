@@ -36,7 +36,7 @@ using Nethermind.State.Pbt.Image;
 namespace Nethermind.State.Pbt.Test;
 
 [TestFixture]
-public class PbtAnchorPublicationTests
+public class PbtAnchorImportTests
 {
     [Test]
     public async Task Production_module_initializes_only_after_standard_flat_genesis([Values("normal", "wrong-genesis")] string mode)
@@ -555,9 +555,9 @@ public class PbtAnchorPublicationTests
         public PbtImageAnchor Anchor;
         public Func<bool> IsAnchorCurrent = () => true;
         public PbtTestContext Pbt { get; private set; } = null!;
-        private PbtAnchorPublication? _publication;
-        public PbtAnchorPublication Publication => _publication ??=
-            new PbtAnchorPublication(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.Coordinator, _config, LimboLogs.Instance);
+        private PbtAnchorImport? _anchorImport;
+        public PbtAnchorImport AnchorImport => _anchorImport ??=
+            new PbtAnchorImport(new PbtRocksDbPersistence(Target, _config, NullTrieNodeLog.Instance), Target, Pbt.Coordinator, _config, LimboLogs.Instance);
         private readonly string _name;
         private readonly PbtConfig _config;
 
@@ -587,7 +587,7 @@ public class PbtAnchorPublicationTests
         private void Open()
         {
             Pbt = new PbtTestContext(Target, _config);
-            _publication = null;
+            _anchorImport = null;
         }
 
         public async Task<ValueHash256> Publish(CancellationToken cancellationToken = default)
@@ -598,7 +598,7 @@ public class PbtAnchorPublicationTests
         }
 
         public Task<ValueHash256> Publish(Stream snapshot, Stream? preimages, CancellationToken cancellationToken) =>
-            Publication.PublishSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
+            AnchorImport.ImportSnapshot(snapshot, preimages, Anchor, Scratch.Path, IsAnchorCurrent, cancellationToken);
 
         public void Dispose()
         {

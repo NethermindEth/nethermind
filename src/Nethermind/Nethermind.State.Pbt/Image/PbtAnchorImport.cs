@@ -17,7 +17,7 @@ namespace Nethermind.State.Pbt.Image;
 /// the fast path without re-verifying the whole image, a restart with another source is refused, and an interrupted
 /// staging is wiped and redone.
 /// </remarks>
-internal sealed class PbtAnchorPublication(
+internal sealed class PbtAnchorImport(
     PbtRocksDbPersistence target,
     IColumnsDb<PbtColumns> targetDb,
     PbtPersistenceCoordinator coordinator,
@@ -32,12 +32,12 @@ internal sealed class PbtAnchorPublication(
     private static byte[] Provenance(PbtImageAnchor anchor) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
         new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
-    private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorImport>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
     /// <remarks>The preimages are not ingested: they only rebuild the anchor's MPT root over the staged state. Without
     /// them nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked.</remarks>
-    public async Task<ValueHash256> PublishSnapshot(Stream snapshot, Stream? preimages,
+    public async Task<ValueHash256> ImportSnapshot(Stream snapshot, Stream? preimages,
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();

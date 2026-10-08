@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt.Steps;
 /// </remarks>
 [RunnerStepDependencies(dependencies: [typeof(LoadGenesisBlock), typeof(StartMonitoring)], dependents: [typeof(ReviewBlockTree), typeof(InitializeNetwork)])]
 internal sealed class ImportMigrationSnapshotWithFakeRoots(
-    PbtAnchorPublication publication,
+    PbtAnchorImport anchorImport,
     IBlockTree blockTree,
     ChainSpec chainSpec,
     IDbFactory dbFactory,
@@ -37,7 +37,7 @@ internal sealed class ImportMigrationSnapshotWithFakeRoots(
         await using FileStream? preimages = config.MigrationPreimagesPath is { } preimagesPath
             ? File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read)
             : null;
-        await publication.PublishSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
+        await anchorImport.ImportSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
             () => blockTree.IsMainChain(anchor), cancellationToken);
     }
 }

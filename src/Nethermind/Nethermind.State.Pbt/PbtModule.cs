@@ -62,7 +62,7 @@ public class PbtModule(IPbtConfig config) : Module
 
         if (config.ImportMigrationSnapshotWithFakeRoots)
             builder
-                .AddSingleton<PbtAnchorPublication>()
+                .AddSingleton<PbtAnchorImport>()
                 .AddStep(typeof(ImportMigrationSnapshotWithFakeRoots));
 
         // Registered unconditionally so `nethermind import-pbt` and `nethermind scan-pbt` can always find them.
