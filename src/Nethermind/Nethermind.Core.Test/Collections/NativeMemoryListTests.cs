@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -61,10 +63,8 @@ public class NativeMemoryListTests
         Assert.That(list[0], Is.EqualTo(99));
     }
 
-    [TestCase(0)]
-    [TestCase(2)]
-    [TestCase(4)]
-    public void Insert_RemoveAt_at_various_indices(int index)
+    [Test]
+    public void Insert_RemoveAt_at_various_indices([Values(0, 2, 4)] int index)
     {
         using NativeMemoryList<int> list = new(8);
         list.AddRange(stackalloc int[] { 0, 1, 2, 3, 4 });
@@ -181,13 +181,13 @@ public class NativeMemoryListTests
             r.AddRange(stackalloc int[] { 1, 2, 3 });
             Assert.That(r.Count, Is.EqualTo(3));
             Assert.That(r[1], Is.EqualTo(2));
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 1, 2, 3 }));
             r.Add(4);
             Assert.That(r.AsSpan()[3], Is.EqualTo(4));
             r.Insert(0, 0);
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 0, 1, 2, 3, 4 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 0, 1, 2, 3, 4 }));
             r.RemoveAt(0);
-            Assert.That(r.AsSpan().ToArray(), Is.EqualTo(new[] { 1, 2, 3, 4 }));
+            Assert.That(r.AsSpan(), Is.SequenceEqualTo(new[] { 1, 2, 3, 4 }));
             r.Clear();
             Assert.That(r.Count, Is.EqualTo(0));
         }
@@ -229,6 +229,40 @@ public class NativeMemoryListTests
     }
 
     [Test]
+    public void Ref_struct_constructor_releases_pinned_buffer_when_enumeration_throws()
+    {
+        const int capacity = 16;
+        PoolMarker[] expected = ArrayPool<PoolMarker>.Shared.Rent(capacity);
+        ArrayPool<PoolMarker>.Shared.Return(expected);
+
+        Assert.Throws<InvalidOperationException>(ConstructFromThrowingEnumerable);
+
+        // The private element type isolates this .NET 10 SharedArrayPool TLS bucket, whose next Rent
+        // returns its most recently returned array; identity therefore proves constructor cleanup.
+        PoolMarker[] actual = ArrayPool<PoolMarker>.Shared.Rent(capacity);
+        try
+        {
+            Assert.That(actual, Is.SameAs(expected));
+        }
+        finally
+        {
+            ArrayPool<PoolMarker>.Shared.Return(actual);
+        }
+
+        static void ConstructFromThrowingEnumerable()
+        {
+            NativeMemoryListRef<PoolMarker> list = new(capacity, ThrowAfterOneItem());
+            list.Dispose();
+        }
+
+        static IEnumerable<PoolMarker> ThrowAfterOneItem()
+        {
+            yield return default;
+            throw new InvalidOperationException();
+        }
+    }
+
+    [Test]
     public void Empty_constructor_returns_disposable_zero_capacity()
     {
         using NativeMemoryList<int> empty = NativeMemoryList<int>.Empty();
@@ -240,10 +274,8 @@ public class NativeMemoryListTests
     // buffer is rented from ArrayPool<T>.Shared (pinned) rather than NativeMemory.Alloc.
     // The list must behave identically regardless of which strategy was used; verify all
     // mutating + read paths with a single end-to-end exercise.
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(64)]
-    public void Sub_threshold_capacity_round_trips(int capacity)
+    [Test]
+    public void Sub_threshold_capacity_round_trips([Values(8, 32, 64)] int capacity)
     {
         using NativeMemoryList<byte> list = new(capacity);
         Assert.That(list.Count, Is.EqualTo(0));
@@ -265,7 +297,7 @@ public class NativeMemoryListTests
         }
 
         list.RemoveAt(0);
-        Assert.That(list.AsSpan().ToArray(), Is.EqualTo(Bytes.FromHexString("deadbeef")));
+        Assert.That(list.AsSpan(), Is.SequenceEqualTo(Bytes.FromHexString("deadbeef")));
 
         list.Reverse();
         Assert.That(list[0], Is.EqualTo(0xef));
@@ -286,7 +318,7 @@ public class NativeMemoryListTests
         {
             Assert.That(list.Count, Is.EqualTo(payload.Length));
             Assert.That(list.Capacity, Is.GreaterThanOrEqualTo(payload.Length));
-            Assert.That(list.AsSpan().ToArray(), Is.EqualTo(payload));
+            Assert.That(list.AsSpan(), Is.SequenceEqualTo(payload));
         }
     }
 
@@ -310,13 +342,14 @@ public class NativeMemoryListTests
     // Regression for an issue where the (capacity, count) ctor would zero-clear `count` elements
     // against a buffer sized for `capacity` — heap overwrite when count > capacity on the native
     // path (no pool overallocation).
-    [TestCase(-1)]
-    [TestCase(5)]
-    public void Ctor_starting_count_out_of_range_throws(int badCount)
+    [Test]
+    public void Ctor_starting_count_out_of_range_throws([Values(-1, 5)] int badCount)
     {
         Assert.Throws<ArgumentOutOfRangeException>(() => { using NativeMemoryList<int> _ = new(4, badCount); });
         Assert.Throws<ArgumentOutOfRangeException>(() => CtorRef(badCount));
 
         static void CtorRef(int bad) { NativeMemoryListRef<int> _ = new(4, bad); }
     }
+
+    private readonly struct PoolMarker;
 }

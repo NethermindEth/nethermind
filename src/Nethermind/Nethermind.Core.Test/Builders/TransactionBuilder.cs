@@ -34,6 +34,12 @@ namespace Nethermind.Core.Test.Builders
 
         public TransactionBuilder<T> WithNonce(int nonce) => WithNonce((ulong)nonce);
 
+        public TransactionBuilder<T> WithNonceKeys(params UInt256[]? nonceKeys)
+        {
+            TestObjectInternal.NonceKeys = nonceKeys;
+            return this;
+        }
+
         public TransactionBuilder<T> WithHash(Hash256? hash)
         {
             TestObjectInternal.Hash = hash;

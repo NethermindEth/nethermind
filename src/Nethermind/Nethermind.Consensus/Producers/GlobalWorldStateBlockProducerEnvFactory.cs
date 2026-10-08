@@ -25,11 +25,11 @@ namespace Nethermind.Consensus.Producers
 
         protected virtual ContainerBuilder ConfigureBuilder(ContainerBuilder builder) => builder
             .AddScoped(txSourceFactory.Create())
-            .AddScoped(BlockchainProcessor.Options.Default)
             .AddScoped<TransactionProcessorAdapterFactory>(CreateBuildUpAdapter)
             .AddScoped<IBlockProcessor.IBlockTransactionsExecutor, BlockProcessor.BlockProductionTransactionsExecutor>()
             .AddDecorator<IWithdrawalProcessor, BlockProductionWithdrawalProcessor>()
-            .AddDecorator<IBlockchainProcessor, OneTimeChainProcessor>()
+            .AddScoped<IBlockchainProcessor, MainStateBlockBuildingChainProcessor>()
+            .AddDecorator<IBlockchainProcessor, BlockBuildingTrackingProcessor>()
             .AddScoped<IBlockProducerEnv, BlockProducerEnv>();
 
         private static ITransactionProcessorAdapter CreateBuildUpAdapter(ITransactionProcessor transactionProcessor)

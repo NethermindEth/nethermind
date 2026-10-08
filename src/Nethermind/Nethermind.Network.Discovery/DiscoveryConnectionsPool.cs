@@ -2,71 +2,179 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
-using DotNetty.Transport.Bootstrapping;
-using DotNetty.Transport.Channels;
+using System.Net.Sockets;
 using Nethermind.Logging;
 
 namespace Nethermind.Network.Discovery;
 
 /// <summary>
-/// Manages connections (Netty <see cref="IChannel"/>) allocated for all Discovery protocol versions.
+/// Manages UDP sockets (<see cref="IDatagramSocket"/>) allocated for all Discovery protocol versions.
 /// </summary>
 /// <remarks> Not thread-safe </remarks>
-public sealed class DiscoveryConnectionsPool(ILogger logger, IIPResolver ipResolver, IDiscoveryConfig discoveryConfig) : IConnectionsPool
+internal sealed class DiscoveryConnectionsPool(
+    ILogger logger,
+    IDiscoveryConfig discoveryConfig,
+    NetworkListenerState listenerState)
 {
+    // https://github.com/ethereum/devp2p/blob/master/discv4.md#wire-protocol
+    // https://github.com/ethereum/devp2p/blob/master/discv5/discv5-wire.md#udp-communication
+    internal const int MaxPacketSize = 1280;
+
+    // Must exceed MaxPacketSize so that oversized datagrams are detected instead of being truncated to a valid size.
+    private const int ReceiveBufferSize = 2048 * 2;
+
+    // Bounds the sender cache's memory when senders do not repeat, such as under spoofed traffic.
+    private const int MaxCachedSenders = 4096;
+
     private readonly ILogger _logger = logger;
-    private readonly IIPResolver _ipResolver = ipResolver;
     private readonly IDiscoveryConfig _discoveryConfig = discoveryConfig;
-    private readonly Dictionary<int, Task<IChannel>> _byPort = [];
+    private readonly NetworkListenerState _listenerState = listenerState;
+    private readonly Dictionary<int, Listener> _byPort = [];
 
-    public async Task<IChannel> BindAsync(Bootstrap bootstrap, int port)
+    /// <summary>
+    /// Binds a socket to <paramref name="port"/>, falling back to the listener's fallback address, and starts
+    /// passing every valid received datagram to <paramref name="onReceive"/>.
+    /// </summary>
+    /// <param name="socketFactory">Creates an unbound socket suitable for the given local address.</param>
+    /// <param name="port">The local port to bind.</param>
+    /// <param name="onReceive">Takes ownership of each received datagram; called on the receive loop.</param>
+    public IDatagramSocket Bind(
+        Func<IPAddress, IDatagramSocket> socketFactory,
+        int port,
+        Action<PooledUdpReceiveResult> onReceive)
     {
-        if (_byPort.TryGetValue(port, out Task<IChannel>? task)) return await task;
+        if (_byPort.TryGetValue(port, out Listener? existing)) return existing.Socket;
 
-        IPAddress ip = (await _ipResolver.Resolve()).LocalIp;
-        task = BindAsync(bootstrap, port, ip);
-        _byPort.Add(port, task);
+        IDatagramSocket socket = BindWithFallback(socketFactory, port);
+        Task receiveTask = Task.Run(() => ReceiveAsync(socket, onReceive));
+        if (socket.LocalEndpoint is { } endpoint)
+        {
+            _ = _listenerState.TrackDiscoveryAddress(endpoint.Address, receiveTask);
+        }
 
-        return await task;
+        _byPort.Add(port, new Listener(socket, receiveTask));
+        return socket;
     }
 
-    private async Task<IChannel> BindAsync(Bootstrap bootstrap, int port, IPAddress ip)
+    private IDatagramSocket BindWithFallback(Func<IPAddress, IDatagramSocket> socketFactory, int port)
     {
+        IPAddress preferredAddress = _listenerState.PreferredAddress;
+        IPAddress fallbackAddress = _listenerState.FallbackAddress;
         try
         {
-            return await NetworkHelper.HandlePortTakenError(() => bootstrap.BindAsync(ip, port), port);
+            try
+            {
+                return Bind(socketFactory, preferredAddress, port);
+            }
+            catch (Exception e) when (!preferredAddress.Equals(fallbackAddress))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Failed to bind discovery UDP channel on {preferredAddress}:{port}. Retrying on {fallbackAddress}:{port}. {e}");
+                return Bind(socketFactory, fallbackAddress, port);
+            }
         }
         catch (Exception e)
         {
-            _logger.Error($"Error when establishing discovery connection on Address: {ip}:{port}", e);
+            _logger.Error($"Error when establishing discovery connection on port {port}", e);
             throw;
+        }
+    }
+
+    private static IDatagramSocket Bind(Func<IPAddress, IDatagramSocket> socketFactory, IPAddress address, int port)
+    {
+        IDatagramSocket socket = socketFactory(address);
+        try
+        {
+            return NetworkHelper.HandlePortTakenError(() =>
+            {
+                socket.Bind(new IPEndPoint(address, port));
+                return socket;
+            }, port);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
+    private async Task ReceiveAsync(IDatagramSocket socket, Action<PooledUdpReceiveResult> onReceive)
+    {
+        byte[] buffer = new byte[ReceiveBufferSize];
+        SocketAddress senderAddress = new(socket.LocalEndpoint!.AddressFamily);
+        SenderEndpointCache senders = new(MaxCachedSenders);
+        try
+        {
+            while (true)
+            {
+                int receivedBytes;
+                try
+                {
+                    receivedBytes = await socket.ReceiveFromAsync(buffer, senderAddress);
+                }
+                // Windows reports ICMP errors caused by earlier sends on the next receive, and fails receives of datagrams
+                // larger than the buffer; neither affects later datagrams.
+                catch (SocketException e) when (e.SocketErrorCode is SocketError.ConnectionReset or SocketError.NetworkReset or SocketError.MessageSize)
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Ignoring discovery receive error: {e.SocketErrorCode}");
+                    continue;
+                }
+
+                Interlocked.Add(ref Metrics.DiscoveryBytesReceived, receivedBytes);
+                if (receivedBytes is 0 or > MaxPacketSize)
+                {
+                    // Potential cases where this can happen:
+                    // - Neighbors response containing 16+ nodes in a single packet
+                    if (_logger.IsDebug) _logger.Debug($"Skipping discovery packet of invalid size: {receivedBytes}");
+                    continue;
+                }
+
+                try
+                {
+                    onReceive(PooledUdpReceiveResult.Copy(buffer.AsSpan(0, receivedBytes), senders.GetOrAdd(senderAddress)));
+                }
+                catch (Exception e)
+                {
+                    if (_logger.IsError) _logger.Error("Exception when processing discovery messages", e);
+                }
+            }
+        }
+        catch (Exception e) when (e is ObjectDisposedException or SocketException { SocketErrorCode: SocketError.OperationAborted })
+        {
+        }
+        catch (SocketException e)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint} after a socket error. {e}");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("Exception when receiving discovery messages", e);
+        }
+        finally
+        {
+            socket.Dispose();
         }
     }
 
     public async Task StopAsync()
     {
-        foreach ((int port, Task<IChannel> channel) in _byPort)
-            await StopAsync(port, channel);
+        foreach ((int port, Listener listener) in _byPort)
+            await StopAsync(port, listener);
     }
 
-    private async Task StopAsync(int port, Task<IChannel> channelTask)
+    private async Task StopAsync(int port, Listener listener)
     {
+        _logger.Info($"Stopping discovery udp channel on port {port}");
+        listener.Socket.Dispose();
+
         try
         {
-            IChannel channel = await channelTask;
-            _logger.Info($"Stopping discovery udp channel on port {port}");
-
-            Task closeTask = channel.CloseAsync();
-            using CancellationTokenSource delayCancellation = new();
-
-            if (await Task.WhenAny(closeTask, Task.Delay(_discoveryConfig.UdpChannelCloseTimeout, delayCancellation.Token)) != closeTask)
-                _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} milliseconds");
-            else
-                delayCancellation.Cancel();
+            await listener.ReceiveTask.WaitAsync(TimeSpan.FromMilliseconds(_discoveryConfig.UdpChannelCloseTimeout));
         }
-        catch (Exception e)
+        catch (TimeoutException)
         {
-            _logger.Error("Error during udp channel stop process", e);
+            _logger.Error($"Could not close udp connection in {_discoveryConfig.UdpChannelCloseTimeout} milliseconds");
         }
     }
+
+    private sealed record Listener(IDatagramSocket Socket, Task ReceiveTask);
 }

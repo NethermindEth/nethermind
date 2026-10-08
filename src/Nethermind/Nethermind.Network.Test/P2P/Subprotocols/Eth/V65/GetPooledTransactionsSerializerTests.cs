@@ -13,7 +13,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class GetPooledTransactionsSerializerTests
     {
-        private static void Test(Hash256[] keys, string? expected = null)
+        private static void Test(ValueHash256[] keys, string? expected = null)
         {
             using GetPooledTransactionsMessage message = new(keys.ToPooledList());
             GetPooledTransactionsMessageSerializer serializer = new();
@@ -24,7 +24,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Roundtrip()
         {
-            Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            ValueHash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             Test(keys, EthSerializerGoldens.KeccakAbcListRlp);
         }
 
@@ -39,7 +39,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Empty_to_string()
         {
-            using GetPooledTransactionsMessage message = new(System.Array.Empty<Hash256>().ToPooledList());
+            using GetPooledTransactionsMessage message = new(System.Array.Empty<ValueHash256>().ToPooledList());
             Assert.That(message.ToString(), Does.StartWith(nameof(GetPooledTransactionsMessage)));
         }
     }

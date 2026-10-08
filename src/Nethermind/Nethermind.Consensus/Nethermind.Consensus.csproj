@@ -2,9 +2,11 @@
 
   <PropertyGroup>
     <Nullable>annotations</Nullable>
+    <IsAotCompatible>true</IsAotCompatible>
   </PropertyGroup>
 
   <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.Blockchain.Test" />
     <PackageReference Include="Collections.Pooled" />
   </ItemGroup>
 

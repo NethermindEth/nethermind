@@ -30,7 +30,8 @@ public class BlobsBundleV1
 
         foreach (Transaction? tx in block.Transactions)
         {
-            if (!tx.SupportsBlobs)
+            // Match the type-agnostic GetBlobCount sizing above, or a type-6 leaves null bundle entries.
+            if (!tx.CarriesBlobs)
             {
                 continue;
             }

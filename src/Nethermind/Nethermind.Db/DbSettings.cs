@@ -15,6 +15,12 @@ namespace Nethermind.Db
         /// <summary>When <c>true</c>, this database will not be registered with the metrics tracker.</summary>
         public bool SkipMetricsTracking { get; set; }
 
+        /// <summary>
+        /// When <c>true</c>, a RocksDB repair writes <c>repaired.marker</c> and a later open reports
+        /// <see cref="IDbMeta.WasRepairedOnOpen"/> until <see cref="IDbMeta.AcknowledgeRepair"/>.
+        /// </summary>
+        public bool PersistRepairMarkerUntilAcknowledged { get; set; }
+
         public IMergeOperator? MergeOperator { get; set; }
         public Dictionary<string, IMergeOperator>? ColumnsMergeOperators { get; set; }
 

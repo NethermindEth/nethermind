@@ -8,7 +8,7 @@ using Nethermind.Db.Rocks.Statistics;
 using NUnit.Framework;
 using NSubstitute;
 using Nethermind.Logging;
-using RocksDbSharp;
+using Nethermind.RocksDbBindings;
 
 namespace Nethermind.Db.Test
 {

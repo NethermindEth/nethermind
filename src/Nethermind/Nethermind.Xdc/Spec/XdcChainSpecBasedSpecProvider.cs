@@ -81,6 +81,7 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.IsTIPXDCXMiner = (chainSpecEngineParameters.TipXDCX ?? ulong.MaxValue) <= releaseStartBlock && releaseStartBlock < (chainSpecEngineParameters.TIPXDCXMinerDisable ?? ulong.MaxValue);
         releaseSpec.IsTIPXDCXReceiver = (chainSpecEngineParameters.TipXDCX ?? ulong.MaxValue) <= releaseStartBlock && releaseStartBlock < (chainSpecEngineParameters.TIPXDCXReceiverDisable ?? ulong.MaxValue);
         releaseSpec.IsDynamicGasLimitBlock = (chainSpecEngineParameters.DynamicGasLimitBlock ?? ulong.MaxValue) <= releaseStartBlock;
+        releaseSpec.MinimumGasPrice = chainSpecEngineParameters.ResolveMinGasPrice(releaseStartBlock);
         // Fall back to ulong.MaxValue so that a null TipUpgradeReward/Penalty means "never enabled".
         releaseSpec.IsTipUpgradeRewardEnabled = (chainSpecEngineParameters.TipUpgradeReward ?? ulong.MaxValue) <= releaseStartBlock;
         releaseSpec.IsTipUpgradePenaltyEnabled = (chainSpecEngineParameters.TipUpgradePenalty ?? ulong.MaxValue) <= releaseStartBlock;
@@ -95,8 +96,6 @@ public class XdcChainSpecBasedSpecProvider(ChainSpec chainSpec,
         releaseSpec.XDCXAddressBinary = chainSpecEngineParameters.XDCXAddressBinary;
         releaseSpec.TradingStateAddressBinary = chainSpecEngineParameters.TradingStateAddressBinary;
 
-        releaseSpec.LimitPenaltyEpoch = chainSpecEngineParameters.LimitPenaltyEpoch;
-        releaseSpec.LimitPenaltyEpochV2 = chainSpecEngineParameters.LimitPenaltyEpochV2;
         releaseSpec.RangeReturnSigner = chainSpecEngineParameters.RangeReturnSigner;
 
         releaseSpec.ApplyV2Config(0);

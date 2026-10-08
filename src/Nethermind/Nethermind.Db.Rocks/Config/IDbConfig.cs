@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Config;
 
 namespace Nethermind.Db.Rocks.Config;
 
 [ConfigCategory(HiddenFromDocs = true)]
+[DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)]
 public interface IDbConfig : IConfig
 {
     ulong SharedBlockCacheSize { get; set; }
@@ -170,9 +172,6 @@ public interface IDbConfig : IConfig
     /// <see cref="FlatHistoryAvailableBlocksDbRocksDbOptions"/>.
     /// </summary>
     string? FlatHistoryStorageClearsDbRocksDbOptions { get; set; }
-
-    string? PreimageDbRocksDbOptions { get; set; }
-    public string? PreimageDbAdditionalRocksDbOptions { get; set; }
 
     string? PersistedSnapshotCatalogDbRocksDbOptions { get; set; }
     string? PersistedSnapshotCatalogDbAdditionalRocksDbOptions { get; set; }

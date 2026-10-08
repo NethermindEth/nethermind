@@ -40,7 +40,7 @@ jobs:
         run: docker save nethermind:pr-local | gzip > /tmp/nethermind-pr-local.tar.gz
 
       - name: Upload image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: nethermind-pr-local-image
           path: /tmp/nethermind-pr-local.tar.gz
@@ -108,20 +108,24 @@ jobs:
 
       - name: Cache Sedge binary
         id: cache-sedge
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: sedge/build/sedge
           key: sedge-core-${{ runner.arch }}
 
       - name: Install Sedge
         if: steps.cache-sedge.outputs.cache-hit != 'true'
+        env:
+          # proxy.golang.org serves large module zips as a redirect to storage.googleapis.com,
+          # unreachable from the sync runners; `|` falls back to direct on any error, not just 404/410
+          GOPROXY: https://proxy.golang.org|direct
         run: |
           git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           cd sedge
-          make compile
+          make compile-sedge
 
       - name: Download PR image
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: nethermind-pr-local-image
           path: /tmp
@@ -202,7 +206,7 @@ jobs:
 
       - name: Upload Nethermind Debug logs artifact
         if: failure() || cancelled()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.artifact_name }}
           path: ${{ env.artifact_path }}

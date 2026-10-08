@@ -3,13 +3,12 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Flat.ScopeProvider;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.Sync.Snap;
 
@@ -66,7 +65,7 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
                 {
                     if (_enableDoubleWriteCheck)
                     {
-                        SlotValue existing = default;
+                        UInt256 existing = default;
                         if (_reader.TryGetStorageRaw(_addressHash, slot.Path, ref existing))
                             throw new Exception($"Double storage flat write. address:{_addressHash} slot:{slot.Path} firstEntry:{_pendingEntries[0].Path} lastEntry:{_pendingEntries[_pendingEntries.Count - 1].Path} upperBound:{upperBound}");
                     }
@@ -85,39 +84,4 @@ public class FlatSnapStorageTree : ISnapTree<PathWithStorageSlot>
         _writeBatch.Dispose();
         _reader.Dispose();
     }
-
-    /// <summary>
-    /// Storage trie store adapter that writes trie nodes AND flat storage entries to IPersistence.IWriteBatch.
-    /// Uses IPersistenceReader for IsPersisted queries during snap sync.
-    /// </summary>
-    private class PersistenceStorageTrieStoreAdapter(
-        IPersistence.IPersistenceReader reader,
-        IPersistence.IWriteBatch writeBatch,
-        Hash256 addressHash,
-        bool enableDoubleWriteCheck) : AbstractMinimalTrieStore
-    {
-        public override TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => new(NodeType.Unknown, hash);
-
-        public override byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-            reader.TryLoadStorageRlp(addressHash, path, flags);
-
-        public override ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) =>
-            new StorageCommitter(writeBatch, reader, addressHash, enableDoubleWriteCheck);
-
-        private sealed class StorageCommitter(IPersistence.IWriteBatch writeBatch, IPersistence.IPersistenceReader reader, Hash256 address, bool enableDoubleWriteCheck) : ICommitter
-        {
-            public TrieNode CommitNode(ref TreePath path, TrieNode node)
-            {
-                if (enableDoubleWriteCheck && reader.TryLoadStorageRlp(address, path, ReadFlags.None) != null)
-                {
-                    throw new Exception($"Double storage rlp write. {address} {path}");
-                }
-                writeBatch.SetStorageTrieNode(address, path, node.FullRlp.AsSpan());
-                return node;
-            }
-
-            public void Dispose() { }
-        }
-    }
-
 }

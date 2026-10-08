@@ -12,5 +12,9 @@ namespace Nethermind.JsonRpc
         string Id { get; }
         Task<int> SendJsonRpcResult(JsonRpcResult result, CancellationToken cancellationToken = default);
         event EventHandler Closed;
+
+        /// <summary>Whether this client reports that it has closed.</summary>
+        /// <remarks>Legacy implementations that do not expose closed state return false.</remarks>
+        bool IsClosed => false;
     }
 }

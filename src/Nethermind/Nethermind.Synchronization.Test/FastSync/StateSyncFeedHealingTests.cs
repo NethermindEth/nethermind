@@ -189,10 +189,10 @@ public class StateSyncFeedHealingTests : StateSyncFeedTestsBase
 
         AccountProofCollector accountProofCollector = new(startingHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] firstProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] firstProof = accountProofCollector.BuildResult().Proof;
         accountProofCollector = new(endHash.Bytes);
         remoteStateTree.Accept(accountProofCollector, remoteStateTree.RootHash);
-        byte[][] lastProof = accountProofCollector.BuildResult().Proof!;
+        byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
         _ = SnapProviderHelper.AddAccountRange(snapTrieFactory, blockNumber, rootHash, startingHash, limitHash, accounts, new ByteArrayListAdapter(new ArrayPoolList<byte[]>(firstProof.Length + lastProof.Length, firstProof.Concat(lastProof))));
     }

@@ -52,11 +52,8 @@ public class TransactionProcessorFeeTests
     [TearDown]
     public void TearDown() => _worldStateCloser.Dispose();
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public void Check_fees_with_fee_collector(bool isTransactionEip1559, bool withFeeCollector)
+    [Test]
+    public void Check_fees_with_fee_collector([Values] bool isTransactionEip1559, [Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -151,9 +148,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)58357));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_multiple_transactions(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_multiple_transactions([Values] bool withFeeCollector)
     {
         if (withFeeCollector)
         {
@@ -180,9 +176,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)84000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    [Test]
+    public void Check_paid_fees_with_blob([Values] bool withFeeCollector)
     {
         UInt256 initialBalance = 0;
         if (withFeeCollector)
@@ -254,9 +249,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)102000));
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void Should_stop_when_cancellation(bool withCancellation)
+    [Test]
+    public void Should_stop_when_cancellation([Values] bool withCancellation)
     {
         Transaction tx1 = Build.A.Transaction
             .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.EIP1559)
@@ -336,9 +330,8 @@ public class TransactionProcessorFeeTests
         Assert.That(tracer.BurntFees, Is.EqualTo((UInt256)21000));
     }
 
-    [TestCase(TxType.EIP1559)]
-    [TestCase(TxType.Legacy)]
-    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee(TxType txType)
+    [Test]
+    public void CallAndRestore_returns_descriptive_error_when_maxFeePerGas_below_baseFee([Values(TxType.EIP1559, TxType.Legacy)] TxType txType)
     {
         UInt256 baseFee = 100;
         UInt256 feeCap = 50;

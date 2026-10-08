@@ -11,5 +11,8 @@ namespace Nethermind.JsonRpc.Modules
         public string? Description { get; set; }
 
         public string? ExampleValue { get; set; }
+
+        /// <summary>Converter used to deserialize this parameter before method invocation.</summary>
+        public Type? ConverterType { get; set; }
     }
 }

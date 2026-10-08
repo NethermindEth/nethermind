@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
@@ -15,9 +16,11 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
 using Multiformats.Address;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Libp2p.Protocols.Pubsub.Dto;
 using Nethermind.Logging;
@@ -304,8 +307,22 @@ public class OptimismCLP2P : IDisposable
         if (_logger.IsInfo) _logger.Info("Starting Optimism CL P2P");
 
         IPeerFactory peerFactory = _serviceProvider.GetService<IPeerFactory>()!;
-        string hostIp = _config.ClP2PHost ?? (await _ipResolver.Resolve(token)).ExternalIp.ToString();
-        string address = $"/ip4/{hostIp}/tcp/{_config.ClP2PPort}";
+        IPAddress hostIp;
+        if (_config.ClP2PHost is { } configuredHost)
+        {
+            if (!IPAddress.TryParse(configuredHost, out hostIp!))
+            {
+                throw new InvalidConfigurationException(
+                    $"{nameof(IOptimismConfig)}.{nameof(IOptimismConfig.ClP2PHost)} must be an IPv4 or IPv6 address.",
+                    ExitCodes.GeneralError);
+            }
+        }
+        else
+        {
+            hostIp = (await _ipResolver.Resolve(token)).ExternalIp;
+        }
+
+        string address = NetworkHelper.ToTcpMultiaddress(hostIp, _config.ClP2PPort);
         _localPeer = (LocalPeer)peerFactory.Create(new Identity());
 
         _router = _serviceProvider.GetService<PubsubRouter>()!;

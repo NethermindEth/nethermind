@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -21,10 +22,16 @@ public class DisposableScopeOverridableEnv<T>(
     T resolvedComponents
 ) : IOverridableEnv<T>
 {
-    public Scope<T> BuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride = null, IReleaseSpec? specOverride = null, BlockOverride? blockOverride = null)
+    public bool TryBuildAndOverride(BlockHeader? header, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, BlockOverride? blockOverride, [NotNullWhen(true)] out Scope<T>? scope) =>
+        Wrap(overridableEnv.TryBuildAndOverride(header, stateOverride, specOverride, blockOverride, out IDisposable? disposable), disposable, out scope);
+
+    public bool TryBuildAndOverrideAtTarget(BlockHeader targetBlock, Dictionary<Address, AccountOverride>? stateOverride, IReleaseSpec? specOverride, [NotNullWhen(true)] out Scope<T>? scope) =>
+        Wrap(overridableEnv.TryBuildAndOverrideAtTarget(targetBlock, stateOverride, specOverride, out IDisposable? disposable), disposable, out scope);
+
+    private bool Wrap(bool acquired, IDisposable? disposable, [NotNullWhen(true)] out Scope<T>? scope)
     {
-        IDisposable disposable = overridableEnv.BuildAndOverride(header, stateOverride, specOverride, blockOverride);
-        return new Scope<T>(resolvedComponents, disposable);
+        scope = acquired ? new Scope<T>(resolvedComponents, disposable!) : null;
+        return acquired;
     }
 }
 

@@ -159,6 +159,24 @@ public enum Instruction : byte
     LOG3 = 0xa3,
     LOG4 = 0xa4,
 
+    // EIP-8141 frame transactions
+    APPROVE = 0xaa,
+    TXPARAM = 0xb0,
+    FRAMEDATALOAD = 0xb1,
+    FRAMEDATACOPY = 0xb2,
+    FRAMEPARAM = 0xb3,
+    SIGPARAM = 0xb4,
+    SIGDATACOPY = 0xb5,
+
+    TXTRACE = 0xb7,
+    TXDIFF = 0xb8,
+    EVENTDATACOPY = 0xb9,
+
+    // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these take the next free values.
+    CALLSUB = 0xba,
+    CALLDEST = 0xbb,
+    RETURNSUB = 0xbc,
+
     DUPN = 0xe6,
     SWAPN = 0xe7,
     EXCHANGE = 0xe8,

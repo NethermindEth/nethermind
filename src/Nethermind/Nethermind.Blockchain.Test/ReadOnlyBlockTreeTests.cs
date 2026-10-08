@@ -23,6 +23,13 @@ public class ReadOnlyBlockTreeTests
     }
 
     [TestCase]
+    public void TryRewindHead_refuses_mutation()
+    {
+        Assert.That(() => _blockTree.TryRewindHead(TestItem.KeccakA), Throws.InvalidOperationException);
+        _innerBlockTree.DidNotReceive().TryRewindHead(TestItem.KeccakA);
+    }
+
+    [TestCase]
     public void DeleteChainSlice_throws_when_endNumber_other_than_bestKnownNumber()
     {
         Action action = () => _blockTree.DeleteChainSlice(0, 10);

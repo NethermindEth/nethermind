@@ -5,7 +5,7 @@ namespace Nethermind.Core.Specs;
 
 /// <summary>
 /// Wraps a release spec and disables EIP-158 empty-account deletion so that state-override
-/// commits do not spuriously delete accounts whose code/nonce were zeroed while storage remains.
+/// commits do not spuriously delete synthetic accounts with storage.
 /// </summary>
 internal sealed class NoEip158Spec(IReleaseSpec spec) : ReleaseSpecDecorator(spec)
 {

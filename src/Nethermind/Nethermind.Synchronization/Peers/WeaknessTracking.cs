@@ -29,7 +29,7 @@ namespace Nethermind.Synchronization.Peers
         /// <remarks>
         /// Each single-bit context sits at the nibble matching its bit index (<see cref="AllocationContexts.Headers"/>=0 …
         /// <see cref="AllocationContexts.BlockAccessLists"/>=6); the composite <see cref="AllocationContexts.Blocks"/>
-        /// takes the last slot. No allocation slot exists for <see cref="AllocationContexts.BlockAccessLists"/>/<see cref="AllocationContexts.Blocks"/>, but both participate in weakness.
+        /// takes the last slot. No allocation slot exists for the composite <see cref="AllocationContexts.Blocks"/>, but it participates in weakness.
         /// </remarks>
         public static int IndexOf(AllocationContexts context) =>
             context == AllocationContexts.Blocks

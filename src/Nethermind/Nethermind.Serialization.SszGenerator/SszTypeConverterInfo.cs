@@ -198,28 +198,28 @@ internal sealed class SszTypeConverterInfo
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, Parameters.Length: 1 }
                 && SymbolEqualityComparer.Default.Equals(m.ReturnType, targetType)
-                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>)));
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<>)));
 
     private static bool HasCollectionFromSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("FromSpan")
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
-                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<byte>))
-                && IsSpanOfType(m.Parameters[1].Type, nameof(Span<byte>), targetType));
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(ReadOnlySpan<>))
+                && IsSpanOfType(m.Parameters[1].Type, nameof(Span<>), targetType));
 
     private static bool HasToSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("ToSpan")
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
-                && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<byte>))
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<>))
                 && SymbolEqualityComparer.Default.Equals(m.Parameters[1].Type, targetType));
 
     private static bool HasCollectionToSpanMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("ToSpan")
             .OfType<IMethodSymbol>()
             .Any(m => m is { DeclaredAccessibility: Accessibility.Public, IsStatic: true, ReturnsVoid: true, Parameters.Length: 2 }
-                && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<byte>))
-                && IsSpanOfType(m.Parameters[1].Type, nameof(ReadOnlySpan<byte>), targetType));
+                && IsSpanOfByte(m.Parameters[0].Type, nameof(Span<>))
+                && IsSpanOfType(m.Parameters[1].Type, nameof(ReadOnlySpan<>), targetType));
 
     private static bool HasFeedMethod(INamedTypeSymbol converterType, ITypeSymbol targetType) =>
         converterType.GetMembers("Feed")

@@ -13,6 +13,35 @@ namespace Nethermind.Core.Test.Eip2930;
 public class AccessListTests
 {
     [Test]
+    public void Concrete_storage_enumeration_preserves_entry_boundaries([Values(0, 1, 32)] int keyCount)
+    {
+        AccessList.Builder builder = new();
+        for (int entry = 0; entry < 3; entry++)
+        {
+            builder.AddAddress(TestItem.AddressA);
+            for (int key = 0; key < keyCount; key++)
+                builder.AddStorage((UInt256)(entry * keyCount + key));
+        }
+
+        int index = 0;
+        foreach ((Address _, AccessList.StorageKeysEnumerable keys) in builder.Build())
+        {
+            List<UInt256> actual = [];
+            foreach (UInt256 key in keys) actual.Add(key);
+
+            List<UInt256> expected = [];
+            for (int key = 0; key < keyCount; key++) expected.Add((UInt256)(index * keyCount + key));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(expected));
+                Assert.That((IEnumerable<UInt256>)keys, Is.EqualTo(actual));
+            }
+            index++;
+        }
+        Assert.That(index, Is.EqualTo(3));
+    }
+
+    [Test]
     public void Single_address_with_multiple_storage_keys()
     {
         Address address = TestItem.AddressA;

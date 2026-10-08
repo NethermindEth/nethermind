@@ -16,9 +16,8 @@ namespace Nethermind.Xdc.Test;
 [TestFixture, Parallelizable(ParallelScope.All)]
 public class XdcChainSpecTests
 {
-    [TestCase("xdc.json")]
-    [TestCase("xdc-testnet.json")]
-    public void System_contract_addresses_are_deserialized(string chainSpecFile)
+    [Test]
+    public void System_contract_addresses_are_deserialized([Values("xdc.json", "xdc-testnet.json")] string chainSpecFile)
     {
         XdcChainSpecEngineParameters engineParameters = EngineParameters(LoadChainSpec(chainSpecFile));
 
@@ -34,9 +33,8 @@ public class XdcChainSpecTests
         });
     }
 
-    [TestCase("xdc.json")]
-    [TestCase("xdc-testnet.json")]
-    public void XDCX_flags_flip_on_their_own_blocks(string chainSpecFile)
+    [Test]
+    public void XDCX_flags_flip_on_their_own_blocks([Values("xdc.json", "xdc-testnet.json")] string chainSpecFile)
     {
         ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
         XdcChainSpecEngineParameters engineParameters = EngineParameters(chainSpec);
@@ -58,6 +56,22 @@ public class XdcChainSpecTests
             Assert.That(specProvider.GetXdcSpec(receiverDisable - 1).IsTIPXDCXReceiver, Is.True);
             Assert.That(specProvider.GetXdcSpec(receiverDisable).IsTIPXDCXReceiver, Is.False);
         });
+    }
+
+    // Apothem sets the post-TIPUpgradePenalty parole window in its v2 config and mainnet does not, where
+    // PenaltyHandler falls back to a single epoch. Both feed a consensus rule, so pin what the files resolve to.
+    [TestCase("xdc-testnet.json", 5UL)]
+    [TestCase("xdc.json", 0UL)]
+    public void Penalty_window_is_taken_from_the_v2_config(string chainSpecFile, ulong expectedLimitPenaltyEpoch)
+    {
+        ChainSpec chainSpec = LoadChainSpec(chainSpecFile);
+        XdcChainSpecEngineParameters engineParameters = EngineParameters(chainSpec);
+        XdcChainSpecBasedSpecProvider specProvider = new(chainSpec, engineParameters, LimboLogs.Instance);
+
+        ulong latestRound = engineParameters.V2Configs[^1].SwitchRound;
+        IXdcReleaseSpec spec = specProvider.GetXdcSpec(engineParameters.SwitchBlock + 1, latestRound);
+
+        Assert.That(spec.LimitPenaltyEpoch, Is.EqualTo(expectedLimitPenaltyEpoch));
     }
 
     private static ChainSpec LoadChainSpec(string chainSpecFile) =>

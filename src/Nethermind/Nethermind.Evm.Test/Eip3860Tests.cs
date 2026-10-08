@@ -17,7 +17,7 @@ namespace Nethermind.Evm.Test
         protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
-        private readonly ulong _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;
+        private readonly ulong _transactionCallCost = GasCostOf.Transaction + GasCostOf.ColdAccountAccess + 7 * GasCostOf.VeryLow;
 
         [TestCase("0x61013860006000f0", false, 32039)] //length 312
         [TestCase("0x61013860006000f0", true, 32059)] //extra 20 cost
@@ -44,9 +44,8 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.GasSpent - _transactionCallCost, Is.EqualTo(expectedGasUsage));
         }
 
-        [TestCase("60006000F0")]
-        [TestCase("60006000F5")]
-        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit(string createCode)
+        [Test]
+        public void Test_EIP_3860_InitCode_Create_Exceeds_Limit([Values("60006000F0", "60006000F5")] string createCode)
         {
             string dataLengthHex = (Spec.MaxInitCodeSize + 1).ToString("X");
             Instruction dataPush = Instruction.PUSH1 + (byte)(dataLengthHex.Length / 2 - 1);

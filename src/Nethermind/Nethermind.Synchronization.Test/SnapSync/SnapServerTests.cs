@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BlockAccessLists;
@@ -8,8 +9,8 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
 using Nethermind.State.SnapServer;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
@@ -20,7 +21,7 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 [TestFixture]
 public class SnapServerTests
 {
-    private MemDb _codeDb = null!;
+    private TestMemDb _codeDb = null!;
     private IBlockTree _blockTree = null!;
     private IBlockAccessListStore _balStore = null!;
     private SnapServer _server = null!;
@@ -28,7 +29,7 @@ public class SnapServerTests
     [SetUp]
     public void SetUp()
     {
-        _codeDb = new MemDb();
+        _codeDb = new TestMemDb();
         _blockTree = Substitute.For<IBlockTree>();
         _balStore = Substitute.For<IBlockAccessListStore>();
         _server = new SnapServer(NoopSnapServer.Instance, _codeDb, _blockTree, _balStore);
@@ -65,8 +66,11 @@ public class SnapServerTests
         using IByteArrayList result = _server.GetByteCodes([hashA, hashB], long.MaxValue, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].ToArray(), Is.EqualTo(codeA));
-        Assert.That(result[1].ToArray(), Is.EqualTo(codeB));
+        Assert.That(result[0], Is.SequenceEqualTo(codeA));
+        Assert.That(result[1], Is.SequenceEqualTo(codeB));
+        // Peers ask for hash-random code, so serving must not churn the block cache.
+        _codeDb.KeyWasReadWithFlags(hashA.ToByteArray(), ReadFlags.HintCacheMiss);
+        _codeDb.KeyWasReadWithFlags(hashB.ToByteArray(), ReadFlags.HintCacheMiss);
     }
 
     [Test]
@@ -90,7 +94,7 @@ public class SnapServerTests
 
         // The missing hash contributes no entry, so only the present code is returned.
         Assert.That(result.Count, Is.EqualTo(1));
-        Assert.That(result[0].ToArray(), Is.EqualTo(code));
+        Assert.That(result[0], Is.SequenceEqualTo(code));
     }
 
     [Test]
@@ -105,6 +109,47 @@ public class SnapServerTests
         Assert.That(result.Count, Is.EqualTo(1));
     }
 
+    // Code is read as native memory the store must free, so a missing code or a read cut short by the limit still frees it.
+    [Test]
+    public void GetByteCodes_releases_every_code_it_reads()
+    {
+        ValueHash256 hashA = StoreCode(new byte[100]);
+        ValueHash256 hashB = StoreCode(new byte[100]);
+        ValueHash256 missing = Keccak.Compute([9, 9, 9]).ValueHash256;
+        ReleaseCountingCodeDb codeDb = new(_codeDb);
+        SnapServer server = new(NoopSnapServer.Instance, codeDb, _blockTree, _balStore);
+
+        using IByteArrayList result = server.GetByteCodes([missing, hashA, hashB], 1, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeDb.Reads, Is.EqualTo(2), "the limit stops the reads after the first code");
+            Assert.That(codeDb.Held, Is.Zero);
+        }
+    }
+
+    /// <summary>Counts code reads and the ones not yet released.</summary>
+    private sealed class ReleaseCountingCodeDb(IReadOnlyKeyValueStore inner) : IReadOnlyKeyValueStore
+    {
+        public int Reads { get; private set; }
+        public int Held { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => inner.Get(key, flags);
+
+        public Span<byte> GetSpan(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            Reads++;
+            Held++;
+            return inner.GetSpan(key, flags);
+        }
+
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
+        {
+            Held--;
+            inner.DangerousReleaseMemory(span);
+        }
+    }
+
     [Test]
     public void GetBlockAccessLists_returns_rlp_for_known_blocks()
     {
@@ -117,8 +162,8 @@ public class SnapServerTests
             [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256], long.MaxValue, CancellationToken.None);
 
         Assert.That(result.Count, Is.EqualTo(2));
-        Assert.That(result[0].ToArray(), Is.EqualTo(balA));
-        Assert.That(result[1].ToArray(), Is.EqualTo(balB));
+        Assert.That(result[0], Is.SequenceEqualTo(balA));
+        Assert.That(result[1], Is.SequenceEqualTo(balB));
     }
 
     [Test]
@@ -134,7 +179,7 @@ public class SnapServerTests
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Length, Is.EqualTo(0));
-        Assert.That(result[1].ToArray(), Is.EqualTo(bal));
+        Assert.That(result[1], Is.SequenceEqualTo(bal));
     }
 
     [Test]
@@ -150,7 +195,7 @@ public class SnapServerTests
 
         Assert.That(result.Count, Is.EqualTo(2));
         Assert.That(result[0].Length, Is.EqualTo(0));
-        Assert.That(result[1].ToArray(), Is.EqualTo(bal));
+        Assert.That(result[1], Is.SequenceEqualTo(bal));
     }
 
     [Test]

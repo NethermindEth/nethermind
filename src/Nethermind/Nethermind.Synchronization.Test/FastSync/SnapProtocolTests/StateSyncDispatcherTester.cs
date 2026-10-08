@@ -21,15 +21,13 @@ namespace Nethermind.Synchronization.Test.FastSync.SnapProtocolTests
         public async Task ExecuteDispatch(StateSyncBatch batch, int times)
         {
             StateSyncAllocationStrategyFactory strategyFactory = new();
-            SyncPeerAllocation allocation = await syncPeerPool.Allocate(
+            using SyncPeerAllocation allocation = await syncPeerPool.Allocate(
                 strategyFactory.Create(batch), AllocationContexts.State, _syncConfig.SyncDispatcherAllocateTimeoutMs);
 
             for (int i = 0; i < times; i++)
             {
                 await downloader.Dispatch(allocation.Current!, batch, CancellationToken.None);
             }
-
-            syncPeerPool.Free(allocation);
         }
 
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;

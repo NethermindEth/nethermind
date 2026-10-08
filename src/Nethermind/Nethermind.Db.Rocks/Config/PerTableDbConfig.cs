@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -64,7 +65,7 @@ public class PerTableDbConfig : IRocksDbConfig
     public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
     public double CompressibilityHint => ReadConfig<double>(nameof(CompressibilityHint));
     public FlushOnExitMode FlushOnExit => ReadConfig<FlushOnExitMode?>(nameof(FlushOnExit)) ?? FlushOnExitMode.WalOnly;
-    public IntPtr? BlockCache => null;
+    public nint? BlockCache => null;
 
     private T? ReadConfig<T>(string propertyName) => ReadConfig<T>(_dbConfig, propertyName, _reversedPrefixes);
 
@@ -157,6 +158,6 @@ public class PerTableDbConfig : IRocksDbConfig
         }
     }
 
-    private static PropertyInfo? GetProperty(Type type, string name) =>
+    private static PropertyInfo? GetProperty([DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.PublicProperties | DynamicallyAccessedMemberTypes.NonPublicProperties)] Type type, string name) =>
         type.GetProperty(name, BindingFlags.Public | BindingFlags.Instance | BindingFlags.IgnoreCase);
 }

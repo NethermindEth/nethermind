@@ -66,15 +66,15 @@ public class PersistedSnapshotCompactor(
     /// <inheritdoc/>
     public async ValueTask EnqueueAsync(ArrayPoolList<StateId> batch, ulong persistedBlockNumber, CancellationToken cancellationToken)
     {
-        // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
-        _ = EnsureStarted();
         try
         {
+            // Fire-and-forget: EnsureStarted returns the long-running compactor task, which must not be awaited.
+            _ = EnsureStarted();
             // Awaits a free slot on the bounded queue, providing backpressure without blocking a thread;
             // the caller's token releases the wait on shutdown.
             await _compactPersistedJobs.Writer.WriteAsync((batch, persistedBlockNumber), cancellationToken);
         }
-        catch (OperationCanceledException)
+        catch
         {
             // The batch never entered the channel, so dispose the handoff we still own.
             batch.Dispose();
@@ -87,6 +87,8 @@ public class PersistedSnapshotCompactor(
         // Guard against concurrent EnqueueAsync callers spawning duplicate worker sets.
         lock (_startLock)
         {
+            ObjectDisposedException.ThrowIf(_disposed != 0, this);
+
             _compactPersistedTask ??= RunPersistedCompactor(_shutdownToken);
             if (_boundaryCompactorTasks is null)
             {
@@ -214,7 +216,11 @@ public class PersistedSnapshotCompactor(
 
     public async ValueTask DisposeAsync()
     {
-        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+        lock (_startLock)
+        {
+            if (_disposed != 0) return;
+            _disposed = 1;
+        }
         // Complete and drain the persisted stage first so any boundary jobs it produces are written
         // before the boundary channel is completed; on process exit the shared token has already
         // cancelled both stages, so these awaits return promptly instead of draining.

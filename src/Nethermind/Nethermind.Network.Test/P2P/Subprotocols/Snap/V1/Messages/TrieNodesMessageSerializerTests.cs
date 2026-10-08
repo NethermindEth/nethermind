@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages;
 using NUnit.Framework;
 
@@ -33,5 +35,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.V1.Messages
             TrieNodesMessageSerializer serializer = new();
             Assert.That(serializer.Serialize(message).ToHexString(), Is.EqualTo("ca01c884deadc0de82feed"));
         }
+
+        private static IEnumerable<TestCaseData> NodesLimitCases() =>
+            ByteArrayListLimitTester.BoundaryCases(SnapMessageLimits.TrieNodesRlpLimit);
+
+        [TestCaseSource(nameof(NodesLimitCases))]
+        public void Deserialize_EnforcesNodesCountLimit(int nodeCount, bool shouldThrow) =>
+            ByteArrayListLimitTester.AssertLimitEnforced(
+                new TrieNodesMessageSerializer(),
+                static nodes => new TrieNodesMessage(nodes) { RequestId = 1 },
+                static message => message.Nodes.Count,
+                nodeCount,
+                shouldThrow);
     }
 }

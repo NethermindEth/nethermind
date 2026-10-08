@@ -4,7 +4,10 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using System.IO.Abstractions;
+using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -34,8 +37,11 @@ public class SeedFlatHistoryGenesisTests
     {
         _db = new SnapshotableMemColumnsDb<FlatDbColumns>();
         _historyColumns = new SnapshotableMemColumnsDb<FlatHistoryColumns>();
-        _writer = new HistoryWriter(_db, _historyColumns, new FlatDbConfig { HistoryEnabled = true }, LimboLogs.Instance);
-        _reader = new HistoryReader(_db, _historyColumns, LimboLogs.Instance);
+        FlatDbConfig config = new() { HistoryEnabled = true };
+        HistoryAvailability availability = new(_historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks));
+        HistoryRowFormat rowFormat = HistoryRowFormat.Resolve(availability, config);
+        _writer = new HistoryWriter(_db, _historyColumns, config, availability, rowFormat, LimboLogs.Instance, commitments: null);
+        _reader = new HistoryReader(_db, _historyColumns, availability, rowFormat, LimboLogs.Instance);
     }
 
     [TearDown]
@@ -147,16 +153,20 @@ public class SeedFlatHistoryGenesisTests
         IFlatDbConfig flatDbConfig = Substitute.For<IFlatDbConfig>();
         flatDbConfig.Enabled.Returns(flatActive);
 
-        IPersistence.IPersistenceReader reader = Substitute.For<IPersistence.IPersistenceReader>();
-        reader.CurrentState.Returns(flatActive ? new StateId(1, Keccak.Zero) : StateId.PreGenesis);
-        IPersistence flatPersistence = Substitute.For<IPersistence>();
-        flatPersistence.CreateReader().Returns(reader);
+        MemColumnsDb<FlatDbColumns> flatDb = new();
+        if (flatActive)
+            BasePersistence.SetCurrentState(flatDb.GetColumnDb(FlatDbColumns.Metadata), new StateId(1, Keccak.Zero));
 
+        IInitConfig initConfig = Substitute.For<IInitConfig>();
+        initConfig.BaseDbPath.Returns("/data");
         return new FlatStateActivationPolicy(
             flatDbConfig,
             new TestHardwareInfo(32L * 1024 * 1024 * 1024),
-            new Lazy<IPersistence>(() => flatPersistence),
+            new Lazy<IColumnsDb<FlatDbColumns>>(() => flatDb),
             new Lazy<IDb>(() => new MemDb()),
+            Substitute.For<ISyncConfig>(),
+            initConfig,
+            Substitute.For<IFileSystem>(),
             LimboLogs.Instance);
     }
 }

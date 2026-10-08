@@ -15,9 +15,14 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Container;
+using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Test;
@@ -28,6 +33,7 @@ using Nethermind.Specs.Test.ChainSpecStyle;
 using Nethermind.AuRa.Test;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.Transactions;
 using Builders = Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Merge.AuRa.Test;
@@ -136,6 +142,41 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
     public Task AuRa_getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty()
         => base.getPayloadV1_does_not_wait_for_improvement_when_block_is_not_empty();
 
+    // Regression: BAL preprocessing (AuRaMergeBlockProcessor -> ApplyAuRaPreprocessingChanges)
+    // must not overwrite an existing account at the withdrawal-contract or system-user address.
+    // On Gnosis the withdrawal address hosts a deployed protocol contract; wiping it to an empty
+    // account under the EIP-158-disabled system spec diverges state at EIP-7928 activation.
+    [Test]
+    public async Task BAL_preprocessing_preserves_existing_withdrawal_and_system_accounts()
+    {
+        Address withdrawalContract = new(_auraWithdrawalContractAddress);
+        byte[] code = Bytes.FromHexString("0x60006000");
+        UInt256 withdrawalBalance = new(1_000_000_000_000_000_000);
+        const ulong withdrawalNonce = 7;
+        UInt256 systemUserBalance = new(3_000_000_000);
+        const ulong systemUserNonce = 2;
+
+        using MergeTestBlockchain chain = await CreateBlockchain(Amsterdam.Instance, configurer: builder =>
+            builder.WithGenesisPostProcessor((_, state) =>
+            {
+                state.CreateAccount(withdrawalContract, withdrawalBalance, withdrawalNonce);
+                state.InsertCode(withdrawalContract, code, Amsterdam.Instance);
+                state.CreateAccount(Address.SystemUser, systemUserBalance, systemUserNonce);
+            }));
+
+        await AddNewBlockV6(chain.EngineRpcModule, chain);
+
+        BlockHeader head = chain.BlockTree.Head!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chain.StateReader.GetCode(head, withdrawalContract), Is.EqualTo(code));
+            Assert.That(chain.StateReader.GetBalance(head, withdrawalContract), Is.EqualTo(withdrawalBalance));
+            Assert.That(chain.StateReader.GetNonce(head, withdrawalContract), Is.EqualTo(withdrawalNonce));
+            Assert.That(chain.StateReader.GetBalance(head, Address.SystemUser), Is.EqualTo(systemUserBalance));
+            Assert.That(chain.StateReader.GetNonce(head, Address.SystemUser), Is.EqualTo(systemUserNonce));
+        }
+    }
+
     protected override BlockBuilder BuildNewBlock(Block head)
         => base.BuildNewBlock(head).WithAura(0, []);
 
@@ -213,13 +254,15 @@ public class AuRaMergeEngineModuleTests(bool parallel) : EngineModuleTests(paral
         {
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
+            InclusionListTxSource = Container.Resolve<InclusionListTxSource>();
             PostMergeBlockProducerFactory blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,
                 Timestamper,
                 blocksConfig,
                 LogManager,
-                targetAdjustedGasLimitCalculator);
+                targetAdjustedGasLimitCalculator,
+                InclusionListTxSource);
 
             IBlockProducerEnv blockProducerEnv = BlockProducerEnvFactory.CreatePersistent();
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);

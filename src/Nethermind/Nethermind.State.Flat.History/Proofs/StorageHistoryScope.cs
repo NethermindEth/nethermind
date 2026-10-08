@@ -1,0 +1,94 @@
+// SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
+using Nethermind.State.Flat.Persistence;
+using Nethermind.Trie;
+
+namespace Nethermind.State.Flat.History.Proofs;
+
+internal sealed class StorageHistoryScope(
+    ISortedKeyValueStore rows,
+    HistoryRowFormat rowFormat,
+    CommitmentStore commitments,
+    CommitmentMetadata metadata,
+    CommitmentDepthPolicy policy,
+    StorageClearStore clears,
+    ValueHash256 accountPath,
+    bool rlpWrapSlots)
+    : TrieHistoryScope(rows, rowFormat, commitments, policy)
+{
+    private const int IdentityPrefixLength = BasePersistence.StoragePrefixPortion;
+    private const int SlotPathOffset = IdentityPrefixLength;
+    private const int IdentitySuffixOffset = SlotPathOffset + Hash256.Size;
+    private const int IdentitySuffixLength = CommitmentKeyLayout.IdentityLength - IdentityPrefixLength;
+
+    private readonly byte[] _identity = accountPath.Bytes[..CommitmentKeyLayout.IdentityLength].ToArray();
+    private readonly int _trieDepth = metadata.StorageTrieDepth(accountPath);
+    private long _rootEpoch = -1;
+
+    protected override ulong? ProbeStartEpoch => Volatile.Read(ref _rootEpoch) is long epoch and >= 0 ? (ulong)epoch : null;
+
+    public override void NoteRootLastBlock(ulong block) => Volatile.Write(ref _rootEpoch, (long)Policy.Epoch(block));
+
+    public override bool HasCommitmentRows(int depth) => Policy.StorageTrieHasRows(_trieDepth) && depth <= Policy.StorageCheckpointDepth;
+
+    public override bool MayHaveExactRows(int depth) => Policy.StorageTrieHasExactRows(_trieDepth) && depth <= Policy.StorageExactDepth;
+
+    public override int WriteCommitmentPrefix(Span<byte> destination, in TreePath path, bool exact) =>
+        CommitmentKeyLayout.WriteScopedPathPrefix(destination, _identity, path, exact);
+
+    protected override int RowKeyLength => BaseFlatPersistence.StorageKeyLength + sizeof(ulong);
+
+    protected override int TriePathOffset => SlotPathOffset;
+
+    protected override bool BelongsToScope(scoped ReadOnlySpan<byte> rowKey) =>
+        rowKey.Slice(IdentitySuffixOffset, IdentitySuffixLength).SequenceEqual(_identity.AsSpan(IdentityPrefixLength));
+
+    protected override int WriteScopedBounds(in TreePath prefix, Span<byte> lower, Span<byte> upper)
+    {
+        _identity.AsSpan(0, IdentityPrefixLength).CopyTo(lower);
+        _identity.AsSpan(0, IdentityPrefixLength).CopyTo(upper);
+
+        int written = WritePathBounds(prefix, lower, upper, IdentityPrefixLength);
+
+        lower.Slice(written, IdentitySuffixLength + sizeof(ulong)).Clear();
+        upper.Slice(written, IdentitySuffixLength + sizeof(ulong)).Fill(0xFF);
+        return written + IdentitySuffixLength + sizeof(ulong);
+    }
+
+    private const int ClearsUnknown = 0;
+    private const int NoClears = 1;
+    private const int HasClears = 2;
+    private int _clears;
+
+    protected override bool SurvivesTo(in ValueHash256 triePath, ulong writtenAtBlock, ulong block)
+    {
+        int state = Volatile.Read(ref _clears);
+        if (state == ClearsUnknown)
+        {
+            state = clears.HasClearInRange(accountPath.Bytes, 0, block) ? HasClears : NoClears;
+            Volatile.Write(ref _clears, state);
+        }
+
+        return state == NoClears || !clears.HasClearInRange(accountPath.Bytes, writtenAtBlock, block);
+    }
+
+    protected override byte[]? DecodeLeafValue(scoped ReadOnlySpan<byte> storedValue)
+    {
+        if (!rlpWrapSlots) return storedValue.IsZero() ? null : Rlp.Encode(storedValue.WithoutLeadingZeros()).Bytes;
+
+        try
+        {
+            RlpReader reader = new(storedValue);
+            return reader.DecodeByteArraySpan().IsZero() ? null : storedValue.ToArray();
+        }
+        catch (Exception e) when (e is RlpException or InvalidDataException)
+        {
+            throw new StateUnavailableException(e.Message);
+        }
+    }
+}

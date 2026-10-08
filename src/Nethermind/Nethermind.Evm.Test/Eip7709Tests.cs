@@ -98,7 +98,7 @@ public class Eip7709Tests(bool isEip8038Enabled) : VirtualMachineTestsBase
     {
         ulong requestedBlock = BlockNumber - 1;
         Assert.That(requestedBlock % _spec.Eip2935RingBufferSize, Is.Not.EqualTo(requestedBlock), "test needs a block past the ring buffer");
-        TestState.Set(new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(requestedBlock)), TestItem.KeccakA.Bytes.ToArray());
+        TestState.Set(new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(requestedBlock)), TestItem.KeccakA.ToUInt256());
 
         CallOutputTracer tracer = ExecuteBlockhashAndReturn(requestedBlock);
 
@@ -260,8 +260,7 @@ public class Eip7709Tests(bool isEip8038Enabled) : VirtualMachineTestsBase
     {
         UInt256 storageIndex = new(blockNumber % _spec.Eip2935RingBufferSize);
         StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, storageIndex);
-        // Mirrors BlockhashStore, which stores the hash with leading zeros stripped.
-        TestState.Set(storageCell, hash.Bytes.WithoutLeadingZeros().ToArray());
+        TestState.Set(storageCell, hash.ToUInt256());
     }
 }
 
@@ -290,7 +289,7 @@ public class Eip7709DisabledTests : VirtualMachineTestsBase
         TestState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 1);
         TestState.Set(
             new StorageCell(Eip2935Constants.BlockHashHistoryAddress, new UInt256(requestedBlock % Spec7709Disabled.Eip2935RingBufferSize)),
-            TestItem.KeccakA.Bytes.ToArray());
+            TestItem.KeccakA.ToUInt256());
 
         byte[] code = Prepare.EvmCode
             .PushData(requestedBlock)

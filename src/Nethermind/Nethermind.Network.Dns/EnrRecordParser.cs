@@ -12,7 +12,14 @@ namespace Nethermind.Network.Dns;
 
 public interface IEnrRecordParser
 {
+    /// <summary>
+    /// Parses and signature-verifies an ENR.
+    /// </summary>
     NodeRecord ParseRecord(string nodeRecordText, IByteBuffer buffer);
+
+    /// <summary>
+    /// Parses and signature-verifies an ENR.
+    /// </summary>
     NodeRecord ParseRecord(string nodeRecordText);
 }
 
@@ -58,6 +65,11 @@ public class EnrRecordParser(INodeRecordSigner nodeRecordSigner) : IEnrRecordPar
             RlpReader ctx = new(base64Buffer.AsSpan());
             NodeRecord result = _nodeRecordSigner.Deserialize(ref ctx);
             base64Buffer.SetReaderIndex(base64Buffer.ReaderIndex + ctx.Position);
+            if (!_nodeRecordSigner.Verify(result))
+            {
+                throw new RlpException("Invalid ENR signature.");
+            }
+
             return result;
         }
         finally

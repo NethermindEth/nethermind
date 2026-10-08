@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -38,6 +39,8 @@ namespace Nethermind.Core
             Bloom = other.Bloom;
             Logs = other.Logs;
             Error = other.Error;
+            Payer = other.Payer;
+            FrameReceipts = other.FrameReceipts;
         }
 
         /// <summary>
@@ -82,9 +85,21 @@ namespace Nethermind.Core
         ///     Removed in EIP-658
         /// </summary>
         public Hash256? PostTransactionState { get; set; }
-        public Bloom? Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
+        [AllowNull]
+        public Bloom Bloom { get => _bloom ?? CalculateBloom(); set => _bloom = value; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
+
+        /// <summary>
+        /// EIP-8141: the account that paid the transaction fees; determined at execution time.
+        /// </summary>
+        public Address? Payer { get; set; }
+
+        /// <summary>
+        /// EIP-8141: per-frame receipt entries. For frame transactions <see cref="Logs"/> holds the
+        /// union of all frame logs so bloom calculation and log indexing keep working internally.
+        /// </summary>
+        public TxFrameReceipt[]? FrameReceipts { get; set; }
 
 
         public Bloom CalculateBloom()
@@ -120,7 +135,7 @@ namespace Nethermind.Core
         /// </summary>
         public Hash256StructRef PostTransactionState = (receipt.PostTransactionState ?? Keccak.Zero).ToStructRef();
 
-        public BloomStructRef Bloom = (receipt.Bloom ?? Core.Bloom.Empty).ToStructRef();
+        public BloomStructRef Bloom = receipt.Bloom.ToStructRef();
 
         /// <summary>
         /// Rlp encoded logs

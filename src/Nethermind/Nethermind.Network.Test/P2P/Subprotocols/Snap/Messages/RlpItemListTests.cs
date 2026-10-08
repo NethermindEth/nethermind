@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Linq;
 using System.Threading;
+using Nethermind.Core.Test;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -56,7 +57,7 @@ public class RlpItemListTests
         for (int i = 0; i < items.Length; i++)
         {
             byte[] expectedRlp = Rlp.Encode(items[i]).Bytes;
-            Assert.That(list[i].ToArray(), Is.EqualTo(expectedRlp), $"item {i} should be raw RLP");
+            Assert.That(list[i], Is.SequenceEqualTo(expectedRlp), $"item {i} should be raw RLP");
         }
     }
 
@@ -81,16 +82,16 @@ public class RlpItemListTests
         using RlpItemList list = CreateList(items);
 
         byte[] lastExpected = Rlp.Encode(items[^1]).Bytes;
-        Assert.That(list[items.Length - 1].ToArray(), Is.EqualTo(lastExpected));
+        Assert.That(list[items.Length - 1], Is.SequenceEqualTo(lastExpected));
 
         byte[] firstExpected = Rlp.Encode(items[0]).Bytes;
-        Assert.That(list[0].ToArray(), Is.EqualTo(firstExpected));
+        Assert.That(list[0], Is.SequenceEqualTo(firstExpected));
 
         if (items.Length > 2)
         {
             int mid = items.Length / 2;
             byte[] midExpected = Rlp.Encode(items[mid]).Bytes;
-            Assert.That(list[mid].ToArray(), Is.EqualTo(midExpected));
+            Assert.That(list[mid], Is.SequenceEqualTo(midExpected));
         }
     }
 
@@ -106,7 +107,7 @@ public class RlpItemListTests
         {
             using IRlpItemList child = parent.GetNestedItemList(i);
             Assert.That(child.Count, Is.EqualTo(1));
-            Assert.That(child.ReadContent(0).ToArray(), Is.EqualTo(new[] { (byte)(i + 1) }));
+            Assert.That(child.ReadContent(0), Is.SequenceEqualTo(new[] { (byte)(i + 1) }));
         }
 
         parent.Dispose();
@@ -122,8 +123,8 @@ public class RlpItemListTests
         IRlpItemList child0 = parent.GetNestedItemList(0);
         IRlpItemList child1 = parent.GetNestedItemList(1);
 
-        Assert.That(child0.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x01 }));
-        Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x02 }));
+        Assert.That(child0.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x01 }));
+        Assert.That(child1.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x02 }));
 
         child0.Dispose();
         child1.Dispose();
@@ -138,7 +139,7 @@ public class RlpItemListTests
             new byte[][][] { [[0xAA]] });
 
         IRlpItemList child = parent.GetNestedItemList(0);
-        Assert.That(child.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0xAA }));
+        Assert.That(child.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0xAA }));
 
         parent.Dispose();
         Assert.That(owner.DisposeCount, Is.EqualTo(0), "child still holds a lease");
@@ -171,15 +172,15 @@ public class RlpItemListTests
         using (IRlpItemList child0 = parent.GetNestedItemList(0))
         {
             Assert.That(child0.Count, Is.EqualTo(2));
-            Assert.That(child0.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x11 }));
-            Assert.That(child0.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x22 }));
+            Assert.That(child0.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x11 }));
+            Assert.That(child0.ReadContent(1), Is.SequenceEqualTo(new byte[] { 0x22 }));
         }
 
         using (IRlpItemList child1 = parent.GetNestedItemList(1))
         {
             Assert.That(child1.Count, Is.EqualTo(2));
-            Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x33 }));
-            Assert.That(child1.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x44 }));
+            Assert.That(child1.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x33 }));
+            Assert.That(child1.ReadContent(1), Is.SequenceEqualTo(new byte[] { 0x44 }));
         }
 
         parent.Dispose();
@@ -200,7 +201,7 @@ public class RlpItemListTests
         using IRlpItemList inner = view.GetNestedItemList(0);
         Assert.That(inner.Count, Is.EqualTo(items.Length));
         for (int i = 0; i < items.Length; i++)
-            Assert.That(inner.ReadContent(i).ToArray(), Is.EqualTo(items[i]), $"item {i}");
+            Assert.That(inner.ReadContent(i), Is.SequenceEqualTo(items[i]), $"item {i}");
     }
 
     [Test]
@@ -226,13 +227,13 @@ public class RlpItemListTests
         using (IRlpItemList child0 = outer.GetNestedItemList(0))
         {
             Assert.That(child0.Count, Is.EqualTo(2));
-            Assert.That(child0.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x01 }));
-            Assert.That(child0.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x02 }));
+            Assert.That(child0.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x01 }));
+            Assert.That(child0.ReadContent(1), Is.SequenceEqualTo(new byte[] { 0x02 }));
         }
 
         using IRlpItemList child1 = outer.GetNestedItemList(1);
         Assert.That(child1.Count, Is.EqualTo(1));
-        Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x03 }));
+        Assert.That(child1.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x03 }));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -267,7 +268,7 @@ public class RlpItemListTests
         byte[] actual = new byte[view.RlpLength];
         RlpWriter writer = new(actual);
         view.Write(ref writer);
-        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
+        Assert.That(actual.AsSpan(0, writer.Position), Is.SequenceEqualTo(expected));
     }
 
     [Test]
@@ -292,15 +293,15 @@ public class RlpItemListTests
         using (IRlpItemList child0 = outer.GetNestedItemList(0))
         {
             Assert.That(child0.Count, Is.EqualTo(2));
-            Assert.That(child0.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x11 }));
-            Assert.That(child0.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x22 }));
+            Assert.That(child0.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x11 }));
+            Assert.That(child0.ReadContent(1), Is.SequenceEqualTo(new byte[] { 0x22 }));
         }
 
         // After disposing child0, the next GetNestedItemList should reuse the pooled child.
         using IRlpItemList child1 = outer.GetNestedItemList(1);
         Assert.That(child1.Count, Is.EqualTo(2));
-        Assert.That(child1.ReadContent(0).ToArray(), Is.EqualTo(new byte[] { 0x33 }));
-        Assert.That(child1.ReadContent(1).ToArray(), Is.EqualTo(new byte[] { 0x44 }));
+        Assert.That(child1.ReadContent(0), Is.SequenceEqualTo(new byte[] { 0x33 }));
+        Assert.That(child1.ReadContent(1), Is.SequenceEqualTo(new byte[] { 0x44 }));
     }
 
     [Test]
@@ -330,7 +331,7 @@ public class RlpItemListTests
         byte[] actual = new byte[inner0.RlpLength];
         RlpWriter writer = new(actual);
         inner0.Write(ref writer);
-        Assert.That(actual.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expectedBytes));
+        Assert.That(actual.AsSpan(0, writer.Position), Is.SequenceEqualTo(expectedBytes));
     }
 
     private static RlpItemList CreateList(byte[][] items)

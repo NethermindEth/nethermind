@@ -2,8 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -22,6 +25,25 @@ public class Eip8024Tests : VirtualMachineTestsBase
 
     private static Prepare PushNValues(int count) => Prepare.EvmCode.For(count, static (p, i) => p.PushData(i + 1));
     private static Prepare PushZeros(int count) => Prepare.EvmCode.For(count, static (p, _) => p.PushData(0));
+
+    [TestCase(0x80, 17)]
+    [TestCase(0x00, 145)]
+    public void DupN_vm_trace_reports_post_copy_stack_window(byte immediate, int depth)
+    {
+        byte[] code = PushNValues(depth + 1).Op(Instruction.DUPN).Data(immediate).Done;
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100000, code);
+        ParityLikeTxTracer tracer = new(block, transaction, ParityTraceTypes.Trace | ParityTraceTypes.VmTrace);
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, Spec), tracer);
+
+        ParityLikeTxTrace trace = tracer.BuildResult();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(trace.Action.Error, Is.Null);
+            Assert.That(trace.VmTrace.Operations[depth + 1].Push.Select(static word => new UInt256(word, true)),
+                Is.EqualTo(Enumerable.Range(2, depth).Append(2).Select(static value => (UInt256)value)));
+        }
+    }
 
     private static IEnumerable<TestCaseData> SuccessTestCases()
     {

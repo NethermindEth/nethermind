@@ -117,12 +117,25 @@ namespace Nethermind.Core
         void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None);
     }
 
+    /// <summary>Drops a whole key range in one operation, at a cost independent of how many keys it holds.</summary>
+    public interface IRangeRemovableKeyValueStore : IWriteOnlyKeyValueStore
+    {
+        /// <summary>Removes every key in <c>[firstKeyInclusive, lastKeyExclusive)</c>. Exact and durable, but says
+        /// nothing about when their storage comes back - see <see cref="ReclaimRange"/>.</summary>
+        void RemoveRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+
+        /// <summary>Gives back the storage still held by a range already passed to <see cref="RemoveRange"/>. Best
+        /// effort: frees whole units lying entirely inside it, leaving the rest to compaction. Calling it over a
+        /// range that still holds live keys is a caller error.</summary>
+        void ReclaimRange(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+    }
+
     public interface ISortedKeyValueStore : IReadOnlyKeyValueStore
     {
         byte[]? FirstKey { get; }
         byte[]? LastKey { get; }
 
-        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive);
+        ISortedView GetViewBetween(ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive, ReadFlags flags = ReadFlags.None);
 
         /// <summary>
         /// Finds the first <c>key</c> with <c>lowerBoundIncl &lt;= key &lt; upperBoundExcl</c>,
@@ -206,6 +219,15 @@ namespace Nethermind.Core
         public bool MoveNext();
         public ReadOnlySpan<byte> CurrentKey { get; }
         public ReadOnlySpan<byte> CurrentValue { get; }
+    }
+
+    /// <summary>A sorted view that can reposition within its bounds.</summary>
+    public interface ISeekableSortedView : ISortedView
+    {
+        /// <summary>Positions the view at the first key at or after <paramref name="key"/>, at any point of the
+        /// iteration; a target below the view's lower bound lands on the lower bound. Returns false when no such key
+        /// remains below the view's upper bound.</summary>
+        public bool SeekTo(ReadOnlySpan<byte> key);
     }
 
     [Flags]

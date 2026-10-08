@@ -3,13 +3,16 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Linq;
 using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Flat;
@@ -63,6 +66,24 @@ public class WorldStateDbDeciderModuleTests
             Assert.That(worldStateManager, Is.TypeOf<FlatWorldStateManager>());
         else
             Assert.That(worldStateManager, Is.Not.TypeOf<FlatWorldStateManager>());
+    }
+
+    [TestCase(true, FullPruningTrigger.StateDbSize, 1, Description = "Flat + automatic trigger → warns once")]
+    [TestCase(true, FullPruningTrigger.Manual, 0, Description = "Flat + Manual → silent")]
+    [TestCase(false, FullPruningTrigger.StateDbSize, 0, Description = "Patricia + automatic trigger → silent")]
+    public void Ignored_full_prune_warning_fires_only_on_flat_with_automatic_trigger(bool flatEnabled, FullPruningTrigger trigger, int expectedWarnings)
+    {
+        TestLogger testLogger = new() { IsInfo = false, IsDebug = false, IsTrace = false };
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ILogManager>(new OneLoggerLogManager(new(testLogger)))
+            .Intercept<IFlatDbConfig>((cfg) => cfg.Enabled = flatEnabled)
+            .Intercept<IPruningConfig>((cfg) => { cfg.FullPruningTrigger = trigger; cfg.Mode = PruningMode.Memory; })
+            .Build();
+
+        container.Resolve<IWorldStateManager>();
+
+        Assert.That(testLogger.LogList.Count(l => l.Contains("ignored on the Flat backend")), Is.EqualTo(expectedWarnings));
     }
 
     [Flags]

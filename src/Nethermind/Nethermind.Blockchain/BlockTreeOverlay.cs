@@ -18,8 +18,13 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     private readonly IBlockTree _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
 
     // Cannot be called until blocktree is ready.
-    public void ResetMainChain() =>
-        _overlayTree.TryUpdateMainChain(_baseTree.Head!.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: new[] { _baseTree.Head! });
+    public void ResetMainChain()
+    {
+        Block head = _baseTree.Head!;
+        // BAL persistence clears fields on the block instance, so do not pass the base tree's live head.
+        Block detachedHead = new(head.Header, head.Body);
+        _overlayTree.TryUpdateMainChain(head.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [detachedHead]);
+    }
 
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
@@ -81,6 +86,10 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
 
     public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
+
+    /// <inheritdoc/>
+    public bool TryRewindHead(Hash256 blockHash) =>
+        _overlayTree.TryRewindHead(blockHash);
 
     public AddBlockResult SuggestBlock(Block block,
         BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
@@ -194,6 +203,26 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
         }
     }
 
+    public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain
+    {
+        add
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain += value;
+                _overlayTree.BlockRemovedFromMain += value;
+            }
+        }
+        remove
+        {
+            if (value is not null)
+            {
+                _baseTree.BlockRemovedFromMain -= value;
+                _overlayTree.BlockRemovedFromMain -= value;
+            }
+        }
+    }
+
     public event EventHandler<BlockEventArgs>? NewHeadBlock
     {
         add
@@ -297,6 +326,9 @@ public class BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTre
     public ulong GetLowestBlock() => _baseTree.GetLowestBlock();
 
     public void NewOldestBlock(ulong oldestBlock) => _baseTree.NewOldestBlock(oldestBlock);
+
+    public void DeleteOldBlockRange(ulong fromInclusive, ulong toExclusive)
+        => _baseTree.DeleteOldBlockRange(fromInclusive, toExclusive);
 
     public void DeleteOldBlock(ulong blockNumber, Hash256 blockHash)
         => _baseTree.DeleteOldBlock(blockNumber, blockHash);

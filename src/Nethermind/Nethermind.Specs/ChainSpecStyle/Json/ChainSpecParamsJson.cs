@@ -20,7 +20,7 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? ChainId { get; set; }
     public ulong? NetworkId { get; set; }
 
-    public Address Registrar { get; set; }
+    public Address? Registrar { get; set; }
 
     public ulong? GasLimitBoundDivisor { get; set; }
 
@@ -34,7 +34,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? ForkBlock { get; set; }
 
-    public Hash256 ForkCanonHash { get; set; }
+    public Hash256? ForkCanonHash { get; set; }
 
     public ulong? Eip7Transition { get; set; }
 
@@ -116,7 +116,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip1559ElasticityMultiplier { get; set; }
 
-    public Address TransactionPermissionContract { get; set; }
+    public Address? TransactionPermissionContract { get; set; }
 
     public ulong? TransactionPermissionContractTransition { get; set; }
 
@@ -126,7 +126,7 @@ public class ChainSpecParamsJson : IHasNamedForks
 
     public ulong? Eip1559FeeCollectorTransition { get; set; }
 
-    public Address FeeCollector { get; set; }
+    public Address? FeeCollector { get; set; }
 
     public ulong? Eip1559BaseFeeMinValueTransition { get; set; }
 
@@ -156,24 +156,24 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip6780Transition { get; set; }
     public ulong? Eip6780TransitionTimestamp { get; set; }
     public ulong? Eip4788TransitionTimestamp { get; set; }
-    public Address Eip4788ContractAddress { get; set; }
+    public Address? Eip4788ContractAddress { get; set; }
     public ulong? Eip2935Transition { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
-    public Address Eip2935ContractAddress { get; set; }
+    public Address? Eip2935ContractAddress { get; set; }
     public ulong? Eip2935RingBufferSize { get; set; }
     public ulong? Eip4844BlobGasPriceUpdateFraction { get; set; }
     public UInt256? Eip4844MinBlobGasPrice { get; set; }
     public ulong? Eip4844FeeCollectorTransitionTimestamp { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
-    public Address DepositContractAddress { get; set; }
+    public Address? DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public ulong? Eip7623Transition { get; set; }
     public ulong? Eip7623TransitionTimestamp { get; set; }
     public ulong? Eip7976TransitionTimestamp { get; set; }
     public ulong? Eip7981TransitionTimestamp { get; set; }
-    public Address Eip7002ContractAddress { get; set; }
+    public Address? Eip7002ContractAddress { get; set; }
     public ulong? Eip7251TransitionTimestamp { get; set; }
-    public Address Eip7251ContractAddress { get; set; }
+    public Address? Eip7251ContractAddress { get; set; }
     public ulong? Eip7951TransitionTimestamp { get; set; }
     public ulong? Rip7212TransitionTimestamp { get; set; }
     public ulong? Eip7702Transition { get; set; }
@@ -190,16 +190,29 @@ public class ChainSpecParamsJson : IHasNamedForks
     public ulong? Eip7939TransitionTimestamp { get; set; }
     public ulong? Eip8037TransitionTimestamp { get; set; }
     public ulong? Eip7778TransitionTimestamp { get; set; }
+    public ulong? Eip7668TransitionTimestamp { get; set; }
 
     public ulong? Eip7928TransitionTimestamp { get; set; }
     public ulong? Eip7708TransitionTimestamp { get; set; }
     public ulong? Eip8024TransitionTimestamp { get; set; }
     public ulong? Eip8246TransitionTimestamp { get; set; }
+    public ulong? Eip8253TransitionTimestamp { get; set; }
     public ulong? Eip8038TransitionTimestamp { get; set; }
     public ulong? Eip8282TransitionTimestamp { get; set; }
+    public ulong? Eip8141TransitionTimestamp { get; set; }
+    public ulong? Eip8250TransitionTimestamp { get; set; }
+
+    public ulong? Eip8272TransitionTimestamp { get; set; }
+    public ulong? Eip7906TransitionTimestamp { get; set; }
+    public ulong? Eip7979TransitionTimestamp { get; set; }
     public ulong? Eip7843TransitionTimestamp { get; set; }
     public ulong? Eip7954TransitionTimestamp { get; set; }
     public ulong? Eip2780TransitionTimestamp { get; set; }
+    public ulong? Eip3298TransitionTimestamp { get; set; }
+    public ulong? Eip8131TransitionTimestamp { get; set; }
+    public ulong? Eip8279TransitionTimestamp { get; set; }
+
+    public ulong? Eip7805TransitionTimestamp { get; set; }
 
     /// <summary>
     /// Catch-all for top-level chainspec params keys that don't map to an explicit property —
@@ -238,7 +251,7 @@ public class ChainSpecParamsJson : IHasNamedForks
             if (label.Kind == kind && NamedForks.TryGetValue(label.LabelName, out JsonElement element))
             {
                 result ??= new Dictionary<string, T>(StringComparer.OrdinalIgnoreCase);
-                result[label.LabelName] = element.Deserialize<T>(EthereumJsonSerializer.JsonOptions);
+                result[label.LabelName] = TypeInfoJsonSerializer.Deserialize<T>(element, EthereumJsonSerializer.JsonOptions);
             }
         }
         return result;

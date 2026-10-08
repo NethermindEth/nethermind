@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Flat;
@@ -17,16 +18,13 @@ using Nethermind.Trie;
 
 namespace Nethermind.Init.Steps;
 
-[RunnerStepDependencies(
-    dependencies: [typeof(InitializeBlockTree)],
-    dependents: [typeof(InitializeBlockchain)]
-)]
+[StepCommand("import-flat-db", "Copy the pruning-trie state database into the flat state database.")]
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
 public class ImportFlatDb(
     IBlockTree blockTree,
     IPersistence persistence,
     INodeStorage nodeStorage,
     Importer importer,
-    IProcessExitSource exitSource,
     IFlatDbConfig flatDbConfig,
     ILogManager logManager
 ) : IStep
@@ -38,31 +36,36 @@ public class ImportFlatDb(
         // Validate that we're not using a preimage layout
         if (flatDbConfig.Layout is FlatLayout.PreimageFlatV1 or FlatLayout.PreimageFlat)
         {
-            if (_logger.IsError) _logger.Error($"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead.");
-            if (_logger.IsError) _logger.Error("Preimage mode does not support importing from trie state because the importer uses hash-based raw operations.");
-            exitSource.Exit(1);
-            return;
+            throw new InvalidConfigurationException(
+                $"Cannot import with FlatLayout.{flatDbConfig.Layout}. Use FlatLayout.Flat or FlatLayout.FlatInTrie instead. " +
+                "Preimage mode does not support importing from trie state because the importer uses hash-based raw operations.",
+                ExitCodes.ForbiddenOptionValue);
         }
 
-        BlockHeader? head = blockTree.Head?.Header;
-        if (head is null) return;
+        // Nothing to import is a failure, not a no-op. This step ends the process, so returning quietly would
+        // stop the node with exit 0 on every restart once the flag is left in a config after a finished import.
+        BlockHeader? head = blockTree.Head?.Header
+            ?? throw new InvalidConfigurationException(
+                $"Cannot import: the block tree has no head. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
 
         using (IPersistence.IPersistenceReader reader = persistence.CreateReader())
         {
             if (_logger.IsWarn) _logger.Warn($"Current state is {reader.CurrentState}");
             if (reader.CurrentState != StateId.PreGenesis)
             {
-                if (_logger.IsInfo) _logger.Info("Flat db already exist");
-                return;
+                throw new InvalidConfigurationException(
+                    $"Cannot import: the flat DB is already populated at {reader.CurrentState}. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                    ExitCodes.ForbiddenOptionValue);
             }
         }
 
         if (head.StateRoot is null ||
             !nodeStorage.KeyExists(null, TreePath.Empty, new ValueHash256(head.StateRoot.Bytes)))
         {
-            if (_logger.IsInfo) _logger.Info(
-                $"Pruning trie state does not contain head state root {head.StateRoot}; skipping flat DB import.");
-            return;
+            throw new InvalidConfigurationException(
+                $"Cannot import: the pruning trie state does not contain head state root {head.StateRoot}. Remove FlatDb.{nameof(IFlatDbConfig.ImportFromPruningTrieState)} to start the node normally.",
+                ExitCodes.ForbiddenOptionValue);
         }
 
         if (_logger.IsInfo) _logger.Info($"Copying state {head.ToString(BlockHeader.Format.Short)} with state root {head.StateRoot}");
@@ -73,11 +76,9 @@ public class ImportFlatDb(
         }
         catch (OperationCanceledException)
         {
+            // Shutdown has already set the exit code; report it as the interruption it is rather than letting
+            // the step machinery log a failure stack trace.
             if (_logger.IsInfo) _logger.Info("Import cancelled by user");
-            exitSource.Exit(1);
-            return;
         }
-
-        exitSource.Exit(0);
     }
 }

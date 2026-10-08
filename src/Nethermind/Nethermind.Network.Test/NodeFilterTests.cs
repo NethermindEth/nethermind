@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Threading;
@@ -13,6 +14,47 @@ namespace Nethermind.Network.Test;
 [TestFixture]
 public class NodeFilterTests
 {
+    /// <remarks>
+    /// Reports the cheapest of several identical measurement windows: a per-touch cost survives the minimum,
+    /// while a one-off chunk the runtime charges to this thread lands in one window only.
+    /// </remarks>
+    [Test]
+    public void Touch_existing_address_does_not_allocate([Values] bool exactMatchOnly)
+    {
+        const int Iterations = 1000;
+        const int Windows = 5;
+        NodeFilter filter = CreateFilter(exactMatchOnly: exactMatchOnly);
+        IPAddress address = IPAddress.Parse("203.0.113.1");
+        for (int i = 0; i < Iterations; i++) filter.Touch(address);
+
+        long allocated = long.MaxValue;
+        for (int window = 0; window < Windows; window++)
+        {
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int i = 0; i < Iterations; i++) filter.Touch(address);
+            allocated = Math.Min(allocated, GC.GetAllocatedBytesForCurrentThread() - before);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(allocated, Is.Zero);
+            Assert.That(filter.TryAccept(address), Is.False);
+        }
+    }
+
+    [Test]
+    public void Touch_reinserts_evicted_address()
+    {
+        NodeFilter filter = CreateFilter(size: 1, exactMatchOnly: true);
+        IPAddress first = IPAddress.Parse("203.0.113.1");
+        IPAddress second = IPAddress.Parse("203.0.113.2");
+        filter.Touch(first);
+        filter.Touch(second);
+        filter.Touch(first);
+        Assert.That(filter.TryAccept(first), Is.False);
+        Assert.That(filter.TryAccept(second), Is.True);
+    }
+
     private static NodeFilter CreateFilter(int size = 100, bool exactMatchOnly = false,
         IPAddress? currentIp = null, long timeoutMs = 0) =>
         timeoutMs > 0
@@ -66,6 +108,21 @@ public class NodeFilterTests
     }
 
     [Test]
+    public void WouldAccept_IsReadOnlyAndTouchAccountsForThePublicIpv6Subnet()
+    {
+        NodeFilter filter = CreateFilter();
+        IPAddress first = IPAddress.Parse("2001:db8::1");
+        IPAddress sameSubnet = IPAddress.Parse("2001:db8::2");
+
+        Assert.That(filter.WouldAccept(first), Is.True);
+        Assert.That(filter.WouldAccept(sameSubnet), Is.True, "a read-only probe must not consume filter capacity");
+
+        filter.Touch(first);
+
+        Assert.That(filter.WouldAccept(sameSubnet), Is.False, "a successful dial must account for the IPv6 /64");
+    }
+
+    [Test]
     public void ThreadSafety_ConcurrentSetCalls()
     {
         NodeFilter filter = CreateFilter(size: 1000, exactMatchOnly: true);
@@ -103,35 +160,50 @@ public class NodeFilterTests
     }
 
     [Test]
-    public void ThreadSafety_ConcurrentSetCallsSameAddress()
+    public async Task ThreadSafety_ConcurrentAcceptsSameKey([Values] bool exactMatchOnly, [Values] bool expired)
     {
-        NodeFilter filter = CreateFilter(exactMatchOnly: true);
-        IPAddress ip = IPAddress.Parse("192.0.2.1");
-        int threadCount = 10;
-        int attemptsPerThread = 10;
-
-        int acceptedCount = 0;
-        List<Task> tasks = [];
-
-        for (int t = 0; t < threadCount; t++)
+        const int ThreadCount = 16;
+        const int Rounds = 100;
+        NodeFilter filter = CreateFilter(size: Rounds, exactMatchOnly: exactMatchOnly, timeoutMs: 5000);
+        IPAddress[][] addresses = new IPAddress[ThreadCount][];
+        for (int t = 0; t < ThreadCount; t++)
         {
-            tasks.Add(Task.Run(() =>
+            addresses[t] = new IPAddress[Rounds];
+            for (int round = 0; round < Rounds; round++)
             {
-                for (int i = 0; i < attemptsPerThread; i++)
-                {
-                    if (filter.TryAccept(ip))
-                    {
-                        Interlocked.Increment(ref acceptedCount);
-                    }
-                }
-            }));
+                addresses[t][round] = IPAddress.Parse($"8.1.{round}.{(exactMatchOnly ? 1 : t + 1)}");
+            }
         }
 
-        Task.WaitAll([.. tasks]);
+        if (expired)
+        {
+            foreach (IPAddress address in addresses[0]) filter.Touch(address);
+            await Task.Delay(5500);
+        }
 
-        // At least one call should succeed, but not all attempts should be accepted for the same IP
-        Assert.That(acceptedCount, Is.GreaterThan(0), "at least one concurrent attempt should be accepted");
-        Assert.That(acceptedCount, Is.LessThan(threadCount * attemptsPerThread), "not all concurrent attempts should be accepted for the same address");
+        int[] acceptedCounts = new int[Rounds];
+        using Barrier barrier = new(ThreadCount);
+        Task[] tasks = new Task[ThreadCount];
+        for (int t = 0; t < ThreadCount; t++)
+        {
+            int threadIndex = t;
+            tasks[t] = Task.Factory.StartNew(() =>
+            {
+                for (int round = 0; round < Rounds; round++)
+                {
+                    if (!barrier.SignalAndWait(TimeSpan.FromSeconds(30)))
+                    {
+                        throw new TimeoutException("Concurrent filter callers did not reach the barrier.");
+                    }
+                    if (filter.TryAccept(addresses[threadIndex][round]))
+                        Interlocked.Increment(ref acceptedCounts[round]);
+                }
+            }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+
+        await Task.WhenAll(tasks);
+
+        Assert.That(acceptedCounts, Is.All.EqualTo(1), "each key should be accepted exactly once within the timeout");
     }
 
     [Test]
@@ -182,6 +254,15 @@ public class NodeFilterTests
     [TestCase("8.8.8.8", false, Description = "Public IPv4")]
     [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
     public void IPAddressExtensions_IsLoopbackOrPrivateOrLinkLocal(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsLoopbackOrPrivateOrLinkLocal, Is.EqualTo(expected));
+
+    [TestCase("0.0.0.0", true, Description = "Unspecified IPv4")]
+    [TestCase("::", true, Description = "Unspecified IPv6")]
+    [TestCase("255.255.255.255", true, Description = "IPv4 None sentinel")]
+    [TestCase("::ffff:0.0.0.0", true, Description = "IPv4-mapped unspecified address")]
+    [TestCase("::ffff:255.255.255.255", true, Description = "IPv4-mapped None sentinel")]
+    [TestCase("8.8.8.8", false, Description = "Public IPv4")]
+    [TestCase("2001:4860:4860::8888", false, Description = "Public IPv6")]
+    public void IPAddressExtensions_IsWildcardOrNone(string address, bool expected) => Assert.That(IPAddress.Parse(address).IsWildcardOrNone, Is.EqualTo(expected));
 
     [TestCase("0.1.2.3", true, Description = "IPv4 this-network")]
     [TestCase("192.0.0.1", true, Description = "IPv4 IETF protocol assignments")]

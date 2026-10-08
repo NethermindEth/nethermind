@@ -125,13 +125,11 @@ public abstract class AssociativeCacheTestsBase
         Assert.That(Delete(in _keys[0]), Is.False);
     }
 
-    [TestCase(-1)]
-    [TestCase(134_217_729)]
-    public void Capacity_out_of_range_throws(int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
+    [Test]
+    public void Capacity_out_of_range_throws([Values(-1, 134_217_729)] int capacity) => Assert.That(() => CreateCache(capacity), Throws.TypeOf<ArgumentOutOfRangeException>());
 
-    [TestCase(0)]
-    [TestCase(4096)]
-    public void Capacity_valid_boundary(int capacity)
+    [Test]
+    public void Capacity_valid_boundary([Values(0, 4096)] int capacity)
     {
         CreateCache(capacity);
         Set(in _keys[0], 0);
@@ -303,11 +301,8 @@ public class AssociativeCacheDeterministicHashTests
 {
     private const int Ways = 8;
 
-    [TestCase(8)]
-    [TestCase(32)]
-    [TestCase(256)]
-    [TestCase(1024)]
-    public void All_inserted_keys_retrievable_at_various_capacities(int capacity)
+    [Test]
+    public void All_inserted_keys_retrievable_at_various_capacities([Values(8, 32, 256, 1024)] int capacity)
     {
         int insertCount = capacity / 2;
         DeterministicHashKey[] keys = BuildKeys(capacity, insertCount);
@@ -323,8 +318,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(cacheInserted, Is.True, $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyCacheInserted, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 
@@ -335,8 +330,8 @@ public class AssociativeCacheDeterministicHashTests
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<DeterministicHashKey, TestValue>)} key {i}");
-                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<DeterministicHashKey>)} key {i}");
+                Assert.That(actualValue, Is.SameAs(values[i]), $"{nameof(AssociativeCache<,>)} key {i}");
+                Assert.That(keyFound, Is.True, $"{nameof(AssociativeKeyCache<>)} key {i}");
             }
         }
 
@@ -344,6 +339,45 @@ public class AssociativeCacheDeterministicHashTests
         {
             Assert.That(cache.Count, Is.EqualTo(insertCount));
             Assert.That(keyCache.Count, Is.EqualTo(insertCount));
+        }
+    }
+
+    [Test]
+    public void Refreshed_entry_survives_sustained_churn_in_its_set()
+    {
+        const int capacity = 64;
+        int setCount = (int)BitOperations.RoundUpToPowerOf2((uint)((capacity + Ways - 1) / Ways));
+        int hashShift = BitOperations.Log2((uint)setCount);
+        // Every key collides into set 0, so each insert past the way count must evict from it.
+        static DeterministicHashKey MakeKey(int i, int shift) => new(i, (long)(i + 1) << shift);
+
+        AssociativeCache<DeterministicHashKey, TestValue> cache = new(capacity);
+        AssociativeKeyCache<DeterministicHashKey> keyCache = new(capacity);
+        DeterministicHashKey hot = MakeKey(0, hashShift);
+        TestValue hotValue = new();
+        cache.Set(in hot, hotValue);
+        keyCache.Set(in hot);
+
+        for (int i = 1; i <= 200; i++)
+        {
+            // The refreshing lookup gives the hot entry the newest eviction age, so 3-random
+            // eviction (which removes the oldest of its sample) must never select it. This pins
+            // the ticker semantics: a recency clock coarse enough to tie a refresh with the
+            // surrounding churn would make this probabilistic.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Get(in hot), Is.SameAs(hotValue), $"hot entry evicted after {i - 1} churn inserts");
+                Assert.That(keyCache.Get(in hot), Is.True, $"hot key evicted after {i - 1} churn inserts");
+            }
+            DeterministicHashKey filler = MakeKey(i, hashShift);
+            cache.Set(in filler, new TestValue());
+            keyCache.Set(in filler);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cache.Get(in hot), Is.SameAs(hotValue));
+            Assert.That(keyCache.Get(in hot), Is.True);
         }
     }
 

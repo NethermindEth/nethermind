@@ -13,11 +13,11 @@ using Nethermind.Xdc.Spec;
 using Nethermind.Xdc.Types;
 using System;
 using System.Collections.Generic;
-using Nethermind.Xdc.RLP;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Xdc.RPC;
 
-internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore) : IXdcRpcModule
+internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, ISpecProvider specProvider, IEpochSwitchManager epochSwitchManager, IVotesManager voteManager, ITimeoutCertificateManager timeoutCertificateManager, IRewardsStore rewardsStore, IHeaderDecoder headerDecoder) : IXdcRpcModule
 {
     public ResultWrapper<EpochNumInfo> XDPoS_calculateBlockInfoByV1EpochNum(ulong targetEpochNum) =>
         ResultWrapper<EpochNumInfo>.Fail("V1 epoch is not supported");
@@ -341,8 +341,8 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
 
             foreach ((string holder, UInt256 amount) in epochReward.DelegatedReward ?? [])
             {
-                totalDelegatedReward.TryGetValue(holder, out UInt256 existing);
-                totalDelegatedReward[holder] = existing + amount;
+                ref UInt256 total = ref CollectionsMarshal.GetValueRefOrAddDefault(totalDelegatedReward, holder, out _);
+                total += amount;
             }
         }
 
@@ -570,7 +570,6 @@ internal class XdcRpcModule(IBlockTree tree, ISnapshotManager snapshotManager, I
         }
 
         // Encode header to RLP
-        XdcHeaderDecoder headerDecoder = new();
         byte[] encodedBytes;
         try
         {

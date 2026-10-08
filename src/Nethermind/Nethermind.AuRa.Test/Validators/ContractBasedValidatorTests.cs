@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -77,10 +78,10 @@ public class ContractBasedValidatorTests
         _stateProvider.IsContract(_contractAddress).Returns(true);
 
         _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
-        _readOnlyTxProcessorSource.Build(Arg.Any<BlockHeader>()).Returns(new ReadOnlyTxProcessingScope(
+        _readOnlyTxProcessorSource.TryBuild(Arg.Any<BlockHeader>(), out Arg.Any<IReadOnlyTxProcessingScope?>()).Returns(call => call.Succeed(1, new ReadOnlyTxProcessingScope(
             _transactionProcessor,
             new Reactive.AnonymousDisposable(() => { }),
-            _stateProvider));
+            _stateProvider)));
         _blockTree.Head.Returns(_block);
 
         _abiEncoder
@@ -164,9 +165,8 @@ public class ContractBasedValidatorTests
         Assert.That(validator.Validators, Is.EqualTo(validators));
     }
 
-    [TestCase(1UL)]
-    [TestCase(10UL)]
-    public void loads_initial_validators_from_contract(ulong blockNumber)
+    [Test]
+    public void loads_initial_validators_from_contract([Values(1UL, 10UL)] ulong blockNumber)
     {
         Address initialValidator = TestItem.AddressA;
         Block block = Build.A.Block.WithParent(_parentHeader).WithNumber(blockNumber).WithBeneficiary(initialValidator).WithAura(1, []).TestObject;

@@ -21,6 +21,6 @@ namespace Nethermind.Db
         public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);
 
         T GetDb<T>(string dbName) where T : class, IDb;
-        IColumnsDb<T> GetColumnDb<T>(string dbName);
+        IColumnsDb<T> GetColumnDb<T>(string dbName) where T : notnull;
     }
 }

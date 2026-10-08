@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -41,16 +42,15 @@ public class BlockhashProviderTests
         return (worldState, worldState.StateRoot);
     }
 
-    private static IWorldState CreateWorldStateWithHistoryContract(IReleaseSpec spec)
+    private static (IWorldState, Hash256) CreateWorldStateWithHistoryContract(IReleaseSpec spec)
     {
         IWorldState worldState = TestWorldStateFactory.CreateForTest();
         using IDisposable _ = worldState.BeginScope(IWorldState.PreGenesis);
         worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-        byte[] code = [1, 2, 3];
-        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, ValueKeccak.Compute(code), code, spec);
+        worldState.InsertCode(Eip2935Constants.BlockHashHistoryAddress, Eip2935TestConstants.CodeHash, Eip2935TestConstants.Code, spec);
         worldState.Commit(spec);
         worldState.CommitTree(0);
-        return worldState;
+        return (worldState, worldState.StateRoot);
     }
 
 
@@ -262,11 +262,8 @@ public class BlockhashProviderTests
     }
 
     [MaxTime(Timeout.MaxTestTime)]
-    [TestCase(1ul)]
-    [TestCase(512ul)]
-    [TestCase(8192ul)]
-    [TestCase(8193ul)]
-    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash(ulong chainLength)
+    [Test]
+    public void Eip2935_enabled_Eip7709_disabled_and_then_get_hash([Values(1ul, 512ul, 8192ul, 8193ul)] ulong chainLength)
     {
         Block genesis = Build.A.Block.Genesis.TestObject;
         BlockTreeBuilder blockTreeBuilder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength);
@@ -310,6 +307,49 @@ public class BlockhashProviderTests
         Assert.That(result, currentHeader.Number > BlockhashProvider.MaxDepth ? Is.Null : Is.EqualTo(genesisHash));
     }
 
+    /// <summary>The span overload is the BLOCKHASH path, so it must not allocate per lookup.</summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Blockhash_span_lookup_does_not_allocate()
+    {
+        const int Iterations = 1000;
+
+        Block genesis = Build.A.Block.Genesis.TestObject;
+        BlockTreeBuilder builder = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(42);
+        BlockHeader head = builder.TestObject.FindHeader(41, BlockTreeLookupOptions.None)!;
+        BlockHeader header = Build.A.Block.WithParent(head).TestObject.Header;
+        IBlockhashProvider provider = new BlockhashProvider(new BlockhashCache(builder.HeaderStore, LimboLogs.Instance), LimboLogs.Instance);
+        provider.Prefetch(header, CancellationToken.None).GetAwaiter().GetResult();
+        ulong number = header.Number - 2;
+        IReleaseSpec spec = Prague.Instance;
+
+        for (int i = 0; i < Iterations; i++)
+        {
+            provider.TryGetBlockhash(header, number, spec, out _);
+        }
+
+        AssertNoPerLookupAllocation(Iterations, 1, () => provider.TryGetBlockhash(header, number, spec, out _));
+    }
+
+    /// <summary>Allocation budget per lookup, below the 24-byte minimum object size on 64-bit.</summary>
+    /// <remarks>Any per-lookup allocation exceeds it on every call, while a rare one-off allocation by the runtime on
+    /// the test thread (2,112 bytes over 1,000 lookups has been seen in CI) stays inside it.</remarks>
+    private const int MaxBytesPerLookup = 8;
+
+    /// <summary>Asserts that <paramref name="lookups"/> allocates less than <see cref="MaxBytesPerLookup"/> per lookup.</summary>
+    private static void AssertNoPerLookupAllocation(int repeats, int lookupsPerRepeat, Action lookups, string? message = null) =>
+        Assert.That(AllocatedBy(repeats, lookups), Is.LessThan(repeats * lookupsPerRepeat * MaxBytesPerLookup), message);
+
+    private static long AllocatedBy(int repeats, Action action)
+    {
+        long start = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < repeats; i++)
+        {
+            action();
+        }
+
+        return GC.GetAllocatedBytesForCurrentThread() - start;
+    }
+
     [Test, MaxTime(Timeout.MaxTestTime)]
     public void Eip2935_poc_trimmed_hashes()
     {
@@ -347,18 +387,19 @@ public class BlockhashProviderTests
     public void BlockAccessListManager_blockhash_state_changes_match_BlockhashStore()
     {
         IReleaseSpec spec = Amsterdam.Instance;
-        IWorldState legacyWorldState = CreateWorldStateWithHistoryContract(spec);
-        IWorldState balWorldState = CreateWorldStateWithHistoryContract(spec);
-        Block parent = Build.A.Block.WithNumber(41).TestObject;
+        // The direct write equals running the contract only for the canonical bytecode.
+        (IWorldState legacyWorldState, Hash256 stateRoot) = CreateWorldStateWithHistoryContract(spec);
+        (IWorldState balWorldState, _) = CreateWorldStateWithHistoryContract(spec);
+        Block parent = Build.A.Block.WithNumber(41).WithStateRoot(stateRoot).TestObject;
         Block current = Build.A.Block.WithParent(parent).TestObject;
         UInt256 parentBlockIndex = new((current.Number - 1) % spec.Eip2935RingBufferSize);
         StorageCell storageCell = new(Eip2935Constants.BlockHashHistoryAddress, parentBlockIndex);
 
-        using IDisposable legacyScope = legacyWorldState.BeginScope(current.Header);
+        using IDisposable legacyScope = legacyWorldState.BeginScope(parent.Header);
         new BlockhashStore(legacyWorldState).ApplyBlockhashStateChanges(current.Header, spec);
-        byte[] expectedStoredHash = legacyWorldState.Get(storageCell).ToArray();
+        legacyWorldState.Get(in storageCell, out UInt256 expectedStoredHash);
 
-        using IDisposable balScope = balWorldState.BeginScope(current.Header);
+        using IDisposable balScope = balWorldState.BeginScope(parent.Header);
         TestSingleReleaseSpecProvider specProvider = new(spec);
         BlockAccessListManager balManager = new(
             balWorldState,
@@ -373,7 +414,12 @@ public class BlockhashProviderTests
         balManager.ApplyBlockhashStateChanges(current.Header, spec);
         balManager.NextTransaction();
 
-        Assert.That(balWorldState.Get(storageCell).ToArray(), Is.EqualTo(expectedStoredHash));
+        balWorldState.Get(in storageCell, out UInt256 actualStoredHash);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(expectedStoredHash, Is.EqualTo(parent.Hash!.ToUInt256()), "the direct write must store the parent hash");
+            Assert.That(actualStoredHash, Is.EqualTo(expectedStoredHash));
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -394,7 +440,6 @@ public class BlockhashProviderTests
         ReleaseSpec customSpec = new()
         {
             IsEip2935Enabled = true,
-            IsEip7709Enabled = true,
             Eip2935RingBufferSize = customRingBufferSize
         };
 
@@ -481,14 +526,12 @@ public class BlockhashProviderTests
         Assert.That(result, Is.EqualTo(expected.Hash));
     }
 
-    /// <summary>
-    /// Reads a hash straight out of the EIP-2935 ring buffer, the way the <c>BLOCKHASH</c> opcode does under EIP-7709.
-    /// </summary>
+    /// <summary>Reads a hash straight out of the EIP-2935 ring buffer.</summary>
     private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
     {
         StorageCell cell = new(spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
             new UInt256(blockNumber % spec.Eip2935RingBufferSize));
-        ReadOnlySpan<byte> data = worldState.Get(cell);
-        return data.Length == 1 && data[0] == 0 ? null : Hash256.FromBytesWithPadding(data);
+        worldState.Get(cell, out UInt256 value);
+        return value.IsZero ? null : new Hash256(value.ToBigEndian());
     }
 }

@@ -80,11 +80,10 @@ public class LogIndexStorageCompactorTests
         await compactor.StopAsync();
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
+    [Test]
     [Repeat(RaceConditionTestRepeat)]
     [SuppressMessage("ReSharper", "AccessToDisposedClosure")]
-    public async Task ForceAsync_Does_Not_Run_Compact_Concurrently(bool duringCompact)
+    public async Task ForceAsync_Does_Not_Run_Compact_Concurrently([Values] bool duringCompact)
     {
         const int compactionDistance = 10;
         TimeSpan compactionDelay = TimeSpan.FromMilliseconds(200);

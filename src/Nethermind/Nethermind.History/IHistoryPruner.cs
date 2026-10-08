@@ -16,6 +16,10 @@ public interface IHistoryPruner
 
     public BlockHeader? OldestBlockHeader { get; }
 
+    /// <summary>Oldest block the reclaim has not physically deleted yet - the published boundary moves
+    /// ahead of the reclaim by design, so data between the two is declared absent but still readable.</summary>
+    public ulong OldestUnreclaimedBlockNumber { get; }
+
     event EventHandler<OnNewOldestBlockArgs> NewOldestBlock;
 
     void SchedulePruneHistory();

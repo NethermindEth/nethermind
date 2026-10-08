@@ -20,12 +20,13 @@ public static class SubscriptionFactoryExtensions
         IBlockTree? blockTree,
         ILogManager? logManager,
         ISpecProvider specProvider,
-        IBlockForRpcFactory blockForRpcFactory
-        ) => subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
+        IBlockForRpcFactory blockForRpcFactory)
+    {
+        NewHeadPayloadCache payloads = new(specProvider, blockForRpcFactory);
+        subscriptionFactory.RegisterSubscriptionType<TransactionsOption?>(
             SubscriptionType.EthSubscription.NewHeads,
-            (jsonRpcDuplexClient, args) =>
-            new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, specProvider, blockForRpcFactory, args)
-            );
+            (jsonRpcDuplexClient, args) => new NewHeadSubscription(jsonRpcDuplexClient, blockTree, logManager, payloads, args));
+    }
 
     public static void RegisterLogsSubscription(
         this ISubscriptionFactory subscriptionFactory,

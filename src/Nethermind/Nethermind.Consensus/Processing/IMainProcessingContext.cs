@@ -31,6 +31,6 @@ public interface IMainProcessingContext : IStoppableService
     /// </summary>
     event EventHandler<TxProcessedEventArgs> TransactionProcessed;
 
-    Task IStoppableService.StopAsync() => BlockchainProcessor.StopAsync();
+    Task IStoppableService.StopAsync() => BlockProcessingQueue.StopAsync();
     string IStoppableService.Description => "blockchain processor";
 }

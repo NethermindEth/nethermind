@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Net;
+using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -39,9 +40,31 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
     /// <param name="reader">The RLP reader to read the serialized data from.</param>
     /// <returns>A deserialized <see cref="NodeRecord"/></returns>
     public NodeRecord Deserialize(ref RlpReader reader)
+        => DeserializeCore(ref reader) ?? throw new RlpException("Invalid ENR list structure.");
+
+    /// <summary>
+    /// Deserializes a record, returning false for malformed input. Does not verify its signature.
+    /// </summary>
+    public bool TryDeserialize(ref RlpReader reader, [NotNullWhen(true)] out NodeRecord? nodeRecord)
     {
+        try
+        {
+            nodeRecord = DeserializeCore(ref reader);
+            return nodeRecord is not null;
+        }
+        catch (Exception e) when (e is RlpException or ArgumentException or InvalidOperationException or FormatException)
+        {
+            nodeRecord = null;
+            return false;
+        }
+    }
+
+    private static NodeRecord? DeserializeCore(ref RlpReader reader)
+    {
+        if (reader.Position >= reader.Length || !reader.IsSequenceNext()) return null;
         int startPosition = reader.Position;
         int recordRlpLength = reader.ReadSequenceLength();
+        if (recordRlpLength == 0 || recordRlpLength > reader.Length - reader.Position) return null;
         int checkPosition = reader.Position + recordRlpLength;
         if (checkPosition - startPosition > 300)
         {
@@ -52,6 +75,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         ReadOnlySpan<byte> previousKey = default;
 
         ReadOnlySpan<byte> sigBytes = reader.DecodeByteArraySpan(RlpLimit.L65);
+        if (reader.Position >= checkPosition) return null;
         Signature signature = new(sigBytes, 0);
 
         bool hasV4Id = false;
@@ -59,6 +83,7 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
         while (reader.Position < checkPosition)
         {
             ReadOnlySpan<byte> key = reader.DecodeByteArraySpan();
+            if (reader.Position >= checkPosition) return null;
             if (previousKey.Length != 0 && key.SequenceCompareTo(previousKey) <= 0)
             {
                 throw new RlpException("ENR keys must be sorted and unique.");
@@ -93,7 +118,9 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
                     }
                 case 3 when key.SequenceEqual(EnrContentKey.EthU8):
                     int start = reader.Position;
+                    if (start >= checkPosition || !reader.IsSequenceNext()) return null;
                     int end = reader.ReadSequenceLength() + reader.Position;
+                    if (reader.Position >= end || !reader.IsSequenceNext()) return null;
                     int forkIdEnd = reader.ReadSequenceLength() + reader.Position;
                     byte[] forkHash = reader.DecodeByteArray(size: ForkId.ForkHashLength);
                     ulong next = reader.DecodeULong();
@@ -180,17 +207,21 @@ public class NodeRecordSigner(IEcdsa? ethereumEcdsa, PrivateKey? privateKey = nu
             throw new Exception("Cannot verify an ENR with an empty signature.");
         }
 
+        CompressedPublicKey? reportedKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
+        if (reportedKey is null)
+        {
+            return false;
+        }
+
         ValueHash256 contentHash = nodeRecord.ContentHash;
-
         CompressedPublicKey? publicKeyA =
-            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature!, in contentHash);
-        Signature sigB = new(nodeRecord.Signature!.Bytes, 1);
-        CompressedPublicKey? publicKeyB =
-            _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash);
+            _ecdsa.RecoverCompressedPublicKey(nodeRecord.Signature, in contentHash);
+        if (publicKeyA?.Equals(reportedKey) == true)
+        {
+            return true;
+        }
 
-        CompressedPublicKey? reportedKey =
-            nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.SecP256k1);
-
-        return publicKeyA?.Equals(reportedKey) == true || publicKeyB?.Equals(reportedKey) == true;
+        Signature sigB = new(nodeRecord.Signature.Bytes, 1);
+        return _ecdsa.RecoverCompressedPublicKey(sigB, in contentHash)?.Equals(reportedKey) == true;
     }
 }

@@ -3,10 +3,8 @@
   "engine": {
     "XDPoS": {
       "params": {
-        "period": 2,
         "epoch": 900,
         "reward": 5000,
-        "rewardCheckpoint": 900,
         "gap": 450,
         "foundationWalletAddr": "0x746249c61f5832c5eed53172776b460491bdcd5c",
         "switchEpoch": 63143,

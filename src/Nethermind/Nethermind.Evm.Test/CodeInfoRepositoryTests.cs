@@ -3,9 +3,12 @@
 
 using System.Collections.Frozen;
 using Nethermind.Core;
+using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
 using NSubstitute;
 using NUnit.Framework;
 using System.Collections.Generic;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Blockchain;
 using Nethermind.Evm.State;
@@ -14,6 +17,12 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using System;
+using Nethermind.State;
+using Nethermind.Core.BlockAccessLists;
+using Nethermind.Logging;
+using Nethermind.Specs.Forks;
+using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Evm.Test;
 
@@ -26,6 +35,132 @@ public class CodeInfoRepositoryTests
     {
         _releaseSpec = ReleaseSpecSubstitute.Create();
         _releaseSpec.Precompiles.Returns(FrozenSet<AddressAsKey>.Empty);
+    }
+
+    /// <summary>Precompile numbers a chain might register, including ones the index array cannot hold.</summary>
+    /// <remarks>Ethereum's stop at 0x100 (RIP-7212), which is what the index array is sized against, but a
+    /// plugin may register anywhere: Taiko's L1Sload and L1StaticCall sit at 0x10001 and 0x10002, and at
+    /// 0x8000_0000 the number no longer fits an <see cref="int"/>, so it comes back negative. Indexing by
+    /// precompile number is only sound if all of those are still resolved. The membership half of the same
+    /// contract is covered against the real spec in <c>ReleaseSpecTests</c>; the substitute here answers
+    /// <c>IsPrecompile</c> from its own arrangement, so it could not tell us anything about it.</remarks>
+    private static readonly long[] PrecompileNumbers = [1, 2, 9, 0x11, 0x100, 0x101, 0x10001, 0x10002, 0x8000_0000];
+
+    [TestCaseSource(nameof(PrecompileNumbers))]
+    public void Precompile_is_resolved_whatever_its_number(long number)
+    {
+        Address address = Address.FromNumber((UInt256)(ulong)number);
+        CodeInfo expected = new(Substitute.For<IPrecompile>());
+
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(new Dictionary<AddressAsKey, CodeInfo>
+        {
+            [Address.FromNumber(UInt256.One)] = new(Substitute.For<IPrecompile>()),
+            [address] = expected,
+        }.ToFrozenDictionary());
+
+        IReleaseSpec spec = ReleaseSpecSubstitute.Create();
+        spec.Precompiles.Returns(new AddressAsKey[] { Address.FromNumber(UInt256.One), address }.ToFrozenSet());
+
+        CodeInfoRepository repository = new(Substitute.For<IWorldState>(), provider);
+
+        Assert.That(repository.GetCachedCodeInfo(address, false, spec, out _), Is.SameAs(expected));
+    }
+
+    private static IPrecompileProvider NoPrecompiles()
+    {
+        IPrecompileProvider provider = Substitute.For<IPrecompileProvider>();
+        provider.GetPrecompiles().Returns(FrozenDictionary<AddressAsKey, CodeInfo>.Empty);
+        return provider;
+    }
+
+    /// <summary>Replacing an account's code must be visible immediately, not answered from the memo.</summary>
+    /// <remarks>
+    /// <see cref="CacheCodeInfoRepository"/> remembers the code it last resolved so a repeated query skips
+    /// the shared cache's probe. The memo is keyed on the code hash, which is re-read from the world state
+    /// on every call, so a changed or reverted deployment misses it — this pins that, since a stale hit
+    /// would run the wrong bytecode.
+    /// </remarks>
+    [Test]
+    public void Changed_code_is_not_answered_from_the_last_resolved_code()
+    {
+        byte[] first = [(byte)Instruction.STOP];
+        byte[] second = [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, first, _releaseSpec);
+
+        // Resolve twice so the second answer is the one the memo serves.
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(first));
+
+        stateProvider.InsertCode(TestItem.AddressA, second, _releaseSpec);
+
+        Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(second));
+    }
+
+    /// <summary>Two accounts sharing a code hash share its body; a different one must not be confused.</summary>
+    [Test]
+    public void Different_accounts_resolve_their_own_code()
+    {
+        byte[] shared = [(byte)Instruction.STOP];
+        byte[] other = [(byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        CacheCodeInfoRepository repository = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        foreach (Address address in (Address[])[TestItem.AddressA, TestItem.AddressB, TestItem.AddressC])
+        {
+            stateProvider.CreateAccount(address, 0);
+        }
+
+        stateProvider.InsertCode(TestItem.AddressA, shared, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressB, shared, _releaseSpec);
+        stateProvider.InsertCode(TestItem.AddressC, other, _releaseSpec);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressB, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(shared));
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
+            // Alternating never produces a memo hit; repeating the last address is what pins that a hit
+            // answers for the right address rather than only that a miss is not confused.
+            Assert.That(repository.GetCachedCodeInfo(TestItem.AddressC, false, _releaseSpec, out _).CodeSpan, Is.SequenceEqualTo(other));
+        }
+    }
+
+    /// <summary>A cached instance must not be re-pointed at a different code hash.</summary>
+    /// <remarks>The last-resolved memo decides which bytecode executes from the stamped hash alone, so a
+    /// stamp that is not the keccak of the body would serve the wrong contract with no diagnostic.</remarks>
+    [Test]
+    public void Cached_code_cannot_be_re_stamped_with_another_hash()
+    {
+        byte[] code = [(byte)Instruction.STOP];
+        CodeInfo codeInfo = new(code);
+        StaticCodeCache cache = new(64);
+
+        cache.Set(ValueKeccak.Compute(code), codeInfo);
+
+        Assert.That(() => cache.Set(ValueKeccak.Compute([(byte)Instruction.JUMPDEST]), codeInfo),
+            Throws.InstanceOf<InvalidOperationException>());
+    }
+
+    [Test]
+    public void Ordinary_address_is_not_taken_for_a_precompile()
+    {
+        // Sixteen leading zero bytes is what makes an address a candidate; this has none.
+        Assert.That(TestItem.AddressA.CouldBePrecompile(), Is.False);
+        Assert.That(_releaseSpec.IsPrecompile(TestItem.AddressA), Is.False);
+
+        // Zero clears the shape guard — index 0 — so only the set can reject it.
+        Assert.That(Address.Zero.CouldBePrecompile(), Is.True);
+        Assert.That(_releaseSpec.IsPrecompile(Address.Zero), Is.False);
     }
 
     public static IEnumerable<TestCaseData> NotDelegationCodeCases()
@@ -73,16 +208,11 @@ public class CodeInfoRepositoryTests
             stateProvider.CreateAccount(TestItem.AddressA, 0);
         }
 
-        bool codeInfoLoaderCalled = false;
-        CodeInfoRepository sut = new(stateProvider, new EthereumPrecompileProvider(), (_, _, _) =>
-        {
-            codeInfoLoaderCalled = true;
-            return CodeInfo.Empty;
-        });
+        LoadTrackingCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out _), Is.False);
 
-        Assert.That(codeInfoLoaderCalled, Is.False);
+        Assert.That(sut.LoadCalled, Is.False);
     }
 
     public static IEnumerable<TestCaseData> DelegationCodeCases()
@@ -135,7 +265,156 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         CodeInfo result = sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec);
-        Assert.That(result.CodeSpan.ToArray(), Is.EqualTo(delegationCode));
+        Assert.That(result.CodeSpan, Is.SequenceEqualTo(delegationCode));
+    }
+
+    [Test]
+    public void Cached_delegation_address_is_reused_and_tracks_code_replacement_and_restore()
+    {
+        Address firstTarget = TestItem.AddressB;
+        Address secondTarget = TestItem.AddressC;
+        byte[] firstDelegation = [.. Eip7702Constants.DelegationHeader, .. firstTarget.Bytes];
+        byte[] secondDelegation = [.. Eip7702Constants.DelegationHeader, .. secondTarget.Bytes];
+        byte[] ordinaryCode = [(byte)Instruction.STOP];
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.CreateAccount(firstTarget, 0);
+        stateProvider.CreateAccount(secondTarget, 0);
+        stateProvider.InsertCode(TestItem.AddressA, firstDelegation, _releaseSpec);
+        CacheCodeInfoRepository sut = new(stateProvider, NoPrecompiles(), new StaticCodeCache(64));
+
+        CodeInfo first = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? firstAddress);
+        CodeInfo repeated = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? repeatedAddress);
+        bool firstTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? firstTryAddress);
+        bool repeatedTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? repeatedTryAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(repeated, Is.SameAs(first));
+            Assert.That(repeatedAddress, Is.SameAs(firstAddress));
+            Assert.That(firstTryHasDelegation, Is.True);
+            Assert.That(repeatedTryHasDelegation, Is.True);
+            Assert.That(firstTryAddress, Is.SameAs(firstAddress));
+            Assert.That(repeatedTryAddress, Is.SameAs(firstAddress));
+            Assert.That(firstAddress, Is.EqualTo(firstTarget));
+            Assert.That(first.CodeSpan, Is.SequenceEqualTo(firstDelegation));
+        }
+
+        Snapshot snapshot = stateProvider.TakeSnapshot();
+        stateProvider.InsertCode(TestItem.AddressA, secondDelegation, _releaseSpec);
+        sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? secondAddress);
+        bool secondTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? secondTryAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(secondTryHasDelegation, Is.True);
+            Assert.That(secondTryAddress, Is.SameAs(secondAddress));
+            Assert.That(secondAddress, Is.EqualTo(secondTarget));
+            Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+        }
+
+        stateProvider.InsertCode(TestItem.AddressA, ordinaryCode, _releaseSpec);
+        CodeInfo ordinary = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? noAddress);
+        bool ordinaryTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? ordinaryTryAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ordinaryTryHasDelegation, Is.False);
+            Assert.That(ordinaryTryAddress, Is.Null);
+            Assert.That(noAddress, Is.Null);
+            Assert.That(ordinary.CodeSpan, Is.SequenceEqualTo(ordinaryCode));
+        }
+
+        stateProvider.Restore(snapshot);
+        CodeInfo restored = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? restoredAddress);
+        bool restoredTryHasDelegation = sut.TryGetDelegation(TestItem.AddressA, _releaseSpec, out Address? restoredTryAddress);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restored, Is.SameAs(first));
+            Assert.That(restoredTryHasDelegation, Is.True);
+            Assert.That(restoredTryAddress, Is.SameAs(restoredAddress));
+            Assert.That(restoredTryAddress, Is.SameAs(firstAddress));
+            Assert.That(restoredAddress, Is.SameAs(firstAddress));
+            Assert.That(restoredAddress, Is.EqualTo(firstTarget));
+        }
+    }
+
+    [Test]
+    public void Noop_code_cache_resolves_delegation_code_from_world_state_each_time()
+    {
+        byte[] delegation = [.. Eip7702Constants.DelegationHeader, .. TestItem.AddressB.Bytes];
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        stateProvider.CreateAccount(TestItem.AddressA, 0);
+        stateProvider.InsertCode(TestItem.AddressA, delegation, _releaseSpec);
+        CountingWorldState countingState = new(stateProvider);
+        CacheCodeInfoRepository sut = new(countingState, NoPrecompiles(), NoopCodeCache.Instance);
+
+        CodeInfo first = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? firstAddress);
+        CodeInfo second = sut.GetCachedCodeInfo(TestItem.AddressA, false, _releaseSpec, out Address? secondAddress);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(countingState.CodeReads, Is.EqualTo(2));
+            Assert.That(second, Is.Not.SameAs(first));
+            Assert.That(secondAddress, Is.Not.SameAs(firstAddress));
+            Assert.That(secondAddress, Is.EqualTo(TestItem.AddressB));
+        }
+    }
+
+    private sealed class CountingWorldState(IWorldState state) : WorldStateDecorator(state)
+    {
+        public int CodeReads { get; private set; }
+
+        public override ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
+        {
+            CodeReads++;
+            return base.GetCode(in codeHash);
+        }
+    }
+
+    [Test]
+    public void Code_miss_in_parallel_execution_runs_from_the_buffer_read_out_of_the_store()
+    {
+        // A cache-busting block misses on every call: the one copy out of the store must be the buffer execution
+        // runs from, through the traced block-access-list state, and the account read must still be recorded.
+        NativeTestMemDb codeDb = new();
+        byte[] code = [0x60, 0x01, 0x00];
+        IWorldState parent = TestWorldStateFactory.CreateForTest(codeDb: codeDb);
+        Hash256 stateRoot;
+        using (parent.BeginScope(IWorldState.PreGenesis))
+        {
+            parent.CreateAccount(TestItem.AddressA, 0);
+            parent.InsertCode(TestItem.AddressA, code, Amsterdam.Instance);
+            parent.Commit(Amsterdam.Instance, isGenesis: true);
+            parent.CommitTree(0);
+            stateRoot = parent.StateRoot;
+        }
+
+        BlockHeader baseBlock = Build.A.BlockHeader.WithStateRoot(stateRoot).WithNumber(0).TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList
+            .WithAccountChanges(Build.An.AccountChanges.WithAddress(TestItem.AddressA).TestObject)
+            .TestObject;
+        BlockAccessListBasedWorldState blockState = new(parent, LimboLogs.Instance);
+        blockState.SetBlockAccessIndex(1);
+        blockState.Setup(Build.A.Block.WithHeader(baseBlock).WithBlockAccessList(bal).TestObject);
+        using IDisposable scope = parent.BeginScope(baseBlock);
+        blockState.SetParentReader(parent);
+        TracedAccessWorldState traced = new(blockState, parallel: true);
+        BlockAccessListAtIndex generated = new() { Index = 1 };
+        traced.SetGeneratingBlockAccessList(generated);
+
+        CodeInfo codeInfo = new CodeInfoRepository(traced, NoPrecompiles())
+            .GetCachedCodeInfo(TestItem.AddressA, followDelegation: false, Amsterdam.Instance, out _);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(codeInfo.CodeSpan, Is.SequenceEqualTo(code));
+            Assert.That(Unsafe.AreSame(ref MemoryMarshal.GetReference(codeInfo.CodeSpan), ref MemoryMarshal.GetReference(codeInfo.ExecutionCodeSpan)), Is.True,
+                "execution must run from the buffer read out of the store, not a second copy");
+            Assert.That(generated.HasAccount(TestItem.AddressA), Is.True);
+        }
+        codeDb.KeyWasReadWithFlags(ValueKeccak.Compute(code).ToByteArray(), ReadFlags.HintCacheMiss);
     }
 
     [TestCaseSource(nameof(NotDelegationCodeCases))]
@@ -149,5 +428,16 @@ public class CodeInfoRepositoryTests
         EthereumCodeInfoRepository sut = new(stateProvider);
 
         Assert.That(sut.GetCachedCodeInfo(TestItem.AddressA, _releaseSpec), Is.EqualTo(new CodeInfo(code)));
+    }
+
+    private sealed class LoadTrackingCodeInfoRepository(IWorldState worldState) : CodeInfoRepository(worldState, new EthereumPrecompileProvider())
+    {
+        public bool LoadCalled { get; private set; }
+
+        protected override CodeInfo LoadCodeInfo(Address address, in ValueHash256 codeHash)
+        {
+            LoadCalled = true;
+            return CodeInfo.Empty;
+        }
     }
 }

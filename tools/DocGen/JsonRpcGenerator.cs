@@ -2,17 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.ParityStyle;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Facade.Eth;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Rpc;
 using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
+using Nethermind.Stats.Model;
 using Spectre.Console;
+using System.Buffers;
 using System.Net;
 using System.Numerics;
 using System.Reflection;
@@ -46,6 +53,7 @@ internal static class JsonRpcGenerator
         [typeof(byte)] = "_integer_",
         [typeof(byte[])] = "_string_ (hex data)",
         [typeof(byte[][])] = "array of _string_ (hex data)",
+        [typeof(Capability)] = "_string_ (protocol/version)",
         [typeof(DateTime)] = "_string_ (date-time)",
         [typeof(DateTimeOffset)] = "_string_ (date-time)",
         [typeof(double)] = "_number_",
@@ -56,7 +64,7 @@ internal static class JsonRpcGenerator
         [typeof(int)] = "_integer_",
         [typeof(IPAddress)] = "_string_",
         [typeof(long)] = "_string_ (hex integer)",
-        [typeof(PublicKey)] = "_string_ (hex data)",
+        [typeof(PublicKey)] = "_string_ (node id, no \"0x\" prefix)",
         [typeof(Signature)] = "_string_ (hex data)",
         [typeof(string)] = "_string_",
         [typeof(TimeSpan)] = "_string_ (duration)",
@@ -65,6 +73,44 @@ internal static class JsonRpcGenerator
         [typeof(ulong)] = "_string_ (hex integer)",
         [typeof(UInt256)] = "_string_ (hex integer)",
         [typeof(ValueHash256)] = "_string_ (hash)",
+    };
+
+    // Labels for members whose own converter writes something other than their type's label
+    private static readonly Dictionary<Type, string> _knownConverterTypeNames = new()
+    {
+        [typeof(BlockNonceConverter)] = "_string_ (8-byte hex data)",
+        [typeof(MemoryHexConverter)] = "array of _string_ (32-byte hex data)",
+        [typeof(PublicKeyConverter)] = "_string_ (hex data)",
+        [typeof(StackHexConverter)] = "array of _string_ (hex integer)",
+        [typeof(StorageHexConverter)] = "map of _string_ (32-byte hex data)",
+    };
+
+    // Members written by hand-rolled object converters, which expose no serializer contract to read them from
+    private static readonly Dictionary<Type, (string Name, Type Type, Type? Converter)[]> _knownConverterMembers = new()
+    {
+        // A call or create action; a reward writes author, rewardType and value instead,
+        // and a self-destruct writes address, balance and refundAddress
+        [typeof(ParityTraceActionConverter)] =
+        [
+            ("address", typeof(Address), null), ("author", typeof(Address), null), ("balance", typeof(UInt256), null),
+            ("callType", typeof(string), null), ("creationMethod", typeof(string), null), ("from", typeof(Address), null),
+            ("gas", typeof(ulong), null), ("init", typeof(byte[]), null), ("input", typeof(byte[]), null),
+            ("refundAddress", typeof(Address), null), ("rewardType", typeof(string), null), ("to", typeof(Address), null),
+            ("value", typeof(UInt256), null),
+        ],
+        // Writes the action and each of its subtraces as one flat list of entries
+        [typeof(ParityTraceActionFromReplayJsonConverter)] =
+        [
+            ("action", typeof(ParityTraceAction), typeof(ParityTraceActionConverter)), ("error", typeof(string), null),
+            ("result", typeof(ParityTraceResult), null), ("subtraces", typeof(int), null),
+            ("traceAddress", typeof(int[]), null), ("type", typeof(string), null),
+        ],
+        [typeof(ParityTxTraceFromReplayJsonConverter)] =
+        [
+            ("output", typeof(byte[]), null), ("stateDiff", typeof(Dictionary<Address, ParityAccountStateChange>), null),
+            ("trace", typeof(ParityTraceAction[]), typeof(ParityTraceActionFromReplayJsonConverter)),
+            ("transactionHash", typeof(Hash256), null), ("vmTrace", typeof(ParityVmTrace), null),
+        ],
     };
 
     internal static void Generate(string path)
@@ -131,6 +177,14 @@ internal static class JsonRpcGenerator
         if (_guessedTypeNames.Count != 0)
             AnsiConsole.MarkupLine(
                 $"[yellow]Documented from CLR shape, no serializer contract:[/] {string.Join(", ", _guessedTypeNames)}");
+
+        // The probe names number and boolean output before the label is consulted, so such an entry never applies
+        foreach ((Type converterType, string label) in _knownConverterTypeNames)
+        {
+            if (TryProbeScalarKind(converterType, out JsonTokenType token) && token is not JsonTokenType.String)
+                AnsiConsole.MarkupLine(
+                    $"[yellow]Unreachable converter label, the probe names it {token}:[/] {converterType.Name} = {label}");
+        }
     }
 
     private static void WriteMarkdown(string path, string ns, IEnumerable<MethodInfo> methods, int sidebarIndex)
@@ -282,19 +336,30 @@ internal static class JsonRpcGenerator
 
         WriteExpandedType(file, GetReturnType(method.ReturnType));
 
+        if (attr.ResultCanBeNull)
+            file.WriteLine("""
+
+                `result` may be `null` in a successful response.
+                """);
+
         file.WriteLine("""
             
             </TabItem>
             """);
     }
 
-    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null)
+    private static void WriteExpandedType(StreamWriter file, Type type, int indentation = 0, bool omitTypeName = false, IEnumerable<string?>? parentTypes = null, Type? converterType = null)
     {
         type = Nullable.GetUnderlyingType(type) ?? type;
 
         parentTypes ??= new List<string>();
 
-        if (parentTypes.Any(a => type.FullName?.Equals(a, StringComparison.Ordinal) ?? false))
+        // A converter with its own members writes a different object than the type's, so it is its own node
+        string? nodeName = converterType is not null && _knownConverterMembers.ContainsKey(converterType)
+            ? converterType.FullName
+            : type.FullName;
+
+        if (parentTypes.Any(a => nodeName?.Equals(a, StringComparison.Ordinal) ?? false))
         {
             file.WriteLine($"{Indent(indentation + 2)}<!--[circular ref]-->");
 
@@ -323,17 +388,18 @@ internal static class JsonRpcGenerator
         if (IsOpaqueJson(type))
             return;
 
-        foreach ((string name, Type memberType) in GetSerializedMembers(type))
+        foreach ((string name, Type memberType, Type? memberConverter) in GetSerializedMembers(type, converterType))
         {
-            string memberJsonType = GetJsonTypeName(memberType);
+            string memberJsonType = GetJsonTypeName(memberType, memberConverter);
 
             file.WriteLine($"{Indent(indentation + 2)}- `{name}`: {memberJsonType}");
 
             if (memberJsonType.Equals(_objectTypeName, StringComparison.Ordinal))
-                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(type.FullName));
+                WriteExpandedType(file, memberType, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
             else if (memberJsonType.Contains($" of {_objectTypeName}", StringComparison.Ordinal) &&
                 TryGetEnumerableItemType(memberType, out Type? itemType, out bool _))
-                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(type.FullName));
+                // A converter on a collection of objects writes its items
+                WriteExpandedType(file, itemType!, indentation + 2, true, parentTypes.Append(nodeName), memberConverter);
         }
     }
 
@@ -353,15 +419,26 @@ internal static class JsonRpcGenerator
         }
     }
 
-    private static string GetJsonTypeName(Type type)
+    private static string GetJsonTypeName(Type type, Type? converterType = null)
     {
         if (type.IsByRef && type.GetElementType() is { } elementType)
             type = elementType;
 
-        Type? underlyingType = Nullable.GetUnderlyingType(type);
+        type = Nullable.GetUnderlyingType(type) ?? type;
 
-        if (underlyingType is not null)
-            return GetJsonTypeName(underlyingType);
+        // Only explicit member converters: probing a type's default serialization is unsound for
+        // value-dependent unions (e.g. `eth_syncing` returns `false` or an object).
+        if (converterType is not null && TryProbeScalarKind(converterType, out JsonTokenType token))
+        {
+            if (token is JsonTokenType.Number)
+                return IsFloatingPoint(type) ? "_number_" : "_integer_";
+            if (token is JsonTokenType.True or JsonTokenType.False)
+                return "_boolean_";
+            // a string falls through to keep its flavour from the editorial mapping below
+        }
+
+        if (converterType is not null && _knownConverterTypeNames.TryGetValue(converterType, out string? converterName))
+            return converterName;
 
         if (_knownTypeNames.TryGetValue(type, out string? knownName))
             return knownName;
@@ -388,6 +465,67 @@ internal static class JsonRpcGenerator
             return $"{(isDictionary ? "map" : "array")} of {GetJsonTypeName(itemType!)}";
 
         return _objectTypeName;
+    }
+
+    private static bool IsFloatingPoint(Type type) =>
+        type == typeof(double) || type == typeof(float) || type == typeof(decimal);
+
+    // Reads the JSON token the converter actually emits, so number/string/boolean comes from the
+    // serializer rather than the CLR type.
+    private static bool TryProbeScalarKind(Type converterType, out JsonTokenType token)
+    {
+        token = JsonTokenType.None;
+
+        // Value type from the converter's own JsonConverter<T> base: nullable converters declare Write
+        // against `T?`, and a JsonConverterFactory declares none (null here).
+        Type? valueType = ConverterValueType(converterType);
+
+        if (valueType is null)
+            return false;
+
+        try
+        {
+            // Non-null underlying value, else a nullable converter writes null
+            object? sample = Activator.CreateInstance(Nullable.GetUnderlyingType(valueType) ?? valueType);
+
+            if (sample is null)
+                return false;
+
+            ArrayBufferWriter<byte> buffer = new();
+
+            using (Utf8JsonWriter writer = new(buffer))
+                InvokeConverterWrite(converterType, valueType, sample, writer);
+
+            Utf8JsonReader reader = new(buffer.WrittenSpan);
+            reader.Read();
+            token = reader.TokenType;
+
+            return token is JsonTokenType.Number or JsonTokenType.String or JsonTokenType.True or JsonTokenType.False;
+        }
+        // Not a documentable scalar (uninstantiable, converter rejects the sample); fall back to the mapping
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static Type? ConverterValueType(Type converterType)
+    {
+        for (Type? t = converterType; t is not null; t = t.BaseType)
+            if (t.IsGenericType && t.GetGenericTypeDefinition() == typeof(JsonConverter<>))
+                return t.GetGenericArguments()[0];
+
+        return null;
+    }
+
+    private static void InvokeConverterWrite(Type converterType, Type valueType, object sample, Utf8JsonWriter writer)
+    {
+        JsonConverter converter = (JsonConverter)Activator.CreateInstance(converterType)!;
+        MethodInfo write = converterType.GetMethod(
+            nameof(JsonConverter<>.Write),
+            [typeof(Utf8JsonWriter), valueType, typeof(JsonSerializerOptions)])!;
+
+        write.Invoke(converter, [writer, sample, EthereumJsonSerializer.JsonOptions]);
     }
 
     private static Type GetReturnType(Type type)
@@ -418,14 +556,18 @@ internal static class JsonRpcGenerator
         }
     }
 
-    private static IEnumerable<(string Name, Type Type)> GetSerializedMembers(Type type)
+    private static IEnumerable<(string Name, Type Type, Type? Converter)> GetSerializedMembers(Type type, Type? converterType)
     {
         JsonTypeInfo? contract = GetContract(type);
 
+        if ((converterType ?? contract?.Converter.GetType()) is { } shapeConverter &&
+            _knownConverterMembers.TryGetValue(shapeConverter, out (string, Type, Type?)[]? members))
+            return members;
+
         if (contract?.Kind is JsonTypeInfoKind.Object)
             return contract.Properties
-                .Where(p => p.Get is not null)
-                .Select(p => (Name: p.Name, Type: p.PropertyType))
+                .Where(p => p.Get is not null && !IsNullForSpecialization(type, p))
+                .Select(p => (Name: p.Name, Type: p.PropertyType, Converter: MemberConverter(p.AttributeProvider)))
                 .OrderBy(m => m.Name, StringComparer.Ordinal);
 
         // A hand-rolled converter exposes no contract members, leaving the CLR shape as the only guess
@@ -437,9 +579,23 @@ internal static class JsonRpcGenerator
         return type.GetProperties(memberFlags).Select(p => (Member: (MemberInfo)p, Type: p.PropertyType))
             .Concat(type.GetFields(memberFlags).Select(f => (Member: (MemberInfo)f, Type: f.FieldType)))
             .Where(m => m.Member.GetCustomAttribute<JsonIgnoreAttribute>()?.Condition is not JsonIgnoreCondition.Always)
-            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type))
+            .Select(m => (Name: GetFallbackName(m.Member), Type: m.Type, Converter: MemberConverter(m.Member)))
             .OrderBy(m => m.Name, StringComparer.Ordinal);
     }
+
+    // SimulateBlockResult<TTrace> returns null from one of these by its type argument, so the serializer never writes it
+    private static bool IsNullForSpecialization(Type type, JsonPropertyInfo property) =>
+        type.IsGenericType && type.GetGenericTypeDefinition() == typeof(SimulateBlockResult<>) &&
+        property.AttributeProvider is MemberInfo { Name: { } name } &&
+        name == (type.GetGenericArguments()[0] == typeof(SimulateCallResult)
+            ? nameof(SimulateBlockResult<>.Traces)
+            : nameof(SimulateBlockResult<>.Calls));
+
+    // The member's [JsonConverter], if any: lets two fields of the same type document different wire forms
+    private static Type? MemberConverter(ICustomAttributeProvider? member) =>
+        member?.GetCustomAttributes(typeof(JsonConverterAttribute), inherit: false) is [JsonConverterAttribute { ConverterType: { } converterType }]
+            ? converterType
+            : null;
 
     private static string GetFallbackName(MemberInfo member) =>
         member.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name

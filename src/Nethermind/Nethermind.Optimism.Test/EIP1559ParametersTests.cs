@@ -17,16 +17,13 @@ public class EIP1559ParametersTests
     {
         // V0
         yield return ("0x000000000000000000", new(0, 0, 0));
-        yield return ("0x000000000100000000", new(0, 1, 0));
         yield return ("0x0000000001000001bc", new(0, 1, 444));
         yield return ("0x0000000001ffffffff", new(0, 1, UInt32.MaxValue));
-        yield return ("0x00ffffffff00000000", new(0, UInt32.MaxValue, 0));
         yield return ("0x00ffffffff000001bc", new(0, UInt32.MaxValue, 444));
         yield return ("0x00ffffffffffffffff", new(0, UInt32.MaxValue, UInt32.MaxValue));
 
         // V1
         yield return ("0x0100000000000000000000000000000000", new(1, 0, 0, 0));
-        yield return ("0x0100000001000000000000000000000001", new(1, 1, 0, 1));
         yield return ("0x0100000001000000010000000000000001", new(1, 1, 1, 1));
         yield return ("0x01000000010000000100000000000001bc", new(1, 1, 1, 444));
         yield return ("0x01000000010000000100000000ffffffff", new(1, 1, 1, UInt32.MaxValue));
@@ -44,5 +41,15 @@ public class EIP1559ParametersTests
             Assert.That(blockHeader.TryDecodeEIP1559Parameters(out EIP1559Parameters decoded, out _), Is.True);
             Assert.That(decoded, Is.EqualTo(testCase.Expected));
         }
+    }
+
+    // op-geth accepts a zero denominator or elasticity only when both are zero.
+    [Test]
+    public void DecodeBlockHeaderParameters_RejectsOneSidedZero(
+        [Values("0x000000000100000000", "0x00ffffffff00000000", "0x00000000000000000a", "0x0100000001000000000000000000000001", "0x0100000000000000010000000000000000")] string hexString)
+    {
+        BlockHeader blockHeader = Build.A.BlockHeader.WithExtraData(Bytes.FromHexString(hexString)).TestObject;
+
+        Assert.That(blockHeader.TryDecodeEIP1559Parameters(out _, out _), Is.False);
     }
 }

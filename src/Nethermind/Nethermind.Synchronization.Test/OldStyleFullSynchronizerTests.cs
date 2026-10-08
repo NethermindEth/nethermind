@@ -314,7 +314,7 @@ namespace Nethermind.Synchronization.Test
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");
-            Assert.That(data[0].ToArray(), Is.EqualTo(TestItem.RandomDataA), "data[0]");
+            Assert.That(data[0], Is.SequenceEqualTo(TestItem.RandomDataA), "data[0]");
             Assert.That(data[1].IsEmpty, Is.True, "data[1]");
         }
 

@@ -163,9 +163,8 @@ internal class SnapshotManagerTests
         Assert.That(result, Is.EqualTo(snapshot).UsingXdcComparer());
     }
 
-    [TestCase(450UL)]
-    [TestCase(1350UL)]
-    public void OnUpdateMainChain_ShouldStoreSnapshot(ulong gapNumber)
+    [Test]
+    public void OnUpdateMainChain_ShouldStoreSnapshot([Values(450UL, 1350UL)] ulong gapNumber)
     {
         IBlockTree blockTree = Substitute.For<IBlockTree>();
         ISpecProvider specProvider = Substitute.For<ISpecProvider>();

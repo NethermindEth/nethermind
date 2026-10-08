@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Init.Steps;
 using Nethermind.TxPool;
@@ -11,7 +12,9 @@ public class InitializeBlockchainTaiko(
     TaikoNethermindApi api,
     IChainHeadInfoProvider chainHeadInfoProvider,
     ITxGossipPolicy txGossipPolicy,
-    TaikoBeaconHeadAdvancer headAdvancer) : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy)
+    TaikoBeaconHeadAdvancer headAdvancer,
+    [KeyFilter(ITxValidator.SpecChangeTxValidatorKey)] ITxValidator specChangeTxValidator)
+    : InitializeBlockchain(api, chainHeadInfoProvider, txGossipPolicy, specChangeTxValidator)
 {
     private readonly TaikoBeaconHeadAdvancer _headAdvancer = headAdvancer;
 

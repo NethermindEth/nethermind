@@ -19,6 +19,7 @@ public class TxTypeExtensionsTests
             TxType.EIP1559,
             TxType.Blob,
             TxType.SetCode,
+            TxType.FrameTx,
             TxType.DepositTx
         };
 
@@ -33,7 +34,8 @@ public class TxTypeExtensionsTests
         AccessList = 1,
         EIP1559 = 2,
         Blob = 4,
-        SetCode = 8
+        SetCode = 8,
+        Frames = 16
     }
 
     [TestCase(TxType.Legacy, TxFeatureSupport.None)]
@@ -41,6 +43,7 @@ public class TxTypeExtensionsTests
     [TestCase(TxType.EIP1559, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559)]
     [TestCase(TxType.Blob, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.Blob)]
     [TestCase(TxType.SetCode, TxFeatureSupport.AccessList | TxFeatureSupport.EIP1559 | TxFeatureSupport.SetCode)]
+    [TestCase(TxType.FrameTx, TxFeatureSupport.EIP1559 | TxFeatureSupport.Frames)]
     [TestCase(TxType.DepositTx, TxFeatureSupport.None)]
     public void TxTypes_supported_functionality(TxType txType, TxFeatureSupport expectedFeaturesSupport)
     {
@@ -50,6 +53,7 @@ public class TxTypeExtensionsTests
             Assert.That(txType.Supports1559(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.EIP1559)));
             Assert.That(txType.SupportsBlobs(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.Blob)));
             Assert.That(txType.SupportsAuthorizationList(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.SetCode)));
+            Assert.That(txType.SupportsFrames(), Is.EqualTo(expectedFeaturesSupport.HasFlag(TxFeatureSupport.Frames)));
         }
     }
 }

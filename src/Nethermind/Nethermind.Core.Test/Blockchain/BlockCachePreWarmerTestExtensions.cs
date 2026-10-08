@@ -38,7 +38,7 @@ public static class BlockCachePreWarmerTestExtensions
             head,
             spec,
             generation: 1,
-            _ => Interlocked.Increment(ref calls) == 1 ? delta : null,
+            _ => Interlocked.Increment(ref calls) == 1 ? (delta, spec) : null,
             idlePassDelayMs: 5,
             cancellation.Token);
 

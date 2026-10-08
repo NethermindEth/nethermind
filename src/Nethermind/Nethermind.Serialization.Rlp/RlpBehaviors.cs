@@ -30,5 +30,23 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
-    ExcludeHashes = 128
+    ExcludeHashes = 128,
+
+    /// <summary>
+    /// Pools blob buffers for exclusively owned incoming P2P transactions. Their payload may be
+    /// released on rejection; callers must relinquish pooling ownership before sharing the transaction.
+    /// </summary>
+    PoolBlobBuffers = 256,
+
+    /// <summary>
+    /// Creates fresh transaction objects for long-lived payloads instead of renting them from the object pool.
+    /// </summary>
+    SkipPooledTransactions = 512,
+
+    /// <summary>
+    /// EIP-7668: encodes the receipt bloom as a zero-length string, whatever bloom the receipt holds;
+    /// the receipt message decoder accepts a zero-length bloom and the compact storage decoder sets
+    /// <c>Bloom.ZeroLength</c> instead of computing the bloom.
+    /// </summary>
+    Eip7668Receipts = 1024
 }

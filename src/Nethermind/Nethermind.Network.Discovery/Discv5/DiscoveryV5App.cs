@@ -5,10 +5,10 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Runtime.CompilerServices;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using Autofac;
 using Autofac.Features.AttributeFilters;
 using Collections.Pooled;
-using DotNetty.Transport.Channels;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,18 +23,19 @@ using Nethermind.Stats.Model;
 using Discv5KademliaModule = Nethermind.Network.Discovery.Discv5.Kademlia.KademliaModule;
 
 [assembly: InternalsVisibleTo("Nethermind.Network.Discovery.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Network.Benchmark")]
 
 namespace Nethermind.Network.Discovery.Discv5;
 
 public sealed class DiscoveryV5App : KademliaDiscoveryApp
 {
     private readonly bool _allowNonRoutableEnrs;
+    private readonly NetworkListenerState _listenerState;
+    private readonly List<Node> _bootNodes;
     private readonly DiscoveryPersistenceManager _persistenceManager;
     private readonly IKademliaAdapter _discv5Adapter;
-    private readonly Func<NettyDiscoveryV5Handler> _discoveryHandlerFactory;
+    private readonly DiscoveryV5Transport _transport;
     private readonly ILifetimeScope _discv5Services;
-
-    private NettyDiscoveryV5Handler? _discoveryHandler;
 
     public DiscoveryV5App(
         ILifetimeScope rootScope,
@@ -45,14 +46,16 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         IDiscoveryConfig discoveryConfig,
         IProcessExitSource processExitSource,
         ILogManager logManager,
+        NetworkListenerState listenerState,
         Action<ContainerBuilder>? configureDiscv5Services = null)
         : base("discv5", networkConfig, ipResolver, processExitSource, logManager.GetClassLogger<DiscoveryV5App>())
     {
         IPAddress externalIp = enode.HostIp;
+        _listenerState = listenerState;
         _allowNonRoutableEnrs = ShouldAcceptNonRoutableEnrs(externalIp);
 
         bool useDefaultBootnodes = ShouldUseDefaultDiscv5Bootnodes(externalIp, discoveryConfig);
-        List<Node> bootNodes = CreateBootNodes(networkConfig, discoveryConfig, useDefaultBootnodes);
+        _bootNodes = CreateBootNodes(networkConfig, discoveryConfig, useDefaultBootnodes);
         ITimestamper timestamper = rootScope.ResolveOptional<ITimestamper>() ?? Timestamper.Default;
 
         _discv5Services = rootScope.BeginLifetimeScope(builder =>
@@ -61,7 +64,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             builder.RegisterInstance(timestamper).As<ITimestamper>();
             Node currentNode = new(nodeKey.PublicKey, externalIp.ToString(), networkConfig.P2PPort, networkConfig.DiscoveryPort, true);
             builder
-                .AddModule(new Discv5KademliaModule(currentNode, bootNodes))
+                .AddModule(new Discv5KademliaModule(currentNode, _bootNodes))
                 .AddSingleton<DiscV5Services>();
 
             configureDiscv5Services?.Invoke(builder);
@@ -70,7 +73,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscV5Services services = _discv5Services.Resolve<DiscV5Services>();
         _persistenceManager = services.PersistenceManager;
         _discv5Adapter = services.Discv5Adapter;
-        _discoveryHandlerFactory = services.NettyDiscoveryHandlerFactory;
+        _transport = services.Transport;
         UseKademliaServices(services.NodeSource, services.Kademlia);
     }
 
@@ -82,7 +85,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         DiscoveryPersistenceManager PersistenceManager,
         IKademliaAdapter Discv5Adapter,
         IKademlia<PublicKey, Node> Kademlia,
-        Func<NettyDiscoveryV5Handler> NettyDiscoveryHandlerFactory
+        DiscoveryV5Transport Transport
     )
     {
     }
@@ -134,6 +137,12 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         try
         {
+            if (record.EnrSequence < node.HighestObservedEnrSequence)
+            {
+                if (Logger.IsTrace) Logger.Trace($"Skipping stale discv5 discovery ENR for {node:s}.");
+                return;
+            }
+
             if (!TryGetAcceptableNodeFromEnr(record, out Node? enrNode))
             {
                 return;
@@ -145,6 +154,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
                 return;
             }
 
+            PreserveDiscoveryState(enrNode, node);
             Kademlia.AddOrRefresh(enrNode);
         }
         catch (Exception e)
@@ -165,11 +175,28 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, NodeRecord nodeRecord)
-        => TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node)
-            ? AddBootNode(bootNodes, seen, node)
-            : BootNodeAddResult.Skipped;
+    {
+        if (!TryGetAcceptableNodeFromEnr(nodeRecord, out Node? node))
+        {
+            return BootNodeAddResult.Skipped;
+        }
+
+        node.SetVerifiedEnr(nodeRecord);
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
 
     private BootNodeAddResult AddBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
+    {
+        if (!DiscoveryAddressSupport.Supports(LocalIp, node.DiscoveryAddress.Address))
+        {
+            if (Logger.IsTrace) Logger.Trace($"Skipping unreachable discv5 bootnode address family {node:s}.");
+            return BootNodeAddResult.Skipped;
+        }
+
+        return AddReachableBootNode(bootNodes, seen, node);
+    }
+
+    private BootNodeAddResult AddReachableBootNode(List<Node> bootNodes, ISet<Hash256> seen, Node node)
     {
         if (!seen.Add(node.IdHash))
         {
@@ -184,11 +211,11 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     }
 
     private static string[] GetDefaultBootnodes() =>
-        JsonSerializer.Deserialize<string[]>(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!) ?? [];
+        JsonSerializer.Deserialize(typeof(DiscoveryV5App).Assembly.GetManifestResourceStream("Nethermind.Network.Discovery.Discv5.discv5-bootnodes.json")!, BootnodesJsonContext.Default.StringArray) ?? [];
 
     internal bool TryGetAcceptableNodeFromEnr(NodeRecord enr, [NotNullWhen(true)] out Node? node)
     {
-        if (Node.TryFromDiscoveryEnr(enr, out Node? enrNode) && IsDiscoveryAddressAcceptable(enrNode.DiscoveryAddress.Address, _allowNonRoutableEnrs))
+        if (KademliaAdapter.TryGetAcceptableNode(enr, _allowNonRoutableEnrs, LocalIp, out Node? enrNode))
         {
             node = enrNode;
             return true;
@@ -197,6 +224,23 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         node = null;
         if (Logger.IsTrace) Logger.Trace("Enr declined, unable to extract a usable discv5 node endpoint.");
         return false;
+    }
+
+    internal Node? RestorePersistedNode(NetworkNode networkNode)
+    {
+        if (networkNode.IsEnr)
+        {
+            if (TryGetAcceptableNodeFromEnr(networkNode.Enr, out Node? node))
+            {
+                node.SetVerifiedEnr(networkNode.Enr);
+                return node;
+            }
+
+            return null;
+        }
+
+        Node enode = new(networkNode);
+        return DiscoveryAddressSupport.Supports(LocalIp, enode.DiscoveryAddress.Address) ? enode : null;
     }
 
     internal static bool IsDiscoveryAddressAcceptable(IPAddress ipAddress, bool allowNonRoutable)
@@ -234,28 +278,15 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
             && !IPAddress.None.Equals(externalIp)
             && externalIp.IsLoopbackOrPrivateOrLinkLocal;
 
-    public override void InitializeChannel(IChannel channel)
+    /// <inheritdoc/>
+    /// <remarks>discv5 is the last protocol on the socket, so it never forwards datagrams.</remarks>
+    internal override void InitializeChannel(IDatagramSocket socket, Action<PooledUdpReceiveResult> forward)
     {
-        _discoveryHandler = _discoveryHandlerFactory();
-        _discoveryHandler.InitializeChannel(channel);
-        _discoveryHandler.OnChannelActivated += OnChannelActivated;
-        channel.Pipeline.AddLast(_discoveryHandler);
+        _transport.BindSocket(socket);
+        OnChannelActivated();
     }
 
-    protected override void DetachEventHandlers()
-    {
-        try
-        {
-            if (_discoveryHandler is not null)
-            {
-                _discoveryHandler.OnChannelActivated -= OnChannelActivated;
-            }
-        }
-        catch (Exception e)
-        {
-            Logger.Error("Error during discovery v5 cleanup", e);
-        }
-    }
+    internal override void Receive(PooledUdpReceiveResult datagram) => _transport.Receive(datagram);
 
     protected override async Task RunDiscoveryAsync(CancellationToken cancellationToken)
     {
@@ -264,7 +295,7 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
 
         try
         {
-            await _persistenceManager.LoadPersistedNodes(cancellationToken);
+            await _persistenceManager.LoadPersistedNodes(cancellationToken, RestorePersistedNode);
 
             persistenceTask = _persistenceManager.RunDiscoveryPersistenceCommit(cancellationToken);
             await Kademlia.Run(cancellationToken);
@@ -288,10 +319,43 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
     protected override async Task StopAsyncCore()
     {
         await _discv5Adapter.DisposeAsync();
-        _discoveryHandler?.Close();
+        _transport.Close();
     }
 
     protected override ValueTask DisposeAsyncCore() => _discv5Services.DisposeAsync();
+
+    protected override async Task Initialize(CancellationToken cancellationToken)
+    {
+        ReconcileBootNodes();
+        await base.Initialize(cancellationToken);
+    }
+
+    private IPAddress LocalIp => _listenerState.DiscoveryAddress ?? _listenerState.PreferredAddress;
+
+    private void ReconcileBootNodes()
+    {
+        // Kademlia retains this list by reference, so reconcile it before activation starts enumerating boot nodes.
+        for (int i = _bootNodes.Count - 1; i >= 0; i--)
+        {
+            Node current = _bootNodes[i];
+            Node? reachable = current.Enr is { Signature: not null } record
+                ? TryGetAcceptableNodeFromEnr(record, out Node? enrNode) ? enrNode : null
+                : DiscoveryAddressSupport.Supports(LocalIp, current.DiscoveryAddress.Address) ? current : null;
+
+            if (reachable is null)
+            {
+                Kademlia.Remove(current);
+                _bootNodes.RemoveAt(i);
+            }
+            else if (!reachable.DiscoveryAddress.Equals(current.DiscoveryAddress))
+            {
+                PreserveDiscoveryState(reachable, current);
+                Kademlia.Remove(current);
+                Kademlia.AddOrRefresh(reachable);
+                _bootNodes[i] = reachable;
+            }
+        }
+    }
 
     private enum BootNodeAddResult
     {
@@ -325,3 +389,6 @@ public sealed class DiscoveryV5App : KademliaDiscoveryApp
         }
     }
 }
+
+[JsonSerializable(typeof(string[]))]
+internal partial class BootnodesJsonContext : JsonSerializerContext;

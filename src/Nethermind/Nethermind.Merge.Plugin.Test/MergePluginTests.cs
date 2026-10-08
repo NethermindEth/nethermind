@@ -97,6 +97,7 @@ public class MergePluginTests
                 configProvider ?? new ConfigProvider(_mergeConfig, _jsonRpcConfig),
                 Substitute.For<IProcessExitSource>(),
                 [_consensusPlugin!, _plugin],
+                null,
                 LimboLogs.Instance))
             .AddSingleton(Substitute.For<IRpcModuleProvider>())
             .AddSingleton(Substitute.For<IBlockProcessingQueue>())
@@ -137,9 +138,8 @@ public class MergePluginTests
         });
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void Init_merge_plugin_does_not_throw_exception(bool enabled)
+    [Test]
+    public void Init_merge_plugin_does_not_throw_exception([Values] bool enabled)
     {
         using IContainer container = BuildContainer();
         _mergeConfig.TerminalTotalDifficulty = enabled ? "0" : null;
@@ -202,11 +202,8 @@ public class MergePluginTests
         Assert.DoesNotThrow(() => container.Resolve<IGasLimitCalculator>());
     }
 
-    [TestCase(true, true)]
-    [TestCase(false, true)]
-    [TestCase(true, false)]
-    [TestCase(false, false)]
-    public async Task InitThrowsWhenNoEngineApiUrlsConfigured(bool jsonRpcEnabled, bool configuredViaAdditionalUrls)
+    [Test]
+    public async Task InitThrowsWhenNoEngineApiUrlsConfigured([Values] bool jsonRpcEnabled, [Values] bool configuredViaAdditionalUrls)
     {
         IJsonRpcConfig jsonRpcConfig;
         if (configuredViaAdditionalUrls)

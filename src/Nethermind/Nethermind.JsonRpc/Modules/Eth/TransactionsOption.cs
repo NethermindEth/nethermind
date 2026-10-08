@@ -3,6 +3,7 @@
 
 using System;
 using System.Text.Json;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -53,6 +54,6 @@ public class TransactionsOption : IJsonRpcParam
     private static bool GetIncludeTransactions(JsonElement? token, JsonSerializerOptions options) => token switch
     {
         null => false,
-        _ => token.GetValueOrDefault().Deserialize<bool>(options),
+        _ => TypeInfoJsonSerializer.Deserialize<bool>(token.GetValueOrDefault(), options),
     };
 }

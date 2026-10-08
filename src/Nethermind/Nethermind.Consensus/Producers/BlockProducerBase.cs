@@ -132,9 +132,9 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null, IBlockProducer.Flags flags = IBlockProducer.Flags.None)
         {
-            if (StateProvider.HasStateForBlock(parent))
+            Block block = PrepareBlock(parent, payloadAttributes, flags);
+            if (StateProvider.HasStateForTargetBlock(block.Header))
             {
-                Block block = PrepareBlock(parent, payloadAttributes, flags);
                 if (PreparedBlockCanBeMined(block))
                 {
                     Block? processedBlock = ProcessPreparedBlock(block, blockTracer, token);
@@ -241,7 +241,7 @@ namespace Nethermind.Consensus.Producers
 
             IEnumerable<Transaction> transactions = (flags & IBlockProducer.Flags.EmptyBlock) != 0 ?
                 Array.Empty<Transaction>() :
-                TxSource.GetTransactions(parent, header.GasLimit, payloadAttributes, filterSource: true);
+                TxSource.GetTransactions(parent, header, header.GasLimit, payloadAttributes, filterSource: true);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

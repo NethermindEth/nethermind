@@ -10,9 +10,8 @@ public class XdcChainSpecLoader
 {
     public void ProcessChainSpec(ChainSpec chainSpec)
     {
-        if (chainSpec.Genesis is not null)
+        if (chainSpec.Genesis is { } originalGenesis)
         {
-            Block originalGenesis = chainSpec.Genesis;
             chainSpec.Genesis = originalGenesis.WithReplacedHeader(CreateGenesisHeader(originalGenesis.Header));
         }
     }

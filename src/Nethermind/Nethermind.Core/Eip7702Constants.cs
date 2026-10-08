@@ -11,6 +11,10 @@ public static class Eip7702Constants
 {
     private readonly static byte[] _delegationHeader = [0xef, 0x01, 0x00];
     public const byte Magic = 0x05;
+
+    /// <summary>Length in bytes of the EIP-7702 delegation header.</summary>
+    public const int DelegationHeaderLength = 3;
+
     public static ReadOnlySpan<byte> DelegationHeader => _delegationHeader.AsSpan();
 
     public static readonly UInt256 DelegationDesignatorLength = 23;
@@ -18,8 +22,7 @@ public static class Eip7702Constants
     /// <summary> Gas cost to process one authorization tuple and set the delegation destination. </summary>
     public const ulong PerAuthBaseCost = 12_500;
 
-    private static readonly int HeaderLength = DelegationHeader.Length;
     public static bool IsDelegatedCode(ReadOnlySpan<byte> code) =>
-        code.Length == HeaderLength + Address.Size
-        && DelegationHeader.SequenceEqual(code[..DelegationHeader.Length]);
+        code.Length == DelegationHeaderLength + Address.Size
+        && DelegationHeader.SequenceEqual(code[..DelegationHeaderLength]);
 }

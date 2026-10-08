@@ -19,6 +19,10 @@ inputs:
     description: Value for the Alloy User label.
     required: false
     default: ${{ github.actor }}
+  external-provider:
+    description: Infrastructure provider label applied to shipped metrics and logs.
+    required: false
+    default: linode
   alloy-config:
     description: Path to the Alloy config file to mount. Defaults to the copy vendored next to this action.
     required: false
@@ -52,6 +56,7 @@ runs:
         NODE_NAME: ${{ inputs.node-name }}
         CLIENT: ${{ inputs.client }}
         GITHUB_USER: ${{ inputs.github-user }}
+        EXTERNAL_PROVIDER: ${{ inputs.external-provider }}
         ALLOY_CONFIG: ${{ inputs.alloy-config }}
         LOKI_URL: ${{ inputs.loki-url }}
         LOKI_USERNAME: ${{ inputs.loki-username }}
@@ -61,6 +66,11 @@ runs:
         PROMETHEUS_PASSWORD: ${{ inputs.prometheus-password }}
       run: |
         set -euo pipefail
+
+        # Telemetry is best-effort, but continue-on-error is not honoured on
+        # composite-action steps (actions/runner#2347), so a transient docker pull would
+        # otherwise fail a caller's multi-hour sync. Contain it here instead.
+        trap 'echo "::warning title=Alloy::failed to start Grafana Alloy; continuing without telemetry"; exit 0' ERR
 
         # github.action_path is not available in an input default, so resolve
         # the vendored config here via the auto-set GITHUB_ACTION_PATH.
@@ -97,6 +107,7 @@ runs:
           --restart=unless-stopped \
           --net=host \
           -e GITHUB_USER="$GITHUB_USER" \
+          -e EXTERNAL_PROVIDER="$EXTERNAL_PROVIDER" \
           -e CLIENT="$CLIENT" \
           -e NODE_NAME="$NODE_NAME" \
           -e SEDGE_NETWORK="$NETWORK" \

@@ -87,9 +87,8 @@ public readonly struct NodeKey : IEquatable<NodeKey>, IHash64bit<NodeKey>
 
     public override int GetHashCode()
     {
-        uint hashCode0 = (uint)Hash.GetHashCode();
         ulong hashCode1 = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
-        return (int)BitOperations.Crc32C(hashCode0, hashCode1);
+        return SpanExtensions.CombineHash((uint)Hash.GetHashCode(), hashCode1);
     }
 
     public long GetHashCode64()

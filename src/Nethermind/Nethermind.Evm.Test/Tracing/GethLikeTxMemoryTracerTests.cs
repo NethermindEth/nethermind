@@ -24,6 +24,31 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 {
     [Test]
+    public void Serialized_trace_reflects_entry_mutations([Values(0, 1)] long limit)
+    {
+        byte[] code = Prepare.EvmCode.PushData("0x1").Op(Instruction.STOP).Done;
+        using GethLikeTxTrace trace = ExecuteAndTrace(GethTraceOptions.Default with { Limit = limit }, code);
+        EthereumJsonSerializer serializer = new();
+        using JsonDocument original = JsonDocument.Parse(serializer.Serialize(trace));
+        Assert.That(original.RootElement.GetProperty("structLogs").GetArrayLength(), Is.EqualTo(limit == 0 ? 2 : 1));
+
+        GethTxTraceEntry entry = trace.Entries[0];
+        entry.ProgramCounter = 123;
+        trace.Entries.Clear();
+        trace.Entries.Add(entry);
+        trace.Entries.Add(new GethTxTraceEntry { Opcode = "ADDED" });
+
+        using JsonDocument modified = JsonDocument.Parse(serializer.Serialize(trace));
+        JsonElement entries = modified.RootElement.GetProperty("structLogs");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(entries.GetArrayLength(), Is.EqualTo(2));
+            Assert.That(entries[0].GetProperty("pc").GetInt64(), Is.EqualTo(123));
+            Assert.That(entries[1].GetProperty("op").GetString(), Is.EqualTo("ADDED"));
+        }
+    }
+
+    [Test]
     public void Can_trace_gas_halt_with_stop()
     {
         byte[] code = Prepare.EvmCode
@@ -466,9 +491,14 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         GethLikeTxTrace trace = ExecuteAndTrace(code);
 
-        AssertEntry(trace.Entries[^3], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
-        AssertEntry(trace.Entries[^2], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
-        AssertEntry(trace.Entries[^1], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+        using (Assert.EnterMultipleScope())
+        {
+            AssertEntry(trace.Entries[^4], expectedPc: 25, expectedOpcode: "EXTCODESIZE", expectedStackTop: Hex("866833515b6d086c607f"), expectedStackCount: 8);
+            AssertEntry(trace.Entries[^3], expectedPc: 26, expectedOpcode: "ISZERO", expectedStackTop: UInt256.Zero, expectedStackCount: 8);
+            AssertEntry(trace.Entries[^2], expectedPc: 27, expectedOpcode: "PUSH21", expectedStackTop: UInt256.One, expectedStackCount: 8);
+            Assert.That(trace.Entries[^1].ProgramCounter, Is.EqualTo(49));
+            Assert.That(trace.Entries[^1].Opcode, Is.EqualTo(nameof(Instruction.STOP)));
+        }
     }
 
     [Test]
@@ -481,8 +511,7 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
 
         using (Assert.EnterMultipleScope())
         {
-            // The counter is captured before the opcode runs, so SSTORE itself shows no refund yet.
-            Assert.That(sstore.Refund, Is.Null, "refund before SSTORE executes");
+            Assert.That(sstore.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund));
             Assert.That(stop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund), "refund after the clearing SSTORE");
         }
     }
@@ -513,6 +542,25 @@ public class GethLikeTxMemoryTracerTests : GethLikeTracerTestsBase
             topLevelStop.Refund, Is.EqualTo(Spec.GasCosts.SClearRefund),
             "parent refund must persist after the child frame reverts"
         );
+    }
+
+    [Test]
+    public void Legacy_self_destruct_refund_is_reported_after_child_returns()
+    {
+        const long destroyRefund = (long)RefundOf.DestroyBeforeEip3529;
+        GethLikeTxMemoryTracer tracer = new(null, GethTraceOptions.Default, destroyRefund);
+        using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
+            null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: default);
+
+        tracer.ReportAction(100, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.TRANSACTION);
+        tracer.ReportAction(50, UInt256.Zero, Address.Zero, Address.Zero, default, ExecutionType.CALL);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportSelfDestruct(TestItem.AddressA, UInt256.Zero, Address.Zero);
+        tracer.ReportActionEnd(25, default);
+        tracer.StartOperation(0, Instruction.STOP, 50, in environment);
+        tracer.ReportActionEnd(50, default);
+
+        Assert.That(tracer.BuildResult().Entries.Single().Refund, Is.EqualTo(destroyRefund));
     }
 
     [Test]

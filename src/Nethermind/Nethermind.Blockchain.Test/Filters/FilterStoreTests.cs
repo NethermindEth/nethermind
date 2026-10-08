@@ -5,7 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading.Tasks;
 using Nethermind.Facade.Filters;
 using Nethermind.Facade.Filters.Topics;
 using Nethermind.Blockchain.Find;
@@ -14,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using NUnit.Framework;
+using NSubstitute;
 
 namespace Nethermind.Blockchain.Test.Filters;
 
@@ -172,26 +172,37 @@ public class FilterStoreTests
             && actual.Expressions.SequenceEqual(expected.Expressions);
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    [Parallelizable(ParallelScope.None)]
-    public async Task CleanUps_filters()
+    [Test]
+    public void CleanUps_filters()
     {
         List<int> removedFilterIds = [];
-        FilterStore store = new(new TimerFactory(), 500, 100);
+        ITimer timer = Substitute.For<ITimer>();
+        ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+        timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+        using FilterStore store = new(timerFactory, (int)TimeSpan.FromDays(1).TotalMilliseconds);
         store.FilterRemoved += (_, e) => removedFilterIds.Add(e.FilterId);
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateBlockFilter());
         store.SaveFilter(store.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest));
         store.SaveFilter(store.CreatePendingTransactionFilter());
-        await Task.Delay(300);
+        DateTimeOffset stale = DateTimeOffset.UtcNow.AddDays(-2);
+        foreach (FilterBase filter in store.GetFilters<FilterBase>()) filter.LastUsed = stale;
         store.RefreshFilter(0);
-        await Task.Delay(300);
-        store.RefreshFilter(0);
-        Assert.That(() => store.FilterExists(0), Is.True.After(300, 10), "filter 0 exists");
-        Assert.That(() => store.FilterExists(1), Is.False.After(300, 10), "filter 1 doesn't exist");
-        Assert.That(() => store.FilterExists(2), Is.False.After(300, 10), "filter 2 doesn't exist");
-        Assert.That(() => store.FilterExists(3), Is.False.After(300, 10), "filter 3 doesn't exist");
-        store.RefreshFilter(0);
-        Assert.That(() => removedFilterIds, Is.EqualTo([1, 2, 3]).After(300, 10));
+        timer.ClearReceivedCalls();
+        timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
+
+        Assert.That(store.FilterExists(0), Is.True, "refreshed filter survives cleanup");
+        Assert.That(store.FilterExists(1), Is.False, "stale block filter is removed");
+        Assert.That(store.FilterExists(2), Is.False, "stale log filter is removed");
+        Assert.That(store.FilterExists(3), Is.False, "stale pending-transaction filter is removed");
+        Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 1, 2, 3 }));
+
+        store.GetFilter<BlockFilter>(0)!.LastUsed = stale;
+        timer.ClearReceivedCalls();
+        timer.Elapsed += Raise.Event();
+        timer.Received(1).Enabled = true;
+        Assert.That(store.FilterExists(0), Is.False, "the refreshed filter is removed once stale");
+        Assert.That(removedFilterIds, Is.EquivalentTo(new[] { 0, 1, 2, 3 }));
     }
 }

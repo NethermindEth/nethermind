@@ -48,9 +48,8 @@ public class AsyncFileWriteQueueTests
         Assert.That(_queue.PendingWrites, Is.EqualTo(0));
     }
 
-    [TestCase(1)]
-    [TestCase(50)]
-    public async Task PendingWrites_reaches_zero_after_flush(int count)
+    [Test]
+    public async Task PendingWrites_reaches_zero_after_flush([Values(1, 50)] int count)
     {
         for (ulong i = 0; i < (ulong)count; i++) _queue.Enqueue(CreateTrace(i));
 

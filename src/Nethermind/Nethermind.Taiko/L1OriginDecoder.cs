@@ -13,8 +13,14 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
     const int BuildPayloadArgsIdLength = 8;
     internal const int SignatureLength = 65;
 
-    protected override L1Origin DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    protected override L1Origin? DecodeInternal(ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
+        if (decoderContext.IsNextItemEmptyList())
+        {
+            decoderContext.ReadByte();
+            return null;
+        }
+
         (int _, int contentLength) = decoderContext.ReadPrefixAndContentLength();
         int itemsCount = decoderContext.PeekNumberOfItemsRemaining(maxSearch: contentLength);
 
@@ -99,7 +105,8 @@ public sealed class L1OriginDecoder : RlpDecoder<L1Origin>
         }
     }
 
-    public override int GetLength(L1Origin item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
+    public override int GetLength(L1Origin? item, RlpBehaviors rlpBehaviors) =>
+        item is null ? 1 : Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     private int GetContentLength(L1Origin item, RlpBehaviors rlpBehaviors)
     {

@@ -23,9 +23,10 @@ public static class StateOverridesExtensions
         Dictionary<Address, AccountOverride>? overrides,
         IReleaseSpec spec)
     {
+        // As in geth, each simulated block starts from the spec's precompiles, even one without overrides.
+        overridableCodeInfoRepository.ResetPrecompileOverrides(spec);
         if (overrides is not null)
         {
-            overridableCodeInfoRepository.ResetPrecompileOverrides();
             foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
                 if (accountOverride.Nonce is not null && accountOverride.Nonce.Value > MaxNonce)
@@ -44,7 +45,7 @@ public static class StateOverridesExtensions
                     state.UpdateNonce(account, accountOverride, address);
                 }
 
-                state.UpdateCode(overridableCodeInfoRepository, spec, accountOverride, address);
+                state.UpdateCode(overridableCodeInfoRepository, spec, overrides, accountOverride, address);
                 state.UpdateState(accountOverride, address);
             }
         }
@@ -57,8 +58,6 @@ public static class StateOverridesExtensions
         IReleaseSpec spec,
         ulong blockNumber)
     {
-        // EIP-158 must not delete accounts whose code/nonce were zeroed
-        // while storage remains, or EIP-7610 CREATE collision checks will miss it.
         spec = spec.WithoutEip158();
         state.ApplyStateOverridesNoCommit(overridableCodeInfoRepository, overrides, spec);
         state.Commit(spec, commitRoots: true);
@@ -72,7 +71,7 @@ public static class StateOverridesExtensions
         {
             foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.ToUInt256());
             }
         }
 
@@ -91,6 +90,7 @@ public static class StateOverridesExtensions
         this IWorldState stateProvider,
         IOverridableCodeInfoRepository overridableCodeInfoRepository,
         IReleaseSpec currentSpec,
+        Dictionary<Address, AccountOverride> overrides,
         AccountOverride accountOverride,
         Address address)
     {
@@ -101,6 +101,12 @@ public static class StateOverridesExtensions
                 throw new ArgumentException($"Account {address} is not a precompile");
             }
 
+            // As in geth, a precompile cannot be moved onto an account that is overridden itself.
+            if (overrides.ContainsKey(accountOverride.MovePrecompileToAddress))
+            {
+                throw new ArgumentException($"account {accountOverride.MovePrecompileToAddress} is already overridden");
+            }
+
             overridableCodeInfoRepository.MovePrecompile(
                 currentSpec,
                 address,
@@ -109,12 +115,18 @@ public static class StateOverridesExtensions
 
         if (accountOverride.Code is not null)
         {
-            stateProvider.InsertCode(address, accountOverride.Code, currentSpec);
+            OverrideCodeCache.Resolve(accountOverride.Code, out ValueHash256 codeHash, out CodeInfo codeInfo);
+            stateProvider.InsertCode(address, codeHash, accountOverride.Code, currentSpec);
 
             overridableCodeInfoRepository.SetCodeOverride(
                 currentSpec,
                 address,
-                new CodeInfo(accountOverride.Code));
+                codeInfo);
+        }
+        else if (accountOverride.MovePrecompileToAddress is null && overridableCodeInfoRepository.GetPrecompile(address, currentSpec) is not null)
+        {
+            // As in geth, any override of a precompile's address turns it into an ordinary account.
+            overridableCodeInfoRepository.SetCodeOverride(currentSpec, address, new CodeInfo(stateProvider.GetCode(address)));
         }
     }
 
@@ -161,4 +173,3 @@ public static class StateOverridesExtensions
         }
     }
 }
-

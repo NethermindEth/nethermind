@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Optimism.CL;
@@ -28,7 +29,7 @@ public class L1BlockInfoBuilderTests
         DepositTransactionBuilder depositTransactionBuilder = new(1, parameters);
         Transaction tx = depositTransactionBuilder.BuildL1InfoTransaction(l1BlockInfo);
 
-        Assert.That(tx.Data.ToArray(), Is.EqualTo(data));
+        Assert.That(tx.Data, Is.SequenceEqualTo(data));
         Assert.That(tx.SourceHash, Is.EqualTo(new Hash256("0x0a17e1f9443295ceee6678f1fc70aa6e45d2988cfbe062ec28db9f1e5fcb469d")));
     }
 }

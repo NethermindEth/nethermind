@@ -12,5 +12,5 @@ namespace Nethermind.Facade.Simulate;
 public class ParityStyleSimulateBlockTracerFactory(ParityTraceTypes types) : ISimulateBlockTracerFactory<ParityLikeTxTrace>
 {
     public IBlockTracer<ParityLikeTxTrace> CreateSimulateBlockTracer(bool isTracingLogs, IWorldState worldState, ISpecProvider spec, BlockHeader block) =>
-        new ParityLikeBlockTracer(types);
+        new ParityLikeBlockTracer(types, spec);
 }

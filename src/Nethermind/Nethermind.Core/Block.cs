@@ -30,11 +30,13 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
-        ReadOnlyBlockAccessList? blockAccessList = null)
+        ReadOnlyBlockAccessList? blockAccessList = null,
+        IEnumerable<Transaction>? inclusionListTransactions = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
         Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
         BlockAccessList = blockAccessList;
+        InclusionListTransactions = inclusionListTransactions?.ToArray();
     }
 
     public Block(BlockHeader header) : this(
@@ -133,6 +135,14 @@ public class Block
 
     [JsonIgnore]
     public byte[][]? ExecutionRequests { get; set; }
+
+    [JsonIgnore]
+    public Transaction[]? InclusionListTransactions { get; set; }
+
+    // Set after the post-execution check: false means the block is valid and executable but did not
+    // honour its inclusion list (EIP-7805).
+    [JsonIgnore]
+    public bool IsInclusionListSatisfied { get; set; } = true;
 
     [JsonIgnore]
     public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }

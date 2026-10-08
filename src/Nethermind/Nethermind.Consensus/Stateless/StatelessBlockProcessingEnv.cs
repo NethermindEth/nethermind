@@ -1,11 +1,13 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.ExecutionRequests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -20,9 +22,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
 
+[assembly: InternalsVisibleTo("Nethermind.Stateless.Executor")]
+
 namespace Nethermind.Consensus.Stateless;
 
-public class StatelessBlockProcessingEnv(
+public partial class StatelessBlockProcessingEnv(
     Witness witness,
     ISpecProvider specProvider,
     ISealValidator sealValidator,
@@ -30,29 +34,46 @@ public class StatelessBlockProcessingEnv(
 {
     private IBlockProcessor? _blockProcessor;
     private IWorldState? _worldState;
+    private readonly StatelessBlockTree? _blockTree;
+
+    internal StatelessBlockProcessingEnv(
+        Witness witness,
+        ISpecProvider specProvider,
+        ISealValidator sealValidator,
+        ILogManager logManager,
+        StatelessBlockTree blockTree) : this(witness, specProvider, sealValidator, logManager)
+        => _blockTree = blockTree;
     // Per-block: StaticCodeCache.Instance would leak code across blocks and mask deliberately missing
     // witness code. The first fetch of each hash still reads through the world state.
-    private readonly StaticCodeCache _codeCache = new(CodeCacheCapacity);
+    private readonly ICodeCache _codeCache = CreateCodeCache();
 
     // A block touches a few hundred distinct hashes; MemoryAllowance.CodeCacheSize would round up to
-    // ~0.4 MB zeroed per block (LOH on the host). Overflow only costs a re-read.
+    // ~0.4 MB zeroed per block (LOH on the host). On the host overflow only costs a re-read; the guest's
+    // map takes this as its initial size and grows past it.
     private const int CodeCacheCapacity = 512;
 
     public IBlockProcessor BlockProcessor => _blockProcessor ??= GetProcessor();
 
-    public IWorldState WorldState => _worldState ??= new StatelessExecutingWorldState(
+    public IWorldState WorldState => _worldState ??= RequireWitnessedBytecode(
         new WorldState(
             new TrieStoreScopeProvider(
-                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), logManager
+                // Must not share nodes between lookups: the guest's TrieNode.Unseal mutates written nodes in place.
+                new RawTrieStore(witness.CreateNodeStorage()), witness.CreateCodeDb(), UnavailableStateHeaderProvider.Instance, logManager
             ),
             logManager
         )
     );
 
+    /// <summary>Makes a bytecode access fail when the witness lacks the code.</summary>
+    private static partial IWorldState RequireWitnessedBytecode(WorldState worldState);
+
+    /// <summary>Creates the block's code cache, sized for <see cref="CodeCacheCapacity"/> codes.</summary>
+    private static partial ICodeCache CreateCodeCache();
+
     private BlockProcessor GetProcessor()
     {
-        using ArrayPoolList<BlockHeader> readOnlyCollection = witness.DecodeHeaders();
-        StatelessBlockTree statelessBlockTree = new(readOnlyCollection);
+        using ArrayPoolList<BlockHeader>? readOnlyCollection = _blockTree is null ? witness.DecodeHeaders() : null;
+        StatelessBlockTree statelessBlockTree = _blockTree ?? new(readOnlyCollection!);
         BlockhashProvider blockhashProvider = new(statelessBlockTree, logManager);
         EthereumTransactionProcessor txProcessor = CreateTransactionProcessor(WorldState, blockhashProvider);
         BlockAccessListManager blockAccessListManager = new(
@@ -66,7 +87,9 @@ public class StatelessBlockProcessingEnv(
             new WithdrawalProcessorFactory(logManager),
             new BalTxProcessorFactory(blockhashProvider, specProvider, logManager,
                 codeInfoRepositoryFactory: state => new CacheCodeInfoRepository(state, new EthereumPrecompileProvider(), _codeCache)),
-            executionRequestsProcessorFactory: StatelessExecutionRequestsProcessorFactory.Instance
+            zeroNonceStorageAccountsTransition: new ZeroNonceStorageAccountsTransition(specProvider, statelessBlockTree),
+            specProvider: specProvider,
+            headerFinder: statelessBlockTree
         );
         BlockProcessor.ParallelBlockValidationTransactionsExecutor txExecutor = new(
             new BlockProcessor.BlockValidationTransactionsExecutor(
@@ -99,7 +122,7 @@ public class StatelessBlockProcessingEnv(
             new BlockhashStore(WorldState),
             logManager,
             new WithdrawalProcessor(WorldState, logManager),
-            new StatelessExecutionRequestsProcessor(txProcessor),
+            new ExecutionRequestsProcessor(txProcessor),
             blockAccessListManager
         );
     }

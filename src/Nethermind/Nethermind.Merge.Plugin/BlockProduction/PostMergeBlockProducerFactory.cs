@@ -16,7 +16,8 @@ namespace Nethermind.Merge.Plugin.BlockProduction
         ITimestamper timestamper,
         IBlocksConfig blocksConfig,
         ILogManager logManager,
-        IGasLimitCalculator? gasLimitCalculator = null)
+        IGasLimitCalculator? gasLimitCalculator = null,
+        IInclusionListTxSource? inclusionListTxSource = null)
     {
         protected readonly ISpecProvider _specProvider = specProvider;
         protected readonly ISealEngine _sealEngine = sealEngine;
@@ -37,6 +38,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
                 _timestamper,
                 _specProvider,
                 _logManager,
-                _blocksConfig);
+                _blocksConfig,
+                inclusionListTxSource);
     }
 }

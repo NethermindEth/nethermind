@@ -20,4 +20,7 @@ public enum FlatHistoryColumns
     StorageHistory,
     AvailableBlocks,
     StorageClears,
+    AccountCommitments,
+    StorageCommitments,
+    TransactionChangesets,
 }

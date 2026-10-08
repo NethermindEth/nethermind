@@ -17,12 +17,20 @@ public static class Metrics
     public static ulong? OldestStoredBlockAccessListBlockNumber { get; set; }
 
     [CounterMetric]
-    [Description("The number of the historical blocks that have been pruned (since restart).")]
-    public static long BlocksPruned { get; set; }
+    [Description("The number of historical block heights reclaimed by pruning (since restart). Heights, not stored blocks: a range is dropped in one operation and never learns how many of its heights held one.")]
+    public static long BlockHeightsReclaimed { get; set; }
 
     [CounterMetric]
-    [Description("The number of the historical block access lists that have been pruned (since restart).")]
-    public static long BlockAccessListsPruned { get; set; }
+    [Description("The number of historical block access list heights reclaimed by pruning (since restart). Heights, not stored access lists - see BlockHeightsReclaimed.")]
+    public static long BlockAccessListHeightsReclaimed { get; set; }
+
+    [CounterMetric]
+    [Description("The number of transaction index entries dropped because the block they name is no longer retained (since restart).")]
+    public static long TransactionIndexEntriesPruned { get; set; }
+
+    [CounterMetric]
+    [Description("The number of historical heights kept past the pruning cutoff, with both their receipts and their body, because a configured slice address appeared in them (since restart). Counted from the bloom candidates, so a false positive is included.")]
+    public static long SlicedReceiptsRetained { get; set; }
 
     [GaugeMetric]
     [Description("The cutoff block number from which historical blocks will be pruned.")]

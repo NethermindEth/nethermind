@@ -98,5 +98,17 @@ namespace Nethermind.Specs.Test
 
         [Test]
         public void Dao_block_number_is_correct() => Assert.That(_specProvider.DaoBlockNumber, Is.EqualTo(1920000UL));
+
+        // Each undated fork sits on its own placeholder timestamp, and none of them may leak into the final
+        // spec: that would switch features on for mainnet before the fork has a date.
+        [Test]
+        public void Final_spec_excludes_forks_that_have_no_date()
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_specProvider.GetFinalSpec().BlockLevelAccessListsEnabled, Is.False);
+                Assert.That(_specProvider.GetFinalSpec().IsEip7805Enabled, Is.False);
+            }
+        }
     }
 }

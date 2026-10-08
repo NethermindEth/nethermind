@@ -15,12 +15,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             byteBuffer.DeserializeRlp(static (ref RlpReader ctx) => DeserializeHashes(ref ctx));
 
         protected static Hash256[] DeserializeHashes(ref RlpReader ctx, RlpLimit? limit = null) =>
-            ctx.DecodeArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
+            ctx.DecodeNonNullArray(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
-        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null) =>
-            byteBuffer.DeserializeRlp((ref RlpReader ctx) => DeserializeHashesArrayPool(ref ctx, limit));
+        protected ArrayPoolList<Hash256> DeserializeHashesArrayPool(IByteBuffer byteBuffer, RlpLimit? limit = null)
+        {
+            RlpReader ctx = new(byteBuffer.AsSpan());
+            try
+            {
+                return DeserializeHashesArrayPool(ref ctx, limit);
+            }
+            finally
+            {
+                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + ctx.Position);
+            }
+        }
 
-        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
+        protected static ArrayPoolList<Hash256> DeserializeHashesArrayPool(ref RlpReader ctx, RlpLimit? limit = null) => ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: limit);
 
         public void Serialize(IByteBuffer byteBuffer, T message)
         {

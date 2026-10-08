@@ -7,7 +7,15 @@ namespace Nethermind.Xdc;
 
 public interface ISyncInfoManager
 {
-    void ProcessSyncInfo(SyncInfo syncInfo);
+    /// <summary>Verifies the quorum certificate of a received <see cref="SyncInfo"/> and commits it if it passes.</summary>
+    /// <param name="quorumCert">The received certificate, or <c>null</c> when the peer sent none.</param>
+    /// <returns>Why the certificate was skipped, or <c>null</c> when it was committed.</returns>
+    string? ProcessQuorumCertificate(QuorumCertificate? quorumCert);
+
+    /// <summary>Verifies the timeout certificate of a received <see cref="SyncInfo"/> and applies it if it passes.</summary>
+    /// <param name="timeoutCert">The received certificate, or <c>null</c> when the peer sent none.</param>
+    /// <returns>Why the certificate was skipped, or <c>null</c> when it was applied.</returns>
+    string? ProcessTimeoutCertificate(TimeoutCertificate? timeoutCert);
+
     SyncInfo GetSyncInfo();
-    bool VerifySyncInfo(SyncInfo syncInfo, out string error);
 }

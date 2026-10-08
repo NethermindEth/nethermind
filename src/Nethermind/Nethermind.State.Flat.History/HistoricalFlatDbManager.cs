@@ -1,14 +1,17 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Logging;
 using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History;
 
 /// <summary>
 /// Decorates an <see cref="IFlatDbManager"/> to serve reads for blocks below the finalization barrier — whose
-/// per-block tip snapshots have been pruned — from the finalized history index, via
-/// <see cref="GatherReadOnlySnapshotBundle"/> / <see cref="GatherSnapshotBundle"/>.
+/// per-block tip snapshots have been pruned — from the finalized history index. A block at or above the general
+/// retention floor gets an unrestricted reader; below the floor, only addresses with a configured slice are
+/// served, and with no slices configured the read is refused.
 /// </summary>
 public sealed class HistoricalFlatDbManager(
     IFlatDbManager inner,
@@ -16,53 +19,122 @@ public sealed class HistoricalFlatDbManager(
     HistoryReader historyReader,
     ITrieNodeCache trieNodeCache,
     IResourcePool resourcePool,
-    bool enableDetailedMetrics) : IFlatDbManager
+    bool enableDetailedMetrics,
+    HistoryScopeGate scopeGate,
+    ILogManager logManager) : IFlatDbManager
 {
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    private readonly ILogger _logger = logManager.GetClassLogger<HistoricalFlatDbManager>();
+
+    private enum HistoricalReadMode
     {
-        if (!IsBelowBarrier(baseBlock))
-        {
-            return inner.GatherSnapshotBundle(baseBlock, usage);
-        }
+        NotHistorical,
+        Normal,
+        Restricted,
+        Unavailable
+    }
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
+    {
+        HistoricalReadMode mode = Classify(baseBlock);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads);
+        if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
 
         // A historical bundle reads values at baseBlock but exposes the current trie; executing main-chain
         // blocks on that mix produces a corrupt state root and cascades into invalid-block deletions.
-        if (usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing)
+        if (IsBlockProcessing(usage))
         {
-            throw new InvalidOperationException(
-                $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.");
+            // The callers map this to a plain "state unavailable", so the reason - a wiring bug, not pruning - is
+            // only ever seen if it is logged where it is decided.
+            string reason = $"Main block processing requested a writable scope at historical state {baseBlock}; history serves read-only execution.";
+            if (_logger.IsError) _logger.Error(reason);
+            throw new StateUnavailableException(reason);
         }
 
-        return new SnapshotBundle(BuildHistoricalBundle(baseBlock), trieNodeCache, resourcePool, usage);
+        ReadOnlySnapshotBundle bundle = BuildHistoricalBundle(baseBlock, mode);
+        try
+        {
+            return new SnapshotBundle(bundle, trieNodeCache, resourcePool, usage);
+        }
+        catch
+        {
+            bundle.Dispose();
+            throw;
+        }
     }
 
     public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock) =>
-        IsBelowBarrier(baseBlock)
-            ? BuildHistoricalBundle(baseBlock)
-            : inner.GatherReadOnlySnapshotBundle(baseBlock);
+        GatherReadOnlySnapshotBundle(baseBlock, ReaderFlags.None);
+
+    public ReadOnlySnapshotBundle GatherReadOnlySnapshotBundle(in StateId baseBlock, ReaderFlags readerFlags)
+    {
+        HistoricalReadMode mode = Classify(baseBlock);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherReadOnlySnapshotBundle(baseBlock, readerFlags);
+        if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
+        return BuildHistoricalBundle(baseBlock, mode);
+    }
 
     public bool HasStateForBlock(in StateId stateId) =>
-        IsBelowBarrier(stateId) || inner.HasStateForBlock(stateId);
+        Classify(stateId) is HistoricalReadMode.Normal or HistoricalReadMode.Restricted || inner.HasStateForBlock(stateId);
+
+    public bool HasStateForBlock(in StateId stateId, ResourcePool.Usage usage) =>
+        IsBlockProcessing(usage)
+            ? Classify(stateId) == HistoricalReadMode.NotHistorical && inner.HasStateForBlock(stateId, usage)
+            : HasStateForBlock(stateId);
 
     public void FlushCache(CancellationToken cancellationToken) => inner.FlushCache(cancellationToken);
+
+    public void DropStateNotReachableFrom(in StateId head) => inner.DropStateNotReachableFrom(head);
 
     public void AddSnapshot(Snapshot snapshot, TransientResource transientResource) =>
         inner.AddSnapshot(snapshot, transientResource);
 
-    private bool IsBelowBarrier(in StateId baseBlock)
+    /// <summary>Once-per-call routing: <see cref="HistoricalReadMode.NotHistorical"/> falls through to the
+    /// wrapped manager (above the persisted boundary, or covered-but-mismatched — decisions unrelated to the
+    /// floor); <see cref="HistoricalReadMode.Unavailable"/> is a below-floor block no slice can serve.</summary>
+    private HistoricalReadMode Classify(in StateId baseBlock)
     {
         StateId persisted = persistenceManager.GetCurrentPersistedStateId();
-        return persisted != StateId.PreGenesis
-            && baseBlock.BlockNumber < persisted.BlockNumber
-            && historyReader.IsAvailable(baseBlock);
+        if (persisted == StateId.PreGenesis || baseBlock.BlockNumber >= persisted.BlockNumber) return HistoricalReadMode.NotHistorical;
+
+        if (!historyReader.IsCoveredAndRootMatches(baseBlock))
+        {
+            return historyReader.IsPrunedBelowFloor(baseBlock.BlockNumber)
+                ? HistoricalReadMode.Unavailable
+                : HistoricalReadMode.NotHistorical;
+        }
+
+        if (!historyReader.IsBelowGlobalFloor(baseBlock.BlockNumber)) return HistoricalReadMode.Normal;
+
+        return historyReader.GetSliceScopesArray().Length > 0 ? HistoricalReadMode.Restricted : HistoricalReadMode.Unavailable;
     }
+
+    private static bool IsBlockProcessing(ResourcePool.Usage usage) =>
+        usage is ResourcePool.Usage.MainBlockProcessing or ResourcePool.Usage.PostMainBlockProcessing;
+
+    private static void ThrowUnavailable(in StateId baseBlock) =>
+        throw new StateNotRetainedException(
+            $"Historical state for block {baseBlock.BlockNumber} is below the flat history retention floor.");
 
     // Trie-less bundle: empty snapshot list over a history-backed reader. The reader serves account/storage values
     // only and throws on trie traversal / iteration, so post-block state-root recomputation must not walk it.
-    private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock) =>
-        new(new SnapshotPooledList(0),
-            new HistoryBackedPersistenceReader(historyReader, baseBlock),
-            enableDetailedMetrics,
-            PersistedSnapshotStack.Empty(enableDetailedMetrics),
-            isHistorical: true);
+    private ReadOnlySnapshotBundle BuildHistoricalBundle(in StateId baseBlock, HistoricalReadMode mode)
+    {
+        HistoryBackedPersistenceReader reader = new(historyReader, baseBlock, scopeGate, restrictToSlices: mode == HistoricalReadMode.Restricted);
+        try
+        {
+            return new(new SnapshotPooledList(0),
+                reader,
+                enableDetailedMetrics,
+                PersistedSnapshotStack.Empty(enableDetailedMetrics),
+                isHistorical: true);
+        }
+        catch
+        {
+            reader.Dispose();
+            throw;
+        }
+    }
 }

@@ -5,12 +5,12 @@
 using Nethermind.Abi;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Collections;
 using Nethermind.Core.ExecutionRequest;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
@@ -21,11 +21,15 @@ using Nethermind.Core.Messages;
 
 namespace Nethermind.Consensus.ExecutionRequests;
 
-public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
+public partial class ExecutionRequestsProcessor : IExecutionRequestsProcessor, IHasAccessList
 {
     public static readonly AbiSignature DepositEventAbi = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
     private const ulong GasLimit = Eip8037Constants.SystemCallGasLimit;
+
+    // EIP-7002 WITHDRAWAL_REQUEST_QUEUE_STORAGE_OFFSET: the slots below it hold the excess, count, queue head and
+    // queue tail words. EIP-7251 and the EIP-8282 builder contracts are derived from the same queue template.
+    private const ulong QueueStorageOffset = 4;
 
     // Canonical ABI layout of the EIP-6110 `DepositEvent(bytes,bytes,bytes,bytes,bytes)` log data: five head
     // words holding the offsets below, each pointing at a length word followed by the right-padded field.
@@ -84,10 +88,61 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
     public ExecutionRequestsProcessor(ITransactionProcessor transactionProcessor)
     {
         _transactionProcessor = transactionProcessor;
-        _withdrawalTransaction.Hash = _withdrawalTransaction.CalculateHash();
-        _consolidationTransaction.Hash = _consolidationTransaction.CalculateHash();
-        _builderDepositTransaction.Hash = _builderDepositTransaction.CalculateHash();
-        _builderExitTransaction.Hash = _builderExitTransaction.CalculateHash();
+        SetSystemCallHashes();
+    }
+
+    /// <summary>Stamps the system calls with their transaction hashes.</summary>
+    /// <remarks>
+    /// Implemented in <c>ExecutionRequestsProcessor.std.cs</c> only. The zkEVM guest leaves the hashes unset, as
+    /// the EIP-4788 beacon root system call always does: executing a system call does not read its hash, while
+    /// computing one resolves the transaction encoder's generic virtual methods through the NativeAOT type loader.
+    /// That is sound while the hashes reach nothing the guest outputs or validates: the calls get no receipt, run only
+    /// under the private <c>CallOutputTracer</c> in <c>ReadRequests</c>, and the block access list keys their changes
+    /// by block access index rather than by transaction.
+    /// </remarks>
+    partial void SetSystemCallHashes();
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Hints the prewarmer with the fixed queue words that every enabled dequeue system call reads. The addresses are
+    /// taken from the system calls themselves, so the hint cannot drift from the accounts the calls actually target.
+    /// </remarks>
+    AccessList? IHasAccessList.GetAccessList(Block block, IReleaseSpec spec)
+    {
+        if (!spec.RequestsEnabled || block.IsGenesis) return null;
+
+        AccessList.Builder builder = new();
+        bool hasContract = false;
+        if (spec.WithdrawalRequestsEnabled)
+        {
+            AddQueueContract(builder, _withdrawalTransaction);
+            hasContract = true;
+        }
+
+        if (spec.ConsolidationRequestsEnabled)
+        {
+            AddQueueContract(builder, _consolidationTransaction);
+            hasContract = true;
+        }
+
+        if (spec.BuilderRequestsEnabled)
+        {
+            AddQueueContract(builder, _builderDepositTransaction);
+            AddQueueContract(builder, _builderExitTransaction);
+            hasContract = true;
+        }
+
+        return hasContract ? builder.Build() : null;
+
+        static void AddQueueContract(AccessList.Builder builder, SystemCall dequeueCall)
+        {
+            builder.AddAddress(dequeueCall.To!);
+            for (ulong slot = 0; slot < QueueStorageOffset; slot++)
+            {
+                UInt256 index = slot;
+                builder.AddStorage(in index);
+            }
+        }
     }
 
     public void ProcessExecutionRequests(Block block, IWorldState state, TxReceipt[] receipts, IReleaseSpec spec)
@@ -126,28 +181,14 @@ public class ExecutionRequestsProcessor : IExecutionRequestsProcessor
                     BlockErrorMessages.BuilderExitsContractEmpty, BlockErrorMessages.BuilderExitsContractFailed);
             }
 
-            RecordRequests(block, ref requests);
+            block.ExecutionRequests = [.. requests];
+            block.Header.RequestsHash =
+                ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
         }
         finally
         {
             requests.Dispose();
         }
-    }
-
-    /// <summary>
-    /// Records the requests derived from execution onto the block and computes the requests hash.
-    /// </summary>
-    /// <remarks>
-    /// The request system calls are always executed (their state effects matter); this only controls
-    /// whether the derived requests are written back to the block header. Stateless validation
-    /// overrides this to a no-op so the block keeps the consensus-layer-provided requests hash, which
-    /// the statelessly re-executed state transition does not re-derive.
-    /// </remarks>
-    protected virtual void RecordRequests(Block block, ref ArrayPoolListRef<byte[]> requests)
-    {
-        block.ExecutionRequests = [.. requests];
-        block.Header.RequestsHash =
-            ExecutionRequestExtensions.CalculateHashFromFlatEncodedRequests(block.ExecutionRequests);
     }
 
     private void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec, ref ArrayPoolListRef<byte[]> requests)

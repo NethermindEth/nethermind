@@ -12,6 +12,9 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
+    /// <summary>Serves <c>BLOCKHASH</c> from the block tree.</summary>
+    /// <remarks>Under EIP-7709 the opcode reads the EIP-2935 history contract itself, with SLOAD semantics,
+    /// and never reaches this provider.</remarks>
     public class BlockhashProvider(
         IBlockhashCache blockhashCache,
         ILogManager? logManager,

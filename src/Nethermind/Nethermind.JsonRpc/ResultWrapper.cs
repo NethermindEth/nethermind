@@ -155,7 +155,7 @@ namespace Nethermind.JsonRpc
 
             if (!JsonRpcResponseWriter.TryWriteSimpleValue(writer, value))
             {
-                JsonTypeInfo? runtimeTypeInfo = GetRuntimePayloadTypeInfo(options, value);
+                JsonTypeInfo? runtimeTypeInfo = JsonRpcResponseWriter.GetRuntimePayloadTypeInfo(options, value);
                 if (runtimeTypeInfo is not null)
                 {
                     JsonSerializer.Serialize(writer, (object?)value, runtimeTypeInfo);
@@ -164,17 +164,6 @@ namespace Nethermind.JsonRpc
 
                 JsonSerializer.Serialize(writer, value, RpcPayloadTypeInfo<TValue>.Get(options));
             }
-        }
-
-        private static JsonTypeInfo? GetRuntimePayloadTypeInfo<TValue>(JsonSerializerOptions options, TValue value)
-        {
-            if (!RpcPayloadTypeShape<TValue>.CanHaveDerivedRuntimeType)
-            {
-                return null;
-            }
-
-            Type runtimeType = value.GetType();
-            return runtimeType == typeof(TValue) ? null : RpcPayloadTypeInfo.Get(options, runtimeType);
         }
 
         protected static void DisposeIfReferenceType<TValue>(TValue value)

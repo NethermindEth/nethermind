@@ -69,7 +69,7 @@ internal class XdcBlockhashStoreTests
         Assert.Multiple(() =>
         {
             Assert.That(worldState.IsContract(Eip2935Account), Is.True);
-            Assert.That(worldState.GetCode(Eip2935Account), Is.EqualTo(Eip2935Constants.Code));
+            Assert.That(worldState.GetCode(Eip2935Account), Is.SequenceEqualTo(Eip2935Constants.Code));
             Assert.That(worldState.GetNonce(Eip2935Account), Is.EqualTo(1UL));
         });
     }
@@ -174,14 +174,12 @@ internal class XdcBlockhashStoreTests
         Assert.That(worldState.AccountExists(Eip2935Account), Is.False);
     }
 
-    /// <summary>
-    /// Reads a hash straight out of the EIP-2935 ring buffer, the way the <c>BLOCKHASH</c> opcode does under EIP-7709.
-    /// </summary>
+    /// <summary>Reads a hash straight out of the EIP-2935 ring buffer.</summary>
     private static Hash256? ReadRingBuffer(IWorldState worldState, ulong blockNumber, IReleaseSpec spec)
     {
         StorageCell cell = new(spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress,
             new UInt256(blockNumber % spec.Eip2935RingBufferSize));
-        ReadOnlySpan<byte> data = worldState.Get(cell);
-        return data.Length == 1 && data[0] == 0 ? null : Hash256.FromBytesWithPadding(data);
+        worldState.Get(cell, out UInt256 value);
+        return value.IsZero ? null : new Hash256(value.ToBigEndian());
     }
 }

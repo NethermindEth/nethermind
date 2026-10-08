@@ -10,7 +10,6 @@ using System.IO.Pipelines;
 using System.Threading;
 using System.Threading.Tasks;
 using CkzgLib;
-using Nethermind.Core.Collections;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 
@@ -19,89 +18,61 @@ namespace Nethermind.Merge.Plugin.Data;
 /// <summary>Writes blob-cells-and-proofs V4 results directly into a <see cref="PipeWriter"/>.</summary>
 public sealed class BlobsV4DirectResponse : IStreamableResult, IReadOnlyList<BlobCellsAndProofs?>, IDisposable
 {
-    private readonly ArrayPoolList<byte[]?> _blobs;
-    private readonly ArrayPoolList<ReadOnlyMemory<byte[]>> _proofs;
-    private readonly BlobCellsAndProofs?[] _response;
+    private BlobCellsAndProofs?[]? _response;
     private readonly int _count;
 
+    /// <summary>Creates a streamed response over the first <paramref name="count"/> entries.</summary>
+    /// <param name="response">Pool-rented response storage owned by this instance.</param>
+    /// <param name="count">Number of initialized entries.</param>
     public BlobsV4DirectResponse(
-        ArrayPoolList<byte[]?> blobs,
-        ArrayPoolList<ReadOnlyMemory<byte[]>> proofs,
         BlobCellsAndProofs?[] response,
         int count)
     {
-        Debug.Assert(count <= blobs.Count && count <= proofs.Count && count <= response.Length,
-            "count must not exceed array lengths");
-        _blobs = blobs;
-        _proofs = proofs;
+        Debug.Assert(count <= response.Length, "count must not exceed array length");
         _response = response;
         _count = count;
     }
 
+    /// <inheritdoc/>
     public int Count => _count;
 
+    /// <inheritdoc/>
     public BlobCellsAndProofs? this[int index]
     {
         get
         {
             ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual((uint)index, (uint)_count, nameof(index));
-            return _response[index];
+            return GetResponse()[index];
         }
     }
 
+    /// <inheritdoc/>
     public ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken) =>
-        StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(_response), cancellationToken);
+        StreamableResultWriter.WriteArrayAsync(writer, _count, new ItemWriter(GetResponse()), cancellationToken);
 
     IEnumerator<BlobCellsAndProofs?> IEnumerable<BlobCellsAndProofs?>.GetEnumerator()
     {
+        BlobCellsAndProofs?[] response = GetResponse();
         for (int i = 0; i < _count; i++)
         {
-            yield return _response[i];
+            yield return response[i];
         }
     }
 
     IEnumerator IEnumerable.GetEnumerator() => ((IEnumerable<BlobCellsAndProofs?>)this).GetEnumerator();
 
+    /// <inheritdoc/>
     public void Dispose()
     {
-        _blobs.Dispose();
-        _proofs.Dispose();
-        if (_response is not null)
+        BlobCellsAndProofs?[]? response = Interlocked.Exchange(ref _response, null);
+        if (response is not null)
         {
-            for (int i = 0; i < _count; i++)
-            {
-                BlobCellsAndProofs? item = _response[i];
-                if (item is not null && item.Available)
-                {
-                    if (item.BlobCells is not null)
-                    {
-                        for (int j = 0; j < Ckzg.CellsPerExtBlob; j++)
-                        {
-                            byte[]? cell = item.BlobCells[j];
-                            if (cell is not null)
-                            {
-                                ArrayPool<byte>.Shared.Return(cell);
-                            }
-                        }
-                        ArrayPool<byte[]?>.Shared.Return(item.BlobCells, clearArray: true);
-                    }
-                    if (item.Proofs is not null)
-                    {
-                        for (int j = 0; j < Ckzg.CellsPerExtBlob; j++)
-                        {
-                            byte[]? proof = item.Proofs[j];
-                            if (proof is not null)
-                            {
-                                ArrayPool<byte>.Shared.Return(proof);
-                            }
-                        }
-                        ArrayPool<byte[]?>.Shared.Return(item.Proofs, clearArray: true);
-                    }
-                }
-            }
-            ArrayPool<BlobCellsAndProofs?>.Shared.Return(_response, clearArray: true);
+            ArrayPool<BlobCellsAndProofs?>.Shared.Return(response, clearArray: true);
         }
     }
+
+    private BlobCellsAndProofs?[] GetResponse() =>
+        _response ?? throw new ObjectDisposedException(nameof(BlobsV4DirectResponse));
 
     private readonly struct ItemWriter(BlobCellsAndProofs?[] response) : IJsonArrayItemWriter
     {
@@ -114,12 +85,12 @@ public sealed class BlobsV4DirectResponse : IStreamableResult, IReadOnlyList<Blo
                 return;
             }
 
-            writer.Write("{\"available\":true,\"blobCells\":["u8);
+            writer.Write("{\"blob_cells\":["u8);
 
             byte[]?[]? blobCells = item.BlobCells;
             if (blobCells is not null)
             {
-                for (int c = 0; c < Ckzg.CellsPerExtBlob; c++)
+                for (int c = 0; c < blobCells.Length; c++)
                 {
                     if (c > 0) writer.Write(","u8);
                     byte[]? cell = blobCells[c];
@@ -139,7 +110,7 @@ public sealed class BlobsV4DirectResponse : IStreamableResult, IReadOnlyList<Blo
             byte[]?[]? proofs = item.Proofs;
             if (proofs is not null)
             {
-                for (int p = 0; p < Ckzg.CellsPerExtBlob; p++)
+                for (int p = 0; p < proofs.Length; p++)
                 {
                     if (p > 0) writer.Write(","u8);
                     byte[]? proof = proofs[p];

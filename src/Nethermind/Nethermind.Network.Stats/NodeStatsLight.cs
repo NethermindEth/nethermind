@@ -17,7 +17,7 @@ namespace Nethermind.Stats;
 /// <summary>
 /// Initial version of Reputation calculation mostly based on EthereumJ impl
 /// </summary>
-public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProvider timeProvider = null) : INodeStats
+public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProvider? timeProvider = null) : INodeStats
 {
     private readonly StatsParameters _statsParameters = StatsParameters.Instance;
 
@@ -101,11 +101,11 @@ public class NodeStatsLight(Node node, float latestSpeedWeight = 0.25f, TimeProv
 
     public long NewPersistedNodeReputation(DateTime nowUTC) => (CurrentPersistedNodeReputation + CalculateSessionReputation()) / 2;
 
-    public P2PNodeDetails P2PNodeDetails { get; private set; }
+    public P2PNodeDetails? P2PNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails EthNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? EthNodeDetails { get; private set; }
 
-    public SyncPeerNodeDetails LesNodeDetails { get; private set; }
+    public SyncPeerNodeDetails? LesNodeDetails { get; private set; }
 
     public CompatibilityValidationType? FailedCompatibilityValidation { get; set; }
 

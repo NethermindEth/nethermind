@@ -140,13 +140,12 @@ namespace Nethermind.Network.P2P
             }
 
             if (_logger.IsTrace) TraceEnablingSnappy();
-            _context.Channel.Pipeline.Get<ZeroPacketSplitter>()?.DisableFraming();
 
             // since groups were used, we are on a different thread
             _context.Channel.Pipeline.Get<ZeroNettyP2PHandler>()?.EnableSnappy();
-            // code in the next line does no longer work as if there is a packet waiting then it will skip the snappy decoder
-            // _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new SnappyDecoder(_logger));
-            _context.Channel.Pipeline.AddBefore($"{nameof(PacketSender)}#0", null, new ZeroSnappyEncoder(_logManager));
+            ZeroPacketSplitter splitter = _context.Channel.Pipeline.Get<ZeroPacketSplitter>()
+                ?? throw new InvalidOperationException("Cannot enable Snappy without the outbound ZeroPacketSplitter.");
+            splitter.EnableSnappy(_logManager);
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceEnablingSnappy() => _logger.Trace($"Enabling Snappy compression and disabling framing in {this}");
@@ -412,7 +411,7 @@ namespace Nethermind.Network.P2P
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsDebug) DebugInitiatingDisconnect(disconnectReason, details);
+            if (_logger.IsTrace) TraceInitiatingDisconnect(disconnectReason, details);
 
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
             if (!_protocols.IsEmpty)
@@ -439,17 +438,8 @@ namespace Nethermind.Network.P2P
                 => _logger.Trace($"{this} not disconnecting for static/trusted peer on {reason} ({det})");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
-            void DebugInitiatingDisconnect(DisconnectReason reason, string? det)
-            {
-                if (reason is DisconnectReason.InvalidNetworkId)
-                {
-                    if (_logger.IsTrace) _logger.Trace($"{this} initiating disconnect because {reason}, details: {det}");
-                }
-                else
-                {
-                    _logger.Debug($"{this} initiating disconnect because {reason}, details: {det}");
-                }
-            }
+            void TraceInitiatingDisconnect(DisconnectReason reason, string? det) =>
+                _logger.Trace($"{this} initiating disconnect because {reason}, details: {det}");
 
             [MethodImpl(MethodImplOptions.NoInlining)]
             void TraceDisconnectingProtocol(IProtocolHandler handler, DisconnectReason reason, string? det)

@@ -5,10 +5,8 @@ using System;
 
 namespace Nethermind.Logging;
 
-public interface ILogManager
+public partial interface ILogManager
 {
-    ILogger GetClassLogger<T>();
-
     ILogger GetLogger(string loggerName);
 
     void SetGlobalVariable(string name, object? value) { }

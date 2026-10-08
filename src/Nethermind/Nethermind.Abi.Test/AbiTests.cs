@@ -20,11 +20,16 @@ public class AbiTests
 {
     private readonly AbiEncoder _abiEncoder = AbiEncoder.Instance;
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
+    private static readonly AbiEncodingStyle[] EncodingStyles =
+    [
+        AbiEncodingStyle.IncludeSignature,
+        AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed,
+        AbiEncodingStyle.Packed,
+        AbiEncodingStyle.None
+    ];
+
+    [Test]
+    public void Dynamic_array_of_dynamic_array_of_uint([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
         AbiSignature signature = new("abc", type);
@@ -35,11 +40,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_dynamic_array_of_uint_empty(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_dynamic_array_of_uint_empty([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(new AbiArray(AbiType.UInt256));
         AbiSignature signature = new("abc", type);
@@ -49,11 +51,8 @@ public class AbiTests
         Assert.That(data, Is.EqualTo(arguments[0]));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_string(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_string([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(AbiType.String);
         AbiSignature signature = new("abc", type);
@@ -63,11 +62,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_uint(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_uint([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(AbiType.UInt256);
         AbiSignature signature = new("abc", type);
@@ -77,11 +73,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Fixed_array_of_fixed_array_of_uint(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Fixed_array_of_fixed_array_of_uint([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiFixedLengthArray(new AbiFixedLengthArray(AbiType.UInt256, 2), 3);
         UInt256[] element = [1, 1];
@@ -92,11 +85,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Fixed_array_of_string(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Fixed_array_of_string([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiFixedLengthArray(AbiType.String, 3);
         AbiSignature signature = new("abc", type);
@@ -106,11 +96,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Fixed_array_of_uint(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Fixed_array_of_uint([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiFixedLengthArray(AbiType.UInt256, 2);
         UInt256[] data = [1, 1];
@@ -120,11 +107,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_bytes(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_bytes([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiBytes(19);
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19];
@@ -134,11 +118,8 @@ public class AbiTests
         Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_bytes_invalid_length(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_bytes_invalid_length([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiBytes(19);
         byte[] data = new byte[23];
@@ -146,11 +127,8 @@ public class AbiTests
         Assert.Throws<AbiException>(() => _abiEncoder.Encode(encodingStyle, signature, data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_dynamic_bytes(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_dynamic_bytes([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.DynamicBytes;
         byte[] data = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
@@ -160,11 +138,8 @@ public class AbiTests
         Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_fixed(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_fixed([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiFixed type = AbiType.Fixed;
         BigRational data = BigRational.FromBigInt(123456789) * BigRational.Reciprocal(BigRational.Pow(BigRational.FromInt(10), type.Precision));
@@ -174,11 +149,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_address(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_address([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.Address;
         AbiSignature signature = new("abc", type);
@@ -188,11 +160,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(arg));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_bool(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_bool([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.Bool;
         AbiSignature signature = new("abc", type);
@@ -201,11 +170,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(true));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_function(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_function([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.Function;
         byte[] data = new byte[24];
@@ -215,11 +181,8 @@ public class AbiTests
         Assert.That(Bytes.AreEqual((byte[])arguments[0], data), Is.True);
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_int(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_int([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.Int256;
         AbiSignature signature = new("abc", type);
@@ -255,11 +218,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(UInt256.One));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_uint(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_uint([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.UInt256;
         AbiSignature signature = new("abc", type);
@@ -268,11 +228,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(UInt256.Zero));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_uint32(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_uint32([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiUInt(32);
         AbiSignature signature = new("abc", type);
@@ -281,11 +238,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(123U));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_string(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_string([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.String;
         string data = "def";
@@ -295,11 +249,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_ufixed(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_ufixed([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiUFixed type = AbiType.UFixed;
 
@@ -328,29 +279,20 @@ public class AbiTests
     public void Test_fixed_exception(int length, int precision) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiFixed(length, precision));
 
-    [TestCase(0)]
-    [TestCase(7)]
-    [TestCase(264)]
-    public void Test_int_exception(int length) =>
+    [Test]
+    public void Test_int_exception([Values(0, 7, 264)] int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiInt(length));
 
-    [TestCase(0)]
-    [TestCase(7)]
-    [TestCase(264)]
-    public void Test_uint_exception(int length) =>
+    [Test]
+    public void Test_uint_exception([Values(0, 7, 264)] int length) =>
         Assert.Throws<ArgumentOutOfRangeException>(() => _ = new AbiUInt(length));
 
-    [TestCase("uint64[abc]")]
-    [TestCase("bytes32[xyz]")]
-    [TestCase("address[!@#]")]
-    public void Test_invalid_array_syntax_exception(string type) =>
+    [Test]
+    public void Test_invalid_array_syntax_exception([Values("uint64[abc]", "bytes32[xyz]", "address[!@#]")] string type) =>
         Assert.Throws<ArgumentException>(() => System.Text.Json.JsonSerializer.Deserialize<AbiType>($"\"{type}\""));
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_single_address_no_signature(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_single_address_no_signature([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = AbiType.Address;
         AbiSignature signature = new("abc", type);
@@ -360,11 +302,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(arg));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Test_packed(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Test_packed([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         Hash256 assetId = Keccak.Compute("assetId");
         uint expiryTime = (uint)Timestamper.Default.UnixTime.Seconds + 86000;
@@ -385,11 +324,8 @@ public class AbiTests
         Assert.That(encoded.Length, Is.EqualTo(108));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Static_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Static_tuple([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
 
@@ -401,9 +337,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.DynamicBytes, AbiType.Address, AbiType.DynamicBytes);
 
@@ -416,11 +351,8 @@ public class AbiTests
     }
 
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Multiple_params_with_one_of_them_a_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Multiple_params_with_one_of_them_a_tuple([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
 
@@ -434,11 +366,8 @@ public class AbiTests
         Assert.That(arguments[1], Is.EqualTo(stringParam));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Multiple_params_with_one_of_them_a_tuple_dynamic_first(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Multiple_params_with_one_of_them_a_tuple_dynamic_first([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, AbiType.Address, AbiType.Bool);
 
@@ -452,11 +381,8 @@ public class AbiTests
         Assert.That(arguments[1], Is.EqualTo(staticTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Tuple_with_inner_static_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Tuple_with_inner_static_tuple([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.UInt256, AbiType.Address), AbiType.Bool);
 
@@ -468,9 +394,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(staticTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Tuple_with_inner_dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.UInt256, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
 
@@ -483,9 +408,8 @@ public class AbiTests
     }
 
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_tuple_with_inner_dynamic_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_tuple_with_inner_dynamic_tuple([Values(AbiEncodingStyle.IncludeSignature, AbiEncodingStyle.None)] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(AbiType.DynamicBytes, new AbiTuple(AbiType.DynamicBytes, AbiType.Address), AbiType.Bool);
 
@@ -497,11 +421,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(dynamicTuple));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Tuple_with_inner_tuple_with_inner_tuple(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Tuple_with_inner_tuple_with_inner_tuple([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiTuple(new AbiTuple(new AbiTuple(AbiType.UInt256)));
 
@@ -649,9 +570,8 @@ public class AbiTests
         Assert.Throws<AbiException>(() => _abiEncoder.Decode(AbiEncodingStyle.None, signature, []));
     }
 
-    [TestCase(AbiEncodingStyle.None)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    public void Empty_tuple_roundtrips(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Empty_tuple_roundtrips([Values(AbiEncodingStyle.None, AbiEncodingStyle.Packed)] AbiEncodingStyle encodingStyle)
     {
         AbiSignature signature = new("f", new AbiTuple());
         ValueTuple value = new();
@@ -679,9 +599,8 @@ public class AbiTests
         Assert.That(decoded[0], Is.EqualTo(value));
     }
 
-    [TestCase(AbiEncodingStyle.None)]
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    public void Should_wrap_out_of_range_decode_error(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Should_wrap_out_of_range_decode_error([Values(AbiEncodingStyle.None, AbiEncodingStyle.IncludeSignature)] AbiEncodingStyle encodingStyle)
     {
         AbiSignature signature = new("f", AbiType.Bool);
 
@@ -781,11 +700,8 @@ public class AbiTests
         public byte[] Signature { get; set; }
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_fixed_array_of_uint64(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_fixed_array_of_uint64([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
         ulong[] element = [100UL, 200UL, 300UL];
@@ -796,11 +712,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_fixed_array_of_uint64_single_element(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_fixed_array_of_uint64_single_element([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
         ulong[][] data = [[1000000UL, 7UL, 3600UL]];
@@ -810,11 +723,8 @@ public class AbiTests
         Assert.That(arguments[0], Is.EqualTo(data));
     }
 
-    [TestCase(AbiEncodingStyle.IncludeSignature)]
-    [TestCase(AbiEncodingStyle.IncludeSignature | AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.Packed)]
-    [TestCase(AbiEncodingStyle.None)]
-    public void Dynamic_array_of_fixed_array_of_uint64_empty(AbiEncodingStyle encodingStyle)
+    [Test]
+    public void Dynamic_array_of_fixed_array_of_uint64_empty([ValueSource(nameof(EncodingStyles))] AbiEncodingStyle encodingStyle)
     {
         AbiType type = new AbiArray(new AbiFixedLengthArray(new AbiUInt(64), 3));
         ulong[][] data = [];

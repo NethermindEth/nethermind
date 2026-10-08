@@ -44,6 +44,9 @@ public interface IBlockAccessListStore
     bool Exists(ulong blockNumber, Hash256 blockHash);
     void Delete(ulong blockNumber, Hash256 blockHash);
 
+    /// <summary>Drops every access list in <c>[fromInclusive, toExclusive)</c> in one operation.</summary>
+    void DeleteRange(ulong fromInclusive, ulong toExclusive);
+
     [DoesNotReturn, StackTraceHidden]
     private static Hash256 ThrowMissingBlockHash(string paramName) =>
         throw new ArgumentException("Block hash is required to persist a block access list.", paramName);

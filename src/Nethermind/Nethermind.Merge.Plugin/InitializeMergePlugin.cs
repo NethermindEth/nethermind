@@ -13,19 +13,16 @@ using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Merge.Plugin;
 
 /// <summary>
-/// Runs the merge plugin's one-off initialization: registers the engine-API JSON resolver, reconciles the
-/// slot-time config, validates merge settings and ensures an engine JSON-RPC URL is configured.
+/// Runs the merge plugin's one-off initialization: reconciles the slot-time config, validates merge settings and
+/// ensures an engine JSON-RPC URL is configured.
 /// </summary>
 /// <remarks>
 /// <see cref="InitializeBlockchain"/> and <see cref="RegisterRpcModules"/> are declared as dependents so they run
-/// after the slot-time reconciliation and the engine JSON resolver / <see cref="IJsonRpcConfig"/> mutations they
-/// rely on.
+/// after the slot-time reconciliation and the <see cref="IJsonRpcConfig"/> mutations they rely on.
 /// </remarks>
 [RunnerStepDependencies(dependencies: [typeof(InitializeBlockTree)], dependents: [typeof(InitializeBlockchain), typeof(RegisterRpcModules)])]
 public class InitializeMergePlugin(
@@ -44,8 +41,6 @@ public class InitializeMergePlugin(
     /// <summary>Applies the merge initialization; shared with the AuRa merge init step, which cannot depend on this step across assemblies.</summary>
     public static void Configure(IMergeConfig mergeConfig, IBlocksConfig blocksConfig, ISpecProvider specProvider, IJsonRpcConfig jsonRpcConfig, ILogManager logManager)
     {
-        EthereumJsonSerializer.AddTypeInfoResolver(EngineApiJsonContext.Default, JsonTypeInfoResolverPriority.EngineApi);
-
         MergePlugin.MigrateSecondsPerSlot(blocksConfig, mergeConfig);
 
         EnsureNotConflictingSettings(mergeConfig);

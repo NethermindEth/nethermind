@@ -12,9 +12,9 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class InvalidBlockDetector
 {
-    public event EventHandler<IBlockchainProcessor.InvalidBlockEventArgs>? OnInvalidBlock;
+    public event EventHandler<IBlockProcessingQueue.InvalidBlockEventArgs>? OnInvalidBlock;
 
-    private void TriggerOnInvalidBlock(Block invalidBlock) => OnInvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs()
+    private void TriggerOnInvalidBlock(Block invalidBlock) => OnInvalidBlock?.Invoke(this, new IBlockProcessingQueue.InvalidBlockEventArgs()
     {
         InvalidBlock = invalidBlock
     });

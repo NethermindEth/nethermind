@@ -53,9 +53,37 @@ namespace Nethermind.Synchronization
     {
         private const int FeedsTerminationTimeout = 5_000;
 
+        /// <remarks>
+        /// The state sync join is a memory-safety barrier, not a tidy-shutdown courtesy like the feed tasks: the
+        /// databases are disposed the moment <see cref="DisposeAsync"/> returns, and a dispatcher worker still inside
+        /// HandleResponse then writes to a freed native handle (#13154). It is bounded because the runner sets
+        /// ProcessTerminationTimeout to infinite - a wait with no ceiling here is a node that never exits - so the
+        /// budget bounds the race rather than closing it. Ordering teardown after sync (making this an
+        /// <c>IStoppableService</c>) is what closes it, and is out of scope here.
+        /// </remarks>
+        internal const int DefaultStateSyncTerminationTimeout = 60_000;
+
+        /// <summary>How long <see cref="DisposeAsync"/> waits for the state sync runner before giving up on it.</summary>
+        /// <remarks>
+        /// Settable rather than a <c>const</c> so the give-up branch can be exercised in milliseconds; nothing outside
+        /// the tests sets it. See <see cref="DefaultStateSyncTerminationTimeout"/> for why this wait exists and why it
+        /// is bounded at all.
+        /// </remarks>
+        internal int StateSyncTerminationTimeout { get; init; } = DefaultStateSyncTerminationTimeout;
+
         private readonly ILogger _logger = logManager.GetClassLogger<Synchronizer>();
 
         private CancellationTokenSource? _syncCancellation = new();
+
+        /// <remarks>
+        /// <see cref="Start"/> publishes <see cref="_stateSyncTask"/> and <see cref="DisposeAsync"/> joins it, from
+        /// different threads and with no ordering between them. Guarding both with one lock also makes a dispose that
+        /// wins the race safe, by refusing to start after it. It orders those two fields and the cancellation token
+        /// read alongside them - not the whole of <see cref="Start"/>, whose remaining wiring runs outside it.
+        /// </remarks>
+        private readonly Lock _startStopLock = new();
+
+        private Task _stateSyncTask = Task.CompletedTask;
 
         private bool _disposed;
 
@@ -71,15 +99,28 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            StartFullSyncComponents();
-
-            if (syncConfig.FastSync)
+            CancellationToken gateToken;
+            lock (_startStopLock)
             {
-                StartFastBlocksComponents();
+                if (_disposed)
+                {
+                    return;
+                }
 
-                StartFastSyncComponents();
+                // Read under the lock: a DisposeAsync that wins the race nulls the field, and this method
+                // goes on to use the token after leaving the lock.
+                gateToken = _syncCancellation!.Token;
 
-                StartSnapAndStateSyncComponents();
+                StartFullSyncComponents();
+
+                if (syncConfig.FastSync)
+                {
+                    StartFastBlocksComponents();
+
+                    StartFastSyncComponents();
+
+                    StartSnapAndStateSyncComponents();
+                }
             }
 
             if (syncConfig.ExitOnSynced)
@@ -98,7 +139,7 @@ namespace Nethermind.Synchronization
 
             // Mode selection only begins once startup prerequisites are met: the DB block load has finished
             // and the starting sync pivot has been resolved. Until then the feeds wired above stay dormant.
-            _ = StartModeSelectorAfterGates(_syncCancellation!.Token);
+            _ = StartModeSelectorAfterGates(gateToken);
         }
 
         private async Task StartModeSelectorAfterGates(CancellationToken cancellationToken)
@@ -174,9 +215,8 @@ namespace Nethermind.Synchronization
             });
         }
 
-        private void StartSnapAndStateSyncComponents()
-        {
-            Task _ = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>
+        private void StartSnapAndStateSyncComponents() =>
+            _stateSyncTask = stateSyncRunner.Run(_syncCancellation!.Token).ContinueWith(t =>
             {
                 if (t.IsFaulted)
                 {
@@ -187,7 +227,6 @@ namespace Nethermind.Synchronization
                     if (_logger.IsInfo) _logger.Info("State sync task completed.");
                 }
             });
-        }
 
         private void StartFastBlocksComponents()
         {
@@ -269,17 +308,27 @@ namespace Nethermind.Synchronization
 
         public async ValueTask DisposeAsync()
         {
-            // Container teardown can dispose this more than once, and a repeat run would wait on
-            // the feed tasks again - the full termination timeout when any feed failed to finish.
-            if (Interlocked.CompareExchange(ref _disposed, true, false))
+            Task stateSyncTask;
+            lock (_startStopLock)
             {
-                return;
+                // Container teardown can dispose this more than once, and a repeat run would wait on
+                // the feed tasks again - the full termination timeout when any feed failed to finish.
+                if (_disposed)
+                {
+                    return;
+                }
+
+                _disposed = true;
+                stateSyncTask = _stateSyncTask;
             }
 
             _syncCancellation?.Cancel();
 
             using CancellationTokenSource timeoutCts = new();
-            Task timeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            // Both budgets start here so they run concurrently rather than back to back.
+            Task feedsTimeout = Task.Delay(FeedsTerminationTimeout, timeoutCts.Token);
+            Task stateSyncTimeout = Task.Delay(StateSyncTerminationTimeout, timeoutCts.Token);
+
             Task feedsTask = Task.WhenAll(
                 fullSyncComponent.Feed.FeedTask,
                 fastSyncComponent.Feed.FeedTask,
@@ -287,16 +336,20 @@ namespace Nethermind.Synchronization
                 oldBodiesComponent.Feed.FeedTask,
                 oldReceiptsComponent.Feed.FeedTask,
                 oldBlockAccessListsComponent.Feed.FeedTask);
-            Task completedFirst = await Task.WhenAny(timeout, feedsTask);
 
-            if (completedFirst == timeout)
+            if (await Task.WhenAny(feedsTimeout, feedsTask) == feedsTimeout && _logger.IsWarn)
             {
-                if (_logger.IsWarn) _logger.Warn("Sync feeds dispose timeout");
+                _logger.Warn("Sync feeds dispose timeout");
             }
-            else
+
+            // The state sync runner is joined separately: the databases are disposed right after this returns, so
+            // its dispatcher must have drained its in-flight workers by then.
+            if (await Task.WhenAny(stateSyncTimeout, stateSyncTask) == stateSyncTimeout && _logger.IsWarn)
             {
-                timeoutCts.Cancel();
+                _logger.Warn($"State sync did not stop within {StateSyncTerminationTimeout}ms, databases are disposed under in-flight sync work");
             }
+
+            timeoutCts.Cancel();
 
             CancellationTokenExtensions.CancelDisposeAndClear(ref _syncCancellation);
         }
@@ -504,6 +557,8 @@ public class SynchronizerModule(ISyncConfig syncConfig) : Module
             .AddSingleton<ISimpleSyncFeed<StateSyncBatch>, StateSyncFeed>()
             .AddSingleton<ISyncDownloader<StateSyncBatch>, StateSyncDownloader>()
             .AddSingleton<IPeerAllocationStrategyFactory<StateSyncBatch>, StateSyncAllocationStrategyFactory>()
+            .AddSingleton<BalFetcher>()
+            .AddSingleton<StateHealingStrategy>()
             .AddSingleton<IStateSyncRunner, StateSyncRunner>();
 
         serviceCollection.Register(static ctx => new SimpleDispatcher<StateSyncBatch>(

@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Linq;
 using DotNetty.Buffers;
+using Nethermind.Core.Test;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
@@ -57,7 +58,7 @@ public class RlpByteArrayListTests
 
         for (int i = 0; i < items.Length; i++)
         {
-            Assert.That(list[i].ToArray(), Is.EqualTo(items[i]), $"item {i} should match");
+            Assert.That(list[i], Is.SequenceEqualTo(items[i]), $"item {i} should match");
         }
     }
 
@@ -85,7 +86,7 @@ public class RlpByteArrayListTests
         writer.WriteByteArrayList(list);
 
         Assert.That(writer.Position, Is.EqualTo(expected.Length));
-        Assert.That(buffer.AsSpan(0, writer.Position).ToArray(), Is.EqualTo(expected));
+        Assert.That(buffer.AsSpan(0, writer.Position), Is.SequenceEqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -99,7 +100,7 @@ public class RlpByteArrayListTests
         writer.WriteByteArrayList(list);
 
         Assert.That(byteBuffer.ReadableBytes, Is.EqualTo(expected.Length));
-        Assert.That(byteBuffer.AsSpan().ToArray(), Is.EqualTo(expected));
+        Assert.That(byteBuffer.AsSpan(), Is.SequenceEqualTo(expected));
     }
 
     [TestCaseSource(nameof(TestCases))]
@@ -110,14 +111,14 @@ public class RlpByteArrayListTests
         using RlpByteArrayList list = CreateList(items);
 
         // Access last item first to set cache forward
-        Assert.That(list[items.Length - 1].ToArray(), Is.EqualTo(items[^1]));
+        Assert.That(list[items.Length - 1], Is.SequenceEqualTo(items[^1]));
         // Then access first item (requires cache reset)
-        Assert.That(list[0].ToArray(), Is.EqualTo(items[0]));
+        Assert.That(list[0], Is.SequenceEqualTo(items[0]));
         // Access middle if possible
         if (items.Length > 2)
         {
             int mid = items.Length / 2;
-            Assert.That(list[mid].ToArray(), Is.EqualTo(items[mid]));
+            Assert.That(list[mid], Is.SequenceEqualTo(items[mid]));
         }
     }
 
@@ -149,7 +150,7 @@ public class RlpByteArrayListTests
     }
 
     [Test]
-    public void DecodeList_WithoutLimit_AcceptsLargeList()
+    public void DecodeList_WithoutLimit_AcceptsListWithinDefaultLimit()
     {
         const int count = 10_000;
         byte[] encoded = EncodeSingleByteItemList(count);
@@ -157,6 +158,20 @@ public class RlpByteArrayListTests
         RlpReader ctx = new(encoded);
         using RlpByteArrayList list = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
         Assert.That(list.Count, Is.EqualTo(count));
+    }
+
+    // Exceeding the default limit takes ~4 MB of single-byte items. The count walk early-outs at
+    // limit + 1, so the test costs tens of milliseconds, not seconds.
+    [Test]
+    public void DecodeList_WithoutLimit_RejectsListAboveDefaultLimit()
+    {
+        byte[] encoded = EncodeSingleByteItemList(RlpLimit.DefaultLimit.Limit + 1);
+
+        Assert.Throws<RlpLimitException>(() =>
+        {
+            RlpReader ctx = new(encoded);
+            using RlpByteArrayList _ = RlpByteArrayList.DecodeList(ref ctx, new ExactMemoryOwner(encoded));
+        });
     }
 
     private static byte[] EncodeSingleByteItemList(int count)

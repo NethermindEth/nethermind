@@ -22,6 +22,8 @@ namespace Nethermind.Core
         public const ulong SLoadEip150 = 200;
         public const ulong SLoadEip1884 = 800;
         public const ulong JumpDest = 1;
+        public const ulong CallSub = Mid; // eip-7979
+        public const ulong ReturnSub = Low; // eip-7979
         public const ulong SStoreNetMeteredEip1283 = 200;
         public const ulong SStoreNetMeteredEip2200 = 800;
         public const ulong SSet = 20000;
@@ -66,6 +68,7 @@ namespace Nethermind.Core
         public const ulong AccessStorageListEntry = 1900; // eip-2930
         public const ulong TLoad = WarmStateRead; // eip-1153
         public const ulong TStore = WarmStateRead; // eip-1153
+        public const ulong TxTrace = WarmStateRead; // eip-7906 placeholder; TXTRACE_GAS_COST is TBD in the spec
         public const ulong PerAuthBaseCost = Eip7702Constants.PerAuthBaseCost;
         public const ulong TotalCostFloorPerTokenEip7623 = 10; // eip-7623
         public const ulong TotalCostFloorPerTokenEip7976 = 16; // eip-7976

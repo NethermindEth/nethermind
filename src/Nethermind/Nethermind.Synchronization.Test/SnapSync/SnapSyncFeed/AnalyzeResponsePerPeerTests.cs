@@ -308,6 +308,37 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
                 "an unmatched code reply between two streaks must not buy the peer another benefit of the doubt");
         }
 
+        // Regression guard for the fix to #13200. ProgressTracker.UpdatePivot rate-limits the move, so most calls on a
+        // slow or halted chain do not move anything - and UpdateHeaderForcefully was already a no-op whenever the head
+        // had not advanced. The repeat-offender guard must therefore arm on the REQUEST. Gating it on an actual move
+        // looks fairer to the peer but disables the punishment exactly when it is needed: with a head that is not
+        // advancing, the allocator re-picks the same fastest-but-useless peer forever and nothing ever escalates.
+        [Test]
+        public void Punishes_the_offender_even_when_the_pivot_never_moves()
+        {
+            PeerInfo peer = CreatePeer(TestItem.PublicKeyA);
+            // A pivot that never moves for any reason - rate-limited, StaticSnapPivot, or a head that is standing still.
+            ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
+
+            SyncResponseHandlingResult result = SyncResponseHandlingResult.OK;
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK),
+                "the first streak only arms the guard - one streak is still read as a stale pivot rather than a bad peer");
+
+            for (int i = 0; i <= AllowedInvalidResponses; i++)
+            {
+                result = feed.AnalyzeResponsePerPeer(AddRangeResult.EmptyRange, peer);
+            }
+
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality),
+                "a second streak with no success in between is the peer's fault whether or not the pivot moved");
+        }
+
         private const int AllowedInvalidResponses = Synchronization.SnapSync.SnapSyncFeed.AllowedInvalidResponses;
 
         private static PeerInfo CreatePeer(PublicKey nodeId)

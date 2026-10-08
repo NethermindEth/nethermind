@@ -12,14 +12,8 @@ namespace Nethermind.AuRa.Test
     {
         private readonly List<int> _list = Enumerable.Range(5, 10).Select(static i => i * 2).ToList();
 
-        [TestCase(2)]
-        [TestCase(10)]
-        [TestCase(11)]
-        [TestCase(20)]
-        [TestCase(30)]
-        [TestCase(19)]
-        [TestCase(100)]
-        public void BinarySearchTest(int searchFor)
+        [Test]
+        public void BinarySearchTest([Values(2, 10, 11, 20, 30, 19, 100)] int searchFor)
         {
             IList<int> iList = _list;
             Assert.That(iList.BinarySearch(searchFor, static (a, b) => a.CompareTo(b)), Is.EqualTo(_list.BinarySearch(searchFor)));

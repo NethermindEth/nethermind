@@ -83,6 +83,7 @@ internal sealed class LogsStreamableResult(
     {
         using IEnumerator<FilterLog> enumerator = logs.GetEnumerator();
         ArrayBufferWriter<byte> itemBuffer = new();
+        using Utf8JsonWriter itemWriter = new(itemBuffer, StreamingResultBase.WriterOptions);
         int count = 0;
         int estimatedNextLogBytes = 0;
 
@@ -100,7 +101,7 @@ internal sealed class LogsStreamableResult(
                 return StreamableResultStatus.Truncated;
             }
 
-            StreamableResultStatus? terminalStatus = TryBufferNextLog(enumerator, itemBuffer);
+            StreamableResultStatus? terminalStatus = TryBufferNextLog(enumerator, itemBuffer, itemWriter);
             if (terminalStatus is not null)
             {
                 return terminalStatus.GetValueOrDefault();
@@ -127,7 +128,7 @@ internal sealed class LogsStreamableResult(
             }
         }
 
-        StreamableResultStatus? TryBufferNextLog(IEnumerator<FilterLog> enumerator, ArrayBufferWriter<byte> itemBuffer)
+        StreamableResultStatus? TryBufferNextLog(IEnumerator<FilterLog> enumerator, ArrayBufferWriter<byte> itemBuffer, Utf8JsonWriter itemWriter)
         {
             try
             {
@@ -137,8 +138,8 @@ internal sealed class LogsStreamableResult(
                 }
 
                 itemBuffer.Clear();
-                using Utf8JsonWriter itemWriter = new(itemBuffer, StreamingResultBase.WriterOptions);
-                JsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
+                itemWriter.Reset(itemBuffer);
+                TypeInfoJsonSerializer.Serialize(itemWriter, enumerator.Current, EthereumJsonSerializer.JsonOptions);
                 return null;
             }
             catch (OperationCanceledException)

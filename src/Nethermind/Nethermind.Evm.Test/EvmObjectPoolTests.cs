@@ -33,6 +33,8 @@ public class EvmObjectPoolTests
     private sealed class CrossThreadItem(int id) : Item(id);
     private sealed class ChurnItem(int id) : Item(id);
     private sealed class GuardItem(int id) : Item(id);
+    private sealed class OrderItem(int id) : Item(id);
+    private sealed class SharedItem(int id) : Item(id);
 
     [Test]
     public void Empty_pool_reports_no_item()
@@ -129,6 +131,58 @@ public class EvmObjectPoolTests
         });
 
         Assert.That(seen, Is.SameAs(overflowed));
+    }
+
+    [Test]
+    public void Item_enqueued_to_the_shared_tier_skips_the_local_one()
+    {
+        EvmObjectPool<SharedItem> pool = new(localCapacity: 4);
+        SharedItem kept = new(1);
+        SharedItem shared = new(2);
+        SharedItem? seen = null;
+
+        RunOnNewThread(() =>
+        {
+            pool.Enqueue(kept);
+            // The local tier has room, yet the item goes where every thread can rent it.
+            pool.EnqueueShared(shared);
+        });
+
+        RunOnNewThread(() =>
+        {
+            pool.TryDequeue(out SharedItem? item);
+            seen = item;
+        });
+
+        Assert.That(seen, Is.SameAs(shared));
+    }
+
+    [Test]
+    public void Local_tier_is_preferred_over_a_non_empty_shared_tier()
+    {
+        const int localCapacity = 2;
+        EvmObjectPool<OrderItem> pool = new(localCapacity);
+
+        // The local tier fills first, so ids 0..1 stay on this thread and 2..5 overflow to the shared
+        // queue. The local pair must be handed back first even though the shared queue holds newer
+        // items - that ordering is what keeps the hot path free of atomics.
+        for (int id = 0; id < localCapacity * 3; id++)
+        {
+            pool.Enqueue(new OrderItem(id));
+        }
+
+        Assert.That(pool.TryDequeue(out OrderItem? first), Is.True);
+        Assert.That(pool.TryDequeue(out OrderItem? second), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            // LIFO within the local tier.
+            Assert.That(first!.Id, Is.EqualTo(1), "local tier must answer before the shared queue");
+            Assert.That(second!.Id, Is.EqualTo(0), "local tier must answer before the shared queue");
+        }
+
+        // Only now does the shared tier answer, oldest first.
+        Assert.That(pool.TryDequeue(out OrderItem? fromShared), Is.True);
+        Assert.That(fromShared!.Id, Is.EqualTo(2), "shared tier answers once the local tier is dry");
     }
 
     [Test]
@@ -237,7 +291,7 @@ public class EvmObjectPoolTests
             "the pool stopped recycling and kept allocating fresh instances");
     }
 
-    private static void RunOnNewThread(ThreadStart body)
+    internal static void RunOnNewThread(ThreadStart body)
     {
         Thread thread = new(body) { IsBackground = true };
         thread.Start();
