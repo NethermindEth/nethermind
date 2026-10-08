@@ -67,7 +67,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         }
     }
 
-    private static int DecodeTransactionSize(ref RlpReader ctx)
+    internal static int DecodeTransactionSize(ref RlpReader ctx)
     {
         int size = ctx.DecodePositiveInt();
         if (size == 0)
@@ -78,7 +78,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         return size;
     }
 
-    private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
+    internal static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
     {

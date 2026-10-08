@@ -9,6 +9,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -155,7 +156,7 @@ public class Eth72ProtocolHandler(
                 {
                     if (IsTransactionGossipAllowed())
                     {
-                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = DeserializeNewPooledTransactionHashes(message.Content);
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -285,6 +286,10 @@ public class Eth72ProtocolHandler(
                 return base.HandleMessageCore(message);
         }
     }
+
+    /// <summary>Decodes a received <c>NewPooledTransactionHashes</c> message in this protocol version's format.</summary>
+    private protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
+        Deserialize<NewPooledTransactionHashesMessage72>(content);
 
     protected override void SendNewTransactionCore(Transaction tx)
     {
@@ -1870,7 +1875,7 @@ public class Eth72ProtocolHandler(
         return BlobCellMask.Full;
     }
 
-    private void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
+    private protected virtual void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
     {
         int count = txs.Count;
         ArrayPoolList<byte> types = new(count);
@@ -1904,7 +1909,7 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private static int GetAnnouncementSize(Transaction tx)
+    private protected static int GetAnnouncementSize(Transaction tx)
     {
         if (!tx.SupportsBlobs)
         {

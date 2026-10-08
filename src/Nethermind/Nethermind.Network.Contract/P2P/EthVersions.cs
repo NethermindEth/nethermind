@@ -16,4 +16,5 @@ public static class EthVersions
     public const byte Eth70 = 70;
     public const byte Eth71 = 71;
     public const byte Eth72 = 72;
+    public const byte Eth73 = 73;
 }
