@@ -3292,6 +3292,49 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit()
+    {
+        const ulong gasUsed = 1_000_000;
+        const int heavyCount = 4096;
+        int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
+        // The lowest gas limit after the canonical prefix is scheduled last, holding the in-order validator
+        // there while the heavy tail runs; the prefix and that tx alone stay under the block gas limit.
+        Transaction[] transactions = CreateParallelValidationTransactions(lead + 1 + heavyCount, gasUsed);
+        transactions[lead].GasLimit = 21_000;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)(lead + 1 + 64) * gasUsed)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor) { IncrementalValidationAction = ReplayGasLimitChecks },
+            LimboLogs.Instance);
+
+        InvalidBlockException? ex = Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            new BlockReceiptsTracer(),
+            CancellationToken.None));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
+            Assert.That(transactionProcessor.ExecutedCount, Is.LessThan(heavyCount / 8));
+        });
+    }
+
+    [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
@@ -3356,6 +3399,20 @@ public partial class BlockProcessorTests
         finally
         {
             validationFinished.Set();
+        }
+    }
+
+    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s in-order worker-failure
+    /// and cumulative block gas checks.</summary>
+    private static void ReplayGasLimitChecks(Block block, GasValidationResultSlot[] gasResults)
+    {
+        ulong totalGas = 0;
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            GasValidationResult gasResult = gasResults[i].GetResult();
+            if (gasResult.Exception is not null) throw new BlockAccessListManager.ParallelExecutionException(gasResult.Exception);
+            totalGas += gasResult.BlockGasUsed;
+            if (totalGas > block.GasLimit) throw new InvalidBlockException(block, $"Block gas limit exceeded after transaction index {i}.");
         }
     }
 
