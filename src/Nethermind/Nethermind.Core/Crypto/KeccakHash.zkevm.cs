@@ -202,11 +202,15 @@ public sealed partial class KeccakHash
             // Native rather than a managed array, which the guest's allocator zeroes word by word. Left uninitialized: only
             // a full branch's lanes are written, and ComputeHash256OfEdited reads no other.
             ulong* states = (ulong*)NativeMemory.Alloc((nuint)count, RetainedLanes * sizeof(ulong));
-            for (int i = 0; i < count; i++)
+            // Unchecked, the counts checked once: a bounds check per node loads a 32-bit length, a narrow access.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan((uint)count, (uint)Math.Min(nodes.Length, hashes.Length));
+            ref byte[] firstNode = ref MemoryMarshal.GetArrayDataReference(nodes);
+            ref ValueHash256 firstHash = ref MemoryMarshal.GetReference(hashes);
+            for (nint i = 0; i < count; i++)
             {
-                byte[] node = nodes[i];
-                hashes[i] = node.Length == Hash532InputLength
-                    ? ComputeHash532Retaining(node, ref states[(nuint)i * RetainedLanes])
+                byte[] node = Unsafe.Add(ref firstNode, i);
+                Unsafe.Add(ref firstHash, i) = node.Length == Hash532InputLength
+                    ? ComputeHash532Retaining(node, ref states[i * RetainedLanes])
                     : ComputeHash256(node);
             }
 
