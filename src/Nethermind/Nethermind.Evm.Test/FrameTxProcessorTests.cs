@@ -4676,6 +4676,37 @@ public partial class FrameTxProcessorTests
     private static TxFrame RecentRootVerifyFrame(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
         FrameTxTestFrames.RecentRootVerify(RecentRootFrameGas, tuples);
 
+    [Test]
+    public void Execute_Eip8272DeploymentTransaction_CreatesRecentRootCodeAtItsAddress()
+    {
+        Address deployer = new("0x14bf16d4c9842bf1EbF396e553477C66EB0a8A82");
+        Transaction tx = new()
+        {
+            Type = TxType.Legacy,
+            Nonce = 0,
+            To = null,
+            GasLimit = 0x13d620,
+            GasPrice = 0xe8d4a51000,
+            Data = Bytes.Concat(Bytes.FromHexString("0x61014080600a5f395ff3"), Eip8272Constants.RecentRootCode.Span),
+            Signature = new Signature(new UInt256(0x539), new UInt256(0xfadf66b1e192785c), 27),
+        };
+        tx.Hash = tx.CalculateHash();
+        tx.SenderAddress = new EthereumEcdsa(_specProvider.ChainId).RecoverAddress(tx);
+        _stateProvider.CreateAccount(deployer, 2.Ether);
+        _stateProvider.Commit(Spec);
+
+        TransactionResult result = Process(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx.Hash, Is.EqualTo(new Hash256("0x56c2adbbfa3ba5dfe47adf48828f6c581134e39e14c3b80e06214de5e5875272")));
+            Assert.That(tx.SenderAddress, Is.EqualTo(deployer));
+            Assert.That(result.TransactionExecuted, Is.True);
+            Assert.That(_stateProvider.GetCodeHash(Eip8272Constants.RecentRootAddress), Is.EqualTo(Eip8272Constants.RecentRootCodeHash));
+            Assert.That(_stateProvider.GetNonce(Eip8272Constants.RecentRootAddress), Is.EqualTo(1UL));
+        }
+    }
+
     private void InstallRecentRootPredeploy()
     {
         if (_stateProvider.AccountExists(Eip8272Constants.RecentRootAddress))

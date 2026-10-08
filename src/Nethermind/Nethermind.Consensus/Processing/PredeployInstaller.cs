@@ -14,10 +14,7 @@ namespace Nethermind.Consensus.Processing;
 /// or it is never installed. The nonce of 1 follows the EIP-2935/4788/7002/7251 convention.</remarks>
 public static class PredeployInstaller
 {
-    /// <param name="InitializesOnce">EIP-8272: the predeploy is initialised only over an account with empty code and
-    /// storage. Any code or storage at the address makes the first block the predeploy is active in invalid; a later
-    /// block leaves such an account as it is.</param>
-    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false, bool InitializesOnce = false);
+    private readonly record struct Predeploy(Address Address, ReadOnlyMemory<byte> Code, ulong? Nonce, Func<IReleaseSpec, bool> IsActive, bool PreservesHigherNonce = false);
 
     private static readonly Predeploy[] Predeploys =
     [
@@ -25,7 +22,6 @@ public static class PredeployInstaller
         // is a stop-gap, and deploying it like the other system contracts later would give it a nonce.
         new(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, null, static spec => spec.IsEip8141Enabled),
         new(Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode, 1, static spec => spec.IsEip8250Enabled, PreservesHigherNonce: true),
-        new(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, 1, static spec => spec.IsEip8272Enabled, PreservesHigherNonce: true, InitializesOnce: true),
     ];
 
     internal static bool HasActivePredeploys(IReleaseSpec spec)
@@ -46,10 +42,7 @@ public static class PredeployInstaller
     /// block produces no BAL entry; on the non-BAL path the same world state is passed for both.</param>
     /// <param name="writeState">State the code and nonce change is applied to (BAL-traced on the BAL path).</param>
     /// <param name="spec">The release spec in effect for the block being processed.</param>
-    /// <param name="parentSpec">The release spec in effect for the parent of the block being processed.</param>
-    /// <returns><see langword="false"/> when a predeploy that initialises once and is not active in
-    /// <paramref name="parentSpec"/> finds code or storage at its address, which makes the block invalid.</returns>
-    public static bool Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec, IReleaseSpec parentSpec)
+    public static void Install(IReadOnlyStateProvider readState, IWorldState writeState, IReleaseSpec spec)
     {
         foreach (Predeploy predeploy in Predeploys)
         {
@@ -60,19 +53,7 @@ public static class PredeployInstaller
 
             ReadOnlyMemory<byte> code = predeploy.Code;
             ulong nonce = readState.GetNonce(predeploy.Address);
-            ReadOnlySpan<byte> existingCode = readState.GetCodeSpan(predeploy.Address);
-            if (predeploy.InitializesOnce
-                && (!existingCode.IsEmpty || (readState.TryGetAccount(predeploy.Address, out AccountStruct account) && account.HasStorage)))
-            {
-                if (!predeploy.IsActive(parentSpec))
-                {
-                    return false;
-                }
-
-                continue;
-            }
-
-            bool codeSatisfied = code.IsEmpty || existingCode.SequenceEqual(code.Span);
+            bool codeSatisfied = code.IsEmpty || readState.GetCodeSpan(predeploy.Address).SequenceEqual(code.Span);
             if (codeSatisfied && (predeploy.Nonce is not ulong required || nonce >= required))
             {
                 continue;
@@ -89,7 +70,5 @@ public static class PredeployInstaller
                 writeState.SetNonce(predeploy.Address, predeploy.PreservesHigherNonce ? Math.Max(nonce, predeployNonce) : predeployNonce);
             }
         }
-
-        return true;
     }
 }

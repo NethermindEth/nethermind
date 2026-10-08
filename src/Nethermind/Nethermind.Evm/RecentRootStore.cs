@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Evm;
 
 /// <summary>Key/commitment derivations for <see href="https://eips.ethereum.org/EIPS/eip-8272">EIP-8272</see> recent roots.</summary>
-/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> predeploy bytecode during ordinary execution, not by the client, so this type only derives keys and commitments.</remarks>
+/// <remarks>Recent-root storage is written by the <c>RECENT_ROOT_ADDRESS</c> contract code during ordinary execution, not by the client, so this type only derives keys and commitments.</remarks>
 public static class RecentRootStore
 {
     private const int HashLength = 32;

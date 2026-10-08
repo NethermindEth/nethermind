@@ -19,7 +19,6 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
-using Nethermind.Core.Messages;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
@@ -178,9 +177,9 @@ public partial class BlockProcessor(
         _balManager.ApplyZeroNonceStorageAccountsTransition(header, spec);
         _systemContractHandler.StoreBeaconRoot(block, spec, NullTxTracer.Instance);
         _systemContractHandler.ApplyBlockhashStateChanges(header, spec);
-        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec) && !_systemContractHandler.InstallPredeploys(spec, _balManager.GetParentSpec(header)))
+        if (!block.IsGenesis && PredeployInstaller.HasActivePredeploys(spec))
         {
-            throw new InvalidBlockException(block, BlockErrorMessages.RecentRootPredeployNotEmpty);
+            _systemContractHandler.InstallPredeploys(spec);
         }
         CommitState(spec);
 
