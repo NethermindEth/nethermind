@@ -666,7 +666,10 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot) continue;
 
             ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
-            if (!Unsafe.IsNullRef(ref head) && head.OriginalIdx != -1)
+            bool hasHead = !Unsafe.IsNullRef(ref head);
+            if (hasHead && head.CurrentIdx <= currentSnapshot)
+                value = head.Value;
+            else if (hasHead && head.OriginalIdx != -1)
                 value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
             else if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
                 value = trace.After;
