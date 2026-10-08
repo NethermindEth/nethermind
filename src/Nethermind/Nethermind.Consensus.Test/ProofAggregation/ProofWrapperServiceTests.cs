@@ -810,6 +810,70 @@ public class ProofWrapperServiceTests
         }
     }
 
+    [Test]
+    public async Task Recovered_hash_entries_are_admitted_and_the_original_wrapper_is_reported_valid()
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Hash = transaction.CalculateHash();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), new FakeLeanProofVerifier(true), pool: pool);
+        byte[] wrapper = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
+        {
+            Transactions = [new WrapperTransaction(transaction.Hash)],
+            Deps = [dependency],
+            Mode = MempoolWrapper.ModeDirect,
+            Proofs = [[1]]
+        }).Bytes;
+        List<byte[]> validated = [];
+        service.WrapperValidated += validated.Add;
+
+        ProofWrapperAcceptance unresolved = await service.AcceptDetailedAsync(wrapper);
+        ProofWrapperAcceptance recovered = await service.AcceptDetailedAsync(wrapper,
+            new Dictionary<ValueHash256, Transaction> { [transaction.Hash.ValueHash256] = transaction });
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(unresolved.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.LocalFailure));
+            Assert.That(recovered.Status, Is.EqualTo(ProofWrapperAcceptanceStatus.Accepted), recovered.Result.Error);
+            Assert.That(validated, Has.Count.EqualTo(1));
+            Assert.That(validated[0], Is.EqualTo(wrapper), "the validated object keeps its hash entry");
+            pool.Received(1).SubmitTx(transaction, TxHandlingOptions.PersistentBroadcast);
+        }
+    }
+
+    [TestCase("valid", ProofWrapperAcceptanceStatus.Accepted)]
+    [TestCase("pool rejection", ProofWrapperAcceptanceStatus.PoolRejected)]
+    [TestCase("invalid proof", ProofWrapperAcceptanceStatus.Invalid)]
+    [TestCase("invalid rlp", ProofWrapperAcceptanceStatus.Invalid)]
+    public async Task Inclusion_list_acceptance_separates_invalid_packages_from_admission_outcomes(string scenario, ProofWrapperAcceptanceStatus expected)
+    {
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);
+        Transaction transaction = CreateTransaction(dependency, TestItem.KeccakA);
+        transaction.Hash = transaction.CalculateHash();
+        ITxPool pool = Substitute.For<ITxPool>();
+        pool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
+            .Returns(scenario == "pool rejection" ? AcceptTxResult.Invalid : AcceptTxResult.Accepted);
+        ProofWrapperService service = CreateService([], new LeanProofStore(), new FakeLeanProofVerifier(scenario != "invalid proof"), pool: pool);
+        byte[] package = scenario == "invalid rlp" ? [0xc0] : InclusionListProofPackageDecoder.Instance.Encode(new InclusionListProofPackage
+        {
+            Transactions = [transaction],
+            RecursiveStark = new RecursiveStark([1], new Hash256(Eip8288Dependencies.ComputeDepsHash([dependency])))
+        }).Bytes;
+        int validated = 0;
+        service.InclusionListValidated += _ => validated++;
+
+        ProofWrapperAcceptance result = await service.AcceptInclusionListDetailedAsync(package);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.Status, Is.EqualTo(expected), result.Result.Error);
+            Assert.That(validated, Is.EqualTo(result.HasValidProof ? 1 : 0));
+            Assert.That((await service.AcceptInclusionListAsync(package)).IsSuccess, Is.EqualTo(expected == ProofWrapperAcceptanceStatus.Accepted));
+        }
+    }
+
     private static (ProofWrapperService, FakeLeanProofVerifier) Create(int count, int payloadBytes)
     {
         FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, default, default);

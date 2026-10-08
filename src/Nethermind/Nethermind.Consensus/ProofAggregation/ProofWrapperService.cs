@@ -33,8 +33,22 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     public async Task<Result<Hash256[]>> AcceptAsync(byte[] wrapper, CancellationToken cancellationToken = default)
         => (await AcceptDetailedAsync(wrapper, cancellationToken)).Result;
 
+    /// <summary>Raised with the encoded wrapper once its proofs validated, whether or not the pool admitted its transactions.</summary>
+    public event Action<byte[]>? WrapperValidated;
+
+    /// <summary>Raised with the encoded inclusion-list package once its proof validated.</summary>
+    public event Action<byte[]>? InclusionListValidated;
+
     /// <summary>Separates invalid proofs from ordinary pool admission failures.</summary>
-    public async Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
+    public Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, CancellationToken cancellationToken = default)
+        => AcceptDetailedAsync(wrapper, null, cancellationToken);
+
+    /// <summary>Validates and admits a wrapper whose hash entries may resolve to transactions recovered from peers.</summary>
+    /// <param name="wrapper">The encoded wrapper.</param>
+    /// <param name="recovered">Envelopes for hash entries not pending locally, already checked against their hashes.</param>
+    /// <param name="cancellationToken">Cancels validation and admission.</param>
+    public async Task<ProofWrapperAcceptance> AcceptDetailedAsync(byte[] wrapper, IReadOnlyDictionary<ValueHash256, Transaction>? recovered,
+        CancellationToken cancellationToken = default)
     {
         Block? head = blockFinder.Head;
         IReleaseSpec? admissionSpec = head is null ? null : specProvider.GetSpec(head.Header);
@@ -54,6 +68,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             {
                 return ProofWrapperAcceptance.Invalid("Invalid proof wrapper RLP.");
             }
+            if (recovered is { Count: > 0 }) decoded = WithRecovered(decoded, recovered);
             Dictionary<ValueHash256, Transaction> resolved = [];
             foreach (WrapperTransaction entry in decoded.Transactions)
             {
@@ -91,6 +106,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 RememberVerification(wrapperHash, null);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            WrapperValidated?.Invoke(wrapper);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
@@ -126,25 +142,31 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
 
     /// <summary>Verifies a proof-bearing inclusion list and admits its transactions.</summary>
     public async Task<Result<Hash256[]>> AcceptInclusionListAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
+        => (await AcceptInclusionListDetailedAsync(inclusionList, cancellationToken)).Result;
+
+    /// <summary>Separates an invalid inclusion-list package from local and pool admission failures.</summary>
+    public async Task<ProofWrapperAcceptance> AcceptInclusionListDetailedAsync(byte[] inclusionList, CancellationToken cancellationToken = default)
     {
         if (!IsEnabled)
-            return Result<Hash256[]>.Fail("EIP-8288 proof inclusion lists are unavailable.");
+            return ProofWrapperAcceptance.LocalFailure("EIP-8288 proof inclusion lists are unavailable.");
         if (inclusionList.Length > LeanProofStore.MaxWrapperBytes)
-            return Result<Hash256[]>.Fail("Proof inclusion list exceeds the size limit.");
+            return ProofWrapperAcceptance.Invalid("Proof inclusion list exceeds the size limit.");
         if (Interlocked.CompareExchange(ref _admissionActive, 1, 0) != 0)
-            return Result<Hash256[]>.Fail("Proof admission is busy; retry later.");
+            return new(ProofWrapperAcceptanceStatus.Busy, Result<Hash256[]>.Fail("Proof admission is busy; retry later."));
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             inclusionList = (byte[])inclusionList.Clone();
-            InclusionListProofPackage decoded = DecodeProofInclusionList(inclusionList);
+            InclusionListProofPackage decoded;
+            try { decoded = DecodeProofInclusionList(inclusionList); }
+            catch (RlpException) { return ProofWrapperAcceptance.Invalid("Invalid proof inclusion list RLP."); }
             foreach (Transaction transaction in decoded.Transactions)
             {
-                if (!Preflight(transaction, out string? frameError)) return Result<Hash256[]>.Fail(frameError!);
+                if (!Preflight(transaction, out string? frameError)) return ProofWrapperAcceptance.Invalid(frameError!);
                 if (transaction.RecentRootReferences is { Length: > 0 })
                 {
-                    if (headInfo is null) return Result<Hash256[]>.Fail("Recent-root state is unavailable.");
-                    if (!AreAdmissionRootsValid(transaction)) return Result<Hash256[]>.Fail(TxPoolErrorMessages.FrameTxRecentRootUnmet);
+                    if (headInfo is null) return ProofWrapperAcceptance.LocalFailure("Recent-root state is unavailable.");
+                    if (!AreAdmissionRootsValid(transaction)) return ProofWrapperAcceptance.LocalFailure(TxPoolErrorMessages.FrameTxRecentRootUnmet);
                 }
             }
             (bool valid, List<FrameDependency> canonical, string? error) = await Task.Run(() =>
@@ -153,15 +175,15 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 return (proofValid, proven, proofError);
             }, cancellationToken);
             cancellationToken.ThrowIfCancellationRequested();
-            if (!valid) return Result<Hash256[]>.Fail(error!);
-            cancellationToken.ThrowIfCancellationRequested();
+            if (!valid) return ProofWrapperAcceptance.Invalid(error!);
+            InclusionListValidated?.Invoke(inclusionList);
             List<WrapperTransaction> transactions = [];
             foreach (Transaction transaction in decoded.Transactions)
                 transactions.Add(new WrapperTransaction(transaction));
             List<FrameDependency> admittedDependencies = [];
             Result<Hash256[]> admission;
             if (!leanProofStore.TryBeginAdmission(canonical, null, decoded.RecursiveStark.StarkProof, out IDisposable? scope))
-                return Result<Hash256[]>.Fail("Proof witness capacity is full; retry later.");
+                return ProofWrapperAcceptance.LocalFailure("Proof witness capacity is full; retry later.");
             using (scope)
             {
                 try
@@ -173,21 +195,38 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                     leanProofStore.CommitAdmission(admittedDependencies);
                 }
             }
-            return admission;
+            return new(admission.IsSuccess ? ProofWrapperAcceptanceStatus.Accepted : ProofWrapperAcceptanceStatus.PoolRejected, admission);
         }
         catch (RlpException)
         {
-            return Result<Hash256[]>.Fail("Invalid proof inclusion list RLP.");
+            return ProofWrapperAcceptance.Invalid("Invalid proof inclusion list RLP.");
         }
         catch (ArgumentException exception)
         {
-            return Result<Hash256[]>.Fail(exception.Message);
+            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         catch (InvalidOperationException exception)
         {
-            return Result<Hash256[]>.Fail(exception.Message);
+            return ProofWrapperAcceptance.LocalFailure(exception.Message);
         }
         finally { Volatile.Write(ref _admissionActive, 0); }
+    }
+
+    private MempoolWrapper WithRecovered(MempoolWrapper wrapper, IReadOnlyDictionary<ValueHash256, Transaction> recovered)
+    {
+        List<WrapperTransaction> transactions = new(wrapper.Transactions.Count);
+        foreach (WrapperTransaction entry in wrapper.Transactions)
+            transactions.Add(entry.Hash is { } hash && ResolvePending(hash) is null && recovered.TryGetValue(hash.ValueHash256, out Transaction? transaction)
+                ? new WrapperTransaction(transaction)
+                : entry);
+        return new MempoolWrapper
+        {
+            Transactions = transactions,
+            Mode = wrapper.Mode,
+            Deps = wrapper.Deps,
+            Proofs = wrapper.Proofs,
+            RecursiveStark = wrapper.RecursiveStark
+        };
     }
 
     private void RememberVerification(ValueHash256 hash, string? error)
