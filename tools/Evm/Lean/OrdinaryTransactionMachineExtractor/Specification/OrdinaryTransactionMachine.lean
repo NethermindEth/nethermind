@@ -108,6 +108,12 @@ def routeValid (input : Input) : Bool :=
   !input.forceSimpleTransferDisabled && input.recipientLive && !input.recipientHasCode &&
   !input.recipientHasDelegation
 
+def evmRouteValid (input : Input) : Bool :=
+  input.optionsRaw == 1 && input.standardMainnet && input.chainId == 1 &&
+  input.forkNumber == 25 && !input.isSystem && !input.parallel && !input.balEnabled &&
+  !input.isCreate && (input.isCodeOverridable || input.hasAuthorizationList ||
+    input.forceSimpleTransferDisabled || input.recipientHasCode || input.recipientHasDelegation)
+
 def terminalForwardingEvents (entry : EntryObservation) : List Nat :=
   [6, 7] ++ (if entry.nestedTracer then [8] else []) ++
   (if entry.currentTxTracerIsTracingReceipt then [9] else [])
@@ -144,7 +150,7 @@ def finishRejected (state : State) : State :=
 
 def run (input : Input) (entries : List EntryObservation) : Outcome :=
   let initial := freshState input
-  if !routeValid input then
+  if !(routeValid input || evmRouteValid input) then
     .rejected .route initial
   else
     match fold initial entries with

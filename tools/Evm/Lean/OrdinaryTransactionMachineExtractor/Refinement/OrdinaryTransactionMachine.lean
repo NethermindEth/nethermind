@@ -52,7 +52,9 @@ theorem terminalStatusIsSuccess_iff (status : ReceiptTerminalFoldExtractor.Gener
 
 def onlyOkTerminalDomain (input : OrdinaryTransactionMachineExtractor.Generated.MachineInput) (_premises : OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises)
     (entries : List OrdinaryTransactionMachineExtractor.Generated.SettledEntry) : Prop :=
-  OrdinaryTransactionMachineExtractor.Generated.routeValid input = true ∧ ∀ entry ∈ entries, settledEntryInvariant entry
+  (OrdinaryTransactionMachineExtractor.Generated.routeValid input = true ∨
+    OrdinaryTransactionMachineExtractor.Generated.evmRouteValid input = true) ∧
+  ∀ entry ∈ entries, settledEntryInvariant entry
 
 def mapOptionNat {α : Type} (value : Option α) (map : α → Nat) : Option Nat :=
   value.map map
@@ -335,6 +337,12 @@ structure SourceAdapterPremises (premises : OrdinaryTransactionMachineExtractor.
     NormalReturnObserved premises.transactionsExecutedSubscriber
   postTransactionCommitStateNormalReturn :
     NormalReturnObserved premises.postTransactionCommitState
+  entriesKindHomogeneous :
+    entries.all (fun entry => entry.entryKind == .simpleTransfer) ∨
+    entries.all (fun entry => entry.entryKind == .evmSuccess)
+  evmExecuteNormalReturn :
+    (entries.all fun entry => entry.entryKind == .evmSuccess) →
+    NormalReturnObserved premises.executeEvmTransaction
 
 private theorem EntrySourceNormality.valid
     (source : EntrySourceNormality normality entry) :
@@ -392,11 +400,21 @@ theorem SourceAdapterPremises.validFor
   have hSubscriber := adapter.transactionsExecutedSubscriberNormalReturn
   have hPostCommit := adapter.postTransactionCommitStateNormalReturn
   simp [NormalReturnObserved] at hExecutor hSubscriber hPostCommit
-  simp [OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.validFor, OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.all,
-    hSetContext, hProcess, hExecuteCore, hOrdinaryExecute, hStatic, hStateful,
-    hNonce, hPreCommit, hAvailableGas, hSimple, hSettlement, hTransactionCommit,
-    hFinalize, hExecutor, hSubscriber, hPostCommit,
-    hReceiptTerminal, hEntryLength, hEntryFlags]
+  rcases adapter.entriesKindHomogeneous with hSimpleKinds | hEvmKinds
+  · simp [OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.validFor,
+      OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.all,
+      hSetContext, hProcess, hExecuteCore, hOrdinaryExecute, hStatic, hStateful,
+      hNonce, hPreCommit, hAvailableGas, hSimple, hSettlement, hTransactionCommit,
+      hFinalize, hExecutor, hSubscriber, hPostCommit,
+      hReceiptTerminal, hEntryLength, hEntryFlags, hSimpleKinds]
+  · have hEvm := adapter.evmExecuteNormalReturn hEvmKinds
+    simp [NormalReturnObserved] at hEvm
+    simp [OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.validFor,
+      OrdinaryTransactionMachineExtractor.Generated.NormalReturnPremises.evmAll,
+      hSetContext, hProcess, hExecuteCore, hOrdinaryExecute, hStatic, hStateful,
+      hNonce, hPreCommit, hAvailableGas, hEvm, hSettlement, hTransactionCommit,
+      hFinalize, hExecutor, hSubscriber, hPostCommit,
+      hReceiptTerminal, hEntryLength, hEntryFlags, hEvmKinds]
 
 def resultListFields : List ReceiptTerminalFoldExtractor.Generated.ReceiptTerminalFoldKernel.TransactionResult → List OrdinaryTransactionMachineExtractor.Generated.SettledEntry → Prop
   | [], [] => True
@@ -446,11 +464,14 @@ def generatedSpecRelation (input : OrdinaryTransactionMachineExtractor.Generated
       | .route | .normalReturn => False
   | _, _ => False
 
-/- This is the source-route part of the exact theorem domain. `SourceAdapterPremises` separately
-   relates the proof-carrying normal-return and settled-entry observations positionally to the
-   supplied list. Neither is a relation to the source block's transaction list. -/
+/- This is the source-route part of the exact theorem domain: either the simple-transfer
+   route or the oracle-routed EVM-success route holds for the run. `SourceAdapterPremises`
+   separately relates the proof-carrying normal-return and settled-entry observations
+   positionally to the supplied list. Neither is a relation to the source block's
+   transaction list. -/
 def adapterSuppliedFoldDomain (input : OrdinaryTransactionMachineExtractor.Generated.MachineInput) : Prop :=
-  OrdinaryTransactionMachineExtractor.Generated.routeValid input = true
+  OrdinaryTransactionMachineExtractor.Generated.routeValid input = true ∨
+    OrdinaryTransactionMachineExtractor.Generated.evmRouteValid input = true
 
 private theorem resultListFields_append_ok
     (generated : List ReceiptTerminalFoldExtractor.Generated.ReceiptTerminalFoldKernel.TransactionResult) (entries : List OrdinaryTransactionMachineExtractor.Generated.SettledEntry)
@@ -730,9 +751,15 @@ theorem generatedRun_refines_independentSpec
     hAdapter.perEntry.settled
   have hOnlyOk : onlyOkTerminalDomain input premises entries :=
     ⟨hDomain, hAdapterSettled⟩
-  have hRoute : OrdinaryTransactionMachineExtractor.Generated.routeValid input = true := hOnlyOk.1
-  have hSpecRoute : OrdinaryTransactionMachineExtractor.Specification.routeValid (specInput input) = true := by
-    simpa [OrdinaryTransactionMachineExtractor.Generated.routeValid, OrdinaryTransactionMachineExtractor.Specification.routeValid, specInput] using hRoute
+  have hRoute : OrdinaryTransactionMachineExtractor.Generated.routeValid input = true ∨
+      OrdinaryTransactionMachineExtractor.Generated.evmRouteValid input = true := hOnlyOk.1
+  have hSpecRoute : OrdinaryTransactionMachineExtractor.Specification.routeValid (specInput input) = true ∨
+      OrdinaryTransactionMachineExtractor.Specification.evmRouteValid (specInput input) = true := by
+    rcases hRoute with hR | hE
+    · left
+      simpa [OrdinaryTransactionMachineExtractor.Generated.routeValid, OrdinaryTransactionMachineExtractor.Specification.routeValid, specInput] using hR
+    · right
+      simpa [OrdinaryTransactionMachineExtractor.Generated.evmRouteValid, OrdinaryTransactionMachineExtractor.Specification.evmRouteValid, specInput] using hE
   have hNormalReturnGate : premises.validFor entries = true :=
     SourceAdapterPremises.validFor hAdapter
   have hInitialEvents :
