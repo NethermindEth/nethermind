@@ -19,7 +19,7 @@ namespace Nethermind.Evm;
 /// <remarks>Operands the spec marks "must be 0" are reserved: a non-zero value exceptional-halts.</remarks>
 public static partial class EvmInstructions
 {
-    /// <summary>TXTRACE (0xb7): enumerate the transaction's state diff and events by index.</summary>
+    /// <summary>TXTRACE (0xb6): enumerate the transaction's state diff and events by index.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxTrace<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -116,7 +116,7 @@ public static partial class EvmInstructions
         }
     }
 
-    /// <summary>TXDIFF (0xb8): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
+    /// <summary>TXDIFF (0xb7): keyed access to a single account's diff, warm/cold priced per EIP-2929.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionTxDiff<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)
         where TGasPolicy : struct, IGasPolicy<TGasPolicy>
@@ -237,7 +237,7 @@ public static partial class EvmInstructions
         };
     }
 
-    /// <summary>EVENTDATACOPY (0xb9): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
+    /// <summary>EVENTDATACOPY (0xb8): copy a log's non-indexed data into memory. Gas is CALLDATACOPY-shaped,
     /// but an out-of-range read halts rather than zero-padding.</summary>
     [SkipLocalsInit]
     public static EvmExceptionType InstructionEventDataCopy<TGasPolicy, TTracingInst>(ref EvmStack stack, ref TGasPolicy gas, VirtualMachine<TGasPolicy> vm)

@@ -4706,9 +4706,9 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
     [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
     [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
-    [TestCase(Instruction.TXTRACE, (byte)0xB7, TestName = "RegistryByte_TXTRACE_0xB7")]
-    [TestCase(Instruction.TXDIFF, (byte)0xB8, TestName = "RegistryByte_TXDIFF_0xB8")]
-    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB9, TestName = "RegistryByte_EVENTDATACOPY_0xB9")]
+    [TestCase(Instruction.TXTRACE, (byte)0xB6, TestName = "RegistryByte_TXTRACE_0xB6")]
+    [TestCase(Instruction.TXDIFF, (byte)0xB7, TestName = "RegistryByte_TXDIFF_0xB7")]
+    [TestCase(Instruction.EVENTDATACOPY, (byte)0xB8, TestName = "RegistryByte_EVENTDATACOPY_0xB8")]
     public void FrameOpcodeByte_MatchesTheSpecRegistry(Instruction opcode, byte registryByte)
         => Assert.That((byte)opcode, Is.EqualTo(registryByte));
 

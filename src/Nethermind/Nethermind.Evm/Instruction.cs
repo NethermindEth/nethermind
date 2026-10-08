@@ -168,9 +168,9 @@ public enum Instruction : byte
     SIGPARAM = 0xb4,
     SIGDATACOPY = 0xb5,
 
-    TXTRACE = 0xb7,
-    TXDIFF = 0xb8,
-    EVENTDATACOPY = 0xb9,
+    TXTRACE = 0xb6,
+    TXDIFF = 0xb7,
+    EVENTDATACOPY = 0xb8,
 
     // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these take the next free values.
     CALLSUB = 0xba,
