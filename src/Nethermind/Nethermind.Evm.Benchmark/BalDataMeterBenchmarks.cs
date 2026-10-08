@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Int256;
@@ -39,6 +40,7 @@ public class BalDataMeterBenchmarks
         }
 
         _meter = new BalDataMeter();
+        if (!Addresses() || !StorageKeys()) throw new InvalidOperationException("Every access must be metered.");
     }
 
     [Benchmark]
@@ -97,6 +99,7 @@ public class BalDataMeterResetBenchmarks
         }
 
         _meter = new BalDataMeter();
+        if (!LargeThenSmall()) throw new InvalidOperationException("Every access must be metered.");
     }
 
     [Benchmark]
