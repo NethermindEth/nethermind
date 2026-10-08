@@ -6,6 +6,7 @@ using Module = Autofac.Module;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Container;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Config;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -1118,7 +1119,7 @@ public partial class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
-    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, budget);
+    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, changesetSeeds: true);
 
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
         BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)
@@ -1873,7 +1874,10 @@ public partial class BlockProcessorTests
         TestStateHeaderProvider stateHeaderProvider = new() { Parent = parentHeader };
         IWorldState stateProvider = TestWorldStateFactory.CreateForTest(stateHeaderProvider);
         ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance));
+        IHeaderFinder headerFinder = Substitute.For<IHeaderFinder>();
+        headerFinder.Get(default!, default).ReturnsForAnyArgs(static call => Build.A.BlockHeader.WithNumber(call.ArgAt<ulong?>(1)!.Value).TestObject);
+        BlockAccessListManager balManager = new(stateProvider, LimboLogs.Instance, new BlocksConfig(), new WithdrawalProcessorFactory(LimboLogs.Instance), new BalTxProcessorFactory(Substitute.For<IBlockhashProvider>(), HoodiSpecProvider.Instance, LimboLogs.Instance),
+            specProvider: specProvider, headerFinder: headerFinder);
         ExecuteTransactionProcessorAdapter txAdapter = new(transactionProcessor);
         IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.ParallelBlockValidationTransactionsExecutor(
             new BlockProcessor.BlockValidationTransactionsExecutor(txAdapter, stateProvider),
@@ -1957,8 +1961,6 @@ public partial class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
-        // code-only idempotency probe would never fire it.
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
             .SetName("Installs_eip8272_recent_root_predeploy_once_and_captures_it_in_bal");
     }
@@ -2008,6 +2010,73 @@ public partial class BlockProcessorTests
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
+    }
+
+    private static IEnumerable<TestCaseData> NonEmptyRecentRootAccounts()
+    {
+        yield return new TestCaseData(Eip8272Constants.RecentRootCode.ToArray(), false).SetArgDisplayNames("canonical code");
+        yield return new TestCaseData(new byte[] { 0x5f, 0x5f, 0xfd }, false).SetArgDisplayNames("foreign code");
+        yield return new TestCaseData(Array.Empty<byte>(), true).SetArgDisplayNames("storage without code");
+    }
+
+    [TestCaseSource(nameof(NonEmptyRecentRootAccounts)), MaxTime(Timeout.MaxTestTime)]
+    public void Rejects_recent_root_activation_block_when_the_predeploy_address_is_not_empty(byte[] code, bool hasStorage)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance), ((ForkActivation)2, spec));
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, 0, 1);
+        if (code.Length != 0)
+        {
+            stateProvider.InsertCode(Eip8272Constants.RecentRootAddress, code, spec);
+        }
+
+        if (hasStorage)
+        {
+            stateProvider.Set(new StorageCell(Eip8272Constants.RecentRootAddress, 1), 1);
+        }
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Block block = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        InvalidBlockException exception = Assert.Throws<InvalidBlockException>(() =>
+            processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None))!;
+
+        Assert.That(exception.Message, Is.EqualTo(Core.Messages.BlockErrorMessages.RecentRootPredeployNotEmpty));
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Keeps_recent_root_predeploy_code_and_storage_in_blocks_after_activation()
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true };
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Amsterdam.Instance), ((ForkActivation)2, spec));
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
+        StorageCell cell = new(Eip8272Constants.RecentRootAddress, 1);
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Block activationBlock = Build.A.Block.WithNumber(2).WithAuthor(TestItem.AddressD).TestObject;
+        processor.ProcessOne(activationBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+        stateProvider.Set(cell, 1);
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(2);
+
+        Block nextBlock = Build.A.Block.WithNumber(3).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed, _) = processor.ProcessOne(nextBlock, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+        stateProvider.Get(cell, out UInt256 value);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.GetCode(Eip8272Constants.RecentRootAddress), Is.SequenceEqualTo(Eip8272Constants.RecentRootCode.ToArray()));
+            Assert.That(value, Is.EqualTo(UInt256.One));
+            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(Eip8272Constants.RecentRootAddress), Is.Null);
+        }
     }
 
     private static IEnumerable<TestCaseData> DeployedSystemContractCases()
@@ -3901,9 +3970,9 @@ public partial class BlockProcessorTests
         {
         }
 
-        public void InstallPredeploys(IReleaseSpec spec)
-        {
-        }
+        public bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec) => true;
+
+        public IReleaseSpec GetParentSpec(BlockHeader header) => Amsterdam.Instance;
 
         public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
         {

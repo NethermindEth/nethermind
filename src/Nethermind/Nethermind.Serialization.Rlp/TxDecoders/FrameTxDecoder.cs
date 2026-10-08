@@ -14,7 +14,7 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 /// <summary>Decodes the EIP-8141 frame transaction payload <c>[chain_id, nonce, sender, frames, signatures, fees,
 /// blob_versioned_hashes]</c>, where <c>fees = [max_priority_fee_per_gas, max_fee_per_gas, max_fee_per_blob_gas]</c>,
-/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c> and an optional trailing EIP-8272 list.</summary>
+/// with EIP-8250's <c>nonce_keys, nonce_seq</c> in place of <c>nonce</c>.</summary>
 /// <remarks>The sender is explicit, so there is no envelope signature or recovery. The wrapper and plain forms are
 /// disjoint: a wrapper opens with a list, a plain payload with the <c>chain_id</c> scalar.</remarks>
 public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
@@ -35,8 +35,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     // Decode-side allocation guard only — EIP-7594's per-tx blob limit is far tighter and is
     // enforced by the transaction validator.
     private static readonly RlpLimit BlobVersionedHashesCountLimit = RlpLimit.For<Transaction>(ShardBlobNetworkWrapperRlp.BlobCountLimit, nameof(Transaction.BlobVersionedHashes));
-
-    private static readonly RlpLimit ReferencesCountLimit = RlpLimit.For<Transaction>(Eip8272Constants.MaxRecentRootReferences, nameof(Transaction.RecentRootReferences));
 
     public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
         ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -101,27 +99,17 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     /// <inheritdoc/>
-    /// <remarks>A frame transaction carries no envelope signature, so its trailing element is EIP-8272's
-    /// recent-root-reference list. An overlong declared payload length leaves the end-of-payload checkpoint
-    /// past the last real field, so the list is read off the end of the buffer; that is reported as a
-    /// truncation naming the list rather than as a bare index-out-of-range.</remarks>
+    /// <remarks>A frame transaction carries no envelope signature and no element after its blob versioned hashes.
+    /// An overlong declared payload length leaves the end-of-payload checkpoint past the end of the buffer; that is
+    /// reported as a truncation rather than as a trailing element.</remarks>
     protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        try
+        if (decoderContext.Position >= decoderContext.Length)
         {
-            if (!decoderContext.IsSequenceNext())
-            {
-                ThrowTrailingSignature();
-            }
-
-            transaction.RecentRootReferences = decoderContext.DecodeNonNullArray(RecentRootReferenceDecoder.Instance, limit: ReferencesCountLimit);
-        }
-        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            ThrowTruncatedReferences(e);
+            ThrowTruncatedPayload();
         }
 
-        transaction.ReferenceCalldataStats = RecentRootReferenceDecoder.Instance.Measure(transaction.RecentRootReferences);
+        ThrowTrailingElement();
     }
 
     protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
@@ -142,7 +130,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
         decoderContext.Check(feesCheck);
         transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
-        transaction.RecentRootReferences = null;
 
         // A frame transaction has no gas_limit field; GasLimit carries the sum of frame gas limits so pre-execution
         // consumers reading it do not see ~0 gas. The processor derives the real tx_gas_limit.
@@ -225,10 +212,6 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         writer.Encode(transaction.DecodedMaxFeePerGas);
         writer.Encode(transaction.MaxFeePerBlobGas.GetValueOrDefault());
         EncodeVersionedHashes(ref writer, transaction.BlobVersionedHashes);
-        if (transaction.RecentRootReferences is { } references)
-        {
-            RecentRootReferenceDecoder.Instance.EncodeArray(ref writer, references);
-        }
     }
 
     private static void EncodeVersionedHashes<TWriter>(ref TWriter writer, byte[]?[]? blobVersionedHashes)
@@ -282,8 +265,7 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
         + TxFrameDecoder.Instance.GetArrayLength(transaction.Frames)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
         + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
-        + GetVersionedHashesLength(transaction.BlobVersionedHashes)
-        + (transaction.RecentRootReferences is { } references ? RecentRootReferenceDecoder.Instance.GetArrayLength(references) : 0);
+        + GetVersionedHashesLength(transaction.BlobVersionedHashes);
 
     protected override int GetSignatureLength(Signature? signature, bool forSigning, bool isEip155Enabled = false, ulong chainId = 0) => 0;
 
@@ -293,11 +275,11 @@ public sealed class FrameTxDecoder<T>(Func<T>? transactionFactory = null)
     }
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTrailingSignature() => throw new RlpException("frame transaction must not carry a trailing signature");
+    private static void ThrowTrailingElement() => throw new RlpException("frame transaction must not carry a trailing element");
 
     [DoesNotReturn, StackTraceHidden]
-    private static void ThrowTruncatedReferences(Exception inner) =>
-        throw new RlpException("RLP data is truncated: frame transaction recent root reference list is incomplete.", inner);
+    private static void ThrowTruncatedPayload() =>
+        throw new RlpException("RLP data is truncated: frame transaction payload is incomplete.");
 }
 
 /// <summary>
