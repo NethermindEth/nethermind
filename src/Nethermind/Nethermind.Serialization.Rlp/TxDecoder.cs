@@ -110,6 +110,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
     protected TxDecoder(Func<T>? transactionFactory = null)
     {
         Func<T> factory = transactionFactory ?? (static () => new T());
+        // Each type registered here needs an arm in the Decode, EncodeTx and GetLength switches, or it falls back to interface dispatch.
         RegisterDecoder(TxType.Legacy, new LegacyTxDecoder(factory));
         RegisterDecoder(TxType.AccessList, new AccessListTxDecoder(factory));
         RegisterDecoder(TxType.EIP1559, new EIP1559TxDecoder(factory));
@@ -179,7 +180,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
         Transaction? decodedTransaction = transaction;
         if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
-            // new T() in shared generic code creates through reflection.
+            // new T() in shared generic code is a call to Activator.CreateInstance<T>.
             decodedTransaction = typeof(T) == typeof(Transaction) ? new Transaction() : new T();
 
         ITxDecoder decoder = GetDecoder(txType);
