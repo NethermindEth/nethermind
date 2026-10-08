@@ -93,6 +93,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
     /// <c>bid.parent_block_hash</c> equals its own <c>bid.block_hash</c>. The head's payload is on the chain only when its fork
     /// choice node is <c>PAYLOAD_STATUS_FULL</c> (<see cref="IBeaconChainStatusSource.CurrentHead"/>), never merely because an
     /// envelope is held. The canonical index selects the last requested block, then parent roots keep the reply on one chain.
+    /// Roots are selected before enumeration; envelopes are decoded as consumed, skipping any pruned in between.
     /// </remarks>
     /// <exception cref="Eth2ReqRespException">A stored block on the chain is unreadable (<c>ServerError</c>), or reorgs kept the
     /// payload status of the last requested block unknown while nothing else could be served (<c>ResourceUnavailable</c>).</exception>
@@ -124,7 +125,7 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
         if (root is null) return [];
         Hash256 top = root;
 
-        List<SignedExecutionPayloadEnvelope> served = [];
+        List<Hash256> roots = [];
         while (true)
         {
             if (!TryGetLink(root, out BlockLink? link) || !link.IsGloas || link.Slot < startSlot)
@@ -133,9 +134,9 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
             }
 
             bool payloadOnChain = child is null ? fullHeadRoot == root : child.ParentBlockHash == link.BlockHash;
-            if (link.Slot - startSlot < count && payloadOnChain && TryGet(root, out SignedExecutionPayloadEnvelope? envelope))
+            if (link.Slot - startSlot < count && payloadOnChain)
             {
-                served.Add(envelope!);
+                roots.Add(root);
             }
 
             if (link.Slot == startSlot)
@@ -147,14 +148,26 @@ public sealed class ExecutionPayloadEnvelopePool(int capacity = 1 << 12, BeaconC
             root = link.ParentRoot;
         }
 
+        return ReadEnvelopes(roots, top, resolved);
+    }
+
+    private IEnumerable<SignedExecutionPayloadEnvelope> ReadEnvelopes(List<Hash256> roots, Hash256 top, bool resolved)
+    {
+        bool served = false;
+        for (int i = roots.Count - 1; i >= 0; i--)
+        {
+            if (TryGet(roots[i], out SignedExecutionPayloadEnvelope? envelope))
+            {
+                served = true;
+                yield return envelope!;
+            }
+        }
+
         // BeaconBlocksByRange: the first envelope in the range MUST be served if held, so an unknown top is not answered as none.
-        if (!resolved && served.Count == 0 && TryGet(top, out _))
+        if (!resolved && !served && TryGet(top, out _))
         {
             throw new Eth2ReqRespException($"Payload status of block {top} is unknown while fork choice reorgs", ReqRespFraming.ResponseCode.ResourceUnavailable);
         }
-
-        served.Reverse();
-        return served;
     }
 
     /// <summary>The last canonical block at or below <paramref name="lastSlot"/>, and its canonical child unless it is the head.</summary>
