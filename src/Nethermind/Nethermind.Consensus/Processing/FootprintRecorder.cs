@@ -42,6 +42,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private BalanceMerge[] _merges = new BalanceMerge[32];
     private int[] _lastWrites = new int[64];
+    private int _restoredWrites;
 
     private readonly StrongBox<ExecutionCounts> _counts = new();
 
@@ -142,7 +143,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         }
 
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed };
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed, RestoredWrites = _restoredWrites };
     }
 
     /// <summary>The run's effects with fewer state calls to replay and the same state after a commit.</summary>
@@ -155,6 +156,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     /// </remarks>
     private StateEffect[] CompactEffects()
     {
+        _restoredWrites = 0;
         int effectCount = _effectCount;
         if (effectCount == 0) return [];
 
@@ -203,7 +205,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             ref StateEffect effect = ref effects[e];
             if (effect.Kind == EffectKind.SetStorage)
             {
-                if (lastWrites[_slotIndex[new StorageCell(effect.Address, in effect.Index)]] != e) continue;
+                int slot = _slotIndex[new StorageCell(effect.Address, in effect.Index)];
+                if (lastWrites[slot] != e) continue;
+                if (effect.Value == _slots[slot].Value) _restoredWrites++;
             }
             else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && effect.Value.IsZero)
             {

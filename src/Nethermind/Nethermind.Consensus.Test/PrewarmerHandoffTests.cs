@@ -600,23 +600,36 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
     }
 
-    public enum Report { AsPredicted, OtherValue, NoneWithoutFootprint, SomeWithoutFootprint }
+    public enum Report { AsPredicted, OtherValue, Subset, Restored, NoneWithoutFootprint, SomeWithoutFootprint }
 
     [Test]
     public void Block_processing_wakes_the_refresh_worker_only_for_writes_its_footprints_did_not_predict([Values] Report report)
     {
         (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
-        bool predicted = report is Report.AsPredicted or Report.OtherValue;
-        if (predicted) footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+        StorageCell other = new(TestItem.AddressC, 2 * 0x4e4d);
+        switch (report)
+        {
+            case Report.AsPredicted or Report.OtherValue:
+                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
+                break;
+            case Report.Subset:
+                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d), (other, 0x4e4d)]));
+                break;
+            case Report.Restored:
+                // A write back to the slot's value at the transaction's start, which a commit does not report.
+                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)], restoredWrites: 1));
+                break;
+        }
 
-        footprints.QueueExecuted(0, report switch
+        List<(StorageCell Cell, UInt256 Value)>? reported = report switch
         {
             // Committed by the main state, so not the instance the footprint holds.
-            Report.AsPredicted => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
-            Report.NoneWithoutFootprint => null,
+            Report.AsPredicted or Report.Subset => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
+            Report.NoneWithoutFootprint or Report.Restored => null,
             _ => [(cell, 2 * 0x4e4d)]
-        });
+        };
+        footprints.QueueExecuted(0, reported);
 
         // Waking a blocked worker costs block processing microseconds; skipping a wake it needs delays its refreshes.
         using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(100));
@@ -630,7 +643,15 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             woken = false;
         }
 
-        Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.SomeWithoutFootprint));
+        // Skipped or not, the report takes the place of what a footprint stored later predicts.
+        footprints.ApplyExecuted();
+        footprints.Store(0, Footprint(txs[0], writes: [(cell, 3 * 0x4e4d)]));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.Subset or Report.SomeWithoutFootprint));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(reported?[0].Value));
+        }
     }
 
     [Test]
@@ -774,11 +795,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         return null;
     }
 
-    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
+    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null, int restoredWrites = 0) =>
         new(tx, [],
             [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
             [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Address = write.Cell.Address, Index = write.Cell.Index, Value = write.Value })],
-            default, default, default);
+            default, default, default) { RestoredWrites = restoredWrites };
 
     [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
@@ -806,7 +827,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
+    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
 
     [Test]
     public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
@@ -837,6 +858,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                         recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
                         recorder.SubtractFromBalance(ScarcePayer, 0x4e4e, Spec, out _);
                         return 1;
+                    case RecordedChanges.NetZeroOfEmpty:
+                        // Updated back to empty, the account is deleted (EIP-161); no change at all leaves it.
+                        recorder.AddToBalance(empty, 3, Spec, out _);
+                        recorder.SubtractFromBalance(empty, 3, Spec, out _);
+                        return 2;
                     case RecordedChanges.AcrossRecreation:
                         recorder.AddToBalance(TestItem.AddressC, 3, Spec, out _);
                         recorder.DeleteAccount(TestItem.AddressC);
@@ -846,6 +872,10 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                     case RecordedChanges.SlotWrittenTwice:
                         recorder.Set(cell, 1);
                         recorder.Set(cell, 2);
+                        return 1;
+                    case RecordedChanges.SlotRestored:
+                        recorder.Set(cell, 5);
+                        recorder.Set(cell, 0);
                         return 1;
                     case RecordedChanges.ZeroValueToCode:
                         recorder.GetCode(Counter);
@@ -878,6 +908,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             {
                 Assert.That(State(), Is.EqualTo(recorded));
                 Assert.That(footprint.Effects.Length, Is.EqualTo(compacted));
+                // A commit does not report a slot left at its starting value, so neither is it predicted.
+                Assert.That(footprint.RestoredWrites, Is.EqualTo(changes == RecordedChanges.SlotRestored ? 1 : 0));
             }
         }
 
@@ -924,14 +956,23 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
     [Test]
-    public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made()
+    public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made([Values] bool minimumNotedFirst)
     {
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
         using (worldState.BeginScope(Parent))
         {
-            // Nets to two wei paid, from a balance that must hold all of it first.
+            // Nets to two wei paid, from a balance that must hold all of it first; or a smaller deficit after a check of
+            // the whole balance, which still stands.
             (TransactionFootprint footprint, Snapshot before) = Record(worldState, recorder =>
             {
+                if (minimumNotedFirst)
+                {
+                    recorder.NoteMinimumBalance(ScarcePayer, 0x4e4d);
+                    recorder.SubtractFromBalance(ScarcePayer, 2, Spec, out _);
+                    recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
+                    return 2;
+                }
+
                 recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
                 recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
                 recorder.SubtractFromBalance(ScarcePayer, 1, Spec, out _);
