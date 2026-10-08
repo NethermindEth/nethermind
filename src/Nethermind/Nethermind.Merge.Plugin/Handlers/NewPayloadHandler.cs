@@ -671,9 +671,21 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return;
 
         IReleaseSpec spec = _specProvider.GetSpec(new ForkActivation(request.BlockNumber, request.Timestamp));
+        if (NewPayloadTrace.Enabled)
+        {
+            int legacy = 0, auths = 0;
+            foreach (Transaction tx in transactions.Data)
+            {
+                if (tx.Type == TxType.Legacy) legacy++;
+                if (tx.AuthorizationList is { } list) auths += list.Length;
+            }
+            NewPayloadTrace.SetExtra(NewPayloadTrace.Legacy, legacy);
+            NewPayloadTrace.SetExtra(NewPayloadTrace.AuthTuples, auths);
+        }
         try
         {
             _senderRecovery.StartRecovery(request.BlockHash, transactions.Data, spec);
+            NewPayloadTrace.Stamp(NewPayloadTrace.RecStarted);
         }
         catch (Exception e)
         {
@@ -980,7 +992,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         block.Header.TotalDifficulty ??= parent.TotalDifficulty + block.Difficulty;
         block.Header.IsPostMerge = true; // I think we don't need to set it again here.
+        long validationStart = NewPayloadTrace.Timestamp();
         bool isValid = _blockValidator.ValidateSuggestedBlock(block, parent, out error, validateHashes: false);
+        NewPayloadTrace.SetExtra(NewPayloadTrace.BvUs, NewPayloadTrace.MicrosecondsSince(validationStart));
         if (!isValid && _logger.IsWarn) _logger.Warn($"Block validator rejected the block {block.ToString(Block.Format.FullHashAndNumber)}.");
         return isValid;
     }

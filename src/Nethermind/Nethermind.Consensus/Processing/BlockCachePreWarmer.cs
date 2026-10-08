@@ -828,6 +828,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             int systemWarmAttempts = 0;
             while (!token.IsCancellationRequested)
             {
+                Core.Diagnostics.NewPayloadTrace.SpeculativePassStarted();
+                try
+                {
                 (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
                 if (token.IsCancellationRequested) break;
 
@@ -857,6 +860,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
                         Volatile.Write(ref _warmMarker, marker);
                     }
+                }
+                }
+                finally
+                {
+                    Core.Diagnostics.NewPayloadTrace.SpeculativePassEnded();
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
@@ -890,6 +898,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         if (_speculativeCts is null) return;
 
+        long joinStart = Core.Diagnostics.NewPayloadTrace.Timestamp();
         _speculativeCts.Cancel();
         try
         {
@@ -899,6 +908,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             // Warming failures are already logged inside the pass; nothing actionable here.
         }
+        Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.SpecJoinUs, Core.Diagnostics.NewPayloadTrace.MicrosecondsSince(joinStart));
+        Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.SpecJoins, 1);
         _speculativeCts.Dispose();
         _speculativeCts = null;
         _speculativeTask = Task.CompletedTask;

@@ -266,6 +266,18 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
 
     internal Hash256? TransactionsRoot { get; set; }
 
+    /// <summary>Mainnet experiment: the transactions-trie root started right after decoding, or null.</summary>
+    internal System.Threading.Tasks.Task<Hash256>? EarlyTxRoot { get; private set; }
+
+    /// <summary>Starts the transactions-trie root on the thread pool, for the experiment's early-root arm.</summary>
+    internal void StartEarlyTxRoot()
+    {
+        byte[][] encoded = Transactions;
+        if (TransactionsRoot is not null || EarlyTxRoot is not null || encoded.Length < 32) return;
+        NewPayloadTrace.SetExtra(NewPayloadTrace.EarlyRoot, 1);
+        EarlyTxRoot = System.Threading.Tasks.Task.Run(() => TxTrie.CalculateRoot(encoded));
+    }
+
     /// <summary>
     /// Decodes and returns an array of <see cref="Transaction"/> from <see cref="Transactions"/>.
     /// </summary>

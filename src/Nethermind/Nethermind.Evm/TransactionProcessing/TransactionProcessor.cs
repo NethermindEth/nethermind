@@ -296,6 +296,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 || (spec.IsEip2780Enabled && tx.IsMessageCall && !WorldState.AccountExists(tx.SenderAddress)))
             {
                 tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
+                Core.Diagnostics.NewPayloadTrace.AddExtraProcessing(Core.Diagnostics.NewPayloadTrace.InlineTp, 1);
             }
         }
 
@@ -823,6 +824,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             foreach (AuthorizationTuple authTuple in tx.AuthorizationList)
             {
+                if (authTuple.Authority is null) Core.Diagnostics.NewPayloadTrace.AddExtraProcessing(Core.Diagnostics.NewPayloadTrace.InlineAuth, 1);
                 Address authority = (authTuple.Authority ??= Ecdsa.RecoverAddress(authTuple))!;
 
                 AuthorizationTupleResult authorizationResult = IsValidForExecution(authTuple, accessTracker, spec, out bool hasDelegation);

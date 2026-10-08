@@ -9,6 +9,7 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Crypto;
@@ -27,6 +28,22 @@ public static class EthereumEcdsaExtensions
     /// </remarks>
     private const int SenderCacheCapacity = 1 << 15;
     private static readonly AssociativeCache<ValueHash256, Address> _senderCache = new(SenderCacheCapacity);
+
+    // Mainnet experiment: authorities keyed by their signing hash and signature, filled by the pool's admission.
+    private const int AuthorityCacheCapacity = 1 << 12;
+    private static readonly AssociativeCache<ValueHash256, Address> _authorityCache = new(AuthorityCacheCapacity);
+
+    [ThreadStatic] private static bool t_lastRecoveryWasCacheHit;
+
+    /// <summary>Whether this thread's last sender or authority recovery came from the cache (diagnostics).</summary>
+    public static bool LastRecoveryWasCacheHit => t_lastRecoveryWasCacheHit;
+
+    /// <summary>
+    /// A legacy sender depends only on the transaction's bytes when its signature carries no chain id (pre-EIP-155)
+    /// or carries this chain's: then the ambient chain id and <c>useSignatureChainId</c> cannot change it.
+    /// </summary>
+    private static bool IsChainIndependentLegacy(IEthereumEcdsa ecdsa, Signature signature) =>
+        signature.V is 27 or 28 || signature.ChainId == ecdsa.ChainId;
 
     /// <summary>Clears the process-wide sender cache. Intended for test isolation only.</summary>
     internal static void ClearSenderCache() => _senderCache.Clear();
@@ -103,12 +120,31 @@ public static class EthereumEcdsaExtensions
 
     private static Address? RecoverAddress(IEthereumEcdsa ecdsa, Transaction tx, Signature signature, bool useSignatureChainId)
     {
-        Hash256? txHash = tx.Type == TxType.Legacy ? null : tx.Hash;
-        if (txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
+        Hash256? txHash;
+        bool lookup;
+        if (tx.Type != TxType.Legacy)
         {
+            txHash = tx.Hash;
+            lookup = true;
+        }
+        else if (MainnetExperiment.ExtendedSenderCachePopulated && IsChainIndependentLegacy(ecdsa, signature))
+        {
+            txHash = tx.Hash;
+            lookup = MainnetExperiment.ExtendedSenderCacheLookups;
+        }
+        else
+        {
+            txHash = null;
+            lookup = false;
+        }
+
+        if (lookup && txHash is not null && _senderCache.TryGet(txHash.ValueHash256, out Address? cached))
+        {
+            t_lastRecoveryWasCacheHit = true;
             return cached;
         }
 
+        t_lastRecoveryWasCacheHit = false;
         ValueHash256 hash = CalculateSignatureHash(ecdsa, tx, signature, useSignatureChainId);
         Address? recovered = ecdsa.RecoverAddress(signature, in hash);
 
@@ -254,6 +290,27 @@ public static class EthereumEcdsaExtensions
     {
         KeccakRlpWriter writer = new();
         AuthorizationTupleDecoder.EncodeSignaturePayload(ref writer, tuple.ChainId, tuple.CodeAddress, tuple.Nonce);
-        return ecdsa.RecoverAddress(tuple.AuthoritySignature, writer.GetValueHash());
+        ValueHash256 signingHash = writer.GetValueHash();
+        if (!MainnetExperiment.ExtendedSenderCachePopulated)
+        {
+            t_lastRecoveryWasCacheHit = false;
+            return ecdsa.RecoverAddress(tuple.AuthoritySignature, signingHash);
+        }
+
+        Span<byte> keyInput = stackalloc byte[Keccak.Size + 65];
+        signingHash.Bytes.CopyTo(keyInput);
+        tuple.AuthoritySignature.Bytes.CopyTo(keyInput[Keccak.Size..]);
+        keyInput[^1] = tuple.AuthoritySignature.RecoveryId;
+        ValueHash256 key = ValueKeccak.Compute(keyInput);
+        if (MainnetExperiment.ExtendedSenderCacheLookups && _authorityCache.TryGet(key, out Address? cached))
+        {
+            t_lastRecoveryWasCacheHit = true;
+            return cached;
+        }
+
+        t_lastRecoveryWasCacheHit = false;
+        Address? recovered = ecdsa.RecoverAddress(tuple.AuthoritySignature, signingHash);
+        if (recovered is not null) _authorityCache.Set(key, recovered);
+        return recovered;
     }
 }

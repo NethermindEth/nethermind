@@ -79,8 +79,19 @@ public sealed class MempoolStatePrewarmer : IDisposable
         if (_enabled)
         {
             _blockTree.NewHeadBlock += OnNewHeadBlock;
+            Core.Diagnostics.MainnetExperiment.IncomingBlock += OnIncomingBlock;
             if (_logger.IsDebug) _logger.Debug("Mempool state pre-warming enabled.");
         }
+    }
+
+    // Mainnet experiment (early-cancel arm): stop the session when the block's request arrives, not once it is queued.
+    private void OnIncomingBlock()
+    {
+        CancellationTokenSource? session;
+        using (_sessionLock.EnterScope()) session = _session;
+        if (session is null || session.IsCancellationRequested) return;
+        Core.Diagnostics.NewPayloadTrace.Stamp(Core.Diagnostics.NewPayloadTrace.SpecCancelEarly);
+        session.Cancel();
     }
 
     // Resolved on the first head rather than at construction: the queue's processor depends on the prewarmer this is
@@ -102,6 +113,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
     {
         CancellationTokenSource? session;
         using (_sessionLock.EnterScope()) session = _session;
+        Core.Diagnostics.NewPayloadTrace.Stamp(Core.Diagnostics.NewPayloadTrace.SpecCancel);
         session?.Cancel();
     }
 
@@ -334,6 +346,7 @@ public sealed class MempoolStatePrewarmer : IDisposable
         if (_enabled)
         {
             _blockTree.NewHeadBlock -= OnNewHeadBlock;
+            Core.Diagnostics.MainnetExperiment.IncomingBlock -= OnIncomingBlock;
         }
 
         CancellationTokenSource? session;

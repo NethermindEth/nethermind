@@ -332,18 +332,24 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
-
-            // The EIP-2780 self-transfer discount makes intrinsic gas sender-dependent, but an unknown sender is
-            // priced as a transfer to someone else, the higher charge: a transaction that is well formed without
-            // its sender is well formed with it. Only one that fails needs the sender, so the request thread
-            // doesn't recover, one by one, the senders the background recovery has not reached yet.
-            if (!isWellFormed && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
+            // makes the intrinsic-gas validation below sender-dependent.
+            // Experiment (on demand): an unknown sender is priced as a non-self transfer, the higher charge, so a
+            // transaction that passes without its sender passes with it; only one that fails needs the recovery.
+            bool onDemand = Core.Diagnostics.MainnetExperiment.BlockValidatorRecoversOnDemand;
+            if (!onDemand && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
             {
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
-                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+                Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
             }
 
+            ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            if (!isWellFormed && onDemand && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            {
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
+                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            }
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
