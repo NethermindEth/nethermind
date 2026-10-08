@@ -14,9 +14,10 @@ namespace Nethermind.Evm.Tracing;
 /// the carve-outs the frame's whole call subtree, which is where a factory does its work.</remarks>
 public interface IFrameTxPrefixTracer
 {
+    /// <param name="frame">The frame about to run.</param>
     /// <param name="isDeployFrame">Whether the frame about to run is the prefix-opening <c>deploy</c> frame.</param>
     /// <param name="target">The address the frame dispatches, already resolved from <c>frame.Target</c>.</param>
-    void StartPrefixFrame(bool isDeployFrame, Address target);
+    void StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target);
 
     /// <summary>The <c>MAX_VERIFY_GAS</c> budget the prefix simulation runs under.</summary>
     ulong MaxVerifyGas => Eip8141Constants.MaxVerifyGas;

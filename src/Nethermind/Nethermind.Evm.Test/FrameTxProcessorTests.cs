@@ -3751,206 +3751,124 @@ public partial class FrameTxProcessorTests
                 .Op(Instruction.STOP)
                 .Done);
 
-    // EIP-8272: only the commitment the predeploy holds satisfies a reference. The committed case also
-    // proves the intrinsic gas is charged, the transaction paying more than one declaring nothing.
-    [TestCase(1_000UL, false, 1_001UL, true, TestName = "a committed reference inside the window executes")]
-    [TestCase(1_001UL, false, 1_001UL, false, TestName = "a reference to the current slot is not yet referenceable")]
-    [TestCase(1_001UL, false, 9_193UL, false, TestName = "a reference at the ring-aliasing boundary is older than the usable window")]
-    [TestCase(1_000UL, true, 1_001UL, false, TestName = "a reference to a different root at a committed slot fails")]
-    [TestCase(1_000UL, false, null, false, TestName = "a header carrying no slot number cannot place a reference in the window")]
-    public void Execute_RecentRootReference_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, ulong? headSlot, bool expectedExecuted)
+    [TestCase(1_000UL, false, 1_001UL, true, TestName = "a committed tuple from the previous slot verifies")]
+    [TestCase(1_000UL, false, 9_191UL, true, TestName = "a committed tuple at the edge of the usable window verifies")]
+    [TestCase(1_001UL, false, 1_001UL, false, TestName = "a tuple for the current slot is not yet referenceable")]
+    [TestCase(1_000UL, false, 9_192UL, false, TestName = "a tuple as old as the ring buffer has expired")]
+    [TestCase(1_000UL, true, 1_001UL, false, TestName = "a tuple declaring a different root at a committed slot fails")]
+    [TestCase(1_000UL, false, null, false, TestName = "a header carrying no slot number cannot verify a tuple")]
+    public void Execute_RecentRootVerifyFrame_IsCheckedAgainstTheCommittedEntry(ulong committedSlot, bool declareOtherRoot, ulong? headSlot, bool expectedExecuted)
     {
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) = CommitReference(committedSlot);
+
+        Transaction tx = FrameTx(nonce: 0,
+            RecentRootVerifyFrame((sourceId, slot, declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)),
+            SelfVerifyFrame());
+
+        AssertRecentRootVerification(Process(tx, slotNumber: headSlot), expectedExecuted);
+    }
+
+    [TestCase(0, TestName = "empty validation data reverts")]
+    [TestCase(71, TestName = "validation data one byte short of a tuple reverts")]
+    [TestCase(73, TestName = "validation data one byte past a tuple reverts")]
+    [TestCase(64, TestName = "write-length data in a VERIFY frame cannot store")]
+    [TestCase((Eip8272Constants.MaxRecentRootReferences + 1) * 72, TestName = "seventeen tuples revert")]
+    public void Execute_RecentRootVerifyFrame_MalformedData_InvalidatesTheTransaction(int dataLength)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) reference = CommitReference(ReferencedSlot);
+        byte[] data = new byte[dataLength];
+        for (int offset = 0; offset + 72 <= dataLength; offset += 72)
+        {
+            FrameTxTestFrames.RecentRootTuples(reference).CopyTo(data, offset);
+        }
+
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.None, Eip8272Constants.RecentRootAddress, RecentRootFrameGas, UInt256.Zero, data),
+            SelfVerifyFrame());
+
+        AssertRecentRootVerification(Process(tx, slotNumber: HeadSlot), expectedExecuted: false);
+    }
+
+    [TestCase(1, TestName = "one duplicated tuple verifies")]
+    [TestCase(2, TestName = "two duplicate tuples verify")]
+    public void Execute_RecentRootVerifyFrame_DuplicateTuples_Verify(int copies)
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) reference = CommitReference(ReferencedSlot);
+        (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples = new (ValueHash256, ulong, ValueHash256)[copies];
+        Array.Fill(tuples, reference);
+
+        Transaction tx = FrameTx(nonce: 0, RecentRootVerifyFrame(tuples), SelfVerifyFrame());
+
+        AssertRecentRootVerification(Process(tx, slotNumber: HeadSlot), expectedExecuted: true);
+    }
+
+    [Test]
+    public void Execute_RecentRootVerifyFrame_SixteenTuplesWithDistinctColdKeys_Verify()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples = new (ValueHash256, ulong, ValueHash256)[Eip8272Constants.MaxRecentRootReferences];
+        for (int i = 0; i < tuples.Length; i++)
+        {
+            tuples[i] = CommitReference(ReferencedSlot - (ulong)i);
+        }
+
+        Transaction tx = FrameTx(nonce: 0, RecentRootVerifyFrame(tuples), SelfVerifyFrame());
+
+        AssertRecentRootVerification(Process(tx, slotNumber: HeadSlot), expectedExecuted: true);
+    }
+
+    [Test]
+    public void Execute_RecentRootVerifyFrame_ExecutionLimitBelowTheColdTargetAccess_InvalidatesTheTransaction()
+    {
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        (ValueHash256, ulong, ValueHash256) reference = CommitReference(ReferencedSlot);
+
+        Transaction tx = FrameTx(nonce: 0,
+            FrameTxTestFrames.RecentRootVerify(GasCostOf.ColdAccountAccess, reference),
+            SelfVerifyFrame());
+
+        AssertRecentRootVerification(Process(tx, slotNumber: HeadSlot), expectedExecuted: false);
+    }
+
+    [Test]
+    public void Execute_RecentRootWriteThenVerifyFrame_VerifiesTheRootFromTheNextSlotOnly()
+    {
+        const ulong writeSlot = 5_000;
         ValueHash256 salt = TestItem.KeccakA.ValueHash256;
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, salt);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256());
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        InstallRecentRootPredeploy();
+
+        Transaction write = FrameTx(nonce: 0, SelfVerifyFrame(),
+            Frame(FrameMode.Sender, target: Eip8272Constants.RecentRootAddress, data: [.. salt.Bytes, .. root.Bytes]));
+        Assert.That(Process(write, slotNumber: writeSlot).TransactionExecuted, Is.True);
         _stateProvider.Commit(Spec);
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot,
-            declareOtherRoot ? TestItem.KeccakC.ValueHash256 : root)];
-
-        CallOutputTracer referencingTracer = new();
-        TransactionResult referencing = Process(tx, tracer: referencingTracer, slotNumber: headSlot);
-
-        Assert.That(referencing.TransactionExecuted, Is.EqualTo(expectedExecuted));
-        if (!expectedExecuted)
-        {
-            // Pinned to the reference check: every other rejection also leaves TransactionExecuted false.
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(referencing.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-                Assert.That(referencing.ErrorDescription, Does.Contain("recent root reference"));
-            }
-            return;
-        }
-
-        CallOutputTracer plainTracer = new();
-        TransactionResult unreferencing = Process(FrameTx(nonce: 1, SelfVerifyFrame()), tracer: plainTracer, slotNumber: headSlot);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(unreferencing.TransactionExecuted, Is.True);
-            Assert.That(referencingTracer.GasSpent, Is.GreaterThan(plainTracer.GasSpent),
-                "the reference's calldata and prepaid accesses must be charged");
-        }
-    }
-
-    /// <remarks>The call entry points reach the processor without the tx validator's EIP-8272 gate, so the
-    /// processor must reject rather than price a field the fork does not recognise.</remarks>
-    [Test]
-    public void Execute_RecentRootReferencesBeforeTheReferenceFork_AreRejected()
-    {
-        ((TestSpecProvider)_specProvider).GenesisSpec =
-            new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip8250Enabled = true, IsEip8272Enabled = false, IsEip7906Enabled = true };
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [];
-
-        TransactionResult result = Process(tx, slotNumber: 1_001);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
-        }
+        (ValueHash256, ulong, ValueHash256) written = (RecentRootStore.SourceId(Sender, salt), writeSlot, root);
+        AssertRecentRootVerification(
+            Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot),
+            expectedExecuted: false);
+        AssertRecentRootVerification(
+            Process(FrameTx(nonce: 1, RecentRootVerifyFrame(written), SelfVerifyFrame()), slotNumber: writeSlot + 1),
+            expectedExecuted: true);
     }
 
     [Test]
-    public void Execute_AssertionForkWithoutKeyedNoncesOrRecentRoots_RunsPostTxButRefusesTheOtherEnvelopes()
-    {
-        _spec.IsEip8250Enabled = false;
-        _spec.IsEip8272Enabled = false;
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
-
-        Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.PostTx, target: Recipient));
-        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
-        keyed.NonceKeys = [(UInt256)7];
-        Transaction rooted = FrameTx(nonce: 1, SelfVerifyFrame());
-        rooted.RecentRootReferences = [];
-
-        TransactionResult postResult = Process(postTx);
-        TransactionResult keyedResult = Process(keyed);
-        TransactionResult rootedResult = Process(rooted, slotNumber: 1_001);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(postResult.TransactionExecuted, Is.True, "the assertion fork must run a POST_TX frame");
-            Assert.That(keyedResult.TransactionExecuted, Is.False, "keyed nonces must stay refused before their fork");
-            Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
-            Assert.That(rootedResult.TransactionExecuted, Is.False, "recent-root references must stay refused before their fork");
-            Assert.That(rootedResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
-        }
-    }
-
-    /// <remarks>A set built from RPC input reaches the processor uncapped, so rejecting it before
-    /// <c>Measure</c> keeps that method's bounded <c>stackalloc</c> from an out-of-range slice.</remarks>
-    [Test]
-    public void Execute_MoreRecentRootReferencesThanTheCap_AreRejected()
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        RecentRootReference[] references = new RecentRootReference[Eip8272Constants.MaxRecentRootReferences + 1];
-        Array.Fill(references, new RecentRootReference(default, 0, default));
-        tx.RecentRootReferences = references;
-
-        TransactionResult result = Process(tx, slotNumber: 1_001);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(result.TransactionExecuted, Is.False);
-            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
-            Assert.That(result.ErrorDescription, Is.EqualTo(FrameTxValidation.TooManyRecentRootReferences));
-        }
-    }
-
-    /// <remarks>An empty reference list still occupies the byte <c>0xc0</c> on the wire, so it is priced:
-    /// EIP-8272 short-circuits the per-reference term at zero references, not the calldata term.</remarks>
-    [Test]
-    public void Execute_EmptyRecentRootReferenceList_IsPricedAsTheBytesItAdds()
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-
-        Transaction empty = FrameTx(nonce: 0, SelfVerifyFrame());
-        empty.RecentRootReferences = [];
-        Transaction absent = FrameTx(nonce: 1, SelfVerifyFrame());
-        CallOutputTracer emptyTracer = new();
-        CallOutputTracer absentTracer = new();
-
-        Assert.That(Process(empty, tracer: emptyTracer).TransactionExecuted, Is.True);
-        Assert.That(Process(absent, tracer: absentTracer).TransactionExecuted, Is.True);
-
-        (int zeroBytes, int nonZeroBytes) = empty.ReferenceCalldataStats;
-        ulong referenceTokens = (ulong)zeroBytes + (ulong)nonZeroBytes * Spec.GasCosts.TxDataNonZeroMultiplier;
-        Assert.That(emptyTracer.GasSpent - absentTracer.GasSpent, Is.EqualTo(referenceTokens * GasCostOf.TxDataZero));
-    }
-
-    /// <remarks>
-    /// The totals are literal rather than re-derived: EIP-8272 prices a reference at the access-list entry
-    /// rates plus the 102 gas of the two key-derivation Keccaks (72- and 104-byte preimages), and a reprice
-    /// of either rate must surface here instead of silently following it.
-    /// </remarks>
-    [TestCase(true, 0, 0ul)]
-    [TestCase(true, 1, 5002ul)]
-    [TestCase(true, 2, 7104ul)]
-    [TestCase(true, Eip8272Constants.MaxRecentRootReferences, 36532ul)]
-    [TestCase(false, 1, 4402ul)]
-    [TestCase(false, Eip8272Constants.MaxRecentRootReferences, 34432ul)]
-    public void RecentRootReference_intrinsic_gas_prices_the_address_and_both_keyed_preimages(bool eip8038Enabled, int referenceCount, ulong expected)
-    {
-        _spec.IsEip8038Enabled = eip8038Enabled;
-        RecentRootReference[] references = new RecentRootReference[referenceCount];
-        references.AsSpan().Fill(new RecentRootReference(default, 0, default));
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(RecentRootReference.IntrinsicGas(references, Spec), Is.EqualTo(expected));
-            Assert.That(RecentRootReference.IntrinsicGas(null, Spec), Is.Zero);
-        }
-    }
-
-    /// <remarks>Before the reference fork the charge buys nothing (no predeploy, no key derivation), so a
-    /// declared reference must leave the budget alone, as its calldata already does.</remarks>
-    [Test]
-    public void GasBudget_RecentRootReferencesBeforeTheReferenceFork_AreNotPriced()
-    {
-        _spec.IsEip8272Enabled = false;
-
-        Transaction plain = FrameTx(nonce: 0, SelfVerifyFrame());
-        Transaction referenced = FrameTx(nonce: 0, SelfVerifyFrame());
-        referenced.RecentRootReferences = [new RecentRootReference(default, ReferencedSlot, default)];
-
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(plain, _spec, out ulong plainIntrinsic, out _, out _), Is.True);
-        Assert.That(FrameTxValidation.TryCalculateGasBudget(referenced, _spec, out ulong referencedIntrinsic, out _, out _), Is.True);
-
-        Assert.That(referencedIntrinsic, Is.EqualTo(plainIntrinsic).And.Not.Zero);
-    }
-
-    [Test]
-    public void Execute_RecentRootReference_RecordsThePredeploySlotInBal()
+    public void Execute_RecentRootVerifyFrame_RecordsThePredeploySlotInBal()
     {
         const ulong committedSlot = 1_000;
         const ulong headSlot = 1_001;
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.CreateAccount(Sender, 1.Ether);
         _stateProvider.InsertCode(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), Spec);
-        _stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
-        _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, committedSlot),
-            RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256());
-        _stateProvider.Commit(Spec);
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) = CommitReference(committedSlot);
         _stateProvider.CommitTree(0);
 
         (EthereumTransactionProcessor tracedProcessor, TracedAccessWorldState tracedState) = TracedProcessor();
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+        Transaction tx = FrameTx(nonce: 0, RecentRootVerifyFrame((sourceId, slot, root)), SelfVerifyFrame());
 
         Block block = Build.A.Block.WithNumber(1)
             .WithBaseFeePerGas(0)
@@ -3965,6 +3883,45 @@ public partial class FrameTxProcessorTests
         Assert.That(predeploy, Is.Not.Null, "the recent-root predeploy is accessed and recorded in the BAL");
         UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
         Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
+    }
+
+    [Test]
+    public void Execute_AssertionForkWithoutKeyedNoncesOrRecentRoots_RunsPostTxButRefusesTheOtherEnvelopes()
+    {
+        _spec.IsEip8250Enabled = false;
+        _spec.IsEip8272Enabled = false;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
+
+        Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.PostTx, target: Recipient));
+        Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
+        keyed.NonceKeys = [(UInt256)7];
+
+        TransactionResult postResult = Process(postTx);
+        TransactionResult keyedResult = Process(keyed);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(postResult.TransactionExecuted, Is.True, "the assertion fork must run a POST_TX frame");
+            Assert.That(keyedResult.TransactionExecuted, Is.False, "keyed nonces must stay refused before their fork");
+            Assert.That(keyedResult.ErrorDescription, Does.Contain(FrameTxValidation.KeyedNoncesNotEnabled));
+        }
+    }
+
+    private static void AssertRecentRootVerification(TransactionResult result, bool expectedExecuted)
+    {
+        if (expectedExecuted)
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ErrorDescription ?? result.Error.ToString());
+            return;
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.False);
+            Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+            Assert.That(result.ErrorDescription, Does.Contain("VERIFY frame reverted"));
+        }
     }
 
     /// <summary>The rollback shapes that keep a frame transaction valid, so the touch must outlive them.</summary>
@@ -4712,60 +4669,34 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private RecentRootReference CommitReference(ulong slot)
+    private const ulong HeadSlot = 1_001;
+    private const ulong ReferencedSlot = 1_000;
+    private const ulong RecentRootFrameGas = 100_000;
+
+    private static TxFrame RecentRootVerifyFrame(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
+        FrameTxTestFrames.RecentRootVerify(RecentRootFrameGas, tuples);
+
+    private void InstallRecentRootPredeploy()
     {
+        if (_stateProvider.AccountExists(Eip8272Constants.RecentRootAddress))
+        {
+            return;
+        }
+
+        _stateProvider.CreateAccount(Eip8272Constants.RecentRootAddress, UInt256.Zero, 1);
+        _stateProvider.InsertCode(Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode, Spec);
+        _stateProvider.Commit(Spec);
+    }
+
+    private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitReference(ulong slot)
+    {
+        InstallRecentRootPredeploy();
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
             RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256());
         _stateProvider.Commit(Spec);
-        return new RecentRootReference(sourceId, slot, root);
-    }
-
-    private const ulong HeadSlot = 1_001;
-    private const ulong ReferencedSlot = 1_000;
-    // Application validation logic binds a proof's public inputs to this tuple.
-    [TestCase((byte)0, TestName = "Execute_RecentRootRefLoad_SourceId")]
-    [TestCase((byte)1, TestName = "Execute_RecentRootRefLoad_Slot")]
-    [TestCase((byte)2, TestName = "Execute_RecentRootRefLoad_Root")]
-    public void Execute_RecentRootRefLoad_ReadsTheDeclaredReferenceField(byte field)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        // Spec stack order: field on top, index second.
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData(0).PushData(field).Op(Instruction.RECENTROOTREFLOAD).PushData(0).Op(Instruction.SSTORE)
-            .Op(Instruction.STOP).Done);
-        RecentRootReference reference = CommitReference(ReferencedSlot);
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.RecentRootReferences = [reference];
-
-        TransactionResult r = Process(tx, slotNumber: HeadSlot);
-        Assert.That(r.TransactionExecuted, Is.True, r.ErrorDescription ?? r.Error.ToString());
-        AssertStorage(Observer, 0, field switch
-        {
-            0 => new UInt256(reference.SourceId.Bytes, isBigEndian: true),
-            1 => (UInt256)reference.Slot,
-            _ => new UInt256(reference.Root.Bytes, isBigEndian: true),
-        });
-    }
-
-    // Sentinel-based: a silent zero push would also leave slot 0 at zero, reading as a real reference.
-    [TestCase(0, 0, 1, TestName = "Execute_RecentRootRefLoad_InRange_Continues")]
-    [TestCase(1, 0, 0, TestName = "Execute_RecentRootRefLoad_IndexPastTheDeclaredList_Halts")]
-    [TestCase(0, 3, 0, TestName = "Execute_RecentRootRefLoad_UndefinedField_Halts")]
-    public void Execute_RecentRootRefLoad_OutOfRange_ExceptionallyHalts(int index, int field, int expectedSentinel)
-    {
-        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        DeployContract(Observer, Prepare.EvmCode
-            .PushData((UInt256)index).PushData((UInt256)field).Op(Instruction.RECENTROOTREFLOAD).Op(Instruction.POP)
-            .PushData(1).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
-
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.Default, target: Observer));
-        tx.RecentRootReferences = [CommitReference(ReferencedSlot)];
-
-        Assert.That(Process(tx, slotNumber: HeadSlot).TransactionExecuted, Is.True);
-        AssertStorage(Observer, 0, (UInt256)expectedSentinel);
+        return (sourceId, slot, root);
     }
 
     [TestCase(Instruction.APPROVE, (byte)0xAA, TestName = "RegistryByte_APPROVE_0xAA")]
@@ -4775,7 +4706,6 @@ public partial class FrameTxProcessorTests
     [TestCase(Instruction.FRAMEPARAM, (byte)0xB3, TestName = "RegistryByte_FRAMEPARAM_0xB3")]
     [TestCase(Instruction.SIGPARAM, (byte)0xB4, TestName = "RegistryByte_SIGPARAM_0xB4")]
     [TestCase(Instruction.SIGDATACOPY, (byte)0xB5, TestName = "RegistryByte_SIGDATACOPY_0xB5")]
-    [TestCase(Instruction.RECENTROOTREFLOAD, (byte)0xB6, TestName = "RegistryByte_RECENTROOTREFLOAD_0xB6")]
     [TestCase(Instruction.TXTRACE, (byte)0xB7, TestName = "RegistryByte_TXTRACE_0xB7")]
     [TestCase(Instruction.TXDIFF, (byte)0xB8, TestName = "RegistryByte_TXDIFF_0xB8")]
     [TestCase(Instruction.EVENTDATACOPY, (byte)0xB9, TestName = "RegistryByte_EVENTDATACOPY_0xB9")]
@@ -4813,15 +4743,6 @@ public partial class FrameTxProcessorTests
         keyed.NonceKeys = [1, 7];
         Assert.That(Process(keyed).TransactionExecuted, Is.True);
 
-        Transaction referencing = FrameTx(nonce: 0, SelfVerifyFrame());
-        referencing.RecentRootReferences = [];
-        TransactionResult referencingResult = Process(referencing, slotNumber: HeadSlot);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(referencingResult.TransactionExecuted, Is.False);
-            Assert.That(referencingResult.ErrorDescription, Does.Contain(FrameTxValidation.RecentRootReferencesNotEnabled));
-        }
-
         Transaction postTx = FrameTx(nonce: 0, SelfVerifyFrame(), Frame(FrameMode.PostTx, target: Recipient));
         TransactionResult postTxResult = Process(postTx);
         using (Assert.EnterMultipleScope())
@@ -4839,8 +4760,7 @@ public partial class FrameTxProcessorTests
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Recipient, Prepare.EvmCode.Op(Instruction.STOP).Done);
 
-        Transaction referencing = FrameTx(nonce: 0, SelfVerifyFrame());
-        referencing.RecentRootReferences = [CommitReference(ReferencedSlot)];
+        Transaction referencing = FrameTx(nonce: 0, RecentRootVerifyFrame(CommitReference(ReferencedSlot)), SelfVerifyFrame());
         Assert.That(Process(referencing, slotNumber: HeadSlot).TransactionExecuted, Is.True);
 
         Transaction keyed = FrameTx(nonce: 1, SelfVerifyFrame());
@@ -5564,24 +5484,17 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    /// <summary>EIP-8272 references are checked against <c>RECENT_ROOT</c> storage before the first frame, so a
-    /// prestate that omits those cells cannot replay the transaction.</summary>
     [Test]
-    public void Execute_RecentRootReferencingFrameTxTracedWithPrestateTracer_RecordsTheReferencedCells()
+    public void Execute_RecentRootVerifyFrameTracedWithPrestateTracer_RecordsTheReferencedCells()
     {
-        const ulong committedSlot = 1_000;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
-        ValueHash256 root = TestItem.KeccakB.ValueHash256;
-        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, committedSlot);
-        UInt256 entry = RecentRootStore.EntryHash(sourceId, committedSlot, root).ToUInt256();
-        _stateProvider.Set(cell, entry);
-        _stateProvider.Commit(Spec);
+        (ValueHash256 sourceId, ulong slot, ValueHash256 root) = CommitReference(ReferencedSlot);
+        StorageCell cell = RecentRootStore.ReferenceCell(sourceId, slot);
+        UInt256 entry = RecentRootStore.EntryHash(sourceId, slot, root).ToUInt256();
 
-        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
-        tx.RecentRootReferences = [new RecentRootReference(sourceId, committedSlot, root)];
+        Transaction tx = FrameTx(nonce: 0, RecentRootVerifyFrame((sourceId, slot, root)), SelfVerifyFrame());
 
-        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: false), baseFeePerGas: 0, out _, slotNumber: committedSlot + 1);
+        using JsonDocument document = TraceThroughReceiptsTracer(tx, PrestateOptions(diffMode: false), baseFeePerGas: 0, out _, slotNumber: HeadSlot);
 
         Assert.That(PrestateSlot(document.RootElement, Eip8272Constants.RecentRootAddress, cell.Index), Is.EqualTo(StorageWord(entry)));
     }
