@@ -21,7 +21,7 @@ namespace Nethermind.Blockchain
         IUnresolvedBlockhashPolicy? unresolvedBlockhashPolicy = null)
         : IBlockhashProvider
     {
-        public const ulong MaxDepth = 256;
+        public const ulong MaxDepth = Eip2935Constants.BlockHashServeWindow;
         private readonly Lock _prefetchLock = new();
         private readonly ILogger _logger = logManager?.GetClassLogger<BlockhashProvider>() ?? throw new ArgumentNullException(nameof(logManager));
         private readonly IUnresolvedBlockhashPolicy _unresolvedBlockhashPolicy = unresolvedBlockhashPolicy ?? ThrowingUnresolvedBlockhashPolicy.Instance;

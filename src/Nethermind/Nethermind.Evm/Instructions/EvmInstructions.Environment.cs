@@ -785,9 +785,8 @@ public static partial class EvmInstructions
             return tracedPush;
         }
 
-        // Push the bytes the provider already holds: for storage-backed BLOCKHASH (EIP-7709) the hash comes
-        // from state, and materialising a Hash256 for it allocates once per call for a value the next
-        // instruction discards.
+        // Push the bytes the provider already holds rather than materialising a Hash256 for a value the next
+        // instruction discards. EIP-7709 is served by InstructionBlockHashFromState instead.
         ReadOnlySpan<byte> blockHashBytes = default;
         bool found = !outOfRange && vm.BlockHashProvider.TryGetBlockhash(header, a.u0, vm.Spec, out blockHashBytes);
 
