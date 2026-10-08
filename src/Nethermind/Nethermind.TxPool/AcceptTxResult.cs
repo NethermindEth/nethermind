@@ -204,6 +204,12 @@ namespace Nethermind.TxPool
         public static readonly AcceptTxResult KeyedNonceOverlap = new(TxPoolErrorMessages.KeyedNonceOverlap);
 
         /// <summary>
+        /// An EIP-8141 frame transaction beyond its non-canonical paymaster's free pending baseline, submitted
+        /// while the paymaster holds too little MATCHA width to sponsor another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult PaymasterWidthUnmet = new(TxPoolErrorMessages.PaymasterWidthUnmet);
+
+        /// <summary>
         /// Declares a result distinct from every other declared result.
         /// </summary>
         /// <remarks>For static declarations only: every call permanently consumes an id from a process-wide

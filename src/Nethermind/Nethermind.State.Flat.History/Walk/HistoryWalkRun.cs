@@ -171,7 +171,7 @@ internal sealed class HistoryWalkRun
             partitions.Add(() =>
             {
                 MismatchSink found = new(MismatchSink.MaxRecordedPerItem);
-                ProcessAccountPartition(prefix, item, found);
+                ProcessAccountPartition(prefix, item, found, new StoragePresenceProbe(_storageHistory, _logger, _token));
                 CompleteItem(item, found);
             });
         }
@@ -262,10 +262,9 @@ internal sealed class HistoryWalkRun
         _onItemDone?.Invoke(item);
     }
 
-    private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found)
+    private void ProcessAccountPartition(in TreePath prefix, int item, MismatchSink found, in StoragePresenceProbe probe)
     {
         using AccountPartitionRows rows = new();
-        StoragePresenceProbe probe = new(_storageHistory);
         while (true)
         {
             MismatchSink scanned = new(MismatchSink.MaxRecordedPerItem);
@@ -278,7 +277,7 @@ internal sealed class HistoryWalkRun
                 for (int nibble = 0; nibble < BranchRlp.ChildCount; nibble++)
                 {
                     _progress.EnterChild(item, nibble, BranchRlp.ChildCount);
-                    ProcessAccountPartition(prefix.Append(nibble), item, found);
+                    ProcessAccountPartition(prefix.Append(nibble), item, found, probe);
                     _progress.ExitChild(item);
                 }
 
