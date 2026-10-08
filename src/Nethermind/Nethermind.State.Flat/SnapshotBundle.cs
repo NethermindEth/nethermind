@@ -633,7 +633,7 @@ public sealed class SnapshotBundle : IDisposable
             _currentPooledContent = _resourcePool.GetSnapshotContent(_usage);
             ExpandCurrentPooledContent();
             _addressesWithChangedSlots?.NoLockClear();
-            committedContent.ReadAccounts.Clear();
+            DropReadAccounts(committedContent);
 
             return (snapshot, transientResource);
         }
@@ -654,6 +654,14 @@ public sealed class SnapshotBundle : IDisposable
         }
     }
 
+    /// <summary>Empties the read cache of content that was just handed to a snapshot.</summary>
+    /// <remarks>
+    /// A snapshot never reads these entries, so keeping them would only hold memory that its estimate does not count.
+    /// The clear takes the stripe locks because a warmer can still be promoting into this content, and it keeps the
+    /// grown table for the next block that reuses the pooled content.
+    /// </remarks>
+    private static void DropReadAccounts(SnapshotContent content) => content.ReadAccounts.NoResizeClear();
+
     private void SwapTransientResource() =>
         Volatile.Write(ref _transientResource, _resourcePool.GetCachedResource(_usage));
 
@@ -669,6 +677,7 @@ public sealed class SnapshotBundle : IDisposable
         _snapshots = null!;
         _changedSlots = null!;
         _changedAccounts = null!;
+        _readAccounts = null!;
         _changedStorageNodes = null!;
         _selfDestructedAccountAddresses = null!;
 

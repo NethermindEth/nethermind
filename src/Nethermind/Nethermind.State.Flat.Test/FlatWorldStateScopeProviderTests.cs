@@ -547,6 +547,27 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void Get_AfterCommit_ReadsReadOnlyAccountFromBelowAgain()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address readOnly = TestItem.AddressA;
+        Account first = TestItem.GenerateIndexedAccount(1);
+        Account second = TestItem.GenerateIndexedAccount(2);
+        ctx.PersistenceReader.GetAccount(readOnly).Returns(first);
+
+        Assert.That(scope.Get(readOnly), Is.EqualTo(first));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(TestItem.AddressB, TestItem.GenerateIndexedAccount(3));
+        }
+        scope.Commit(1);
+        ctx.PersistenceReader.GetAccount(readOnly).Returns(second);
+
+        Assert.That(scope.Get(readOnly), Is.EqualTo(second));
+    }
+
+    [Test]
     public void HintGet_DoesNotOverwriteDirtyAccount()
     {
         using TestContext ctx = new();
