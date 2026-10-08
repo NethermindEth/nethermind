@@ -32,11 +32,8 @@ public class PeerValidationSharesTests
         shares.HasShare(_attacker, headGeneration: 1);
         shares.Charge(_attacker, headGeneration: 1, ticks: HeadBudget / 2);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(shares.HasShare(_honest, headGeneration: 1), Is.True, "a newly active peer starts with its share");
-            Assert.That(shares.HasShare(_attacker, headGeneration: 1), Is.False, "two active peers split the head budget");
-        }
+        Assert.That(shares.HasShare(_honest, headGeneration: 1), Is.True, "a newly active peer starts with its share");
+        Assert.That(shares.HasShare(_attacker, headGeneration: 1), Is.False, "two active peers split the head budget");
     }
 
     [Test]
