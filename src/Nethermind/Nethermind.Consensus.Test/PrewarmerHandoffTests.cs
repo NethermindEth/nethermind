@@ -612,7 +612,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         footprints.QueueExecuted(0, report switch
         {
-            Report.AsPredicted => [(cell, 0x4e4d)],
+            // Committed by the main state, so not the instance the footprint holds.
+            Report.AsPredicted => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
             Report.NoneWithoutFootprint => null,
             _ => [(cell, 2 * 0x4e4d)]
         });
