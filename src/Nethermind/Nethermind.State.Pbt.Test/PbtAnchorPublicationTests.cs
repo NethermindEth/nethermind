@@ -329,7 +329,7 @@ public class PbtAnchorPublicationTests
     }
 
     [Test]
-    public async Task Fake_root_snapshot_import_switches_the_node_to_pbt_without_migrating()
+    public async Task Fake_root_snapshot_import_switches_the_node_to_pbt_without_migrating([Values] bool withPreimages)
     {
         ChainSpec chain = Eip8347FixtureState.LoadChainSpec();
         chain.Parameters.Eip8347TransitionTimestamp = null;
@@ -339,7 +339,7 @@ public class PbtAnchorPublicationTests
             ImportMigrationSnapshotWithFakeRoots = true,
             MigrationAnchor = 0,
             MigrationSnapshotPath = Eip8347FixtureState.ArtifactPath("anchor", "snapshot.pbt"),
-            MigrationPreimagesPath = Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin"),
+            MigrationPreimagesPath = withPreimages ? Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin") : null,
         };
         using TempPath scratch = TempPath.GetTempDirectory();
         using IContainer container = new ContainerBuilder()

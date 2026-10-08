@@ -77,7 +77,7 @@ public interface IPbtConfig : IConfig
     bool FakeMatchingStateRoot { get; set; }
 
     /// <summary>Whether to import the EIP-8347 snapshot at MigrationAnchor and keep running on PBT from it. Defaults to false.</summary>
-    [ConfigItem(Description = "Import the EIP-8347 snapshot from MigrationSnapshotPath and MigrationPreimagesPath at MigrationAnchor as the PBT state before block processing, then keep running on PBT with FakeMatchingStateRoot implied. A restart with the same snapshot reuses the import. Diagnostic use only; not available with a scheduled binaryTrieTime.", DefaultValue = "false", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Import the EIP-8347 snapshot from MigrationSnapshotPath at MigrationAnchor as the PBT state before block processing, verified by MigrationPreimagesPath when set, then keep running on PBT with FakeMatchingStateRoot implied. A restart with the same snapshot reuses the import. Diagnostic use only; not available with a scheduled binaryTrieTime.", DefaultValue = "false", HiddenFromDocs = true)]
     bool ImportMigrationSnapshotWithFakeRoots { get; set; }
 
     /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>

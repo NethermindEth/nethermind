@@ -34,7 +34,9 @@ internal sealed class ImportMigrationSnapshotWithFakeRoots(
         string scratch = PbtMigrationAnchor.ScratchDirectory(dbFactory, "bootstrap");
 
         await using FileStream snapshot = File.Open(config.MigrationSnapshotPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
-        await using FileStream preimages = File.Open(config.MigrationPreimagesPath!, FileMode.Open, FileAccess.Read, FileShare.Read);
+        await using FileStream? preimages = config.MigrationPreimagesPath is { } preimagesPath
+            ? File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read)
+            : null;
         await publication.PublishSnapshot(snapshot, preimages, PbtMigrationAnchor.Create(chainSpec, genesis, anchor), scratch,
             () => blockTree.IsMainChain(anchor), cancellationToken);
     }

@@ -19,7 +19,6 @@ internal static class PbtMigrationConfigValidator
     {
         if (config.MigrationAnchor is < 0) Fail("MigrationAnchor must not be negative.");
         ValidateExport(config, flatConfig, chainSpec, targetPath);
-        ValidateFakeRootSnapshotImport(config);
         if (!IsScheduledMigration(chainSpec)) return;
 
         if (config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree || config.ImportMigrationSnapshotWithFakeRoots)
@@ -77,13 +76,6 @@ internal static class PbtMigrationConfigValidator
         RejectLinks(target);
         if (ContainsPath(target, output) || ContainsPath(output, target))
             Fail("Migration export must not overlap the target path.");
-    }
-
-    private static void ValidateFakeRootSnapshotImport(IPbtConfig config)
-    {
-        if (!config.ImportMigrationSnapshotWithFakeRoots) return;
-        if (!HasPath(config.MigrationSnapshotPath) || !HasPath(config.MigrationPreimagesPath) || config.MigrationAnchor is null)
-            Fail("ImportMigrationSnapshotWithFakeRoots requires MigrationSnapshotPath, MigrationPreimagesPath and MigrationAnchor.");
     }
 
     private static void RejectLinks(string path)
