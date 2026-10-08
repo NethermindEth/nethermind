@@ -207,6 +207,9 @@ internal sealed class BlockFootprints(Block block)
     /// </summary>
     public void WaitForWork(CancellationToken token) => _changed.Wait(token);
 
+    /// <summary>For tests: the wakes the refresh worker has not taken.</summary>
+    internal int PendingWakes => _changed.CurrentCount;
+
     /// <summary>
     /// Queues the storage writes block processing committed when it executed the transaction at <paramref name="position"/>;
     /// null when it wrote none.

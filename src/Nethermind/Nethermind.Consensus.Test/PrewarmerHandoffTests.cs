@@ -632,16 +632,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         footprints.QueueExecuted(0, reported);
 
         // Waking a blocked worker costs block processing microseconds; skipping a wake it needs delays its refreshes.
-        using CancellationTokenSource timeout = new(TimeSpan.FromMilliseconds(100));
-        bool woken = true;
-        try
-        {
-            footprints.WaitForWork(timeout.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            woken = false;
-        }
+        bool woken = footprints.PendingWakes > 0;
 
         // Skipped or not, the report takes the place of what a footprint stored later predicts.
         footprints.ApplyExecuted();
