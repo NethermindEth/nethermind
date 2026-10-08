@@ -29,7 +29,7 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
     protected override void Load(ContainerBuilder builder)
     {
         builder
-            .AddSingleton<IHeaderStore, HeaderStore>()
+            .AddSingleton<IHeaderStore, IDb, IDb, IHeaderDecoder, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateHeaderStore)
             .AddSingleton<IHeaderFinder>(c => c.Resolve<IHeaderStore>())
             .AddSingleton<IBlockStore, IDb, IHeaderDecoder, IDeferredBlockDataWriter, IStatePersistenceBarrier>(CreateBlockStore)
             .AddSingleton<IDeferredBlockDataWriter>(CreateDeferredWriter)
@@ -101,11 +101,17 @@ public class BlockTreeModule(IReceiptConfig receiptConfig, ILogIndexConfig logIn
         if (receiptConfig.DeferredPersistence)
         {
             ctx.ResolveKeyed<IDb>(DbNames.Blocks);
+            ctx.ResolveKeyed<IDb>(DbNames.Headers);
+            ctx.ResolveKeyed<IDb>(DbNames.BlockNumbers);
             ctx.ResolveKeyed<IDb>(DbNames.BlockAccessLists);
             ctx.Resolve<IColumnsDb<ReceiptsColumns>>();
         }
         return new DeferredBlockDataWriter(receiptConfig.DeferredPersistence, receiptConfig.MaxDeferredWrites, ctx.Resolve<ILogManager>(), ctx.Resolve<IStatePersistenceBarrier>());
     }
+
+    private IHeaderStore CreateHeaderStore([KeyFilter(DbNames.Headers)] IDb headersDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumbersDb,
+        IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
+        new HeaderStore(headersDb, blockNumbersDb, headerDecoder, deferredWriter, persistenceBarrier);
 
     private IBlockStore CreateBlockStore([KeyFilter(DbNames.Blocks)] IDb blocksDb, IHeaderDecoder headerDecoder, IDeferredBlockDataWriter deferredWriter, IStatePersistenceBarrier persistenceBarrier) =>
         new BlockStore(blocksDb, headerDecoder, deferredWriter: deferredWriter, persistenceBarrier: persistenceBarrier);

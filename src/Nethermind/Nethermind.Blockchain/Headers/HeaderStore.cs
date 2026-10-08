@@ -16,25 +16,65 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Blockchain.Headers;
 
-public class HeaderStore(
-    [KeyFilter(DbNames.Headers)] IDb headerDb,
-    [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb,
-    IHeaderDecoder? decoder = null)
-    : IHeaderStore, IClearableCache
+public class HeaderStore : IHeaderStore, IClearableCache
 {
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
-    private readonly IHeaderDecoder _headerDecoder = decoder ?? new HeaderDecoder();
+    private readonly IDb headerDb;
+    private readonly IDb blockNumberDb;
+    private readonly IHeaderDecoder _headerDecoder;
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
+    // Headers written off the engine API path, as the bodies they belong to are; null when deferral is off. The block
+    // data the persistence barrier makes durable before a block's state includes them, so on a restart from persisted
+    // state no header it needs is missing.
+    private readonly DeferredWriteOverlay<BlockHeader>? _pending;
 
-    public void Insert(BlockHeader header)
+    public HeaderStore(
+        [KeyFilter(DbNames.Headers)] IDb headerDb,
+        [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb,
+        IHeaderDecoder? decoder = null,
+        IDeferredBlockDataWriter? deferredWriter = null,
+        IStatePersistenceBarrier? persistenceBarrier = null)
+    {
+        this.headerDb = headerDb;
+        this.blockNumberDb = blockNumberDb;
+        _headerDecoder = decoder ?? new HeaderDecoder();
+
+        if (deferredWriter is { Enabled: true })
+        {
+            _pending = new DeferredWriteOverlay<BlockHeader>(deferredWriter, WriteHeader);
+            IStatePersistenceBarrier barrier = persistenceBarrier ?? NullStatePersistenceBarrier.Instance;
+            barrier.RegisterFlush(() => headerDb.Flush(onlyWal: true));
+            barrier.RegisterFlush(() => blockNumberDb.Flush(onlyWal: true));
+        }
+    }
+
+    public void Insert(BlockHeader header) => WriteHeader(header.Number, header.Hash!, header);
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Readers find the header at once through the pending overlay; the header is encoded and written by the deferred
+    /// writer. Nothing that changes its encoding is mutated after a block is suggested.
+    /// </remarks>
+    public void InsertDeferred(BlockHeader header)
+    {
+        if (_pending is null)
+        {
+            Insert(header);
+            return;
+        }
+
+        _pending.Publish(header.Number, header.Hash!, header);
+    }
+
+    private void WriteHeader(ulong blockNumber, Hash256 blockHash, BlockHeader header)
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
-        headerDb.Set(header.Number, header.Hash!, rlp);
-        InsertBlockNumber(header.Hash, header.Number);
+        headerDb.Set(blockNumber, blockHash, rlp);
+        InsertBlockNumber(blockHash, blockNumber);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
@@ -56,6 +96,7 @@ public class HeaderStore(
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, ulong? blockNumber = null)
     {
         if (_headerCache.Get(in blockHash.ValueHash256) is { } cached) return cached;
+        if (_pending is not null && _pending.TryGet(blockHash, out BlockHeader pending)) return pending;
 
         blockNumber ??= GetBlockNumberFromBlockNumberDb(blockHash);
 
@@ -70,6 +111,19 @@ public class HeaderStore(
     public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
 
     public void Delete(Hash256 blockHash)
+    {
+        if (_pending is not null)
+        {
+            // Removed with the database delete under the overlay's lock, so a queued write cannot bring it back.
+            _pending.Remove(blockHash, () => DeleteFromDb(blockHash));
+        }
+        else
+        {
+            DeleteFromDb(blockHash);
+        }
+    }
+
+    private void DeleteFromDb(Hash256 blockHash)
     {
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
@@ -87,6 +141,7 @@ public class HeaderStore(
 
     public ulong? GetBlockNumber(Hash256 blockHash)
     {
+        if (_pending is not null && _pending.TryGet(blockHash, out BlockHeader pending)) return pending.Number;
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
         if (blockNumber is not null) return blockNumber.Value;
 
