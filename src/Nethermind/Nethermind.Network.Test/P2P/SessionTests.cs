@@ -580,12 +580,32 @@ public class SessionTests
             await _channelHandlerContext.Received(negotiated ? 1 : 0).WriteAndFlushAsync(small);
             if (!negotiated)
             {
-                LeanProofChunkMessage chunk = new(default, 1, 0, 1, LeanProofChunkMessage.DefaultChunkSize, new byte[1]);
+                ChunkMessage chunk = new(1, default, 0, new byte[1], []);
                 Assert.That(await ((ILeanBulkSession)session).DeliverLeanChunkAsync(chunk, CancellationToken.None), Is.Zero);
                 serializer.DidNotReceive().ZeroSerialize(chunk, Arg.Any<IByteBufferAllocator>());
             }
         }
         finally { sender.HandlerRemoved(_channelHandlerContext); }
+    }
+
+    [Test]
+    public void Lean_messages_above_max_message_bytes_are_detected_before_decompression()
+    {
+        _channel.Active.Returns(true);
+        Session session = new(30312, new Node(TestItem.PublicKeyA, "127.0.0.1", 8545), _channel, NullDisconnectsAnalyzer.Instance, LimboLogs.Instance);
+        session.Handshake(TestItem.PublicKeyA);
+        session.Init(5, _channelHandlerContext, _packetSender);
+        session.AddProtocolHandler(BuildHandler("p2p", 16));
+        session.AddProtocolHandler(BuildHandler("eth", 17));
+        session.AddProtocolHandler(BuildHandler(LeanProtocol.Code, LeanProtocol.MessageCount));
+        ILeanBulkSession lean = session;
+        // Adaptive IDs are allocated alphabetically after p2p: eth 16..32, lean 33..42.
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(lean.ExceedsMessageLimit(33, LeanProtocol.MaxMessageBytes + 1), Is.True);
+            Assert.That(lean.ExceedsMessageLimit(33, LeanProtocol.MaxMessageBytes), Is.False);
+            Assert.That(lean.ExceedsMessageLimit(16, LeanProtocol.MaxMessageBytes + 1), Is.False);
+        }
     }
 
     [Test]

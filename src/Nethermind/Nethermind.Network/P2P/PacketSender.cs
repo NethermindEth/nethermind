@@ -68,7 +68,6 @@ public class PacketSender(IMessageSerializationService messageSerializationServi
         {
             if (_removed || !_context.Channel.Active) return 0;
             bool deferred = !_context.Channel.IsWritable || bulk.Deferred.Count != 0;
-            if (deferred && message.Protocol == "lean" && message.PacketType == 1) return 0;
             if (deferred && (bulk.Deferred.Count == MaxDeferredMessages || bulk.DeferredBytes == MaxDeferredBytes))
             {
                 CloseForBulkOverflow(bulk);

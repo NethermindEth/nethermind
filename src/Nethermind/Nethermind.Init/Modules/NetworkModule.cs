@@ -80,9 +80,19 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddFirst<IP2PCapabilityResolver, DefaultP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, SnapP2PCapabilityResolver>()
             .AddLast<IP2PCapabilityResolver, LeanP2PCapabilityResolver>()
+            .AddSingleton<Subprotocols.Lean.LeanObjectTransport>()
+            .Bind<Consensus.ProofAggregation.IBlockProofSidecarSource, Subprotocols.Lean.LeanObjectTransport>()
             .AddSingleton<Subprotocols.Lean.LeanProofGossip>()
             .AddMessageSerializer<Subprotocols.Lean.LeanStatusMessage, Subprotocols.Lean.LeanStatusMessageSerializer>()
-            .AddMessageSerializer<Subprotocols.Lean.LeanProofChunkMessage, Subprotocols.Lean.LeanProofChunkMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.AnnounceObjectsMessage, Subprotocols.Lean.AnnounceObjectsMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.GetObjectsMessage, Subprotocols.Lean.GetObjectsMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.ObjectsMessage, Subprotocols.Lean.ObjectsMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.GetChunksMessage, Subprotocols.Lean.GetChunksMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.ChunkMessage, Subprotocols.Lean.ChunkMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.CompleteMessage, Subprotocols.Lean.CompleteMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.CancelMessage, Subprotocols.Lean.CancelMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.GetTransactionsMessage, Subprotocols.Lean.GetTransactionsMessageSerializer>()
+            .AddMessageSerializer<Subprotocols.Lean.TransactionsMessage, Subprotocols.Lean.TransactionsMessageSerializer>()
 
             // Handshake
             .AddMessageSerializer<Handshake.AuthEip8Message, Handshake.AuthEip8MessageSerializer>()
@@ -181,7 +191,6 @@ public class NetworkModule(IConfigProvider configProvider) : Module
 
             // Protocol handler factories
             .AddProtocolHandler<Subprotocols.Lean.Lean1ProtocolHandler>()
-            .AddSingleton<Subprotocols.Lean.LeanReassemblyBudget>()
             .AddProtocolHandler<Subprotocols.Snap.V1.Snap1ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Snap.V2.Snap2ProtocolHandler>()
             .AddProtocolHandler<Subprotocols.Eth.V66.Eth66ProtocolHandler>()

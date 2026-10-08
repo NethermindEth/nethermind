@@ -37,6 +37,9 @@ namespace Nethermind.Network.P2P
     {
         bool EnableLeanBulk();
         ValueTask<int> DeliverLeanChunkAsync<T>(T message, CancellationToken cancellationToken) where T : P2PMessage;
+
+        /// <summary>Whether a packet exceeds the EIP-8437 <c>MAX_MESSAGE_BYTES</c> ceiling of its protocol, checked before decompression.</summary>
+        bool ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength);
     }
 
     public class Session : ISession, ILeanBulkSession
@@ -286,9 +289,12 @@ namespace Nethermind.Network.P2P
             void TraceDeliverMessage(T msg) => _logger.Trace($"P2P to deliver {msg.Protocol}.{msg.PacketType} on {this}");
         }
 
+        bool ILeanBulkSession.ExceedsMessageLimit(int adaptivePacketType, int uncompressedLength) =>
+            uncompressedLength > LeanProtocol.MaxMessageBytes && _resolver?.ResolveProtocol(adaptivePacketType).Item1 == LeanProtocol.Code;
+
         bool ILeanBulkSession.EnableLeanBulk()
         {
-            if (!HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return false;
+            if (!HasAgreedCapability(new Capability(LeanProtocol.Code, LeanProtocol.Version)) || _packetSender is not PacketSender sender) return false;
             sender.EnableLeanBulk();
             return true;
         }
@@ -302,8 +308,8 @@ namespace Nethermind.Network.P2P
                     if (State < SessionState.Initialized) ThrowInvalidSessionState();
                     if (IsClosed) return 0;
                 }
-                if (message is not LeanProofChunkMessage
-                    || !HasAgreedCapability(new Capability("lean", 1)) || _packetSender is not PacketSender sender) return 0;
+                if (message is not ChunkMessage
+                    || !HasAgreedCapability(new Capability(LeanProtocol.Code, LeanProtocol.Version)) || _packetSender is not PacketSender sender) return 0;
                 message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
                 int size = await sender.EnqueueAsync(message, cancellationToken).ConfigureAwait(false);
                 if (size != 0)
