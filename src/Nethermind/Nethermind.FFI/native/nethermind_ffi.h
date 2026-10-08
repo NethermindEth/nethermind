@@ -66,6 +66,26 @@ typedef struct nm_block_result
     size_t error_len;
 } nm_block_result;
 
+typedef enum nm_tx_event
+{
+    /* The tx was added to the pool. */
+    NM_TX_PENDING = 0,
+    /* The tx left the pool, e.g. because it was included in a block. */
+    NM_TX_REMOVED = 1,
+    /* The tx was evicted by the pool, e.g. pushed out by its capacity limit. */
+    NM_TX_EVICTED = 2,
+} nm_tx_event;
+
+/*
+ * Receives tx pool events; see nm_set_tx_callback.
+ *
+ * event:   an nm_tx_event.
+ * tx_hash: 32 bytes.
+ * tx:      the EIP-2718 encoding as included in blocks (without a blob sidecar).
+ * tx_hash and tx are only valid for the duration of the call.
+ */
+typedef void (*nm_tx_callback)(void* user_data, int32_t event, const uint8_t* tx_hash, const uint8_t* tx, size_t tx_len);
+
 typedef struct nm_node nm_node;
 
 /*
@@ -96,6 +116,18 @@ int nm_get_head(nm_node* node, nm_head* head);
 int nm_execute_block(nm_node* node, const uint8_t* block_rlp, size_t block_rlp_len, nm_block_result* result);
 
 void nm_free_block_result(nm_node* node, nm_block_result* result);
+
+/*
+ * Sets the tx pool event callback, or clears it when callback is NULL. Requires a ready node.
+ *
+ * The callback runs synchronously on whichever thread changed the pool (network, RPC or block processing), possibly
+ * concurrently, so it must be thread-safe and fast: it delays the pool operation that raised it. A call already in
+ * progress may still complete after the callback is cleared.
+ *
+ * Mirrors the pool's own events: a tx replaced by a higher-fee tx with the same sender and nonce is not reported, and
+ * a tx dropped by the pool's eviction policy may be reported as NM_TX_REMOVED followed by NM_TX_EVICTED.
+ */
+int nm_set_tx_callback(nm_node* node, nm_tx_callback callback, void* user_data);
 
 /* Requests the node to shut down with the given process exit code; returns without waiting. */
 int nm_stop(nm_node* node, int32_t exit_code);

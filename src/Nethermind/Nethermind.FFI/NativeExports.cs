@@ -110,6 +110,23 @@ public static unsafe class NativeExports
     public static void Free(void* pointer) => NativeMemory.Free(pointer);
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
+    {
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                node.SetTxCallback(callback, userData);
+                return FfiStatus.Ok;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     public static int Stop(int exitCode)
     {
         try

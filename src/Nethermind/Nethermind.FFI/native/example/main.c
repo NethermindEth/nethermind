@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 // Usage: example <ffi_dir> <config> [Category.Name=value...]
-// Starts the node, prints the head, then executes each hex-encoded block RLP read from stdin, one per line.
-// Stops the node on end of input.
+// Starts the node, prints the head and tx pool events, then executes each hex-encoded block RLP read from stdin, one
+// per line. Stops the node on end of input.
 
 #include "../nethermind_ffi.h"
 
+#include <pthread.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -16,6 +17,21 @@ static void print_hex(const char* label, const uint8_t* bytes, size_t length)
     printf("%s0x", label);
     for (size_t i = 0; i < length; i++) printf("%02x", bytes[i]);
     printf("\n");
+}
+
+static pthread_mutex_t print_lock = PTHREAD_MUTEX_INITIALIZER;
+
+// Called concurrently from the node's threads.
+static void on_tx(void* user_data, int32_t event, const uint8_t* tx_hash, const uint8_t* tx, size_t tx_len)
+{
+    (void)user_data;
+    (void)tx;
+    pthread_mutex_lock(&print_lock);
+    printf("tx %d ", event);
+    print_hex("", tx_hash, 32);
+    printf("  %zu bytes\n", tx_len);
+    fflush(stdout);
+    pthread_mutex_unlock(&print_lock);
 }
 
 static size_t parse_hex(char* line, uint8_t* out)
@@ -56,6 +72,9 @@ int main(int argc, char** argv)
             print_hex("head state root: ", head.state_root, sizeof head.state_root);
         }
 
+        printf("set tx callback: %d\n", nm_set_tx_callback(node, on_tx, NULL));
+        fflush(stdout);
+
         size_t capacity = 0;
         char* line = NULL;
         while (getline(&line, &capacity, stdin) > 0)
@@ -65,6 +84,7 @@ int main(int argc, char** argv)
 
             nm_block_result result;
             status = nm_execute_block(node, block, block_length, &result);
+            pthread_mutex_lock(&print_lock);
             printf("execute: %d gas used %llu\n", status, (unsigned long long)result.gas_used);
             print_hex("  block hash: ", result.block_hash, sizeof result.block_hash);
             print_hex("  state root: ", result.state_root, sizeof result.state_root);
@@ -72,12 +92,14 @@ int main(int argc, char** argv)
             printf("  receipts rlp: %zu bytes\n", result.receipts_len);
             if (result.error != NULL) printf("  error: %.*s\n", (int)result.error_len, (const char*)result.error);
             fflush(stdout);
+            pthread_mutex_unlock(&print_lock);
 
             nm_free_block_result(node, &result);
             free(block);
         }
 
         free(line);
+        nm_set_tx_callback(node, NULL, NULL);
     }
 
     nm_stop(node, 0);

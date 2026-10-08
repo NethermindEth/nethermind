@@ -12,22 +12,28 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.TxPool;
+using TxEventArgs = Nethermind.TxPool.TxEventArgs;
 
 namespace Nethermind.FFI;
 
 /// <summary>Node operations exposed to the native host.</summary>
-public sealed class FfiNode(
+public sealed unsafe class FfiNode(
     IBlockTree blockTree,
     IStateReader stateReader,
     ISpecProvider specProvider,
     IReadOnlyList<IBlockPreprocessorStep> preprocessorSteps,
     BlockValidator blockValidator,
-    RegeneratingReceiptsEnvSourceFactory envSourceFactory) : IDisposable
+    RegeneratingReceiptsEnvSourceFactory envSourceFactory,
+    ITxPool txPool,
+    ILogManager logManager) : IDisposable
 {
     // NoValidation keeps the block processor's own validator out; the processed block is validated explicitly below.
     private const ProcessingOptions Options = ProcessingOptions.ReadOnlyChain
@@ -39,6 +45,10 @@ public sealed class FfiNode(
 
     private readonly IShareableOverridableEnvSource<ReceiptsRegenerationEnv> _envSource =
         envSourceFactory.Create(Environment.ProcessorCount);
+
+    private readonly ILogger _logger = logManager.GetClassLogger<FfiNode>();
+    private volatile TxCallback? _txCallback;
+    private int _txPoolSubscribed;
 
     public BlockHeader? Head => blockTree.Head?.Header;
 
@@ -102,10 +112,67 @@ public sealed class FfiNode(
         }
     }
 
-    public void Dispose() => _envSource.Dispose();
+    /// <summary>Sets the native callback receiving tx pool events, or clears it with a null <paramref name="callback"/>.</summary>
+    /// <remarks>
+    /// Invoked synchronously on the thread raising the pool event, possibly concurrently. The pool is only subscribed
+    /// to once a callback is first set, so a host that never sets one adds nothing to tx admission.
+    /// </remarks>
+    public void SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
+    {
+        _txCallback = callback is null ? null : new TxCallback(callback, userData);
+        if (callback is null || Interlocked.Exchange(ref _txPoolSubscribed, 1) != 0) return;
+
+        txPool.NewPending += OnNewPending;
+        txPool.RemovedPending += OnRemovedPending;
+        txPool.EvictedPending += OnEvictedPending;
+    }
+
+    public void Dispose()
+    {
+        if (Volatile.Read(ref _txPoolSubscribed) != 0)
+        {
+            txPool.NewPending -= OnNewPending;
+            txPool.RemovedPending -= OnRemovedPending;
+            txPool.EvictedPending -= OnEvictedPending;
+        }
+
+        _envSource.Dispose();
+    }
+
+    private void OnNewPending(object? sender, TxEventArgs e) => Notify(FfiTxEvent.Pending, e.Transaction);
+
+    private void OnRemovedPending(object? sender, TxEventArgs e) => Notify(FfiTxEvent.Removed, e.Transaction);
+
+    private void OnEvictedPending(object? sender, TxEventArgs e) => Notify(FfiTxEvent.Evicted, e.Transaction);
+
+    private void Notify(FfiTxEvent txEvent, Transaction tx)
+    {
+        if (_txCallback is not { } callback) return;
+
+        // Raised from inside the pool: an exception here would fail the tx admission or removal that raised it.
+        try
+        {
+            using ArrayPoolList<byte> encoded = TxDecoder.Instance.EncodeToArrayPoolList(tx, RlpBehaviors.SkipTypedWrapping);
+            fixed (byte* hash = tx.Hash!.Bytes)
+            fixed (byte* encodedTx = encoded.AsSpan())
+            {
+                callback.Function(callback.UserData, (int)txEvent, hash, encodedTx, (nuint)encoded.Count);
+            }
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"FFI tx callback failed for {txEvent} {tx.Hash}", e);
+        }
+    }
 
     private static byte[] EncodeReceipts(TxReceipt[] receipts, IReleaseSpec spec) =>
         Rlp.Encode(receipts, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None).Bytes;
+
+    private sealed class TxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> function, nint userData)
+    {
+        public readonly delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> Function = function;
+        public readonly nint UserData = userData;
+    }
 }
 
 /// <param name="Header">The processed header carrying the computed roots, when <paramref name="Status"/> is <see cref="FfiStatus.Ok"/>.</param>

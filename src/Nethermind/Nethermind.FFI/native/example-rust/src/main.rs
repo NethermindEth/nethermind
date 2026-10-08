@@ -3,17 +3,17 @@
 
 //! Usage: nethermind-ffi-example <ffi_dir> <config> [Category.Name=value...]
 //!
-//! Starts the node, prints the head, then executes each hex-encoded block RLP read from stdin, one per line.
-//! Stops the node on end of input. Mirrors ../example/main.c.
+//! Starts the node, prints the head and tx pool events, then executes each hex-encoded block RLP read from stdin,
+//! one per line. Stops the node on end of input. Mirrors ../example/main.c.
 
-use std::ffi::{CString, c_char, c_int};
+use std::ffi::{CString, c_char, c_int, c_void};
 use std::io::{self, BufRead};
 use std::process::ExitCode;
 use std::{env, ptr, slice};
 
 /// Declarations matching ../nethermind_ffi.h.
 mod sys {
-    use std::ffi::{c_char, c_int};
+    use std::ffi::{c_char, c_int, c_void};
 
     pub const NM_OK: c_int = 0;
 
@@ -42,6 +42,14 @@ mod sys {
         pub error_len: usize,
     }
 
+    pub type NmTxCallback = unsafe extern "C" fn(
+        user_data: *mut c_void,
+        event: i32,
+        tx_hash: *const u8,
+        tx: *const u8,
+        tx_len: usize,
+    );
+
     unsafe extern "C" {
         pub fn nm_start(
             ffi_dir: *const c_char,
@@ -60,6 +68,11 @@ mod sys {
             result: *mut NmBlockResult,
         ) -> c_int;
         pub fn nm_free_block_result(node: *mut NmNode, result: *mut NmBlockResult);
+        pub fn nm_set_tx_callback(
+            node: *mut NmNode,
+            callback: Option<NmTxCallback>,
+            user_data: *mut c_void,
+        ) -> c_int;
         pub fn nm_stop(node: *mut NmNode, exit_code: i32) -> c_int;
         pub fn nm_join(node: *mut NmNode) -> c_int;
     }
@@ -157,6 +170,11 @@ impl Node {
         execution
     }
 
+    /// Sets (or with `None` clears) the tx pool event callback; it runs concurrently on the node's threads.
+    fn set_tx_callback(&self, callback: Option<sys::NmTxCallback>) -> c_int {
+        unsafe { sys::nm_set_tx_callback(self.0, callback, ptr::null_mut()) }
+    }
+
     /// Stops the node and waits for it, returning its exit code.
     fn shutdown(self) -> c_int {
         unsafe {
@@ -164,6 +182,17 @@ impl Node {
             sys::nm_join(self.0)
         }
     }
+}
+
+unsafe extern "C" fn on_tx(
+    _user_data: *mut c_void,
+    event: i32,
+    tx_hash: *const u8,
+    _tx: *const u8,
+    tx_len: usize,
+) {
+    let hash = unsafe { slice::from_raw_parts(tx_hash, 32) };
+    println!("tx {event} {}  {tx_len} bytes", hex(hash));
 }
 
 unsafe fn copy(data: *const u8, length: usize) -> Vec<u8> {
@@ -217,6 +246,8 @@ fn main() -> ExitCode {
             Err(status) => println!("head: {status}"),
         }
 
+        println!("set tx callback: {}", node.set_tx_callback(Some(on_tx)));
+
         for line in io::stdin().lock().lines().map_while(Result::ok) {
             let block_rlp = match parse_hex(&line) {
                 Ok(block_rlp) => block_rlp,
@@ -241,6 +272,7 @@ fn main() -> ExitCode {
         }
     }
 
+    node.set_tx_callback(None);
     let exit_code = node.shutdown();
     println!("exit code: {exit_code}");
     ExitCode::from(exit_code as u8)
