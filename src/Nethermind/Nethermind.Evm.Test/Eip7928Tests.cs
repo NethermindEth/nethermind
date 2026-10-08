@@ -1128,11 +1128,11 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         TransactionResult storeResult = buildUp ? processor.BuildUp(store, NullTxTracer.Instance) : processor.Execute(store, NullTxTracer.Instance);
         AccountChangesAtIndex? createdChanges = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(createdAddress);
 
+        Assert.That(createdChanges, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(createResult.TransactionExecuted, Is.True, createResult.ToString());
             Assert.That(storeResult.TransactionExecuted, Is.True, storeResult.ToString());
-            Assert.That(createdChanges, Is.Not.Null);
             Assert.That(createdChanges!.StorageChanges.TryGetValue(slot, out StorageChange change), Is.True, "the wipe zeroed the slot before this transaction");
             Assert.That(change, Is.EqualTo(new StorageChange(1, 5)));
             Assert.That(createdChanges.StorageReads, Does.Not.Contain(slot));
@@ -1157,9 +1157,9 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
         TestState.Get(new StorageCell(createdAddress, slot), out UInt256 stored);
 
+        Assert.That(createdChanges, Is.Not.Null);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(createdChanges, Is.Not.Null);
             Assert.That(createdChanges!.NonceChange, Is.Not.Null, "the creation went through, so the wipe happened");
             Assert.That(createdChanges.StorageReads, Does.Contain(slot));
             Assert.That(createdChanges.StorageChangeCount, Is.Zero);
