@@ -62,10 +62,11 @@ internal sealed class StatelessSpecProvider(
     /// <param name="payloadActivation">The activation of the payload's own block.</param>
     public static StatelessSpecProvider Create(ulong chainId, ProtocolFork protocolFork, ForkActivation payloadActivation)
     {
-        ChainSpecBasedSpecProvider.KnownProvidersByChainId.TryGetValue(chainId, out IForkAwareSpecProvider? baseProvider);
-
+        // Mainnet skips the known-providers index, which constructs every built-in chain's provider.
         // Unknown chains (e.g. devnets) fall back to Mainnet — for ProtocolFork.Current, to its schedule too.
-        baseProvider ??= MainnetSpecProvider.Instance;
+        IForkAwareSpecProvider baseProvider = chainId == BlockchainIds.Mainnet
+            ? MainnetSpecProvider.Instance
+            : ChainSpecBasedSpecProvider.KnownProvidersByChainId.GetValueOrDefault(chainId) ?? MainnetSpecProvider.Instance;
 
         // A schema may pin a fork the chain has not scheduled yet: that is how devnets and spec fixtures
         // replay future rules on a mainnet-shaped chain. Pinning one the chain has already left is the
