@@ -224,10 +224,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
         private class CreateAccessListTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ISpecProvider specProvider, CreateAccessListTxExecutor.FeeDefaults feeDefaults, bool optimize)
             : TxExecutor<AccessListResultForRpc?>(blockchainBridge, blockFinder, rpcConfig, specProvider)
         {
-            private const string ZeroMaxFeePerGas = "maxFeePerGas must be non-zero";
-            private const string ZeroGasPriceAfterLondon = "gasPrice must be non-zero after london fork";
-            private const string FeeFieldsBeforeLondon = "maxFeePerGas and maxPriorityFeePerGas are not valid before London is active";
-
             protected override bool ValidatesFeeCapOrder => false;
 
             // The fee fields follow the defaults of a transaction about to be sent, as in Geth.
@@ -250,7 +246,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             /// </remarks>
             public static FeeDefaults FillFeeDefaults(TransactionForRpc call, BlockHeader header, bool isLondon, IGasPriceOracle gasPriceOracle)
             {
-                if (FeeDefaultsError(call, isLondon) is { } feeDefaultsError)
+                if (FeeDefaultRules.Error(call, isLondon) is { } feeDefaultsError)
                     return new FeeDefaults(feeDefaultsError, null);
 
                 // Before London the rules above leave no fee field to fill.
@@ -264,9 +260,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 UInt256 priorityFee = request.MaxPriorityFeePerGas ??= gasPriceOracle.GetMaxPriorityGasFeeEstimate();
                 if (request.MaxFeePerGas is { } feeCap)
                 {
-                    return feeCap < priorityFee
-                        ? new FeeDefaults($"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})", null)
-                        : default;
+                    return new FeeDefaults(FeeDefaultRules.OrderError(feeCap, priorityFee), null);
                 }
 
                 // The fee cap is filled without a bound and applied as its low 256 bits, which then sit below the
@@ -276,30 +270,6 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return filledFeeCap > (BigInteger)UInt256.MaxValue && call.GetType() == typeof(EIP1559TransactionForRpc)
                     ? new FeeDefaults(null, filledFeeCap)
                     : default;
-            }
-
-            private static string? FeeDefaultsError(TransactionForRpc call, bool isLondon)
-            {
-                if (call is BlobTransactionForRpc { MaxFeePerBlobGas: { IsZero: true } } || call is not LegacyTransactionForRpc legacy)
-                    return null;
-
-                UInt256? gasPrice = legacy.GasPrice;
-                UInt256? maxFeePerGas = (call as EIP1559TransactionForRpc)?.MaxFeePerGas;
-                UInt256? maxPriorityFeePerGas = (call as EIP1559TransactionForRpc)?.MaxPriorityFeePerGas;
-                if (gasPrice is not null && (maxFeePerGas is not null || maxPriorityFeePerGas is not null || call is SetCodeTransactionForRpc))
-                    return null;
-
-                if (gasPrice is null && maxFeePerGas is { } feeCap && maxPriorityFeePerGas is { } priorityFee)
-                {
-                    return feeCap.IsZero ? ZeroMaxFeePerGas
-                        : feeCap < priorityFee ? $"maxFeePerGas ({feeCap.ToHexString(skipLeadingZeros: true)}) < maxPriorityFeePerGas ({priorityFee.ToHexString(skipLeadingZeros: true)})"
-                        : null;
-                }
-
-                if (gasPrice is not null)
-                    return gasPrice.Value.IsZero && isLondon ? ZeroGasPriceAfterLondon : null;
-
-                return !isLondon && (maxFeePerGas is not null || maxPriorityFeePerGas is not null) ? FeeFieldsBeforeLondon : null;
             }
 
             /// <summary>The hash of an unsigned dynamic-fee <paramref name="tx"/> carrying <paramref name="feeCap"/>.</summary>

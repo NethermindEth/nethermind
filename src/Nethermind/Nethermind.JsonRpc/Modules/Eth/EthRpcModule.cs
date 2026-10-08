@@ -76,6 +76,7 @@ public partial class EthRpcModule(
 {
     public const int GetProofStorageKeyLimit = 1000;
     public const int MaxGetStorageSlots = StorageValuesRequest.MaxSlots;
+    private const string UnknownAccount = "unknown account";
     protected readonly Encoding _messageEncoding = Encoding.UTF8;
     protected readonly IJsonRpcConfig _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
     protected readonly IBlockchainBridge _blockchainBridge = blockchainBridge ?? throw new ArgumentNullException(nameof(blockchainBridge));
@@ -352,8 +353,32 @@ public partial class EthRpcModule(
         return ResultWrapper<Signature>.Success(sig);
     }
 
-    public virtual Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public virtual async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndSendTransaction(rpcTx));
+
+    /// <summary>
+    /// A request from an account this node holds no key for fails as an unknown account whatever else is wrong
+    /// with it, so the wallet is asked only once <paramref name="result"/> has failed.
+    /// </summary>
+    protected ResultWrapper<Hash256> ReportUnknownAccountFirst(SignableTransactionForRpc rpcTx, ResultWrapper<Hash256> result) =>
+        result.Result.ResultType == ResultType.Failure && !HoldsAccount((rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero)
+            ? ResultWrapper<Hash256>.Fail(UnknownAccount, ErrorCodes.InvalidInput)
+            : result;
+
+    /// <summary>The fee rule <paramref name="rpcTx"/> breaks as a transaction to send, or null when its fees pass.</summary>
+    /// <remarks>Blob transactions are not sent this way, so they are not checked.</remarks>
+    protected ResultWrapper<Hash256>? CheckSendTransactionFees(SignableTransactionForRpc rpcTx) =>
+        rpcTx is not BlobTransactionForRpc
+        && _blockFinder.Head?.Header is { } head
+        && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(head).IsEip1559Enabled) is { } feeError
+            ? ResultWrapper<Hash256>.Fail(feeError, ErrorCodes.InvalidInput)
+            : null;
+
+    private Task<ResultWrapper<Hash256>> SignAndSendTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return Task.FromResult(feeError);
+
         if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
             return Task.FromResult(ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput));
         rpcTx = (SignableTransactionForRpc)requested;
@@ -391,9 +416,15 @@ public partial class EthRpcModule(
         if (!_rpcConfig.EnableEthSignTransaction)
             return ResultWrapper<SignTransactionResult>.Fail("eth_signTransaction is disabled", ErrorCodes.MethodNotFound);
 
-        Address from = (rpcTx as LegacyTransactionForRpc)?.From ?? Address.Zero;
-        if (!_wallet.IsUnlocked(from))
-            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+        // With the signing fields present, fees are checked before the rest of the request; a request carrying
+        // blobs has its sidecar checked first.
+        if (rpcTx.MissingSigningField() is null
+            && rpcTx is not BlobTransactionForRpc { Blobs: not null }
+            && _blockFinder.Head?.Header is { } signingHead
+            && FeeDefaultRules.Error(rpcTx, _specProvider.GetSpec(signingHead).IsEip1559Enabled) is { } feeError)
+        {
+            return ResultWrapper<SignTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
+        }
 
         if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
             return ResultWrapper<SignTransactionResult>.Fail(typeConflict, ErrorCodes.InvalidInput);
@@ -420,8 +451,14 @@ public partial class EthRpcModule(
                 return ResultWrapper<SignTransactionResult>.Fail(attachError, ErrorCodes.InvalidInput);
         }
 
+        // The account is looked up only once the request itself is valid.
         if (!_wallet.TrySignTransaction(tx, chainId))
-            return ResultWrapper<SignTransactionResult>.Fail("authentication needed: password or unlock", ErrorCodes.InvalidInput);
+        {
+            string signingError = HoldsAccount(tx.SenderAddress)
+                ? "authentication needed: password or unlock"
+                : UnknownAccount;
+            return ResultWrapper<SignTransactionResult>.Fail(signingError, ErrorCodes.InvalidInput);
+        }
 
         tx.Hash = tx.CalculateHash();
 
@@ -429,6 +466,8 @@ public partial class EthRpcModule(
 
         return BuildSignedResult(tx);
     }
+
+    private bool HoldsAccount(Address? address) => address is not null && _wallet.HasKey(address);
 
     private static ResultWrapper<SignTransactionResult> BuildSignedResult(Transaction tx)
     {
@@ -488,6 +527,11 @@ public partial class EthRpcModule(
         if (legacyTx.From is not { } from)
             return ResultWrapper<FillTransactionResult>.Fail("from address not specified", ErrorCodes.InvalidInput);
 
+        // Fees are checked before the chain id, as they are when a transaction to send is filled; a request carrying
+        // blobs has its sidecar checked first.
+        if (rpcTx is not BlobTransactionForRpc { Blobs: not null } && FeeDefaultRules.Error(rpcTx, spec.IsEip1559Enabled) is { } feeError)
+            return ResultWrapper<FillTransactionResult>.Fail(feeError, ErrorCodes.InvalidInput);
+
         if (legacyTx.ChainId is { } requestedChainId && requestedChainId != chainId)
             return ResultWrapper<FillTransactionResult>.Fail(RpcTransactionErrors.InvalidChainId(chainId, requestedChainId), ErrorCodes.InvalidInput);
 
@@ -510,6 +554,13 @@ public partial class EthRpcModule(
         Result fillResult = rpcTx.FillDefaults(fillContext);
         if (!fillResult)
             return ResultWrapper<FillTransactionResult>.Fail(fillResult.Error!, ErrorCodes.InvalidInput);
+
+        // A fee cap left in place next to a filled priority fee must still cover it.
+        if (rpcTx is EIP1559TransactionForRpc { MaxFeePerGas: { } filledFeeCap, MaxPriorityFeePerGas: { } filledPriorityFee }
+            && FeeDefaultRules.OrderError(filledFeeCap, filledPriorityFee) is { } orderError)
+        {
+            return ResultWrapper<FillTransactionResult>.Fail(orderError, ErrorCodes.InvalidInput);
+        }
 
         if (rpcTx is FrameTransactionForRpc frameTx && NeedsFrameGas(frameTx))
         {

@@ -130,8 +130,14 @@ public class OptimismEthRpcModule(
         return ResultWrapper<IEnumerable<ReceiptForRpc>?>.Success(result);
     }
 
-    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx)
+    public override async Task<ResultWrapper<Hash256>> eth_sendTransaction(SignableTransactionForRpc rpcTx) =>
+        ReportUnknownAccountFirst(rpcTx, await SignAndForwardTransaction(rpcTx));
+
+    private async Task<ResultWrapper<Hash256>> SignAndForwardTransaction(SignableTransactionForRpc rpcTx)
     {
+        if (CheckSendTransactionFees(rpcTx) is { } feeError)
+            return feeError;
+
         if (!rpcTx.WithRequestedType().Success(out TransactionForRpc? requested, out string? typeConflict))
             return ResultWrapper<Hash256>.Fail(typeConflict, ErrorCodes.InvalidInput);
         rpcTx = (SignableTransactionForRpc)requested;
