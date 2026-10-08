@@ -180,8 +180,9 @@ public interface IJsonRpcConfig : IConfig
             `eth_createAccessList` request with a state or block override, waits in arrival order for one of the
             `EthModuleConcurrentInstances` execution slots before it is answered with `LimitExceeded` (HTTP 503).
             `0` or a negative value disables queueing. Items of one batch share one budget.
-            On a WebSocket or IPC connection served by one worker (the default), a waiting request also holds up that
-            connection's later requests. A request keeps its slot until it completes, so long calls make the others wait.
+            On a WebSocket or IPC connection served by one worker (`WebSocketsProcessingConcurrency` or
+            `IpcProcessingConcurrency` of 1), a waiting request also holds up that connection's later requests.
+            A request keeps its slot until it completes, so long calls make the others wait.
             """,
         DefaultValue = "100")]
     int EvmExecutionMaxQueueWaitMs { get; set; }
