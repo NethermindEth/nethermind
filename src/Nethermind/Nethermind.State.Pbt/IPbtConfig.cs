@@ -24,9 +24,8 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Path to the canonical EIP-8347 PBT snapshot. The PBT state is built from the snapshot alone; with MigrationPreimagesPath it is also verified against the anchor's MPT state root.", DefaultValue = "null")]
     string? MigrationSnapshotPath { get; set; }
 
-    /// <summary>Path to canonical EIP-8347 preimages. Beside MigrationSnapshotPath they only verify the snapshot; alone, their values are read from the local flat state. Defaults to null.</summary>
-    /// <remarks>Alone, the persisted flat state must be at MigrationAnchor.</remarks>
-    [ConfigItem(Description = "Path to canonical EIP-8347 preimages. With MigrationSnapshotPath, they only verify the imported snapshot against the anchor's MPT state root. Alone, the PBT state is built from the listed addresses and slots with their values read from the local flat state, which must be persisted at MigrationAnchor.", DefaultValue = "null")]
+    /// <summary>Path to canonical EIP-8347 preimages verifying MigrationSnapshotPath against the anchor's MPT state root. Defaults to null.</summary>
+    [ConfigItem(Description = "Path to canonical EIP-8347 preimages. They only verify the imported MigrationSnapshotPath against the anchor's MPT state root, so they require it.", DefaultValue = "null")]
     string? MigrationPreimagesPath { get; set; }
 
     /// <summary>Whether to generate a separate offline source from the MPT genesis allocation. Defaults to false.</summary>
@@ -74,7 +73,7 @@ public interface IPbtConfig : IConfig
     int ImportConcurrency { get; set; }
 
     /// <summary>Whether to report the known child header's state root instead of the computed PBT root. Defaults to false.</summary>
-    [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root. Does not affect flat mirror mode.", DefaultValue = "false")]
+    [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }
 
     /// <summary>Whether to import the EIP-8347 snapshot at MigrationAnchor and keep running on PBT from it. Defaults to false.</summary>
@@ -107,9 +106,6 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "The depth, in blocks, past which states are force-persisted even without finality, bounding memory use, in blocks.", DefaultValue = "256")]
     int MaxReorgDepth { get; set; }
-
-    [ConfigItem(Description = "Run the PBT backend as a shadow of the flat backend rather than as the state backend: every main block processing read is compared against the flat one and every write is applied to both, and PBT persists exactly the ranges the flat db persists. Requires FlatDb.Enabled, and requires both databases to already hold the very same persisted state - from an empty data directory, or after an ImportFromPreimageFlat run. Diagnostic use only; it roughly doubles the cost of state access, and `Blocks.PreWarming` should be `None` so reads are not served from the pre-block caches before they reach the mirror.", DefaultValue = "false")]
-    bool MirrorFlat { get; set; }
 
     [ConfigItem(Description = "Rebuild the PBT state from an existing preimage-flat state database, then exit. Requires a fully synced FlatLayout.PreimageFlat 'flat' database (and the 'code' database) in the data directory.", DefaultValue = "false")]
     bool ImportFromPreimageFlat { get; set; }

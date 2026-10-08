@@ -8,12 +8,8 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
-using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.Image;
@@ -43,7 +39,6 @@ internal sealed class PbtAnchorPublication(
     internal const int BatchSize = 255;
     private const string StagePhase = "PBT import stage";
     private const string FoldPhase = "PBT import fold";
-    private const string PreimagesPhase = "PBT import preimages";
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
@@ -65,79 +60,11 @@ internal sealed class PbtAnchorPublication(
             claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
     }
 
-    /// <summary>Imports the native PBT state at the anchor from preimages, taking every value from the flat state.</summary>
-    /// <remarks>The flat state must be persisted at the anchor itself, since the preimages list the anchor's keys.</remarks>
-    public async Task<ValueHash256> PublishPreimages(Stream preimages, IPersistence.IPersistenceReader flat, IReadOnlyKeyValueStore code,
-        PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        anchor.Validate();
-        Stopwatch importing = Stopwatch.StartNew();
-        if (ImportedEarlier(anchor) is { } imported) return imported;
-        if (flat.CurrentState.BlockNumber != anchor.Header.Number || flat.CurrentState.StateRoot != anchor.Header.StateRoot!.ValueHash256)
-            throw new InvalidDataException($"Preimages need the flat state at the anchor {anchor.Header.ToString(BlockHeader.Format.Short)}, but it is at {flat.CurrentState}.");
-
-        string directory = Path.Combine(scratchDirectory, $"pbt-preimages-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(directory);
-        try
-        {
-            using PbtSortedSpool leaves = new("import preimage leaves", directory, config.ExportSortBufferBytes, writerCount: 1, logManager, cancellationToken);
-            ulong leafCount;
-            using (PbtSortedSpool.Writer writer = leaves.CreateWriter())
-                leafCount = WritePreimageLeaves(preimages, flat, code, writer, cancellationToken);
-            if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
-            return await ImportLeaves(anchor, scratchDirectory, _ => SpoolLeaves(leaves), read => read / (float)leafCount,
-                claimedRoot: null, preimages: null, isAnchorCurrent, importing, cancellationToken);
-        }
-        finally { Directory.Delete(directory, recursive: true); }
-    }
-
-    /// <summary>Emits the tree leaves of every account and slot the preimages list, with their values from the flat state.</summary>
-    /// <returns>The number of leaves emitted.</returns>
-    private ulong WritePreimageLeaves(Stream preimages, IPersistence.IPersistenceReader flat, IReadOnlyKeyValueStore code,
-        PbtSortedSpool.Writer leaves, CancellationToken cancellationToken)
-    {
-        PbtPreimageReader reader = new(preimages);
-        Span<byte> slotValue = stackalloc byte[32];
-        ulong leafCount = 0, accounts = 0, slots = 0;
-        float walked = 0;
-        using ProgressReporter progress = PbtImageProgress.Start(PreimagesPhase, "acc", 0, logManager);
-        Func<string> slotCounter = PbtImageProgress.Counter("slot", () => slots);
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(PreimagesPhase, walked, $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
-        while (reader.ReadAccount(out Address? address, out uint slotCount, cancellationToken))
-        {
-            walked = PbtImageProgress.KeyspaceFraction(reader.AccountHash!.Value);
-            progress.Update(++accounts);
-            Account account = flat.GetAccount(address!) ?? throw new InvalidDataException($"Flat state has no account {address} listed in the preimages.");
-            CodeInfo? accountCode = account.HasCode
-                ? new CodeInfo(code.Get(account.CodeHash.Bytes) ?? throw new InvalidDataException($"Missing code {account.CodeHash} of {address}."))
-                : null;
-            ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address!);
-            foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressKeyHash, account, accountCode))
-            {
-                leaves.Add(key.Bytes, value.Bytes);
-                leafCount++;
-            }
-
-            for (uint index = 0; index < slotCount; index++)
-            {
-                slots++;
-                UInt256 slot = new(reader.ReadSlot(cancellationToken).Bytes, isBigEndian: true);
-                UInt256 value = default;
-                if (!flat.TryGetSlot(address!, slot, ref value) || value.IsZero) continue;
-                value.ToBigEndian(slotValue);
-                leaves.Add(PbtStateKey.Storage(address!, addressKeyHash, slot).Bytes, slotValue);
-                leafCount++;
-            }
-        }
-        return leafCount;
-    }
-
     /// <summary>Stages the logical state of an ascending leaf stream, then folds the same stream into the tree.</summary>
     /// <remarks>Preimages are verified before the fold, which is what marks the target valid, so a refused import
     /// stays unpublished and a restart wipes its staging.</remarks>
     private async Task<ValueHash256> ImportLeaves(PbtImageAnchor anchor, string scratchDirectory,
-        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, ValueHash256? claimedRoot, Stream? preimages,
+        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, ValueHash256 claimedRoot, Stream? preimages,
         Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
         PrepareStaging(anchor, cancellationToken);
@@ -246,12 +173,6 @@ internal sealed class PbtAnchorPublication(
     {
         snapshot.Position = 0;
         foreach (RebuildEntry entry in PbtSnapshotCodec.ReadLeaves(snapshot, cancellationToken)) yield return entry;
-    }
-
-    private static IEnumerable<RebuildEntry> SpoolLeaves(PbtSortedSpool spool)
-    {
-        using PbtSortedSpool.Cursor cursor = spool.Read();
-        while (cursor.MoveNext()) yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
     }
 
     private void RecoverStaging(PbtImageAnchor anchor, CancellationToken token)

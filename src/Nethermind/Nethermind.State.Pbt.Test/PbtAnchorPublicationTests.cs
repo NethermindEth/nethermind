@@ -264,22 +264,11 @@ public class PbtAnchorPublicationTests
     }
 
     [Test]
-    public async Task Snapshot_alone_or_preimages_over_flat_publish_the_native_state(
-        [Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name, [Values("snapshot", "preimages")] string mode)
+    public async Task Snapshot_alone_publishes_the_native_state([Values("anchor", "a1", "a2", "a3", "a4", "a5")] string name)
     {
         using Harness harness = new(name);
-        ValueHash256 root;
-        if (mode == "snapshot")
-        {
-            using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
-            root = await harness.Publish(snapshot, null, CancellationToken.None);
-        }
-        else
-        {
-            using OfflineFixture flat = new(name, harness.Anchor.Header);
-            using FileStream preimages = OpenArtifact(name, "preimages.bin");
-            root = await harness.Publication.PublishPreimages(preimages, flat.Source, flat.Code, harness.Anchor, harness.Scratch.Path, () => true);
-        }
+        using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");
+        ValueHash256 root = await harness.Publish(snapshot, null, CancellationToken.None);
 
         AssertPublishedState(harness, root, name);
         Assert.That(Directory.GetFileSystemEntries(harness.Scratch.Path), Is.Empty);

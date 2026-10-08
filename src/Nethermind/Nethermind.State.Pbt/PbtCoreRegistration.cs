@@ -17,7 +17,7 @@ namespace Nethermind.State.Pbt;
 
 internal static class PbtCoreRegistration
 {
-    /// <summary>Registers the PBT persistence and layer management shared by the native, mirror and migration modes.</summary>
+    /// <summary>Registers the PBT persistence and layer management shared by the native and migration modes.</summary>
     public static ContainerBuilder AddPbtCore(this ContainerBuilder builder, IPbtConfig config) =>
         builder
             .AddColumnDatabase<PbtColumns>(DbNames.Pbt)

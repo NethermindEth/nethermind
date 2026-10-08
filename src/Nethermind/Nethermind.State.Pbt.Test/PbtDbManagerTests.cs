@@ -34,9 +34,9 @@ namespace Nethermind.State.Pbt.Test;
 public class PbtDbManagerTests
 {
     [Test]
-    public async Task Production_modules_share_trie_cache_and_report_inactive_migration([Values] bool mirror)
+    public async Task Production_module_shares_trie_cache_and_reports_inactive_migration()
     {
-        PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror };
+        PbtConfig config = new() { Enabled = true };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
         PbtTrieNodeCache cache = container.Resolve<PbtTrieNodeCache>();
         using ILifetimeScope child = container.BeginLifetimeScope();
@@ -55,20 +55,20 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public async Task Command_steps_are_registered_and_selected_by_config([Values] bool mirror, [Values] bool import, [Values] bool scan)
+    public async Task Command_steps_are_registered_and_selected_by_config([Values] bool import, [Values] bool scan)
     {
-        PbtConfig config = new() { Enabled = !mirror, MirrorFlat = mirror, ImportFromPreimageFlat = import, ScanTree = scan };
+        PbtConfig config = new() { Enabled = true, ImportFromPreimageFlat = import, ScanTree = scan };
         await using IContainer container = PbtTestContext.BuildProductionContainer(config);
 
         List<Type> expectedTargets = [];
         if (import) expectedTargets.Add(typeof(ImportPbtFromPreimageFlat));
-        if (scan && !mirror) expectedTargets.Add(typeof(ScanPbtTree));
+        if (scan) expectedTargets.Add(typeof(ScanPbtTree));
         StepInfo[] steps = [.. container.Resolve<IEnumerable<StepInfo>>()];
         IEnumerable<string?> commands = steps.Select(static step => step.Command);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(commands, Does.Contain("import-pbt"));
-            Assert.That(commands.Contains("scan-pbt"), Is.EqualTo(!mirror));
+            Assert.That(commands, Does.Contain("scan-pbt"));
             Assert.That(container.Resolve<IEnumerable<StepTarget>>().Select(static target => target.StepBaseType), Is.EquivalentTo(expectedTargets));
         }
     }
@@ -283,7 +283,7 @@ public class PbtDbManagerTests
     [Test]
     public void Persistence_PrefersExistingUnits_AndBoundsBackgroundDrain([Values(32, 1)] int width, [Values] PersistTrigger trigger)
     {
-        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32, MirrorFlat = trigger == PersistTrigger.MirrorPersistUpTo });
+        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 32, CompactionOffset = 0, MinReorgDepth = 0, MaxReorgDepth = 32 });
         List<(StateId From, StateId To)> writes = [];
         harness.Persistence.CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>())
             .Returns(call =>
@@ -303,8 +303,7 @@ public class PbtDbManagerTests
         }
         if (trigger == PersistTrigger.FinalizedCheck) harness.Finalized.FinalizedBlockNumber = 192;
         if (trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck) harness.Coordinator.CheckPersistence(PersistenceState(192));
-        else if (trigger == PersistTrigger.Flush) harness.Coordinator.FlushToPersistence();
-        else Assert.That(harness.Coordinator.PersistUpTo(PersistenceState(192)), Is.True);
+        else harness.Coordinator.FlushToPersistence();
 
         Assert.That(writes.Count, Is.EqualTo(trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck ? 4 : 192 / width));
         for (int index = 0; index < writes.Count; index++)
@@ -332,9 +331,9 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public void Persistence_FailedCommitDoesNotPublishOrPrune_AndUnknownMirrorSeedDoesNotAdvance()
+    public void Persistence_FailedCommitDoesNotPublishOrPrune()
     {
-        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 2, CompactionOffset = 0, MirrorFlat = true });
+        using CoordinatorHarness harness = new(new PbtConfig { CompactSize = 2, CompactionOffset = 0 });
         bool failCommit = true;
         harness.Batch.When(value => value.Commit()).Do(_ =>
         {
@@ -342,9 +341,7 @@ public class PbtDbManagerTests
         });
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 2, harness.Pool));
-        Assert.That(harness.Coordinator.PersistUpTo(PersistenceState(3)), Is.False);
-        harness.Persistence.DidNotReceive().CreateWriteBatch(Arg.Any<StateId>(), Arg.Any<StateId>(), Arg.Any<ValueHash256>(), Arg.Any<WriteFlags>());
-        Assert.Throws<InvalidOperationException>(() => harness.Coordinator.PersistUpTo(PersistenceState(2)));
+        Assert.Throws<InvalidOperationException>(() => harness.Coordinator.FlushToPersistence());
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
@@ -352,7 +349,7 @@ public class PbtDbManagerTests
         }
         harness.Batch.Received(1).Dispose();
         failCommit = false;
-        Assert.That(harness.Coordinator.PersistUpTo(PersistenceState(2)), Is.True);
+        harness.Coordinator.FlushToPersistence();
         Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
     }
 
@@ -437,23 +434,23 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public async Task Disposal_FlushesStandaloneButPreservesMirrorFloor([Values] bool mirror)
+    public async Task Disposal_FlushesToPersistence()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         Hash256 root;
-        await using (PbtTestContext context = new(db, new PbtConfig { MirrorFlat = mirror }))
+        await using (PbtTestContext context = new(db, new PbtConfig()))
         {
             using (IWorldStateScopeProvider.IScope scope = context.BeginScope(null))
                 root = scope.CommitBlock(1, Address, 100, Slot);
             await context.Manager.DisposeAsync();
             await context.Manager.DisposeAsync();
         }
-        await using PbtTestContext reopened = new(db, new PbtConfig { MirrorFlat = mirror });
+        await using PbtTestContext reopened = new(db, new PbtConfig());
         using IPbtPersistence.IReader reader = reopened.Persistence.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(mirror ? StateId.PreGenesis : new StateId(1, root)));
+        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(1, root)));
     }
 
-    public enum PersistTrigger { Check, Flush, MirrorPersistUpTo, FinalizedCheck }
+    public enum PersistTrigger { Check, Flush, FinalizedCheck }
 
     public enum TransientHandOff { Admitted, NoCache, Duplicate, ChannelFull }
 
@@ -568,7 +565,7 @@ public class PbtDbManagerTests
         public PbtPersistenceCoordinator Coordinator { get; }
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs, IPbtTrieNodeCache trieNodeCache) =>
-            new(Repository, Coordinator, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config), exitSource, logs, Config,
+            new(Repository, Coordinator, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config), exitSource, logs,
                 new MetricsConfig(), trieNodeCache);
 
         public void Dispose()

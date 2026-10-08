@@ -18,8 +18,6 @@ using Nethermind.State;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.ScopeProvider;
-using Nethermind.State.Pbt;
-using Nethermind.State.Pbt.Mirror;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Module;
@@ -35,8 +33,7 @@ public class WorldStateDbDeciderModuleTests
         Enabled = 1,
         FlatHasData = 2,
         ImportFromPruningTrieState = 4,
-        PatriciaHasData = 8,
-        MirrorPbt = 16
+        PatriciaHasData = 8
     }
 
     // Mirrors the 5 branches in FlatStateActivationPolicy at the full DI container level.
@@ -102,7 +99,6 @@ public class WorldStateDbDeciderModuleTests
     [TestCase(Flags.Enabled | Flags.FlatHasData, PointerSeed.None, 1ul, Description = "Flat reads its persisted CurrentState")]
     [TestCase(Flags.Enabled, PointerSeed.BlockInfosEntry, null, Description = "Flat ignores the BlockInfos entry (PreGenesis → null)")]
     [TestCase(Flags.Enabled | Flags.ImportFromPruningTrieState, PointerSeed.BlockInfosEntry, 936ul, Description = "Import mode falls back to the trie pointer while flat is empty")]
-    [TestCase(Flags.Enabled | Flags.FlatHasData | Flags.MirrorPbt, PointerSeed.None, 1ul, Description = "Mirroring PBT passes flat reads through and does not resolve its manager mid-decision (cycle via IBlockTree)")]
     public void IStateBoundary_ReadsBackendPointer(Flags flags, PointerSeed seed, ulong? expected)
     {
         ContainerBuilder builder = new ContainerBuilder()
@@ -112,8 +108,6 @@ public class WorldStateDbDeciderModuleTests
                 cfg.Enabled = flags.HasFlag(Flags.Enabled);
                 cfg.ImportFromPruningTrieState = flags.HasFlag(Flags.ImportFromPruningTrieState);
             });
-        if (flags.HasFlag(Flags.MirrorPbt))
-            builder.AddModule(new PbtMirrorModule(new PbtConfig { Enabled = true, MirrorFlat = true }));
         using IContainer container = builder.Build();
 
         if (flags.HasFlag(Flags.FlatHasData))

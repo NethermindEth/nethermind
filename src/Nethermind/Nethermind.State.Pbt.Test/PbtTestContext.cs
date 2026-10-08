@@ -21,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Specs.Forks;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.ScopeProvider;
@@ -68,7 +67,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _trieNodeCache = new PbtTrieNodeCache(Config);
-        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, Config, metricsConfig, _trieNodeCache);
+        Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache);
         StateReader = new PbtStateReader(CodeDb, Manager);
         WorldStateManager = new PbtWorldStateManager(Manager, _childHeaders, _stateHeaderProvider, NodeGroupMemory, StateReader, () => new PbtOverridableWorldScope(CodeDb, Manager, ResourcePool, NodeGroupMemory, Config, _stateHeaderProvider, _trieNodeCache, LimboLogs.Instance), CodeDb, Config, LimboLogs.Instance);
     }
@@ -79,10 +78,10 @@ internal sealed class PbtTestContext : IAsyncDisposable
     /// <summary>Opens a writable scope over <paramref name="parent"/>, or over the pre-genesis state when it is <c>null</c>.</summary>
     public PbtWorldStateScope BeginScope(BlockHeader? parent) => (PbtWorldStateScope)CreateScopeProvider().BeginScope(parent, new LocalMetrics());
 
-    /// <summary>Builds the production container: the test Nethermind module and the PBT or mirror module <paramref name="config"/> selects.</summary>
+    /// <summary>Builds the production container: the test Nethermind module and the PBT module.</summary>
     internal static IContainer BuildProductionContainer(PbtConfig config) => new ContainerBuilder()
         .AddModule(new TestNethermindModule(config))
-        .AddModule(config.MirrorFlat ? new PbtMirrorModule(config) : new PbtModule(config))
+        .AddModule(new PbtModule(config))
         .Build();
 
     /// <summary>
