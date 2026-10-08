@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
@@ -154,6 +155,8 @@ public static class IntrinsicGasCalculator
             ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
             : 0;
 
+    // One caller; the zkEVM guest stopped inlining it once EIP-8279 grew it.
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
         spec switch
         {
