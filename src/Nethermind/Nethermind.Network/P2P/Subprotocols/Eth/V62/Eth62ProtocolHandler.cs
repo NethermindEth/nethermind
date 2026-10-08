@@ -255,7 +255,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             where T : P2PMessage
         {
             message = null;
-            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes);
+            RlpReader ctx = new(packet.Content.AsSpan());
+            if (typeof(T) == typeof(V66.Messages.PooledTransactionsMessage))
+            {
+                ctx.ReadSequenceLength();
+                ctx.DecodeLong();
+            }
+            int transactionCount = TransactionsMessageSerializer.ReadTransactionCount(ref ctx, out _);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, transactionCount);
             if (reservation is null)
             {
                 // Locally discarded responses cannot be judged for usefulness. As with scheduler rejection,

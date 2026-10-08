@@ -8,6 +8,7 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
@@ -26,6 +27,7 @@ using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -33,6 +35,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -289,6 +292,64 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         public enum BudgetMessageKind { Broadcast, CorrelatedPooled, UncorrelatedPooled }
+
+        [Test]
+        public void Transaction_count_budget_rejects_before_decoding([Values] bool pooledResponse, [Values] bool malformed)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
+            _handler.Dispose();
+            _handler = CreateHandler(scheduler);
+            HandleIncomingStatusMessage();
+            using CompositeDisposable reservations = [];
+            ReserveAllButOneMessage(scheduler, reservations);
+            const int count = 16;
+            byte[] transaction = malformed ? [0xc0] : [0xc9, 0x80, 0x80, 0x80, 0x80, 0x80, 0x80, 0x1b, 0x01, 0x01];
+            int contentLength = count * transaction.Length;
+            using DisposableByteBuffer packet = Unpooled.Buffer(256).AsDisposable();
+            ByteBufferRlpWriter writer = new(packet);
+            if (pooledResponse)
+            {
+                long requestId = RequestTransaction(Build.A.Transaction.SignedAndResolved().TestObject);
+                writer.StartSequence(Rlp.LengthOf(requestId) + Rlp.LengthOfSequence(contentLength));
+                writer.Encode(requestId);
+            }
+            writer.StartSequence(contentLength);
+            for (int i = 0; i < count; i++) packet.WriteBytes(transaction);
+
+            Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet)
+            {
+                PacketType = (byte)(pooledResponse ? Eth66MessageCode.PooledTransactions : Eth62MessageCode.Transactions)
+            }), Throws.Nothing);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scheduler.ScheduledFulfillFuncs, Is.Empty);
+                _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            }
+            using InboundTransactionBudget.Reservation? available = new InboundTransactionBudget(scheduler).TryReserve(1);
+            Assert.That(available, Is.Not.Null);
+        }
+
+        [Test]
+        public void Transaction_budget_charges_larger_of_wire_bytes_and_count([Values(0, 1, 16, 16384)] int count, [Values(1, 65536)] int bytes)
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            int charge = Math.Max(InboundTransactionBudget.MinimumCharge, Math.Max(bytes, count * InboundTransactionBudget.TransactionCharge));
+            using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(bytes, count);
+            Assert.That(reservation, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? remaining = budget.TryReserve(InboundTransactionBudget.PeerLimit - charge);
+            Assert.That(remaining, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
+        public void Transaction_count_charge_cannot_overflow()
+        {
+            InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
+            Assert.That(budget.TryReserve(1, int.MaxValue), Is.Null);
+            using InboundTransactionBudget.Reservation? available = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+            Assert.That(available, Is.Not.Null);
+        }
 
         [Test]
         public async Task Budget_rejection_excludes_correlated_responses_from_flood_sampling(

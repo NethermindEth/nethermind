@@ -14,7 +14,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth;
 
 /// <summary>Limits transaction input retained by decoding and background submission.</summary>
 /// <remarks>
-/// Charges uncompressed wire bytes, with a floor for small messages' object overhead; this is not a heap-size estimate.
+/// Charges the larger of uncompressed wire bytes and estimated transaction overhead, with a floor per message.
 /// Peers sharing a scheduler share the global limit. A reservation follows the owned list across rescheduling.
 /// </remarks>
 internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler scheduler)
@@ -22,14 +22,17 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
     internal const int GlobalLimit = 64 * 1024 * 1024;
     internal const int PeerLimit = 16 * 1024 * 1024;
     internal const int MinimumCharge = 4096;
+    internal const int TransactionCharge = 768;
     private static readonly ConditionalWeakTable<IBackgroundTaskScheduler, SharedBudget> SharedBudgets = [];
     private readonly SharedBudget _shared = SharedBudgets.GetValue(scheduler, static _ => new());
     private int _used;
 
-    internal Reservation? TryReserve(int bytes)
+    internal Reservation? TryReserve(int bytes, int transactionCount = 0)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
-        int charge = Math.Max(bytes, MinimumCharge);
+        ArgumentOutOfRangeException.ThrowIfNegative(transactionCount);
+        if (transactionCount > PeerLimit / TransactionCharge) return null;
+        int charge = Math.Max(Math.Max(bytes, transactionCount * TransactionCharge), MinimumCharge);
         // Reject peers at their own limit before contending on the shared counter.
         if (!TryCharge(ref _used, charge, PeerLimit)) return null;
         if (!TryCharge(ref _shared.Used, charge, GlobalLimit))
