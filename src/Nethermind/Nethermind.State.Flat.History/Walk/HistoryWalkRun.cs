@@ -4,6 +4,7 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -196,10 +197,10 @@ internal sealed class HistoryWalkRun
         }
     }
 
-    internal static List<(ulong Anchor, ulong To)> RootFoldChunks(ulong from, ulong to, int workers, ulong interval)
+    internal static ArrayPoolList<(ulong Anchor, ulong To)> RootFoldChunks(ulong from, ulong to, int workers, ulong interval)
     {
         ulong span = workers <= 1 ? 0 : Math.Max(interval, BitOperations.RoundUpToPowerOf2((to - from) / ((ulong)workers * RootFoldChunksPerWorker)));
-        List<(ulong Anchor, ulong To)> chunks = [];
+        ArrayPoolList<(ulong Anchor, ulong To)> chunks = new(Math.Max(1, workers) * (int)RootFoldChunksPerWorker + 1);
         for (ulong anchor = from; ;)
         {
             ulong seam = span == 0 ? to : (anchor | (span - 1)) + 1;
@@ -216,9 +217,9 @@ internal sealed class HistoryWalkRun
 
     private ulong FoldRoot(int workers)
     {
-        List<(ulong Anchor, ulong To)> chunks = RootFoldChunks(_from, _to, workers, (_emitterSource?.Policy ?? CommitmentDepthPolicy.Default).Interval);
-        RootFoldMerge merge = new(_sink, chunks.Count);
-        List<Action> folds = new(chunks.Count);
+        using ArrayPoolList<(ulong Anchor, ulong To)> chunks = RootFoldChunks(_from, _to, workers, (_emitterSource?.Policy ?? CommitmentDepthPolicy.Default).Interval);
+        using RootFoldMerge merge = new(_sink, chunks.Count);
+        using ArrayPoolList<Action> folds = new(chunks.Count);
         for (int index = 0; index < chunks.Count; index++)
         {
             int chunk = index;

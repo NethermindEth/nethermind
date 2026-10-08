@@ -246,7 +246,7 @@ internal sealed class SubtreeCombiner(SeriesReader reader, long maxRowsPerPartit
             {
                 for (int index = 0; index < BranchRlp.ChildCount; index++)
                 {
-                    _states[index] = reader.ReadStart(keys[index], from);
+                    _states[index] = reader.ReadStart(keys[index], from, token);
                     _views[index] = _states[index].ToView();
                     _cursors[index] = reader.Open(keys[index], from, to, rowsPerCursor, token);
                     _hasRow[index] = _cursors[index].MoveNext();

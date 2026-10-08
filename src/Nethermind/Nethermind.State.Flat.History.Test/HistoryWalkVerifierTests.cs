@@ -1040,7 +1040,7 @@ public class HistoryWalkVerifierTests
         FakeHeaders headers = new();
         int reads = 0;
         headers.OnRead = _ => reads++;
-        RootFoldMerge merge = new(new MismatchSink(), chunks: 3);
+        using RootFoldMerge merge = new(new MismatchSink(), chunks: 3);
         merge.Complete(1, new MismatchSink(), compared: 5, stopped: true);
         IDb availableBlocks = _historyColumns.GetColumnDb(FlatHistoryColumns.AvailableBlocks);
         MismatchSink laterFound = new();

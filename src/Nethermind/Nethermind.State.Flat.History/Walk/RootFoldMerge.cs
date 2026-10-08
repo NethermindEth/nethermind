@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
+
 namespace Nethermind.State.Flat.History.Walk;
 
 /// <summary>Merges root fold chunk findings into the walk's sink in block order.</summary>
@@ -8,9 +10,10 @@ namespace Nethermind.State.Flat.History.Walk;
 /// Root fold chunks finish in any order; taking their findings in block order and nothing after the first chunk whose
 /// header check stopped gives the findings and compared count of one fold over the whole range.
 /// </remarks>
-internal sealed class RootFoldMerge(MismatchSink sink, int chunks)
+internal sealed class RootFoldMerge(MismatchSink sink, int chunks) : IDisposable
 {
-    private readonly ChunkOutcome?[] _completed = new ChunkOutcome?[chunks];
+    private readonly Lock _lock = new();
+    private readonly ArrayPoolList<ChunkOutcome?> _completed = new(chunks, chunks);
     private int _next;
     private bool _stopped;
     private int _firstStopped = int.MaxValue;
@@ -21,7 +24,7 @@ internal sealed class RootFoldMerge(MismatchSink sink, int chunks)
     {
         get
         {
-            lock (_completed)
+            lock (_lock)
             {
                 return _stopped ? 0 : Math.Max(0, MismatchSink.MaxRecorded - sink.Count);
             }
@@ -33,11 +36,11 @@ internal sealed class RootFoldMerge(MismatchSink sink, int chunks)
 
     public void Complete(int chunk, MismatchSink found, ulong compared, bool stopped)
     {
-        lock (_completed)
+        lock (_lock)
         {
             _completed[chunk] = new ChunkOutcome(found, compared, stopped);
             if (stopped && chunk < _firstStopped) Volatile.Write(ref _firstStopped, chunk);
-            while (!_stopped && _next < _completed.Length && _completed[_next] is { } outcome)
+            while (!_stopped && _next < _completed.Count && _completed[_next] is { } outcome)
             {
                 _completed[_next++] = null;
                 sink.AddRange(outcome.Found);
@@ -46,6 +49,8 @@ internal sealed class RootFoldMerge(MismatchSink sink, int chunks)
             }
         }
     }
+
+    public void Dispose() => _completed.Dispose();
 
     private readonly record struct ChunkOutcome(MismatchSink Found, ulong Compared, bool Stopped);
 }

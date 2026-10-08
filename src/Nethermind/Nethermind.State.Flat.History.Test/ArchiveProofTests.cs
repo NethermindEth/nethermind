@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Threading;
 using Nethermind.Core.Exceptions;
@@ -1119,7 +1120,7 @@ public class ArchiveProofTests
     public void RootFold_SplitIntoChunks_WritesTheRowsAndVerdictOfOneFold(ulong? divergingBlock)
     {
         _policy = EpochPolicy;
-        List<(ulong Anchor, ulong To)> chunks = HistoryWalkRun.RootFoldChunks(0, _chain.Head, workers: 3, EpochPolicy.Interval);
+        using ArrayPoolList<(ulong Anchor, ulong To)> chunks = HistoryWalkRun.RootFoldChunks(0, _chain.Head, workers: 3, EpochPolicy.Interval);
         Assert.That(chunks, Is.EqualTo(new List<(ulong, ulong)> { (0, 64), (64, 128), (128, Blocks) }),
             "precondition: three workers split the fold at block 64, a window close inside the first epoch, and at block 128, the second epoch's start");
 
