@@ -1068,9 +1068,12 @@ public class EthereumRunnerTests
                 if (cancel)
                 {
                     cts.Cancel();
+                    await Assert.ThatAsync(() => task.WaitAsync(RunnerTimeout), Throws.InstanceOf<OperationCanceledException>());
                 }
-
-                await task.WaitAsync(RunnerTimeout);
+                else
+                {
+                    await task.WaitAsync(RunnerTimeout);
+                }
             }
             finally
             {
