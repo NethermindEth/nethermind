@@ -67,6 +67,8 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         _workerTaskCount = concurrency;
     }
 
+    public bool IsClosed => Volatile.Read(ref _disposed) == 1;
+
     /// <remarks>Idempotent: a subscription can disconnect a lagging client while its owner still holds it.</remarks>
     public override void Dispose()
     {
