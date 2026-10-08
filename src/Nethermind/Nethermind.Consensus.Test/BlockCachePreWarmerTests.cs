@@ -1197,7 +1197,7 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(open.Wait(DiscoveryTimeout), Is.True, "the open goes ahead once the pass ends");
             Assert.That(session.IsCompleted, Is.True);
-            Assert.That(preWarmer.SpeculativeStopsWithoutWaiting, Is.Zero);
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.False, "the open joined it");
         }
     }
 
@@ -1236,7 +1236,7 @@ public class BlockCachePreWarmerTests
         {
             Assert.That(open.Wait(DiscoveryTimeout), Is.True, "the open goes ahead once the warm ends");
             Assert.That(session.IsCompleted, Is.True);
-            Assert.That(preWarmer.SpeculativeStopsWithoutWaiting, Is.Zero);
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.False, "the open joined it");
         }
     }
 
@@ -1258,11 +1258,7 @@ public class BlockCachePreWarmerTests
 
         using (mainWorldState.BeginScope(head))
         {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(preWarmer.SpeculativeStopsWithoutWaiting, Is.EqualTo(1), "a session between passes is stopped, not waited for");
-                Assert.That(preWarmer.SpeculativeSessionPending, Is.True, "the open must not have joined it");
-            }
+            Assert.That(preWarmer.SpeculativeSessionPending, Is.True, "a session between passes is stopped, not waited for");
         }
 
         using (Assert.EnterMultipleScope())

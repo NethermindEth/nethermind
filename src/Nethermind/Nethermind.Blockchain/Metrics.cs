@@ -62,6 +62,10 @@ public static class Metrics
     public static long PrewarmHandoffs { get; set; }
 
     [CounterMetric]
+    [Description("Mempool pre-warm sessions a block stopped between passes, without waiting for them to end")]
+    public static long PrewarmSpeculativeStopsWithoutWaiting { get; set; }
+
+    [CounterMetric]
     [Description("Transactions executed because state their pre-warm run read had changed")]
     public static long PrewarmHandoffsRejected { get; set; }
 

@@ -93,7 +93,6 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private long _speculativeGeneration = long.MinValue;
     // 1 while the session is in a pass: set with a full fence before each look at its token, cleared once the pass ends.
     private int _speculativePassActive;
-    private long _speculativeStopsWithoutWaiting;
 
     // Non-null writes come only from the speculative loop; every other writer nulls it after stopping that loop, which
     // is what makes the marker and its shared tx-hash set safe to read without further sync: a loop found between passes
@@ -782,7 +781,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
             Token = token
         };
-        // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
+        // Safe for the speculative caller: it never overlaps main execution, since it is stopped before ProcessOne:
+        // a pass in flight is waited for, and none starts after.
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, warmCalldataAddresses, this, bal);
@@ -894,10 +894,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     // For tests: the recovery tracker the container wired in.
     internal ISenderRecoveryTracker? SenderRecovery => _senderRecovery;
 
-    // For tests: whether the session is in a pass, how many stops found it between passes and did not wait, and whether
-    // a stopped session is still left to end on its own rather than joined.
+    // For tests: whether the session is in a pass, and whether a stopped session is still left to end on its own rather
+    // than joined.
     internal bool SpeculativePassActive => Volatile.Read(ref _speculativePassActive) != 0;
-    internal long SpeculativeStopsWithoutWaiting => Interlocked.Read(ref _speculativeStopsWithoutWaiting);
     internal bool SpeculativeSessionPending
     {
         get
@@ -917,8 +916,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <summary>Stops the session, waiting for it only while it is in a pass.</summary>
     /// <remarks>
     /// The loop sets <see cref="_speculativePassActive"/> with a full fence before each look at its token, and this
-    /// cancels, also a full fence, before reading it: either this sees the pass and waits for it, or the pass sees the
-    /// stop and ends before it warms anything. Between passes the session writes nothing further, so waiting for it
+    /// cancels, then fences, before reading it: either this sees the pass and waits for it, or the pass sees the stop and
+    /// ends before it warms anything. Between passes the session writes nothing further, so waiting for it
     /// would only wait for its delay's continuation to be scheduled; the next start, clear or dispose joins it.
     /// </remarks>
     private void StopSpeculativeLocked()
@@ -926,13 +925,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         if (_speculativeCts is null) return;
 
         _speculativeCts.Cancel();
+        // Cancel happens to fence today; the handshake must not depend on that.
+        Interlocked.MemoryBarrier();
         if (Volatile.Read(ref _speculativePassActive) != 0)
         {
             CancelAndJoinSpeculativeLocked();
             return;
         }
 
-        Interlocked.Increment(ref _speculativeStopsWithoutWaiting);
+        Blockchain.Metrics.PrewarmSpeculativeStopsWithoutWaiting++;
     }
 
     private void CancelAndJoinSpeculative()
