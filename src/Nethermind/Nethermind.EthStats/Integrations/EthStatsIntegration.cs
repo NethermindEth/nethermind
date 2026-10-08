@@ -106,8 +106,13 @@ namespace Nethermind.EthStats.Integrations
 
             _websocketClient.DisconnectionHappened.Subscribe(reason =>
             {
-                _connected = false;
-                if (_logger.IsInfo) _logger.Info($"ETH Stats disconnected, reason: {reason}");
+                // Failed reconnect attempts raise a disconnection each time, so only the first one after a connection is logged at Info.
+                if (_connected)
+                {
+                    _connected = false;
+                    if (_logger.IsInfo) _logger.Info($"ETH Stats disconnected, reason: {reason}");
+                }
+                else if (_logger.IsDebug) _logger.Debug($"ETH Stats disconnected, reason: {reason}");
             });
 
             _messageSubscription = _websocketClient.MessageReceived.Subscribe(message => _ = HandleIncomingMessageAsync(message.Text));
