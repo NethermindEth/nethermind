@@ -9,6 +9,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
@@ -640,6 +641,22 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             report.Writes.Length == report.Transaction % 7
             && Enumerable.Range(0, report.Writes.Length).All(i =>
                 report.Writes.Span[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction)))));
+    }
+
+    [Test]
+    public void Commits_outside_a_reported_transaction_take_no_room_from_the_reports()
+    {
+        // Replays and the block's own commits also commit storage; collecting them would allocate chunks for nothing.
+        CommittedStorageWrites committed = new();
+        committed.Begin();
+        committed.Add(TestItem.AddressC, 0, 1);
+        MemoryMarshal.TryGetArray(committed.End(), out ArraySegment<(StorageCell Cell, UInt256 Value)> first);
+        for (int i = 0; i < 1000; i++) committed.Add(TestItem.AddressC, (UInt256)i, 2);
+        committed.Begin();
+        committed.Add(TestItem.AddressC, 0, 3);
+        MemoryMarshal.TryGetArray(committed.End(), out ArraySegment<(StorageCell Cell, UInt256 Value)> next);
+
+        Assert.That((next.Array, next.Offset), Is.EqualTo((first.Array, 1)));
     }
 
     public enum Report { AsPredicted, OtherValue, Subset, Restored, GuardRestoredAndChanged, NoneWithoutFootprint, SomeWithoutFootprint }
