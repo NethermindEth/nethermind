@@ -53,6 +53,7 @@ using Nethermind.Evm.State;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Flashbots;
 using Nethermind.HealthChecks;
+using Nethermind.History;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Exceptions;
@@ -789,12 +790,13 @@ public class EthereumRunnerTests
     /// <summary>
     /// Proves the real production container resolves a command by name and that a command which cannot do its
     /// job fails the run instead of exiting Ok. Under <see cref="DiagnosticMode.MemDb"/> the block tree has no
-    /// head, so <c>verify-trie</c> has nothing to verify. Closure contents are covered by
-    /// <c>EthereumStepsManagerTests</c>.
+    /// head, so <c>verify-trie</c> has nothing to verify and <c>prune-history</c> no boundary to prune to. Closure
+    /// contents are covered by <c>EthereumStepsManagerTests</c>.
     /// </summary>
-    [Test]
+    [TestCase("verify-trie", typeof(StepDependencyException))]
+    [TestCase("prune-history", typeof(HistoryPruner.HistoryPrunerException))] // resolving the pruner must not need the processing stack
     [MaxTime(60000)]
-    public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok()
+    public async Task Command_run_that_cannot_do_its_job_fails_without_exiting_ok(string command, Type expectedException)
     {
         Rlp.ResetDecoders(); // The global decoder registry is shared with every other test in this assembly.
 
@@ -809,12 +811,12 @@ public class EthereumRunnerTests
         ApiBuilder builder = new(processExitSource, configProvider, LimboLogs.Instance);
         IList<INethermindPlugin> plugins = await pluginLoader.LoadPlugins(configProvider, builder.ChainSpec);
         plugins.Add(new RunnerTestPlugin(true));
-        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: "verify-trie");
+        EthereumRunner runner = builder.CreateEthereumRunner(plugins, command: command);
 
         try
         {
             Assert.That(async () => await runner.Start(CancellationToken.None).WaitAsync(RunnerTimeout),
-                Throws.TypeOf<StepDependencyException>());
+                Throws.TypeOf(expectedException));
 
             processExitSource.DidNotReceive().Exit(ExitCodes.Ok);
         }

@@ -3,6 +3,7 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus.Processing;
 using Nethermind.History;
 using Nethermind.Init.Steps;
 using NSubstitute;
@@ -14,14 +15,17 @@ namespace Nethermind.Runner.Test.Ethereum.Steps;
 public class StartHistoryPrunerTests
 {
     [TestCase(PruningModes.Disabled, 0)]
-    [TestCase(PruningModes.Rolling, 1)]
-    [TestCase(PruningModes.UseAncientBarriers, 1)]
+    [TestCase(PruningModes.Rolling, 2)] // the startup pass plus one for the emptied queue
+    [TestCase(PruningModes.UseAncientBarriers, 2)]
     public async Task Execute_SchedulesPruningPassOnlyWhenEnabled(PruningModes pruning, int expectedPasses)
     {
         IHistoryPruner historyPruner = Substitute.For<IHistoryPruner>();
         HistoryConfig historyConfig = new() { Pruning = pruning };
 
-        await new StartHistoryPruner(historyPruner, historyConfig).Execute(CancellationToken.None);
+        IBlockProcessingQueue blockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
+
+        await new StartHistoryPruner(historyPruner, historyConfig, blockProcessingQueue).Execute(CancellationToken.None);
+        blockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
 
         historyPruner.Received(expectedPasses).SchedulePruneHistory();
     }
