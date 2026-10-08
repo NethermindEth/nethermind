@@ -106,9 +106,6 @@ public class ForkTests
         }
     }
 
-    // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
-    // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
-    // wanting both schedules eip8141TransitionTimestamp alongside the fork.
     [Test]
     public void Bogota_enables_inclusion_lists_without_frame_transactions()
     {

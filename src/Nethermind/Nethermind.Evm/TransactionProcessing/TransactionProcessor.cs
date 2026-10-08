@@ -1738,7 +1738,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
             if (!tx.IsSystem() && (ulong)effectiveStateGas > preRefundGas)
                 return InvalidStateGas(Logger, $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
+            ulong blockAccountingGas = spec.IsEip7778Enabled ? preRefundGas : preRefundGas - executionRefund;
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(blockAccountingGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, executionRefund);
         }
@@ -1897,11 +1898,13 @@ namespace Nethermind.Evm.TransactionProcessing
             (ulong spentGas, long refund) = CalculateSpentGasAndRefund(tx, spec, in substate, in gasAfterExecution, codeInsertExecutionRefund);
             if (spec.IsEip3298Enabled && refund > 0 && (ulong)refund > spentGas)
                 return InvalidStateGas(Logger, $"EIP-3298 invariant violated: refund ({refund}) exceeds gas used ({spentGas}).");
-            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, spentGas, floorGasLong);
+
+            ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
+            ulong blockAccountingGas = spec.IsEip7778Enabled ? spentGas : operationGas;
+            (ulong blockGas, long blockStateGas) = CalculateBlockGas(spec, in gasAfterExecution, blockAccountingGas, floorGasLong);
             if (blockStateGas < 0)
                 return InvalidStateGas(Logger, $"EIP-8037 invariant violated: negative block state gas ({blockStateGas}).");
 
-            ulong operationGas = refund >= 0 ? spentGas - (ulong)refund : spentGas + (ulong)(-refund);
             ulong spentGasAfterFloor = Math.Max(operationGas, floorGasLong);
 
             if (ShouldRefundGas(tx, opts, in gasPrice))
@@ -1963,14 +1966,14 @@ namespace Nethermind.Evm.TransactionProcessing
         private static (ulong blockGas, long blockStateGas) CalculateBlockGas(
             IReleaseSpec spec,
             in TGasPolicy gasAfterExecution,
-            ulong preRefundGas,
+            ulong blockAccountingGas,
             ulong floorGas)
         {
             if (!spec.IsEip8037Enabled)
-                return (spec.IsEip7778Enabled ? Math.Max(preRefundGas, floorGas) : 0, 0);
+                return (spec.IsEip7778Enabled ? Math.Max(blockAccountingGas, floorGas) : 0, 0);
 
             long blockStateGas = TGasPolicy.GetStateGasUsed(in gasAfterExecution);
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)blockStateGas, floorGas);
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(blockAccountingGas, (ulong)blockStateGas, floorGas);
 
             return (blockGas, blockStateGas);
         }

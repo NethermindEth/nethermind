@@ -109,26 +109,15 @@ public class PredeployInstallerTests
     }
 
     [Test]
-    public void Expiry_verifier_predeploy_installs_its_code_without_touching_the_nonce()
+    public void Eip8141_activation_does_not_write_the_expiry_verifier([Values] bool noncanonicalPrestate)
     {
-        (IReleaseSpec spec, _, IWorldState writeState) =
-            Install(static spec => spec.IsEip8141Enabled.Returns(true), Eip8141Constants.ExpiryVerifierAddress, nonce: 0, code: []);
+        (_, _, IWorldState writeState) = Install(
+            static spec => spec.IsEip8141Enabled.Returns(true),
+            Eip8141Constants.ExpiryVerifierAddress,
+            nonce: noncanonicalPrestate ? 7UL : 0UL,
+            code: noncanonicalPrestate ? [0x00] : []);
 
-        writeState.Received().InsertCode(Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, spec);
-        writeState.DidNotReceive().SetNonce(Eip8141Constants.ExpiryVerifierAddress, Arg.Any<ulong>());
-    }
-
-    [Test]
-    public void Expiry_verifier_predeploy_carrying_its_code_at_a_zero_nonce_writes_nothing()
-    {
-        (IReleaseSpec spec, _, IWorldState writeState) =
-            Install(static spec => spec.IsEip8141Enabled.Returns(true), Eip8141Constants.ExpiryVerifierAddress, nonce: 0, code: Eip8141Constants.ExpiryVerifierCode);
-
-        writeState.DidNotReceiveWithAnyArgs().InsertCode(default!, default, default!);
-        writeState.DidNotReceive().SetNonce(Eip8141Constants.ExpiryVerifierAddress, Arg.Any<ulong>());
-        // Re-creating the account each block would land back in the BAL, which is the failure this predeploy's
-        // null nonce exists to avoid.
-        writeState.DidNotReceiveWithAnyArgs().CreateAccountIfNotExists(default!, default, default);
+        Assert.That(writeState.ReceivedCalls(), Is.Empty);
     }
 
     /// <remarks>The install is the only in-tree writer of a no-op nonce, so it is the only way EIP-7928's
