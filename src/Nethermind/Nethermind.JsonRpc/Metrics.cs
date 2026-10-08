@@ -33,42 +33,62 @@ namespace Nethermind.JsonRpc
         /// <summary>Number of gated EVM-executing JSON-RPC requests waiting for an execution slot.</summary>
         [GaugeMetric]
         [Description("Number of gated JSON RPC requests (eth_simulateV1, and eth_call, eth_estimateGas or eth_createAccessList with a state or block override) waiting for an execution slot.")]
-        public static long RpcAdmissionQueued { get; set; }
+        public static long RpcAdmissionQueued => _rpcAdmissionQueued;
+        private static long _rpcAdmissionQueued;
+        internal static void ChangeRpcAdmissionQueued(long delta) => Interlocked.Add(ref _rpcAdmissionQueued, delta);
 
         /// <summary>Number of gated EVM-executing JSON-RPC requests holding an execution slot.</summary>
         [GaugeMetric]
         [Description("Number of gated JSON RPC requests (eth_simulateV1, and eth_call, eth_estimateGas or eth_createAccessList with a state or block override) holding an execution slot.")]
-        public static long RpcAdmissionInFlight { get; set; }
+        public static long RpcAdmissionInFlight => _rpcAdmissionInFlight;
+        private static long _rpcAdmissionInFlight;
+        internal static void ChangeRpcAdmissionInFlight(long delta) => Interlocked.Add(ref _rpcAdmissionInFlight, delta);
 
         /// <summary>Number of gated EVM-executing JSON-RPC requests rejected at once because the queue was full.</summary>
         [CounterMetric]
         [Description("Number of gated EVM-executing JSON RPC requests rejected without queueing because JsonRpc.EvmExecutionQueueLimit requests were already waiting.")]
-        public static long RpcAdmissionQueueFullRejections { get; set; }
+        public static long RpcAdmissionQueueFullRejections => _rpcAdmissionQueueFullRejections;
+        private static long _rpcAdmissionQueueFullRejections;
+        internal static void IncrementRpcAdmissionQueueFullRejections() => Interlocked.Increment(ref _rpcAdmissionQueueFullRejections);
 
         /// <summary>Number of gated EVM-executing JSON-RPC requests rejected at once because they may not queue.</summary>
         [CounterMetric]
         [Description("Number of gated EVM-executing JSON RPC requests rejected because every execution slot was busy and the request may not queue: a batch item whose batch has used up the wait budget, or any request when queueing is disabled.")]
-        public static long RpcAdmissionNotQueueableRejections { get; set; }
+        public static long RpcAdmissionNotQueueableRejections => _rpcAdmissionNotQueueableRejections;
+        private static long _rpcAdmissionNotQueueableRejections;
+        internal static void IncrementRpcAdmissionNotQueueableRejections() => Interlocked.Increment(ref _rpcAdmissionNotQueueableRejections);
 
         /// <summary>Number of gated EVM-executing JSON-RPC requests rejected after waiting their whole budget.</summary>
         [CounterMetric]
         [Description("Number of gated EVM-executing JSON RPC requests rejected after waiting JsonRpc.EvmExecutionMaxQueueWaitMs, or what was left of it for a batch item, for an execution slot.")]
-        public static long RpcAdmissionWaitTimeoutRejections { get; set; }
+        public static long RpcAdmissionWaitTimeoutRejections => _rpcAdmissionWaitTimeoutRejections;
+        private static long _rpcAdmissionWaitTimeoutRejections;
+        internal static void IncrementRpcAdmissionWaitTimeoutRejections() => Interlocked.Increment(ref _rpcAdmissionWaitTimeoutRejections);
 
         /// <summary>Number of queued gated EVM-executing JSON-RPC requests whose caller went away before getting a slot.</summary>
         [CounterMetric]
         [Description("Number of queued gated EVM-executing JSON RPC requests whose caller disconnected before getting an execution slot.")]
-        public static long RpcAdmissionCancellations { get; set; }
+        public static long RpcAdmissionCancellations => _rpcAdmissionCancellations;
+        private static long _rpcAdmissionCancellations;
+        internal static void IncrementRpcAdmissionCancellations() => Interlocked.Increment(ref _rpcAdmissionCancellations);
 
         /// <summary>Number of gated EVM-executing JSON-RPC requests granted an execution slot after waiting for one.</summary>
         [CounterMetric]
         [Description("Number of gated EVM-executing JSON RPC requests granted an execution slot after waiting in the queue.")]
-        public static long RpcAdmissionQueuedGrants { get; set; }
+        public static long RpcAdmissionQueuedGrants => _rpcAdmissionQueuedGrants;
+        private static long _rpcAdmissionQueuedGrants;
 
         /// <summary>Total time, in microseconds, that the requests counted in <see cref="RpcAdmissionQueuedGrants"/> waited.</summary>
         [CounterMetric]
         [Description("Total time, in microseconds, that the requests counted in RpcAdmissionQueuedGrants waited for an execution slot.")]
-        public static long RpcAdmissionQueueWaitMicroseconds { get; set; }
+        public static long RpcAdmissionQueueWaitMicroseconds => _rpcAdmissionQueueWaitMicroseconds;
+        private static long _rpcAdmissionQueueWaitMicroseconds;
+
+        internal static void AddRpcAdmissionQueuedGrant(long waitedMicroseconds)
+        {
+            Interlocked.Increment(ref _rpcAdmissionQueuedGrants);
+            Interlocked.Add(ref _rpcAdmissionQueueWaitMicroseconds, waitedMicroseconds);
+        }
 
         [CounterMetric]
         [Description("Number of JSON RPC requests processed with errors.")]

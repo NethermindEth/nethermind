@@ -96,12 +96,14 @@ public class EvmAdmissionGateTests
 
     [TestCase(0, 0, BudgetMs, 0, 0, 1, TestName = "Zero budget disables queueing")]
     [TestCase(BudgetMs, 2, BudgetMs, 2, 1, 0, TestName = "Full queue")]
+    [TestCase(BudgetMs, 2, BudgetMs, 1, 0, 0, TestName = "Queue one short of its limit")]
     [TestCase(BudgetMs, 0, 0, 0, 0, 1, TestName = "Request that may not queue")]
     [TestCase(BudgetMs, 0, BudgetMs, 3, 0, 0, TestName = "Zero queue limit leaves the queue uncapped")]
     public async Task Busy_gate_rejects_at_once_only_when_the_request_cannot_queue(
         int maxQueueWaitMs, int queueLimit, int requestMaxWaitMs, int alreadyQueued, int queueFullRejections, int notQueueableRejections)
     {
         bool rejected = queueFullRejections + notQueueableRejections > 0;
+        (long queueFullBefore, long notQueueableBefore) = (Metrics.RpcAdmissionQueueFullRejections, Metrics.RpcAdmissionNotQueueableRejections);
         EvmAdmissionGate gate = CreateGate(maxQueueWaitMs: maxQueueWaitMs, queueLimit: queueLimit);
         using Lease held = await Admit(gate);
         Task<Lease>[] queued = [.. Enumerable.Range(0, alreadyQueued).Select(_ => Admit(gate).AsTask())];
@@ -117,6 +119,8 @@ public class EvmAdmissionGateTests
         Assert.That(
             (gate.Queued, gate.QueueFullRejections, gate.NotQueueableRejections),
             Is.EqualTo((queued.Length + (rejected ? 0 : 1), queueFullRejections, notQueueableRejections)));
+        Assert.That(Metrics.RpcAdmissionQueueFullRejections, Is.GreaterThanOrEqualTo(queueFullBefore + queueFullRejections), "exported");
+        Assert.That(Metrics.RpcAdmissionNotQueueableRejections, Is.GreaterThanOrEqualTo(notQueueableBefore + notQueueableRejections), "exported");
     }
 
     [Test]
@@ -149,47 +153,37 @@ public class EvmAdmissionGateTests
         Assert.That(await ReleaseAndRecordGrantOrder(held, waiters), Is.EqualTo(new[] { "0", "1", "3", "4" }));
     }
 
-    // A late timer leaves the rejection to the next release, which passes the slot on to the next waiter.
     [Test]
-    public async Task Waiter_is_rejected_once_its_budget_has_elapsed([Values] bool timerFires, [Values(100, BudgetMs, 2 * BudgetMs)] int maxWaitMs)
+    public async Task Waiter_is_rejected_once_its_wait_has_elapsed([Values(100, BudgetMs, 2 * BudgetMs)] int maxWaitMs)
     {
-        TimeSpan maxWait = TimeSpan.FromMilliseconds(maxWaitMs);
         // A request's own wait is capped at the gate's budget.
         TimeSpan rejectedAfter = TimeSpan.FromMilliseconds(Math.Min(maxWaitMs, BudgetMs));
+        long timeoutsBefore = Metrics.RpcAdmissionWaitTimeoutRejections;
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
-        Task<Lease> waiter = Admit(gate, maxWait: maxWait).AsTask();
+        Task<Lease> waiter = Admit(gate, maxWait: TimeSpan.FromMilliseconds(maxWaitMs)).AsTask();
 
-        clock.Advance(rejectedAfter - TimeSpan.FromMilliseconds(1), timerFires);
-        Assert.That(waiter.IsCompleted, Is.False, "still waiting 1 ms before its budget ends");
-        clock.Advance(TimeSpan.FromMilliseconds(1), timerFires);
-        Task<Lease> next = Admit(gate, maxWait: maxWait).AsTask();
-        if (!timerFires)
-        {
-            Assert.That(waiter.IsCompleted, Is.False);
-            held.Dispose();
-        }
+        clock.Advance(rejectedAfter - TimeSpan.FromMilliseconds(1));
+        Assert.That(waiter.IsCompleted, Is.False, "still waiting 1 ms before its wait ends");
+        clock.Advance(TimeSpan.FromMilliseconds(1));
 
         Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.TypeOf<WaitTimeoutException>());
-        if (timerFires)
-        {
-            held.Dispose();
-        }
-
-        (await next.WaitAsync(TestTimeout)).Dispose();
         Assert.That(
-            (gate.InFlight, gate.Queued, gate.WaitTimeoutRejections, gate.QueuedGrants),
-            Is.EqualTo((0, 0, 1L, 1L)), "only the next waiter counts as a grant");
+            (gate.InFlight, gate.Queued, gate.WaitTimeoutRejections, gate.Cancellations, gate.QueuedGrants),
+            Is.EqualTo((1, 0, 1L, 0L, 0L)));
+        Assert.That(Metrics.RpcAdmissionWaitTimeoutRejections, Is.GreaterThanOrEqualTo(timeoutsBefore + 1), "exported");
+        held.Dispose();
+        Assert.That(gate.InFlight, Is.Zero, "the slot is not passed to the waiter that timed out");
     }
 
-    // The waiter's timer is never due, so only the check in Release decides.
+    // The waiter's timer is not yet due when the slot is released.
     [TestCase(BudgetMs, 100, TestName = "Well within its budget")]
     [TestCase(BudgetMs, BudgetMs - 1, TestName = "1 ms before its budget ends")]
     [TestCase(100, 99, TestName = "1 ms before a shorter wait ends")]
     public async Task Grant_after_waiting_counts_the_wait(int maxWaitMs, int waitedMs)
     {
-        long grantsBefore = Metrics.RpcAdmissionQueuedGrants;
+        (long grantsBefore, long waitBefore) = (Metrics.RpcAdmissionQueuedGrants, Metrics.RpcAdmissionQueueWaitMicroseconds);
         ManualClock clock = new();
         EvmAdmissionGate gate = CreateGate(clock);
         Lease held = await Admit(gate);
@@ -204,9 +198,20 @@ public class EvmAdmissionGateTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That((gate.QueuedGrants, gate.QueueWaitMicroseconds), Is.EqualTo((1L, waitedMicroseconds)));
-            // Only the grant count is checked in Metrics: a concurrent gate that adds a shorter wait can overwrite the wait sum.
             Assert.That(Metrics.RpcAdmissionQueuedGrants, Is.GreaterThanOrEqualTo(grantsBefore + 1), "exported");
+            Assert.That(Metrics.RpcAdmissionQueueWaitMicroseconds, Is.GreaterThanOrEqualTo(waitBefore + waitedMicroseconds), "exported");
         }
+    }
+
+    [Test]
+    public async Task Request_cancelled_before_admission_takes_no_slot_and_does_not_queue([Values] bool busy)
+    {
+        EvmAdmissionGate gate = CreateGate();
+        Lease held = busy ? await Admit(gate) : default;
+
+        Assert.That(async () => await Admit(gate, new CancellationToken(canceled: true)), Throws.InstanceOf<OperationCanceledException>());
+        Assert.That((gate.InFlight, gate.Queued, gate.Cancellations), Is.EqualTo((busy ? 1 : 0, 0, 0L)), "it never queued");
+        held.Dispose();
     }
 
     [Test]
@@ -221,7 +226,7 @@ public class EvmAdmissionGateTests
 
         Assert.That(async () => await waiter.WaitAsync(TestTimeout), Throws.InstanceOf<OperationCanceledException>());
         held.Dispose();
-        Assert.That((gate.InFlight, gate.Queued, gate.Cancellations), Is.EqualTo((0, 0, 1)));
+        Assert.That((gate.InFlight, gate.Queued, gate.Cancellations, gate.WaitTimeoutRejections), Is.EqualTo((0, 0, 1L, 0L)));
     }
 
     [Test]
@@ -258,6 +263,52 @@ public class EvmAdmissionGateTests
             granted.Dispose();
             Assert.That(gate.InFlight, Is.Zero);
         }
+    }
+
+    [Test]
+    public async Task Slot_released_as_the_wait_times_out_is_either_granted_or_freed_never_both()
+    {
+        const int Rounds = 200;
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        for (int i = 0; i < Rounds; i++)
+        {
+            Lease held = await Admit(gate);
+            Task<Lease> waiter = Admit(gate).AsTask();
+
+            await Task.WhenAll(Task.Run(() => held.Dispose()), Task.Run(() => clock.Advance(gate.Budget)));
+
+            try
+            {
+                Lease granted = await waiter.WaitAsync(TestTimeout);
+                Assert.That(gate.InFlight, Is.EqualTo(1), $"round {i}: granted");
+                granted.Dispose();
+            }
+            catch (WaitTimeoutException)
+            {
+            }
+
+            Assert.That((gate.InFlight, gate.Queued), Is.EqualTo((0, 0)), $"round {i}: no slot lost or left held");
+        }
+
+        Assert.That(gate.QueuedGrants + gate.WaitTimeoutRejections, Is.EqualTo(Rounds), "each waiter counted once");
+    }
+
+    [Test]
+    public async Task Lease_releases_its_slot_once()
+    {
+        EvmAdmissionGate gate = CreateGate(permits: 2);
+        Lease lease = await Admit(gate);
+        Lease copy = lease;
+        Lease other = await Admit(gate);
+
+        lease.Dispose();
+        lease.Dispose();
+        Assert.That(gate.InFlight, Is.EqualTo(1), "a second dispose of the same lease does nothing");
+
+        other.Dispose();
+        Assert.That(() => copy.Dispose(), Throws.TypeOf<SemaphoreFullException>(), "a copy released past the permits throws");
+        Assert.That(gate.InFlight, Is.Zero);
     }
 
     private static EvmAdmissionGate CreateGate(ManualClock? clock = null, int permits = 1, int maxQueueWaitMs = BudgetMs, int queueLimit = 0) =>
