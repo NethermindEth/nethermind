@@ -177,6 +177,30 @@ public class EvmAdmissionGateTests
         Assert.That(gate.InFlight, Is.Zero, "the slot is not passed to the waiter that timed out");
     }
 
+    // A busy thread pool runs a waiter's timer late, so a slot can reach a waiter whose wait has already ended.
+    [Test]
+    public async Task Slot_reaching_a_waiter_after_its_wait_ended_is_passed_on()
+    {
+        ManualClock clock = new();
+        EvmAdmissionGate gate = CreateGate(clock);
+        Lease held = await Admit(gate);
+        Task<Lease> late = Admit(gate).AsTask();
+        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2), fireTimers: false);
+        Task<Lease> next = Admit(gate).AsTask();
+        clock.Advance(TimeSpan.FromMilliseconds(BudgetMs / 2), fireTimers: false);
+
+        held.Dispose();
+
+        Assert.That(async () => await late.WaitAsync(TestTimeout), Throws.TypeOf<WaitTimeoutException>());
+        Lease granted = await next.WaitAsync(TestTimeout);
+        Assert.That(
+            (gate.InFlight, gate.Queued, gate.WaitTimeoutRejections, gate.QueuedGrants),
+            Is.EqualTo((1, 0, 1L, 1L)),
+            "the late waiter passed the slot to the next one, whose wait had not ended");
+        granted.Dispose();
+        Assert.That(gate.InFlight, Is.Zero);
+    }
+
     // The waiter's timer is not yet due when the slot is released.
     [TestCase(BudgetMs, 100, TestName = "Well within its budget")]
     [TestCase(BudgetMs, BudgetMs - 1, TestName = "1 ms before its budget ends")]

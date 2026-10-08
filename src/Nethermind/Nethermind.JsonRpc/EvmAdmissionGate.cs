@@ -16,6 +16,7 @@ namespace Nethermind.JsonRpc;
 /// <remarks>
 /// A <see cref="SemaphoreSlim"/> holds the slots and serves its waiters in arrival order; it alone decides between a grant
 /// and a timeout or cancellation, so neither a slot nor a waiter is lost between them.
+/// A slot that reaches a waiter after its wait has ended, as when the timer fires late, is passed on.
 /// </remarks>
 internal sealed class EvmAdmissionGate
 {
@@ -24,6 +25,7 @@ internal sealed class EvmAdmissionGate
 
     private readonly SemaphoreSlim _slots;
     private readonly int _queueLimit;
+    // Waiters, counted until they resume, so a granted waiter still holds its queue place for that moment.
     private int _queued;
     private long _queueFullRejections;
     private long _notQueueableRejections;
@@ -115,7 +117,18 @@ internal sealed class EvmAdmissionGate
             Metrics.ChangeRpcAdmissionQueued(-1);
         }
 
-        long waitedMicroseconds = TimeProvider.GetElapsedTime(queuedAt).Ticks / TimeSpan.TicksPerMicrosecond;
+        TimeSpan waited = TimeProvider.GetElapsedTime(queuedAt);
+        // The timer that ends the wait runs on the thread pool and fires late when the pool is busy, so a slot can arrive
+        // after the wait has ended. Pass it on: a request past its wait never runs.
+        if (waited >= maxWait)
+        {
+            _slots.Release();
+            Interlocked.Increment(ref _waitTimeoutRejections);
+            Metrics.IncrementRpcAdmissionWaitTimeoutRejections();
+            throw new WaitTimeoutException();
+        }
+
+        long waitedMicroseconds = waited.Ticks / TimeSpan.TicksPerMicrosecond;
         Interlocked.Increment(ref _queuedGrants);
         Interlocked.Add(ref _queueWaitMicroseconds, waitedMicroseconds);
         Metrics.AddRpcAdmissionQueuedGrant(waitedMicroseconds);
@@ -123,6 +136,7 @@ internal sealed class EvmAdmissionGate
         return new Lease(this);
     }
 
+    // Hands the slot straight to the oldest waiter, if any. The in-flight gauge dips by one until that waiter resumes.
     private void Release()
     {
         _slots.Release();
