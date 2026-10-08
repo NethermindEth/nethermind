@@ -75,7 +75,7 @@ public static partial class TrieUpdater
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
         using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
-            return FoldRoot(store, ref rootReader, rootReader.TakeRoot(), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
+            return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
     }
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>
