@@ -562,10 +562,10 @@ public class GloasBlockImporterTests
     private static DateTime SlotStart(SignedGloasChain chain, ulong slot) => DateTime.UnixEpoch.AddSeconds(chain.Spec.GenesisTime + slot * chain.Spec.SecondsPerSlot);
 
     [Test]
-    public void Justified_gloas_checkpoint_maps_to_its_bid_parent_block_hash()
+    public void Safe_execution_hash_uses_the_configured_confirmation_policy([Values] bool enableFastConfirmation)
     {
         ForkCrossingChain fork = ForkCrossingChain.Instance;
-        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine());
+        BlockImporter importer = _chain.CreateImporter(new SignedGloasChain.EnvelopeEngine(), enableFastConfirmation: enableFastConfirmation);
         foreach (ForkCrossingChain.ChainBlock block in (ForkCrossingChain.ChainBlock[])[fork.First, .. fork.Voting])
         {
             Assert.That(importer.Import(new ForkedSignedBeaconBlock.OfGloas(block.Block), block.Root, verifySignatures: false), Is.EqualTo(BlockImportResult.Imported));
@@ -573,12 +573,11 @@ public class GloasBlockImporterTests
 
         importer.OnSlotTick(3 * _chain.Spec.SlotsPerEpoch);
         HeadView head = importer.ComputeHead();
-        ExecutionPayloadBid firstBid = fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!;
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(head.Justified.Root, Is.EqualTo(fork.First.Root), "fixture: the epoch-3 pull-up justifies the first Gloas block");
-        Assert.That(head.JustifiedExecutionHash, Is.EqualTo(firstBid.ParentBlockHash));
-        Assert.That(head.JustifiedExecutionHash, Is.Not.EqualTo(firstBid.BlockHash));
+        Assert.That(head.SafeExecutionHash, Is.EqualTo(enableFastConfirmation
+            ? head.FinalizedExecutionHash : fork.First.Block.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash));
     }
 
     [Test]

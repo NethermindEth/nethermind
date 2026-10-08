@@ -291,6 +291,23 @@ public partial class BeaconSyncOrchestratorTests
     }
 
     [Test]
+    public async Task Safe_execution_hash_changes_reach_the_engine_without_a_new_head([Values] bool hasConfirmedHash)
+    {
+        Harness harness = CreateHarness();
+        HeadView head = harness.Importer.Head;
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+        harness.Importer.Head = head with { SafeExecutionHash = hasConfirmedHash ? TestItem.KeccakF : null };
+
+        await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
+
+        Assert.That(harness.Engine.FcuCalls, Is.EqualTo(new[]
+        {
+            (head.HeadExecutionHash!, head.SafeExecutionHash!, head.FinalizedExecutionHash!),
+            (head.HeadExecutionHash!, hasConfirmedHash ? TestItem.KeccakF : head.FinalizedExecutionHash!, head.FinalizedExecutionHash!)
+        }));
+    }
+
+    [Test]
     [CancelAfter(30_000)]
     public async Task RangeSync_restarts_from_the_imported_tip_and_blames_only_the_invalid_blocks_supplier([Values] bool gloas, [Values] bool activeRound, [Values] RangeRejection rejection, CancellationToken token)
     {
@@ -456,8 +473,8 @@ public partial class BeaconSyncOrchestratorTests
         Assert.That(harness.Importer.ComputeHeadCalls, Is.EqualTo(3), "head recomputed after each applied verdict");
         Assert.That(harness.Engine.FcuCalls, Is.EqualTo((List<(Hash256, Hash256, Hash256)>)
         [
-            (badHead.HeadExecutionHash!, badHead.JustifiedExecutionHash!, badHead.FinalizedExecutionHash!),
-            (goodHead.HeadExecutionHash!, goodHead.JustifiedExecutionHash!, goodHead.FinalizedExecutionHash!),
+            (badHead.HeadExecutionHash!, badHead.SafeExecutionHash!, badHead.FinalizedExecutionHash!),
+            (goodHead.HeadExecutionHash!, goodHead.SafeExecutionHash!, goodHead.FinalizedExecutionHash!),
         ]), "FCU retried exactly once with the recomputed head");
         Assert.That(harness.StatusHolder.CurrentStatus.HeadRoot, Is.EqualTo(goodHead.HeadRoot), "status advertises the recovered head");
         Assert.That(harness.StatusHolder.JustifiedRoot, Is.EqualTo(goodHead.Justified.Root), "status carries the recovered head's justified root");
@@ -492,7 +509,7 @@ public partial class BeaconSyncOrchestratorTests
             if (scenario != ExecutionSend.Anchor) harness.Engine.FailingFcuCalls = 1;
             PayloadStatusV1? kick = await harness.Orchestrator.KickExecutionAsync(TestItem.KeccakA);
             Hash256 anchorExecutionHash = harness.Engine.FcuCalls.Single().Head;
-            harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { JustifiedExecutionHash = null, FinalizedExecutionHash = null };
+            harness.Importer.Head = CreateHead(TestItem.KeccakA, AnchorSlot, finalizedEpoch: 0, execHash: anchorExecutionHash) with { SafeExecutionHash = null, FinalizedExecutionHash = null };
             await harness.Orchestrator.RunHeadStepAsync(CancellationToken.None);
             using (Assert.EnterMultipleScope())
             {

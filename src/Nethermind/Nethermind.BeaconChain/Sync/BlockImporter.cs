@@ -85,10 +85,6 @@ public sealed class BlockImporter : IBlockImporter
     private EpochCache _gloasLineageCache = new() { Hasher = new CachedBeaconStateHasher() };
 
     /// <summary>A Gloas anchor's root and its bid's <c>parent_block_hash</c>, which fork choice records only for blocks it imported; <c>null</c> for a Fulu anchor.</summary>
-    private readonly Hash256? _gloasAnchorRoot;
-
-    private readonly Hash256? _gloasAnchorParentBlockHash;
-
     private readonly Hash256? _fuluProposerDomain;
 
     private readonly Hash256 _gloasProposerDomain = null!;
@@ -162,8 +158,6 @@ public sealed class BlockImporter : IBlockImporter
                 _states = new PostStateCache(store, spec, null, null, IsGloasBlock, GetJustifiedRoot, logManager, IsAboveFinalized, pubkeys, AncestorRoots);
                 _states.PinGloas(anchorRoot, gloasState);
                 _runner = new ForkChoiceRunner(spec, gloasState, gloasBlock.Message!, _states, pubkeys, _states, logManager);
-                _gloasAnchorRoot = anchorRoot;
-                _gloasAnchorParentBlockHash = gloasBlock.Message!.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash;
                 _lastSnapshotEpoch = gloasState.GetCurrentEpoch();
                 _gloasProposerDomain = Domains.ComputeDomain(DomainType.BeaconProposer, gloasState.Fork!.CurrentVersion!, gloasState.GenesisValidatorsRoot!);
                 break;
@@ -975,6 +969,11 @@ public sealed class BlockImporter : IBlockImporter
         {
             _runner.OnTickMilliseconds(timeMilliseconds);
         }
+        if (_config.EnableFastConfirmation)
+        {
+            ulong observedMilliseconds = _runner.GenesisTime * 1000 + (ulong)Math.Max(0L, _clock.UnixMilliseconds - _clock.SlotStartMilliseconds(0));
+            _runner.OnFastConfirmation(observedMilliseconds);
+        }
     }
 
     /// <summary>Spec <c>get_ptc</c> of the post-state of <paramref name="headRoot"/> for <paramref name="slot"/>.</summary>
@@ -1014,16 +1013,15 @@ public sealed class BlockImporter : IBlockImporter
             head,
             _runner.GetBlockSlot(head) ?? 0,
             // A pre-Gloas head is EMPTY and has no bid, so it keeps its own payload hash.
-            headNode.PayloadStatus == ForkChoicePayloadStatus.Full ? _runner.GetExecutionBlockHash(head) : GetParentBlockHash(head) ?? _runner.GetExecutionBlockHash(head),
-            CheckpointExecutionHash(_runner.JustifiedCheckpoint.Root),
+            headNode.PayloadStatus == ForkChoicePayloadStatus.Full ? _runner.GetExecutionBlockHash(head) : _runner.GetParentBlockHash(head) ?? _runner.GetExecutionBlockHash(head),
+            CheckpointExecutionHash(_config.EnableFastConfirmation ? _runner.GetConfirmedRoot(head) : _runner.JustifiedCheckpoint.Root),
             CheckpointExecutionHash(_runner.FinalizedCheckpoint.Root),
             _runner.JustifiedCheckpoint,
             _runner.FinalizedCheckpoint,
             headNode.PayloadStatus == ForkChoicePayloadStatus.Full);
     }
 
-    private Hash256? CheckpointExecutionHash(Hash256 root) => GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
-    private Hash256? GetParentBlockHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? (root == _gloasAnchorRoot ? _gloasAnchorParentBlockHash : null);
+    private Hash256? CheckpointExecutionHash(Hash256 root) => _runner.GetParentBlockHash(root) ?? _runner.GetExecutionBlockHash(root);
 
     /// <inheritdoc/>
     public void OnForkchoiceUpdated(Hash256 headRoot, Hash256 headExecutionHash, PayloadStatusV1 status)

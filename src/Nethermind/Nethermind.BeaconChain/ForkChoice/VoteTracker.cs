@@ -48,6 +48,10 @@ public sealed class VoteTrackerList
 
     public int Count { get; private set; }
 
+    internal VoteTracker? LatestVote(ulong validatorIndex) => validatorIndex < (ulong)Count && !_votes[validatorIndex].IsUnset
+        ? _votes[validatorIndex]
+        : null;
+
     /// <summary>Returns a mutable reference to the vote of <paramref name="validatorIndex"/>, growing the list if needed.</summary>
     public ref VoteTracker GetMut(ulong validatorIndex)
     {

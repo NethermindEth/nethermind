@@ -32,6 +32,14 @@ public class GloasForkChoiceTests
     public void Vector(ForkChoiceCase testCase) => Execute(testCase);
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
+
+    [TestCaseSource(nameof(FastConfirmationCases))]
+    public void Fast_confirmation_vector(ForkChoiceCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("fast_confirmation", "gloas", testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static IEnumerable<TestCaseData> FastConfirmationCases() =>
+        FuluDriverSupport.RelativeCases(ConsensusPreset.Minimal, ["gloas"], "fast_confirmation", "steps.yaml",
+            static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
     [Test]
     public void Every_handler_has_vectors_in_the_archive([Values] ConsensusPreset preset)
     {
@@ -149,6 +157,7 @@ public class GloasForkChoiceTests
     private static void Run(ForkChoiceCase testCase)
     {
         FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
+        ForkChoiceStepDriver.RequireSupportedFastConfirmationCase(testCase.CasePath);
 
         GloasForkChoiceStepDriver.Run(testCase.CasePath);
     }

@@ -51,6 +51,15 @@ internal static class ForkChoiceStepDriver
     }
 
     public static ForkChoiceRunner Run(string casePath) => Run(casePath, out _);
+
+    internal static void RequireSupportedFastConfirmationCase(string casePath)
+    {
+        if (!FuluDriverSupport.ShouldVerifySignatures(casePath)
+            && Path.GetFileName(casePath) is "is_one_confirmed_fails_recently_activated_validator_voting_in_empty_slot"
+                or "is_one_confirmed_passes_with_new_validator_activated_in_head_state")
+            throw new NotImplementedInDriverException("This never_bls vector requires mocked deposit proof-of-possession; the driver retains real verification of pending new-validator deposits.");
+    }
+
     /// <param name="blockRejections">Why each block step, in order, was refused; <c>null</c> for an accepted block.</param>
     internal static ForkChoiceRunner Run(string casePath, out List<Exception?> blockRejections)
     {
@@ -117,14 +126,14 @@ internal static class ForkChoiceStepDriver
         if (TryGetScalar(step, "attestation", out string? attestationKey))
         {
             RunOperandStep<Attestation>($"step {stepIndex}: attestation {attestationKey}", GetBool(step, "valid", defaultValue: true),
-                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, attestationKey + ".ssz_snappy")), operand => runner.OnAttestation(operand, isFromBlock: false, verifySignature: true));
+                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, attestationKey + ".ssz_snappy")), operand => runner.OnAttestation(operand, isFromBlock: false, verifySignature: FuluDriverSupport.ShouldVerifySignatures(casePath)));
             return;
         }
 
         if (TryGetScalar(step, "attester_slashing", out string? slashingKey))
         {
             RunOperandStep<AttesterSlashing>($"step {stepIndex}: attester_slashing {slashingKey}", GetBool(step, "valid", defaultValue: true),
-                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, slashingKey + ".ssz_snappy")), operand => runner.OnAttesterSlashing(operand, verifySignatures: true));
+                SszConsensusTestLoader.ReadSszSnappy(Path.Combine(casePath, slashingKey + ".ssz_snappy")), operand => runner.OnAttesterSlashing(operand, verifySignatures: FuluDriverSupport.ShouldVerifySignatures(casePath)));
             return;
         }
 
@@ -155,7 +164,7 @@ internal static class ForkChoiceStepDriver
             if (stateProvider.States.TryGetValue(block.ParentRoot!, out BeaconStateFulu? parentState))
             {
                 postState = parentState.Clone();
-                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionStatus), FuluDriverSupport.CaseSpec(casePath), validateResult: true, verifySignatures: true);
+                StateTransition.Apply(postState, signedBlock, new EpochCache(), pubkeys, new FixedNewPayloadNotifier(executionStatus), FuluDriverSupport.CaseSpec(casePath), validateResult: true, verifySignatures: FuluDriverSupport.ShouldVerifySignatures(casePath));
             }
 
             runner.OnBlock(signedBlock, postState ?? stateProvider.Anchor, payloadInfo is null ? ExecutionStatus.Valid : executionStatus, dataColumns);
@@ -247,6 +256,8 @@ internal static class ForkChoiceStepDriver
 
     private static void RunChecksStep(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)
     {
+        RunFastConfirmationChecks(checks, runner, stepIndex);
+
         if (TryGetScalar(checks, "get_proposer_head", out string? proposerHeadRoot))
             AssertEqual(stepIndex, "get_proposer_head", new Hash256(proposerHeadRoot!), runner.GetProposerHead(runner.GetHead(), runner.CurrentSlot));
 
@@ -284,6 +295,23 @@ internal static class ForkChoiceStepDriver
         Hash256 expectedRoot = new(GetScalar(node, "root"));
         AssertEqual(stepIndex, $"{name}.epoch", expectedEpoch, actual.Epoch);
         AssertEqual(stepIndex, $"{name}.root", expectedRoot, actual.Root);
+    }
+
+    internal static void RunFastConfirmationChecks(YamlMappingNode checks, ForkChoiceRunner runner, int stepIndex)
+    {
+        if (!TryGetScalar(checks, "confirmed_root", out string? confirmedRoot))
+            return;
+
+        runner.FastConfirmation.OnSlot(runner.GetHead());
+        FastConfirmation confirmation = runner.FastConfirmation;
+        AssertEqual(stepIndex, "confirmed_root", new Hash256(confirmedRoot!), confirmation.ConfirmedRoot);
+        AssertCheckpoint("previous_epoch_observed_justified_checkpoint", (YamlMappingNode)checks.Children[new YamlScalarNode("previous_epoch_observed_justified_checkpoint")], confirmation.PreviousEpochObservedJustifiedCheckpoint, stepIndex);
+        AssertCheckpoint("current_epoch_observed_justified_checkpoint", (YamlMappingNode)checks.Children[new YamlScalarNode("current_epoch_observed_justified_checkpoint")], confirmation.CurrentEpochObservedJustifiedCheckpoint, stepIndex);
+        AssertCheckpoint("previous_epoch_greatest_unrealized_checkpoint", (YamlMappingNode)checks.Children[new YamlScalarNode("previous_epoch_greatest_unrealized_checkpoint")], confirmation.PreviousEpochGreatestUnrealizedCheckpoint, stepIndex);
+        AssertEqual(stepIndex, "previous_slot_head", new Hash256(GetScalar(checks, "previous_slot_head")), confirmation.PreviousSlotHead);
+        AssertEqual(stepIndex, "current_slot_head", new Hash256(GetScalar(checks, "current_slot_head")), confirmation.CurrentSlotHead);
+        AssertEqual(stepIndex, "safe_execution_block_hash", new Hash256(GetScalar(checks, "safe_execution_block_hash")),
+            runner.GetParentBlockHash(confirmation.ConfirmedRoot) ?? runner.GetExecutionBlockHash(confirmation.ConfirmedRoot));
     }
 
     internal static void AssertEqual<T>(int stepIndex, string check, T expected, T actual)

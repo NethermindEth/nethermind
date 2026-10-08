@@ -176,7 +176,7 @@ public class GloasAnchorImportTests
         Assert.That(anchor.Bid.ParentBlockHash, Is.Not.EqualTo(anchor.Bid.BlockHash), "fixture: the anchor builds on an empty payload");
         Assert.That(before.HeadRoot, Is.EqualTo(anchor.Root));
         Assert.That(before.HeadExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
-        Assert.That(before.JustifiedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
+        Assert.That(before.SafeExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
         Assert.That(before.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));
         Assert.That(after.HeadExecutionHash, Is.EqualTo(anchor.Bid.BlockHash));
         Assert.That(after.FinalizedExecutionHash, Is.EqualTo(anchor.Bid.ParentBlockHash));

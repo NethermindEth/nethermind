@@ -222,6 +222,7 @@ public sealed class ProtoArrayForkChoice
     public IEnumerable<ProtoNode> EnumerateAncestorNodes(Hash256 blockRoot) => _protoArray.EnumerateAncestorNodes(blockRoot);
     /// <inheritdoc cref="VoteTrackerList.LatestMessage"/>
     public (Hash256 BlockRoot, ulong TargetEpoch)? LatestMessage(ulong validatorIndex) => _votes.LatestMessage(validatorIndex);
+    internal VoteTracker? LatestVote(ulong validatorIndex) => _votes.LatestVote(validatorIndex);
     /// <inheritdoc cref="ProtoArray.IsDescendant"/>
     public bool IsDescendant(Hash256 ancestorRoot, Hash256 descendantRoot) => _protoArray.IsDescendant(ancestorRoot, descendantRoot);
 
