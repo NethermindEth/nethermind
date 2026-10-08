@@ -579,9 +579,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         try
         {
-            MethodInfo? waitMethod = typeof(NewPayloadHandler).GetMethod("WaitForEarlierCopiesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(waitMethod, Is.Not.Null);
-            Task earlierCopyWait = (Task)waitMethod!.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            Task earlierCopyWait = WaitForEarlierCopies(handler, block.Hash!);
             Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
             Assert.That(WaitForEarlierCopies(handler, TestItem.KeccakD).IsCompleted, Is.True, "a held copy of one block must not hold back a request for another");
         }
@@ -702,9 +700,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
             Task<ResultWrapper<PayloadStatusV1>> retry = handler.HandleAsync(retryPayload);
             await retryEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
-            MethodInfo? waitMethod = typeof(NewPayloadHandler).GetMethod("WaitForEarlierCopiesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
-            Assert.That(waitMethod, Is.Not.Null);
-            Task bothCopiesWait = (Task)waitMethod!.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            Task bothCopiesWait = WaitForEarlierCopies(handler, block.Hash!);
             retryEnqueueReleased.SetResult();
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
             Assert.That((await retry.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
@@ -713,7 +709,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
             resent = handler.HandleAsync(resentPayload);
 
-            Task earlierCopyWait = (Task)waitMethod.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
+            Task earlierCopyWait = WaitForEarlierCopies(handler, block.Hash!);
             Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
 
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
