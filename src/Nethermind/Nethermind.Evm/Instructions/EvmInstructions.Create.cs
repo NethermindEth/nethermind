@@ -143,6 +143,7 @@ public static partial class EvmInstructions
         if (value <= balance) state.NoteMinimumBalance(env.ExecutingAccount, in value);
         if (value > balance)
         {
+            state.NoteBalanceBelow(env.ExecutingAccount, in value);
             if (!TEip8037.IsActive && vm.IsTracingActions)
                 TraceRejectedCreate<TGasPolicy, TOpCreate, TSpec>(vm, gas, in value, in memoryPositionOfInitCode, in initCodeLength, EvmExceptionType.NotEnoughBalance);
 

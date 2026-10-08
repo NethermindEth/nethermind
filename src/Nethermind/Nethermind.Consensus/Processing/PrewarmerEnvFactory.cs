@@ -34,6 +34,9 @@ public class PrewarmerEnvFactory(
     /// </remarks>
     public bool RecordsFootprints { get; } = (blocksConfig?.PreWarmHandoff ?? false) && transactionProcessor is EthereumTransactionProcessor;
 
+    /// <summary>Whether a footprint bounds a balance a failed value check read instead of fixing it.</summary>
+    private bool BalanceCeilings { get; } = blocksConfig?.PreWarmHandoffBalanceCeiling ?? false;
+
     public IPrewarmerEnv Create(PreBlockCaches preBlockCaches)
     {
         BlockCodeCache? warmingCodeCache = parentLifetime.ResolveOptional<BlockCodeCache>()?.WithLimit(WarmingCodeMaxBytes);
@@ -55,7 +58,7 @@ public class PrewarmerEnvFactory(
             if (RecordsFootprints)
             {
                 // At scope level, so the transaction processor and the code repository both read through it.
-                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner));
+                builder.AddDecorator<IWorldState>((_, inner) => recorder = new FootprintRecorder(inner, BalanceCeilings));
             }
         });
 

@@ -134,6 +134,19 @@ public class PrewarmerHandoffTests(IReleaseSpec spec) : PrewarmerHandoffTestBase
     }
 
     [Test]
+    public void A_value_send_its_balance_failed_replays_while_the_block_leaves_the_balance_short([Values] bool ceiling, [Values] bool staysShort)
+    {
+        TearDown();
+        Initialize(handoff: true, balanceCeiling: ceiling);
+        (int replayed, int rejected, _) = Handoff(BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, Shortfall, staysShort ? 5.Wei : 0x4e4d.Wei, gasLimit: 30_000),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Shortfall, data: [1]))).Tally;
+
+        Assert.That((replayed, rejected), Is.EqualTo(ceiling && staysShort ? (3, 0) : (2, 1)));
+    }
+
+    [Test]
     public void A_write_undone_by_a_reverted_inner_call_stays_undone()
     {
         (int replayed, _, _) = Handoff(BuildBlock(
@@ -862,6 +875,9 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     private static readonly byte[] TransientCode = [0x5F, 0x5C, 0x61, 0x4E, 0x4D, 0x01, 0x80, 0x5F, 0x5D, 0x33, 0x55, 0x00];
     // SSTORE(0, 0x4e4d); REVERT(0, 0)
     private static readonly byte[] UndoneCode = [0x61, 0x4E, 0x4D, 0x5F, 0x55, 0x5F, 0x5F, 0xFD];
+    // Without call data STOP, with it CALL(GAS, CALLER, 0x4e4d, 0, 0, 0, 0); POP; STOP
+    private static readonly byte[] ShortfallCode =
+        [0x36, 0x60, 0x05, 0x57, 0x00, 0x5B, 0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x33, 0x5A, 0xF1, 0x50, 0x00];
     // Without call data SSTORE(0, BALANCE(C)) if the balance is even, with it SSTORE(1, SLOAD(0)).
     private static readonly byte[] CopierCode =
         [0x36, 0x60, 0x26, 0x57, 0x73, .. TestItem.AddressC.Bytes, 0x31, 0x80, 0x60, 0x01, 0x16, 0x60, 0x24, 0x57, 0x5F, 0x55, 0x00,
@@ -884,6 +900,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address ScarcePayer = new("0x00000000000000000000000000000000004e4d0b");
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
     protected static readonly Address Copier = new("0x00000000000000000000000000000000004e4d0d");
+    protected static readonly Address Shortfall = new("0x00000000000000000000000000000000004e4d0e");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -900,7 +917,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     [SetUp]
     public void Setup() => Initialize(handoff: true);
 
-    protected void Initialize(bool handoff)
+    protected void Initialize(bool handoff, bool balanceCeiling = false)
     {
         _container = new ContainerBuilder()
             .AddModule(new TestNethermindModule(new BlocksConfig
@@ -908,7 +925,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
                 PreWarming = PreWarmMode.Block,
                 PreWarmStateConcurrency = 3,
                 ProcessingCores = ProcessingCores.All,
-                PreWarmHandoff = handoff
+                PreWarmHandoff = handoff,
+                PreWarmHandoffBalanceCeiling = balanceCeiling
             }))
             .AddSingleton<ISpecProvider>(new TestSpecProvider(Spec))
             .AddSingleton<IStateHeaderProvider>(new Parents(_headers))
@@ -949,6 +967,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
             Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
             Deploy(worldState, Copier, CopierCode, 0);
+            Deploy(worldState, Shortfall, ShortfallCode, 1);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);

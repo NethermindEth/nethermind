@@ -21,7 +21,8 @@ namespace Nethermind.Consensus.Processing;
 
 /// <summary>The world state of a pre-warm env; while active it records the footprint of the transaction it runs.</summary>
 /// <remarks>Re-implements <see cref="HasCode"/> and <see cref="MarkStorageDestroyed"/>, which the interface implements itself.</remarks>
-internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator(state), IWorldState
+/// <param name="balanceCeilings">Whether a value check a balance failed bounds that balance from above instead of fixing it.</param>
+internal sealed class FootprintRecorder(IWorldState state, bool balanceCeilings = false) : WorldStateDecorator(state), IWorldState
 {
     private bool _active;
     private bool _opaque;
@@ -356,6 +357,30 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         account.Fields |= AccountFields.MinimumBalance;
         if (atStart > account.MinimumBalance) account.MinimumBalance = atStart;
+    }
+
+    public override void NoteBalanceBelow(Address address, in UInt256 bound)
+    {
+        if (!_active || !balanceCeilings) return;
+        // The balance just read only fell short of the bound. Translate it to the transaction's starting balance, net
+        // of what the run itself paid or received, so a change made by an earlier transaction that keeps it short is met.
+        ref AccountPrecondition account = ref Account(address);
+        UInt256 current = State.GetBalance(address);
+        UInt256 atStart;
+        if (current >= account.Balance)
+        {
+            UInt256 received = current - account.Balance;
+            if (bound <= received) return;
+            atStart = bound - received;
+        }
+        else if (UInt256.AddOverflow(bound, account.Balance - current, out atStart))
+        {
+            return;
+        }
+
+        if (account.BalanceValueReads > 0) account.BalanceValueReads--;
+        if ((account.Fields & AccountFields.BalanceBelow) == 0 || atStart < account.BalanceBelow) account.BalanceBelow = atStart;
+        account.Fields |= AccountFields.BalanceBelow;
     }
 
     public override void GetOriginal(in StorageCell storageCell, out UInt256 value)

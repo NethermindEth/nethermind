@@ -90,7 +90,8 @@ internal enum AccountFields : byte
     Balance = 4,
     Nonce = 8,
     Code = 16,
-    MinimumBalance = 32
+    MinimumBalance = 32,
+    BalanceBelow = 64
 }
 
 /// <summary>An account a run touched, with its values when the transaction started.</summary>
@@ -104,6 +105,8 @@ internal struct AccountPrecondition
     public ulong Nonce;
     public UInt256 Balance;
     public UInt256 MinimumBalance;
+    /// <summary>The balance the transaction's start balance stays under, with <see cref="AccountFields.BalanceBelow"/>.</summary>
+    public UInt256 BalanceBelow;
     public ValueHash256 CodeHash;
     public int BalanceValueReads;
 
@@ -115,10 +118,11 @@ internal struct AccountPrecondition
         if ((fields & AccountFields.Existence) != 0 && state.AccountExists(address) != Exists) return false;
         if ((fields & AccountFields.Liveness) != 0 && state.IsDeadAccount(address) != IsDead) return false;
         if ((fields & AccountFields.Nonce) != 0 && state.GetNonce(address) != Nonce) return false;
-        if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance)) != 0)
+        if ((fields & (AccountFields.Balance | AccountFields.MinimumBalance | AccountFields.BalanceBelow)) != 0)
         {
             ref readonly UInt256 balance = ref state.GetBalance(address);
             if (((fields & AccountFields.Balance) != 0 && balance != Balance) || balance < MinimumBalance) return false;
+            if ((fields & AccountFields.BalanceBelow) != 0 && balance >= BalanceBelow) return false;
         }
 
         if ((fields & AccountFields.Code) != 0 && state.GetCodeHash(address) != CodeHash) return false;

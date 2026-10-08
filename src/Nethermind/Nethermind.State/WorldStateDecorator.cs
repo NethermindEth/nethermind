@@ -170,6 +170,9 @@ public abstract class WorldStateDecorator(IWorldState state) : IWorldState
     public virtual void NoteMinimumBalance(Address address, in UInt256 minimum)
         => State.NoteMinimumBalance(address, in minimum);
 
+    public virtual void NoteBalanceBelow(Address address, in UInt256 bound)
+        => State.NoteBalanceBelow(address, in bound);
+
     public virtual IDisposable? BeginSystemAccountReadSuppression()
         => State.BeginSystemAccountReadSuppression();
 }

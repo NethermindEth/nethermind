@@ -71,6 +71,33 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Hand pre-warm runs over to block processing. Requires PreWarming. Not applied with a block access list (EIP-7928), from EIP-8037, nor on chains with their own transaction processor.", DefaultValue = "true", HiddenFromDocs = true)]
     bool PreWarmHandoff { get; set; }
 
+    [ConfigItem(Description = "A pre-warm run whose value transfer a balance failed records that balance as below the value instead of its exact value. Requires PreWarmHandoff.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmHandoffBalanceCeiling { get; set; }
+
+    [ConfigItem(Description = "Compute each receipt's bloom on a helper thread as its transaction ends, instead of all of them after the block's last transaction.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool StreamReceiptBlooms { get; set; }
+
+    [ConfigItem(Description = "Declared gas above which a transaction's storage reads are discovered before the block's warm pass reaches it.", DefaultValue = "10000000", HiddenFromDocs = true)]
+    ulong PreWarmDiscoveryGasThreshold { get; set; }
+
+    [ConfigItem(Description = "Transactions per block discovered up front, and handed to discovery by warm runs.", DefaultValue = "16", HiddenFromDocs = true)]
+    int PreWarmMaxDiscoveryCandidates { get; set; }
+
+    [ConfigItem(Description = "Backing-store reads after which a warm run hands its transaction to discovery.", DefaultValue = "24", HiddenFromDocs = true)]
+    int PreWarmColdReadsBeforeDiscovery { get; set; }
+
+    [ConfigItem(Description = "Storage cells a block's discovery may read ahead.", DefaultValue = "8192", HiddenFromDocs = true)]
+    int PreWarmMaxDiscoveredCells { get; set; }
+
+    [ConfigItem(Description = "Each warm run first finds the storage it misses in runs that only read the caches, and reads that storage side by side on dedicated threads, while recent reads come from the disk.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmDiscoverFirst { get; set; }
+
+    [ConfigItem(Description = "Threads reading the storage that runs ahead of the warm runs find. Requires PreWarmDiscoverFirst.", DefaultValue = "32", HiddenFromDocs = true)]
+    int PreWarmDiscoveryReadThreads { get; set; }
+
+    [ConfigItem(Description = "Microseconds from which a backing-store read counts as coming from the disk for PreWarmDiscoverFirst; 0 discovers first always.", DefaultValue = "50", HiddenFromDocs = true)]
+    int PreWarmDiscoverFirstSlowReadMicros { get; set; }
+
     [ConfigItem(Description = "The block production timeout, in milliseconds.", DefaultValue = "4000")]
     int BlockProductionTimeoutMs { get; set; }
 

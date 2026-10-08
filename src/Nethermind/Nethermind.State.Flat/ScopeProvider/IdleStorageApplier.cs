@@ -4,6 +4,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
@@ -20,6 +21,9 @@ internal sealed class IdleStorageApplier
 
     // Settable for tests.
     internal static TimeSpan MinIdleGap { get; set; } = TimeSpan.FromMilliseconds(250);
+
+    // How long a hold waits before it looks at the warm pass again.
+    private static readonly TimeSpan HoldCheck = TimeSpan.FromMilliseconds(20);
 
     private static readonly Lock InstanceLock = new();
     private static IdleStorageApplier? _instance;
@@ -61,6 +65,15 @@ internal sealed class IdleStorageApplier
 
     public void BlockCommitted() => Volatile.Write(ref _lastBlockCommit, Stopwatch.GetTimestamp());
 
+    /// <summary>Whether writes stay buffered while a block's warm pass runs, so their reads leave the disk and the cores to it.</summary>
+    public bool HoldsUntilWarmed
+    {
+        get => Volatile.Read(ref _holdsUntilWarmed);
+        set => Volatile.Write(ref _holdsUntilWarmed, value);
+    }
+
+    private bool _holdsUntilWarmed;
+
     public bool FollowsIdleGap()
     {
         long lastCommit = Volatile.Read(ref _lastBlockCommit);
@@ -74,6 +87,12 @@ internal sealed class IdleStorageApplier
         int idleRounds = 0;
         while (true)
         {
+            if (HoldsUntilWarmed && BlockWarming.IsActive && !_queue.IsEmpty)
+            {
+                BlockWarming.WaitForEnd(HoldCheck);
+                continue;
+            }
+
             if (_queue.TryDequeue(out FlatStorageTree? storageTree))
             {
                 idleRounds = 0;

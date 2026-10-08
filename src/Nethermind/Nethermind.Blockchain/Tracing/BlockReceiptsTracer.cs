@@ -78,6 +78,7 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     {
         TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Success, logs, stateRoot);
         _txReceipts.Add(receipt);
+        ReceiptCompleted?.Invoke(receipt);
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -102,7 +103,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
 
     public void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null)
     {
-        _txReceipts.Add(BuildFailedReceipt(recipient, gasSpent, error, stateRoot));
+        TxReceipt failed = BuildFailedReceipt(recipient, gasSpent, error, stateRoot);
+        _txReceipts.Add(failed);
+        ReceiptCompleted?.Invoke(failed);
 
         // hacky way to support nested receipt tracers
         if (_otherTracer is ITxTracer otherTxTracer)
@@ -348,6 +351,9 @@ public partial class BlockReceiptsTracer(bool parallel = false) : IBlockTracer, 
     private bool _bloomsRemoved;
     protected Transaction? CurrentTx;
     public ReadOnlySpan<TxReceipt> TxReceipts => CollectionsMarshal.AsSpan(_txReceipts);
+
+    /// <summary>Told about each receipt as its transaction ends.</summary>
+    public Action<TxReceipt>? ReceiptCompleted { get; set; }
     public TxReceipt LastReceipt => _txReceipts[^1];
     public IBlockTracer OtherTracer => _otherTracer;
 

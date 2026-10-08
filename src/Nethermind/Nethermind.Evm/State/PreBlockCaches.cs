@@ -4,6 +4,7 @@
 using System;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Collections.Pooled;
@@ -219,6 +220,7 @@ public class PreBlockCaches
 
             Hash256? validFor = _validFor;
             ClearCachesCore();
+            if (validFor is not null) Interlocked.Increment(ref Metrics.PreBlockCacheStateMismatchClears);
             if (validFor is not null && logger.IsInfo) ReportCachesClearedForStateMismatch(logger, validFor, stateRoot);
             _validFor = stateRoot;
             return false;
@@ -245,6 +247,7 @@ public class PreBlockCaches
             {
                 Hash256? validFor = _validFor;
                 ClearStateCachesCore();
+                if (validFor is not null) Interlocked.Increment(ref Metrics.PreBlockCacheStateMismatchClears);
                 if (validFor is not null && logger.IsInfo) ReportCachesClearedForStateMismatch(logger, validFor, stateRoot);
             }
         }
@@ -361,6 +364,7 @@ public class PreBlockCaches
         Task? pending = _pendingWriteBack;
         if (pending is null) return;
 
+        long started = pending.IsCompleted ? 0 : Stopwatch.GetTimestamp();
         try
         {
             pending.GetAwaiter().GetResult();
@@ -369,6 +373,11 @@ public class PreBlockCaches
         {
             // Dropped even if the wait threw, so one bad write-back cannot fail every block after it.
             _pendingWriteBack = null;
+            if (started != 0)
+            {
+                Interlocked.Increment(ref Metrics.PreBlockCacheWriteBackWaits);
+                Interlocked.Add(ref Metrics.PreBlockCacheWriteBackWaitMicros, (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds);
+            }
         }
     }
 
@@ -393,6 +402,7 @@ public class PreBlockCaches
             {
                 // A partial write-back cannot serve the committed state.
                 ClearStateCachesCore();
+                Interlocked.Increment(ref Metrics.PreBlockCacheContendedWriteBacks);
                 if (logger.IsInfo) ReportCachesCleared(logger);
             }
             else
@@ -495,6 +505,7 @@ public class PreBlockCaches
             caches._storageCache.Clear();
             bypass.Clear();
             Cleared = true;
+            Interlocked.Increment(ref Metrics.PreBlockCacheStorageWipeClears);
             if (Logger.IsInfo) ReportStorageCacheCleared(Logger, bypass.Capacity);
         }
 

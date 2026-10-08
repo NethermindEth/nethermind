@@ -74,6 +74,54 @@ public static class Metrics
     public static long PrewarmHandoffFailures { get; set; }
 
     [CounterMetric]
+    [Description("Warm runs that first found and read the storage they miss")]
+    public static long PrewarmDiscoverFirstRuns;
+
+    [CounterMetric]
+    [Description("Runs that only read the caches to find the storage a warm run misses")]
+    public static long PrewarmDiscoverFirstRounds;
+
+    [CounterMetric]
+    [Description("Storage cells read side by side ahead of warm runs")]
+    public static long PrewarmDiscoverFirstCells;
+
+    [CounterMetric]
+    [Description("Warm runs that did not find their storage first because recent reads came from memory")]
+    public static long PrewarmDiscoverFirstSkipped;
+
+    [CounterMetric]
+    [Description("Times a block stopped and joined the mempool pre-warm session")]
+    public static long PrewarmSpeculativeJoins;
+
+    [CounterMetric]
+    [Description("Microseconds blocks waited to stop and join the mempool pre-warm session")]
+    public static long PrewarmSpeculativeJoinMicros;
+
+    [CounterMetric]
+    [Description("Mempool pre-warm passes that warmed anything")]
+    public static long PrewarmSpeculativePasses;
+
+    [CounterMetric]
+    [Description("Transactions the mempool pre-warm passes warmed")]
+    public static long PrewarmSpeculativeTxs;
+
+    [CounterMetric]
+    [Description("Transactions of the blocks pre-warmed for processing")]
+    public static long PrewarmBlockTxs;
+
+    [CounterMetric]
+    [Description("Transactions of the blocks pre-warmed for processing that the mempool pre-warm had already warmed")]
+    public static long PrewarmBlockTxsMempoolWarmed;
+
+    [CounterMetric]
+    [Description("Blocks that took over the mempool pre-warm session's caches")]
+    public static long PrewarmMempoolHandoffs;
+
+    [CounterMetric]
+    [Description("Blocks that found no mempool pre-warm session to take over, or one for another parent")]
+    public static long PrewarmMempoolHandoffMisses;
+
+    [CounterMetric]
     [Description("Pre-warm runs taken to be refreshed because an earlier transaction leaves a slot they read at another value")]
     public static long PrewarmRefreshes { get; set; }
 

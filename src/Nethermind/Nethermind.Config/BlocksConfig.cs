@@ -73,6 +73,24 @@ namespace Nethermind.Config
 
         public bool PreWarmHandoff { get; set; } = true;
 
+        public bool PreWarmHandoffBalanceCeiling { get; set; }
+
+        public bool StreamReceiptBlooms { get; set; }
+
+        public ulong PreWarmDiscoveryGasThreshold { get; set; } = 10_000_000;
+
+        public int PreWarmMaxDiscoveryCandidates { get; set; } = 16;
+
+        public int PreWarmColdReadsBeforeDiscovery { get; set; } = 24;
+
+        public int PreWarmMaxDiscoveredCells { get; set; } = 8192;
+
+        public bool PreWarmDiscoverFirst { get; set; }
+
+        public int PreWarmDiscoveryReadThreads { get; set; } = 32;
+
+        public int PreWarmDiscoverFirstSlowReadMicros { get; set; } = 50;
+
         public ProcessingCores ProcessingCores { get; set; } = ProcessingCores.Performance;
 
         public bool PreWarmCoreSplit { get; set; } = true;

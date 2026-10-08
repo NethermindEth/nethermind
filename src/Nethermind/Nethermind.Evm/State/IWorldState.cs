@@ -192,6 +192,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>The balance just read for <paramref name="address"/> was only compared with <paramref name="minimum"/>.</summary>
     public void NoteMinimumBalance(Address address, in UInt256 minimum) { }
 
+    /// <summary>The balance just read for <paramref name="address"/> was only found to be below <paramref name="bound"/>.</summary>
+    public void NoteBalanceBelow(Address address, in UInt256 bound) { }
+
     public IDisposable? BeginSystemAccountReadSuppression() => null;
 
     // EIP-684: a creation collision occurs when the destination has code or a non-zero nonce.

@@ -148,6 +148,9 @@ public interface IFlatDbConfig : IConfig
     [ConfigItem(Description = "Apply committed storage writes to the storage tries on an idle-priority thread during execution. Ignored with VerifyWithTrie.", DefaultValue = "true")]
     bool ApplyStorageWritesOnIdleThread { get; set; }
 
+    [ConfigItem(Description = "Leave the storage writes the idle-priority thread applies buffered until the block's warm pass ends.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool HoldEarlyApplyUntilWarmed { get; set; }
+
     [ConfigItem(Description = "Enable long finality support with persisted snapshots", DefaultValue = "true")]
     bool EnableLongFinality { get; set; }
 

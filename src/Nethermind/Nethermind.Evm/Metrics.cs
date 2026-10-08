@@ -58,6 +58,26 @@ public partial class Metrics
     // Fires per code lookup, i.e. per call frame: the single shared "other" word made this a
     // contended cross-core RMW for every concurrent RPC/prewarm thread — striped instead.
     [CounterMetric]
+    [Description("Times a reader of the pre-block caches waited for the previous block's write-back")]
+    public static long PreBlockCacheWriteBackWaits;
+
+    [CounterMetric]
+    [Description("Microseconds readers of the pre-block caches waited for the previous block's write-back")]
+    public static long PreBlockCacheWriteBackWaitMicros;
+
+    [CounterMetric]
+    [Description("Times the pre-block caches were cleared because they held another state than the one asked for")]
+    public static long PreBlockCacheStateMismatchClears;
+
+    [CounterMetric]
+    [Description("Write-backs to the pre-block caches dropped because another writer overlapped them")]
+    public static long PreBlockCacheContendedWriteBacks;
+
+    [CounterMetric]
+    [Description("Times the pre-block storage cache was cleared because too many contracts had their storage wiped")]
+    public static long PreBlockCacheStorageWipeClears;
+
+    [CounterMetric]
     [Description("Number of Code DB cache reads.")]
     public static long CodeDbCache => _mainCodeDbCache.Value + _otherCodeDbCache.Sum;
     private static CacheLinePaddedLong _mainCodeDbCache;

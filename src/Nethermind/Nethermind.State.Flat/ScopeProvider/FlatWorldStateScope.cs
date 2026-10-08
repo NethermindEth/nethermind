@@ -101,6 +101,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
             && snapshotBundle._usage == ResourcePool.Usage.MainBlockProcessing)
         {
             _earlyApplier = IdleStorageApplier.GetInstance(logManager);
+            _earlyApplier.HoldsUntilWarmed = configuration.HoldEarlyApplyUntilWarmed;
             _earlyApplyClosed = !_earlyApplier.FollowsIdleGap();
         }
     }

@@ -20,7 +20,12 @@ public static partial class EvmInstructions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static bool HasAtLeast(IWorldState state, Address account, in UInt256 value)
     {
-        if (state.GetBalance(account) < value) return false;
+        if (state.GetBalance(account) < value)
+        {
+            state.NoteBalanceBelow(account, in value);
+            return false;
+        }
+
         state.NoteMinimumBalance(account, in value);
         return true;
     }

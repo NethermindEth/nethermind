@@ -49,6 +49,11 @@ public partial class BlockProcessor(
     : IBlockProcessor
 {
     private static readonly ParallelOptions SmallBloomOptions = new() { MaxDegreeOfParallelism = 2 };
+
+    /// <summary>Whether receipts' blooms are computed as their transactions end; set once at startup.</summary>
+    public static bool StreamsReceiptBlooms { get; set; }
+
+    private bool _bloomsStreamed;
     protected readonly ISpecProvider _specProvider = specProvider;
     protected readonly IWorldState _stateProvider = stateProvider;
     protected readonly IBlockAccessListManager _balManager = balManager;
@@ -184,7 +189,17 @@ public partial class BlockProcessor(
         }
         CommitState(spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        _bloomsStreamed = StreamsReceiptBlooms && !spec.IsEip7668Enabled && block.BlockAccessList is null;
+        if (_bloomsStreamed) ReceiptsTracer.ReceiptCompleted = ReceiptBloomStreamer.Instance.Add;
+        TxReceipt[] receipts;
+        try
+        {
+            receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
+        }
+        finally
+        {
+            ReceiptsTracer.ReceiptCompleted = null;
+        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -211,12 +226,15 @@ public partial class BlockProcessor(
         // EIP-7668: ProcessBlock set the zero-length header bloom and the receipts were built with it, so no blooms are computed.
         bool bloomsRemoved = spec.IsEip7668Enabled && !block.IsGenesis;
         bool inBackground = TComputesCommitments.IsActive && ShouldCalculateReceiptsInBackground(receipts);
+        // Blooms computed as their transactions ended leave only the aggregate and the root.
+        bool bloomsStreamed = _bloomsStreamed && !bloomsRemoved;
+        _bloomsStreamed = false;
         // Receipts are immutable apart from their blooms now; overlap with the first state commit too.
-        using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved ? StartBloomComputation(receipts) : null;
+        using ParallelUnbalancedWork.BackgroundWork? bloomWork = inBackground && !bloomsRemoved && !bloomsStreamed ? StartBloomComputation(receipts) : null;
         using ParallelUnbalancedWork.BackgroundWork? receiptWork = bloomWork is not null
             ? bloomWork.ContinueWith(() => receiptResults = (AccumulateBlockBloom(receipts), CalculateReceiptsRoot(receipts, spec, block)))
             : inBackground
-                ? ParallelUnbalancedWork.BackgroundFor(0, 1, SmallBloomOptions, _ => receiptResults = (Bloom.ZeroLength, CalculateReceiptsRoot(receipts, spec, block)))
+                ? ParallelUnbalancedWork.BackgroundFor(0, 1, SmallBloomOptions, _ => receiptResults = (bloomsStreamed ? AccumulateBlockBloom(receipts) : Bloom.ZeroLength, CalculateReceiptsRoot(receipts, spec, block)))
                 : null;
 
         CommitState(spec);
@@ -228,7 +246,7 @@ public partial class BlockProcessor(
 
         if (receiptWork is null && TComputesCommitments.IsActive)
         {
-            if (!bloomsRemoved)
+            if (!bloomsRemoved && !bloomsStreamed)
             {
                 CalculateBlooms(receipts);
             }
@@ -268,7 +286,12 @@ public partial class BlockProcessor(
 
         if (receiptWork is not null)
         {
-            receiptWork.WaitForCompletion();
+            // Timed on this thread, so the block's receipts root time is what block processing waited for.
+            using (new MetricsTimer<ReceiptsRootTimeSink>())
+            {
+                receiptWork.WaitForCompletion();
+            }
+
             (header.Bloom, header.ReceiptsRoot) = receiptResults;
         }
 

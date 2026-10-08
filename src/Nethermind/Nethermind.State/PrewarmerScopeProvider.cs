@@ -561,10 +561,23 @@ public class PrewarmerScopeProvider(
             // PreBlock misses only (consumer scope): StorageTreeReads is already counted once per
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
-            if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
-            else ColdReadWatch.Read();
+            if (!isPrewarmer)
+            {
+                _metrics.IncrementPreBlockStorageMisses();
+                baseStorageTree.Get(storageCell.Index, out value);
+                return;
+            }
 
+            ColdReadWatch.Read();
+            if (!ColdStore.Observed)
+            {
+                baseStorageTree.Get(storageCell.Index, out value);
+                return;
+            }
+
+            long started = Stopwatch.GetTimestamp();
             baseStorageTree.Get(storageCell.Index, out value);
+            ColdStore.Observe(Stopwatch.GetTimestamp() - started);
         }
     }
 
