@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
-using System.Buffers.Binary;
 using System.IO;
 using System.Linq;
 using System.Threading;
@@ -15,7 +14,6 @@ using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -35,21 +33,22 @@ public class ImportPbtFromPreimageFlatTests
 {
     private const ulong SourceBlock = 7;
 
+    /// <summary>A sort budget small enough to spill the leaves of every test across several runs.</summary>
+    private const int SortBufferBytes = 1024;
+
     /// <summary>Header root that import must use as the resulting state's key.</summary>
     /// <remarks>It is unrelated to fixture tree roots to prevent accidental matches.</remarks>
     private static readonly Hash256 SourceStateRoot = TestItem.KeccakA;
 
-    // Zero workers and window size use the built-in defaults; small values split leaves across chunks,
-    // parallel partitions and fold windows that must produce the same root.
-    [TestCase(5, 2048, 0, 0)]
-    [TestCase(8000, 1, 1, 1)]
-    [TestCase(8000, 5, 3, 3)]
-    [TestCase(8000, 2048, 3, 0)]
-    public async Task Imports_preimage_flat_state_into_pbt(int codeLength, int entryChunkSize, int workers, int windowSize)
+    // Zero workers and window size use the built-in defaults; small values split leaves across parallel
+    // partitions and fold windows that must produce the same root.
+    [TestCase(5, 0, 0)]
+    [TestCase(8000, 1, 1)]
+    [TestCase(8000, 3, 3)]
+    [TestCase(8000, 3, 0)]
+    public async Task Imports_preimage_flat_state_into_pbt(int codeLength, int workers, int windowSize)
     {
-        PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = windowSize };
-        TestLogger log = new();
-        ILogManager logs = new OneLoggerLogManager(new ILogger(log));
+        PbtConfig config = new() { ExportConcurrency = workers, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = windowSize };
 
         byte[] bigCode = new byte[codeLength];
         for (int i = 0; i < bigCode.Length; i += 10) bigCode[i] = 0x63;
@@ -80,30 +79,17 @@ public class ImportPbtFromPreimageFlatTests
 
         SnapshotableMemColumnsDb<PbtColumns> pbtDb = new("pbt");
         PbtRocksDbPersistence pbtTarget = new(pbtDb, new PbtConfig(), NullTrieNodeLog.Instance);
-        // Both phases need the same column database; otherwise phase two scans nothing.
-        ImportPbtFromPreimageFlat step = new(flatSource, codeDb, pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, logs)
-        {
-            EntryChunkSize = entryChunkSize,
-        };
-
-        await step.Execute(CancellationToken.None);
-
+        await CreateStep(flatSource, codeDb, pbtDb, pbtTarget, config).Execute(CancellationToken.None);
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)), "the state is keyed by the source's header root");
         Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)), "with the folded tree's own root recorded beside it");
-        foreach (string partitionName in new[] { "accounts/code", "storage" })
-        {
-            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(partitionName, "0.00 %")));
-            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(partitionName, "100.00 %")));
-        }
         PbtScanReport scan = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
         Assert.That(scan.Accounts.RecordCount, Is.EqualTo(5), scan.Format());
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
-        Assert.That(codeDb.ReadsCount, Is.EqualTo(2), "shared bytecode is fetched once per code hash");
         Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)), Is.EqualTo((UInt256)0x1234));
         Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)), Is.EqualTo((UInt256)0x55));
 
@@ -120,137 +106,13 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(remainingRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
     }
 
-    [Test]
-    public async Task Phase_two_progress_tracks_scanned_paths_before_partition_completion(
-        [Values(0, 1)] int zone,
-        [Values(0, 15)] int partition,
-        [Values(1, 2)] int pages)
-    {
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence source = CreateSource(flatDb, _ => { });
-        using MemDb codes = new();
-        using RecordingColumnsDb db = new();
-        PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
-        PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
-        using CancellationTokenSource cancellation = new();
-        TestLogger log = new();
-        ILogManager logs = new OneLoggerLogManager(new ILogger(log));
-        PbtColumns column = zone == 0 ? PbtColumns.Accounts : PbtColumns.Storages;
-        db.AfterCopy = () =>
-        {
-            for (int page = 1; page <= 2; page++)
-            {
-                byte[] key = new byte[zone == 0 ? 32 : Eip8297KeyDerivation.StorageKeyLength];
-                key[0] = (byte)(partition * 16 + page * 4);
-                key[1] = 3;
-                key[2] = 0xFF;
-                if (zone != 0) key[ValueHash256.MemorySize] = Eip8297KeyDerivation.StorageZone;
-                byte[] value = zone == 0
-                    ? new Account(1, 100).ToPbtAccount().Encoded()
-                    : SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
-                db.GetColumnDb(column).Set(key, value);
-            }
-        };
-        int resumedPages = 0;
-        db.ViewOpened = (scannedColumn, start, _) =>
-        {
-            if (scannedColumn == column && start.Length > 2 && ++resumedPages == pages)
-                cancellation.Cancel();
-        };
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, logs) { EntryChunkSize = 1 };
-
-        Assert.That(async () => await step.Execute(cancellation.Token).WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
-
-        string zoneName = zone == 0 ? "accounts/code" : "storage";
-        double scanned = (partition * 16 + pages * 4 + 3 / 256.0 + 0xFF / 65536.0) / 256;
-        string percentage = scanned.ToString("P2", System.Globalization.CultureInfo.InvariantCulture);
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(resumedPages, Is.EqualTo(pages));
-            Assert.That(db.ActiveViews, Is.Zero);
-            Assert.That(target.IsValid, Is.False);
-            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(zoneName, "0.00 %")));
-            Assert.That(log.LogList, Has.Some.StartsWith(PhaseTwoProgress(zoneName, percentage)));
-            Assert.That(log.LogList, Has.None.StartsWith(PhaseTwoProgress(zoneName, "100.00 %")));
-        }
-    }
-
-    [TestCase(1, 101)]
-    [TestCase(3, 37)]
-    [TestCase(17, 0)]
-    public async Task Phase_one_bounds_batches_and_preserves_state(int accountCount, int slotsPerAccount)
-    {
-        const int batchSize = 7;
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        using MemDb codes = new();
-        byte[] code = Bytes.FromHexString("0x6001600055");
-        Hash256 codeHash = Keccak.Compute(code);
-        codes[codeHash.Bytes] = code;
-        Dictionary<string, byte[]> model = [];
-        List<Address> addresses = [];
-        PreimageRocksdbPersistence source = CreateSource(flatDb, batch =>
-        {
-            for (int accountIndex = 0; accountIndex < accountCount; accountIndex++)
-            {
-                byte[] addressBytes = new byte[20];
-                addressBytes[^1] = (byte)accountIndex;
-                Address address = new(addressBytes);
-                addresses.Add(address);
-                Account account = new(1, 100);
-                if (slotsPerAccount > 0) account = account.WithChangedStorageRoot(TestItem.KeccakA);
-                SetAccount(batch, model, address, account, code);
-                for (uint slot = 0; slot < slotsPerAccount; slot++)
-                    SetSlot(batch, model, address, slot, 1);
-            }
-        });
-
-        using RecordingColumnsDb db = new();
-        PbtConfig config = new() { ImportStorageReadConcurrency = 1 };
-        PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
-        List<int> copyBatchWrites = [];
-        db.AfterCopyBatch = copyBatchWrites.Add;
-        db.AfterCopy = () =>
-        {
-            using IPbtPersistence.IReader staged = target.CreateReader();
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(staged.CurrentState, Is.EqualTo(StateId.PreGenesis));
-                Assert.That(target.IsValid, Is.False);
-                Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction }));
-            }
-        };
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { CopyBatchSize = batchSize };
-
-        await step.Execute(CancellationToken.None);
-
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        // Every account shares one code, which is staged once; slots are staged as whole runs.
-        int expectedWrites = accountCount * ((slotsPerAccount + SlotRun.Width - 1) / SlotRun.Width + 1) + 1;
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(copyBatchWrites.Count, Is.EqualTo((expectedWrites + batchSize - 1) / batchSize));
-            Assert.That(copyBatchWrites, Has.All.InRange(1, batchSize));
-            Assert.That(db.Tunes, Is.EqualTo(new[] { ITunableDb.TuneType.DisableCompaction, ITunableDb.TuneType.Default }));
-            Assert.That(db.Compactions, Is.EqualTo(1));
-            Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
-            Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(reader.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
-            foreach (Address address in addresses)
-            {
-                Assert.That(PbtTestLeaves.ReadAccount(reader, address)!.Balance, Is.EqualTo((UInt256)100));
-                for (uint slot = 0; slot < slotsPerAccount; slot++)
-                    Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, address, slot)), Is.EqualTo(UInt256.One));
-            }
-        }
-    }
-
     /// <summary>
     /// A retry after a pre-publication crash must clear staged new-format rows without reading stale nodes.
     /// </summary>
     [Test]
     public async Task Import_mode_recovers_an_interrupted_epoch_17_attempt()
     {
-        PbtConfig config = new() { ImportFromPreimageFlat = true };
+        PbtConfig config = new() { ImportFromPreimageFlat = true, ExportSortBufferBytes = SortBufferBytes };
 
         Dictionary<string, byte[]> model = [];
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
@@ -267,8 +129,7 @@ public class ImportPbtFromPreimageFlatTests
 
         async Task<ValueHash256> Import()
         {
-            ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, config, LimboLogs.Instance), pbtTarget, config, LimboLogs.Instance);
-            await step.Execute(CancellationToken.None);
+            await CreateStep(flatSource, new MemDb(), pbtDb, pbtTarget, config).Execute(CancellationToken.None);
 
             using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
@@ -571,7 +432,7 @@ public class ImportPbtFromPreimageFlatTests
     [Test]
     public async Task Importer_bypasses_cached_persistence_wrapper()
     {
-        PbtConfig config = new();
+        PbtConfig config = new() { ExportSortBufferBytes = SortBufferBytes };
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         PreimageRocksdbPersistence flatSource = CreateSource(flatDb, batch => batch.SetAccount(TestItem.AddressA, new Account(1, 100)));
 
@@ -587,6 +448,7 @@ public class ImportPbtFromPreimageFlatTests
             .AddSingleton<PbtRocksDbPersistence>(rawPersistence)
             .AddSingleton<IPbtPersistence>(rawPersistence)
             .AddDecorator<IPbtPersistence>((_, _) => cachedWrapper)
+            .AddSingleton<IDbFactory>(ScratchFactory())
             .AddSingleton<IPbtConfig>(config)
             .AddSingleton<ILogManager>(LimboLogs.Instance)
             .AddSingleton<PbtRebuilder>();
@@ -615,102 +477,16 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch persisted = pbtTarget.CreateWriteBatch(StateId.PreGenesis, new StateId(1, existingRoot), default, WriteFlags.None))
             persisted.Commit();
 
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(pbtTarget, new PbtConfig(), LimboLogs.Instance), pbtTarget, new PbtConfig(), LimboLogs.Instance);
-
-        await step.Execute(CancellationToken.None);
+        await CreateStep(flatSource, new MemDb(), pbtDb, pbtTarget, new PbtConfig()).Execute(CancellationToken.None);
 
         using IPbtPersistence.IReader reader = pbtTarget.CreateReader();
         Assert.That(reader.CurrentState, Is.EqualTo(new StateId(1, existingRoot)), "the existing state is left untouched");
     }
 
-    [Test]
-    public async Task Phase_two_ranges_cover_boundary_keys_once_and_overlap([Values(1, 3)] int workers)
-    {
-        using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
-        PreimageRocksdbPersistence flatSource = CreateSource(flatDb, _ => { });
-        using RecordingColumnsDb pbtDb = new();
-        PbtConfig config = new() { ImportStorageReadConcurrency = workers, ImportWindowSize = 3 };
-        PbtRocksDbPersistence target = new(pbtDb, config, NullTrieNodeLog.Instance);
-        Dictionary<string, byte[]> model = [];
-        Dictionary<string, int> expectedReads = [];
-        int partitionCount = workers * 16;
-        using Barrier overlap = new(workers);
-        int gatedViews = 0;
-        int partitionViews = 0;
-        pbtDb.ViewOpened = (column, start, end) =>
-        {
-            if (column == PbtColumns.Accounts && Interlocked.Increment(ref gatedViews) <= workers)
-                Assert.That(overlap.SignalAndWait(TimeSpan.FromSeconds(20)), Is.True, "configured workers must enter separate range views concurrently");
-            Assert.That(start.AsSpan().SequenceCompareTo(end), Is.LessThan(0));
-            Assert.That(start.Length, Is.EqualTo(2).Or.EqualTo(column == PbtColumns.Accounts || start.Length > 32 && start[32] == Eip8297KeyDerivation.AccountZone ? 33 : 67), "views begin at a partition boundary, immediately after the last complete key or at an account's header slots");
-            if (start.Length == 2)
-            {
-                Interlocked.Increment(ref partitionViews);
-                int prefix = BinaryPrimitives.ReadUInt16BigEndian(start);
-                Assert.That(prefix, Is.EqualTo((long)((prefix * partitionCount + 65535) / 65536) * 65536 / partitionCount));
-            }
-        };
-        pbtDb.AfterCopy = () =>
-        {
-            // Synthetic hashes reach exact partition edges that cannot feasibly be obtained from address preimages.
-            using IPbtPersistence.IWriteBatch staging = target.CreateStagingWriteBatch(WriteFlags.None);
-            HashSet<string> hashes = [];
-            for (int partition = 0; partition <= partitionCount; partition++)
-            {
-                int boundary = (int)((long)partition * 65536 / partitionCount);
-                foreach (int offset in new[] { -1, 0 })
-                {
-                    int prefix = boundary + offset;
-                    if (prefix is < 0 or > 65535) continue;
-                    byte[] hashBytes = new byte[32];
-                    if (offset == -1) hashBytes.AsSpan().Fill(0xFF);
-                    BinaryPrimitives.WriteUInt16BigEndian(hashBytes, (ushort)prefix);
-                    if (!hashes.Add(Convert.ToHexString(hashBytes))) continue;
-                    ValueHash256 hash = new(hashBytes);
-                    Account account = new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA);
-                    staging.SetAccount(hash, account.ToPbtAccount());
-                    expectedReads[$"{PbtColumns.Accounts}:{Convert.ToHexString(hashBytes)}"] = 1;
-                    foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(hash, account, null))
-                        model[Convert.ToHexString(key.Bytes)] = value.Bytes.ToArray();
-                    foreach (byte zone in new byte[] { 0, 0xFF })
-                    {
-                        byte[] storageKey = new byte[zone == 0 ? 34 : 66];
-                        storageKey[0] = zone;
-                        hashBytes.CopyTo(storageKey, 1);
-                        storageKey[^1] = zone == 0 ? (byte)64 : (byte)0xFF;
-                        if (zone == 0xFF) storageKey.AsSpan(33).Fill(0xFF);
-                        ValueHash256 value = TestItem.KeccakA.ValueHash256;
-                        staging.SetSlot(new PbtStorageTreeKey(storageKey), EvmWordSlot.FromStripped(value.Bytes));
-                        // Header rows are read with their account, then passed over by the storage scan.
-                        expectedReads[$"{PbtColumns.Storages}:{Convert.ToHexString(PbtStorageKeyLayout.Encode(SlotRun.RunKey(new PbtStorageTreeKey(storageKey)), new byte[PbtStorageTreeKey.MaxLength]))}"] = zone == 0 ? 2 : 1;
-                        model[Convert.ToHexString(storageKey)] = value.Bytes.ToArray();
-                    }
-                }
-            }
-            staging.Commit();
-        };
-        ImportPbtFromPreimageFlat step = new(flatSource, new MemDb(), pbtDb, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 1 };
-
-        await step.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
-
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
-            Assert.That(pbtDb.Rows, Is.EquivalentTo(expectedReads), "range ends and resumed pages cannot duplicate a row");
-            Assert.That(pbtDb.ActiveViews, Is.Zero);
-            Assert.That(partitionViews, Is.EqualTo(partitionCount * 2), "accounts and storage each use disjoint partitions");
-            Assert.That(pbtDb.GroupCommits, Is.GreaterThan(1));
-        }
-        pbtDb.Recording = false;
-        PbtScanReport report = await new PbtScanner(pbtDb, config, LimboLogs.Instance).Scan(CancellationToken.None);
-        Assert.That(report.NodeGroups.RecordCount, Is.GreaterThan(0));
-    }
-
     [TestCase("missing-code")]
     [TestCase("persistence")]
     [TestCase("cancellation")]
-    public async Task Failed_phase_two_terminates_without_publication_and_retries(string failure)
+    public async Task Failed_import_publishes_nothing_and_retries(string failure)
     {
         using SnapshotableMemColumnsDb<FlatDbColumns> flatDb = new("flat");
         byte[] code = Bytes.FromHexString("0x6001600055");
@@ -719,82 +495,56 @@ public class ImportPbtFromPreimageFlatTests
         PreimageRocksdbPersistence source = CreateSource(flatDb, batch =>
         {
             SetAccount(batch, model, TestItem.AddressA, new Account(1, 100).WithChangedStorageRoot(TestItem.KeccakA), code);
-            // One slot per run, so every storage row is one leaf and one page.
             for (uint index = 0; index < 100; index++)
                 SetSlot(batch, model, TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset + index * SlotRun.Width, 1);
         });
         using MemDb codes = new();
-        codes[codeHash.Bytes] = code;
+        if (failure != "missing-code") codes[codeHash.Bytes] = code;
         using RecordingColumnsDb db = new();
-        PbtConfig config = new() { ImportStorageReadConcurrency = 1, ImportWindowSize = 1, ImportFromPreimageFlat = true };
+        PbtConfig config = new() { ExportConcurrency = 1, ExportSortBufferBytes = SortBufferBytes, ImportWindowSize = 1, ImportFromPreimageFlat = true };
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         using CancellationTokenSource cancellation = new();
-        using ManualResetEventSlim releaseConsumer = new();
-        TaskCompletionSource backpressurePageClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        int storagePages = 0;
-        db.ViewClosed = (column, rows) =>
-        {
-            if (column == PbtColumns.Storages && rows != 0 && Interlocked.Increment(ref storagePages) == 63)
-                backpressurePageClosed.TrySetResult();
-        };
-        db.AfterCopy = () =>
-        {
-            if (failure == "missing-code") db.GetColumnDb(PbtColumns.Codes).Remove(codeHash.Bytes);
-        };
         db.AfterGroupCommit = () =>
         {
             if (db.GroupCommits != 1) return;
-            if (!releaseConsumer.Wait(TimeSpan.FromSeconds(30))) throw new TimeoutException("Consumer gate was not released.");
-            if (failure == "persistence") throw new IOException("injected staging persistence failure");
+            if (failure == "persistence") throw new IOException("injected fold persistence failure");
+            if (failure == "cancellation") cancellation.Cancel();
         };
-        ImportPbtFromPreimageFlat step = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 1 };
-        Task import = step.Execute(cancellation.Token);
-        try
-        {
-            if (failure != "missing-code")
-            {
-                // Three account/code leaves plus 63 storage leaves exceed the consumed leaf and 64 queued chunks.
-                await backpressurePageClosed.Task.WaitAsync(TimeSpan.FromSeconds(30));
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(import.IsCompleted, Is.False);
-                    Assert.That(db.ActiveViews, Is.Zero, "the page must close before its channel write blocks");
-                    Assert.That(db.GroupCommits, Is.EqualTo(1));
-                    Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
-                }
-                if (failure == "cancellation") await cancellation.CancelAsync();
-            }
-        }
-        finally
-        {
-            releaseConsumer.Set();
-        }
+
+        Task import = CreateStep(source, codes, db, target, config).Execute(cancellation.Token);
+
         if (failure == "cancellation") Assert.That(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)), Throws.InstanceOf<OperationCanceledException>());
         else
         {
             Exception? error = Assert.CatchAsync(async () => await import.WaitAsync(TimeSpan.FromSeconds(30)));
             Assert.That(error, failure == "missing-code"
-                ? Is.TypeOf<InvalidDataException>().With.Message.Contains("Missing staged bytecode")
-                : Is.TypeOf<IOException>().With.Message.Contains("injected staging persistence failure"));
+                ? Is.TypeOf<InvalidDataException>().With.Message.Contains("Missing source code")
+                : Is.TypeOf<IOException>().With.Message.Contains("injected fold persistence failure"));
         }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.Null);
             Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("currentState"u8), Is.Null);
-            Assert.That(db.ActiveViews, Is.Zero);
         }
-        db.AfterCopy = null;
         db.AfterGroupCommit = null;
-        db.ViewClosed = null;
-        db.Recording = false;
-        ImportPbtFromPreimageFlat retry = new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, config, LimboLogs.Instance) { EntryChunkSize = 5 };
-        await retry.Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
+        codes[codeHash.Bytes] = code;
+        await CreateStep(source, codes, db, target, config).Execute(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(60));
         using IPbtPersistence.IReader reader = target.CreateReader();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(reader.CurrentRoot, Is.EqualTo(PbtReferenceModel.Root(model)));
             Assert.That(reader.CurrentState, Is.EqualTo(new StateId(SourceBlock, SourceStateRoot)));
         }
+    }
+
+    private static ImportPbtFromPreimageFlat CreateStep(IPersistence source, IDb codes, IColumnsDb<PbtColumns> db, PbtRocksDbPersistence target, PbtConfig config) =>
+        new(source, codes, db, new PbtRebuilder(target, config, LimboLogs.Instance), target, ScratchFactory(), config, LimboLogs.Instance);
+
+    private static IDbFactory ScratchFactory()
+    {
+        IDbFactory dbFactory = Substitute.For<IDbFactory>();
+        dbFactory.GetFullDbPath(Arg.Any<DbSettings>()).Returns(Path.GetTempPath());
+        return dbFactory;
     }
 
     private static PreimageRocksdbPersistence CreateSource(SnapshotableMemColumnsDb<FlatDbColumns> flatDb, Action<IPersistence.IWriteBatch> write)
@@ -817,20 +567,14 @@ public class ImportPbtFromPreimageFlatTests
         batch.SetStorage(address, slot, value);
     }
 
-    private static string PhaseTwoProgress(string zone, string percentage) => $"PBT import phase 2 {zone} {percentage,8} ";
-
-    private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>, ITunableDb
+    private sealed class RecordingColumnsDb : IColumnsDb<PbtColumns>
     {
-        public readonly List<ITunableDb.TuneType> Tunes = [];
-        public int Compactions;
         private readonly SnapshotableMemColumnsDb<PbtColumns> _database = new("pbt");
         private readonly Dictionary<PbtColumns, IDb> _columns = [];
         public readonly ConcurrentDictionary<string, int> Rows = new();
         public Action? AfterCopy;
-        public Action<int>? AfterCopyBatch;
         public Action? AfterGroupCommit;
         public Action<PbtColumns, byte[], byte[]>? ViewOpened;
-        public Action<PbtColumns, int>? ViewClosed;
         public bool Recording;
         public bool RecordAllColumns;
         public bool ForbidPointReads;
@@ -849,8 +593,6 @@ public class ImportPbtFromPreimageFlatTests
         public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => _database.CreateSnapshot();
         public IColumnsWriteBatch<PbtColumns> StartWriteBatch() => new RecordingBatch(this, _database.StartWriteBatch());
         public void Dispose() => _database.Dispose();
-        public void Tune(ITunableDb.TuneType type) => Tunes.Add(type);
-        public void Compact() => Compactions++;
         public void Flush(bool onlyWal = false)
         {
             _database.Flush(onlyWal);
@@ -864,28 +606,13 @@ public class ImportPbtFromPreimageFlatTests
         private sealed class RecordingBatch(RecordingColumnsDb owner, IColumnsWriteBatch<PbtColumns> batch) : IColumnsWriteBatch<PbtColumns>
         {
             private bool _groups;
-            private int _copyWrites;
             public IWriteBatch GetColumnBatch(PbtColumns key)
             {
                 IWriteBatch columnBatch = batch.GetColumnBatch(key);
-                if (!owner.Recording && key is PbtColumns.Accounts or PbtColumns.Storages or PbtColumns.Codes)
-                    return new RecordingCopyBatch(this, columnBatch);
                 if (key == PbtColumns.Metadata) return new RecordingMetadataBatch(owner, this, columnBatch);
                 if (key is PbtColumns.TopNodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups && owner.Recording) _groups = true;
                 return columnBatch;
             }
-            private sealed class RecordingCopyBatch(RecordingBatch ownerBatch, IWriteBatch batch) : IWriteBatch
-            {
-                public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
-                {
-                    if (flags.HasFlag(WriteFlags.DisableWAL)) ownerBatch._copyWrites++;
-                    batch.Set(key, value, flags);
-                }
-                public void Merge(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None) => batch.Merge(key, value, flags);
-                public void Clear() => batch.Clear();
-                public void Dispose() => batch.Dispose();
-            }
-
             private sealed class RecordingMetadataBatch(RecordingColumnsDb owner, RecordingBatch ownerBatch, IWriteBatch metadata) : IWriteBatch
             {
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -901,13 +628,11 @@ public class ImportPbtFromPreimageFlatTests
             public void Clear()
             {
                 _groups = false;
-                _copyWrites = 0;
                 batch.Clear();
             }
             public void Dispose()
             {
                 batch.Dispose();
-                if (_copyWrites > 0) owner.AfterCopyBatch?.Invoke(_copyWrites);
                 if (_groups)
                 {
                     Interlocked.Increment(ref owner.GroupCommits);
@@ -954,14 +679,12 @@ public class ImportPbtFromPreimageFlatTests
 
         private sealed class RecordingView(RecordingColumnsDb owner, PbtColumns column, ISortedView view) : ISortedView
         {
-            private int _rows;
             public ReadOnlySpan<byte> CurrentKey => view.CurrentKey;
             public ReadOnlySpan<byte> CurrentValue => view.CurrentValue;
             public bool StartBefore(ReadOnlySpan<byte> value) => view.StartBefore(value);
             public bool MoveNext()
             {
                 if (!view.MoveNext()) return false;
-                _rows++;
                 owner.Rows.AddOrUpdate($"{column}:{Convert.ToHexString(view.CurrentKey)}", 1, static (_, count) => count + 1);
                 return true;
             }
@@ -969,7 +692,6 @@ public class ImportPbtFromPreimageFlatTests
             {
                 view.Dispose();
                 Interlocked.Decrement(ref owner.ActiveViews);
-                owner.ViewClosed?.Invoke(column, _rows);
             }
         }
     }
