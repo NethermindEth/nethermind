@@ -257,7 +257,12 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ref AccountPrecondition Account(Address address) => ref _accounts[AccountIndex(address)];
+    private ref AccountPrecondition Account(Address address)
+    {
+        // Indexed after the index is taken: taking it can grow the array.
+        int index = AccountIndex(address);
+        return ref _accounts[index];
+    }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private int AccountIndex(Address address)
@@ -292,8 +297,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         return ref account;
     }
 
-    private ref SlotPrecondition Slot(in StorageCell cell, in UInt256 currentValue, bool currentKnown) =>
-        ref _slots[SlotIndex(in cell, in currentValue, currentKnown)];
+    private ref SlotPrecondition Slot(in StorageCell cell, in UInt256 currentValue, bool currentKnown)
+    {
+        int index = SlotIndex(in cell, in currentValue, currentKnown);
+        return ref _slots[index];
+    }
 
     private int SlotIndex(in StorageCell cell, in UInt256 currentValue, bool currentKnown)
     {
