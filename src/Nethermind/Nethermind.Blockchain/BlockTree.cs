@@ -483,7 +483,9 @@ namespace Nethermind.Blockchain
 
             if (!isKnown)
             {
-                _headerStore.Insert(header);
+                // Deferred with the body: the engine API path waits for neither database write.
+                if (block is not null) _headerStore.InsertDeferred(header);
+                else _headerStore.Insert(header);
             }
 
             if (!isKnown || fillBeaconBlock)
