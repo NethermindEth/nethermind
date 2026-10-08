@@ -40,6 +40,8 @@ public class FlatWorldStateModule(IFlatDbConfig flatDbConfig) : Module
             // Implementation of nethermind interfaces
             .AddSingleton<FlatStateReader>()
             .AddSingleton<FlatWorldStateManager>()
+            .AddSingleton<FlatTrieVerifier, IFlatDbManager, IPersistence, ILogManager, IInitConfig>((flatDbManager, persistence, logManager, initConfig) =>
+                new FlatTrieVerifier(flatDbManager, persistence, logManager, Path.Combine(initConfig.BaseDbPath, "verify-trie")))
             .AddSingleton<FlatStateBoundary>()
 
             // Stub out the pruning trie store admin RPC with a disabled response.
