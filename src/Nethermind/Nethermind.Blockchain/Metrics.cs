@@ -90,6 +90,18 @@ public static class Metrics
     public static long PrewarmDiscoverFirstSkipped;
 
     [CounterMetric]
+    [Description("Blocks whose processing prepared the pre-block caches")]
+    public static long PrewarmBlockStarts;
+
+    [CounterMetric]
+    [Description("Microseconds block processing spent stopping the mempool pre-warm session and preparing the pre-block caches")]
+    public static long PrewarmBlockStartMicros;
+
+    [CounterMetric]
+    [Description("Blocks that found the pre-block caches filled for another state, so they started from empty caches")]
+    public static long PrewarmBlockStartsUncarried;
+
+    [CounterMetric]
     [Description("Times a block stopped and joined the mempool pre-warm session")]
     public static long PrewarmSpeculativeJoins;
 

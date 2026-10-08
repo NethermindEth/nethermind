@@ -184,6 +184,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         bool carried;
+        long started = Stopwatch.GetTimestamp();
         lock (_speculativeLock)
         {
             CancelAndJoinSpeculativeLocked();
@@ -191,6 +192,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // further, but the caches describe the state they were filled from, which need not be this block's parent.
             carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
         }
+
+        Interlocked.Increment(ref Blockchain.Metrics.PrewarmBlockStarts);
+        Interlocked.Add(ref Blockchain.Metrics.PrewarmBlockStartMicros, (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds);
+        if (!carried) Interlocked.Increment(ref Blockchain.Metrics.PrewarmBlockStartsUncarried);
 
         bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
         // The marker's tx set only means anything while the entries it describes are still in the caches.
