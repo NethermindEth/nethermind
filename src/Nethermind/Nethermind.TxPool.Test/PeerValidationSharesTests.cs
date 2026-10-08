@@ -49,14 +49,51 @@ public class PeerValidationSharesTests
         Assert.That(shares.HasShare(_attacker, headGeneration: 2), Is.True);
     }
 
+    [TestCase(2, HeadBudget / 2)]
+    [TestCase(3, HeadBudget)]
+    public void HasShare_PreviousActivePeers_BoundOnlyTheFollowingHead(long nextHead, long allowance)
+    {
+        PeerValidationShares shares = new(HeadBudget);
+        shares.HasShare(_attacker, headGeneration: 1);
+        shares.HasShare(_honest, headGeneration: 1);
+
+        shares.HasShare(_attacker, nextHead);
+        shares.Charge(_attacker, nextHead, allowance - 1);
+        Assert.That(shares.HasShare(_attacker, nextHead), Is.True);
+
+        shares.Charge(_attacker, nextHead, 1);
+        Assert.That(shares.HasShare(_attacker, nextHead), Is.False);
+        Assert.That(shares.HasShare(_honest, nextHead), Is.True, "a late peer retains its allowance");
+    }
+
+    [Test]
+    public void HasShare_InactivePeers_ExpireAfterOneHead()
+    {
+        PeerValidationShares shares = new(HeadBudget);
+        shares.HasShare(_attacker, headGeneration: 1);
+        shares.HasShare(_honest, headGeneration: 1);
+        shares.HasShare(_attacker, headGeneration: 2);
+
+        shares.HasShare(_attacker, headGeneration: 3);
+        shares.Charge(_attacker, headGeneration: 3, HeadBudget - 1);
+        Assert.That(shares.HasShare(_attacker, headGeneration: 3), Is.True);
+
+        shares.Charge(_attacker, headGeneration: 3, 1);
+        Assert.That(shares.HasShare(_attacker, headGeneration: 3), Is.False);
+    }
+
     [Test]
     public void Charge_ForAPassedHead_IsIgnored()
     {
         PeerValidationShares shares = new(HeadBudget);
+        shares.HasShare(_attacker, headGeneration: 1);
+        shares.HasShare(_honest, headGeneration: 1);
         shares.HasShare(_attacker, headGeneration: 2);
 
         shares.Charge(_attacker, headGeneration: 1, ticks: HeadBudget);
-
         Assert.That(shares.HasShare(_attacker, headGeneration: 2), Is.True, "work charged to a stale head must not spend the current share");
+
+        shares.Charge(_attacker, headGeneration: 2, ticks: HeadBudget / 2);
+        Assert.That(shares.HasShare(_attacker, headGeneration: 2), Is.False, "a stale charge must not reset the previous active count");
     }
 }
