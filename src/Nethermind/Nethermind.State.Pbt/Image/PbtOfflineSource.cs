@@ -65,7 +65,7 @@ internal static class PbtOfflineSource
             { MaxConcurrentPreMerges = workers };
             using PbtSortedSpool? rawKeys = preimages is null ? null : new("export preimages", directory, spoolBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
-            ScanTotals totals = Spool(source, codeSource, leaves, rawKeys, workers, logManager, cancellationToken);
+            ScanTotals totals = Spool(ScanPhase, source, codeSource, leaves, rawKeys, workers, logManager, cancellationToken);
 
             ulong leafCount = 0;
             ulong accountCount = (ulong)totals.Accounts;
@@ -156,8 +156,9 @@ internal static class PbtOfflineSource
     /// <summary>Scans every account and slot of <paramref name="source"/> into <paramref name="leaves"/> as tree leaves, and
     /// into <paramref name="rawKeys"/> as preimage keys when given.</summary>
     /// <remarks>Workers claim address ranges on demand; the spools restore the total order the walk does not have.</remarks>
+    /// <param name="phase">Name the scan progress is logged under.</param>
     /// <param name="workers">Scan workers, each holding one writer of every spool.</param>
-    internal static ScanTotals Spool(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
+    internal static ScanTotals Spool(string phase, FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
         PbtSortedSpool leaves, PbtSortedSpool? rawKeys, int workers, ILogManager logManager, CancellationToken cancellationToken)
     {
         ScanTotals totals = new();
@@ -165,9 +166,9 @@ internal static class PbtOfflineSource
         PbtPrefixPartitions partitions = new(partitionCount);
         int nextPartition = -1;
         PbtKeyspaceProgress keyspace = new(partitionCount);
-        using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
+        using ProgressReporter progress = PbtImageProgress.Start(phase, "acc", 0, logManager);
         Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref totals.Slots));
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(ScanPhase, keyspace.Walked / (float)PbtKeyspaceProgress.Keyspace,
+        progress.Logger.SetFormat(p => PbtImageProgress.Format(phase, keyspace.Walked / (float)PbtKeyspaceProgress.Keyspace,
             $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
 
         void ScanPartitions()
