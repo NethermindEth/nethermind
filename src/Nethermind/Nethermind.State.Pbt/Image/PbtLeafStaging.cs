@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -27,6 +28,7 @@ internal static class PbtLeafStaging
     /// Exhaustion is retryable resource unavailability, not invalid state.</summary>
     private const ulong MaxBufferedCodeBytes = 256 * 1024 * 1024;
     private const string CodePhase = "PBT import code";
+    internal const int CodeCacheCapacity = 16_384;
 
     /// <returns>The staged accounts and slots, and the code chunks <see cref="RebuildCodes"/> must consume.</returns>
     public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtLeafIngestion.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
@@ -150,6 +152,7 @@ internal static class PbtLeafStaging
         float walked = 0;
         ulong rebuilt = 0;
         Dictionary<ValueHash256, uint> pending = [];
+        LruCache<ValueHash256, uint> seenCodes = new(CodeCacheCapacity, CodePhase);
         using ProgressReporter progress = PbtImageProgress.Start(CodePhase, "code", 0, logManager);
         progress.Logger.SetFormat(p => PbtImageProgress.Format(CodePhase, walked, PbtImageProgress.Counted("code", p)));
         using IPbtPersistence.IReader staged = target.CreateReader();
@@ -166,15 +169,19 @@ internal static class PbtLeafStaging
                 if (account.IsDelegation || account.CodeSize == 0) continue;
                 ValueHash256 codeHash = account.CodeHash;
                 uint size = account.CodeSize;
-                uint? seenSize = pending.TryGetValue(codeHash, out uint pendingSize) ? pendingSize : (uint?)written.GetCode(codeHash)?.Code.Length;
+                uint? seenSize = seenCodes.TryGet(codeHash, out uint cachedSize) ? cachedSize
+                    : pending.TryGetValue(codeHash, out uint pendingSize) ? pendingSize
+                    : (uint?)written.GetCode(codeHash)?.Code.Length;
                 if (seenSize is { } seen)
                 {
                     if (seen != size) throw new InvalidDataException("Accounts claim one code hash with different code sizes.");
+                    seenCodes.Set(codeHash, seen);
                     continue;
                 }
 
                 consumed += Rebuild(staged, codeHash, (int)size, batch, cancellationToken);
                 pending[codeHash] = size;
+                seenCodes.Set(codeHash, size);
                 progress.Update(++rebuilt);
                 if (pending.Count < PbtLeafIngestion.BatchSize) continue;
                 batch.Commit();

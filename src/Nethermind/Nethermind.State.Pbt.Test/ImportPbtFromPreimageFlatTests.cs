@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Collections.Concurrent;
 using System.IO;
@@ -16,11 +17,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Persistence.TrieNodeLog;
 using Nethermind.State.Pbt.Steps;
@@ -32,6 +35,65 @@ namespace Nethermind.State.Pbt.Test;
 public class ImportPbtFromPreimageFlatTests
 {
     private const ulong SourceBlock = 7;
+
+    [Test]
+    public void Code_rebuild_reuses_hashes_across_batches_and_cache_eviction(
+        [Values(PbtLeafIngestion.BatchSize, PbtLeafStaging.CodeCacheCapacity + 1)] int distinctCodes,
+        [Values] bool mismatchedSize)
+    {
+        using RecordingColumnsDb db = new();
+        PbtRocksDbPersistence target = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
+        byte[] firstCode = [];
+        ValueHash256 firstHash = default;
+        long chunks = 0;
+        using (IPbtPersistence.IWriteBatch batch = target.CreateStagingWriteBatch(WriteFlags.None))
+        {
+            for (int i = 0; i < distinctCodes; i++)
+            {
+                byte[] code = new byte[5];
+                code[0] = 0x63;
+                BinaryPrimitives.WriteInt32BigEndian(code.AsSpan(1), i);
+                ValueHash256 hash = ValueKeccak.Compute(code);
+                if (i == 0)
+                {
+                    firstCode = code;
+                    firstHash = hash;
+                }
+                batch.SetAccount(AccountKey(i), PbtAccount.From(new Account(0, 0).WithChangedCodeHash(new Hash256(hash)), new CodeInfo(code)));
+                foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.CodeLeaves(hash, new CodeInfo(code)))
+                {
+                    batch.SetCodeLeaf(key, value);
+                    chunks++;
+                }
+            }
+            ValueHash256 basicData = default;
+            PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, (uint)firstCode.Length + (mismatchedSize ? 1u : 0u), 0, 0);
+            PbtAccount repeated = new(basicData, firstHash, false);
+            batch.SetAccount(AccountKey(distinctCodes), repeated);
+            batch.SetAccount(AccountKey(distinctCodes + 1), repeated);
+            batch.Commit();
+        }
+
+        if (mismatchedSize)
+        {
+            Assert.Throws<InvalidDataException>(() => PbtLeafStaging.RebuildCodes(target, chunks, LimboLogs.Instance, CancellationToken.None));
+        }
+        else
+        {
+            PbtLeafStaging.RebuildCodes(target, chunks, LimboLogs.Instance, CancellationToken.None);
+        }
+        int expectedReads = distinctCodes + (distinctCodes > PbtLeafStaging.CodeCacheCapacity ? 1 : 0);
+        Assert.That(db.CodeReads, Is.EqualTo(expectedReads), "recent hashes bypass the code DB; evicted hashes are read once and cached again");
+        using IPbtPersistence.IReader reader = target.CreateReader();
+        Assert.That(reader.GetCode(firstHash)!.Code.ToArray(), Is.EqualTo(firstCode));
+
+        static ValueHash256 AccountKey(int index)
+        {
+            ValueHash256 key = default;
+            BinaryPrimitives.WriteInt32BigEndian(key.BytesAsSpan[^4..], index);
+            return key;
+        }
+    }
 
     /// <summary>A sort budget small enough to spill the leaves of every test across several runs.</summary>
     private const int SortBufferBytes = 1024;
@@ -580,6 +642,7 @@ public class ImportPbtFromPreimageFlatTests
         public bool ForbidPointReads;
         public int ActiveViews;
         public int GroupCommits;
+        public int CodeReads;
         private int _flushed;
 
         public RecordingColumnsDb()
@@ -590,7 +653,23 @@ public class ImportPbtFromPreimageFlatTests
 
         public IDb GetColumnDb(PbtColumns key) => _columns[key];
         public IEnumerable<PbtColumns> ColumnKeys => _database.ColumnKeys;
-        public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => _database.CreateSnapshot();
+        public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => new RecordingSnapshot(this, _database.CreateSnapshot());
+
+        private sealed class RecordingSnapshot(RecordingColumnsDb owner, IColumnDbSnapshot<PbtColumns> snapshot) : IColumnDbSnapshot<PbtColumns>
+        {
+            public IReadOnlyKeyValueStore GetColumn(PbtColumns key) => key == PbtColumns.Codes
+                ? new RecordingCodes(owner, snapshot.GetColumn(key)) : snapshot.GetColumn(key);
+            public void Dispose() => snapshot.Dispose();
+        }
+
+        private sealed class RecordingCodes(RecordingColumnsDb owner, IReadOnlyKeyValueStore codes) : IReadOnlyKeyValueStore
+        {
+            public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            {
+                Interlocked.Increment(ref owner.CodeReads);
+                return codes.Get(key, flags);
+            }
+        }
         public IColumnsWriteBatch<PbtColumns> StartWriteBatch()
         {
             Interlocked.Exchange(ref BeforeFirstBatch, null)?.Invoke();
