@@ -639,6 +639,75 @@ namespace Nethermind.Facade
 
         public void RecoverTxSenders(Block block)
         {
+            Transaction[] transactions = block.Transactions;
+            if (HaveSenders(transactions)) return;
+
+            // Senders are read straight from the stored receipts: decoding them whole would also build their logs,
+            // blooms and recovered fields, and cache them, none of which a sender needs.
+            if (!receiptStorage.TryGetReceiptsIterator(block.Number, block.Hash!, out ReceiptsIterator iterator))
+            {
+                RecoverTxSendersFromReceipts(block);
+                return;
+            }
+
+            using ArrayPoolList<Address?> storedSenders = new(transactions.Length);
+            int receiptCount = 0;
+            try
+            {
+                while (iterator.TryGetNext(out TxReceiptStructRef receipt))
+                {
+                    if (receiptCount < transactions.Length)
+                    {
+                        // An absent sender decodes to the shared zero address, which a stored one never aliases.
+                        storedSenders.Add(transactions[receiptCount].SenderAddress is null && receipt.Sender.Bytes != Address.Zero.Bytes
+                            ? receipt.Sender.ToAddress()
+                            : null);
+                    }
+
+                    receiptCount++;
+                }
+            }
+            finally
+            {
+                iterator.Dispose();
+            }
+
+            if (receiptCount != transactions.Length)
+            {
+                RecoverEachTxSender(transactions);
+                return;
+            }
+
+            bool useSignatureChainId = false;
+            bool specRead = false;
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction transaction = transactions[i];
+                if (transaction.SenderAddress is not null) continue;
+
+                Address? storedSender = storedSenders[i];
+                if (storedSender is null && !specRead)
+                {
+                    useSignatureChainId = !specProvider.GetSpec(block.Header).ValidateChainId;
+                    specRead = true;
+                }
+
+                transaction.SenderAddress = storedSender ?? ecdsa.RecoverAddress(transaction, useSignatureChainId);
+            }
+        }
+
+        private static bool HaveSenders(Transaction[] transactions)
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                if (transactions[i].SenderAddress is null) return false;
+            }
+
+            return true;
+        }
+
+        private void RecoverTxSendersFromReceipts(Block block)
+        {
             TxReceipt[] receipts = receiptStorage.Get(block);
             if (block.Transactions.Length == receipts.Length)
             {
@@ -651,11 +720,16 @@ namespace Nethermind.Facade
             }
             else
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction transaction = block.Transactions[i];
-                    transaction.SenderAddress ??= RecoverTxSender(transaction);
-                }
+                RecoverEachTxSender(block.Transactions);
+            }
+        }
+
+        private void RecoverEachTxSender(Transaction[] transactions)
+        {
+            for (int i = 0; i < transactions.Length; i++)
+            {
+                Transaction transaction = transactions[i];
+                transaction.SenderAddress ??= RecoverTxSender(transaction);
             }
         }
 
