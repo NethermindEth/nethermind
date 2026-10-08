@@ -78,8 +78,6 @@ public static class Eip8369Profile2
     /// remaining per IL limit". That is deliberately unlike EIP-8141's own two mempool caps, which bound
     /// <see cref="FrameTxValidation.ValidationWorkGas"/> and <see cref="FrameTxValidation.ValidationWorkStateGas"/>
     /// separately; EIP-8369 calls its caps "separate" and says EIP-8141's limit "does not determine either value".
-    /// Below EIP-8141's own mempool ceiling the two readings cannot differ: <c>MAX_VERIFY_GAS</c> plus
-    /// <c>MAX_VERIFY_STATE_GAS</c> is under the default <see cref="Eip8369Constants.MaxVerifyGasPerTx"/>.
     /// </remarks>
     public static ulong VerifyBudgetCost(Transaction transaction) =>
         FrameTxValidation.ValidationWorkGas(transaction)

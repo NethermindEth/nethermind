@@ -365,29 +365,36 @@ public class InclusionListValidatorTests
                 new(lists, withMembership, candidate, badSignature, satisfied) { TestName = name };
 
             // 1-of-N: pooled into one budget, the stuffed position's 1,040,000 would leave the honest one 8,576.
-            Transaction honest = Candidate(3, 100_000);
+            Transaction honest = Candidate(5, 100_000);
             yield return Case("One position stuffed with VERIFY cost cannot excuse another position's candidate",
-                [[Candidate(1, 520_000), Candidate(2, 520_000)], [honest]], honest, false);
+                [[Candidate(1, 260_000), Candidate(2, 260_000), Candidate(3, 260_000), Candidate(4, 260_000)], [honest]], honest, false);
 
-            Transaction first = Candidate(1, 600_000);
-            Transaction second = Candidate(3, 600_000);
-            yield return Case("Candidate over its own position's remaining budget is excused", [[first, second]], second, true);
+            // Of 1,048,576: the four fillers debit 800,000 and leave 248,576, which the second's cost exceeds.
+            Transaction[] filler = [Candidate(1, 200_000), Candidate(2, 200_000), Candidate(3, 200_000), Candidate(4, 200_000)];
+            Transaction first = filler[0];
+            Transaction second = Candidate(5, 250_000);
+            yield return Case("Candidate over its own position's remaining budget is excused", [[.. filler, second]], second, true);
             yield return Case("A list without membership admits no candidate", [[first]], first, true, withMembership: false);
-            yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, first]], second, true);
+            yield return Case("The fill takes a position's entries by hash, not by arrival", [[second, .. filler]], second, true);
             yield return Case("Candidate carried at several positions is enforced when any admits it",
-                [[first, second], [second]], second, false);
+                [[.. filler, second], [second]], second, false);
+            Transaction[] otherFiller = [Candidate(1, 210_000), Candidate(2, 210_000), Candidate(3, 210_000), Candidate(4, 210_000)];
             yield return Case("Candidate carried at several positions is excused when none admits it",
-                [[first, second], [Candidate(2, 600_000), second]], second, true);
+                [[.. filler, second], [.. otherFiller, second]], second, true);
 
-            // Of 1,048,576: the first debits 700,000 and leaves 348,576, which the second's cost exceeds.
-            Transaction last = Candidate(3, 300_000);
+            // The fillers leave 248,576, which the overflow's 250,000 exceeds; ignored without a debit, it leaves
+            // room for the last.
+            Transaction last = Candidate(6, 200_000);
             yield return Case("Occurrence over the remaining budget is ignored without a debit",
-                [[Candidate(1, 700_000), Candidate(2, 700_000), last]], last, false);
+                [[.. filler, Candidate(5, 250_000), last]], last, false);
 
-            Transaction signed = Candidate(1, 700_000, signatures: 1);
-            Transaction afterSigned = Candidate(2, 400_000);
-            yield return Case("Invalid signatures keep only the signature debit", [[signed, afterSigned]], afterSigned, false, badSignature: signed);
-            yield return Case("Valid signatures debit the whole cost", [[signed, afterSigned]], afterSigned, true);
+            // Three fillers leave 448,576; the signed candidate's whole 252,800 then leaves too little for the
+            // last, its 2,800 signature cost alone does not.
+            Transaction[] signedFiller = filler[..3];
+            Transaction signed = Candidate(4, 250_000, signatures: 1);
+            Transaction afterSigned = Candidate(5, 250_000);
+            yield return Case("Invalid signatures keep only the signature debit", [[.. signedFiller, signed, afterSigned]], afterSigned, false, badSignature: signed);
+            yield return Case("Valid signatures debit the whole cost", [[.. signedFiller, signed, afterSigned]], afterSigned, true);
         }
     }
 

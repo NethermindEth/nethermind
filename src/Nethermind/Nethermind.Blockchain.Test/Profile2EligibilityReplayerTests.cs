@@ -75,18 +75,18 @@ public class Profile2EligibilityReplayerTests
     }
 
     /// <summary>EIP-8369 Profile 2 bounds the prefix by <c>MAX_VERIFY_GAS_PER_TX</c>, not EIP-8141's mempool
-    /// <c>MAX_VERIFY_GAS</c>, so a prefix spending between the two is eligible.</summary>
-    /// <remarks>The frame declares 500,000; the wide expansion alone runs past <c>MAX_VERIFY_GAS</c>, which the
-    /// replayer under the mempool bound rejects as exceeding it.</remarks>
-    [TestCase(64UL, TestName = "Prefix well under MAX_VERIFY_GAS is eligible")]
-    [TestCase(12_000UL, TestName = "Prefix over MAX_VERIFY_GAS but under MAX_VERIFY_GAS_PER_TX is eligible")]
-    public async Task Prefix_is_bounded_by_the_profile_2_cap(ulong memoryWords)
+    /// <c>MAX_VERIFY_GAS</c>, so a prefix spending between the two is ineligible.</summary>
+    /// <remarks>The frame declares 290,000, under <c>MAX_VERIFY_GAS</c>; the wide expansion alone runs past
+    /// <c>MAX_VERIFY_GAS_PER_TX</c>, which a replayer under the mempool bound would let through.</remarks>
+    [TestCase(64UL, true, TestName = "Prefix well under MAX_VERIFY_GAS_PER_TX is eligible")]
+    [TestCase(11_000UL, false, TestName = "Prefix over MAX_VERIFY_GAS_PER_TX but under MAX_VERIFY_GAS is ineligible")]
+    public async Task Prefix_is_bounded_by_the_profile_2_cap(ulong memoryWords, bool eligible)
     {
         using BasicTestBlockchain chain = await CreateChain(ExpandMemoryThenApprove(memoryWords));
         IProfile2EligibilityReplayer replayer = chain.Container.Resolve<IProfile2EligibilityReplayer>();
 
-        Transaction tx = FrameTx(verifyGas: 500_000);
-        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.True);
+        Transaction tx = FrameTx(verifyGas: 290_000);
+        Assert.That(IsEligible(replayer, ChildOfHead(chain, new ReadOnlyBlockAccessList([Changes()], 1)), tx, 0), Is.EqualTo(eligible));
     }
 
     /// <summary>EIP-8369 § Attesters takes <c>current_slot</c> from the block itself, so a reference exactly
