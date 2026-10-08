@@ -21,4 +21,10 @@
       <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
     </type>
   </assembly>
+  <assembly fullname="Nethermind.Evm">
+    <!-- Only SP1's runtime exports the 256-bit modular multiplication precompile MULMOD runs on. -->
+    <type fullname="Nethermind.Evm.Sp1Uint256MulModFlag">
+      <method signature="System.Boolean get_IsActive()" body="stub" value="true" />
+    </type>
+  </assembly>
 </linker>
