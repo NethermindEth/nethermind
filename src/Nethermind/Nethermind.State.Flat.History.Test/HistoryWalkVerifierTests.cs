@@ -9,6 +9,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -16,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Flat.History.Proofs;
 using Nethermind.State.Flat.History.Walk;
+using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
@@ -354,6 +356,60 @@ public class HistoryWalkVerifierTests
                     "missing slot history must be detected at the range anchor even when account rows are streamed");
             }
         }
+    }
+
+    private static readonly Address BucketOwner = new("0x000000000000000000000000000000000000ea16");
+    private static readonly Address BucketMate = new("0x0000000000000000000000000000000000010590");
+    private const int BucketOwnerSlots = 64;
+
+    [Test]
+    public void VerifyRange_WhenAccountSharesStoragePrefixWithLargerContract_RequiresItsOwnSlotHistory([Values] bool hasSlotHistory)
+    {
+        // 1. BucketOwner and BucketMate share the 4-byte storage key prefix, so their slot rows interleave by slot hash.
+        // 2. BucketOwner writes 64 slots at block 0; BucketMate's anchor carries a non-empty storage root.
+        // 3. BucketMate's own slot row is either recorded or missing; the state root matches either way.
+        Assert.That(BucketMate.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength].SequenceEqual(BucketOwner.ToAccountPath.Bytes[..HistoryRowScanner.StoragePrefixLength]), Is.True,
+            "precondition: both accounts must land in the same storage bucket");
+
+        (UInt256 Slot, byte[] Value)[] ownerSlots = new (UInt256, byte[])[BucketOwnerSlots];
+        for (int i = 0; i < ownerSlots.Length; i++)
+        {
+            ownerSlots[i] = ((UInt256)(i + 1), [(byte)(i + 1)]);
+            HistoryColumnsWriter.RecordStorage(_historyColumns, BucketOwner, ownerSlots[i].Slot, block: 0, ownerSlots[i].Value);
+        }
+
+        Account owner = new(1, 50, StorageRootOf(ownerSlots), Keccak.OfAnEmptyString);
+        Account mate = new(1, 50, StorageRootOf((Slot, [0xAB])), Keccak.OfAnEmptyString);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketOwner, block: 0, owner);
+        HistoryColumnsWriter.RecordAccount(_historyColumns, BucketMate, block: 0, mate);
+        if (hasSlotHistory) HistoryColumnsWriter.RecordStorage(_historyColumns, BucketMate, Slot, block: 0, [0xAB]);
+
+        FakeHeaders headers = new();
+        headers.Roots[0] = StateRootOf((BucketOwner, owner), (BucketMate, mate));
+        headers.Roots[1] = headers.Roots[0];
+        MarkAll(headers);
+
+        HistoryWalkVerdict verdict = CreateVerifier(headers).VerifyRange(0, 1, CancellationToken.None);
+
+        if (hasSlotHistory)
+        {
+            Assert.That(verdict.Mismatches, Is.Empty, "a bucket mate with its own slot rows must verify next to a larger contract");
+        }
+        else
+        {
+            Assert.That(verdict.Mismatches.Select(m => (m.Block, m.Kind)), Is.EquivalentTo(new[] { (0UL, HistoryWalkMismatchKind.MissingSlotHistory) }),
+                "the probe must look past every foreign row in the shared bucket before it accepts that the account has slot history");
+        }
+    }
+
+    [Test]
+    public void SlotPresence_PastTheOldCutoff_DoesNotAcceptForeignRows()
+    {
+        using ForeignRows rows = new(BucketOwner.ToAccountPath, 1_000_001);
+        StoragePresenceProbe probe = new(rows,
+            LimboLogs.Instance.GetClassLogger<HistoryWalkVerifierTests>(), CancellationToken.None);
+
+        Assert.That(probe.HasSlotRows(BucketMate.ToAccountPath), Is.False);
     }
 
     [Test]
@@ -976,6 +1032,43 @@ public class HistoryWalkVerifierTests
             () => new HistoryWalkVerifier(_historyColumns, new FakeHeaders(), rowFormat, rlpWrapSlots: true, LimboLogs.Instance, HistoryWalkVerifier.DefaultMaxRowsPerPartition, emitterSource: null, _metadata),
             Throws.InstanceOf<InvalidConfigurationException>(),
             "v3 rows are pre-values with no rows at all for unchanged keys - a genesis-anchored forward walk cannot be sound there and must refuse loudly");
+    }
+
+    private sealed class ForeignRows(ValueHash256 identity, int count) : TestMemDb, ISortedKeyValueStore
+    {
+        ISortedView ISortedKeyValueStore.GetViewBetween(
+            ReadOnlySpan<byte> firstKeyInclusive, ReadOnlySpan<byte> lastKeyExclusive,
+            ReadFlags flags) => new View(identity, count);
+
+        private sealed class View(ValueHash256 identity, int count) : ISortedView
+        {
+            private readonly byte[] _key = MakeKey(identity);
+            private int _row;
+
+            public bool MoveNext()
+            {
+                if (_row == count) return false;
+
+                int offset = BasePersistence.StoragePrefixPortion + Hash256.Size - sizeof(int);
+                BinaryPrimitives.WriteInt32BigEndian(_key.AsSpan(offset, sizeof(int)), ++_row);
+                return true;
+            }
+
+            public ReadOnlySpan<byte> CurrentKey => _key;
+            public ReadOnlySpan<byte> CurrentValue => ReadOnlySpan<byte>.Empty;
+            public bool StartBefore(ReadOnlySpan<byte> value) => throw new NotSupportedException();
+            public void Dispose() { }
+
+            private static byte[] MakeKey(in ValueHash256 identity)
+            {
+                byte[] key = new byte[BaseFlatPersistence.StorageKeyLength + sizeof(ulong)];
+                int prefix = BasePersistence.StoragePrefixPortion;
+                identity.Bytes[..prefix].CopyTo(key);
+                identity.Bytes.Slice(prefix, BaseFlatPersistence.AccountKeyLength - prefix)
+                    .CopyTo(key.AsSpan(prefix + Hash256.Size));
+                return key;
+            }
+        }
     }
 
     private sealed class CountingStorageHistory(IColumnsDb<FlatHistoryColumns> inner) : IColumnsDb<FlatHistoryColumns>

@@ -3,14 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
 using Nethermind.State.Flat.Persistence;
 
 namespace Nethermind.State.Flat.History.Walk;
 
-internal sealed class StoragePresenceProbe(ISortedKeyValueStore storageHistory)
+internal readonly struct StoragePresenceProbe(ISortedKeyValueStore storageHistory, ILogger logger, CancellationToken token)
 {
-    public const long MaxScannedRows = 1_000_000;
-
     private const int IdentityLength = BaseFlatPersistence.AccountKeyLength;
     private const int PrefixLength = BasePersistence.StoragePrefixPortion;
     private const int SuffixOffset = PrefixLength + Hash256.Size;
@@ -41,16 +40,23 @@ internal sealed class StoragePresenceProbe(ISortedKeyValueStore storageHistory)
         upper[^1] = 0x00;
 
         long scanned = 0;
+        bool found = false;
         using ISortedView view = storageHistory.GetViewBetween(lower, upper, ReadFlags.HintCacheMiss);
         while (view.MoveNext())
         {
-            if (++scanned > MaxScannedRows) return true;
+            if ((++scanned & (WalkProgress.RowsPerUpdate - 1)) == 0) token.ThrowIfCancellationRequested();
 
             ReadOnlySpan<byte> key = view.CurrentKey;
             if (key.Length != StorageRowKeyLength) continue;
-            if (key.Slice(SuffixOffset, SuffixLength).SequenceEqual(identity.Bytes.Slice(PrefixLength, SuffixLength))) return true;
+            if (key.Slice(SuffixOffset, SuffixLength).SequenceEqual(identity.Bytes.Slice(PrefixLength, SuffixLength)))
+            {
+                found = true;
+                break;
+            }
         }
 
-        return false;
+        if (scanned >= WalkProgress.RowsPerUpdate && logger.IsDebug) logger.Debug($"History walk: the slot history probe for storage identity {identity} scanned {scanned} rows of its bucket; own rows found: {found}.");
+
+        return found;
     }
 }
