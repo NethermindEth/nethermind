@@ -1957,8 +1957,6 @@ public partial class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
-            .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
         // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
         // code-only idempotency probe would never fire it.
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8272Enabled = true }, Eip8272Constants.RecentRootAddress, Eip8272Constants.RecentRootCode.ToArray(), 1ul)
@@ -1983,11 +1981,6 @@ public partial class BlockProcessorTests
 
         Assert.That(stateProvider.GetCode(predeploy), Is.SequenceEqualTo(code));
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
-        if (!spec.IsEip8250Enabled)
-        {
-            // An unrelated predeploy must stay absent: only what the spec activates is installed.
-            Assert.That(stateProvider.GetCode(Eip8250Constants.NonceManagerAddress).ToArray(), Is.Empty);
-        }
 
         GeneratedAccountChanges? installChanges = processed1.GeneratedBlockAccessList!.GetAccountChanges(predeploy);
         Assert.That(installChanges, Is.Not.Null, "predeploy install must be captured in the BAL");
@@ -2017,13 +2010,23 @@ public partial class BlockProcessorTests
             "a re-install must not churn state or the BAL once the code is already present");
     }
 
-    [Test, MaxTime(Timeout.MaxTestTime)]
-    public void Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal([Values] bool existingAccount)
+    private static IEnumerable<TestCaseData> DeployedSystemContractCases()
     {
-        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+        foreach (bool existingAccount in new[] { false, true })
+        {
+            yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, existingAccount)
+                .SetName($"Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal({existingAccount})");
+            yield return new TestCaseData(Eip8250Prototype.Instance, Eip8250Constants.NonceManagerAddress, existingAccount)
+                .SetName($"Eip8250_activation_leaves_the_nonce_manager_untouched_and_out_of_the_bal({existingAccount})");
+        }
+    }
+
+    [TestCaseSource(nameof(DeployedSystemContractCases)), MaxTime(Timeout.MaxTestTime)]
+    public void Activation_leaves_a_deployed_system_contract_untouched_and_out_of_the_bal(IReleaseSpec releaseSpec, Address contract, bool existingAccount)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(releaseSpec);
         (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
         IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
-        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
         byte[] code = existingAccount ? [0x00] : [];
         ulong nonce = existingAccount ? 7UL : 0UL;
         UInt256 balance = existingAccount ? 3UL : 0UL;
@@ -2032,8 +2035,8 @@ public partial class BlockProcessorTests
         InstallExecutionRequestPredeploys(stateProvider, spec);
         if (existingAccount)
         {
-            stateProvider.CreateAccount(verifier, balance, nonce);
-            stateProvider.InsertCode(verifier, code, spec);
+            stateProvider.CreateAccount(contract, balance, nonce);
+            stateProvider.InsertCode(contract, code, spec);
         }
 
         stateProvider.Commit(spec);
@@ -2044,11 +2047,11 @@ public partial class BlockProcessorTests
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(stateProvider.AccountExists(verifier), Is.EqualTo(existingAccount));
-            Assert.That(stateProvider.GetCode(verifier), Is.SequenceEqualTo(code));
-            Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(nonce));
-            Assert.That(stateProvider.GetBalance(verifier), Is.EqualTo(balance));
-            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null);
+            Assert.That(stateProvider.AccountExists(contract), Is.EqualTo(existingAccount));
+            Assert.That(stateProvider.GetCode(contract), Is.SequenceEqualTo(code));
+            Assert.That(stateProvider.GetNonce(contract), Is.EqualTo(nonce));
+            Assert.That(stateProvider.GetBalance(contract), Is.EqualTo(balance));
+            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(contract), Is.Null);
         }
     }
 

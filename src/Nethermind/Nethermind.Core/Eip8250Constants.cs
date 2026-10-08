@@ -11,7 +11,7 @@ public static class Eip8250Constants
     public const int MaxNonceKeys = 16;
     public const ulong MaxNonceSeq = ulong.MaxValue;
 
-    public static readonly Address NonceManagerAddress = new("0x0000000000000000000000000000000000008250");
+    public static readonly Address NonceManagerAddress = new("0x8250968C12e01A19d6F667b9B2F3b3A4d0e51cB7");
 
     // Spec-pinned revert(0, 0): a storage namespace only, never callable. Exposed as memory rather
     // than an array so the bytecode cannot be overwritten through the shared static.
