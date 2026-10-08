@@ -720,6 +720,7 @@ public class StorageProviderTests(bool useFlat)
         provider.Set(written, (UInt256)5);
         provider.Set(untouched, (UInt256)6);
         provider.Commit(Frontier.Instance);
+        provider.CommitTree(0);
 
         provider.TakeSnapshot(newTransactionStart: true);
         provider.Set(written, (UInt256)7);
