@@ -4644,10 +4644,7 @@ namespace Nethermind.TxPool.Test
 
         // The share's charge sits beside the accept/reject branches of submission, never between them: an accepted
         // transaction must not run the rejection cleanup.
-        [TestCase(false, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded")]
-        [TestCase(true, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded_WithFairShares")]
-        [NonParallelizable]
-        public void SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded(bool fairShare)
+        internal void AssertAcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
         {
             CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address),
                 config: new TxPoolConfig { FrameTxMaxVerifyGas = 0, FrameTxPeerSimulationFairShare = fairShare });
@@ -7555,5 +7552,28 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+    }
+
+    [TestFixture, NonParallelizable]
+    public class AcceptedTransactionMetricsTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        [TestCase(false, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded")]
+        [TestCase(true, TestName = "SubmitTx_AcceptedTransaction_IsNotCountedAsDiscarded_WithFairShares")]
+        public async Task AcceptedTransactionIsNotCountedAsDiscarded(bool fairShare)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                fixture.AssertAcceptedTransactionIsNotCountedAsDiscarded(fairShare);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
     }
 }
