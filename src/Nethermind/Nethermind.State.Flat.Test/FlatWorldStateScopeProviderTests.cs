@@ -498,6 +498,55 @@ public class FlatWorldStateScopeProviderTests
     }
 
     [Test]
+    public void Commit_DoesNotCarryReadOnlyAccountIntoCommittedSnapshot([Values] bool viaHint)
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address readOnly = TestItem.AddressA;
+        Address written = TestItem.AddressB;
+        Account readAccount = TestItem.GenerateIndexedAccount(7);
+        ctx.PersistenceReader.GetAccount(readOnly).Returns(readAccount);
+
+        if (viaHint) scope.HintGet(readOnly, readAccount);
+        else scope.Get(readOnly);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(written, TestItem.GenerateIndexedAccount(1));
+        }
+        scope.Commit(1);
+
+        List<Address> committed = [];
+        foreach (KeyValuePair<HashedKey<Address>, Account?> kv in ctx.LastCommittedSnapshot!.Accounts) committed.Add(kv.Key.Key);
+        Assert.That(committed, Is.EquivalentTo(new[] { written }));
+    }
+
+    [Test]
+    public void Get_AfterCommit_ReturnsWriteOfAccountReadEarlierInTheBlock()
+    {
+        using TestContext ctx = new();
+        FlatWorldStateScope scope = ctx.Scope;
+        Address address = TestItem.AddressA;
+        Account before = TestItem.GenerateIndexedAccount(1);
+        Account after = TestItem.GenerateIndexedAccount(2);
+        ctx.PersistenceReader.GetAccount(address).Returns(before);
+
+        Assert.That(scope.Get(address), Is.EqualTo(before));
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch = scope.StartWriteBatch(1))
+        {
+            writeBatch.Set(address, after);
+        }
+        Assert.That(scope.Get(address), Is.EqualTo(after));
+        scope.Commit(1);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(scope.Get(address), Is.EqualTo(after));
+            ctx.LastCommittedSnapshot!.TryGetAccount(address, out Account? committed);
+            Assert.That(committed, Is.EqualTo(after));
+        }
+    }
+
+    [Test]
     public void HintGet_DoesNotOverwriteDirtyAccount()
     {
         using TestContext ctx = new();
