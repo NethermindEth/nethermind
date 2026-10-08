@@ -57,8 +57,8 @@ internal sealed class PbtMigrationBootstrap(
     }
 
     /// <remarks>
-    /// A snapshot is imported on its own, and preimages beside it only verify it; preimages alone take their values from
-    /// the local flat state; with neither, the genesis source is imported whole. The inputs stay open through publication.
+    /// A snapshot is imported on its own, and preimages beside it only verify it; without a snapshot, the genesis source
+    /// is imported whole. The inputs stay open through publication.
     /// </remarks>
     private async Task Import(BlockHeader genesis, CancellationToken cancellationToken)
     {
@@ -79,12 +79,6 @@ internal sealed class PbtMigrationBootstrap(
                 ? File.Open(verifyingPath, FileMode.Open, FileAccess.Read, FileShare.Read)
                 : null;
             await publication.PublishSnapshot(snapshot, verifyingPreimages, anchor, scratch, IsCurrent, cancellationToken);
-        }
-        else if (configuration.MigrationPreimagesPath is { } preimagesPath)
-        {
-            using Stream preimages = File.Open(preimagesPath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            using IPersistence.IPersistenceReader source = flatPersistence.CreateReader();
-            await publication.PublishPreimages(preimages, source, dbProvider.CodeDb, anchor, scratch, IsCurrent, cancellationToken);
         }
         else
         {

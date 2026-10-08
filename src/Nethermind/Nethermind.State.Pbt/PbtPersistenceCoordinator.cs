@@ -87,25 +87,6 @@ public class PbtPersistenceCoordinator(
         }
     }
 
-    /// <summary>
-    /// Persists the chain from <paramref name="seed"/> down to the persisted state, whatever the
-    /// finality triggers would have said.
-    /// </summary>
-    /// <remarks>
-    /// For a caller that owns the persistence schedule itself — the mirror, which follows the flat
-    /// backend's ranges so the two persisted pointers stay equal.
-    /// </remarks>
-    /// <returns>Whether anything was persisted; false when no chain reaches <paramref name="seed"/>.</returns>
-    public bool PersistUpTo(in StateId seed)
-    {
-        lock (_persistenceLock)
-        {
-            bool persistedAny = false;
-            while (PersistSegment(seed)) persistedAny = true;
-            return persistedAny;
-        }
-    }
-
     /// <summary>Persists everything up to the last committed head, e.g. after genesis processing or on shutdown.</summary>
     public void FlushToPersistence(CancellationToken cancellationToken = default)
     {

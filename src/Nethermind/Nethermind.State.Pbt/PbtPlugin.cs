@@ -7,7 +7,6 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db;
-using Nethermind.State.Pbt.Mirror;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -35,13 +34,7 @@ public class PbtPlugin(IPbtConfig config, IFlatDbConfig flatDbConfig, ChainSpec 
             if (config.MigrationExportPath is not null) return new PbtExportModule();
             if (!config.Enabled)
                 throw new InvalidConfigurationException($"binaryTrieTime in the chain specification requires {nameof(IPbtConfig)}.{nameof(IPbtConfig.Enabled)}.", -1);
-            return PbtMigrationConfigValidator.IsScheduledMigration(chainSpec) ? new PbtMigrationModule(config) : CreateModule();
+            return PbtMigrationConfigValidator.IsScheduledMigration(chainSpec) ? new PbtMigrationModule(config) : new PbtModule(config);
         }
     }
-
-    private IModule CreateModule() => config.MirrorFlat
-        ? flatDbConfig.Enabled
-            ? new PbtMirrorModule(config)
-            : throw new InvalidConfigurationException($"{nameof(IPbtConfig)}.{nameof(IPbtConfig.MirrorFlat)} mirrors the flat state backend, so it requires {nameof(IFlatDbConfig)}.{nameof(IFlatDbConfig.Enabled)}", -1)
-        : new PbtModule(config);
 }

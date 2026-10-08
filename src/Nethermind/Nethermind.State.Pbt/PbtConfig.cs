@@ -30,7 +30,6 @@ public class PbtConfig : IPbtConfig
     public long CompactionOffset { get; set; } = -1;
     public int MinReorgDepth { get; set; } = 128;
     public int MaxReorgDepth { get; set; } = 256;
-    public bool MirrorFlat { get; set; }
     public bool ImportFromPreimageFlat { get; set; }
     public int FoldConcurrency { get; set; }
     public int FoldMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultMinOperationsPerWorker;

@@ -37,8 +37,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly Channel<PbtTransientResource> _trieCachePopulationJobs = Channel.CreateBounded<PbtTransientResource>(1);
     private readonly Lock _admissionLock = new();
     private readonly CancellationToken _processExitToken;
-    // Mirror mode follows the flat backend's ranges to keep persisted pointers aligned, so it persists only through PersistUpTo.
-    private readonly bool _externallyDriven;
     private readonly bool _recordDetailedMetrics;
     private int _isDisposed;
 
@@ -63,7 +61,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         PbtSnapshotCompactor compactor,
         IProcessExitSource processExitSource,
         ILogManager logManager,
-        IPbtConfig config,
         IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache)
     {
@@ -75,7 +72,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _compactor = compactor;
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
-        _externallyDriven = config.MirrorFlat;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
         _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
@@ -233,13 +229,6 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ClearReadOnlyBundleCache();
     }
 
-    /// <summary>Persists up to <paramref name="seed"/> on behalf of an external clock, sweeping the bundle cache if it advanced.</summary>
-    /// <inheritdoc cref="PbtPersistenceCoordinator.PersistUpTo" path="/remarks"/>
-    public void PersistUpTo(in StateId seed)
-    {
-        if (_coordinator.PersistUpTo(seed)) ClearReadOnlyBundleCache();
-    }
-
     private async Task RunPersistenceWorker()
     {
         try
@@ -286,7 +275,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     if (_logger.IsError) _logger.Error("Pbt compaction failed", e);
                 }
 
-                if (!_externallyDriven) await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
+                await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
             }
         }
         catch (OperationCanceledException)
@@ -352,7 +341,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             await _trieCachePopulator;
             _persistenceJobs.Writer.TryComplete();
             await _persistenceWorker;
-            if (!_externallyDriven) FlushCache(CancellationToken.None);
+            FlushCache(CancellationToken.None);
         }
         finally
         {

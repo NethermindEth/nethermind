@@ -13,7 +13,7 @@ internal static class PbtMigrationConfigValidator
     internal static bool IsScheduledMigration(ChainSpec chainSpec) =>
         chainSpec.Parameters.Eip8347TransitionTimestamp is { } activation && chainSpec.Genesis is { } genesis && activation > genesis.Timestamp;
 
-    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationPreimagesPath is not null || configuration.MigrationGenesisBootstrap;
+    internal static bool HasSource(IPbtConfig configuration) => configuration.MigrationSnapshotPath is not null || configuration.MigrationGenesisBootstrap;
 
     internal static void Validate(IPbtConfig config, IFlatDbConfig flatConfig, ChainSpec chainSpec, string targetPath)
     {
@@ -22,8 +22,8 @@ internal static class PbtMigrationConfigValidator
         ValidateFakeRootSnapshotImport(config);
         if (!IsScheduledMigration(chainSpec)) return;
 
-        if (config.MirrorFlat || config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree || config.ImportMigrationSnapshotWithFakeRoots)
-            Fail("A scheduled binaryTrieTime migration cannot be combined with mirror, fake-root, offline import, scan or fake-root snapshot import modes.");
+        if (config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree || config.ImportMigrationSnapshotWithFakeRoots)
+            Fail("A scheduled binaryTrieTime migration cannot be combined with fake-root, offline import, scan or fake-root snapshot import modes.");
         if (!flatConfig.Enabled)
             Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled.");
         if (flatConfig.HistoryEnabled)
@@ -40,10 +40,11 @@ internal static class PbtMigrationConfigValidator
 
         bool snapshot = HasPath(config.MigrationSnapshotPath);
         bool preimages = HasPath(config.MigrationPreimagesPath);
-        // Preimages beside a snapshot only verify it, so they are not a source of their own.
-        if ((snapshot ? 1 : 0) + (preimages && !snapshot ? 1 : 0) + (config.MigrationGenesisBootstrap ? 1 : 0) > 1)
-            Fail("Select at most one migration source: snapshot (optionally verified by preimages), preimages, or genesis bootstrap.");
-        if ((snapshot || preimages) && config.MigrationAnchor is null)
+        if (preimages && !snapshot)
+            Fail("MigrationPreimagesPath only verifies MigrationSnapshotPath, so it requires it.");
+        if (snapshot && config.MigrationGenesisBootstrap)
+            Fail("Select at most one migration source: snapshot (optionally verified by preimages) or genesis bootstrap.");
+        if (snapshot && config.MigrationAnchor is null)
             Fail("MigrationAnchor is required for an external migration source.");
 
         foreach (string? path in new[] { config.MigrationSnapshotPath, config.MigrationPreimagesPath })
@@ -64,7 +65,7 @@ internal static class PbtMigrationConfigValidator
     {
         if (config.MigrationExportPath is not { } exportPath) return;
         if (!HasPath(exportPath)) Fail("MigrationExportPath must not be empty or whitespace.");
-        if (config.Enabled || config.MirrorFlat || config.ImportFromPreimageFlat || config.ScanTree || IsScheduledMigration(chainSpec))
+        if (config.Enabled || config.ImportFromPreimageFlat || config.ScanTree || IsScheduledMigration(chainSpec))
             Fail("MigrationExportPath reads the flat state instead of running the binary tree, so it cannot be combined with the PBT backend, a scheduled binaryTrieTime, or the other one-shot modes.");
         if (!flatConfig.Enabled || flatConfig.Layout is not (FlatLayout.PreimageFlat or FlatLayout.PreimageFlatV1))
             Fail("MigrationExportPath requires FlatDb.Enabled and a preimage-flat layout.");
@@ -81,7 +82,6 @@ internal static class PbtMigrationConfigValidator
     private static void ValidateFakeRootSnapshotImport(IPbtConfig config)
     {
         if (!config.ImportMigrationSnapshotWithFakeRoots) return;
-        if (config.MirrorFlat) Fail("ImportMigrationSnapshotWithFakeRoots runs the PBT backend alone, so it cannot be combined with MirrorFlat.");
         if (!HasPath(config.MigrationSnapshotPath) || !HasPath(config.MigrationPreimagesPath) || config.MigrationAnchor is null)
             Fail("ImportMigrationSnapshotWithFakeRoots requires MigrationSnapshotPath, MigrationPreimagesPath and MigrationAnchor.");
     }
