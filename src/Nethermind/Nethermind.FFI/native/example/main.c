@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 // Usage: example <ffi_dir> <config> [Category.Name=value...]
-// Starts the node, prints the head and tx pool events, then executes each hex-encoded block RLP read from stdin, one
+// Starts the node, prints the head, node status and tx pool events, then executes each hex-encoded block RLP read from stdin, one
 // per line. Stops the node on end of input.
 
 #include "../nethermind_ffi.h"
@@ -30,6 +30,17 @@ static void on_tx(void* user_data, int32_t event, const uint8_t* tx_hash, const 
     printf("tx %d ", event);
     print_hex("", tx_hash, 32);
     printf("  %zu bytes\n", tx_len);
+    fflush(stdout);
+    pthread_mutex_unlock(&print_lock);
+}
+
+// Called concurrently from the node's threads.
+static void on_node(void* user_data, const nm_node_status* status)
+{
+    (void)user_data;
+    pthread_mutex_lock(&print_lock);
+    printf("node %d %llu ", status->event, (unsigned long long)status->number);
+    print_hex("", status->hash, sizeof status->hash);
     fflush(stdout);
     pthread_mutex_unlock(&print_lock);
 }
@@ -72,6 +83,7 @@ int main(int argc, char** argv)
             print_hex("head state root: ", head.state_root, sizeof head.state_root);
         }
 
+        printf("set node callback: %d\n", nm_set_node_callback(node, on_node, NULL));
         printf("set tx callback: %d\n", nm_set_tx_callback(node, on_tx, NULL));
         fflush(stdout);
 
@@ -100,6 +112,7 @@ int main(int argc, char** argv)
 
         free(line);
         nm_set_tx_callback(node, NULL, NULL);
+        nm_set_node_callback(node, NULL, NULL);
     }
 
     nm_stop(node, 0);

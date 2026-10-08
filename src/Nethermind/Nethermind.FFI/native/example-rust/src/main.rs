@@ -3,7 +3,7 @@
 
 //! Usage: nethermind-ffi-example <ffi_dir> <config> [Category.Name=value...]
 //!
-//! Starts the node, prints the head and tx pool events, then executes each hex-encoded block RLP read from stdin,
+//! Starts the node, prints the head, node status and tx pool events, then executes each hex-encoded block RLP read from stdin,
 //! one per line. Stops the node on end of input. Mirrors ../example/main.c.
 
 use std::ffi::{CString, c_char, c_int, c_void};
@@ -42,6 +42,17 @@ mod sys {
         pub error_len: usize,
     }
 
+    #[repr(C)]
+    pub struct NmNodeStatus {
+        pub event: i32,
+        pub number: u64,
+        pub hash: [u8; 32],
+        pub state_root: [u8; 32],
+    }
+
+    pub type NmNodeCallback =
+        unsafe extern "C" fn(user_data: *mut c_void, status: *const NmNodeStatus);
+
     pub type NmTxCallback = unsafe extern "C" fn(
         user_data: *mut c_void,
         event: i32,
@@ -71,6 +82,11 @@ mod sys {
         pub fn nm_set_tx_callback(
             node: *mut NmNode,
             callback: Option<NmTxCallback>,
+            user_data: *mut c_void,
+        ) -> c_int;
+        pub fn nm_set_node_callback(
+            node: *mut NmNode,
+            callback: Option<NmNodeCallback>,
             user_data: *mut c_void,
         ) -> c_int;
         pub fn nm_stop(node: *mut NmNode, exit_code: i32) -> c_int;
@@ -175,6 +191,11 @@ impl Node {
         unsafe { sys::nm_set_tx_callback(self.0, callback, ptr::null_mut()) }
     }
 
+    /// Sets (or with `None` clears) the node status callback; it runs concurrently on the node's threads.
+    fn set_node_callback(&self, callback: Option<sys::NmNodeCallback>) -> c_int {
+        unsafe { sys::nm_set_node_callback(self.0, callback, ptr::null_mut()) }
+    }
+
     /// Stops the node and waits for it, returning its exit code.
     fn shutdown(self) -> c_int {
         unsafe {
@@ -182,6 +203,16 @@ impl Node {
             sys::nm_join(self.0)
         }
     }
+}
+
+unsafe extern "C" fn on_node(_user_data: *mut c_void, status: *const sys::NmNodeStatus) {
+    let status = unsafe { &*status };
+    println!(
+        "node {} {} {}",
+        status.event,
+        status.number,
+        hex(&status.hash)
+    );
 }
 
 unsafe extern "C" fn on_tx(
@@ -246,6 +277,10 @@ fn main() -> ExitCode {
             Err(status) => println!("head: {status}"),
         }
 
+        println!(
+            "set node callback: {}",
+            node.set_node_callback(Some(on_node))
+        );
         println!("set tx callback: {}", node.set_tx_callback(Some(on_tx)));
 
         for line in io::stdin().lock().lines().map_while(Result::ok) {
@@ -273,6 +308,7 @@ fn main() -> ExitCode {
     }
 
     node.set_tx_callback(None);
+    node.set_node_callback(None);
     let exit_code = node.shutdown();
     println!("exit code: {exit_code}");
     ExitCode::from(exit_code as u8)

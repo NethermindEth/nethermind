@@ -16,8 +16,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.FFI.Test;
@@ -40,7 +43,7 @@ public class FfiNodeTests
     [TestCase(Mutation.Garbage, FfiStatus.DecodeError)]
     public async Task ExecuteBlock_validates_and_executes_without_persisting(Mutation mutation, FfiStatus expected)
     {
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create();
+        using BasicTestBlockchain chain = await CreateChain(static _ => { });
         await chain.BuildSomeBlocks(2);
         using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
         FfiNode node = scope.Resolve<FfiNode>();
@@ -70,7 +73,7 @@ public class FfiNodeTests
     public async Task Tx_callback_reports_pool_events_until_cleared()
     {
         TxEvents.Clear();
-        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(static builder =>
+        using BasicTestBlockchain chain = await CreateChain(static builder =>
             builder.AddSingleton<ITxPoolConfig>(new TxPoolConfig { Size = 1 }));
         using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
         FfiNode node = scope.Resolve<FfiNode>();
@@ -105,9 +108,63 @@ public class FfiNodeTests
         Assert.That(TxEvents, Has.Count.EqualTo(expected.Length));
     }
 
+    private static readonly ConcurrentQueue<(FfiNodeEvent Event, ulong Number, Hash256 Hash)> NodeEvents = new();
+
+    [Test]
+    public async Task Node_callback_reports_head_finalization_and_sync_state_until_cleared()
+    {
+        NodeEvents.Clear();
+        IEthSyncingInfo syncingInfo = Substitute.For<IEthSyncingInfo>();
+        syncingInfo.IsSyncing().Returns(true);
+        using BasicTestBlockchain chain = await CreateChain(builder => builder.AddSingleton(syncingInfo));
+        using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
+        FfiNode node = scope.Resolve<FfiNode>();
+        BlockHeader genesis = chain.BlockTree.Head!.Header;
+        unsafe
+        {
+            node.SetNodeCallback(&RecordNodeEvent, 0);
+            Assert.That(() => node.SetNodeCallback(&RecordNodeEvent, 1), Throws.InvalidOperationException);
+        }
+
+        syncingInfo.IsSyncing().Returns(false);
+        Block block = await chain.AddBlock();
+        chain.BlockTree.ForkChoiceUpdated(block.Hash, block.Hash);
+
+        (FfiNodeEvent, ulong, Hash256)[] expected =
+        [
+            (FfiNodeEvent.Syncing, genesis.Number, genesis.Hash!),
+            (FfiNodeEvent.NewHead, block.Number, block.Hash!),
+            (FfiNodeEvent.Synced, block.Number, block.Hash!),
+            (FfiNodeEvent.Finalized, block.Number, block.Hash!),
+        ];
+        Assert.That(() => NodeEvents, Is.EqualTo(expected).After(5000, 50));
+
+        unsafe
+        {
+            node.SetNodeCallback(null, 0);
+        }
+
+        await chain.AddBlock();
+        Assert.That(NodeEvents, Has.Count.EqualTo(expected.Length));
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    private static unsafe void RecordNodeEvent(nint userData, NmNodeStatus* status) =>
+        NodeEvents.Enqueue(((FfiNodeEvent)status->Event, status->Number, new Hash256(new ReadOnlySpan<byte>(status->Hash, Hash256.Size))));
+
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     private static unsafe void RecordTxEvent(nint userData, int txEvent, byte* hash, byte* tx, nuint txLength) =>
         TxEvents.Enqueue(((FfiTxEvent)txEvent, new Hash256(new ReadOnlySpan<byte>(hash, Hash256.Size)), new ReadOnlySpan<byte>(tx, (int)txLength).ToArray()));
+
+    // FfiNode reads the sync state, which the test chain does not wire.
+    private static Task<BasicTestBlockchain> CreateChain(Action<ContainerBuilder> configure) =>
+        BasicTestBlockchain.Create(builder =>
+        {
+            builder
+                .AddSingleton<ISyncModeSelector>(StaticSelector.Full)
+                .AddSingleton(Substitute.For<IEthSyncingInfo>());
+            configure(builder);
+        });
 
     private static Transaction Transfer(BasicTestBlockchain chain, PrivateKey sender, ulong gasPrice) => Build.A.Transaction
         .WithTo(TestItem.AddressD)

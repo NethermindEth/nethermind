@@ -15,10 +15,12 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Facade.Eth;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
+using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using TxEventArgs = Nethermind.TxPool.TxEventArgs;
 
@@ -33,6 +35,8 @@ public sealed unsafe class FfiNode(
     BlockValidator blockValidator,
     RegeneratingReceiptsEnvSourceFactory envSourceFactory,
     ITxPool txPool,
+    IEthSyncingInfo ethSyncingInfo,
+    ISyncModeSelector syncModeSelector,
     ILogManager logManager) : IDisposable
 {
     // NoValidation keeps the block processor's own validator out; the processed block is validated explicitly below.
@@ -46,9 +50,16 @@ public sealed unsafe class FfiNode(
     private readonly IShareableOverridableEnvSource<ReceiptsRegenerationEnv> _envSource =
         envSourceFactory.Create(Environment.ProcessorCount);
 
+    private const int SyncStateUnknown = -1;
+    private const int SyncStateSyncing = 0;
+    private const int SyncStateSynced = 1;
+
     private readonly ILogger _logger = logManager.GetClassLogger<FfiNode>();
-    private TxCallback? _txCallback;
+    private NativeCallback? _txCallback;
     private int _txPoolSubscribed;
+    private NativeCallback? _nodeCallback;
+    private int _nodeEventsSubscribed;
+    private int _syncState = SyncStateUnknown;
 
     public BlockHeader? Head => blockTree.Head?.Header;
 
@@ -120,20 +131,33 @@ public sealed unsafe class FfiNode(
     /// <exception cref="InvalidOperationException">A callback is already set; it has to be cleared first.</exception>
     public void SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
     {
-        if (callback is null)
-        {
-            Volatile.Write(ref _txCallback, null);
-            return;
-        }
-
-        if (Interlocked.CompareExchange(ref _txCallback, new TxCallback(callback, userData), null) is not null)
-            throw new InvalidOperationException("A tx callback is already set.");
-
-        if (Interlocked.Exchange(ref _txPoolSubscribed, 1) != 0) return;
+        if (!SetCallback(ref _txCallback, ref _txPoolSubscribed, (nint)callback, userData)) return;
 
         txPool.NewPending += OnNewPending;
         txPool.RemovedPending += OnRemovedPending;
         txPool.EvictedPending += OnEvictedPending;
+    }
+
+    /// <summary>Sets the native callback receiving node status events, or clears it with a null <paramref name="callback"/>.</summary>
+    /// <remarks>
+    /// Invoked synchronously on the thread raising the event, possibly concurrently. Setting a callback reports the
+    /// current sync state to it straight away; afterwards only sync state changes are reported. The sync state is
+    /// the one eth_syncing reports, re-evaluated on every new head and sync mode change.
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">A callback is already set; it has to be cleared first.</exception>
+    public void SetNodeCallback(delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void> callback, nint userData)
+    {
+        if (SetCallback(ref _nodeCallback, ref _nodeEventsSubscribed, (nint)callback, userData))
+        {
+            blockTree.NewHeadBlock += OnNewHeadBlock;
+            blockTree.BlocksFinalized += OnBlocksFinalized;
+            syncModeSelector.Changed += OnSyncModeChanged;
+        }
+
+        if (callback is null) return;
+
+        Volatile.Write(ref _syncState, SyncStateUnknown);
+        UpdateSyncState();
     }
 
     public void Dispose()
@@ -145,7 +169,31 @@ public sealed unsafe class FfiNode(
             txPool.EvictedPending -= OnEvictedPending;
         }
 
+        if (Volatile.Read(ref _nodeEventsSubscribed) != 0)
+        {
+            blockTree.NewHeadBlock -= OnNewHeadBlock;
+            blockTree.BlocksFinalized -= OnBlocksFinalized;
+            syncModeSelector.Changed -= OnSyncModeChanged;
+        }
+
         _envSource.Dispose();
+    }
+
+    /// <summary>Sets <paramref name="slot"/> to the callback, or clears it when <paramref name="function"/> is null.</summary>
+    /// <returns>Whether this is the first callback ever set, so the events feeding it still have to be subscribed.</returns>
+    /// <exception cref="InvalidOperationException">A callback is already set.</exception>
+    private static bool SetCallback(ref NativeCallback? slot, ref int subscribed, nint function, nint userData)
+    {
+        if (function == 0)
+        {
+            Volatile.Write(ref slot, null);
+            return false;
+        }
+
+        if (Interlocked.CompareExchange(ref slot, new NativeCallback(function, userData), null) is not null)
+            throw new InvalidOperationException("A callback is already set.");
+
+        return Interlocked.Exchange(ref subscribed, 1) == 0;
     }
 
     private void OnNewPending(object? sender, TxEventArgs e) => Notify(FfiTxEvent.Pending, e.Transaction);
@@ -165,7 +213,8 @@ public sealed unsafe class FfiNode(
             fixed (byte* hash = tx.Hash!.Bytes)
             fixed (byte* encodedTx = encoded.AsSpan())
             {
-                callback.Function(callback.UserData, (int)txEvent, hash, encodedTx, (nuint)encoded.Count);
+                ((delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void>)callback.Function)(
+                    callback.UserData, (int)txEvent, hash, encodedTx, (nuint)encoded.Count);
             }
         }
         catch (Exception e)
@@ -174,14 +223,56 @@ public sealed unsafe class FfiNode(
         }
     }
 
+    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    {
+        Notify(FfiNodeEvent.NewHead, e.Block.Header);
+        UpdateSyncState();
+    }
+
+    private void OnBlocksFinalized(object? sender, FinalizeEventArgs e) => Notify(FfiNodeEvent.Finalized, e.FinalizedBlock);
+
+    private void OnSyncModeChanged(object? sender, SyncModeChangedEventArgs e) => UpdateSyncState();
+
+    private void UpdateSyncState()
+    {
+        if (Volatile.Read(ref _nodeCallback) is null) return;
+
+        try
+        {
+            bool synced = !ethSyncingInfo.IsSyncing();
+            int state = synced ? SyncStateSynced : SyncStateSyncing;
+            if (Interlocked.Exchange(ref _syncState, state) != state)
+                Notify(synced ? FfiNodeEvent.Synced : FfiNodeEvent.Syncing, blockTree.Head?.Header);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("FFI sync state update failed", e);
+        }
+    }
+
+    private void Notify(FfiNodeEvent nodeEvent, BlockHeader? header)
+    {
+        if (Volatile.Read(ref _nodeCallback) is not { } callback) return;
+
+        // Raised from block processing and sync: an exception here would fail the operation that raised it.
+        try
+        {
+            NmNodeStatus status = new() { Event = (int)nodeEvent, Number = header?.Number ?? 0 };
+            NativeExports.CopyHash(header?.Hash, status.Hash);
+            NativeExports.CopyHash(header?.StateRoot, status.StateRoot);
+            ((delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void>)callback.Function)(callback.UserData, &status);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error($"FFI node callback failed for {nodeEvent} {header?.Number}", e);
+        }
+    }
+
     private static byte[] EncodeReceipts(TxReceipt[] receipts, IReleaseSpec spec) =>
         Rlp.Encode(receipts, spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None).Bytes;
 
-    private sealed class TxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> function, nint userData)
-    {
-        public readonly delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> Function = function;
-        public readonly nint UserData = userData;
-    }
+    /// <summary>A native function pointer and the user data passed back to it, swapped as one reference.</summary>
+    private sealed record NativeCallback(nint Function, nint UserData);
 }
 
 /// <param name="Header">The processed header carrying the computed roots, when <paramref name="Status"/> is <see cref="FfiStatus.Ok"/>.</param>

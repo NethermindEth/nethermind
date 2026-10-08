@@ -20,6 +20,7 @@ typedef int (*get_head_fn)(nm_head*);
 typedef int (*execute_block_fn)(const uint8_t*, size_t, nm_block_result*);
 typedef void (*free_fn)(void*);
 typedef int (*set_tx_callback_fn)(nm_tx_callback, void*);
+typedef int (*set_node_callback_fn)(nm_node_callback, void*);
 typedef int (*stop_fn)(int32_t);
 typedef int (*join_fn)(void);
 
@@ -33,6 +34,7 @@ struct nm_node
     execute_block_fn execute_block;
     free_fn free;
     set_tx_callback_fn set_tx_callback;
+    set_node_callback_fn set_node_callback;
     stop_fn stop;
     join_fn join;
 };
@@ -123,6 +125,7 @@ nm_node* nm_start(const char* ffi_dir, const char* config, int override_count, c
         || resolve(get_function_pointer, "ExecuteBlock", (void**)&node->execute_block, err, err_len) != 0
         || resolve(get_function_pointer, "Free", (void**)&node->free, err, err_len) != 0
         || resolve(get_function_pointer, "SetTxCallback", (void**)&node->set_tx_callback, err, err_len) != 0
+        || resolve(get_function_pointer, "SetNodeCallback", (void**)&node->set_node_callback, err, err_len) != 0
         || resolve(get_function_pointer, "Stop", (void**)&node->stop, err, err_len) != 0
         || resolve(get_function_pointer, "Join", (void**)&node->join, err, err_len) != 0)
     {
@@ -169,6 +172,11 @@ void nm_free_block_result(nm_node* node, nm_block_result* result)
 int nm_set_tx_callback(nm_node* node, nm_tx_callback callback, void* user_data)
 {
     return node->set_tx_callback(callback, user_data);
+}
+
+int nm_set_node_callback(nm_node* node, nm_node_callback callback, void* user_data)
+{
+    return node->set_node_callback(callback, user_data);
 }
 
 int nm_stop(nm_node* node, int32_t exit_code)

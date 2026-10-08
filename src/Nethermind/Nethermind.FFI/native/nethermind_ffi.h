@@ -88,6 +88,30 @@ typedef enum nm_tx_event
  */
 typedef void (*nm_tx_callback)(void* user_data, int32_t event, const uint8_t* tx_hash, const uint8_t* tx, size_t tx_len);
 
+typedef enum nm_node_event
+{
+    /* A new canonical head was processed. */
+    NM_NODE_NEW_HEAD = 0,
+    /* The finalized block advanced. */
+    NM_NODE_FINALIZED = 1,
+    /* The node caught up with the chain (eth_syncing turned false). */
+    NM_NODE_SYNCED = 2,
+    /* The node fell behind the chain (eth_syncing turned true). */
+    NM_NODE_SYNCING = 3,
+} nm_node_event;
+
+/* The block the event is about: the new head, the finalized block, or the head at the time of a sync change. */
+typedef struct nm_node_status
+{
+    int32_t event;
+    uint64_t number;
+    uint8_t hash[32];
+    uint8_t state_root[32];
+} nm_node_status;
+
+/* Receives node status events; see nm_set_node_callback. status is only valid for the duration of the call. */
+typedef void (*nm_node_callback)(void* user_data, const nm_node_status* status);
+
 typedef struct nm_node nm_node;
 
 /*
@@ -131,6 +155,20 @@ void nm_free_block_result(nm_node* node, nm_block_result* result);
  * a tx dropped by the pool's eviction policy may be reported as NM_TX_REMOVED followed by NM_TX_EVICTED.
  */
 int nm_set_tx_callback(nm_node* node, nm_tx_callback callback, void* user_data);
+
+/*
+ * Sets the node status event callback, or clears it when callback is NULL. Requires a ready node. Only one callback
+ * can be set at a time: setting another one while it is set fails with NM_CALLBACK_ALREADY_SET.
+ *
+ * Setting the callback immediately reports the current sync state (NM_NODE_SYNCED or NM_NODE_SYNCING); after that a
+ * sync event is reported only when the state changes. The sync state is the one eth_syncing reports, re-evaluated on
+ * every new head and sync mode change.
+ *
+ * The callback runs synchronously on the thread raising the event (block processing, sync or the forkchoice update
+ * caller), possibly concurrently, so it must be thread-safe and fast: it delays the operation that raised it. A call
+ * already in progress may still complete after the callback is cleared.
+ */
+int nm_set_node_callback(nm_node* node, nm_node_callback callback, void* user_data);
 
 /* Requests the node to shut down with the given process exit code; returns without waiting. */
 int nm_stop(nm_node* node, int32_t exit_code);

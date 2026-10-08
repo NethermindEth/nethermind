@@ -131,6 +131,27 @@ public static unsafe class NativeExports
     }
 
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int SetNodeCallback(delegate* unmanaged[Cdecl]<nint, NmNodeStatus*, void> callback, nint userData)
+    {
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                node.SetNodeCallback(callback, userData);
+                return FfiStatus.Ok;
+            });
+        }
+        catch (InvalidOperationException)
+        {
+            return (int)FfiStatus.CallbackAlreadySet;
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     public static int Stop(int exitCode)
     {
         try
@@ -158,7 +179,7 @@ public static unsafe class NativeExports
         }
     }
 
-    private static void CopyHash(Hash256? hash, byte* destination) =>
+    internal static void CopyHash(Hash256? hash, byte* destination) =>
         (hash ?? Hash256.Zero).Bytes.CopyTo(new Span<byte>(destination, Hash256.Size));
 
     private static void SetError(NmBlockResult* result, string? error)
@@ -195,4 +216,13 @@ public unsafe struct NmBlockResult
     public nuint ReceiptsLength;
     public byte* Error;
     public nuint ErrorLength;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct NmNodeStatus
+{
+    public int Event;
+    public ulong Number;
+    public fixed byte Hash[32];
+    public fixed byte StateRoot[32];
 }
