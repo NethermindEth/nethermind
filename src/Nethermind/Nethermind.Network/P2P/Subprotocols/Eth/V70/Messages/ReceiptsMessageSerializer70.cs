@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -14,12 +14,12 @@ public class ReceiptsMessageSerializer70(ISpecProvider specProvider)
 {
     private readonly ReceiptsMessageInnerSerializer69 _receiptsSerializer = new(specProvider);
 
-    protected override void SerializeInternal(IByteBuffer byteBuffer, ReceiptsMessage70 message)
+    protected override void SerializeInternal(Span<byte> buffer, ReceiptsMessage70 message)
     {
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(buffer);
         writer.Encode(message.LastBlockIncomplete ? 1 : 0);
         ReceiptsInnerMessage69 inner = new(message.TxReceipts);
-        _receiptsSerializer.Serialize(byteBuffer, inner);
+        _receiptsSerializer.Serialize(buffer.Slice(writer.Position), inner);
     }
 
     protected override ReceiptsMessage70 DeserializeInternal(ref RlpReader ctx, long requestId)

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -10,17 +9,16 @@ namespace Nethermind.Network.P2P.Messages
 {
     public class DisconnectMessageSerializer : IZeroMessageSerializer<DisconnectMessage>
     {
-        public void Serialize(IByteBuffer byteBuffer, DisconnectMessage msg)
+        public void Serialize(Span<byte> buffer, DisconnectMessage msg)
         {
-            int length = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(length, force: true);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(msg, out int contentLength);
+            RlpWriter writer = new(buffer);
 
             writer.StartSequence(contentLength);
             writer.Encode((byte)msg.Reason);
         }
 
-        private static int GetLength(DisconnectMessage message, out int contentLength)
+        public int GetLength(DisconnectMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf((byte)message.Reason);
 
@@ -28,21 +26,22 @@ namespace Nethermind.Network.P2P.Messages
         }
 
 
-        public DisconnectMessage Deserialize(IByteBuffer msgBytes)
+        public DisconnectMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            if (msgBytes.ReadableBytes == 1)
+            if (data.Length == 1)
             {
-                return new DisconnectMessage((EthDisconnectReason)msgBytes.GetByte(0));
+                consumed = 1;
+                return new DisconnectMessage((EthDisconnectReason)data[0]);
             }
 
-            if (msgBytes.ReadableBytes == 0)
+            if (data.Length == 0)
             {
                 // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
+                consumed = 0;
                 return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
-            Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            RlpReader reader = new(msg);
+            RlpReader reader = new(data);
             if (!reader.IsSequenceNext())
             {
                 reader = new RlpReader(reader.DecodeByteArraySpan());
@@ -50,8 +49,8 @@ namespace Nethermind.Network.P2P.Messages
 
             reader.ReadSequenceLength();
             int reason = reader.DecodeInt();
-            DisconnectMessage disconnectMessage = new(reason);
-            return disconnectMessage;
+            consumed = data.Length;
+            return new(reason);
         }
     }
 }

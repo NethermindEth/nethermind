@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
@@ -48,7 +48,7 @@ internal class Xdc164ProtocolHandler(
 
     void IXdcConsensusPeer.Dispatch<T>(T message) => Send(message);
 
-    T IXdcMessageContext.Decode<T>(IByteBuffer buffer) => Deserialize<T>(buffer);
+    T IXdcMessageContext.Decode<T>(ReadOnlySpan<byte> buffer) => Deserialize<T>(buffer);
 
     void IXdcMessageContext.Report(MessageBase message, int size) => ReportIn(message, size);
 

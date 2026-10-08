@@ -154,7 +154,7 @@ public class Eth72ProtocolHandler(
                 {
                     if (IsTransactionGossipAllowed())
                     {
-                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content);
+                        using NewPooledTransactionHashesMessage72 newPooledTxHashesMsg = Deserialize<NewPooledTransactionHashesMessage72>(message.Content.AsSpan());
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }
@@ -177,7 +177,7 @@ public class Eth72ProtocolHandler(
             case Eth66MessageCode.PooledTransactions:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.AsSpan(), out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(PooledTransactionsMessage66)}.");
                     }
@@ -188,7 +188,7 @@ public class Eth72ProtocolHandler(
                         return true;
                     }
 
-                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content);
+                    PooledTransactionsMessage66 pooledTransactions = Deserialize<PooledTransactionsMessage66>(message.Content.AsSpan());
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), requestedHashes))
                     {
@@ -214,7 +214,7 @@ public class Eth72ProtocolHandler(
             case Eth72MessageCode.Cells:
                 if (CanReceiveTransactions)
                 {
-                    if (!Eth66RequestId.TryPeek(message.Content, out long requestId))
+                    if (!Eth66RequestId.TryPeek(message.Content.AsSpan(), out long requestId))
                     {
                         throw new SubprotocolException($"Could not read request ID from {nameof(CellsMessage72)}.");
                     }
@@ -246,7 +246,7 @@ public class Eth72ProtocolHandler(
                     CellsMessage72 cellsMessage;
                     try
                     {
-                        cellsMessage = Deserialize<CellsMessage72>(message.Content);
+                        cellsMessage = Deserialize<CellsMessage72>(message.Content.AsSpan());
                     }
                     catch (RlpException)
                     {

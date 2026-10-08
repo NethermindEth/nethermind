@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Common;
 using DotNetty.Transport.Channels.Embedded;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -18,7 +21,6 @@ namespace Nethermind.Network.Benchmarks
 {
     public class OutFlowBenchmarks
     {
-        private IByteBuffer _snappyBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
         private IByteBuffer _outputBuffer = PooledByteBufferAllocator.Default.Buffer(MemorySizes.MiB);
 
         private NewBlockMessageSerializer _newBlockMessageSerializer;
@@ -76,9 +78,10 @@ namespace Nethermind.Network.Benchmarks
                 new ZeroSnappyEncoder(LimboLogs.Instance));
             try
             {
-                IByteBuffer input = Unpooled.Buffer();
-                _newBlockMessageSerializer.Serialize(input, _newBlockMessage);
-                oracle.WriteOutbound(input);
+                using PooledBuffer input = PooledBuffer.Rent(_newBlockMessageSerializer.GetLength(_newBlockMessage, out _));
+                _newBlockMessageSerializer.Serialize(input.Span, _newBlockMessage);
+                // The pipeline takes ownership of the wrapped view and releases it.
+                oracle.WriteOutbound(Wrap(input));
                 IByteBuffer expected = oracle.ReadOutbound<IByteBuffer>();
                 try
                 {
@@ -105,17 +108,35 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            _snappyBuffer.Clear();
             _outputBuffer.Clear();
-            _newBlockMessageSerializer.Serialize(_snappyBuffer, _newBlockMessage);
-            _zeroSplitter.Encode(_snappyBuffer, _outputBuffer);
+            using PooledBuffer serialized = PooledBuffer.Rent(_newBlockMessageSerializer.GetLength(_newBlockMessage, out _));
+            _newBlockMessageSerializer.Serialize(serialized.Span, _newBlockMessage);
+            IByteBuffer wrapped = Wrap(serialized);
+            try
+            {
+                _zeroSplitter.Encode(wrapped, _outputBuffer);
+            }
+            finally
+            {
+                wrapped.Release();
+            }
+        }
+
+        private static IByteBuffer Wrap(PooledBuffer buffer)
+        {
+            if (!MemoryMarshal.TryGetArray(buffer.ReadOnlyMemory, out ArraySegment<byte> segment) ||
+                segment.Array is null)
+            {
+                throw new InvalidOperationException("Pooled message buffer is not array-backed.");
+            }
+
+            return Unpooled.WrappedBuffer(segment.Array, segment.Offset, segment.Count);
         }
 
         [GlobalCleanup]
         public void Cleanup()
         {
             _frameMacProcessor?.Dispose();
-            _snappyBuffer.Release();
             _outputBuffer.Release();
         }
     }

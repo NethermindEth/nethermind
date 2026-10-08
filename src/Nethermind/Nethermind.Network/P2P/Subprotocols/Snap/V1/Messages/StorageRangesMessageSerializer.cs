@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using System;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
@@ -15,13 +14,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
     {
         private static readonly RlpLimit StorageSlotValueRlpLimit = RlpLimit.For<PathWithStorageSlot>(33, nameof(PathWithStorageSlot.SlotRlpValue));
 
-        public void Serialize(IByteBuffer byteBuffer, StorageRangeMessage message)
+        public void Serialize(Span<byte> buffer, StorageRangeMessage message)
         {
             (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
             using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
 
             writer.StartSequence(contentLength);
 
@@ -58,11 +56,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
             writer.WriteByteArrayList(message.Proofs);
         }
 
-        public StorageRangeMessage Deserialize(IByteBuffer byteBuffer)
+        public StorageRangeMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            PooledBuffer? memoryOwner = PooledBuffer.Rent(data.Length);
+            data.CopyTo(memoryOwner.Span);
             RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startPos = ctx.Position;
 
             StorageRangeMessage message = new();
 
@@ -86,7 +84,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 message.Proofs = RlpByteArrayList.DecodeList(ref ctx, memoryOwner, SnapMessageLimits.StorageRangeProofsRlpLimit);
                 memoryOwner = null;
 
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPos));
+                consumed = ctx.Position;
 
                 return message;
             }
@@ -96,6 +94,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
                 memoryOwner?.Dispose();
                 throw;
             }
+        }
+
+        public int GetLength(StorageRangeMessage message, out int contentLength)
+        {
+            (int totalContentLength, _, ArrayPoolSpan<int> accountSlotsLengths) = CalculateLengths(message);
+            using ArrayPoolSpan<int> returnAccountSlotsLengths = accountSlotsLengths;
+
+            contentLength = totalContentLength;
+            return Rlp.LengthOfSequence(totalContentLength);
         }
 
         private static (int contentLength, int allSlotsLength, ArrayPoolSpan<int> accountSlotsLengths) CalculateLengths(StorageRangeMessage message)

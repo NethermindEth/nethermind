@@ -14,6 +14,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
@@ -83,11 +84,11 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             IMessageSerializationService real = Build.A.SerializationService().WithDiscovery(_privateKey).TestObject;
             IMessageSerializationService service = Substitute.For<IMessageSerializationService>();
             bool serializedOnEventLoop = false;
-            IByteBuffer? serialized = null;
-            service.ZeroSerialize(Arg.Any<PingMsg>(), Arg.Any<IByteBufferAllocator>()).Returns(ci =>
+            PooledBuffer? serialized = null;
+            service.ZeroSerialize(Arg.Any<PingMsg>()).Returns(ci =>
             {
                 serializedOnEventLoop = _channels[^1].EventLoop.InEventLoop;
-                return serialized = real.ZeroSerialize(ci.Arg<PingMsg>(), UnpooledByteBufferAllocator.Default);
+                return serialized = real.ZeroSerialize(ci.Arg<PingMsg>());
             });
             await StartUdpChannel("127.0.0.1", 10003, _kademliaAdaptersMocks[0], service);
             PingMsg message = new(_privateKey2.PublicKey, Timestamper.Default.UnixTime.SecondsLong + 1200, _address, _address2, new byte[32])
@@ -103,7 +104,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             Assert.That(serializedOnEventLoop, Is.True);
             await SleepWhileWaiting();
             await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
-            Assert.That(serialized?.ReferenceCount, Is.Zero);
+            Assert.That(serialized, Is.Not.Null);
+            Assert.Throws<ObjectDisposedException>(() => _ = serialized[..]);
         }
 
         [Test]
@@ -299,16 +301,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             (IKademliaAdapter adapter, NettyDiscoveryHandler handler, IChannelHandlerContext ctx, IMessageSerializationService service) = CreateHandler();
 
             EnrResponseMsg msg = BuildEnrResponse(_privateKey2);
-            IByteBuffer serialized = service.ZeroSerialize(msg);
-            byte[] data;
-            try
-            {
-                data = serialized.ReadAllBytesAsArray();
-            }
-            finally
-            {
-                serialized.SafeRelease();
-            }
+            using PooledBuffer serialized = service.ZeroSerialize(msg);
+            byte[] data = serialized.ReadOnlySpan.ToArray();
 
             handler.ChannelRead(ctx, new DatagramPacket(Unpooled.WrappedBuffer(data), _address2, _address));
 
@@ -458,10 +452,8 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 FarAddress = _address
             };
 
-            IByteBuffer serialized = service.ZeroSerialize(msg);
-            byte[] data = serialized.ReadAllBytesAsArray();
-            serialized.SafeRelease();
-            return data;
+            using PooledBuffer serialized = service.ZeroSerialize(msg);
+            return serialized.ReadOnlySpan.ToArray();
         }
 
         private EnrResponseMsg BuildEnrResponse(PrivateKey signingKey)
@@ -511,10 +503,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
         {
             private int _deserializeCalls;
 
-            public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-                => innerService.ZeroSerialize(message, allocator);
+            public PooledBuffer ZeroSerialize<T>(T message) where T : MessageBase
+                => innerService.ZeroSerialize(message);
 
-            public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
+            public T Deserialize<T>(ReadOnlySpan<byte> data) where T : MessageBase
             {
                 if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
                 {
@@ -522,10 +514,10 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
                 }
 
-                return innerService.Deserialize<T>(bytes);
+                return innerService.Deserialize<T>(data);
             }
 
-            public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
+            public T Deserialize<T>(ReadOnlySpan<byte> data, out int consumed) where T : MessageBase
             {
                 if (typeof(T) == typeof(PingMsg) && Interlocked.Increment(ref _deserializeCalls) == 1)
                 {
@@ -533,7 +525,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                     unblockDeserialize.Wait(TimeSpan.FromSeconds(10));
                 }
 
-                return innerService.Deserialize<T>(buffer);
+                return innerService.Deserialize<T>(data, out consumed);
             }
         }
     }

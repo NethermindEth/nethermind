@@ -20,7 +20,7 @@ internal static class UndecodableResponse
 {
     public const long RequestId = 1111;
 
-    public static IByteBuffer Create(long requestId = RequestId)
+    public static byte[] Create(long requestId = RequestId)
     {
         byte[] id = Rlp.Encode(requestId).Bytes;
         // A list header promising 5 bytes that never follow.
@@ -30,30 +30,30 @@ internal static class UndecodableResponse
         payload[0] = (byte)(0xc0 + id.Length + 1);
         id.CopyTo(payload, 1);
         payload[^1] = truncatedList;
-        return Unpooled.WrappedBuffer(payload);
+        return payload;
     }
 
     public static void AssertRejectedAsUnrequested(Action<ZeroPacket> handle, int packetType) =>
-        AssertRejected(handle, new ZeroPacket(Create()) { PacketType = (byte)packetType }, "has not been requested");
+        AssertRejected(handle, new ZeroPacket(Unpooled.WrappedBuffer(Create())) { PacketType = (byte)packetType }, "has not been requested");
 
     /// <summary>
     /// A <c>[request-id, ...fields, [[item, ...]]]</c> receipts response with one block of <paramref name="receipts"/>
     /// items that are not receipts, so decoding it would fail with an RLP error.
     /// </summary>
     /// <param name="requestId">The request id, or <see langword="null"/> for an eth/63 response, which is the block list alone.</param>
-    public static IByteBuffer CreateReceipts(long? requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
+    public static byte[] CreateReceipts(long? requestId, int receipts, params Rlp[] fieldsBeforeReceipts)
     {
         Rlp block = Rlp.Encode(Enumerable.Repeat(new Rlp([0x01]), receipts).ToArray());
         Rlp blocks = Rlp.Encode(new[] { block });
         Rlp response = requestId is long id ? Rlp.Encode([Rlp.Encode(id), .. fieldsBeforeReceipts, blocks]) : blocks;
-        return Unpooled.WrappedBuffer(response.Bytes);
+        return response.Bytes;
     }
 
     /// <summary>
     /// Asserts that a receipts response with more receipts than the request allows is rejected before it is decoded.
     /// </summary>
-    public static void AssertReceiptsRejectedBeforeDecoding(Action<ZeroPacket> handle, IByteBuffer content, int packetType) =>
-        AssertRejected(handle, new ZeroPacket(content) { PacketType = (byte)packetType }, "exceeds the request");
+    public static void AssertReceiptsRejectedBeforeDecoding(Action<ZeroPacket> handle, byte[] content, int packetType) =>
+        AssertRejected(handle, new ZeroPacket(Unpooled.WrappedBuffer(content)) { PacketType = (byte)packetType }, "exceeds the request");
 
     private static void AssertRejected(Action<ZeroPacket> handle, ZeroPacket packet, string message)
     {

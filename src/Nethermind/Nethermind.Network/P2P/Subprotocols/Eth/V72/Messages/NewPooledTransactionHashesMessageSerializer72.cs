@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -18,8 +17,13 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage72.Hashes));
     private static readonly RlpLimit CellMaskRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage72>(BlobCellMask.FixedByteLength, nameof(NewPooledTransactionHashesMessage72.CellMask));
 
-    public NewPooledTransactionHashesMessage72 Deserialize(IByteBuffer byteBuffer) =>
-        byteBuffer.DeserializeRlp(Deserialize);
+    public NewPooledTransactionHashesMessage72 Deserialize(ReadOnlySpan<byte> data, out int consumed)
+    {
+        RlpReader ctx = new(data);
+        NewPooledTransactionHashesMessage72 msg = Deserialize(ref ctx);
+        consumed = ctx.Position;
+        return msg;
+    }
 
     private static NewPooledTransactionHashesMessage72 Deserialize(ref RlpReader ctx)
     {
@@ -80,7 +84,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
     private static ValueHash256 DecodeTransactionHash(ref RlpReader ctx) => ctx.DecodeValueKeccakNonNull();
 
-    public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
+    public void Serialize(Span<byte> buffer, NewPooledTransactionHashesMessage72 message)
     {
         int sizesLength = 0;
         foreach (int size in message.Sizes.AsSpan())
@@ -95,9 +99,7 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
                             + Rlp.LengthOfSequence(hashesLength)
                             + Rlp.LengthOf(message.CellMask);
 
-        byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
-
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(buffer);
         writer.StartSequence(contentLength);
         writer.Encode(message.Types.AsSpan());
 
@@ -114,5 +116,22 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
         }
 
         writer.Encode(message.CellMask);
+    }
+
+    public int GetLength(NewPooledTransactionHashesMessage72 message, out int contentLength)
+    {
+        int sizesLength = 0;
+        foreach (int size in message.Sizes.AsSpan())
+        {
+            sizesLength += Rlp.LengthOf(size);
+        }
+
+        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
+
+        contentLength = Rlp.LengthOf(message.Types.AsSpan())
+                        + Rlp.LengthOfSequence(sizesLength)
+                        + Rlp.LengthOfSequence(hashesLength)
+                        + Rlp.LengthOf(message.CellMask);
+        return Rlp.LengthOfSequence(contentLength);
     }
 }

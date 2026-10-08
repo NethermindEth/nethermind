@@ -8,10 +8,12 @@ using System.Net;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
+using DotNetty.Buffers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -419,9 +421,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
         {
-            using DisposableByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg).AsDisposable();
-            getBlockHeadersPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+            using PooledBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(getBlockHeadersPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
         }
         private void HandleIncomingStatusMessage()
         {
@@ -429,9 +430,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             statusMsg.GenesisHash = _genesisBlock.Hash;
             statusMsg.BestHash = _genesisBlock.Hash;
 
-            using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-            statusPacket.ReadByte();
-            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+            using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+            _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
         }
 
         private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler

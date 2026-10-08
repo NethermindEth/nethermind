@@ -6,6 +6,7 @@ using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -44,24 +45,16 @@ public class Snap2ProtocolHandlerTests
 
     private static void Deliver<T>(Snap2ProtocolHandler handler, IMessageSerializationService serializer, T message, int packetType) where T : P2PMessage
     {
-        IByteBuffer? buffer = serializer.ZeroSerialize(message);
+        using PooledBuffer buffer = serializer.ZeroSerialize(message);
+        // skip the adaptive protocol-type byte
+        ZeroPacket packet = new(Unpooled.WrappedBuffer(buffer.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)packetType };
         try
         {
-            buffer.ReadByte(); // skip the adaptive protocol-type byte
-            ZeroPacket packet = new(buffer) { PacketType = (byte)packetType };
-            buffer = null;
-            try
-            {
-                handler.HandleMessage(packet);
-            }
-            finally
-            {
-                ReferenceCountUtil.Release(packet);
-            }
+            handler.HandleMessage(packet);
         }
         finally
         {
-            buffer?.SafeRelease();
+            ReferenceCountUtil.Release(packet);
         }
     }
 

@@ -1,11 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
@@ -13,10 +16,12 @@ using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Discovery.Discv4.Messages;
+using Nethermind.Serialization.Rlp;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Network.Discovery.Discv4;
@@ -84,11 +89,11 @@ public class NettyDiscoveryHandler(
 
     private async Task SendMsgCore(DiscoveryMsg discoveryMsg)
     {
-        IByteBuffer msgBuffer;
+        PooledBuffer msgBuffer;
         try
         {
             if (_logger.IsTrace) TraceSending(discoveryMsg);
-            msgBuffer = Serialize(discoveryMsg, Channel.Allocator);
+            msgBuffer = Serialize(discoveryMsg);
         }
         catch (Exception e)
         {
@@ -96,7 +101,7 @@ public class NettyDiscoveryHandler(
             return;
         }
 
-        int size = msgBuffer.ReadableBytes;
+        int size = msgBuffer.Length;
         if (size > MaxPacketSize)
         {
             if (_logger.IsWarn) _logger.Warn($"Attempting to send message larger than 1280 bytes. This is out of spec and may not work for all clients. Msg: ${discoveryMsg}");
@@ -111,14 +116,41 @@ public class NettyDiscoveryHandler(
             if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(discoveryMsg.FarAddress, "disc v4", discoveryMsg.MsgType.ToString(), size);
         }
 
-        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(msgBuffer, discoveryMsg.FarAddress);
+        // Zero-copy view over the pooled message for the UDP transport, which stays on DotNetty.
+        // The wrapper is released by the pipeline; the pooled rental is returned below.
+        if (!MemoryMarshal.TryGetArray(msgBuffer.ReadOnlyMemory, out ArraySegment<byte> segment) ||
+            segment.Array is null)
+        {
+            msgBuffer.Dispose();
+            if (_logger.IsTrace) TraceSendFailure(discoveryMsg, new InvalidOperationException("Pooled discovery message is not array-backed."));
+            return;
+        }
+
+        IAddressedEnvelope<IByteBuffer> packet = new DatagramPacket(Unpooled.WrappedBuffer(segment.Array, segment.Offset, segment.Count), discoveryMsg.FarAddress);
+        Task sendTask;
         try
         {
-            await Channel.WriteAndFlushAsync(packet);
+            sendTask = Channel.WriteAndFlushAsync(packet);
+        }
+        catch (Exception e)
+        {
+            // A synchronous throw means the pipeline never took ownership of the packet.
+            packet.SafeRelease();
+            if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
+            sendTask = Task.CompletedTask;
+        }
+
+        try
+        {
+            await sendTask;
         }
         catch (Exception e)
         {
             if (_logger.IsTrace) TraceSendFailure(discoveryMsg, e);
+        }
+        finally
+        {
+            msgBuffer.Dispose();
         }
 
         Interlocked.Add(ref Metrics.DiscoveryBytesSent, size);
@@ -210,7 +242,7 @@ public class NettyDiscoveryHandler(
     protected virtual MsgType? FromMsgTypeByte(byte b) =>
         FastEnum.IsDefined((MsgType)b) ? (MsgType)b : null;
 
-    private DiscoveryMsg Deserialize(MsgType type, IByteBuffer msg) => type switch
+    private DiscoveryMsg Deserialize(MsgType type, ReadOnlySpan<byte> msg) => type switch
     {
         MsgType.Ping => _msgSerializationService.Deserialize<PingMsg>(msg),
         MsgType.Pong => _msgSerializationService.Deserialize<PongMsg>(msg),
@@ -221,14 +253,14 @@ public class NettyDiscoveryHandler(
         _ => throw new Exception($"Unsupported messageType: {type}")
     };
 
-    private IByteBuffer Serialize(DiscoveryMsg msg, IByteBufferAllocator? allocator) => msg.MsgType switch
+    private PooledBuffer Serialize(DiscoveryMsg msg) => msg.MsgType switch
     {
-        MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg, allocator),
-        MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg, allocator),
-        MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg, allocator),
-        MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg, allocator),
-        MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg, allocator),
-        MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg, allocator),
+        MsgType.Ping => _msgSerializationService.ZeroSerialize((PingMsg)msg),
+        MsgType.Pong => _msgSerializationService.ZeroSerialize((PongMsg)msg),
+        MsgType.FindNode => _msgSerializationService.ZeroSerialize((FindNodeMsg)msg),
+        MsgType.Neighbors => _msgSerializationService.ZeroSerialize((NeighborsMsg)msg),
+        MsgType.EnrRequest => _msgSerializationService.ZeroSerialize((EnrRequestMsg)msg),
+        MsgType.EnrResponse => _msgSerializationService.ZeroSerialize((EnrResponseMsg)msg),
         _ => throw new Exception($"Unsupported messageType: {msg.MsgType}")
     };
 
@@ -402,7 +434,7 @@ public class NettyDiscoveryHandler(
 
         try
         {
-            msg = Deserialize(packet.Type, msgBuffer);
+            msg = Deserialize(packet.Type, msgBuffer.AsSpan());
             msg.FarAddress = (IPEndPoint)packet.Address;
             return true;
         }

@@ -1,10 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -27,99 +27,41 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     private readonly INodeIdResolver _nodeIdResolver = nodeIdResolver ?? throw new ArgumentNullException(nameof(nodeIdResolver));
 
     protected const int MdcSigOffset = 32 + 64 + 1;
+    protected const int EnvelopeLength = MdcSigOffset + 1;
 
-    protected void Serialize(byte type, Span<byte> data, IByteBuffer byteBuffer)
+    protected static void PrepareBufferForSerialization(Span<byte> buffer, byte msgType) =>
+        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
+        buffer[MdcSigOffset] = msgType;
+
+    protected void AddSignatureAndMdc(Span<byte> buffer)
     {
         // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
-        int length = 32 + 1 + data.Length + 64 + 1;
-        byteBuffer.EnsureWritable(length);
-
-        int startReadIndex = byteBuffer.ReaderIndex;
-        int startWriteIndex = byteBuffer.WriterIndex;
-
-        byteBuffer.SetWriterIndex(startWriteIndex + 32 + 65);
-        byteBuffer.WriteByte(type);
-        byteBuffer.WriteBytes(data);
-
-        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
+        ValueHash256 toSign = ValueKeccak.Compute(buffer.Slice(MdcSigOffset));
         Signature signature = _ecdsa.Sign(_privateKey, in toSign);
-        byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes);
-        byteBuffer.WriteByte(signature.RecoveryId);
+        signature.Bytes.CopyTo(buffer.Slice(32, 64));
+        buffer[96] = signature.RecoveryId;
 
-        byteBuffer.SetReaderIndex(startReadIndex + 32);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
+        ValueHash256 mdc = ValueKeccak.Compute(buffer.Slice(32));
+        mdc.BytesAsSpan.CopyTo(buffer);
     }
 
-    protected void AddSignatureAndMdc(IByteBuffer byteBuffer, int dataLength)
+    protected (PublicKey FarPublicKey, ValueHash256 Mdc) PrepareForDeserialization(ReadOnlySpan<byte> msg)
     {
-        // [<mdc 32 Bytes><sig 64 Bytes><SigRecoveryId><MsgType><Data>]
-        int length = 32 + 64 + 1 + dataLength;
-
-        int startReadIndex = byteBuffer.ReaderIndex;
-        int startWriteIndex = byteBuffer.WriterIndex;
-
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        byteBuffer.SetReaderIndex(startReadIndex + 32 + 65);
-        ValueHash256 toSign = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        Signature signature = _ecdsa.Sign(_privateKey, in toSign);
-        byteBuffer.SetWriterIndex(startWriteIndex + 32);
-        byteBuffer.WriteBytes(signature.Bytes);
-        byteBuffer.WriteByte(signature.RecoveryId);
-
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-        byteBuffer.SetReaderIndex(startReadIndex + 32);
-        ValueHash256 mdc = ValueKeccak.Compute(byteBuffer.ReadAllBytesAsSpan());
-        byteBuffer.SetReaderIndex(startReadIndex);
-
-        byteBuffer.SetWriterIndex(startWriteIndex);
-        byteBuffer.WriteBytes(mdc.BytesAsSpan);
-
-        byteBuffer.SetReaderIndex(startReadIndex);
-        byteBuffer.SetWriterIndex(startWriteIndex + length);
-    }
-
-    protected (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) PrepareForDeserialization(IByteBuffer msg)
-    {
-        if (msg.ReadableBytes < 98)
+        if (msg.Length < EnvelopeLength)
         {
             throw new NetworkingException("Incorrect message", NetworkExceptionType.Validation);
         }
-        IByteBuffer data = msg.Slice(98, msg.ReadableBytes - 98);
-        Memory<byte> msgBytes = msg.ReadAllBytesAsMemory();
-        ValueHash256 mdc = new(msgBytes.Span[..Hash256.Size]);
-        Span<byte> sigAndData = msgBytes.Span[32..];
-        Span<byte> computedMdc = ValueKeccak.Compute(sigAndData).BytesAsSpan;
+        ValueHash256 mdc = new(msg[..Hash256.Size]);
+        ReadOnlySpan<byte> sigAndData = msg[32..];
+        ValueHash256 computedMdc = ValueKeccak.Compute(sigAndData);
 
-        if (!Bytes.AreEqual(mdc.Bytes, computedMdc))
+        if (!Bytes.AreEqual(mdc.BytesAsSpan, computedMdc.BytesAsSpan))
         {
             throw new NetworkingException("Invalid packet hash", NetworkExceptionType.Validation);
         }
 
         PublicKey nodeId = _nodeIdResolver.GetNodeId(sigAndData[..64], sigAndData[64], sigAndData[65..]);
-        return (nodeId, mdc, data);
-    }
-
-    protected static ValueHash256 ReadHash(IByteBuffer byteBuffer, int index)
-    {
-        Span<byte> hash = stackalloc byte[Hash256.Size];
-        for (int i = 0; i < Hash256.Size; i++)
-        {
-            hash[i] = byteBuffer.GetByte(index + i);
-        }
-
-        return new ValueHash256(hash);
+        return (nodeId, mdc);
     }
 
     protected static bool IsNextEnrSequence(RlpReader ctx)
@@ -189,14 +131,6 @@ public abstract class DiscoveryMsgSerializerBase(IEcdsa ecdsa,
     }
 
     private static int GetSerializedTcpPort(Node node) => node.Port;
-
-    protected static void PrepareBufferForSerialization(IByteBuffer byteBuffer, int dataLength, byte msgType)
-    {
-        byteBuffer.EnsureWritable(MdcSigOffset + 1 + dataLength);
-        byteBuffer.SetWriterIndex(byteBuffer.WriterIndex + MdcSigOffset);
-
-        byteBuffer.WriteByte(msgType);
-    }
 
     protected static IPEndPoint GetAddress(ReadOnlySpan<byte> ip, int port, bool allowZeroPort = false)
     {

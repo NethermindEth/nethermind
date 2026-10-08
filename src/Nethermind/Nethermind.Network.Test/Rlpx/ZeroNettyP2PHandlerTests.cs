@@ -374,9 +374,9 @@ public class ZeroNettyP2PHandlerTests
         Hash256 expectedHash = Keccak.Compute(TxDecoder.Instance.Encode(source).Bytes);
         TransactionsMessageSerializer serializer = new();
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
-        using DisposableByteBuffer encoded = detector.Allocator.Buffer(256).AsDisposable();
-        serializer.Serialize(encoded, message);
-        byte[] payload = encoded.ReadAllBytesAsArray();
+        using PooledBuffer encoded = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(encoded.Span, message);
+        byte[] payload = encoded.ReadOnlySpan.ToArray();
         Transaction decoded = null;
         IByteBuffer firstBuffer = null;
         session.When(s => s.ReceiveMessage(Arg.Any<ZeroPacket>())).Do(call =>
@@ -385,7 +385,7 @@ public class ZeroNettyP2PHandlerTests
             if (decoded is null)
             {
                 firstBuffer = packet.Content;
-                using TransactionsMessage received = serializer.Deserialize(packet.Content);
+                using TransactionsMessage received = serializer.Deserialize(packet.Content.AsSpan(), out _);
                 decoded = received.Transactions[0];
             }
             else

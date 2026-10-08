@@ -81,8 +81,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetAccountRangeMessage, AccountRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.AccountRange:
-                    _getAccountRangeRequests.ThrowIfNotRequested(message.Content);
-                    AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
+                    _getAccountRangeRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                    AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content.AsSpan());
                     ReportIn(accountRangeMessage, size);
                     Handle(accountRangeMessage, size);
                     return true;
@@ -91,8 +91,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetStorageRangeMessage, StorageRangeMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.StorageRanges:
-                    _getStorageRangeRequests.ThrowIfNotRequested(message.Content);
-                    StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
+                    _getStorageRangeRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                    StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content.AsSpan());
                     ReportIn(storageRangesMessage, size);
                     Handle(storageRangesMessage, size);
                     return true;
@@ -101,8 +101,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetByteCodesMessage, ByteCodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.ByteCodes:
-                    _getByteCodesRequests.ThrowIfNotRequested(message.Content);
-                    ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
+                    _getByteCodesRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                    ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content.AsSpan());
                     ReportIn(byteCodesMessage, size);
                     Handle(byteCodesMessage, size);
                     return true;
@@ -111,8 +111,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1
                         HandleInBackground<GetTrieNodesMessage, TrieNodesMessage>(message, Handle);
                     return true;
                 case Snap1MessageCode.TrieNodes:
-                    _getTrieNodesRequests.ThrowIfNotRequested(message.Content);
-                    TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
+                    _getTrieNodesRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                    TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content.AsSpan());
                     ReportIn(trieNodesMessage, size);
                     Handle(trieNodesMessage, size);
                     return true;

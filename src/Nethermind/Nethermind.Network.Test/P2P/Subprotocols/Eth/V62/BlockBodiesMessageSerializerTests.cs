@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -25,8 +26,7 @@ public class BlockBodiesMessageSerializerTests
         byte[] bytes = Rlp.Encode(body, Rlp.OfEmptyList, body, malformed).Bytes;
         HashSet<Transaction> pooled = TransactionPoolTestHelper.Refill();
 
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(bytes).AsDisposable();
-        Assert.Throws<RlpException>(() => new BlockBodiesMessageSerializer().Deserialize(buffer));
+        Assert.Throws<RlpException>(() => new BlockBodiesMessageSerializer().Deserialize(bytes, out _));
 
         TransactionPoolTestHelper.AssertAllReturned(pooled);
     }
@@ -90,10 +90,11 @@ public class BlockBodiesMessageSerializerTests
     [TestCaseSource(nameof(GetBlockBodyValues))]
     public void Should_not_contain_network_form_tx_wrapper(BlockBody[] bodies)
     {
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
         BlockBodiesMessageSerializer serializer = new();
-        serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
-        using BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
+        BlockBodiesMessage bodiesMessage = new(bodies);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(bodiesMessage, out _));
+        serializer.Serialize(buffer.Span, bodiesMessage);
+        using BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer.ReadOnlySpan, out _);
         foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;

@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Snap.V1;
 using Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.SnapServer;
 using Nethermind.Stats;
 
@@ -53,8 +54,8 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
                     HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
-                _getBlockAccessListsRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content);
+                _getBlockAccessListsRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content.AsSpan());
                 ReportIn(blockAccessListsMessage, size);
                 Handle(blockAccessListsMessage, size);
                 return true;

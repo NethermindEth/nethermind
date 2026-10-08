@@ -19,6 +19,7 @@ using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V70;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -73,8 +74,8 @@ public class Eth71ProtocolHandler : Eth70ProtocolHandler, ISyncPeer, IStaticProt
                 HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Eth71MessageCode.BlockAccessLists:
-                _balRequests.ThrowIfNotRequested(message.Content);
-                BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content);
+                _balRequests.ThrowIfNotRequested(message.Content.AsSpan());
+                BlockAccessListsMessage balMsg = Deserialize<BlockAccessListsMessage>(message.Content.AsSpan());
                 ReportIn(balMsg, size);
                 Handle(balMsg, size);
                 return true;

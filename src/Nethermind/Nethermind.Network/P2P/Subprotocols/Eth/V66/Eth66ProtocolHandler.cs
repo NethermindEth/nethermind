@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -17,6 +16,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -71,8 +71,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockHeadersMessage, BlockHeadersMessage, GetBlockHeadersHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockHeaders:
-                    _headersRequests66.ThrowIfNotRequested(message.Content);
-                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
+                    _headersRequests66.ThrowIfNotRequested(message.Content.AsSpan());
+                    BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content.AsSpan());
                     ReportIn(headersMsg, size);
                     Handle(headersMsg, size);
                     return true;
@@ -80,8 +80,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetBlockBodiesMessage, BlockBodiesMessage, GetBlockBodiesHandler>(message);
                     return true;
                 case Eth66MessageCode.BlockBodies:
-                    _bodiesRequests66.ThrowIfNotRequested(message.Content);
-                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
+                    _bodiesRequests66.ThrowIfNotRequested(message.Content.AsSpan());
+                    BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content.AsSpan());
                     ReportIn(bodiesMsg, size);
                     HandleBodies(bodiesMsg, size);
                     return true;
@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content.AsSpan());
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg.EthMessage);
                     }
@@ -107,8 +107,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetReceiptsMessage, ReceiptsMessage, GetReceiptsHandler>(message);
                     return true;
                 case Eth66MessageCode.Receipts:
-                    ThrowIfReceiptsUnexpected(message.Content);
-                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                    ThrowIfReceiptsUnexpected(message.Content.AsSpan());
+                    ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content.AsSpan());
                     ReportIn(receiptsMessage, size);
                     Handle(receiptsMessage, size);
                     return true;
@@ -116,8 +116,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     HandleInBackground<Eth66ProtocolHandler, GetNodeDataMessage, NodeDataMessage, GetNodeDataHandler>(message);
                     return true;
                 case Eth66MessageCode.NodeData:
-                    _nodeDataRequests66.ThrowIfNotRequested(message.Content);
-                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    _nodeDataRequests66.ThrowIfNotRequested(message.Content.AsSpan());
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content.AsSpan());
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     return true;
@@ -168,7 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         private void Handle(NodeDataMessage msg, int size) => _nodeDataRequests66.Handle(msg.RequestId, msg.EthMessage.Data, size);
 
         protected void Handle(ReceiptsMessage msg, long size) => _receiptsRequests66.Handle(msg.RequestId, (msg.EthMessage.TxReceipts, size), size);
-        protected void ThrowIfReceiptsUnexpected(IByteBuffer content) =>
+        protected void ThrowIfReceiptsUnexpected(ReadOnlySpan<byte> content) =>
             ThrowIfReceiptsExceedRequest(content, 1, _receiptsRequests66.GetPendingRequest(content).EthMessage);
 
         protected override void Handle(NewPooledTransactionHashesMessage message) => RequestPooledTransactions<GetPooledTransactionsMessage>(message.Hashes);

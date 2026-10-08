@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Autofac.Features.AttributeFilters;
-using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Discv4.Messages;
@@ -11,17 +11,16 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Discv4.Serializers;
 
-public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroInnerMessageSerializer<PingMsg>
+public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.NodeKey)] IPrivateKeyGenerator nodeKey, INodeIdResolver nodeIdResolver) : DiscoveryMsgSerializerBase(ecdsa, nodeKey, nodeIdResolver), IZeroMessageSerializer<PingMsg>
 {
     protected virtual byte MsgTypeByte => (byte)MsgType.Ping;
 
-    public void Serialize(IByteBuffer byteBuffer, PingMsg msg)
+    public void Serialize(Span<byte> buffer, PingMsg msg)
     {
-        (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
+        (int _, int contentLength, int sourceAddressLength, int destinationAddressLength) = GetLength(msg);
 
-        byteBuffer.MarkIndex();
-        PrepareBufferForSerialization(byteBuffer, totalLength, MsgTypeByte);
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        PrepareBufferForSerialization(buffer, MsgTypeByte);
+        RlpWriter writer = new(buffer.Slice(EnvelopeLength));
         writer.StartSequence(contentLength);
         writer.Encode(msg.Version);
         Encode(ref writer, msg.SourceAddress, msg.SourceTcpPort, sourceAddressLength);
@@ -33,18 +32,16 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
             writer.Encode(msg.EnrSequence.Value);
         }
 
-        byteBuffer.ResetIndex();
-        AddSignatureAndMdc(byteBuffer, totalLength + 1);
+        AddSignatureAndMdc(buffer);
 
-        byteBuffer.MarkReaderIndex();
-        msg.Mdc = ReadHash(byteBuffer, byteBuffer.ReaderIndex);
-        byteBuffer.ResetReaderIndex();
+        msg.Mdc = new ValueHash256(buffer.Slice(0, Hash256.Size));
     }
 
-    public PingMsg Deserialize(IByteBuffer msgBytes)
+    public PingMsg Deserialize(ReadOnlySpan<byte> data, out int consumed)
     {
-        (PublicKey FarPublicKey, ValueHash256 Mdc, IByteBuffer Data) = PrepareForDeserialization(msgBytes);
-        RlpReader ctx = new(Data.AsSpan());
+        (PublicKey FarPublicKey, ValueHash256 Mdc) = PrepareForDeserialization(data);
+        ReadOnlySpan<byte> Data = data.Slice(EnvelopeLength);
+        RlpReader ctx = new(Data);
         int messageLength = ctx.ReadSequenceLength();
         if (messageLength > ctx.Length - ctx.Position)
         {
@@ -90,7 +87,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
         }
 
         ctx.Check(messageEnd);
-        Data.SetReaderIndex(Data.ReaderIndex + ctx.Position);
+        consumed = EnvelopeLength + ctx.Position;
         return msg;
     }
 
@@ -98,7 +95,7 @@ public class PingMsgSerializer(IEcdsa ecdsa, [KeyFilter(IProtectedPrivateKey.Nod
     {
         (int totalLength, contentLength, int _, int _) =
             GetLength(msg);
-        return totalLength;
+        return EnvelopeLength + totalLength;
     }
 
 

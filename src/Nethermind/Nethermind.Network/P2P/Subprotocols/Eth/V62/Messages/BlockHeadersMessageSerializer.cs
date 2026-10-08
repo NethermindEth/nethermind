@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using System;
 using Nethermind.Core;
 using Nethermind.Serialization.Rlp;
@@ -9,16 +8,15 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null) : IZeroInnerMessageSerializer<BlockHeadersMessage>
+    public class BlockHeadersMessageSerializer(IHeaderDecoder headerDecoder = null) : IZeroMessageSerializer<BlockHeadersMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockHeadersMessage>(NethermindSyncLimits.MaxHeaderFetch, nameof(BlockHeadersMessage.BlockHeaders));
         private readonly IHeaderDecoder _headerDecoder = headerDecoder ?? new HeaderDecoder();
 
-        public void Serialize(IByteBuffer byteBuffer, BlockHeadersMessage message)
+        public void Serialize(Span<byte> buffer, BlockHeadersMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
 
             writer.StartSequence(contentLength);
             ReadOnlySpan<BlockHeader> blockHeaders = message.BlockHeaders.AsSpan();
@@ -28,8 +26,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public BlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+        public BlockHeadersMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            BlockHeadersMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         public int GetLength(BlockHeadersMessage message, out int contentLength)
         {

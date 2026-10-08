@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Peers;
 using Nethermind.TxPool;
 using Nethermind.Xdc.Types;
@@ -69,21 +70,21 @@ internal sealed class XdcConsensusMessageHandler(
         {
             case XdcMessageCode.VoteMsg:
                 {
-                    using VoteMsg voteMsg = context.Decode<VoteMsg>(message.Content);
+                    using VoteMsg voteMsg = context.Decode<VoteMsg>(message.Content.AsSpan());
                     context.Report(voteMsg, size);
                     _ = votesManager.OnReceiveVote(voteMsg.Vote);
                     return true;
                 }
             case XdcMessageCode.TimeoutMsg:
                 {
-                    using TimeoutMsg timeoutMsg = context.Decode<TimeoutMsg>(message.Content);
+                    using TimeoutMsg timeoutMsg = context.Decode<TimeoutMsg>(message.Content.AsSpan());
                     context.Report(timeoutMsg, size);
                     _ = timeoutCertificateManager.OnReceiveTimeout(timeoutMsg.Timeout);
                     return true;
                 }
             case XdcMessageCode.SyncInfoMsg:
                 {
-                    using SyncInfoMsg syncInfoMsg = context.Decode<SyncInfoMsg>(message.Content);
+                    using SyncInfoMsg syncInfoMsg = context.Decode<SyncInfoMsg>(message.Content.AsSpan());
                     context.Report(syncInfoMsg, size);
                     Handle(syncInfoMsg);
                     return true;

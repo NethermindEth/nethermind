@@ -47,9 +47,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Rejects_invalid_payload(byte[] bytes)
         {
             GetReceiptsMessageSerializer serializer = new();
-            IByteBuffer payload = Unpooled.WrappedBuffer(bytes);
 
-            Assert.Throws<RlpException>(() => serializer.Deserialize(payload));
+            Assert.Throws<RlpException>(() => serializer.Deserialize(bytes, out _));
         }
 
         private static IEnumerable<TestCaseData> InvalidPayloads()

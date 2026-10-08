@@ -14,6 +14,7 @@ using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -993,15 +994,15 @@ public class Eth72ProtocolHandlerTests
         using PooledTransactionsMessage66 response = new(
             1111,
             new PooledTransactionsMessage65(Array.Empty<Transaction>().ToPooledList()));
-        using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
-        packet.EnsureWritable(1);
-        packet.WriteByte(0);
-        packet.ReadByte();
+        using PooledBuffer serialized = _svc.ZeroSerialize(response);
+        using PooledBuffer packet = PooledBuffer.Rent(serialized.Length + 1);
+        serialized.ReadOnlySpan.CopyTo(packet.Span);
+        packet.Span[serialized.Length] = 0;
 
         HandleIncomingStatusMessage();
 
         Assert.That(
-            () => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth66MessageCode.PooledTransactions }),
+            () => _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth66MessageCode.PooledTransactions }),
             Throws.Nothing);
     }
 
@@ -2207,12 +2208,12 @@ public class Eth72ProtocolHandlerTests
         _sparseBlobPoolPeerRegistry.RecordAnnouncement(otherPeer, tx.Hash!, requestedMask);
 
         using CellsMessage72 response = new(GetLastGetCellsRequestId(tx.Hash!, requestedMask), [], [], BlobCellMask.Empty.ToBytes());
-        using DisposableByteBuffer packet = _svc.ZeroSerialize(response).AsDisposable();
-        packet.EnsureWritable(1);
-        packet.WriteByte(0);
-        packet.ReadByte();
+        using PooledBuffer serialized = _svc.ZeroSerialize(response);
+        using PooledBuffer packet = PooledBuffer.Rent(serialized.Length + 1);
+        serialized.ReadOnlySpan.CopyTo(packet.Span);
+        packet.Span[serialized.Length] = 0;
 
-        Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<IncompleteDeserializationException>());
+        Assert.That(() => _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth72MessageCode.Cells }), Throws.TypeOf<IncompleteDeserializationException>());
         Assert.That(otherPeer.CellRequests, Has.Count.EqualTo(1));
         Assert.That(otherPeer.CellRequests[0], Is.EqualTo((tx.Hash!, requestedMask)));
     }
@@ -5003,16 +5004,14 @@ public class Eth72ProtocolHandlerTests
     {
         using StatusMessage69 statusMsg = new() { ProtocolVersion = 72, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
-        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        using DisposableByteBuffer packet = _svc.ZeroSerialize(msg).AsDisposable();
-        packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        using PooledBuffer packet = _svc.ZeroSerialize(msg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
     }
 
     private long GetLastGetCellsRequestId(Hash256 hash, BlobCellMask cellMask)
@@ -5580,22 +5579,22 @@ public class Eth72ProtocolHandlerTests
     {
         public PooledTransactionsMessage66? PooledTransactions { get; set; }
 
-        public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null)
-            where T : MessageBase => inner.ZeroSerialize(message, allocator);
+        public PooledBuffer ZeroSerialize<T>(T message)
+            where T : MessageBase => inner.ZeroSerialize(message);
 
-        public T Deserialize<T>(ArraySegment<byte> bytes)
-            where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(bytes);
+        public T Deserialize<T>(ReadOnlySpan<byte> data)
+            where T : MessageBase => GetOverride<T>() ?? inner.Deserialize<T>(data);
 
-        public T Deserialize<T>(IByteBuffer buffer)
+        public T Deserialize<T>(ReadOnlySpan<byte> data, out int consumed)
             where T : MessageBase
         {
             T? message = GetOverride<T>();
             if (message is null)
             {
-                return inner.Deserialize<T>(buffer);
+                return inner.Deserialize<T>(data, out consumed);
             }
 
-            buffer.SkipBytes(buffer.ReadableBytes);
+            consumed = data.Length;
             return message;
         }
 

@@ -15,6 +15,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -75,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                            using NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content.AsSpan());
                             ReportIn(newPooledTxMsg, size);
                             Handle(newPooledTxMsg);
                         }
@@ -98,7 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
+                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content.AsSpan());
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg);
                     }

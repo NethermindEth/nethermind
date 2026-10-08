@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Runtime.InteropServices;
 using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
@@ -10,6 +12,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
@@ -77,9 +80,10 @@ namespace Nethermind.Network.Benchmarks
             statusMessage.GenesisHash = Keccak.Compute("0");
             statusMessage.TotalDifficulty = 131200;
             statusMessage.NetworkId = 1;
-            IByteBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
-            _zeroPacket = new ZeroPacket(bufStatus);
-            _zeroPacket.PacketType = bufStatus.ReadByte();
+            using PooledBuffer bufStatus = _ser.ZeroSerialize(statusMessage);
+            _zeroPacket = new ZeroPacket(Wrap(bufStatus));
+            // The adaptive prefix byte (0x80 for type 0) is skipped by Wrap; the packet type is the decoded value.
+            _zeroPacket.PacketType = Eth62MessageCode.Status;
 
             _handler.HandleMessage(_zeroPacket);
 
@@ -95,23 +99,37 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark(Baseline = true)]
         public void Current()
         {
-            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
-            _zeroPacket = new ZeroPacket(buf);
-            _zeroPacket.PacketType = buf.ReadByte();
+            using PooledBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(Wrap(buf));
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
             _handler.HandleMessage(_zeroPacket);
         }
 
         [Benchmark]
-        public void JustSerialize() => _ser.ZeroSerialize(_txMsg);
+        public int JustSerialize()
+        {
+            using PooledBuffer buf = _ser.ZeroSerialize(_txMsg);
+            return buf.Length;
+        }
 
         [Benchmark]
         public void SerializeAndCreatePacket()
         {
-            IByteBuffer buf = _ser.ZeroSerialize(_txMsg);
-            _zeroPacket = new ZeroPacket(buf);
-            _zeroPacket.PacketType = buf.ReadByte();
+            using PooledBuffer buf = _ser.ZeroSerialize(_txMsg);
+            _zeroPacket = new ZeroPacket(Wrap(buf));
             _zeroPacket.PacketType = Eth62MessageCode.Transactions;
+        }
+
+        private static IByteBuffer Wrap(PooledBuffer buffer)
+        {
+            if (!MemoryMarshal.TryGetArray(buffer.ReadOnlyMemory, out ArraySegment<byte> segment) ||
+                segment.Array is null)
+            {
+                throw new InvalidOperationException("Pooled message buffer is not array-backed.");
+            }
+
+            // Skips the adaptive packet-type byte, like the old ReadByte did.
+            return Unpooled.WrappedBuffer(segment.Array, segment.Offset + 1, segment.Count - 1);
         }
     }
 }

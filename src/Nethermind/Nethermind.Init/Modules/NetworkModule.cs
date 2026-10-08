@@ -128,8 +128,8 @@ public class NetworkModule(IConfigProvider configProvider) : Module
             .AddMessageSerializer<V63.GetReceiptsMessage, V63.GetReceiptsMessageSerializer>()
             .AddMessageSerializer<V63.NodeDataMessage, V63.NodeDataMessageSerializer>()
             .AddMessageSerializer<V63.ReceiptsMessage, V63.ReceiptsMessageSerializer>()
-            .AddSingleton<IZeroInnerMessageSerializer<V63.ReceiptsMessage>, V63.ReceiptsMessageSerializer>() // For v66 receipt
-            .AddSingleton<IZeroInnerMessageSerializer<V63.GetReceiptsMessage>, V63.GetReceiptsMessageSerializer>() // For v70
+            .AddSingleton<IZeroMessageSerializer<V63.ReceiptsMessage>, V63.ReceiptsMessageSerializer>() // For v66 receipt
+            .AddSingleton<IZeroMessageSerializer<V63.GetReceiptsMessage>, V63.GetReceiptsMessageSerializer>() // For v70
 
             // V65
             .AddMessageSerializer<V65.GetPooledTransactionsMessage, V65.GetPooledTransactionsMessageSerializer>()

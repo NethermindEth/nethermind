@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
@@ -9,16 +9,15 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IZeroInnerMessageSerializer<BlockBodiesMessage>
+    public class BlockBodiesMessageSerializer(BlockBodyDecoder blockBodyDecoder = null) : IZeroMessageSerializer<BlockBodiesMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockBodiesMessage>(NethermindSyncLimits.MaxBodyFetch, nameof(BlockBodiesMessage.Bodies));
         private readonly BlockBodyDecoder _blockBodyDecoder = blockBodyDecoder ?? BlockBodyDecoder.Instance;
 
-        public void Serialize(IByteBuffer byteBuffer, BlockBodiesMessage message)
+        public void Serialize(Span<byte> buffer, BlockBodiesMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             foreach (BlockBody? body in message.Bodies.Bodies)
             {
@@ -49,13 +48,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return Rlp.LengthOfSequence(length);
         }
 
-        public BlockBodiesMessage Deserialize(IByteBuffer byteBuffer)
+        public BlockBodiesMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            NettyBufferMemoryOwner? memoryOwner = new(byteBuffer);
+            // The decoded bodies borrow from this copy, which the message owns and releases,
+            // as the pipeline buffer behind the input span is released by the transport.
+            PooledBuffer? memoryOwner = PooledBuffer.Rent(data.Length);
             OwnedBlockBodies? ownedBodies = null;
 
-            RlpReader ctx = new(memoryOwner.Memory.Span);
-            int startingPosition = ctx.Position;
+            data.CopyTo(memoryOwner.Span);
+            RlpReader ctx = new(memoryOwner.Span);
             try
             {
                 ctx.ReadSequenceLength();
@@ -65,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 ownedBodies = new(bodies, memoryOwner, ownsPooledTransactions: true);
                 memoryOwner = null;
                 for (int i = 0; i < count; i++) bodies[i] = _blockBodyDecoder.Decode(ref ctx);
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startingPosition));
+                consumed = ctx.Position;
 
                 return new() { Bodies = ownedBodies };
             }

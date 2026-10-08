@@ -6,8 +6,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
-using DotNetty.Buffers;
-using DotNetty.Common.Utilities;
+using Nethermind.Core.Buffers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -38,62 +37,45 @@ public class MessageSerializationService : IMessageSerializationService
             => throw new ArgumentException($"Serializer of type {serializer.GetType().Name} must implement {expectedInterface.Name}.");
     }
 
-    public T Deserialize<T>(ArraySegment<byte> bytes) where T : MessageBase
+    public T Deserialize<T>(ReadOnlySpan<byte> data) where T : MessageBase =>
+        Deserialize<T>(data, out _);
+
+    public T Deserialize<T>(ReadOnlySpan<byte> data, out int consumed) where T : MessageBase
     {
         if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
             ThrowNoSerializerRegistered<T>();
 
-        IByteBuffer byteBuffer = NethermindBuffers.Default.Buffer(bytes.Count);
-        byteBuffer.WriteBytes(bytes.Array, bytes.Offset, bytes.Count);
+        return zeroMessageSerializer.Deserialize(data, out consumed);
+
+    }
+
+    public PooledBuffer ZeroSerialize<T>(T message) where T : MessageBase
+    {
+        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
+            ThrowNoSerializerRegistered<T>();
+
+        P2PMessage? p2PMessage = message as P2PMessage;
+        int prefixLength = p2PMessage is null ? 0 : Rlp.LengthOf(p2PMessage.AdaptivePacketType);
+        PooledBuffer buffer = PooledBuffer.Rent(zeroMessageSerializer.GetLength(message, out _) + prefixLength);
+
         try
         {
-            return zeroMessageSerializer.Deserialize(byteBuffer);
-        }
-        finally
-        {
-            byteBuffer.SafeRelease();
-        }
-
-    }
-
-    public T Deserialize<T>(IByteBuffer buffer) where T : MessageBase
-    {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            ThrowNoSerializerRegistered<T>();
-
-        return zeroMessageSerializer.Deserialize(buffer);
-    }
-
-    public IByteBuffer ZeroSerialize<T>(T message, IByteBufferAllocator? allocator = null) where T : MessageBase
-    {
-        if (!TryGetZeroSerializer(out IZeroMessageSerializer<T> zeroMessageSerializer))
-            ThrowNoSerializerRegistered<T>();
-
-        void WriteAdaptivePacketType(in IByteBuffer buffer)
-        {
-            if (message is P2PMessage p2PMessage)
+            Span<byte> span = buffer.Span;
+            if (p2PMessage is not null)
             {
-                buffer.WriteBytes(Rlp.Encode(p2PMessage.AdaptivePacketType, stackalloc byte[sizeof(long) + 1]));
+                Span<byte> prefix = Rlp.Encode(p2PMessage.AdaptivePacketType, span);
+                if (prefix.Length != prefixLength)
+                {
+                    ThrowPrefixLengthMismatch(prefix.Length, prefixLength);
+                }
             }
-        }
 
-        int p2pMessageLength = (message is P2PMessage ? sizeof(int) : 0);
-        int length = zeroMessageSerializer is IZeroInnerMessageSerializer<T> zeroInnerMessageSerializer
-            ? zeroInnerMessageSerializer.GetLength(message, out _) + p2pMessageLength
-            : 64;
-
-        allocator ??= NethermindBuffers.Default;
-        IByteBuffer byteBuffer = allocator.Buffer(length);
-
-        try
-        {
-            WriteAdaptivePacketType(byteBuffer);
-            zeroMessageSerializer.Serialize(byteBuffer, message);
-            return byteBuffer;
+            zeroMessageSerializer.Serialize(span.Slice(prefixLength), message);
+            return buffer;
         }
         catch (Exception)
         {
-            byteBuffer.SafeRelease();
+            buffer.Dispose();
             throw;
         }
     }
@@ -118,6 +100,10 @@ public class MessageSerializationService : IMessageSerializationService
         serializer = null!;
         return false;
     }
+
+    [DoesNotReturn, StackTraceHidden]
+    private static void ThrowPrefixLengthMismatch(int actual, int expected)
+        => throw new InvalidOperationException($"Encoded adaptive packet type length {actual} differs from measured {expected}.");
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowNoSerializerRegistered<T>() where T : MessageBase

@@ -4,11 +4,13 @@
 using System;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Network;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Test;
 using Nethermind.Serialization.Rlp;
@@ -41,8 +43,8 @@ public class XdcPooledTransactionMessagesTests
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.NewPooledTransactionHashes));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        Assert.That(Hex(serializer, message),
+            Is.EqualTo(Hex(serializer, upstream)));
     }
 
     [Test]
@@ -52,8 +54,8 @@ public class XdcPooledTransactionMessagesTests
         using GetPooledTransactionsMessage upstream = new(ValueHashes.ToPooledList());
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
-        Assert.That(Hex(buffer => new XdcGetPooledTransactionsMessageSerializer().Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => new GetPooledTransactionsMessageSerializer().Serialize(buffer, upstream))));
+        Assert.That(Hex(new XdcGetPooledTransactionsMessageSerializer(), message),
+            Is.EqualTo(Hex(new GetPooledTransactionsMessageSerializer(), upstream)));
     }
 
     [Test]
@@ -64,8 +66,8 @@ public class XdcPooledTransactionMessagesTests
         PooledTransactionsMessageSerializer serializer = new();
 
         Assert.That(message.PacketType, Is.EqualTo(XdcMessageCode.PooledTransactions));
-        Assert.That(Hex(buffer => serializer.Serialize(buffer, message)),
-            Is.EqualTo(Hex(buffer => serializer.Serialize(buffer, upstream))));
+        Assert.That(Hex(serializer, message),
+            Is.EqualTo(Hex(serializer, upstream)));
     }
 
     [Test]
@@ -74,9 +76,9 @@ public class XdcPooledTransactionMessagesTests
         XdcGetPooledTransactionsMessageSerializer serializer = new();
         using XdcGetPooledTransactionsMessage message = new(ValueHashes.ToPooledList());
 
-        IByteBuffer buffer = Unpooled.Buffer();
-        serializer.Serialize(buffer, message);
-        using XdcGetPooledTransactionsMessage deserialized = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        using XdcGetPooledTransactionsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out _);
 
         Assert.That(deserialized.Hashes.AsSpan(), Is.SequenceEqualTo(ValueHashes));
         Assert.That(deserialized.PacketType, Is.EqualTo(XdcMessageCode.GetPooledTransactions));
@@ -87,20 +89,20 @@ public class XdcPooledTransactionMessagesTests
     {
         XdcGetPooledTransactionsMessageSerializer serializer = new();
         using XdcGetPooledTransactionsMessage message = new(new ValueHash256[NethermindSyncLimits.MaxHashesFetch + 1].ToPooledList());
-        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
-        serializer.Serialize(buffer, message);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
 
-        Assert.That(() => serializer.Deserialize(buffer),
+        Assert.That(() => serializer.Deserialize(buffer.ReadOnlySpan, out _),
             Throws.InstanceOf<RlpException>().With.Message.Contains(nameof(XdcGetPooledTransactionsMessage)));
     }
 
     private static ArrayPoolList<Transaction> Transactions() =>
         new(1) { Build.A.Transaction.SignedAndResolved().TestObject };
 
-    private static string Hex(Action<IByteBuffer> serialize)
+    private static string Hex<T>(IZeroMessageSerializer<T> serializer, T message) where T : MessageBase
     {
-        IByteBuffer buffer = Unpooled.Buffer();
-        serialize(buffer);
-        return buffer.ReadAllHex();
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        return buffer.ReadOnlySpan.ToHexString();
     }
 }

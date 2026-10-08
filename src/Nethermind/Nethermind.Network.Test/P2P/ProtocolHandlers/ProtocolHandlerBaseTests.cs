@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -231,8 +232,7 @@ public class ProtocolHandlerBaseTests
     public void Rlp_deserialization_exceptions_are_not_logged_at_debug([Values] bool limitExceeded)
     {
         Exception exception = limitExceeded ? new RlpLimitException("limit") : new RlpException("invalid");
-        IMessageSerializationService serializationService = Substitute.For<IMessageSerializationService>();
-        serializationService.Deserialize<TestRequestMessage>(Arg.Any<ArraySegment<byte>>()).Returns(_ => throw exception);
+        IMessageSerializationService serializationService = new ThrowingSerializationService(exception);
         TestLogger logger = new() { IsTrace = false };
         TestProtocolHandler handler = new(
             Substitute.For<ISession>(),
@@ -242,5 +242,18 @@ public class ProtocolHandlerBaseTests
 
         Assert.That(() => handler.Deserialize([]), Throws.TypeOf(exception.GetType()));
         Assert.That(logger.LogList, Is.Empty);
+    }
+
+    private sealed class ThrowingSerializationService(Exception exception) : IMessageSerializationService
+    {
+        public PooledBuffer ZeroSerialize<T>(T message) where T : MessageBase => throw new NotImplementedException();
+
+        public T Deserialize<T>(ReadOnlySpan<byte> data) where T : MessageBase => Deserialize<T>(data, out _);
+
+        public T Deserialize<T>(ReadOnlySpan<byte> data, out int consumed) where T : MessageBase
+        {
+            consumed = 0;
+            throw exception;
+        }
     }
 }

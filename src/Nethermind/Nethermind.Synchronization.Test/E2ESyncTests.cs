@@ -23,6 +23,7 @@ using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Events;
@@ -1232,16 +1233,9 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
             TxReceipt[][] wrappedReceipts = [receipts];
             using ReceiptsMessage asReceiptsMessage = new(wrappedReceipts.ToPooledList());
 
-            IByteBuffer bb = PooledByteBufferAllocator.Default.Buffer(1024);
-            try
-            {
-                _receiptsMessageSerializer.Serialize(bb, asReceiptsMessage);
-                return bb.AsSpan().ToArray();
-            }
-            finally
-            {
-                bb.Release();
-            }
+            using PooledBuffer bb = PooledBuffer.Rent(_receiptsMessageSerializer.GetLength(asReceiptsMessage, out _));
+            _receiptsMessageSerializer.Serialize(bb.Span, asReceiptsMessage);
+            return bb.ReadOnlySpan.ToArray();
         }
 
         public async Task SyncFromServer(IContainer server, CancellationToken cancellationToken) =>

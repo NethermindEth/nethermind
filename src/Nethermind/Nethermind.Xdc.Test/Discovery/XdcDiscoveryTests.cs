@@ -4,6 +4,7 @@
 using System.Net;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network;
@@ -33,9 +34,9 @@ public class XdcDiscoveryTests
             new byte[32]
             );
 
-        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
-        serializer.Serialize(buffer, msg);
-        Assert.That(buffer.GetByte(97), Is.EqualTo((byte)5));
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(msg, out _));
+        serializer.Serialize(buffer.Span, msg);
+        Assert.That(buffer.Span[97], Is.EqualTo((byte)5));
     }
 
     private sealed class ExposedXdcNettyDiscoveryHandler : XdcNettyDiscoveryHandler

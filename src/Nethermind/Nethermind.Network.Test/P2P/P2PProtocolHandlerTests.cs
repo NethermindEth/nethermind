@@ -5,9 +5,11 @@ using System;
 using System.Linq;
 using System.Collections.Generic;
 using System.Net;
+using DotNetty.Buffers;
 using Nethermind.Config;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -53,11 +55,15 @@ namespace Nethermind.Network.Test.P2P
         private readonly Node node = new(TestItem.PublicKeyA, "127.0.0.1", 30303);
         private INodeStatsManager _nodeStatsManager;
 
-        private Packet CreatePacket<T>(T message) where T : P2PMessage => new(new ZeroPacket(_serializer.ZeroSerialize(message))
+        private Packet CreatePacket<T>(T message) where T : P2PMessage
         {
-            Protocol = message.Protocol,
-            PacketType = (byte)message.PacketType,
-        });
+            using PooledBuffer buffer = _serializer.ZeroSerialize(message);
+            return new(new ZeroPacket(Unpooled.WrappedBuffer(buffer.ReadOnlySpan.ToArray()))
+            {
+                Protocol = message.Protocol,
+                PacketType = (byte)message.PacketType,
+            });
+        }
 
         private const int ListenPort = 8003;
 
@@ -116,11 +122,10 @@ namespace Nethermind.Network.Test.P2P
                 NodeId = TestItem.PublicKeyB,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            // to account for adaptive packet type
-            data.ReadByte();
+            using PooledBuffer data = _serializer.ZeroSerialize(message);
 
-            Packet packet = new(data.ReadAllBytesAsArray())
+            // to account for adaptive packet type
+            Packet packet = new(data.ReadOnlySpan.Slice(1).ToArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -212,10 +217,9 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            data.ReadByte(); // adaptive packet type
+            using PooledBuffer data = _serializer.ZeroSerialize(message);
 
-            Packet packet = new(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadOnlySpan.Slice(1).ToArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -259,10 +263,9 @@ namespace Nethermind.Network.Test.P2P
                 P2PVersion = 5,
             };
 
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            data.ReadByte(); // adaptive packet type
+            using PooledBuffer data = _serializer.ZeroSerialize(message);
 
-            Packet packet = new(data.ReadAllBytesAsArray())
+            Packet packet = new(data.ReadOnlySpan.Slice(1).ToArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -511,9 +514,8 @@ namespace Nethermind.Network.Test.P2P
         /// </summary>
         private Packet CreateP2PPacket<T>(T message) where T : P2PMessage
         {
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(message).AsDisposable();
-            data.ReadByte();
-            return new Packet(data.ReadAllBytesAsArray())
+            using PooledBuffer data = _serializer.ZeroSerialize(message);
+            return new Packet(data.ReadOnlySpan.Slice(1).ToArray())
             {
                 Protocol = message.Protocol,
                 PacketType = (byte)message.PacketType,
@@ -533,9 +535,8 @@ namespace Nethermind.Network.Test.P2P
         private byte[] CreateMalformedHelloData()
         {
             using HelloMessage hello = CreateHello();
-            using DisposableByteBuffer data = _serializer.ZeroSerialize(hello).AsDisposable();
-            data.ReadByte(); // adaptive packet type
-            byte[] full = data.ReadAllBytesAsArray();
+            using PooledBuffer data = _serializer.ZeroSerialize(hello);
+            byte[] full = data.ReadOnlySpan.Slice(1).ToArray(); // adaptive packet type
             return full[..(full.Length / 2)];
         }
     }

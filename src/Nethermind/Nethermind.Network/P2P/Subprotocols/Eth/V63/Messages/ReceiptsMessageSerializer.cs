@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -12,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
+    public class ReceiptsMessageSerializer : IZeroMessageSerializer<ReceiptsMessage>
     {
         private const ulong NoBlockSeenYet = ulong.MaxValue;
 
@@ -34,12 +33,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             _decodeArrayFunc = (ref RlpReader ctx) => ctx.DecodeNonNullArray((ref RlpReader nestedContext) => _decoder.Decode(ref nestedContext, decodeBehaviors), limit: BlockReceiptsRlpLimit);
         }
 
-        public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
+        public void Serialize(Span<byte> buffer, ReceiptsMessage message)
         {
-            int totalLength = GetLength(message, out int contentLength);
+            GetLength(message, out int contentLength);
 
-            byteBuffer.EnsureWritable(totalLength);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
 
             ulong lastBlockNumber = NoBlockSeenYet;
@@ -70,20 +68,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
             }
         }
 
-        public ReceiptsMessage Deserialize(IByteBuffer byteBuffer)
+        public ReceiptsMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            if (byteBuffer.ReadableBytes == 0)
+            if (data.Length == 0)
             {
+                consumed = 0;
                 return ReceiptsMessage.Empty;
             }
 
-            if (byteBuffer.GetByte(byteBuffer.ReaderIndex) == Rlp.OfEmptyList[0])
+            if (data[0] == Rlp.OfEmptyList[0])
             {
-                byteBuffer.ReadByte();
+                consumed = 1;
                 return ReceiptsMessage.Empty;
             }
 
-            return byteBuffer.DeserializeRlp(Deserialize);
+            RlpReader ctx = new(data);
+            ReceiptsMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
         }
 
         public ReceiptsMessage Deserialize(ref RlpReader ctx)

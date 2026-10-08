@@ -5,6 +5,7 @@ using System;
 using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
@@ -85,17 +86,10 @@ namespace Nethermind.Network.Rlpx.Handshake
                     EphemeralPublicHash = Keccak.Compute(handshake.EphemeralPrivateKey.PublicKey.Bytes)
                 };
 
-                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
-                try
-                {
-                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), []);
-                    handshake.AuthPacket = new Packet(packetData);
-                    return handshake.AuthPacket;
-                }
-                finally
-                {
-                    authData.SafeRelease();
-                }
+                using PooledBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadOnlySpan.ToArray(), []);
+                handshake.AuthPacket = new Packet(packetData);
+                return handshake.AuthPacket;
 
             }
             else
@@ -107,19 +101,12 @@ namespace Nethermind.Network.Rlpx.Handshake
                     Signature = _ecdsa.Sign(handshake.EphemeralPrivateKey, new ValueHash256(forSigning))
                 };
 
-                IByteBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
-                try
-                {
-                    int size = authData.ReadableBytes + EciesOverhead;
-                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                    byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadAllBytesAsArray(), sizeBytes);
-                    handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
-                    return handshake.AuthPacket;
-                }
-                finally
-                {
-                    authData.SafeRelease();
-                }
+                using PooledBuffer authData = _messageSerializationService.ZeroSerialize(authMessage);
+                int size = authData.Length + EciesOverhead;
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                byte[] packetData = _eciesCipher.Encrypt(remoteNodeId, authData.ReadOnlySpan.ToArray(), sizeBytes);
+                handshake.AuthPacket = new Packet(Bytes.Concat(sizeBytes, packetData));
+                return handshake.AuthPacket;
 
             }
         }
@@ -189,15 +176,8 @@ namespace Nethermind.Network.Rlpx.Handshake
                     Nonce = handshake.RecipientNonce
                 };
 
-                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
-                try
-                {
-                    data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), []);
-                }
-                finally
-                {
-                    ackData.SafeRelease();
-                }
+                using PooledBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+                data = _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadOnlySpan.ToArray(), []);
             }
             else
             {
@@ -207,17 +187,10 @@ namespace Nethermind.Network.Rlpx.Handshake
                     EphemeralPublicKey = handshake.EphemeralPrivateKey.PublicKey,
                     Nonce = handshake.RecipientNonce
                 };
-                IByteBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
-                try
-                {
-                    int size = ackData.ReadableBytes + EciesOverhead;
-                    byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
-                    data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadAllBytesAsArray(), sizeBytes));
-                }
-                finally
-                {
-                    ackData.SafeRelease();
-                }
+                using PooledBuffer ackData = _messageSerializationService.ZeroSerialize(ackMessage);
+                int size = ackData.Length + EciesOverhead;
+                byte[] sizeBytes = size.ToBigEndianByteArray().Slice(2, 2);
+                data = Bytes.Concat(sizeBytes, _eciesCipher.Encrypt(handshake.RemoteNodeId, ackData.ReadOnlySpan.ToArray(), sizeBytes));
             }
 
             handshake.AckPacket = new Packet(data);

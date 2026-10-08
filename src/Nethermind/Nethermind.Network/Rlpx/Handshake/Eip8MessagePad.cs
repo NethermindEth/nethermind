@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
 {
@@ -13,18 +10,8 @@ namespace Nethermind.Network.Rlpx.Handshake
     {
         readonly ICryptoRandom _cryptoRandom = cryptoRandom;
 
-        public byte[] Pad(byte[] message)
-        {
-            byte[] padding = _cryptoRandom.GenerateRandomBytes(100 + _cryptoRandom.NextInt(201));
-            return Bytes.Concat(message, padding);
-        }
+        public int GetPaddingLength() => 100 + _cryptoRandom.NextInt(201);
 
-        public void Pad(IByteBuffer message)
-        {
-            int length = 100 + _cryptoRandom.NextInt(201);
-            Span<byte> padding = stackalloc byte[length];
-            _cryptoRandom.GenerateRandomBytes(padding);
-            message.WriteBytes(padding);
-        }
+        public void Pad(Span<byte> padding) => _cryptoRandom.GenerateRandomBytes(padding);
     }
 }

@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Messages;
-using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P
@@ -13,22 +12,22 @@ namespace Nethermind.Network.Test.P2P
     {
         public static void TestZero<T>(IZeroMessageSerializer<T> serializer, T message, string? expectedData = null) where T : P2PMessage
         {
-            using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-            using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
             try
             {
-                serializer.Serialize(buffer, message);
-                using T deserialized = serializer.Deserialize(buffer);
+                int length = serializer.GetLength(message, out _);
+                using PooledBuffer buffer = PooledBuffer.Rent(length);
+                serializer.Serialize(buffer.Span, message);
+                using T deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out int consumed);
 
                 Assert.That(deserialized, Is.Not.Null);
 
-                Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+                Assert.That(consumed, Is.EqualTo(length), "consumed bytes");
 
-                serializer.Serialize(buffer2, deserialized);
+                using PooledBuffer buffer2 = PooledBuffer.Rent(serializer.GetLength(deserialized, out _));
+                serializer.Serialize(buffer2.Span, deserialized);
 
-                buffer.SetReaderIndex(0);
-                string allHex = buffer.ReadAllHex();
-                Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+                string allHex = buffer.ReadOnlySpan.ToHexString();
+                Assert.That(buffer2.ReadOnlySpan.ToHexString(), Is.EqualTo(allHex), "test zero");
 
                 if (expectedData is not null)
                 {

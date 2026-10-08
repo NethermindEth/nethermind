@@ -148,7 +148,7 @@ public class MessageDictionaryTests
     }
 
     [TestCaseSource(nameof(UncorrelatedContents))]
-    public void ThrowIfNotRequested_rejects_uncorrelated_content(IByteBuffer content)
+    public void ThrowIfNotRequested_rejects_uncorrelated_content(byte[] content)
     {
         _testMessageDictionary.Send(CreateRequest(111));
 
@@ -158,10 +158,10 @@ public class MessageDictionaryTests
     private static IEnumerable<TestCaseData> UncorrelatedContents()
     {
         yield return new TestCaseData(UndecodableResponse.Create(112)).SetName("Not pending request id");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0x80])).SetName("Unreadable request id");
-        yield return new TestCaseData(Unpooled.WrappedBuffer(Array.Empty<byte>())).SetName("Empty payload");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc1])).SetName("List shorter than its header");
-        yield return new TestCaseData(Unpooled.WrappedBuffer([0xc2, 0x82, 0x01])).SetName("Request id shorter than its header");
+        yield return new TestCaseData(new byte[] { 0x80 }).SetName("Unreadable request id");
+        yield return new TestCaseData(Array.Empty<byte>()).SetName("Empty payload");
+        yield return new TestCaseData(new byte[] { 0xc1 }).SetName("List shorter than its header");
+        yield return new TestCaseData(new byte[] { 0xc2, 0x82, 0x01 }).SetName("Request id shorter than its header");
     }
 
     private static Request<Eth66Message<GetBlockHeadersMessage>, IOwnedReadOnlyList<BlockHeader>> CreateRequest(int requestId)

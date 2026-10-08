@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Serialization.Rlp;
 
@@ -9,9 +9,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 {
     public class GetBlockAccessListsMessageSerializer : SnapSerializerBase<GetBlockAccessListsMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetBlockAccessListsMessage message)
+        public override void Serialize(Span<byte> buffer, GetBlockAccessListsMessage message)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            RlpWriter writer = GetRlpWriterAndStartSequence(buffer, message);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.BlockHashes);

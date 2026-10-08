@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -35,32 +36,31 @@ public class TransactionsMessageSerializerTests
         source.Signature = new Signature(1, 2, 27);
         source.NetworkWrapper = new ShardBlobNetworkWrapper([blob], [], [], ProofVersion.V0);
         using TransactionsMessage message = new(new ArrayPoolList<Transaction>(1) { source });
-        using DisposableByteBuffer buffer = Unpooled.Buffer().AsDisposable();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage first = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        using TransactionsMessage first = serializer.Deserialize(buffer.ReadOnlySpan, out _);
         Transaction tx = first.Transactions[0];
         byte[] original = ((ShardBlobNetworkWrapper)tx.NetworkWrapper).Blobs[0];
         first.Dispose();
         if (returnMode != BlobReturnMode.Retained) TxDecoder.TxObjectPool.Return(tx);
         if (returnMode == BlobReturnMode.MalformedList)
         {
-            buffer.Clear();
-            buffer.WriteBytes(Rlp.Encode(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), Rlp.OfEmptyList).Bytes);
-            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+            byte[] malformed = Rlp.Encode(TxDecoder.Instance.Encode(source, RlpBehaviors.InMempoolForm), Rlp.OfEmptyList).Bytes;
+            using PooledBuffer malformedBuffer = PooledBuffer.Rent(malformed.Length);
+            malformed.CopyTo(malformedBuffer.Span);
+            Assert.That(() => serializer.Deserialize(malformedBuffer.ReadOnlySpan, out _), Throws.TypeOf<RlpException>());
         }
         if (returnMode == BlobReturnMode.MalformedWrapper)
         {
-            buffer.Clear();
-            serializer.Serialize(buffer, message);
+            serializer.Serialize(buffer.Span, message);
             // Replace the empty commitments list with a byte string, after the blob was decoded.
-            buffer.SetByte(buffer.WriterIndex - 2, 0x80);
-            Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+            buffer.Span[buffer.Length - 2] = 0x80;
+            Assert.That(() => serializer.Deserialize(buffer.ReadOnlySpan, out _), Throws.TypeOf<RlpException>());
         }
 
         Array.Fill(blob, (byte)0x22);
-        buffer.Clear();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage second = serializer.Deserialize(buffer);
+        serializer.Serialize(buffer.Span, message);
+        using TransactionsMessage second = serializer.Deserialize(buffer.ReadOnlySpan, out _);
         byte[] next = ((ShardBlobNetworkWrapper)second.Transactions[0].NetworkWrapper).Blobs[0];
         using (Assert.EnterMultipleScope())
         {
@@ -149,11 +149,11 @@ public class TransactionsMessageSerializerTests
     [TestCaseSource(nameof(GetTransactionMessages))]
     public void Should_contain_network_form_tx_wrapper(TransactionsMessage transactionsMessage)
     {
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
         TransactionsMessageSerializer serializer = new();
-        serializer.Serialize(buffer, transactionsMessage);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(transactionsMessage, out _));
+        serializer.Serialize(buffer.Span, transactionsMessage);
         transactionsMessage.Dispose();
-        using TransactionsMessage deserializedMessage = serializer.Deserialize(buffer);
+        using TransactionsMessage deserializedMessage = serializer.Deserialize(buffer.ReadOnlySpan, out _);
         foreach (Transaction? tx in deserializedMessage.Transactions.Where(static tx => tx.SupportsBlobs))
         {
             Assert.That(tx.NetworkWrapper, Is.Not.Null);
@@ -172,10 +172,10 @@ public class TransactionsMessageSerializerTests
         Transaction validTxAfter = SimpleSignedTx(1);
         byte[] validTxBeforeBytes = TxDecoder.Instance.Encode(validTxBefore, RlpBehaviors.InMempoolForm).Bytes;
         byte[] validTxAfterBytes = TxDecoder.Instance.Encode(validTxAfter, RlpBehaviors.InMempoolForm).Bytes;
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes)).AsDisposable();
+        byte[] wireBytes = EncodeAsSequence(validTxBeforeBytes, oversizedItem, validTxAfterBytes);
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = maxTxSize });
-        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+        using TransactionsMessage deserialized = serializer.Deserialize(wireBytes, out _);
 
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(2), "only the two well-formed txs should survive");
         using (Assert.EnterMultipleScope())
@@ -199,9 +199,9 @@ public class TransactionsMessageSerializerTests
 
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = contentLength });
         using TransactionsMessage message = new(new[] { typedTx }.ToPooledList());
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024).AsDisposable();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out _);
 
         Assert.That(deserialized.Transactions.Count, Is.EqualTo(1), "a tx exactly at the cap must be kept, not skipped");
     }
@@ -219,9 +219,9 @@ public class TransactionsMessageSerializerTests
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 500 });
 
         using TransactionsMessage message = new(new[] { blobTx }.ToPooledList());
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -238,10 +238,10 @@ public class TransactionsMessageSerializerTests
     [TestCase((byte)0xf7, TestName = "A truncated short-form sequence under a tiny cap still fails as an RLP error")]
     public void A_size_limit_below_the_rlp_short_form_maximum_does_not_change_how_a_truncated_item_fails(byte itemPrefix)
     {
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(EncodeAsSequence(new[] { itemPrefix })).AsDisposable();
+        byte[] wireBytes = EncodeAsSequence(new[] { itemPrefix });
         TransactionsMessageSerializer serializer = new(new TxPoolConfig { MaxTxSize = 10 });
 
-        Assert.That(() => serializer.Deserialize(buffer).Dispose(), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(wireBytes, out _).Dispose(), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -251,9 +251,9 @@ public class TransactionsMessageSerializerTests
         using TransactionsMessage message = new(transactions.ToPooledList());
         TransactionsMessageSerializer serializer = new();
 
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 130).AsDisposable();
-        serializer.Serialize(buffer, message);
-        using TransactionsMessage deserialized = serializer.Deserialize(buffer);
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+        serializer.Serialize(buffer.Span, message);
+        using TransactionsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out _);
 
         using (Assert.EnterMultipleScope())
         {
@@ -353,12 +353,12 @@ public class TransactionsMessageSerializerTests
     {
         TransactionsMessageSerializer serializer = new();
         // A valid signed legacy transaction followed by a null transaction.
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(Bytes.FromHexString(
-            "d2d08203e8640a80822710830405061b0102c0")).AsDisposable();
+        byte[] wireBytes = Bytes.FromHexString(
+            "d2d08203e8640a80822710830405061b0102c0");
         Transaction reusable = TxDecoder.TxObjectPool.Get();
         TxDecoder.TxObjectPool.Return(reusable);
 
-        Assert.That(() => serializer.Deserialize(buffer), Throws.TypeOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(wireBytes, out _), Throws.TypeOf<RlpException>());
 
         Transaction returned = TxDecoder.TxObjectPool.Get();
         try

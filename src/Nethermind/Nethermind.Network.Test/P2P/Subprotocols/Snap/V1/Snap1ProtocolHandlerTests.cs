@@ -9,6 +9,7 @@ using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
@@ -109,14 +110,14 @@ public class Snap1ProtocolHandlerTests
                             Task.Delay(RealTimeStall).Wait();
                         }
 
-                        IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
+                        using PooledBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
                             PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(Keccak.Zero, Account.TotallyEmpty) },
                             RequestId = accountRangeMessage.RequestId,
                         });
-                        buffer.ReadByte(); // Need to skip adaptive type
 
-                        ZeroPacket packet = new(buffer);
+                        // Need to skip adaptive type
+                        ZeroPacket packet = new(Unpooled.WrappedBuffer(buffer.ReadOnlySpan.Slice(1).ToArray()));
 
                         packet.PacketType = Snap1MessageCode.AccountRange;
                         Snap1ProtocolHandler.HandleMessage(packet);
@@ -219,24 +220,15 @@ public class Snap1ProtocolHandlerTests
             Bytes = 1234
         };
 
-        IByteBuffer? buffer = serializer.ZeroSerialize(request);
+        using PooledBuffer buffer = serializer.ZeroSerialize(request);
+        ZeroPacket packet = new(Unpooled.WrappedBuffer(buffer.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Snap1MessageCode.GetTrieNodes };
         try
         {
-            buffer.ReadByte();
-            ZeroPacket packet = new(buffer) { PacketType = Snap1MessageCode.GetTrieNodes };
-            buffer = null;
-            try
-            {
-                handler.HandleMessage(packet);
-            }
-            finally
-            {
-                ReferenceCountUtil.Release(packet);
-            }
+            handler.HandleMessage(packet);
         }
         finally
         {
-            buffer?.SafeRelease();
+            ReferenceCountUtil.Release(packet);
         }
 
         snapServer.Received(1).GetTrieNodes(Arg.Any<IReadOnlyList<PathGroup>>(), request.RootHash, request.Bytes, Arg.Any<CancellationToken>());

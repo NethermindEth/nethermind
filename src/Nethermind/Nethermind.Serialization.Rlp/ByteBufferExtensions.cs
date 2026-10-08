@@ -109,6 +109,11 @@ namespace Nethermind.Serialization.Rlp
             buffer.ResetWriterIndex();
         }
 
+        /// <summary>
+        /// Borrows the readable region as a span. Only valid for array-backed buffers;
+        /// the RLPx and discovery transports allocate heap pooled buffers, and the send
+        /// side defends with <c>MemoryMarshal.TryGetArray</c> instead of assuming it here.
+        /// </summary>
         public static Span<byte> AsSpan(this IByteBuffer buffer, int? startIndex = null)
         {
             if (!buffer.HasArray) throw new InvalidOperationException("Byte buffer does not have array backing");

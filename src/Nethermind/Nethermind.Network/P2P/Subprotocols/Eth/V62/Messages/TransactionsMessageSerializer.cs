@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
@@ -13,7 +12,7 @@ using TransactionDecoder = Nethermind.Serialization.Rlp.TxDecoder;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class TransactionsMessageSerializer : IZeroInnerMessageSerializer<TransactionsMessage>
+    public class TransactionsMessageSerializer : IZeroMessageSerializer<TransactionsMessage>
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<TransactionsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(TransactionsMessage.Transactions));
         private static readonly TransactionDecoder TxDecoder = TransactionDecoder.Instance;
@@ -41,11 +40,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             };
         }
 
-        public void Serialize(IByteBuffer byteBuffer, TransactionsMessage message)
+        public void Serialize(Span<byte> buffer, TransactionsMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
 
             writer.StartSequence(contentLength);
             foreach (Transaction tx in message.Transactions.AsSpan())
@@ -54,8 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             }
         }
 
-        public TransactionsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(_deserializeTransactionsMessage);
+        public TransactionsMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            TransactionsMessage msg = _deserializeTransactionsMessage(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         public int GetLength(TransactionsMessage message, out int contentLength)
         {

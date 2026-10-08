@@ -9,7 +9,9 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -1416,16 +1418,14 @@ public class Eth70ProtocolHandlerTests
     {
         using StatusMessage69 statusMsg = new() { ProtocolVersion = 70, GenesisHash = _genesisBlock.Hash!, LatestBlockHash = _genesisBlock.Hash! };
 
-        using DisposableByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg).AsDisposable();
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        using DisposableByteBuffer packet = _svc!.ZeroSerialize(msg).AsDisposable();
-        packet.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        using PooledBuffer packet = _svc!.ZeroSerialize(msg);
+        _handler!.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
     }
 
     private ReceiptsMessage70 RequestReceipts(params Hash256[] hashes)

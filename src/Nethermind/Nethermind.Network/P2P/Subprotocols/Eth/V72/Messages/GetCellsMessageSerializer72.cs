@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -10,17 +9,16 @@ using Nethermind.Stats.SyncLimits;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
-public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsMessage72>
+public class GetCellsMessageSerializer72 : IZeroMessageSerializer<GetCellsMessage72>
 {
     // The wire limit remains permissive, but only the locally supported prefix is materialized.
     private static readonly RlpLimit HashesRlpLimit = RlpLimit.For<GetCellsMessage72>(NethermindSyncLimits.MaxHashesFetch, nameof(GetCellsMessage72.Hashes));
 
-    public void Serialize(IByteBuffer byteBuffer, GetCellsMessage72 message)
+    public void Serialize(Span<byte> buffer, GetCellsMessage72 message)
     {
-        int totalLength = GetLength(message, out int contentLength);
-        byteBuffer.EnsureWritable(totalLength);
+        GetLength(message, out int contentLength);
 
-        ByteBufferRlpWriter writer = new(byteBuffer);
+        RlpWriter writer = new(buffer);
         writer.StartSequence(contentLength);
         writer.Encode(message.RequestId);
 
@@ -35,7 +33,13 @@ public class GetCellsMessageSerializer72 : IZeroInnerMessageSerializer<GetCellsM
         writer.Encode(message.CellMask);
     }
 
-    public GetCellsMessage72 Deserialize(IByteBuffer byteBuffer) => byteBuffer.DeserializeRlp(Deserialize);
+    public GetCellsMessage72 Deserialize(ReadOnlySpan<byte> data, out int consumed)
+    {
+        RlpReader ctx = new(data);
+        GetCellsMessage72 msg = Deserialize(ref ctx);
+        consumed = ctx.Position;
+        return msg;
+    }
 
     private static GetCellsMessage72 Deserialize(ref RlpReader ctx)
     {

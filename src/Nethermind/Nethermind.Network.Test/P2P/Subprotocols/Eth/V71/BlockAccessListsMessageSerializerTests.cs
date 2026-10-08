@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Generic;
 using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V71.Messages;
 using Nethermind.Serialization.Rlp;
@@ -22,29 +24,28 @@ public class BlockAccessListsMessageSerializerTests
     {
         BlockAccessListsMessageSerializer serializer = new();
         using BlockAccessListsMessage msg = buildMessage();
-        using DisposableByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
-        using DisposableByteBuffer buffer2 = PooledByteBufferAllocator.Default.Buffer(1024 * 16).AsDisposable();
+        using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(msg, out _));
+        using PooledBuffer buffer2 = PooledBuffer.Rent(serializer.GetLength(msg, out _));
 
-        serializer.Serialize(buffer, msg);
-        using BlockAccessListsMessage deserialized = serializer.Deserialize(buffer);
+        serializer.Serialize(buffer.Span, msg);
+        using BlockAccessListsMessage deserialized = serializer.Deserialize(buffer.ReadOnlySpan, out int consumed);
 
         AssertBlockAccessListsMessage(deserialized, msg);
-        Assert.That(buffer.ReadableBytes, Is.EqualTo(0), "readable bytes");
+        Assert.That(consumed, Is.EqualTo(buffer.Length), "consumed bytes");
 
-        serializer.Serialize(buffer2, deserialized);
-        buffer.SetReaderIndex(0);
-        string allHex = buffer.ReadAllHex();
-        Assert.That(buffer2.ReadAllHex(), Is.EqualTo(allHex), "test zero");
+        serializer.Serialize(buffer2.Span, deserialized);
+        string allHex = buffer.ReadOnlySpan.ToHexString();
+        Assert.That(buffer2.ReadOnlySpan.ToHexString(), Is.EqualTo(allHex), "test zero");
         Assert.That(allHex, Is.EqualTo(expectedData));
     }
 
     [TestCaseSource(nameof(BlockAccessListsRejectionCases))]
-    public void Rejects_invalid_payload(Func<IByteBuffer> buildPayload, Type exceptionType)
+    public void Rejects_invalid_payload(Func<byte[]> buildPayload, Type exceptionType)
     {
         BlockAccessListsMessageSerializer serializer = new();
-        using DisposableByteBuffer payload = buildPayload().AsDisposable();
+        byte[] payload = buildPayload();
 
-        Assert.Throws(exceptionType, () => serializer.Deserialize(payload));
+        Assert.Throws(exceptionType, () => serializer.Deserialize(payload, out _));
     }
 
     private static IEnumerable<TestCaseData> BlockAccessListsRoundtripCases()
@@ -75,28 +76,28 @@ public class BlockAccessListsMessageSerializerTests
     private static IEnumerable<TestCaseData> BlockAccessListsRejectionCases()
     {
         yield return new TestCaseData(
-                new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0])),
+                new Func<byte[]>(() => [0xc5, 0x01, 0xc2, 0x81, 0x80, 0xc0]),
                 typeof(RlpException))
             .SetName("Rejects_extra_outer_payload");
         yield return new TestCaseData(
-                new Func<IByteBuffer>(() => Unpooled.WrappedBuffer([0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0])),
+                new Func<byte[]>(() => [0xcb, 0x89, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0xc0]),
                 typeof(RlpException))
             .SetName("Rejects_request_id_longer_than_8_bytes");
         yield return new TestCaseData(
-                new Func<IByteBuffer>(BuildTooManyBlockAccessListsPayload),
+                new Func<byte[]>(BuildTooManyBlockAccessListsPayload),
                 typeof(RlpLimitException))
             .SetName("Rejects_too_many_block_access_lists");
     }
 
-    private static IByteBuffer BuildTooManyBlockAccessListsPayload()
+    private static byte[] BuildTooManyBlockAccessListsPayload()
     {
         BlockAccessListsMessageSerializer serializer = new();
         byte[]?[] blockAccessLists = new byte[]?[GethSyncLimits.MaxBodyFetch + 1];
 
         using BlockAccessListsMessage msg = BuildMessage(45, blockAccessLists);
-        IByteBuffer payload = Unpooled.Buffer(serializer.GetLength(msg, out _));
-        serializer.Serialize(payload, msg);
-        return payload;
+        using PooledBuffer payload = PooledBuffer.Rent(serializer.GetLength(msg, out _));
+        serializer.Serialize(payload.Span, msg);
+        return payload.ReadOnlySpan.ToArray();
     }
 
     private static BlockAccessListsMessage BuildMessage(long requestId, params byte[]?[] blockAccessLists) =>
@@ -136,9 +137,9 @@ public class GetBlockAccessListsMessageSerializerTests
     public void Deserialize_throws_on_null_hash()
     {
         GetBlockAccessListsMessageSerializer serializer = new();
-        using DisposableByteBuffer payload = Unpooled.WrappedBuffer([0xc3, 0x01, 0xc1, 0x80]).AsDisposable();
+        byte[] payload = [0xc3, 0x01, 0xc1, 0x80];
 
-        Assert.That(() => serializer.Deserialize(payload), Throws.InstanceOf<RlpException>());
+        Assert.That(() => serializer.Deserialize(payload, out _), Throws.InstanceOf<RlpException>());
     }
 
     private static IEnumerable<TestCaseData> GetBlockAccessListsRoundtripCases()

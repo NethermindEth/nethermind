@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
 using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -12,9 +11,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V1.Messages
 {
     public class GetStorageRangesMessageSerializer : SnapSerializerBase<GetStorageRangeMessage>
     {
-        public override void Serialize(IByteBuffer byteBuffer, GetStorageRangeMessage message)
+        public override void Serialize(Span<byte> buffer, GetStorageRangeMessage message)
         {
-            ByteBufferRlpWriter writer = GetRlpWriterAndStartSequence(byteBuffer, message);
+            RlpWriter writer = GetRlpWriterAndStartSequence(buffer, message);
 
             writer.Encode(message.RequestId);
             writer.Encode(message.StorageRange.RootHash);

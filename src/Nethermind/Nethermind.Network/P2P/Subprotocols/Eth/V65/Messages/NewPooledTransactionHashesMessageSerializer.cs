@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -14,9 +14,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(NewPooledTransactionHashesMessage.Hashes));
 
-        public override NewPooledTransactionHashesMessage Deserialize(IByteBuffer byteBuffer)
+        public override NewPooledTransactionHashesMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            ArrayPoolList<Hash256> hashes = DeserializeHashesArrayPool(byteBuffer, RlpLimit);
+            RlpReader ctx = new(data);
+            ArrayPoolList<Hash256> hashes = DeserializeHashesArrayPool(ref ctx, RlpLimit);
+            consumed = ctx.Position;
             return new NewPooledTransactionHashesMessage(hashes);
         }
     }

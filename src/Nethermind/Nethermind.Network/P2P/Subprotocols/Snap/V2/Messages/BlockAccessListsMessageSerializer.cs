@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using DotNetty.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
@@ -15,13 +14,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
         private static readonly RlpLimit RlpLimit = RlpLimit.For<BlockAccessListsMessage>(
             SnapMessageLimits.MaxRequestHashes, nameof(BlockAccessListsMessage.BlockAccessLists));
 
-        public void Serialize(IByteBuffer byteBuffer, BlockAccessListsMessage message)
+        public void Serialize(Span<byte> buffer, BlockAccessListsMessage message)
         {
             int entriesContentLength = GetEntriesContentLength(message.BlockAccessLists);
             int contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            RlpWriter writer = new(buffer);
             writer.StartSequence(contentLength);
             writer.Encode(message.RequestId);
             writer.StartSequence(entriesContentLength);
@@ -42,10 +40,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
                 writer.Write(entry);
         }
 
-        public BlockAccessListsMessage Deserialize(IByteBuffer byteBuffer)
+        public int GetLength(BlockAccessListsMessage message, out int contentLength)
         {
-            RlpReader ctx = new(byteBuffer.AsSpan());
-            int startPosition = ctx.Position;
+            int entriesContentLength = GetEntriesContentLength(message.BlockAccessLists);
+            contentLength = Rlp.LengthOf(message.RequestId) + Rlp.LengthOfSequence(entriesContentLength);
+            return Rlp.LengthOfSequence(contentLength);
+        }
+
+        public BlockAccessListsMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
             ArrayPoolList<byte[]>? blockAccessLists = null;
 
             try
@@ -56,7 +60,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.V2.Messages
 
                 blockAccessLists = DecodeBlockAccessLists(ref ctx);
                 ctx.Check(checkPosition);
-                byteBuffer.SetReaderIndex(byteBuffer.ReaderIndex + (ctx.Position - startPosition));
+                consumed = ctx.Position;
                 return new BlockAccessListsMessage(new ByteArrayListAdapter(blockAccessLists)) { RequestId = requestId };
             }
             catch

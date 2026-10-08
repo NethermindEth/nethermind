@@ -72,7 +72,7 @@ public class Eth68ProtocolHandler(ISession session,
                     if (IsTransactionGossipAllowed())
                     {
                         NewPooledTransactionHashesMessage68 newPooledTxHashesMsg =
-                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content);
+                            Deserialize<NewPooledTransactionHashesMessage68>(message.Content.AsSpan());
                         ReportIn(newPooledTxHashesMsg, size);
                         Handle(newPooledTxHashesMsg);
                     }

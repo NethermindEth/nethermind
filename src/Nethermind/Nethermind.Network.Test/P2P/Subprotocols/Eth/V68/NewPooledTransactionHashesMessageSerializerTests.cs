@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -138,11 +139,10 @@ public class NewPooledTransactionHashesMessageSerializerTests
             Enumerable.Repeat((byte)2, count).ToPooledList(count),
             Enumerable.Repeat(100, count).ToPooledList(count),
             Enumerable.Repeat(TestItem.KeccakA.ValueHash256, count).ToPooledList(count));
-        using DisposableByteBuffer buffer = Unpooled.WrappedBuffer(serializer.Serialize(source)).AsDisposable();
+        byte[] bytes = serializer.Serialize(source);
         for (int i = 0; i < 100; i++)
         {
-            buffer.SetReaderIndex(0);
-            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(buffer);
+            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(bytes, out _);
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
                 if (hash != TestItem.KeccakA.ValueHash256) throw new InvalidOperationException();
         }
@@ -150,8 +150,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
         long before = GC.GetAllocatedBytesForCurrentThread();
         for (int i = 0; i < 100; i++)
         {
-            buffer.SetReaderIndex(0);
-            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(buffer);
+            using NewPooledTransactionHashesMessage68 message = serializer.Deserialize(bytes, out _);
             foreach (ref readonly ValueHash256 hash in message.Hashes.AsSpan())
                 if (hash != TestItem.KeccakA.ValueHash256) throw new InvalidOperationException();
         }
@@ -216,14 +215,15 @@ public class NewPooledTransactionHashesMessageSerializerTests
             new[] { 1, 128, 65536 }.ToPooledList(),
             new[] { TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakC.ValueHash256 }.ToPooledList());
         byte[] bytes = serializer.Serialize(source);
-        using DisposableByteBuffer buffer = Unpooled.Buffer(bytes.Length + 7).WriteZero(7).WriteBytes(bytes).AsDisposable();
+        byte[] padded = new byte[bytes.Length + 7];
+        bytes.CopyTo(padded, 7);
         for (int length = 0; length < bytes.Length; length++)
         {
-            buffer.SetIndex(7, 7 + length);
-            Exception error = Assert.Catch(() => serializer.Deserialize(buffer), $"cut {length}");
+            byte[] window = padded.AsSpan(7, length).ToArray();
+            Exception error = Assert.Catch(() => serializer.Deserialize(window, out _), $"cut {length}");
             Assert.That(error, Is.InstanceOf<RlpException>().Or.InstanceOf<IndexOutOfRangeException>()
                 .Or.InstanceOf<ArgumentOutOfRangeException>(), $"cut {length}");
-            using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes);
+            using NewPooledTransactionHashesMessage68 next = serializer.Deserialize(bytes, out _);
             Assert.That(serializer.Serialize(next), Is.EqualTo(bytes), $"lease after cut {length}");
         }
     }

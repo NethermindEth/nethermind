@@ -295,16 +295,14 @@ public class Eth71ProtocolHandlerTests
             LatestBlockHash = _genesisBlock.Hash!
         };
 
-        IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
-        statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
+        using PooledBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = 0 });
     }
 
     private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
-        IByteBuffer packet = _svc.ZeroSerialize(msg);
-        packet.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)messageCode });
+        using PooledBuffer packet = _svc.ZeroSerialize(msg);
+        _handler.HandleMessage(new ZeroPacket(Unpooled.WrappedBuffer(packet.ReadOnlySpan.Slice(1).ToArray())) { PacketType = (byte)messageCode });
     }
 
     private static TestCaseData[] BlockAccessListsResponseCases =>

@@ -1,14 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
-    public class GetBlockHeadersMessageSerializer : IZeroInnerMessageSerializer<GetBlockHeadersMessage>
+    public class GetBlockHeadersMessageSerializer : IZeroMessageSerializer<GetBlockHeadersMessage>
     {
         private static readonly RlpLimit StartBlockRlpLimit = RlpLimit.For<GetBlockHeadersMessage>(Hash256.Size, nameof(GetBlockHeadersMessage.StartBlockHash));
 
@@ -32,11 +32,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             return message;
         }
 
-        public void Serialize(IByteBuffer byteBuffer, GetBlockHeadersMessage message)
+        public void Serialize(Span<byte> buffer, GetBlockHeadersMessage message)
         {
-            int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length);
-            ByteBufferRlpWriter writer = new(byteBuffer);
+            GetLength(message, out int contentLength);
+            RlpWriter writer = new(buffer);
 
             writer.StartSequence(contentLength);
             if (message.StartBlockHash is null)
@@ -53,8 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             writer.Encode(message.Reverse);
         }
 
-        public GetBlockHeadersMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
+        public GetBlockHeadersMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
+        {
+            RlpReader ctx = new(data);
+            GetBlockHeadersMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
+        }
 
         public int GetLength(GetBlockHeadersMessage message, out int contentLength)
         {

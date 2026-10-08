@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using DotNetty.Buffers;
+using System;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
@@ -13,15 +13,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     {
         private static readonly RlpLimit RlpLimit = RlpLimit.For<GetReceiptsMessage>(NethermindSyncLimits.MaxHashesFetch, nameof(GetReceiptsMessage.Hashes));
 
-        public static GetReceiptsMessage Deserialize(byte[] bytes)
+        public override GetReceiptsMessage Deserialize(ReadOnlySpan<byte> data, out int consumed)
         {
-            RlpReader ctx = new(bytes);
-            ArrayPoolList<Hash256> hashes = ctx.DecodeNonNullArrayPoolList(static (ref RlpReader c) => c.DecodeKeccak(), limit: RlpLimit);
-            return new GetReceiptsMessage(hashes);
+            RlpReader ctx = new(data);
+            GetReceiptsMessage msg = Deserialize(ref ctx);
+            consumed = ctx.Position;
+            return msg;
         }
-
-        public override GetReceiptsMessage Deserialize(IByteBuffer byteBuffer) =>
-            byteBuffer.DeserializeRlp(Deserialize);
 
         public static GetReceiptsMessage Deserialize(ref RlpReader ctx)
         {

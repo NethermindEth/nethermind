@@ -73,9 +73,9 @@ public class Eth70ProtocolHandler : Eth69ProtocolHandler, IStaticProtocolInfo
         switch (message.PacketType)
         {
             case Eth70MessageCode.Receipts:
-                GetReceiptsMessage70 request = _receiptsRequests70.GetPendingRequest(message.Content);
-                ReceiptsResponseBudget.ThrowIfExceeded(message.Content, 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
-                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content);
+                GetReceiptsMessage70 request = _receiptsRequests70.GetPendingRequest(message.Content.AsSpan());
+                ReceiptsResponseBudget.ThrowIfExceeded(message.Content.AsSpan(), 2, request.RequestedBlocks, request.MaxReceiptsPerBlock.Span, request.FirstBlockReceiptIndex);
+                ReceiptsMessage70 receiptsMessage = Deserialize<ReceiptsMessage70>(message.Content.AsSpan());
                 ReportIn(receiptsMessage, size);
                 Handle(receiptsMessage, size);
                 return true;

@@ -3,7 +3,7 @@
 
 using System;
 using System.Collections.Generic;
-using DotNetty.Buffers;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Serialization.Rlp;
@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P
     /// </summary>
     /// <remarks>
     /// A list at the cap must decode with its full item count, and one item above it must be rejected.
-    /// Either way the packet buffer must not stay retained: the decoder takes a lease on it, so a
-    /// missed release would pin a pooled buffer per message until finalization.
+    /// Decoding borrows the rented packet span, while messages that retain decoded content take
+    /// ownership of their own copy, so releasing the packet right after decode is always safe.
     /// </remarks>
     internal static class ByteArrayListLimitTester
     {
@@ -47,29 +47,26 @@ namespace Nethermind.Network.Test.P2P
 
             using TMessage message = createMessage(new ByteArrayListAdapter(entries));
 
-            using DisposableByteBuffer buffer = UnpooledByteBufferAllocator.Default.Buffer(items + 64).AsDisposable();
-            serializer.Serialize(buffer, message);
-            int referenceCountBeforeDecode = buffer.ReferenceCount;
+            using PooledBuffer buffer = PooledBuffer.Rent(serializer.GetLength(message, out _));
+            serializer.Serialize(buffer.Span, message);
 
             if (shouldThrow)
             {
-                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer));
+                Assert.Throws<RlpLimitException>(() => serializer.Deserialize(buffer.ReadOnlySpan, out _));
             }
             else
             {
-                DecodeAndAssertItemCount(serializer, buffer, itemCount, items);
+                DecodeAndAssertItemCount(serializer, buffer.ReadOnlySpan, itemCount, items);
             }
 
-            Assert.That(buffer.ReferenceCount, Is.EqualTo(referenceCountBeforeDecode), "packet buffer must not stay retained");
-
-            // Scoped so the message is disposed before the reference count is read.
+            // Scoped so the message is disposed before the packet buffer is released.
             static void DecodeAndAssertItemCount(
                 IZeroMessageSerializer<TMessage> serializer,
-                IByteBuffer buffer,
+                ReadOnlySpan<byte> data,
                 Func<TMessage, int> itemCount,
                 int items)
             {
-                using TMessage deserialized = serializer.Deserialize(buffer);
+                using TMessage deserialized = serializer.Deserialize(data, out _);
                 Assert.That(itemCount(deserialized), Is.EqualTo(items));
             }
         }

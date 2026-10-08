@@ -5,12 +5,14 @@ using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Numerics;
+using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -350,11 +352,10 @@ public class ProtocolsManagerTests
         public Context ReceiveDisconnect()
         {
             using DisconnectMessage message = new(EthDisconnectReason.Other);
-            using DisposableByteBuffer disconnectPacket = _serializer.ZeroSerialize(message).AsDisposable();
+            using PooledBuffer disconnectPacket = _serializer.ZeroSerialize(message);
 
             // to account for AdaptivePacketType byte
-            disconnectPacket.ReadByte();
-            _currentSession.ReceiveMessage(new ZeroPacket(disconnectPacket) { PacketType = P2PMessageCode.Disconnect });
+            _currentSession.ReceiveMessage(new ZeroPacket(Unpooled.WrappedBuffer(disconnectPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = P2PMessageCode.Disconnect });
             return this;
         }
 
@@ -401,10 +402,9 @@ public class ProtocolsManagerTests
 
         private Context ReceiveStatus(StatusMessage msg)
         {
-            using DisposableByteBuffer statusPacket = _serializer.ZeroSerialize(msg).AsDisposable();
-            statusPacket.ReadByte();
+            using PooledBuffer statusPacket = _serializer.ZeroSerialize(msg);
 
-            _currentSession.ReceiveMessage(new ZeroPacket(statusPacket) { PacketType = Eth62MessageCode.Status + 16 });
+            _currentSession.ReceiveMessage(new ZeroPacket(Unpooled.WrappedBuffer(statusPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = Eth62MessageCode.Status + 16 });
             return this;
         }
 
@@ -440,11 +440,9 @@ public class ProtocolsManagerTests
 
         private Context ReceiveHello(HelloMessage msg)
         {
-            using DisposableByteBuffer helloPacket = _serializer.ZeroSerialize(msg).AsDisposable();
+            using PooledBuffer helloPacket = _serializer.ZeroSerialize(msg);
             // to account for AdaptivePacketType byte
-            helloPacket.ReadByte();
-
-            _currentSession.ReceiveMessage(new ZeroPacket(helloPacket) { PacketType = P2PMessageCode.Hello });
+            _currentSession.ReceiveMessage(new ZeroPacket(Unpooled.WrappedBuffer(helloPacket.ReadOnlySpan.Slice(1).ToArray())) { PacketType = P2PMessageCode.Hello });
             return this;
         }
 
