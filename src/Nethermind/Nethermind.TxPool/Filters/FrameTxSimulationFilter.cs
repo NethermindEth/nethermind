@@ -75,6 +75,7 @@ internal sealed class FrameTxSimulationFilter(
                 return AcceptTxResult.Accepted;
 
             case FrameTxSimulationOutcome.Accepted:
+                state.FrameValidationRan = true;
                 if (result.CodeDependencies.Count > 0 && codeDependencies is not null)
                 {
                     if (!codeDependencies.TryReserve(tx.Hash!.ValueHash256, result.CodeDependencies, maxPendingPerCode, out bool recorded))
@@ -87,7 +88,6 @@ internal sealed class FrameTxSimulationFilter(
                     state.CodeDependenciesReserved = recorded;
                 }
 
-                state.FrameValidationRan = true;
                 tx.PayerAddress = result.Payer;
                 if (logger.IsTrace) logger.Trace($"Simulated frame transaction {tx.Hash} validation prefix; resolved payer {result.Payer}.");
                 return AcceptTxResult.Accepted;
