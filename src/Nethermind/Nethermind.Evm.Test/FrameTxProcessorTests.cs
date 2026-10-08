@@ -3840,7 +3840,7 @@ public partial class FrameTxProcessorTests
         ValueHash256 salt = TestItem.KeccakA.ValueHash256;
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
 
         Transaction write = FrameTx(nonce: 0, SelfVerifyFrame(),
             Frame(FrameMode.Sender, target: Eip8272Constants.RecentRootAddress, data: [.. salt.Bytes, .. root.Bytes]));
@@ -3857,7 +3857,7 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
-    public void Execute_RecentRootVerifyFrame_RecordsThePredeploySlotInBal()
+    public void Execute_RecentRootVerifyFrame_RecordsTheContractSlotInBal()
     {
         const ulong committedSlot = 1_000;
         const ulong headSlot = 1_001;
@@ -3879,10 +3879,10 @@ public partial class FrameTxProcessorTests
         TransactionResult result = tracedProcessor.Execute(tx, new BlockExecutionContext(block.Header, Spec), NullTxTracer.Instance);
 
         Assert.That(result.TransactionExecuted, Is.True);
-        AccountChangesAtIndex? predeploy = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
-        Assert.That(predeploy, Is.Not.Null, "the recent-root predeploy is accessed and recorded in the BAL");
+        AccountChangesAtIndex? recentRoot = tracedState.GetGeneratingBlockAccessList()!.GetAccountChanges(Eip8272Constants.RecentRootAddress);
+        Assert.That(recentRoot, Is.Not.Null, "the recent root contract is accessed and recorded in the BAL");
         UInt256 slotKey = RecentRootStore.StorageKey(sourceId, committedSlot % Eip8272Constants.RecentRootLength).ToUInt256();
-        Assert.That(predeploy.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
+        Assert.That(recentRoot.StorageReads, Does.Contain(slotKey), "the referenced ring-buffer slot is recorded as a read");
     }
 
     [Test]
@@ -4707,7 +4707,7 @@ public partial class FrameTxProcessorTests
         }
     }
 
-    private void InstallRecentRootPredeploy()
+    private void DeployRecentRootContract()
     {
         if (_stateProvider.AccountExists(Eip8272Constants.RecentRootAddress))
         {
@@ -4721,7 +4721,7 @@ public partial class FrameTxProcessorTests
 
     private (ValueHash256 SourceId, ulong Slot, ValueHash256 Root) CommitReference(ulong slot)
     {
-        InstallRecentRootPredeploy();
+        DeployRecentRootContract();
         ValueHash256 sourceId = RecentRootStore.SourceId(Observer, TestItem.KeccakA.ValueHash256);
         ValueHash256 root = TestItem.KeccakB.ValueHash256;
         _stateProvider.Set(RecentRootStore.ReferenceCell(sourceId, slot),
