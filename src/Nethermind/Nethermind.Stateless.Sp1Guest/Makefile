@@ -16,9 +16,9 @@ GUEST_LDFLAGS := --wrap=memcpy
 # BIN_DIR must be set before the include - BFLAT_REFS expands it.
 include $(MAKEFILE_DIR)/../Nethermind.Stateless.Guest/build.mk
 # Execution harness. SP1 publishes no image that executes an arbitrary ELF, so
-# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.5.0 to print the
+# this is our own: NethermindEth/bflat-sp1 wraps sp1-sdk v6.6.0 to print the
 # cycle count and public values. SP1_RUNNER overrides it with a host binary.
-SP1_IMAGE ?= nethermindeth/sp1-runner:v6.5.0@sha256:6df3e8ade2d183f7d5a6146d5deba3f76f2531677c84b6d3afef47e579b229b3
+SP1_IMAGE ?= nethermindeth/sp1-runner:v6.6.0@sha256:d0e757ebaed581a9e0811c4b81e4a986ef4bdee63dde1cc71847e52c669048a1
 # The native executor maps guest memory through /dev/shm. Docker's 64 MB default
 # fails and so does 1g; 4g is the smallest tested value that carries a mainnet
 # block (~2.7 GB actual). A ceiling, not a reservation, so headroom is free.
