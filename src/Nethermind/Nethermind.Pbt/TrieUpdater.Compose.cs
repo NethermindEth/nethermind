@@ -29,13 +29,13 @@ internal static partial class TrieUpdater<TKey, TPath>
         Span<byte> previous = stackalloc byte[node.Length];
         writer.Entry(node.Offset, node.Length).Span.CopyTo(previous);
         writer.DropLast(childPosition);
-        PbtNodeReader stored = PbtNodeReader.FromValidated(previous);
-        if (stored.IsLeaf)
+        if (PbtNodeCodec.IsLeaf(previous))
         {
             previous.CopyTo(writer.Append(position, node.Length));
             return new(node.Offset, node.Length, node.Hash);
         }
 
+        PbtBranchReader stored = PbtBranchReader.FromValidated(previous);
         ValueHash256 leftHash = stored.LeftHash;
         ValueHash256 rightHash = stored.RightHash;
         if (node.ChildHashesPending)

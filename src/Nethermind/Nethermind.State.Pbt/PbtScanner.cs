@@ -167,10 +167,10 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
             stats.NodeCount++;
             stats.NodeEncodingBytes += encoding.Length;
-            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
-            if (node.IsLeaf) stats.LeafCount++;
+            if (PbtNodeCodec.IsLeaf(encoding)) stats.LeafCount++;
             else
             {
+                PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
                 stats.BranchCount++;
                 if (!node.LeftKeyPostfix.IsEmpty) stats.LeafCount++;
                 if (!node.RightKeyPostfix.IsEmpty) stats.LeafCount++;

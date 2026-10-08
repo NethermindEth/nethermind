@@ -39,14 +39,14 @@ internal static class PbtNodeCodec
     internal static int InlineKeyOffset(int anchorDepth) => PbtFourLevelGroupGeometry.GroupDepthOf(anchorDepth) >> 3;
 
     /// <summary>The trailer length of <paramref name="stored"/>'s inline keys once rebased from key offset <paramref name="from"/> to <paramref name="to"/>.</summary>
-    internal static int RebasedKeysLength(PbtNodeReader stored, int from, int to) =>
+    internal static int RebasedKeysLength(PbtBranchReader stored, int from, int to) =>
         RebasedKeyLength(stored.LeftKeyPostfix.Length, from, to) + RebasedKeyLength(stored.RightKeyPostfix.Length, from, to);
 
     private static int RebasedKeyLength(int keyLength, int from, int to) => keyLength == 0 ? 0 : keyLength + from - to;
 
     /// <summary>Writes <paramref name="stored"/>'s inline keys as a trailer under key offset <paramref name="to"/> instead of <paramref name="from"/>.</summary>
     /// <param name="path">A path through the branch covering the bytes a shallower offset takes back.</param>
-    internal static void WriteRebasedBranchTrailer(Span<byte> trailer, PbtNodeReader stored, int from, int to, scoped ReadOnlySpan<byte> path)
+    internal static void WriteRebasedBranchTrailer(Span<byte> trailer, PbtBranchReader stored, int from, int to, scoped ReadOnlySpan<byte> path)
     {
         ReadOnlySpan<byte> leftKey = stored.LeftKeyPostfix, rightKey = stored.RightKeyPostfix;
         int leftLength = RebasedKeyLength(leftKey.Length, from, to);
@@ -70,13 +70,13 @@ internal static class PbtNodeCodec
     }
 
     /// <summary>The length of <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, encoded at the deeper <paramref name="anchorDepth"/>.</summary>
-    internal static int ReanchoredLength(scoped PbtNodeReader stored, int storedAnchorDepth, int anchorDepth) =>
+    internal static int ReanchoredLength(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth) =>
         BranchPreimageLength(stored.Prefix.BitCount - (anchorDepth - storedAnchorDepth)) + BranchTrailerHeaderLength
         + RebasedKeysLength(stored, InlineKeyOffset(storedAnchorDepth), InlineKeyOffset(anchorDepth));
 
     /// <summary>Encodes <paramref name="stored"/>, anchored at <paramref name="storedAnchorDepth"/>, at the deeper <paramref name="anchorDepth"/> with the given child hashes.</summary>
     /// <remarks>The prefix bits in between are dropped, and so are any key bytes the deeper anchor's inline keys omit.</remarks>
-    internal static int EncodeReanchored(scoped PbtNodeReader stored, int storedAnchorDepth, int anchorDepth, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
+    internal static int EncodeReanchored(scoped PbtBranchReader stored, int storedAnchorDepth, int anchorDepth, in ValueHash256 left, in ValueHash256 right, Span<byte> encoding)
     {
         CompressedPrefix prefix = stored.Prefix;
         int skippedBits = anchorDepth - storedAnchorDepth;
@@ -91,7 +91,7 @@ internal static class PbtNodeCodec
 
     /// <summary>Hashes the branch <paramref name="stored"/> re-anchored <paramref name="skippedBits"/> deeper, without its leading prefix bits.</summary>
     [SkipLocalsInit]
-    internal static ValueHash256 HashReanchored(PbtNodeReader stored, int skippedBits)
+    internal static ValueHash256 HashReanchored(PbtBranchReader stored, int skippedBits)
     {
         if (skippedBits == 0) return Blake3Hash.Hash(stored.Preimage);
         CompressedPrefix prefix = stored.Prefix;
@@ -100,6 +100,16 @@ internal static class PbtNodeCodec
         CreateBranchEncoding(preimage, bitCount, stored.LeftHash, stored.RightHash);
         PbtBitPrefix.CopyBits(prefix.Bytes, skippedBits, bitCount, preimage[3..], 0);
         return Blake3Hash.Hash(preimage);
+    }
+
+    /// <summary>Whether <paramref name="encoding"/> is a root leaf rather than a branch.</summary>
+    internal static bool IsLeaf(ReadOnlySpan<byte> encoding) => encoding[0] == LeafTag;
+
+    /// <summary>The root leaf's complete key.</summary>
+    internal static ReadOnlySpan<byte> LeafKey(ReadOnlySpan<byte> encoding)
+    {
+        Debug.Assert(IsLeaf(encoding), "The PBT node is not a leaf.");
+        return encoding[2..];
     }
 
     /// <summary>The length of a root leaf encoding.</summary>

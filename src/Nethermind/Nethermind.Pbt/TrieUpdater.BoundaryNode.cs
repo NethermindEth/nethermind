@@ -40,7 +40,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// </remarks>
         internal BoundaryNode(ReadOnlyMemory<byte> parent, int parentAnchorDepth, bool right)
         {
-            PbtNodeReader branch = PbtNodeReader.FromValidated(parent.Span);
+            PbtBranchReader branch = PbtBranchReader.FromValidated(parent.Span);
             Debug.Assert(!(right ? branch.RightKeyPostfix : branch.LeftKeyPostfix).IsEmpty, "An inlined leaf's branch holds its key.");
             _encoding = parent;
             _anchorDepth = (ushort)parentAnchorDepth;
@@ -52,7 +52,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <remarks>A leaf encoding holds no hash, so this is the one leaf whose hash comes from outside it.</remarks>
         internal BoundaryNode(ReadOnlyMemory<byte> encoding, in ValueHash256 hash) : this(encoding, 0, hash, LeafSource.Stored)
         {
-            Debug.Assert(PbtNodeReader.FromValidated(encoding.Span).IsLeaf, "A stored leaf carries a leaf encoding.");
+            Debug.Assert(PbtNodeCodec.IsLeaf(encoding.Span), "A stored leaf carries a leaf encoding.");
             Debug.Assert(hash != default, "A boundary node knows its hash.");
         }
 
@@ -60,7 +60,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         /// <param name="hash">The hash of <paramref name="encoding"/>, taken from the link that referenced it.</param>
         internal BoundaryNode(ReadOnlyMemory<byte> encoding, int anchorDepth, in ValueHash256 hash) : this(encoding, anchorDepth, hash, LeafSource.None)
         {
-            Debug.Assert(!encoding.IsEmpty && !PbtNodeReader.FromValidated(encoding.Span).IsLeaf, "A boundary branch carries a stored branch encoding.");
+            Debug.Assert(!encoding.IsEmpty && !PbtNodeCodec.IsLeaf(encoding.Span), "A boundary branch carries a stored branch encoding.");
             Debug.Assert(hash != default, "A boundary node knows its hash.");
         }
 
@@ -86,12 +86,11 @@ internal static partial class TrieUpdater<TKey, TPath>
             get
             {
                 Debug.Assert(IsLeaf, "Only a leaf has a complete key.");
-                PbtNodeReader node = Reader;
                 return _source switch
                 {
-                    LeafSource.ParentLeft => node.LeftKeyPostfix,
-                    LeafSource.ParentRight => node.RightKeyPostfix,
-                    _ => node.Key,
+                    LeafSource.ParentLeft => Reader.LeftKeyPostfix,
+                    LeafSource.ParentRight => Reader.RightKeyPostfix,
+                    _ => PbtNodeCodec.LeafKey(_encoding.Span),
                 };
             }
         }
@@ -107,7 +106,15 @@ internal static partial class TrieUpdater<TKey, TPath>
         internal readonly ValueHash256 Hash => _hash;
         /// <summary>The absolute depth this node's encoding is anchored at, never deeper than its boundary slot.</summary>
         internal readonly int AnchorDepth => _anchorDepth;
-        internal readonly PbtNodeReader Reader => PbtNodeReader.FromValidated(_encoding.Span);
+        /// <summary>The branch this node is read from: its own, or the one that inlines it.</summary>
+        internal readonly PbtBranchReader Reader
+        {
+            get
+            {
+                Debug.Assert(_source != LeafSource.Stored, "A stored root leaf has no branch encoding.");
+                return PbtBranchReader.FromValidated(_encoding.Span);
+            }
+        }
         internal readonly CompressedPrefix Prefix => Reader.Prefix;
         /// <summary>The absolute depth this branch splits at, past its compressed prefix.</summary>
         internal readonly int BranchDepth => _anchorDepth + Prefix.BitCount;
@@ -127,7 +134,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             get
             {
-                PbtNodeReader reader = Reader;
+                PbtBranchReader reader = Reader;
                 return (byte)((reader.LeftKeyPostfix.IsEmpty ? 0 : LeftLeaf) | (reader.RightKeyPostfix.IsEmpty ? 0 : RightLeaf));
             }
         }
@@ -171,7 +178,7 @@ internal static partial class TrieUpdater<TKey, TPath>
         {
             ReadOnlyMemory<byte> encoding = frame.GetEncoding(position);
             if (encoding.IsEmpty) throw new InvalidDataException("A referenced PBT node is missing.");
-            if (PbtNodeReader.FromValidated(encoding.Span).IsLeaf) return new(encoding, hash);
+            if (PbtNodeCodec.IsLeaf(encoding.Span)) return new(encoding, hash);
             return new(encoding, AnchorDepthAt(ref frame, position), hash);
         }
 

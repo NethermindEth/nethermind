@@ -82,9 +82,8 @@ internal static partial class TrieUpdater<TKey, TPath>
             ReadOnlyMemory<byte> encoding = frame.GetEncoding(position);
             if (!encoding.IsEmpty)
             {
-                PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-                Debug.Assert(!node.IsLeaf, "A root leaf's hash is the tree root and cannot be derived from its encoding.");
-                return node.Preimage;
+                Debug.Assert(!PbtNodeCodec.IsLeaf(encoding.Span), "A root leaf's hash is the tree root and cannot be derived from its encoding.");
+                return PbtBranchReader.FromValidated(encoding.Span).Preimage;
             }
             _hashes[position] = default;
             if (PbtFourLevelGroupGeometry.WidthOf(position) is not (int width and > 1 and < PbtFourLevelGroupGeometry.BoundarySlots)) return default;

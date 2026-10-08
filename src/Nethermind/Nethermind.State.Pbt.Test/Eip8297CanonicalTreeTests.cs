@@ -495,7 +495,7 @@ public class Eip8297CanonicalTreeTests
         tree.ApplyBatch([(second, Value(3))]);
         oracle.Insert(second, Value(3));
         tree.Reopen();
-        PbtNodeReader branch = PbtNodeReader.FromValidated(tree.Nodes[0].Encoding.Span);
+        PbtBranchReader branch = PbtBranchReader.FromValidated(tree.Nodes[0].Encoding.Span);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "split root leaf");
@@ -542,19 +542,20 @@ public class Eip8297CanonicalTreeTests
             : PbtTreeHarness.EncodeBranch(field, length, left, right, leftKey, rightKey);
         byte[] backing = new byte[encoding.Length + 11];
         encoding.CopyTo(backing, 7);
-        PbtNodeReader reader = PbtNodeReader.FromValidated(backing.AsSpan(7, encoding.Length));
+        ReadOnlySpan<byte> borrowed = backing.AsSpan(7, encoding.Length);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.IsLeaf, Is.EqualTo(leaf));
+            Assert.That(PbtNodeCodec.IsLeaf(borrowed), Is.EqualTo(leaf));
             Assert.That(encoding, Is.EqualTo(expected));
             if (leaf)
             {
-                Assert.That(reader.Key.ToArray(), Is.EqualTo(field));
-                Assert.That(reader.Key.Overlaps(backing.AsSpan()), Is.True);
+                Assert.That(PbtNodeCodec.LeafKey(borrowed).ToArray(), Is.EqualTo(field));
+                Assert.That(PbtNodeCodec.LeafKey(borrowed).Overlaps(backing.AsSpan()), Is.True);
                 Assert.That(PbtTreeHarness.HashLeaf(field, left.Bytes).Bytes.ToArray(), Is.EqualTo(EipReferenceTree.Hash([0, .. field, .. left.Bytes])), "leaf hash");
             }
             else
             {
+                PbtBranchReader reader = PbtBranchReader.FromValidated(borrowed);
                 Assert.That(Blake3Hash.Hash(reader.Preimage).Bytes.ToArray(), Is.EqualTo(EipReferenceTree.Hash(preimage)), "inline leaf keys are not hashed");
                 Assert.That(reader.Preimage.ToArray(), Is.EqualTo(preimage));
                 Assert.That(reader.Prefix.BitCount, Is.EqualTo(length));
@@ -648,7 +649,7 @@ public class Eip8297CanonicalTreeTests
     public void Node_reader_rejects_wrong_kind_access()
     {
         byte[] encoding = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(Bytes.FromHexString("A0")));
-        Assert.Throws<InvalidOperationException>(() => _ = PbtNodeReader.FromValidated(encoding).Prefix.BitCount);
+        Assert.Throws<InvalidOperationException>(() => _ = PbtBranchReader.FromValidated(encoding));
     }
 #endif
 
@@ -673,10 +674,9 @@ public class Eip8297CanonicalTreeTests
 
     private static int ReadNodeFields(byte[] encoding)
     {
-        PbtNodeReader reader = PbtNodeReader.FromValidated(encoding);
-        return encoding.Length + (reader.IsLeaf
-            ? reader.Key[0]
-            : reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0] + reader.LeftKeyPostfix[0] + reader.RightKeyPostfix[0]);
+        if (PbtNodeCodec.IsLeaf(encoding)) return encoding.Length + PbtNodeCodec.LeafKey(encoding)[0];
+        PbtBranchReader reader = PbtBranchReader.FromValidated(encoding);
+        return encoding.Length + reader.Prefix.BitCount + reader.Prefix.Bytes[0] + reader.LeftHash.Bytes[0] + reader.RightHash.Bytes[0] + reader.LeftKeyPostfix[0] + reader.RightKeyPostfix[0];
     }
 
     [Test]
@@ -943,8 +943,8 @@ public class Eip8297CanonicalTreeTests
                     int postfixLength = shared.Length - (payload.Key.BitDepth >> 3);
                     foreach ((int _, ReadOnlyMemory<byte> encoding) in PbtStoreTestExtensions.ReadGroup(payload.Key, payload.Payload.Span).Nodes())
                     {
-                        PbtNodeReader node = PbtNodeReader.FromValidated(encoding.Span);
-                        if (node.IsLeaf) continue;
+                        if (PbtNodeCodec.IsLeaf(encoding.Span)) continue;
+                        PbtBranchReader node = PbtBranchReader.FromValidated(encoding.Span);
                         if (!node.LeftKeyPostfix.IsEmpty) Assert.That(node.LeftKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
                         if (!node.RightKeyPostfix.IsEmpty) Assert.That(node.RightKeyPostfix.Length, Is.EqualTo(postfixLength), $"{scenario}: group depth {payload.Key.BitDepth}");
                     }
@@ -1386,7 +1386,7 @@ public class Eip8297CanonicalTreeTests
         PbtStorageNodePath branchGroupKey = new(Bytes.FromHexString("00"), 8);
         using (RefCountingMemory? original = store.GetPhysicalNodeGroup(branchGroupKey))
         {
-            PbtNodeReader branch = PbtNodeReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(18).Span);
+            PbtBranchReader branch = PbtBranchReader.FromValidated(PbtStoreTestExtensions.ReadGroup(branchGroupKey, original!.GetSpan()).GetEncoding(18).Span);
             Assert.That(branch.Prefix.BitCount, Is.EqualTo(prefixBits - 12));
         }
         root = store.Fold(root, [(sibling, null)]);
@@ -1395,7 +1395,7 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
         GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
-        PbtNodeReader promoted = PbtNodeReader.FromValidated(updatedReader.GetEncoding(30).Span);
+        PbtBranchReader promoted = PbtBranchReader.FromValidated(updatedReader.GetEncoding(30).Span);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(root.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));

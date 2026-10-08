@@ -122,10 +122,9 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(PbtFourLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
-        PbtNodeReader root = PbtNodeReader.FromValidated(encoding.Span);
-        return root.IsLeaf
+        return PbtNodeCodec.IsLeaf(encoding.Span)
             ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, groupHash)
-            : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, Blake3Hash.Hash(root.Preimage));
+            : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding.Span).Preimage));
     }
 
     public void Dispose()

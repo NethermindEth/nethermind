@@ -54,8 +54,7 @@ internal static class PbtNodeGroupEncoder
             seenPositions |= bit;
             ReadOnlySpan<byte> encoding = record.Encoding.Span;
             PbtNodeCodec.ThrowIfNotExact(encoding);
-            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
-            ValidateNodePath(node, record.Path);
+            ValidateNodePath(encoding, record.Path);
             if (PbtNodeGroupCodec.ShouldOmit(location.Position, encoding)) continue;
             entriesLength = checked(entriesLength + encoding.Length);
             if (entriesLength > MaxOffset) throw new InvalidDataException("PBT node group entries exceed the uint16 offset limit.");
@@ -104,17 +103,17 @@ internal static class PbtNodeGroupEncoder
         return memory;
     }
 
-    private static void ValidateNodePath<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    private static void ValidateNodePath<TPath>(ReadOnlySpan<byte> encoding, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        if (node.IsLeaf)
+        if (PbtNodeCodec.IsLeaf(encoding))
         {
             if (path.BitDepth != 0) throw new InvalidDataException("A PBT leaf entry is only valid as the tree root.");
             return;
         }
-        if (!MatchesInlineLeaves(node, path)) throw new InvalidDataException("PBT leaf does not match its group position.");
+        if (!MatchesInlineLeaves(PbtBranchReader.FromValidated(encoding), path)) throw new InvalidDataException("PBT leaf does not match its group position.");
     }
 
-    private static bool MatchesInlineLeaves<TPath>(PbtNodeReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
+    private static bool MatchesInlineLeaves<TPath>(PbtBranchReader node, TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
         byte[] pathBytes = new byte[PbtBitPrefix.ByteCount(path.BitDepth)];
         PbtNodePathOperations.CopyTo(path, pathBytes);

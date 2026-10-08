@@ -233,7 +233,7 @@ public static class PbtNodeGroupCodec
             return;
         }
         if (position == PbtFourLevelGroupGeometry.RootPosition) return;
-        PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
+        PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
         NodeGroupPath local = PbtFourLevelGroupGeometry.LocalPathOf(position);
         ValidateInlineLeafPath(groupKey, node.LeftKeyPostfix, local);
         ValidateInlineLeafPath(groupKey, node.RightKeyPostfix, local);

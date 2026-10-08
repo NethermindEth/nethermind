@@ -94,7 +94,7 @@ public static partial class TrieUpdater
         {
             ReadOnlySpan<byte> entry = rootWriter.Entry(rootNode.Offset, rootNode.Length).Span;
             rootWriter.ValidateEntry(rootPath, PbtFourLevelGroupGeometry.RootPosition, entry);
-            hash = rootNode.Hash != default || PbtNodeReader.FromValidated(entry).IsLeaf ? rootNode.Hash : HashBranch(entry);
+            hash = rootNode.Hash != default || PbtNodeCodec.IsLeaf(entry) ? rootNode.Hash : HashBranch(entry);
         }
         PublishGroup(storeWriter, ref rootReader, rootWriter, rootPath, hash);
         return hash;

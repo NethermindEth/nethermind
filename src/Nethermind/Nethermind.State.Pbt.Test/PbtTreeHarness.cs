@@ -53,7 +53,7 @@ internal sealed class PbtTreeHarness : IDisposable
     }
 
     /// <summary>The hash of a branch encoding: BLAKE3 over its preimage.</summary>
-    public static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtNodeReader.FromValidated(encoding).Preimage);
+    public static ValueHash256 HashBranch(ReadOnlySpan<byte> encoding) => Blake3Hash.Hash(PbtBranchReader.FromValidated(encoding).Preimage);
 
     /// <summary>Hashes a leaf from its complete key and 32-byte value, per EIP-8297.</summary>
     public static ValueHash256 HashLeaf(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
@@ -259,7 +259,7 @@ internal static class PbtStoreTestExtensions
                     encoding = ResolveNode(PbtStoreTestExtensions.ReadGroup(location.GroupKey, physical.Payload.Span), location.GroupKey, location.Position);
             // A root leaf's hash is not derivable from its encoding, and the test store ignores group hashes anyway.
             if (encoding is null || encoding[0] == 0) return default;
-            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
             int branchDepth = path.BitDepth + node.Prefix.BitCount;
             for (int bit = path.BitDepth; bit < Math.Min(branchDepth, groupKey.BitDepth); bit++)
                 if (TrieUpdater.GetBit(node.Prefix.Bytes, bit - path.BitDepth) != groupKey.GetBit(bit)) return default;
@@ -421,8 +421,9 @@ internal static class PbtStoreTestExtensions
         {
             byte[]? encoding = GetLogicalNode(store, currentPath);
             if (encoding is null || PbtNodePathOperations.Equal(currentPath, path)) return encoding;
-            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
-            if (node.IsLeaf || currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
+            if (PbtNodeCodec.IsLeaf(encoding)) return null;
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
+            if (currentPath.BitDepth + node.Prefix.BitCount >= path.BitDepth) return null;
             int directionBit = currentPath.BitDepth + node.Prefix.BitCount;
             int direction = path.GetBit(directionBit);
             if (!(direction == 0 ? node.LeftKeyPostfix : node.RightKeyPostfix).IsEmpty) return null;
@@ -517,8 +518,8 @@ internal static class PbtStoreTestExtensions
             byte[]? encoding = GetLogicalNode(store, path);
             if (encoding is null) continue;
             records.Add(new PbtNodeRecord(path, encoding));
-            PbtNodeReader node = PbtNodeReader.FromValidated(encoding);
-            if (node.IsLeaf) continue;
+            if (PbtNodeCodec.IsLeaf(encoding)) continue;
+            PbtBranchReader node = PbtBranchReader.FromValidated(encoding);
             if (node.LeftKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 0));
             if (node.RightKeyPostfix.IsEmpty) pending.Push(path.Append(node.Prefix, 1));
         }
