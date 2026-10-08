@@ -149,8 +149,9 @@ public class OptimizedDictionaryZkEvmTests
     }
 
     /// <summary>A key whose hash keeps only a few bits, so chains of several entries share each bucket.</summary>
+    /// <remarks>Half the hashes are negative, which the guest map widens by sign rather than by zeros.</remarks>
     private readonly record struct CollidingKey(int Value)
     {
-        public override int GetHashCode() => Value & 7;
+        public override int GetHashCode() => (Value & 7) | ((Value & 8) << 28);
     }
 }

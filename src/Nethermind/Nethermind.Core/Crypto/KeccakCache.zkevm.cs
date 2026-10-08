@@ -395,8 +395,9 @@ public static partial class KeccakCache
     private static ref ulong SlotOf(ref ulong memo, ulong mixed)
     {
         ulong folded = mixed ^ (mixed >> 32);
+        // The top bits of the product's low half, taken by shifts: masking it is a 32-bit multiply and a zero-extend on RV64.
         return ref Unsafe.Add(
             ref memo,
-            (nuint)(((folded * MemoSlotMultiplier) & uint.MaxValue) >> (32 - MemoSlotBits)) << MemoSlotShift);
+            (nuint)(((folded * MemoSlotMultiplier) << 32) >> (64 - MemoSlotBits)) << MemoSlotShift);
     }
 }

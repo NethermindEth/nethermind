@@ -842,7 +842,8 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                     uint branch = Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 7));
                     if ((byte)branch == (byte)Instruction.PUSH2 && branch >> 24 == (byte)Instruction.JUMPI)
                     {
-                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref opcode, 2)));
+                        // The selector's word, reversed, holds it zero-extended above bit 32, where a 32-bit read needs extending.
+                        ulong selector = BinaryPrimitives.ReverseEndianness(Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref opcode, 2))) >> 32;
                         // DUP1 is charged; the fused step charges the rest.
                         if (((top ^ selector) | Unsafe.Add(ref top, 1) | Unsafe.Add(ref top, 2) | Unsafe.Add(ref top, 3)) != 0)
                         {
@@ -1870,7 +1871,7 @@ public unsafe partial class VirtualMachine<TGasPolicy>
                 ulong left = top;
                 ulong right = product;
                 product = left * right;
-                Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHigh(left, right);
+                Unsafe.Add(ref product, 1) = (left | right) >> 32 == 0 ? 0 : MultiplyHighWithoutFrame(left, right);
                 head--;
                 ip = ref Unsafe.Add(ref ip, 1);
                 nint next = handlers[PairAt(ref ip)];
@@ -2045,9 +2046,13 @@ public unsafe partial class VirtualMachine<TGasPolicy>
         }
 
         /// <summary>The high 64 bits of the product of <paramref name="left"/> and <paramref name="right"/>.</summary>
-        /// <remarks><see cref="Math.BigMul(ulong, ulong, out ulong)"/> is a call here, which would cost the MUL handler every callee-saved register.</remarks>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private static ulong MultiplyHigh(ulong left, ulong right)
+        private static ulong MultiplyHigh(ulong left, ulong right) => Math.BigMul(left, right, out _);
+
+        /// <inheritdoc cref="MultiplyHigh"/>
+        /// <remarks><see cref="Math.BigMul(ulong, ulong, out ulong)"/> takes one instruction, but gives the frameless MUL handler a frame.</remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static ulong MultiplyHighWithoutFrame(ulong left, ulong right)
         {
             ulong leftLow = (uint)left;
             ulong leftHigh = left >> 32;
