@@ -747,6 +747,7 @@ public class GCKeeperTests
     {
         PreEntryRig rig = new();
         using GCKeeper keeper = rig.Keeper;
+        long stale = Interlocked.Read(ref Metrics.NoGcRegionPreEntriesStale);
         keeper.PrepareNoGCRegion();
         rig.Queued[0].Execute();
         rig.Runtime.AllocatedBytes += GCKeeper.PreEntryMaxAllocatedBytes + (overBudget ? 0 : -1);
@@ -756,6 +757,7 @@ public class GCKeeperTests
         {
             Assert.That(rig.Runtime.Ends, Is.EqualTo(overBudget ? 1 : 0));
             Assert.That(rig.Queued, Has.Count.EqualTo(overBudget ? 2 : 1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntriesStale) - stale, Is.EqualTo(overBudget ? 1 : 0));
         }
 
         if (overBudget) rig.Queued[1].Execute();
@@ -855,10 +857,12 @@ public class GCKeeperTests
     {
         PreEntryRig rig = new();
         using GCKeeper keeper = rig.Keeper;
+        long failed = Interlocked.Read(ref Metrics.NoGcRegionPreEntriesFailed);
         rig.Runtime.Refuse = true;
         keeper.PrepareNoGCRegion();
         rig.Queued[0].Execute();
         rig.Runtime.Refuse = false;
+        Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntriesFailed) - failed, Is.EqualTo(1));
 
         // Nor the scheduler pause it took: that is let go of with the failure, not at the expiry.
         Assert.That(GCScheduler.MarkGCPaused(), Is.True, "the failed pre-entry still pauses the GC scheduler");
@@ -955,18 +959,115 @@ public class GCKeeperTests
         Assert.That(rig.Queued, Has.Count.EqualTo(1));
     }
 
+    [Test]
+    public async Task Payload_arriving_while_an_expired_pre_entry_is_ending_enters_its_own_once_it_has_ended()
+    {
+        using ManualResetEventSlim ending = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        PreEntryRig rig = new(beforeEnd: () => { ending.Set(); proceed.Wait(); });
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        rig.Queued[0].Execute();
+
+        // The expiry has let go of the region and is ending it, but it has not left the keeper's slot yet.
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        Assert.That(ending.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        IDisposable payload;
+        try
+        {
+            payload = keeper.TryStartNoGCRegion();
+            Assert.That(rig.Queued, Has.Count.EqualTo(1), "the payload's entry waits for the region on its way out");
+        }
+        finally
+        {
+            proceed.Set();
+        }
+
+        Assert.That(() => rig.Queued.Count, Is.EqualTo(2).After(5000, 10), "the payload enters its own region, not none");
+        rig.Queued[1].Execute();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(2));
+            Assert.That(rig.Runtime.IsActive, Is.True);
+        }
+
+        payload.Dispose();
+        await Task.Delay(50);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False);
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public async Task Payload_finding_a_stale_pre_entry_still_being_entered_enters_its_own_once_it_has_ended()
+    {
+        using ManualResetEventSlim entering = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        PreEntryRig rig = new(() => { entering.Set(); proceed.Wait(); });
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        Task entry = Task.Run(rig.Queued[0].Execute);
+        Assert.That(entering.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        rig.AdvanceMs(GCKeeper.PreEntryTimeoutMs);
+
+        IDisposable payload;
+        try
+        {
+            payload = keeper.TryStartNoGCRegion();
+            Assert.That(rig.Queued, Has.Count.EqualTo(1));
+        }
+        finally
+        {
+            proceed.Set();
+        }
+
+        using IDisposable lease = payload;
+        await entry.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(1), "the stale region is ended as soon as its entry completes");
+            Assert.That(rig.Queued, Has.Count.EqualTo(2), "then the payload's own entry is queued");
+        }
+
+        rig.Queued[1].Execute();
+        Assert.That(rig.Runtime.IsActive, Is.True);
+    }
+
+    [Test]
+    public void GetBlobs_answered_while_a_pre_entry_is_being_made_keeps_its_schedule()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        // A getBlobs answered while the previous pre-entry is being queued.
+        rig.OnQueue = keeper.SchedulePrepareNoGCRegion;
+        keeper.SchedulePrepareNoGCRegion();
+        rig.CompleteDelays(GCKeeper.PreEntryDelayMs);
+        Assert.That(() => rig.PendingDelays(GCKeeper.PreEntryDelayMs), Is.EqualTo(1).After(5000, 10));
+        rig.OnQueue = null;
+        Thread.Sleep(50);
+
+        // That schedule is still the one pending: another getBlobs does not start a second.
+        keeper.SchedulePrepareNoGCRegion();
+        Assert.That(rig.PendingDelays(GCKeeper.PreEntryDelayMs), Is.EqualTo(1));
+    }
+
     private sealed class PreEntryRig
     {
         private long _now = 1_000_000;
         private readonly List<(int Ms, TaskCompletionSource<bool> Done)> _pending = [];
 
-        public PreEntryRig(Action? beforeStart = null)
+        public PreEntryRig(Action? beforeStart = null, Action? beforeEnd = null)
         {
-            Runtime = new RegionRuntime { BeforeStart = beforeStart };
+            Runtime = new RegionRuntime { BeforeStart = beforeStart, BeforeEnd = beforeEnd };
             Strategy.CanStartNoGCRegion().Returns(true);
             Strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
-            Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queued.Add, Delay, () => Interlocked.Read(ref _now));
+            Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queue, Delay, () => Interlocked.Read(ref _now));
         }
+
+        public Action? OnQueue { get; set; }
 
         public RegionRuntime Runtime { get; }
         public IGCStrategy Strategy { get; } = Substitute.For<IGCStrategy>();
@@ -998,6 +1099,12 @@ public class GCKeeperTests
                 }
                 return count;
             }
+        }
+
+        private void Queue(IThreadPoolWorkItem item)
+        {
+            lock (Queued) Queued.Add(item);
+            OnQueue?.Invoke();
         }
 
         private Task<bool> Delay(int ms, CancellationToken token)

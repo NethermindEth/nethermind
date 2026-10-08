@@ -35,7 +35,7 @@ public class GCKeeper : IDisposable
     private TaskCompletionSource? _entriesDrained;
 
     // Entry ahead of the payload, see SchedulePrepareNoGCRegion.
-    internal const int PreEntryDelayMs = 3;
+    internal const int PreEntryDelayMs = 20;
     internal const int PreEntryTimeoutMs = 3_000;
     // A quarter of the SOH budget may go elsewhere before the payload takes the region over; the rest is the block's.
     internal static readonly long PreEntryMaxAllocatedBytes = (_defaultSize - _lohSize) / 4;
@@ -125,7 +125,7 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
-            if (_region is { IsPreEntryOwned: true } preEntered)
+            if (_region is { IsPreEntry: true } preEntered)
             {
                 switch (preEntered.TryHandOver())
                 {
@@ -135,7 +135,13 @@ public class GCKeeper : IDisposable
                         // admitted) carries its collection, exactly as when it admits a region itself.
                         return new SharedRegionLease(preEntered, region, ownerLease: true);
                     case PreEntryHandOver.Stale:
+                        Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesStale);
                         // Claimed for retirement; ended below, outside the keeper's lock.
+                        stale = preEntered;
+                        break;
+                    case PreEntryHandOver.Ending:
+                        // Let go of by its expiry or a failed entry, but still in the slot: the payload does not
+                        // share a region on its way out, it ends it (if nobody has yet) and enters its own.
                         stale = preEntered;
                         break;
                 }
@@ -146,6 +152,7 @@ public class GCKeeper : IDisposable
 
         if (stale is not null)
         {
+            // Does nothing when the expiry or a failed entry has let go of it already.
             stale.Release(owner: true);
             // The stale region may have held the scheduler pause and has let go of it now: the payload's region takes
             // it, so the payload holds the pause as it would have without the pre-entry.
@@ -153,6 +160,16 @@ public class GCKeeper : IDisposable
             lock (_lock)
             {
                 if (_disposed) return region;
+                if (ReferenceEquals(_region, stale))
+                {
+                    // Still being ended, by another thread or by its own entry finishing: the payload takes the slot
+                    // now and its entry is queued once that region has left it (see ReleaseRegion), as the runtime
+                    // holds one region at a time.
+                    stale.Successor = region;
+                    _region = region;
+                    _pendingEntries++;
+                    return region;
+                }
                 if (AdmitLocked(region) is { } held) return held;
             }
         }
@@ -194,8 +211,10 @@ public class GCKeeper : IDisposable
     /// payload carrying those blobs; repeated calls schedule one entry at a time.
     /// </summary>
     /// <remarks>
-    /// Deferred a little so the getBlobs answer is on its way before the entry suspends the process. Does nothing
-    /// while the strategy disallows the region, so it is on exactly when the payload's own region is.
+    /// Deferred by <see cref="PreEntryDelayMs"/> so the getBlobs answer, which can be several megabytes, is written
+    /// before the entry suspends the process; the payload follows the answer by far longer than that. If a payload
+    /// arrives first, the pre-entry finds the slot taken and does nothing, as without it. Does nothing while the
+    /// strategy disallows the region, so it is on exactly when the payload's own region is.
     /// </remarks>
     public void SchedulePrepareNoGCRegion()
     {
@@ -205,19 +224,19 @@ public class GCKeeper : IDisposable
 
     private async Task PrepareAfterDelayAsync()
     {
+        bool scheduled = true;
         try
         {
-            if (!await _delay(PreEntryDelayMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+            bool elapsed = await _delay(PreEntryDelayMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding);
+            // Cleared before the entry, and only here: a getBlobs answered meanwhile schedules the next one.
             Volatile.Write(ref _preEntryScheduled, 0);
-            PrepareNoGCRegion();
+            scheduled = false;
+            if (elapsed) PrepareNoGCRegion();
         }
         catch (Exception e)
         {
+            if (scheduled) Volatile.Write(ref _preEntryScheduled, 0);
             if (_logger.IsError) _logger.Error("No-GC region pre-entry failed.", e);
-        }
-        finally
-        {
-            Volatile.Write(ref _preEntryScheduled, 0);
         }
     }
 
@@ -247,6 +266,7 @@ public class GCKeeper : IDisposable
         }
         catch
         {
+            Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesFailed);
             region.Dispose();
             CompleteEntry();
             throw;
@@ -278,14 +298,31 @@ public class GCKeeper : IDisposable
         TakenOver,
         /// <summary>Too old, too much allocated since entry, or not entered: claimed for the payload to end.</summary>
         Stale,
+        /// <summary>Let go of by its expiry or a failed entry while still in the slot: the payload ends it if needed.</summary>
+        Ending,
     }
 
     private void ReleaseRegion(NoGCRegion region)
     {
+        NoGCRegion? successor;
         lock (_lock)
         {
             if (ReferenceEquals(_region, region)) _region = null;
+            successor = region.Successor;
+            region.Successor = null;
             if (_pendingEntries == 0 && _region is null) _entriesDrained?.TrySetResult();
+        }
+
+        if (successor is null) return;
+        try
+        {
+            _queue(successor);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region entry failed.", e);
+            successor.ForceRelease();
+            CompleteEntry();
         }
     }
 
@@ -305,11 +342,14 @@ public class GCKeeper : IDisposable
         private bool _entered;
         private readonly long _createdTimestamp = preEntry ? keeper._timestamp() : 0;
         private long _allocatedAtEntry;
+        private bool _takenOver;
 
         public bool PausedGCScheduler => pausedGCScheduler;
 
-        /// <summary>Read under the keeper's lock as a hint; <see cref="TryHandOver"/> decides under the region's lock.</summary>
-        public bool IsPreEntryOwned => Volatile.Read(ref _preEntryOwned);
+        public bool IsPreEntry => _isPreEntry;
+
+        /// <summary>A payload's region waiting, under the keeper's lock, for this region to leave the slot.</summary>
+        public NoGCRegion? Successor { get; set; }
 
         /// <summary>
         /// Hands a region entered ahead of the payload to that payload while it still has the payload's budget;
@@ -319,14 +359,20 @@ public class GCKeeper : IDisposable
         {
             lock (_stateLock)
             {
-                if (!_preEntryOwned || _released || _ownerReleased) return PreEntryHandOver.None;
+                // Taken over by an earlier payload: shared like any payload's region.
+                if (_takenOver) return PreEntryHandOver.None;
+                if (!_preEntryOwned || _released || _ownerReleased) return PreEntryHandOver.Ending;
                 _preEntryOwned = false;
                 bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < PreEntryTimeoutMs
                     && (_active
                         ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < PreEntryMaxAllocatedBytes
                         // Still queued or being entered: the payload takes the entry over as if it had queued it.
                         : !_entered);
-                if (usable) return PreEntryHandOver.TakenOver;
+                if (usable)
+                {
+                    _takenOver = true;
+                    return PreEntryHandOver.TakenOver;
+                }
 
                 // Takes no lease meanwhile (TryAddLease checks the owner).
                 _ownerReleased = true;
@@ -419,7 +465,7 @@ public class GCKeeper : IDisposable
             if (started) EndRegion();
             else keeper.ReleaseRegion(this);
             // A failed pre-entry nobody took over lets go of the scheduler pause now rather than at its expiry.
-            if (!started && _isPreEntry) ExpirePreEntry();
+            if (!started && _isPreEntry && ExpirePreEntry()) Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesFailed);
         }
 
         /// <summary>Released by the payload that admitted the region, after which it takes no new leases.</summary>

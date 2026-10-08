@@ -19,4 +19,12 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of no-GC regions entered after engine_getBlobs that expired without engine_newPayload taking them over.")]
     public static long NoGcRegionPreEntriesExpired;
+
+    [CounterMetric]
+    [Description("Number of no-GC regions entered after engine_getBlobs that engine_newPayload found too old or too depleted and ended.")]
+    public static long NoGcRegionPreEntriesStale;
+
+    [CounterMetric]
+    [Description("Number of no-GC regions after engine_getBlobs whose entry failed.")]
+    public static long NoGcRegionPreEntriesFailed;
 }

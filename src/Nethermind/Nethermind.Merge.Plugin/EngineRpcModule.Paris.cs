@@ -80,8 +80,8 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     /// <summary>
     /// Once a getBlobs answer is computed, the payload carrying those blobs is near, so the no-GC region is entered
-    /// now, slightly deferred, and engine_newPayload takes it over instead of entering it (and collecting) on its own
-    /// critical path. The answer itself is returned unchanged.
+    /// ahead of it, deferred until the answer has been written, and engine_newPayload takes it over instead of entering
+    /// it (and collecting) on its own critical path. The answer itself is returned unchanged.
     /// </summary>
     private Task<T> ThenPrepareNoGCRegion<T>(Task<T> response)
     {
