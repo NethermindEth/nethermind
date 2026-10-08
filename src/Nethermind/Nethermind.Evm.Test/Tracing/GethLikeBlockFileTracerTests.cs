@@ -140,9 +140,8 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         }
     }
 
-    [TestCase(-1)]
-    [TestCase(1)]
-    public void File_limit_stops_stack_and_memory_capture(long limit)
+    [Test]
+    public void File_limit_stops_stack_and_memory_capture([Values(-1, 1)] long limit, [Values] bool nestedSummary)
     {
         MockFileSystem fileSystem = new();
         fileSystem.Initialize();
@@ -153,8 +152,17 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
         ITxTracer txTracer = blockTracer.StartNewTxTrace(transaction);
         using ExecutionEnvironment environment = ExecutionEnvironment.Rent(
             null!, Address.Zero, Address.Zero, null, callDepth: 0, value: UInt256.Zero, inputData: ReadOnlyMemory<byte>.Empty);
-        txTracer.StartOperation(0, Instruction.STOP, 100, environment);
-        txTracer.StartOperation(1, Instruction.STOP, 100, environment);
+        if (nestedSummary)
+        {
+            txTracer.ReportAction(100, UInt256.Zero, TestItem.AddressA, TestItem.AddressB, default, ExecutionType.TRANSACTION);
+            txTracer.ReportAction(50, UInt256.Zero, TestItem.AddressB, TestItem.AddressC, default, ExecutionType.CALL);
+            txTracer.ReportActionEnd(50, ReadOnlyMemory<byte>.Empty);
+        }
+        else
+        {
+            txTracer.StartOperation(0, Instruction.STOP, 100, environment);
+            txTracer.StartOperation(1, Instruction.STOP, 100, environment);
+        }
         using (Assert.EnterMultipleScope())
         {
             Assert.That(txTracer.IsTracingStack, Is.False);
@@ -261,7 +269,7 @@ public class GethLikeBlockFileTracerTests : VirtualMachineTestsBase
     public void Nested_exits_preserve_sibling_and_parent_gas()
     {
         PrepareNestedCall("return");
-        byte[] leaf = TestState.GetCode(TestItem.AddressC)!;
+        ReadOnlyMemory<byte> leaf = TestState.GetCode(TestItem.AddressC);
         TestState.CreateAccount(TestItem.AddressE, 1.Ether);
         TestState.InsertCode(TestItem.AddressE, leaf, Spec);
         TestState.InsertCode(TestItem.AddressC, Prepare.EvmCode.Call(TestItem.AddressE, 10_000)

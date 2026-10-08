@@ -131,6 +131,7 @@ public class GethLikeBlockFileTracer : BlockTracerBase<GethLikeTxTrace, GethLike
             _jsonWriter.WriteString("error", error);
         _jsonWriter.WriteEndObject();
         GethLikeTxTraceJsonLinesConverter.WriteLineEnd(_jsonWriter);
+        if (LimitReached) _txTracer?.StopCapture();
     }
 
     private string GetFileName(Hash256 txHash)
