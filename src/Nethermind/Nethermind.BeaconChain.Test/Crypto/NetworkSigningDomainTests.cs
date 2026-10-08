@@ -105,7 +105,9 @@ public class NetworkSigningDomainTests
     }
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> ForkNetworkPairs() =>
-        from signedFor in Networks from checkedOn in Networks from gloas in new[] { false, true }
+        from signedFor in Networks
+        from checkedOn in Networks
+        from gloas in new[] { false, true }
         select new TestCaseData(signedFor, checkedOn, gloas);
 
     private static BeaconChainSpec Spec(string network) => network switch
