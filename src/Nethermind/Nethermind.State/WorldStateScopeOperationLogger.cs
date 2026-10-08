@@ -117,7 +117,6 @@ public class WorldStateScopeOperationLogger(IWorldStateScopeProvider baseScopePr
     {
         public Hash256 RootHash => storageTree.RootHash;
 
-
         public void Get(in UInt256 index, out UInt256 value)
         {
             storageTree.Get(in index, out value);

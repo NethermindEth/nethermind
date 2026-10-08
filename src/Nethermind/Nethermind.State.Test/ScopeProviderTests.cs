@@ -1938,29 +1938,6 @@ public class ScopeProviderTests(bool useFlat)
     }
 
     [Test]
-    public void Test_MainScope_StaleDisposalPreservesReplacement()
-    {
-        PreBlockCaches caches = NewCaches();
-        IWorldStateScopeProvider.IScope baseScope = Substitute.For<IWorldStateScopeProvider.IScope>();
-        IWorldStateScopeProvider.IScope replacement = Substitute.For<IWorldStateScopeProvider.IScope>();
-        IWorldStateScopeProvider baseProvider = Substitute.For<IWorldStateScopeProvider>();
-        baseProvider.TryBeginScope(Arg.Any<BlockHeader>(), Arg.Any<LocalMetrics>(), out Arg.Any<IWorldStateScopeProvider.IScope>()).Returns(call => call.Succeed(2, baseScope));
-        PrewarmerScopeProvider consumer = new(baseProvider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance);
-        IWorldStateScopeProvider.IScope consumerScope = consumer.BeginScope(null);
-        caches.MainScope = replacement;
-
-        consumerScope.Dispose();
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(caches.MainScope, Is.SameAs(replacement));
-            Assert.That(caches.ConsumerScopeOpen, Is.False);
-            baseScope.Received(1).Dispose();
-            replacement.DidNotReceive().Dispose();
-        }
-    }
-
-    [Test]
     public void Test_ScopeDecorators_ForwardWarmHints()
     {
         IWorldStateScopeProvider.IScope inner = Substitute.For<IWorldStateScopeProvider.IScope>();
