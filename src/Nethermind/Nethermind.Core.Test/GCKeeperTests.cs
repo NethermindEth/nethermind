@@ -1209,6 +1209,37 @@ public class GCKeeperTests
     }
 
     [Test]
+    public void Allocation_at_hand_over_is_summed_per_trigger_with_its_max([Values] bool slot, [Values] bool overCap)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        long delta = (overCap ? GCKeeper.PreEntrySettings.Default.MaxAllocatedBytes : 1_000) + Interlocked.Increment(ref _allocationCase);
+        long takeover = Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeover);
+        long slotTakeover = Interlocked.Read(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtTakeover);
+        long stale = Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtStale);
+        long slotStale = Interlocked.Read(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtStale);
+        long max = Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeoverMax);
+        keeper.PrepareNoGCRegion(slot ? GCKeeper.PreEntryTrigger.Slot : GCKeeper.PreEntryTrigger.GetBlobs);
+        rig.Runtime.AllocatedBytes = 5_000_000;
+        rig.Queued[0].Execute();
+        rig.Runtime.AllocatedBytes += delta;
+
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeover) - takeover, Is.EqualTo(overCap ? 0 : delta));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtTakeover) - slotTakeover, Is.EqualTo(overCap || !slot ? 0 : delta));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtStale) - stale, Is.EqualTo(overCap ? delta : 0));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtStale) - slotStale, Is.EqualTo(overCap && slot ? delta : 0));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeoverMax), Is.EqualTo(overCap ? max : Math.Max(max, delta)));
+            if (slot && !overCap)
+                Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtTakeoverMax), Is.GreaterThanOrEqualTo(delta));
+        }
+    }
+
+    private static long _allocationCase;
+
+    [Test]
     public void Dispose_stops_the_slot_loop()
     {
         PreEntryRig rig = new();

@@ -135,15 +135,17 @@ public class GCKeeper : IDisposable
             Interlocked.Increment(ref _payloadsSinceDecommit);
             if (_region is { IsPreEntry: true } preEntered)
             {
-                switch (preEntered.TryHandOver())
+                switch (preEntered.TryHandOver(out long allocated))
                 {
                     case PreEntryHandOver.TakenOver:
                         Count(ref Metrics.NoGcRegionPreEntriesTakenOver, ref Metrics.NoGcRegionPreSlotEntriesTakenOver, preEntered.Trigger);
+                        CountAllocated(allocated, preEntered.Trigger, takenOver: true);
                         // The payload owns the region now: its lease ends the region, and its own region (never
                         // admitted) carries its collection, exactly as when it admits a region itself.
                         return new SharedRegionLease(preEntered, region, ownerLease: true);
                     case PreEntryHandOver.Stale:
                         Count(ref Metrics.NoGcRegionPreEntriesStale, ref Metrics.NoGcRegionPreSlotEntriesStale, preEntered.Trigger);
+                        CountAllocated(allocated, preEntered.Trigger, takenOver: false);
                         // Claimed for retirement; ended below, outside the keeper's lock.
                         stale = preEntered;
                         break;
@@ -294,6 +296,36 @@ public class GCKeeper : IDisposable
         long target = nowMs + leadMs;
         long slots = target < headMs + slotMs ? 1 : (target - headMs) / slotMs + 1;
         return headMs + slots * slotMs;
+    }
+
+    /// <summary>BENCH: bytes the process allocated from a pre-entry's entry to its hand-over (0 while still entering).</summary>
+    private static void CountAllocated(long allocated, PreEntryTrigger trigger, bool takenOver)
+    {
+        bool slot = trigger == PreEntryTrigger.Slot;
+        if (takenOver)
+        {
+            Interlocked.Add(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeover, allocated);
+            Max(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtTakeoverMax, allocated);
+            if (!slot) return;
+            Interlocked.Add(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtTakeover, allocated);
+            Max(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtTakeoverMax, allocated);
+        }
+        else
+        {
+            Interlocked.Add(ref Metrics.NoGcRegionPreEntryAllocatedBytesAtStale, allocated);
+            if (slot) Interlocked.Add(ref Metrics.NoGcRegionPreSlotAllocatedBytesAtStale, allocated);
+        }
+    }
+
+    private static void Max(ref long max, long value)
+    {
+        long current = Volatile.Read(ref max);
+        while (value > current)
+        {
+            long seen = Interlocked.CompareExchange(ref max, value, current);
+            if (seen == current) return;
+            current = seen;
+        }
     }
 
     private static void Count(ref long all, ref long slot, PreEntryTrigger trigger)
@@ -467,17 +499,19 @@ public class GCKeeper : IDisposable
         /// Hands a region entered ahead of the payload to that payload while it still has the payload's budget;
         /// otherwise claims it for retirement, which the caller completes with <c>Release(owner: true)</c>.
         /// </summary>
-        public PreEntryHandOver TryHandOver()
+        public PreEntryHandOver TryHandOver(out long allocated)
         {
+            allocated = 0;
             lock (_stateLock)
             {
                 // Taken over by an earlier payload: shared like any payload's region.
                 if (_takenOver) return PreEntryHandOver.None;
                 if (!_preEntryOwned || _released || _ownerReleased) return PreEntryHandOver.Ending;
                 _preEntryOwned = false;
+                if (_active) allocated = keeper._runtime.AllocatedBytes - _allocatedAtEntry;
                 bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < TimeoutMs
                     && (_active
-                        ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < keeper._settings.MaxAllocatedBytes
+                        ? keeper._runtime.IsActive && allocated < keeper._settings.MaxAllocatedBytes
                         // Still queued or being entered: the payload takes the entry over as if it had queued it.
                         : !_entered);
                 if (usable)

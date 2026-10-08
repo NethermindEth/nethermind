@@ -51,4 +51,28 @@ public static class Metrics
     [CounterMetric]
     [Description("Number of no-GC regions ahead of the slot whose entry failed.")]
     public static long NoGcRegionPreSlotEntriesFailed;
+
+    [CounterMetric]
+    [Description("Bytes allocated by the process between the entry of pre-entered no-GC regions and engine_newPayload taking them over (sum).")]
+    public static long NoGcRegionPreEntryAllocatedBytesAtTakeover;
+
+    [CounterMetric]
+    [Description("Bytes allocated by the process between the entry of slot pre-entered no-GC regions and engine_newPayload taking them over (sum).")]
+    public static long NoGcRegionPreSlotAllocatedBytesAtTakeover;
+
+    [GaugeMetric]
+    [Description("Most bytes allocated by the process between the entry of a pre-entered no-GC region and engine_newPayload taking it over.")]
+    public static long NoGcRegionPreEntryAllocatedBytesAtTakeoverMax;
+
+    [GaugeMetric]
+    [Description("Most bytes allocated by the process between the entry of a slot pre-entered no-GC region and engine_newPayload taking it over.")]
+    public static long NoGcRegionPreSlotAllocatedBytesAtTakeoverMax;
+
+    [CounterMetric]
+    [Description("Bytes allocated by the process between the entry of pre-entered no-GC regions and engine_newPayload finding them stale (sum).")]
+    public static long NoGcRegionPreEntryAllocatedBytesAtStale;
+
+    [CounterMetric]
+    [Description("Bytes allocated by the process between the entry of slot pre-entered no-GC regions and engine_newPayload finding them stale (sum).")]
+    public static long NoGcRegionPreSlotAllocatedBytesAtStale;
 }
