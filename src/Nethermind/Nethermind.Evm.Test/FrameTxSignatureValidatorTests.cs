@@ -433,39 +433,27 @@ public class FrameTxSignatureValidatorTests
         }
     }
 
-    [Test]
-    public void Validate_SingleSignature_IsNeverPreempted()
+    [TestCase(1, true, TestName = "Validate_SingleSignature_IsNeverPreempted")]
+    [TestCase(3, false, TestName = "Validate_NotPreempted_PollsBeforeEachLaterVerifyingEntry")]
+    public void Validate_NotPreempted_PollsBeforeEachLaterVerifyingEntry(int signatureCount, bool requestPreemption)
     {
         Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1)];
+        TxFrameSignature[] signatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 2), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 3)];
+        tx.FrameSignatures = signatures[..signatureCount];
         int polls = 0;
 
         bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
-            () => ++polls > 0, out bool preempted, out string? error);
+            () =>
+            {
+                polls++;
+                return requestPreemption;
+            }, out bool preempted, out string? error);
 
         using (Assert.EnterMultipleScope())
         {
             Assert.That(valid, Is.True, error);
             Assert.That(preempted, Is.False);
-            Assert.That(polls, Is.Zero);
-        }
-    }
-
-    [Test]
-    public void Validate_NotPreempted_PollsBeforeEachLaterVerifyingEntry()
-    {
-        Transaction tx = CreateFrameTx();
-        tx.FrameSignatures = [FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyA, 1), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyB, 2), FrameTxTestFrames.DigestSignature(TestItem.PrivateKeyC, 3)];
-        int polls = 0;
-
-        bool valid = FrameTxSignatureValidator.Validate(tx, _ethereumEcdsa, SecP256r1Precompile.Instance, _spec,
-            () => ++polls < 0, out bool preempted, out string? error);
-
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(valid, Is.True, error);
-            Assert.That(preempted, Is.False);
-            Assert.That(polls, Is.EqualTo(2));
+            Assert.That(polls, Is.EqualTo(signatureCount - 1));
         }
     }
 

@@ -153,8 +153,13 @@ internal class FrameTxSignatureFilterTests
         Transaction tx = Signed(TestItem.PrivateKeyA, signer: null);
         TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
 
-        Assert.That(filter.Accept(tx, ref state, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-        Assert.That(state.FrameSignaturesVerified, Is.True);
+        AcceptTxResult result = filter.Accept(tx, ref state, TxHandlingOptions.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(state.FrameSignaturesVerified, Is.True);
+        }
     }
 
     [Test]
