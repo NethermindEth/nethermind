@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Flat.Persistence;
 using Nethermind.Trie;
@@ -33,10 +34,13 @@ public sealed class ArchiveProofSource(
     private readonly Lazy<bool> _rlpWrapSlots = new(() => BasePersistence.ResolveSlotEncoding(
         db, (ISortedKeyValueStore)db.GetColumnDb(FlatDbColumns.Storage), logManager.GetClassLogger<ArchiveProofSource>()));
     private readonly int _fanOut = config.ArchiveProofFanOut > 0 ? config.ArchiveProofFanOut : Environment.ProcessorCount;
+    private long _prefetchedPaths;
 
     public bool Enabled => settings.ServeEnabled;
 
     internal bool ServingResourcesCreated => _nodeCache.IsValueCreated || _rlpWrapSlots.IsValueCreated;
+
+    internal long PrefetchedPaths => Interlocked.Read(ref _prefetchedPaths);
 
     public bool CanServe(in StateId stateId) =>
         Enabled
@@ -50,55 +54,82 @@ public sealed class ArchiveProofSource(
     public bool TryRunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
         where TCtx : struct, INodeContext<TCtx>
     {
-        if (treeVisitor is not AccountProofCollector || !CanServe(stateId)) return false;
+        if (treeVisitor is not AccountProofCollector collector || !CanServe(stateId)) return false;
 
-        RunTreeVisitor(treeVisitor, stateId, visitingOptions, diagnostics);
+        CollectProof(collector, stateId, diagnostics);
         return true;
     }
 
-    internal void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> visitor, in StateId stateId, VisitingOptions? visitingOptions, VisitingStats? diagnostics)
-        where TCtx : struct, INodeContext<TCtx>
+    internal void CollectProof(AccountProofCollector collector, in StateId stateId, VisitingStats? diagnostics)
     {
-        AccountProofCollector? collector = visitor as AccountProofCollector;
-        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector?.CancellationToken ?? default);
+        ResolutionBudget budget = new(config.ArchiveProofMaxScannedRows, collector.CancellationToken);
+        ulong block = stateId.BlockNumber;
         ulong minEpoch = metadata.DroppedThroughEpoch;
-        ArchiveProofTrieStore store = collector is not null && !_nodeCache.Value.TryGet(stateId.StateRoot, out _)
-            ? CreatePrefetchedStore(collector, stateId.BlockNumber, budget, minEpoch)
-            : CreateAccountStore(stateId.BlockNumber, budget, minEpoch);
-        PatriciaTree tree = new(store, logManager);
-        tree.Accept(visitor, stateId.StateRoot.ToCommitment(), visitingOptions, diagnostics: diagnostics);
-    }
-
-    private ArchiveProofTrieStore CreatePrefetchedStore(AccountProofCollector collector, ulong block, ResolutionBudget budget, ulong minEpoch)
-    {
-        HistoricalTrieNodeBuilder accounts = CreateAccountBuilder(block, budget, minEpoch);
         ValueHash256 identity = collector.HashedAddress;
-        HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
-        ArchiveProofTrieStore storageStore = new(storage, storageResolverFactory: null);
+        HistoricalTrieNodeBuilder accounts = CreateAccountBuilder(block, budget, minEpoch);
+        int accountDepth = _nodeCache.Value.FirstUncachedDepth(stateId.StateRoot, identity, out _);
+        if (accountDepth != ArchiveProofNodeCache.PathCached)
+        {
+            HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work = [];
+            accounts.CollectPrefetch(identity, work, accountDepth);
+            Prefetch(work, accounts.FanOutOptions);
+        }
 
-        HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work = [];
-        accounts.CollectPrefetch(identity, work);
-        HistoricalTrieNodeBuilder.Prefetch([.. work], accounts.FanOutOptions);
+        if (!ArchiveProofPathWalker.TryProveAccount(collector, accounts, stateId.StateRoot, diagnostics, out AccountStruct account)) return;
 
         ValueHash256[] slots = collector.GetHashedStorageKeys();
-        bool storagePrefetched = false;
-        return new ArchiveProofTrieStore(
-            accounts,
-            accountPath =>
-            {
-                if (accountPath != identity) return new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null);
+        if (slots.Length == 0 || !account.HasStorage) return;
 
-                if (slots.Length > 0 && !storagePrefetched)
-                {
-                    storagePrefetched = true;
-                    storage.PrefetchOne(TreePath.Empty);
-                    HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> deeper = [];
-                    foreach (ValueHash256 slot in slots) storage.CollectPrefetch(slot, deeper, fromDepth: 1);
-                    HistoricalTrieNodeBuilder.Prefetch([.. deeper], storage.FanOutOptions);
-                }
+        HistoricalTrieNodeBuilder storage = CreateStorageBuilder(identity, block, budget, minEpoch);
+        PrefetchStorage(storage, stateId.StateRoot, identity, slots);
 
-                return storageStore;
-            });
+        for (int index = 0; index < slots.Length; index++)
+        {
+            ArchiveProofPathWalker.ProveSlot(collector, storage, account.StorageRoot, slots[index], index, diagnostics);
+        }
+    }
+
+    private void PrefetchStorage(HistoricalTrieNodeBuilder storage, in ValueHash256 stateRoot, in ValueHash256 identity, ValueHash256[] slots)
+    {
+        ArchiveProofNodeCache cache = _nodeCache.Value;
+        bool storageRootKnown = TryReadCachedStorageRoot(cache, stateRoot, identity, out ValueHash256 storageRoot);
+        HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> deeper = [];
+        bool anyUncached = false;
+        foreach (ValueHash256 slot in slots)
+        {
+            int fromDepth = storageRootKnown ? cache.FirstUncachedDepth(storageRoot, slot, out _) : 0;
+            if (fromDepth == ArchiveProofNodeCache.PathCached) continue;
+
+            anyUncached = true;
+            storage.CollectPrefetch(slot, deeper, Math.Max(1, fromDepth));
+        }
+
+        if (!anyUncached) return;
+
+        storage.PrefetchOne(TreePath.Empty);
+        Prefetch(deeper, storage.FanOutOptions);
+    }
+
+    private static bool TryReadCachedStorageRoot(ArchiveProofNodeCache cache, in ValueHash256 stateRoot, in ValueHash256 identity, out ValueHash256 storageRoot)
+    {
+        storageRoot = default;
+        if (cache.FirstUncachedDepth(stateRoot, identity, out byte[]? leaf) != ArchiveProofNodeCache.PathCached || leaf is null) return false;
+
+        RlpReader reader = new(leaf);
+        reader.ReadSequenceLength();
+        reader.SkipItem();
+        if (!AccountDecoder.Instance.TryDecodeStruct(reader.DecodeByteArraySpan(), out AccountStruct account)) return false;
+
+        storageRoot = account.StorageRoot;
+        return true;
+    }
+
+    private void Prefetch(HashSet<(HistoricalTrieNodeBuilder Builder, TreePath Path)> work, ParallelOptions options)
+    {
+        if (work.Count == 0) return;
+
+        Interlocked.Add(ref _prefetchedPaths, work.Count);
+        HistoricalTrieNodeBuilder.Prefetch([.. work], options);
     }
 
     private HistoricalTrieNodeBuilder CreateAccountBuilder(ulong block, ResolutionBudget budget, ulong minEpoch) =>
@@ -112,9 +143,4 @@ public sealed class ArchiveProofSource(
     private ulong DroppedThrough() => metadata.DroppedThroughEpoch;
 
     private ulong DemotedThrough() => metadata.DemotedThroughEpoch;
-
-    private ArchiveProofTrieStore CreateAccountStore(ulong block, ResolutionBudget budget, ulong minEpoch) =>
-        new(
-            CreateAccountBuilder(block, budget, minEpoch),
-            accountPath => new ArchiveProofTrieStore(CreateStorageBuilder(accountPath, block, budget, minEpoch), storageResolverFactory: null));
 }

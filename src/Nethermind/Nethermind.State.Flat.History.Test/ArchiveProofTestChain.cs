@@ -9,6 +9,7 @@ using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Flat.History.Test;
@@ -23,11 +24,15 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
     private readonly IColumnsDb<FlatHistoryColumns> _historyColumns = historyColumns;
     private readonly MemDb _trieNodes = new();
     private readonly Dictionary<Address, Account> _accounts = [];
-    private readonly Dictionary<Address, Dictionary<UInt256, byte[]>> _storage = [];
+    private readonly Dictionary<Address, Dictionary<ValueHash256, byte[]>> _storage = [];
     private readonly Dictionary<ulong, ValueHash256> _rootsByBlock = [];
+    private readonly Dictionary<ulong, List<(TreePath Path, byte[] Rlp)>> _committedStateNodes = [];
+    private CommitRecordingTrieStore? _stateStore;
     private StateTree? _stateTree;
 
-    private StateTree StateTree => _stateTree ??= new StateTree(new RawScopedTrieStore(_trieNodes), LimboLogs.Instance);
+    private CommitRecordingTrieStore StateStore => _stateStore ??= new CommitRecordingTrieStore(new RawScopedTrieStore(_trieNodes));
+
+    private StateTree StateTree => _stateTree ??= new StateTree(StateStore, LimboLogs.Instance);
 
     public ulong Head { get; private set; }
 
@@ -42,18 +47,30 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
         build(builder);
         builder.Seal();
 
+        List<(TreePath Path, byte[] Rlp)> committed = [];
+        StateStore.Committed = committed;
         StateTree.Commit();
+        _committedStateNodes[block] = committed;
         ValueHash256 root = new(StateTree.RootHash.Bytes);
         _rootsByBlock[block] = root;
         HistoryColumnsWriter.MarkBlock(_historyColumns, block, root);
         Head = block;
     }
 
+    public IReadOnlyList<(TreePath Path, byte[] Rlp)> CommittedStateNodes(ulong block) => _committedStateNodes[block];
+
     public void PublishWatermark() => HistoryColumnsWriter.SetWatermark(_historyColumns, Head);
 
     public AccountProof ExpectedProof(Address address, ulong block, params UInt256[] storageKeys)
     {
         AccountProofCollector collector = new(address, storageKeys);
+        StateTree.Accept(collector, _rootsByBlock[block].ToCommitment());
+        return collector.BuildResult();
+    }
+
+    public AccountProof ExpectedProof(Address address, ulong block, ValueHash256[] hashedSlots)
+    {
+        AccountProofCollector collector = new(address.ToAccountPath.Bytes, hashedSlots);
         StateTree.Accept(collector, _rootsByBlock[block].ToCommitment());
         return collector.BuildResult();
     }
@@ -79,15 +96,22 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
 
         public BlockBuilder SetStorage(Address address, in UInt256 slot, byte[] value)
         {
-            if (!chain._storage.TryGetValue(address, out Dictionary<UInt256, byte[]>? slots))
+            ValueHash256 slotHash = ValueKeccak.Zero;
+            StorageTree.ComputeKeyWithLookup(slot, ref slotHash);
+            return SetStorage(address, slotHash, value);
+        }
+
+        public BlockBuilder SetStorage(Address address, in ValueHash256 slotHash, byte[] value)
+        {
+            if (!chain._storage.TryGetValue(address, out Dictionary<ValueHash256, byte[]>? slots))
             {
                 slots = [];
                 chain._storage[address] = slots;
             }
 
-            slots[slot] = value;
+            slots[slotHash] = value;
             _storageChanges.Add(address);
-            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address, slot, block, value);
+            HistoryColumnsWriter.RecordStorage(chain._historyColumns, address.ToAccountPath, slotHash, block, value);
             return this;
         }
 
@@ -100,9 +124,9 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
                     Keccak.EmptyTreeHash,
                     LimboLogs.Instance);
 
-                foreach ((UInt256 slot, byte[] value) in chain._storage[address])
+                foreach ((ValueHash256 slotHash, byte[] value) in chain._storage[address])
                 {
-                    storageTree.Set(slot, value);
+                    storageTree.Set(slotHash, value);
                 }
 
                 storageTree.Commit();
@@ -123,5 +147,33 @@ internal sealed class ArchiveProofTestChain(IColumnsDb<FlatHistoryColumns> histo
 
         private Account Current(Address address) =>
             chain._accounts.TryGetValue(address, out Account? account) ? account : new Account(0, 0);
+    }
+
+    private sealed class CommitRecordingTrieStore(IScopedTrieStore inner) : IScopedTrieStore
+    {
+        public List<(TreePath Path, byte[] Rlp)> Committed { get; set; } = [];
+
+        public INodeStorage.KeyScheme Scheme => inner.Scheme;
+
+        public TrieNode FindCachedOrUnknown(in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(path, hash);
+
+        public byte[]? LoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.LoadRlp(path, hash, flags);
+
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => inner.TryLoadRlp(path, hash, flags);
+
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256? address) => inner.GetStorageTrieNodeResolver(address);
+
+        public ICommitter BeginCommit(TrieNode? root, WriteFlags writeFlags = WriteFlags.None) => new RecordingCommitter(inner.BeginCommit(root, writeFlags), Committed);
+    }
+
+    private sealed class RecordingCommitter(ICommitter inner, List<(TreePath Path, byte[] Rlp)> committed) : ICommitter
+    {
+        public TrieNode CommitNode(ref TreePath path, TrieNode node)
+        {
+            committed.Add((path, node.FullRlp.ToArray()!));
+            return inner.CommitNode(ref path, node);
+        }
+
+        public void Dispose() => inner.Dispose();
     }
 }
