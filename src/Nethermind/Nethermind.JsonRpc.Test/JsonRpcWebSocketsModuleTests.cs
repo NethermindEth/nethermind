@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Pipelines;
 using System.Net;
 using System.Net.Sockets;
 using System.Net.WebSockets;
@@ -19,7 +18,6 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Sockets;
 using NSubstitute;
-using NSubstitute.Core;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
@@ -30,19 +28,6 @@ public class JsonRpcWebSocketsModuleTests
 {
     private const int PublicConcurrency = 16;
 
-    [TestCase(true, true, 1, TestName = "GetProcessingConcurrency_AuthenticatedEngineUrl_ProcessesOneAtATime")]
-    [TestCase(false, true, 1, TestName = "GetProcessingConcurrency_EngineUrlWithoutAuth_ProcessesOneAtATime")]
-    [TestCase(false, false, PublicConcurrency, TestName = "GetProcessingConcurrency_PublicUrl_UsesTheConfiguredConcurrency")]
-    public void GetProcessingConcurrency_FollowsTheUrl(bool isAuthenticated, bool engine, int expected)
-    {
-        JsonRpcUrl url = CreateUrl(isAuthenticated, engine);
-
-        int concurrency = CreateModule(url, Substitute.For<IJsonRpcProcessor>()).GetProcessingConcurrency(url);
-
-        Assert.That(concurrency, Is.EqualTo(expected),
-            "the engine API needs its pipelined requests run in order; only public connections run them concurrently");
-    }
-
     [Test]
     public async Task CreateClient_EngineConnection_ProcessesPipelinedRequestsInOrder()
     {
@@ -50,7 +35,7 @@ public class JsonRpcWebSocketsModuleTests
         // 2. The slow request is held until the fast one has been sent, giving a second worker every chance to start it.
         // 3. The fast request must start only after the slow one has answered.
         TaskCompletionSource fastSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        RecordingProcessor processor = new(slowGate: fastSent.Task);
+        PipelinedRequestRecorder processor = new(slowGate: fastSent.Task);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
         await using (WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: true, engine: true), processor.Processor, cts.Token))
@@ -68,7 +53,7 @@ public class JsonRpcWebSocketsModuleTests
             await Task.WhenAll(processor.SlowAnswered, processor.FastAnswered).WaitAsync(cts.Token);
         }
 
-        Assert.That(processor.Events, Is.EqualTo(new[] { "slow start", "slow end", "fast start", "fast end" }),
+        Assert.That(processor.Events, Is.EqualTo(PipelinedRequestRecorder.InOrder),
             "an engine connection must run a pipelined request only after the one before it has answered");
     }
 
@@ -79,7 +64,7 @@ public class JsonRpcWebSocketsModuleTests
         // 2. The slow request is held until the fast one has answered.
         // 3. Processing one request at a time would never answer the fast request, so the bounded wait fails.
         TaskCompletionSource releaseSlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        RecordingProcessor processor = new(slowGate: releaseSlow.Task);
+        PipelinedRequestRecorder processor = new(slowGate: releaseSlow.Task);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
         await using WsConnection connection = await WsConnection.OpenAsync(CreateUrl(isAuthenticated: false, engine: false), processor.Processor, cts.Token);
@@ -126,62 +111,6 @@ public class JsonRpcWebSocketsModuleTests
         public string[] Urls => [];
     }
 
-    private sealed class RecordingProcessor
-    {
-        private readonly List<string> _events = [];
-        private readonly Task _slowGate;
-        private readonly TaskCompletionSource _slowAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource _fastAnswered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public RecordingProcessor(Task slowGate)
-        {
-            _slowGate = slowGate;
-            Processor = Substitute.For<IJsonRpcProcessor>();
-            Processor
-                .ProcessAsync(
-                    Arg.Any<PipeReader>(),
-                    Arg.Any<JsonRpcContext>(),
-                    Arg.Any<IJsonRpcResponseSink>(),
-                    Arg.Any<JsonRpcProcessingOptions>(),
-                    Arg.Any<CancellationToken>())
-                .Returns(Process);
-        }
-
-        public IJsonRpcProcessor Processor { get; }
-        public Task SlowAnswered => _slowAnswered.Task;
-        public Task FastAnswered => _fastAnswered.Task;
-
-        public string[] Events
-        {
-            get
-            {
-                lock (_events) return [.. _events];
-            }
-        }
-
-        private async ValueTask Process(CallInfo call)
-        {
-            PipeReader reader = call.ArgAt<PipeReader>(0);
-            ReadResult read = await reader.ReadToEndAsync();
-            bool slow = read.Buffer.FirstSpan.SequenceEqual("slow"u8);
-            reader.AdvanceTo(read.Buffer.End);
-            string name = slow ? "slow" : "fast";
-
-            Record($"{name} start");
-            if (slow) await _slowGate;
-
-            IJsonRpcResponseSink sink = call.Arg<IJsonRpcResponseSink>();
-            await sink.WriteSingleAsync(new JsonRpcSuccessResponse(null), new RpcReport(), call.Arg<CancellationToken>());
-            Record($"{name} end");
-            (slow ? _slowAnswered : _fastAnswered).TrySetResult();
-        }
-
-        private void Record(string entry)
-        {
-            lock (_events) _events.Add(entry);
-        }
-    }
-
     private sealed class WsConnection : IAsyncDisposable
     {
         private readonly WebSocket _client;
@@ -203,20 +132,34 @@ public class JsonRpcWebSocketsModuleTests
             listener.Bind(new IPEndPoint(IPAddress.Loopback, 0));
             listener.Listen(1);
             Socket clientSocket = new(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
-            await clientSocket.ConnectAsync(listener.LocalEndPoint!, token);
-            Socket serverSocket = await listener.AcceptAsync(token);
+            Socket? serverSocket = null;
+            WebSocket? client = null;
+            WebSocket? server = null;
+            try
+            {
+                await clientSocket.ConnectAsync(listener.LocalEndPoint!, token);
+                serverSocket = await listener.AcceptAsync(token);
 
-            WebSocket client = WebSocket.CreateFromStream(new NetworkStream(clientSocket, ownsSocket: true), new WebSocketCreationOptions());
-            WebSocket server = WebSocket.CreateFromStream(new NetworkStream(serverSocket, ownsSocket: true), new WebSocketCreationOptions { IsServer = true });
+                client = WebSocket.CreateFromStream(new NetworkStream(clientSocket, ownsSocket: true), new WebSocketCreationOptions());
+                server = WebSocket.CreateFromStream(new NetworkStream(serverSocket, ownsSocket: true), new WebSocketCreationOptions { IsServer = true });
 
-            DefaultHttpContext context = new();
-            context.Connection.LocalPort = url.Port;
-            context.Request.Headers.Authorization = "Bearer test";
-            ISocketsClient socketsClient = await CreateModule(url, processor).CreateClient(server, "test", context);
+                DefaultHttpContext context = new();
+                context.Connection.LocalPort = url.Port;
+                context.Request.Headers.Authorization = "Bearer test";
+                ISocketsClient socketsClient = await CreateModule(url, processor).CreateClient(server, "test", context);
 
-            CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
-            Task receiveLoop = Task.Run(() => socketsClient.ReceiveLoopAsync(stop.Token), CancellationToken.None);
-            return new WsConnection(client, socketsClient, receiveLoop, stop);
+                CancellationTokenSource stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+                Task receiveLoop = Task.Run(() => socketsClient.ReceiveLoopAsync(stop.Token), CancellationToken.None);
+                return new WsConnection(client, socketsClient, receiveLoop, stop);
+            }
+            catch
+            {
+                client?.Dispose();
+                server?.Dispose();
+                clientSocket.Dispose();
+                serverSocket?.Dispose();
+                throw;
+            }
         }
 
         public Task SendAsync(string message, CancellationToken token) =>
@@ -224,18 +167,21 @@ public class JsonRpcWebSocketsModuleTests
 
         public async ValueTask DisposeAsync()
         {
-            await _stop.CancelAsync();
             try
             {
+                await _stop.CancelAsync();
                 await _receiveLoop;
             }
-            catch (OperationCanceledException) { }
-            catch (WebSocketException) { }
-            catch (IOException) { }
-
-            _server.Dispose();
-            _client.Dispose();
-            _stop.Dispose();
+            catch (Exception e) when (e is OperationCanceledException or WebSocketException or IOException)
+            {
+                await TestContext.Out.WriteLineAsync($"Receive loop stopped on shutdown: {e.GetType().Name}: {e.Message}");
+            }
+            finally
+            {
+                _server.Dispose();
+                _client.Dispose();
+                _stop.Dispose();
+            }
         }
     }
 }

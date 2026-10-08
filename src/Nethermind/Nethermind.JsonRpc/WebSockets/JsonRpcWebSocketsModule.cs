@@ -62,19 +62,12 @@ public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            GetProcessingConcurrency(jsonRpcUrl));
+            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency));
 
         _clients.TryAdd(socketsClient.Id, socketsClient);
 
         return socketsClient;
     }
-
-    /// <summary>
-    /// The engine API depends on the order its requests arrive in: a pipelined <c>newPayload</c> must run before the
-    /// <c>forkchoiceUpdated</c> that makes it head. Engine and authenticated connections process one request at a time.
-    /// </summary>
-    internal int GetProcessingConcurrency(JsonRpcUrl url) =>
-        url.IsAuthenticated || url.IsModuleEnabled(ModuleType.Engine) ? 1 : _processingConcurrency;
 
     public void RemoveClient(string id)
     {

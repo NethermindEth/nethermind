@@ -49,26 +49,21 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
         private void JoinOrCreateClientsBag(Subscription subscription, IJsonRpcDuplexClient client)
         {
             // A connection processes its requests concurrently, so its first two subscriptions can race to create the
-            // bag: only the one that stores it hooks Closed, and the other joins the stored bag.
-            while (true)
+            // bag: only the caller whose bag was stored hooks Closed, and the other joins the stored bag.
+            HashSet<Subscription> created = [subscription];
+            HashSet<Subscription> bag = _subscriptionsByJsonRpcClient.GetOrAdd(client.Id, created);
+            if (ReferenceEquals(bag, created))
             {
-                if (_subscriptionsByJsonRpcClient.TryGetValue(client.Id, out HashSet<Subscription> bag))
-                {
-                    lock (bag)
-                    {
-                        bag.Add(subscription);
-                    }
-                    if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
-                    return;
-                }
-
-                if (_subscriptionsByJsonRpcClient.TryAdd(client.Id, [subscription]))
-                {
-                    client.Closed += OnJsonRpcDuplexClientClosed;
-                    if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
-                    return;
-                }
+                client.Closed += OnJsonRpcDuplexClientClosed;
+                if (_logger.IsTrace) _logger.Trace($"Created client's subscriptions bag and added client's first subscription {subscription.Id} to it.");
+                return;
             }
+
+            lock (bag)
+            {
+                bag.Add(subscription);
+            }
+            if (_logger.IsTrace) _logger.Trace($"Subscription {subscription.Id} added to client's subscriptions bag.");
         }
 
         private void RemoveSubscriptionsOfClosedClient(IJsonRpcDuplexClient client, Subscription subscription)
