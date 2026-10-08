@@ -226,8 +226,10 @@ admission service and background scheduler.
 Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
 recursive guest key (32 bytes). All three must match before message 1 is accepted;
 a mismatch disables only lean, preserving the session's other protocols.
-The RLP mempool wrapper includes full transactions and is bounded by 10 MiB and
-4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
+The RLP mempool wrapper is the EIP-8437 kind-1 body `[transactions, mode, [deps, proof_content]]`:
+tagged `[0, transaction]` or `[1, hash]` entries in strictly ascending hash order, a list of
+96-byte triples, and per-dependency proofs (mode 0) or the bare `stark_proof` (mode 1). It is
+bounded by 10 MiB and 4096 transactions. Outgoing selection reserves 8 MiB for the proof before encoding
 transactions.
 
 `lean/1` streams independent chunks: a 48-byte header holds the whole-wrapper

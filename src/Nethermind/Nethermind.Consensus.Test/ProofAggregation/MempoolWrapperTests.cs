@@ -29,7 +29,7 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = new()
         {
-            Transactions = [new WrapperTransaction(Keccak.Compute("tx1")), new WrapperTransaction(Keccak.Compute("tx2"))],
+            Transactions = ByHash(Keccak.Compute("tx1"), Keccak.Compute("tx2")),
             Mode = MempoolWrapper.ModeDirect,
             Deps = [Sphincs("a"), Stark("b")],
             Proofs = [[1, 2], [3, 4]],
@@ -197,18 +197,10 @@ public class MempoolWrapperTests
     public void Recursive_wrapper_rejects_extra_inner_values()
     {
         Rlp encoded = Rlp.Encode(
-            Rlp.Encode(new[] { Rlp.Encode(Keccak.Compute("tx").BytesToArray()) }),
+            Rlp.Encode(new[] { HashEntry(Keccak.Compute("tx")) }),
             Rlp.Encode((ulong)MempoolWrapper.ModeRecursive),
-            Rlp.Encode(new[]
-            {
-                Rlp.Encode(System.Array.Empty<byte>()),
-                Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }), Rlp.Encode(Keccak.Compute("deps")), Rlp.Encode(new byte[] { 2 }) })
-            }));
-        Assert.That(() =>
-        {
-            RlpReader reader = new(encoded.Bytes);
-            MempoolWrapperDecoder.Instance.Decode(ref reader);
-        }, Throws.InstanceOf<RlpException>());
+            Rlp.Encode(new[] { Rlp.Encode(System.Array.Empty<Rlp>()), Rlp.Encode(new byte[] { 1 }), Rlp.Encode(Keccak.Compute("deps")) }));
+        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
     }
 
     [Test]
@@ -217,13 +209,66 @@ public class MempoolWrapperTests
         byte[] dependency = new byte[Eip8288Constants.DependencyTripleLength];
         dependency[31] = unknownScheme ? (byte)0xff : Eip8288Constants.LeanSphincsScheme;
         if (!unknownScheme) dependency[0] = 1;
-        Rlp encoded = Rlp.Encode(Rlp.Encode(System.Array.Empty<Rlp>()), Rlp.Encode(0UL),
-            Rlp.Encode(new[] { Rlp.Encode(dependency), Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }) }) }));
-        Assert.That(() =>
+        Rlp encoded = Rlp.Encode(Rlp.Encode(new[] { HashEntry(Keccak.Compute("tx")) }), Rlp.Encode(0UL),
+            Rlp.Encode(new[] { Rlp.Encode(new[] { Rlp.Encode(dependency) }), Rlp.Encode(new[] { Rlp.Encode(new byte[] { 1 }) }) }));
+        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
+    }
+
+    [Test]
+    public void Encodes_the_eip8437_kind1_body()
+    {
+        Hash256 hash = Keccak.Compute("tx");
+        MempoolWrapper wrapper = new()
         {
-            RlpReader reader = new(encoded.Bytes);
-            MempoolWrapperDecoder.Instance.Decode(ref reader);
-        }, Throws.InstanceOf<RlpException>());
+            Transactions = [new WrapperTransaction(hash)],
+            Mode = MempoolWrapper.ModeRecursive,
+            Deps = [Sphincs("a")],
+            RecursiveStark = new RecursiveStark([7], new Hash256(Eip8288Dependencies.ComputeDepsHash([Sphincs("a")])))
+        };
+        // RLP([[[1, hash]], 1, [[dependency_bytes96], stark_proof]]): tagged entries, a list of triples, and only the proof.
+        Rlp expected = Rlp.Encode(
+            Rlp.Encode(new[] { HashEntry(hash) }),
+            Rlp.Encode(1UL),
+            Rlp.Encode(new[] { Rlp.Encode(new[] { Rlp.Encode(Eip8288Dependencies.Serialize([Sphincs("a")])) }), Rlp.Encode(new byte[] { 7 }) }));
+
+        Assert.That(MempoolWrapperDecoder.Instance.Encode(wrapper).Bytes, Is.EqualTo(expected.Bytes));
+    }
+
+    [TestCase("untagged")]
+    [TestCase("unknown-tag")]
+    [TestCase("short-hash")]
+    [TestCase("unsorted")]
+    [TestCase("duplicate")]
+    [TestCase("empty")]
+    [TestCase("short-dependency")]
+    public void Decode_rejects_malformed_kind1_bodies(string scenario)
+    {
+        Hash256[] hashes = [.. ByHash(Keccak.Compute("a"), Keccak.Compute("b")).Select(static entry => entry.Hash!)];
+        Rlp[] entries = scenario switch
+        {
+            "untagged" => [Rlp.Encode(hashes[0])],
+            "unknown-tag" => [Rlp.Encode(Rlp.Encode(2UL), Rlp.Encode(hashes[0]))],
+            "short-hash" => [Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(new byte[31]))],
+            "unsorted" => [HashEntry(hashes[1]), HashEntry(hashes[0])],
+            "duplicate" => [HashEntry(hashes[0]), HashEntry(hashes[0])],
+            "empty" => [],
+            _ => [HashEntry(hashes[0])]
+        };
+        Rlp deps = Rlp.Encode(scenario == "short-dependency" ? [Rlp.Encode(new byte[Eip8288Constants.DependencyTripleLength - 1])] : System.Array.Empty<Rlp>());
+        Rlp encoded = Rlp.Encode(Rlp.Encode(entries), Rlp.Encode(0UL), Rlp.Encode(deps, Rlp.Encode(System.Array.Empty<Rlp>())));
+
+        Assert.That(() => Decode(encoded), Throws.InstanceOf<RlpException>());
+    }
+
+    private static WrapperTransaction[] ByHash(params Hash256[] hashes) =>
+        [.. hashes.OrderBy(static hash => hash.ToString()).Select(static hash => new WrapperTransaction(hash))];
+
+    private static Rlp HashEntry(Hash256 hash) => Rlp.Encode(Rlp.Encode(1UL), Rlp.Encode(hash));
+
+    private static MempoolWrapper Decode(Rlp encoded)
+    {
+        RlpReader reader = new(encoded.Bytes);
+        return MempoolWrapperDecoder.Instance.Decode(ref reader)!;
     }
 
     private static bool ValidateResolved(MempoolWrapper wrapper, ILeanProofVerifier verifier, out string? error) =>
@@ -238,8 +283,7 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = new()
         {
-            Transactions = Enumerable.Range(0, LeanProofStore.MaxWrapperTransactions + 1)
-                .Select(_ => new WrapperTransaction(Keccak.Zero)).ToArray(),
+            Transactions = ByHash([.. Enumerable.Range(0, LeanProofStore.MaxWrapperTransactions + 1).Select(static index => Keccak.Compute(index.ToString()))]),
             Deps = [],
             Proofs = [],
             Mode = MempoolWrapper.ModeDirect
@@ -252,7 +296,7 @@ public class MempoolWrapperTests
     {
         MempoolWrapper wrapper = new()
         {
-            Transactions = [],
+            Transactions = [new WrapperTransaction(Keccak.Compute("tx"))],
             Deps = [],
             Proofs = Enumerable.Range(0, Eip8288Constants.MaxLeanSigDepsPerWrapper + Eip8288Constants.MaxLeanStarkDepsPerWrapper + 1)
                 .Select(_ => (byte[])[]).ToArray(),

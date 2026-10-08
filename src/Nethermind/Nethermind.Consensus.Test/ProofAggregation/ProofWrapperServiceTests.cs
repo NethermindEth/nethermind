@@ -666,7 +666,7 @@ public class ProofWrapperServiceTests
             Transaction first = Transaction(accepted, 0), later = Transaction(rejected, 1);
             byte[] encoded = MempoolWrapperDecoder.Instance.Encode(new MempoolWrapper
             {
-                Transactions = [new WrapperTransaction(first), new WrapperTransaction(later)],
+                Transactions = [.. new[] { first, later }.OrderBy(static tx => tx.CalculateHash().ToString()).Select(static tx => new WrapperTransaction(tx))],
                 Deps = [accepted, rejected],
                 Mode = MempoolWrapper.ModeDirect,
                 Proofs = [new byte[Eip8288Constants.LeanSphincsWitnessBytes], rejectedWitness]
@@ -768,7 +768,7 @@ public class ProofWrapperServiceTests
             Nonce = (ulong)index,
             Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                 UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
-        }).ToArray();
+        }).OrderBy(static transaction => transaction.CalculateHash().ToString()).ToArray();
         List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize([first, second]);
         ITxPool pool = Substitute.For<ITxPool>();
         LeanProofStore store = new();
@@ -805,8 +805,8 @@ public class ProofWrapperServiceTests
         {
             Assert.That(store.Covers(transactions[0]), Is.EqualTo(firstAccepted));
             Assert.That(store.Covers(transactions[1]), Is.False);
-            pool.Received(1).SubmitTx(Arg.Is<Transaction>(transaction => transaction.Nonce == 0), TxHandlingOptions.PersistentBroadcast);
-            pool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(transaction => transaction.Nonce == 1), Arg.Any<TxHandlingOptions>());
+            pool.Received(1).SubmitTx(Arg.Is<Transaction>(transaction => transaction.Nonce == transactions[0].Nonce), TxHandlingOptions.PersistentBroadcast);
+            pool.DidNotReceive().SubmitTx(Arg.Is<Transaction>(transaction => transaction.Nonce == transactions[1].Nonce), Arg.Any<TxHandlingOptions>());
         }
     }
 

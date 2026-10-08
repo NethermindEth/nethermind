@@ -228,24 +228,25 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
     }
 
     /// <summary>Builds a recursive wrapper over the current proof-backed pool view.</summary>
-    public Result<byte[]> BuildWrapper(bool skipEmpty = false, CancellationToken cancellationToken = default)
-        => BuildWrapper(skipEmpty, true, cancellationToken);
+    /// <remarks>Fails when no proof-backed transaction is pending, since an EIP-8437 kind-1 body carries at least one.</remarks>
+    public Result<byte[]> BuildWrapper(CancellationToken cancellationToken = default)
+        => BuildWrapper(true, cancellationToken);
 
     /// <summary>Advances background aggregation without copying the encoded result for an unused return value.</summary>
     public Result RefreshWrapper(CancellationToken cancellationToken = default)
     {
-        Result<byte[]> result = BuildWrapper(true, false, cancellationToken);
+        Result<byte[]> result = BuildWrapper(false, cancellationToken);
         return result.IsSuccess ? Result.Success : Result.Fail(result.Error!);
     }
 
-    private Result<byte[]> BuildWrapper(bool skipEmpty, bool returnEncoded, CancellationToken cancellationToken)
+    private Result<byte[]> BuildWrapper(bool returnEncoded, CancellationToken cancellationToken)
     {
         if (!Monitor.TryEnter(_aggregationLock)) return Result<byte[]>.Fail("Proof aggregation is busy; retry later.");
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
             using IDisposable request = ProductionProofCache.Background(cancellationToken);
-            return BuildWrapperCore(skipEmpty, returnEncoded, cancellationToken);
+            return BuildWrapperCore(returnEncoded, cancellationToken);
         }
         finally { Monitor.Exit(_aggregationLock); }
     }
@@ -265,7 +266,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
         return Result<byte[]>.Success(knownHash == hash ? [] : (byte[])wrapper.Encoded.Clone());
     }
 
-    private Result<byte[]> BuildWrapperCore(bool skipEmpty, bool returnEncoded, CancellationToken cancellationToken)
+    private Result<byte[]> BuildWrapperCore(bool returnEncoded, CancellationToken cancellationToken)
     {
         if (!IsEnabled)
             return Result<byte[]>.Fail("EIP-8288 proof wrappers are unavailable.");
@@ -320,7 +321,7 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
             next = (candidateIndex + 1) % candidates.Count;
         }
         _rotation = next;
-        if (skipEmpty && transactions.Count == 0)
+        if (transactions.Count == 0)
             return Result<byte[]>.Fail("No proof-backed pending transactions.");
         transactions.Sort(static (a, b) => a.Full!.Hash!.Bytes.SequenceCompareTo(b.Full!.Hash!.Bytes));
         byte[] selection = new byte[transactions.Count * Hash256.Size];

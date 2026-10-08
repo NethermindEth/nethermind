@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Threading;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -57,10 +58,11 @@ public class LeanProofGossipTests
                 NonceKeys = [UInt256.Zero],
                 ChainId = 1,
                 SenderAddress = Address.Zero,
-                Hash = new Hash256(ValueKeccak.Compute($"transaction:{i}")),
                 Frames = [new(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas,
                     UInt256.Zero, Eip8288Dependencies.Serialize([dependency]))]
             };
+            // Wrapper entries are ordered by the hash a receiver recomputes from the envelope.
+            transactions[i].Hash = transactions[i].CalculateHash();
         }
         Verifier verifier = new();
         ProofWrapperService service = CreateService(transactions, store, verifier);
