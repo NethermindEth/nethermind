@@ -1037,6 +1037,49 @@ public class GCKeeperTests
     }
 
     [Test]
+    public void Pre_entry_waits_for_the_previous_payloads_post_block_collection([Values] bool decommitDue)
+    {
+        const int postBlockDelayMs = 1_000;
+        const int idleMs = 2_000;
+        PreEntryRig rig = new(configure: strategy =>
+        {
+            strategy.PostBlockDelayMs.Returns(postBlockDelayMs);
+            strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+            strategy.CollectionsPerDecommit.Returns(decommitDue ? 0 : -1);
+        });
+        using GCKeeper keeper = rig.Keeper;
+        IDisposable payload = keeper.TryStartNoGCRegion();
+        rig.Queued[0].Execute();
+        payload.Dispose();
+        Assert.That(rig.PendingDelays(postBlockDelayMs), Is.EqualTo(1), "the post-block collection is pending");
+
+        // A getBlobs answered for the block that just ended.
+        Assert.That(keeper.PrepareNoGCRegion(), Is.False, "no pre-entry before the post-block delay elapses");
+        if (decommitDue)
+        {
+            rig.CompleteDelays(postBlockDelayMs);
+            Assert.That(() => rig.PendingDelays(idleMs), Is.EqualTo(1).After(5000, 10));
+            Assert.That(keeper.PrepareNoGCRegion(), Is.False, "nor during the decommit's idle wait");
+            rig.CompleteDelays(idleMs);
+        }
+        else
+        {
+            rig.CompleteDelays(postBlockDelayMs);
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(() => rig.Runtime.Collections.Count, Is.EqualTo(1).After(5000, 10), "the collection was not skipped");
+            Assert.That(rig.Queued, Has.Count.EqualTo(1), "nothing was queued meanwhile");
+            Assert.That(rig.Runtime.Collections[0].Item2, Is.EqualTo(decommitDue ? GCCollectionMode.Aggressive : GCCollectionMode.Forced));
+        }
+
+        // Once it has run, a pre-entry is allowed again.
+        Assert.That(() => keeper.PrepareNoGCRegion(), Is.True.After(5000, 10));
+        Assert.That(rig.Queued, Has.Count.EqualTo(2));
+    }
+
+    [Test]
     public void GetBlobs_answered_while_a_pre_entry_is_being_made_keeps_its_schedule()
     {
         PreEntryRig rig = new();
@@ -1059,11 +1102,12 @@ public class GCKeeperTests
         private long _now = 1_000_000;
         private readonly List<(int Ms, TaskCompletionSource<bool> Done)> _pending = [];
 
-        public PreEntryRig(Action? beforeStart = null, Action? beforeEnd = null)
+        public PreEntryRig(Action? beforeStart = null, Action? beforeEnd = null, Action<IGCStrategy>? configure = null)
         {
             Runtime = new RegionRuntime { BeforeStart = beforeStart, BeforeEnd = beforeEnd };
             Strategy.CanStartNoGCRegion().Returns(true);
             Strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            configure?.Invoke(Strategy);
             Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queue, Delay, () => Interlocked.Read(ref _now));
         }
 

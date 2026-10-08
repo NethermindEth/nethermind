@@ -38,6 +38,8 @@ public class GCKeeper : IDisposable
     internal const int PreEntryDelayMs = 20;
     internal const int PreEntryTimeoutMs = 3_000;
     // A quarter of the SOH budget may go elsewhere before the payload takes the region over; the rest is the block's.
+    // Checked against every allocation, the large object heap included, so it is conservative: a region is found stale
+    // earlier than its SOH budget alone would require, and a takeover is never unsafe.
     internal static readonly long PreEntryMaxAllocatedBytes = (_defaultSize - _lohSize) / 4;
     private readonly Func<long> _timestamp;
     private readonly CancellationTokenSource _preEntryCts = new();
@@ -244,7 +246,11 @@ public class GCKeeper : IDisposable
     /// Enters a no-GC region owned by no payload, which the next payload takes over (see
     /// <see cref="TryStartNoGCRegion"/>) or which ends by itself after <see cref="PreEntryTimeoutMs"/>.
     /// </summary>
-    /// <remarks>Does nothing when the strategy disallows a region, or a region is pending or active.</remarks>
+    /// <remarks>
+    /// Does nothing when the strategy disallows a region, a region is pending or active, or the previous payload's
+    /// post-block collection is still pending: that collection skips itself while a region is active, and a getBlobs
+    /// answered in that window belongs to the block that just ended, so its region would expire unused anyway.
+    /// </remarks>
     /// <returns>Whether an entry was queued.</returns>
     internal bool PrepareNoGCRegion()
     {
@@ -252,8 +258,9 @@ public class GCKeeper : IDisposable
         NoGCRegion region;
         lock (_lock)
         {
-            if (_disposed || _region is not null) return false;
-            // Nothing to collect after it: a pre-entry that expires unused leaves the post-block collections as they were.
+            if (_disposed || _region is not null || _pendingGcCts is not null) return false;
+            // Schedules no collection of its own: no post-block collection is pending (checked above), so one that
+            // expires unused has nothing to make up for, and a payload that takes it over carries its own.
             region = new NoGCRegion(this, GCScheduler.MarkGCPaused(), scheduleGC: false, preEntry: true);
             _region = region;
             _pendingEntries++;
@@ -365,6 +372,7 @@ public class GCKeeper : IDisposable
                 _preEntryOwned = false;
                 bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < PreEntryTimeoutMs
                     && (_active
+                        // Every allocation counts, large objects too: conservative against the SOH-only budget.
                         ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < PreEntryMaxAllocatedBytes
                         // Still queued or being entered: the payload takes the entry over as if it had queued it.
                         : !_entered);
