@@ -653,6 +653,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         }
 
         [Test]
+        public void Transaction_budget_rejects_charge_larger_than_remaining_capacity([Values] bool sharedLimit)
+        {
+            RecordingBackgroundTaskScheduler scheduler = new();
+            InboundTransactionBudget budget = new(scheduler);
+            using CompositeDisposable reservations = [];
+            if (sharedLimit)
+            {
+                for (int i = 0; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit - 1; i++)
+                    new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
+            }
+            InboundTransactionBudget lastPeer = sharedLimit ? new(scheduler) : budget;
+            using InboundTransactionBudget.Reservation? held = lastPeer.TryReserve(InboundTransactionBudget.PeerLimit - 1);
+            Assert.That(held, Is.Not.Null);
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(InboundTransactionBudget.MinimumCharge);
+            Assert.That(excess, Is.Null);
+        }
+
+        [Test]
         public void Concurrent_disposal_releases_transaction_budget_once()
         {
             InboundTransactionBudget budget = new(new RecordingBackgroundTaskScheduler());
@@ -836,7 +854,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
 
-        private sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
+        internal sealed class RecordingBackgroundTaskScheduler : IBackgroundTaskScheduler
         {
             public bool Defer { get; init; }
             public bool Reject { get; init; }
