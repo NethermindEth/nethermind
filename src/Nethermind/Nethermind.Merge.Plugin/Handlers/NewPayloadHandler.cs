@@ -765,7 +765,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
                 // unqueued until the CL re-sends the payload.
-                TrackQueuedCopy(block.Hash!, ilDigest, EnqueueOnceAddedAsync(suggest, block, processingOptions, blockProcessed, workers));
+                TrackQueuedCopy(block.Hash!, inclusionListDigest: null, EnqueueOnceAddedAsync(suggest, block, processingOptions, blockProcessed, workers));
                 throw;
             }
 
@@ -884,7 +884,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// Waits out the copies of the block whose verdict cannot answer a request carrying <paramref name="ilDigest"/>.
     /// A copy this handler queued with the same list answers through the shared completion, so only one that already
     /// has its verdict is waited for. A copy with another list is waited for from the moment its request handed it
-    /// over, which is before the queue has taken it. A copy queued by sync is untracked and counts as carrying no list.
+    /// over, which is before the queue has taken it. So is a copy still waiting on a suggest that outlived its request,
+    /// whatever its list. A copy queued by sync is untracked and counts as carrying no list.
     /// </summary>
     private Task WaitForEarlierCopiesAsync(Hash256 blockHash, in ValueHash256 ilDigest)
     {
@@ -904,10 +905,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return Task.WhenAll(anotherList);
     }
 
-    private void TrackQueuedCopy(Hash256 blockHash, in ValueHash256 ilDigest, Task left)
+    private void TrackQueuedCopy(Hash256 blockHash, ValueHash256? inclusionListDigest, Task left)
     {
         QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
-        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, ilDigest, left)];
+        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, inclusionListDigest, left)];
     }
 
     private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
@@ -1106,8 +1107,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     }
 
     /// <summary>A copy this handler handed to the processing queue and the inclusion list it carries, so a resend knows whether that copy's verdict is its own.</summary>
+    /// <param name="InclusionListDigest">
+    /// Null for a copy handed over while its suggest was still pending: sync may add the block first and queue a copy
+    /// without the list, so no resend may take the verdict that follows for its own.
+    /// </param>
     /// <param name="Left">Completes once the copy is out of the queue, or never got into it.</param>
-    private readonly record struct QueuedCopy(Hash256 BlockHash, ValueHash256 InclusionListDigest, Task Left);
+    private readonly record struct QueuedCopy(Hash256 BlockHash, ValueHash256? InclusionListDigest, Task Left);
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a

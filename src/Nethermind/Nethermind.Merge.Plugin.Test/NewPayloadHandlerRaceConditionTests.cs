@@ -877,6 +877,71 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     }
 
     [Test, MaxTime(30_000)]
+    public async Task ValidateBlockAndProcess_does_not_share_the_verdict_of_a_sync_copy_queued_while_a_same_list_suggest_is_still_pending()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource<AddBlockResult> timedOutSuggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource syncCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> resentWaitedForExecutedCopiesOnly = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int suggests = 0;
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, Arg.Any<bool>()).Returns(call =>
+        {
+            bool executedOnly = call.ArgAt<bool>(1);
+            resentWaitedForExecutedCopiesOnly.TrySetResult(executedOnly);
+            return executedOnly ? ValueTask.CompletedTask : new ValueTask(syncCopyRemoved.Task);
+        });
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.AlreadyKnown,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 3_000,
+            configure: (blockTree, _) => blockTree
+                .SuggestBlockAsync(Arg.Any<Block>(), Arg.Any<BlockTreeSuggestOptions>())
+                .Returns(_ => Interlocked.Increment(ref suggests) == 1
+                    ? new ValueTask<AddBlockResult>(timedOutSuggest.Task)
+                    : ValueTask.FromResult(AddBlockResult.AlreadyKnown)));
+
+        ExecutionPayloadV3 timedOutPayload = ExecutionPayloadV3.Create(block);
+        timedOutPayload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+        ExecutionPayloadV3 resentPayload = ExecutionPayloadV3.Create(block);
+        resentPayload.InclusionListTransactions = timedOutPayload.InclusionListTransactions;
+
+        ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the first request gives up while its suggest is still pending");
+
+        Task<ResultWrapper<PayloadStatusV1>> resent = handler.HandleAsync(resentPayload);
+
+        try
+        {
+            Assert.That(await resentWaitedForExecutedCopiesOnly.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.False, "the copy in the queue is sync's and carries no list, so the re-submission must wait for it to leave");
+        }
+        finally
+        {
+            timedOutSuggest.TrySetResult(AddBlockResult.AlreadyKnown);
+            syncCopyRemoved.TrySetResult();
+        }
+
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.InclusionListUnsatisfied));
+        ResultWrapper<PayloadStatusV1> result = await resent.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
+    [Test, MaxTime(30_000)]
     public async Task ValidateBlockAndProcess_keeps_the_entry_of_a_queued_copy_when_a_suggest_that_timed_out_adds_the_block()
     {
         Block block = PostMergeBlock();
