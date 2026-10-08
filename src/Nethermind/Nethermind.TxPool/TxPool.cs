@@ -155,6 +155,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private readonly RecentRootDependencyIndex _recentRootDependencies = new();
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -326,6 +327,7 @@ namespace Nethermind.TxPool
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
+                new FrameTxMisplacedRecentRootFrameFilter(_logger, txPoolConfig.BlobsSupport.IsPersistentStorage()),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
                 new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: structural prefix verdicts need no signature work
@@ -593,6 +595,7 @@ namespace Nethermind.TxPool
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            _recentRootDependencies.Add(args.Value);
             IndexFrameTxDependencies(args.Value);
             StageFrameEvictionRetries(args.Value);
         }
@@ -626,6 +629,7 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
+            _recentRootDependencies.Remove(args.Value);
             ReleaseFrameTxReservations(args.Value);
             if (args.Value.SupportsFrames)
             {
@@ -877,6 +881,8 @@ namespace Nethermind.TxPool
                     {
                         bool bucketsUpdated;
                         bool revalidationRequired;
+                        bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
+                        (BlockHeader Head, List<Hash256> Hashes)? unreferenceable = CollectUnreferenceableRecentRootTransactions(extendsPreviousHead);
                         _newHeadLock.EnterWriteLock();
                         try
                         {
@@ -906,6 +912,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
+                            EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1184,6 +1191,70 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Evicted expired frame transaction {tx.Hash} (deadline {deadline} < head timestamp {timestamp}).");
                     }
                 }
+            }
+        }
+
+        /// <summary>EIP-8272: collects the pending transactions whose <c>recent_root_verify</c> tuples no longer verify
+        /// at the canonical head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Runs before <c>_newHeadLock</c> is taken, so the storage reads of a full recheck do not hold up
+        /// submissions; a transaction admitted meanwhile was validated against the same canonical head. Head events are
+        /// consumed after the chain has moved, and admission validates against the canonical head, so the header and the
+        /// state are taken as one snapshot of that head, not from the event's block: a transaction admitted against a
+        /// newer head is never judged at an older event's slot. Every pending <c>recent_root_verify</c> transaction goes
+        /// once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c> is not <c>RECENT_ROOT_CODE</c>. A
+        /// head extending the previous one only ages tuples out: its block writes the ring-buffer cells of its own slot,
+        /// and a pending tuple naming that slot was admitted against the same write, while any other tuple aliasing those
+        /// cells is already out of the window. Any other head rereads every recorded entry, which covers a rollback on the
+        /// abandoned branch as well as a write on the new one.</remarks>
+        private (BlockHeader Head, List<Hash256> Hashes)? CollectUnreferenceableRecentRootTransactions(bool extendsPreviousHead)
+        {
+            if (_recentRootDependencies.Count == 0
+                || !_headInfo.TryGetHeadState(out BlockHeader? head, out IReadOnlyStateProvider? state))
+            {
+                return null;
+            }
+
+            List<Hash256> unreferenceable = [];
+            if (head.SlotNumber is not ulong headSlot
+                || !_specProvider.GetSpec(head).IsEip8272Enabled
+                || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
+            {
+                _recentRootDependencies.CollectAll(unreferenceable);
+            }
+            else if (extendsPreviousHead)
+            {
+                _recentRootDependencies.CollectExpired(headSlot + 1, unreferenceable);
+            }
+            else
+            {
+                _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
+            }
+
+            return (head, unreferenceable);
+        }
+
+        /// <summary>Evicts the transactions <see cref="CollectUnreferenceableRecentRootTransactions"/> collected.</summary>
+        /// <remarks>Every failure, age included, can reverse with a reorg to an earlier slot, so the hash is released
+        /// for resubmission. A hash the pool no longer holds only loses its dependency record.</remarks>
+        private void EvictUnreferenceableRecentRootTransactions((BlockHeader Head, List<Hash256> Hashes)? unreferenceable)
+        {
+            if (unreferenceable is not (BlockHeader head, List<Hash256> hashes))
+            {
+                return;
+            }
+
+            foreach (Hash256 hash in hashes)
+            {
+                if (!RemoveTransaction(hash, out Transaction? pooled))
+                {
+                    _recentRootDependencies.Remove(hash);
+                    continue;
+                }
+
+                EvictedPending?.Invoke(this, new TxEventArgs(pooled));
+                _hashCache.DeleteFromLongTerm(hash);
+                Metrics.PendingTransactionsEvicted++;
+                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {hash}, its recent roots do not verify at head {head.Number}.");
             }
         }
 
