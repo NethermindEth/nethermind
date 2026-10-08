@@ -153,6 +153,7 @@ namespace Ethereum.Test.Base
             // EIP-8141 frame transactions are always taken from txbytes: the template has no frames, and
             // the sender is part of the payload rather than recovered from a signature.
             bool isFrameTx = postStateJson.Txbytes is [(byte)TxType.FrameTx, ..];
+            bool undecodableFrameTx = false;
             if ((postStateJson.ExpectException is not null || isFrameTx) && postStateJson.Txbytes is not null)
             {
                 try
@@ -165,13 +166,16 @@ namespace Ethereum.Test.Base
                 {
                     // Undecodable txbytes: fall back to the template; non-signature invalidity
                     // (e.g. intrinsic gas) is still caught by tx validation at execution time.
+                    // A frame transaction that does not decode (e.g. a fee past 2^256) is rejected as such.
+                    undecodableFrameTx = isFrameTx;
                 }
             }
 
             // Without a secret key the template cannot be signed back into the transaction the fixture
             // describes, and the only fixtures that omit one are the ones asserting a bad signature, so
-            // mark it intentionally invalid rather than hand the named sender a valid transfer.
-            Address senderAddress = privateKey?.Address ?? Address.Zero;
+            // mark it intentionally invalid rather than hand the named sender a valid transfer. The same
+            // goes for a frame transaction, which the template cannot describe at all.
+            Address senderAddress = undecodableFrameTx ? Address.Zero : privateKey?.Address ?? Address.Zero;
             Transaction transaction = new()
             {
                 Type = transactionJson.Type,

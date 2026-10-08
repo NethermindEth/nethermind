@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -303,6 +304,49 @@ public class TransactionJsonTest : GeneralStateTestBase
             Assert.That(converted.SenderAddress, Is.EqualTo(TestItem.AddressA));
             Assert.That(converted.Frames, Has.Length.EqualTo(2));
             Assert.That(converted.Frames![1].Value, Is.EqualTo(TransferredValue));
+        }
+    }
+
+    /// <summary>
+    /// EIP-8141 and EIP-8250 static-validity fixtures put a field past its width in the template of a frame
+    /// transaction they expect to be rejected. The file must still load, and the case must still be rejected:
+    /// its txbytes carry the same over-wide field and do not decode. The txbytes are the fixtures' own; the secret
+    /// key is not, and is there so that the template, which cannot describe a frame transaction, could be signed.
+    /// </summary>
+    [TestCase("0x00", "0x00", "0x010000000000000000000000000000000000000000000000000000000000000000",
+        "0x06f8ab018094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841009c80b16aee0bf0804316732a0e3fafb554c455db959553027e7deced90bd9ce542e74d1e5f322cd0984c55792388b399512c04eee2f6e07dc2e5a6aaf149b55fe480a101000000000000000000000000000000000000000000000000000000000000000080c0",
+        TestName = "max_fee_overflow")]
+    [TestCase("0x00", "0x010000000000000000000000000000000000000000000000000000000000000000", "0x07",
+        "0x06f8ab018094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841006d3d6a531c3d8e8b70f7cbf21693a924d3d2edb33ba25970a65e2d5bfbdc3e15034838e8cb171dee386b0edc6ce52361448257c189648aa52a8512b840173e55e4a10100000000000000000000000000000000000000000000000000000000000000000780c0",
+        TestName = "priority_fee_overflow")]
+    [TestCase("0x010000000000000000", "0x00", "0x07",
+        "0x06f89701c382beef8901000000000000000094f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ffcfce010380c8830186a083061a808080f85cf85a0194f6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff80b841005aa230bd4a1e8ad082a462c3fc49d6ed35fc08f21efa8a9396e392983a9319604982ffe6a2f241b19450f180ab16345bb52fdd1683f444f2cdcee84bd99bc52bc3800780c0",
+        TestName = "seq_beyond_width")]
+    public void Frame_transaction_with_field_beyond_its_width_loads_and_is_rejected(
+        string nonce, string maxPriorityFeePerGas, string maxFeePerGas, string txbytes)
+    {
+        string json = $$"""
+            {
+              "beyond_width": {
+                "env": { "currentCoinbase": "0x2adc25665018aa1fe0e6bc666dac8fc2697ff9ba", "currentGasLimit": "0x07270e00",
+                         "currentNumber": "0x01", "currentTimestamp": "0x03e8", "currentDifficulty": "0x00", "currentBaseFee": "0x07" },
+                "pre": {},
+                "transaction": { "nonce": "{{nonce}}", "maxPriorityFeePerGas": "{{maxPriorityFeePerGas}}", "maxFeePerGas": "{{maxFeePerGas}}",
+                                 "gasLimit": ["0x07270e00"], "to": "0x00000000000000000000000000000000000000aa", "value": ["0x00"],
+                                 "data": ["0x"], "sender": "0xf6c3a9edc1afa0ad5b720e4d42e1437c43d3b3ff",
+                                 "secretKey": "0x45a915e4d060149eb4365960e6a7a45f334393093061116b197e3240065ff2d8" },
+                "post": { "Osaka": [{ "hash": "{{Keccak.Zero}}", "logs": "{{Keccak.Zero}}", "indexes": { "data": 0, "gas": 0, "value": 0 },
+                                      "txbytes": "{{txbytes}}", "expectException": "TransactionException.TYPE_6_INVALID_FRAME_FORMAT" }] }
+              }
+            }
+            """;
+
+        GeneralStateTest test = JsonToEthereumTest.ConvertStateTest(json).Single();
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(test.LoadFailure, Is.Null);
+            Assert.That(test.Transaction!.SenderAddress, Is.EqualTo(Address.Zero), "an undecodable frame transaction must be rejected");
         }
     }
 
