@@ -113,6 +113,14 @@ public class PbtConfig : IPbtConfig
         "max_write_buffer_number=2;" +
         "";
 
+    // Bulk-written by an anchor import: 32-byte hash values do not compress, and the shared 1 MB write buffer stalls the writers.
+    public string CodeLeavesRocksDbOptions { get; set; } =
+        "compression=kNoCompression;" +
+        "target_file_size_base=64000000;" +
+        "write_buffer_size=16000000;" +
+        "max_write_buffer_number=4;" +
+        "";
+
     // Mirrors the flat Storage column: 8 KB blocks are faster IO-wise than 4 KB at a modest index-memory cost.
     public string StoragesRocksDbOptions { get; set; } =
         PbtCommonRecordOptions +

@@ -28,6 +28,7 @@ public class PbtRocksDbConfigAdjusterTests
         MetadataRocksDbOptions = $"column={nameof(PbtColumns.Metadata)};",
         AccountsRocksDbOptions = $"column={nameof(PbtColumns.Accounts)};",
         CodesRocksDbOptions = $"column={nameof(PbtColumns.Codes)};",
+        CodeLeavesRocksDbOptions = $"column={nameof(PbtColumns.CodeLeaves)};",
         StoragesRocksDbOptions = $"column={nameof(PbtColumns.Storages)};",
         NodeGroupsRocksDbOptions = "column=NodeGroups;",
     };
@@ -35,6 +36,7 @@ public class PbtRocksDbConfigAdjusterTests
     [TestCase(nameof(PbtColumns.Metadata), "global=1;shared=1;column=Metadata;")]
     [TestCase(nameof(PbtColumns.Accounts), "global=1;shared=1;column=Accounts;")]
     [TestCase(nameof(PbtColumns.Codes), "global=1;shared=1;column=Codes;")]
+    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;column=CodeLeaves;")]
     [TestCase(nameof(PbtColumns.Storages), "global=1;shared=1;column=Storages;")]
     [TestCase(nameof(PbtColumns.AccountNodeGroups), "global=1;shared=1;column=NodeGroups;")]
     [TestCase(nameof(PbtColumns.CodeNodeGroups), "global=1;shared=1;column=NodeGroups;")]
@@ -42,7 +44,6 @@ public class PbtRocksDbConfigAdjusterTests
     [TestCase(nameof(PbtColumns.TopNodeGroups), "global=1;shared=1;column=NodeGroups;")]
     [TestCase(null, "global=1;shared=1;", TestName = "DatabaseItselfGetsTheSharedOptionsOnly")]
     [TestCase("NodeGroups", "global=1;shared=1;", TestName = "LegacyNodeGroupsColumnGetsTheSharedOptionsOnly")]
-    [TestCase(nameof(PbtColumns.CodeLeaves), "global=1;shared=1;", TestName = "LegacyCodeLeavesColumnGetsTheSharedOptionsOnly")]
     public void ColumnGetsTheGlobalThenSharedThenItsOwnOptions(string? columnName, string expectedOptions)
     {
         IRocksDbConfig config = CreateAdjuster(Substitute.For<IRocksDbConfigFactory>())

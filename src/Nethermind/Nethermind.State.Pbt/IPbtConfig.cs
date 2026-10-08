@@ -175,6 +175,9 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "RocksDB options of the pbt whole bytecode column, keyed by code hash.", HiddenFromDocs = true)]
     string CodesRocksDbOptions { get; set; }
 
+    [ConfigItem(Description = "RocksDB options of the pbt code-chunk leaves column staged by an anchor import, keyed by EIP-8297 tree key.", HiddenFromDocs = true)]
+    string CodeLeavesRocksDbOptions { get; set; }
+
     [ConfigItem(Description = "RocksDB options of the pbt storage words column, keyed by the address hash, zone and remaining bytes of the EIP-8297 storage key.", HiddenFromDocs = true)]
     string StoragesRocksDbOptions { get; set; }
 
