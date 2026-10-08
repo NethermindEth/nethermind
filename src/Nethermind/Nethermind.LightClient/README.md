@@ -36,7 +36,7 @@ The host listens for beacon P2P on TCP/UDP 9050 and execution P2P on TCP/UDP
 30307. Outbound connections to public beacon and execution peers must be
 permitted. The console prints live beacon, execution and SNAP peer counts every 12 seconds and logs each
 local JSON-RPC request with its result and elapsed time. If no SNAP peer can
-serve the finalized state, state queries return an error after 30 seconds.
+serve the selected state, state queries return an error after 30 seconds.
 
 Example request:
 

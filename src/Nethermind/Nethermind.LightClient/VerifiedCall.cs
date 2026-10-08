@@ -24,7 +24,7 @@ using Nethermind.State;
 
 namespace Nethermind.LightClient;
 
-/// <summary>Executes calls against authenticated finalized state, fetching missing state between clean EVM attempts.</summary>
+/// <summary>Executes calls against authenticated state, fetching missing state between clean EVM attempts.</summary>
 internal sealed class VerifiedCall(IExecutionStateSource execution, ISpecProvider specs, ILogManager logs) : IDisposable
 {
     private const ulong GasCap = 10_000_000;

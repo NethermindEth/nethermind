@@ -211,7 +211,7 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
             await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        throw new RpcException(-32000, "No execution peer supplied the finalized execution header.");
+        throw new RpcException(-32000, "No execution peer supplied the requested execution header.");
     }
 
     public async Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken)
@@ -413,13 +413,13 @@ internal sealed class ExecutionPeerTransport : IExecutionStateSource, IAsyncDisp
                 }
                 catch (Exception exception) when (exception is not OperationCanceledException || !deadline.IsCancellationRequested)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"SNAP peer {peer.SyncPeer.Node:c} could not serve the finalized state: {exception.GetType().Name}: {exception.Message}");
+                    if (_logger.IsWarn) _logger.Warn($"SNAP peer {peer.SyncPeer.Node:c} could not serve the selected state: {exception.GetType().Name}: {exception.Message}");
                 }
             }
             await Task.Delay(TimeSpan.FromSeconds(1), deadline.Token).ConfigureAwait(ConfigureAwaitOptions.SuppressThrowing);
         }
         cancellationToken.ThrowIfCancellationRequested();
-        throw new RpcException(-32000, "No execution peer supplied a valid SNAP proof for the verified finalized state.");
+        throw new RpcException(-32000, "No execution peer supplied a valid SNAP proof for the selected verified state.");
     }
 
     internal static Account VerifyAccountRange(Hash256 stateRoot, Address address, AccountsAndProofs response, ILogManager logManager)
