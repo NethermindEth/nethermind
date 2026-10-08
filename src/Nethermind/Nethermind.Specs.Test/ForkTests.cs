@@ -73,6 +73,39 @@ public class ForkTests
         }
     }
 
+    [Test]
+    public void Frame_transaction_extension_prototypes_each_add_one_eip_to_Eip8141Prototype()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Eip8250Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(Eip8272Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+            Assert.That(Eip7906Prototype.Instance.Parent, Is.SameAs(Eip8141Prototype.Instance));
+
+            Assert.That(Eip8250Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip8250Prototype.Instance.IsEip8250Enabled, Is.True);
+            Assert.That(Eip8250Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip8250Prototype.Instance.IsEip7906Enabled, Is.False);
+
+            Assert.That(Eip8272Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip8272Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip8272Prototype.Instance.IsEip8272Enabled, Is.True);
+            Assert.That(Eip8272Prototype.Instance.IsEip7906Enabled, Is.False);
+
+            Assert.That(Eip7906Prototype.Instance.IsEip8141Enabled, Is.True);
+            Assert.That(Eip7906Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip7906Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip7906Prototype.Instance.IsEip7906Enabled, Is.True);
+
+            Assert.That(Eip8141Prototype.Instance.IsEip8250Enabled, Is.False);
+            Assert.That(Eip8141Prototype.Instance.IsEip8272Enabled, Is.False);
+            Assert.That(Eip8141Prototype.Instance.IsEip7906Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip8250Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip8272Enabled, Is.False);
+            Assert.That(Fork.GetLatest().IsEip7906Enabled, Is.False);
+        }
+    }
+
     // Frame transactions stay off Bogota: the expiry-verifier predeploy they install adds a code change to
     // every block's EIP-7928 access list, shifting the access-list hash the Bogota fixtures pin. A chain
     // wanting both schedules eip8141TransitionTimestamp alongside the fork.

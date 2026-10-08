@@ -329,6 +329,66 @@ public class GethGenesisLoaderTests
         }
     }
 
+    [TestCase("eip8250PrototypeTime", true, false, false)]
+    [TestCase("eip8272PrototypeTime", false, true, false)]
+    [TestCase("eip7906PrototypeTime", false, false, true)]
+    public void Genesis_frame_transaction_extension_label_schedules_only_its_own_eip(string label, bool eip8250, bool eip8272, bool eip7906)
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: $"\"{label}\": 15");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(chainSpec.Parameters.Eip8141TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip7805TransitionTimestamp, Is.Null);
+            Assert.That(chainSpec.Parameters.Eip8250TransitionTimestamp, Is.EqualTo(eip8250 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip8272TransitionTimestamp, Is.EqualTo(eip8272 ? (ulong?)15 : null));
+            Assert.That(chainSpec.Parameters.Eip7906TransitionTimestamp, Is.EqualTo(eip7906 ? (ulong?)15 : null));
+        }
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.False);
+            Assert.That(after.IsEip8250Enabled, Is.EqualTo(eip8250));
+            Assert.That(after.IsEip8272Enabled, Is.EqualTo(eip8272));
+            Assert.That(after.IsEip7906Enabled, Is.EqualTo(eip7906));
+        }
+    }
+
+    [Test]
+    public void Genesis_can_schedule_the_whole_frame_transaction_family_without_inclusion_lists()
+    {
+        ChainSpec chainSpec = LoadStandardGethGenesis(configExtra: """
+            "amsterdamTime": 0,
+            "eip8141PrototypeTime": 15,
+            "eip8250PrototypeTime": 15,
+            "eip8272PrototypeTime": 15,
+            "eip7906PrototypeTime": 15
+            """);
+
+        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        IReleaseSpec before = provider.GetSpec(ForkActivation.TimestampOnly(14));
+        IReleaseSpec after = provider.GetSpec(ForkActivation.TimestampOnly(15));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(before.IsEip7928Enabled, Is.True);
+            Assert.That(before.IsEip8141Enabled, Is.False);
+            Assert.That(before.IsEip8250Enabled, Is.False);
+            Assert.That(before.IsEip8272Enabled, Is.False);
+            Assert.That(before.IsEip7906Enabled, Is.False);
+            Assert.That(after.IsEip8141Enabled, Is.True);
+            Assert.That(after.IsEip8250Enabled, Is.True);
+            Assert.That(after.IsEip8272Enabled, Is.True);
+            Assert.That(after.IsEip7906Enabled, Is.True);
+            Assert.That(after.IsEip7805Enabled, Is.False);
+        }
+    }
+
     [Test]
     public void Can_load_genesis_with_amsterdam_time()
     {
