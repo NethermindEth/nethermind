@@ -69,15 +69,15 @@ public class Eip8369Profile2Tests
         yield return Case("VerifyFrameBehindThePayPrefix_VerifyFrameAfterPrefix",
             static tx => tx.Frames = [OnlyVerify(), Pay(), Verify()], Profile2Exclusion.VerifyFrameAfterPrefix);
 
-        // Condition 4: the budget spans the prefix's declared limits plus signature verification.
+        // Condition 4: the budget spans the prefix's execution limits plus signature verification.
         yield return Case("PrefixWithinBudget_IsCandidate",
             static tx => tx.Frames = [SelfVerify(gasLimit: Budget)], Profile2Exclusion.None);
         yield return Case("PrefixOverBudget_VerifyBudgetExceeded",
             static tx => tx.Frames = [SelfVerify(gasLimit: Budget + 1)], Profile2Exclusion.VerifyBudgetExceeded);
-        // limits.state counts as a declared limit alongside limits.execution.
-        yield return Case("PrefixStateGasOverBudget_VerifyBudgetExceeded",
-            static tx => tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Budget, 1, UInt256.Zero, default)],
-            Profile2Exclusion.VerifyBudgetExceeded);
+        // EIP-7805 verify_cost counts limits.execution only, so limits.state is outside the budget, however large.
+        yield return Case("PrefixStateGasOutsideTheBudget_IsCandidate",
+            static tx => tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Budget, ulong.MaxValue, UInt256.Zero, default)],
+            Profile2Exclusion.None);
         // A body frame behind the prefix is not part of the budget, however large.
         yield return Case("BodyFrameOutsideTheBudget_IsCandidate",
             static tx => tx.Frames = [SelfVerify(gasLimit: Budget), Body(gasLimit: Budget)], Profile2Exclusion.None);
@@ -93,7 +93,11 @@ public class Eip8369Profile2Tests
             Profile2Exclusion.VerifyBudgetExceeded);
         // Saturating arithmetic: a prefix that would overflow the sum must not wrap under the cap.
         yield return Case("PrefixGasSaturates_VerifyBudgetExceeded",
-            static tx => tx.Frames = [new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, ulong.MaxValue, ulong.MaxValue, UInt256.Zero, default)],
+            static tx =>
+            {
+                tx.Frames = [SelfVerify(gasLimit: ulong.MaxValue)];
+                tx.FrameSignatures = [Secp256k1Signature()];
+            },
             Profile2Exclusion.VerifyBudgetExceeded);
         // A zero cap lifts the limit, as ITxPoolConfig.FrameTxMaxVerifyGas does.
         yield return Case("ZeroCapLiftsTheBudget_IsCandidate",

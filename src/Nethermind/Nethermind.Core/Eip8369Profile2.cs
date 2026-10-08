@@ -68,20 +68,11 @@ public static class Eip8369Profile2
     }
 
     /// <summary>
-    /// The static EIP-8369 VERIFY budget cost of a recognized validation prefix: "the signature verification
-    /// gas counted by EIP-8141 plus the declared gas limits of every frame in the EIP-8141 validation prefix,
-    /// including an optional expiry verifier frame".
+    /// EIP-7805 <c>verify_cost(T)</c>: "the EIP-8141 <c>signature_verification_cost</c> of <c>T</c> plus the
+    /// <c>limits.execution</c> of every frame of its validation prefix", the expiry verifier frame included.
     /// </summary>
-    /// <remarks>
-    /// Both limits an EIP-8141 frame declares are summed into the one scalar EIP-8369 meters, because its
-    /// budget fill keeps one running total against one cap — "if their sum exceeds the per transaction or
-    /// remaining per IL limit". That is deliberately unlike EIP-8141's own two mempool caps, which bound
-    /// <see cref="FrameTxValidation.ValidationWorkGas"/> and <see cref="FrameTxValidation.ValidationWorkStateGas"/>
-    /// separately; EIP-8369 calls its caps "separate" and says EIP-8141's limit "does not determine either value".
-    /// </remarks>
-    public static ulong VerifyBudgetCost(Transaction transaction) =>
-        FrameTxValidation.ValidationWorkGas(transaction)
-            .SaturatingAdd(FrameTxValidation.ValidationWorkStateGas(transaction));
+    /// <remarks>The prefix's <c>limits.state</c> does not count toward the VERIFY budget.</remarks>
+    public static ulong VerifyBudgetCost(Transaction transaction) => FrameTxValidation.ValidationWorkGas(transaction);
 
     /// <summary>EIP-8369 § Includers: the Profile 2 entries the per-IL VERIFY budget fill admits.</summary>
     /// <remarks>
