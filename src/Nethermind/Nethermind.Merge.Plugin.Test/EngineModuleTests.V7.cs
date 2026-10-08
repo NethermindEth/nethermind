@@ -1152,7 +1152,7 @@ public partial class EngineModuleTests
     /// That copy's verdict judged the list it carried, so it must not answer the resend.
     /// </summary>
     [Test, NonParallelizable]
-    public async Task NewPayloadV6_judges_a_list_resent_while_an_earlier_copy_is_queued_against_that_list()
+    public async Task NewPayloadV6_validates_resent_inclusion_list_independently_of_queued_copy()
     {
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance,
