@@ -69,6 +69,14 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxMisplacedExpiryFrame { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their EIP-8272 recent_root_verify frame is malformed or misplaced.")]
+        public static long PendingTransactionsFrameTxMisplacedRecentRootFrame { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending blob-carrying EIP-8141 frame transactions received that were ignored because they carry an EIP-8272 recent_root_verify frame and the blob pool is persistent.")]
+        public static long PendingTransactionsFrameTxRecentRootWithPersistentBlobs { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8250 transactions received that were ignored because a selected nonce key is not at the declared sequence.")]
         public static long PendingTransactionsKeyedNonceUnmet { get; set; }
 
