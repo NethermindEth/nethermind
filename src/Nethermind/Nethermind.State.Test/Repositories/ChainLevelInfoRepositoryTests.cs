@@ -4,8 +4,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.State.Repositories;
 using NUnit.Framework;
 
@@ -57,6 +60,84 @@ public class ChainLevelInfoRepositoryTests
         // Clear cache - level should no longer be retrievable
         (repository as IClearableCache)?.ClearCache();
         Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void LoadLevel_serves_a_header_cache_sized_window_from_cache()
+    {
+        const int levelCount = 256 + 16;
+        MemDb db = new();
+        ChainLevelInfoRepository writer = new(db);
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            writer.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, number)));
+        }
+
+        ChainLevelInfoRepository repository = new(db);
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            repository.LoadLevel(number);
+        }
+
+        long readsAfterFirstPass = db.ReadsCount;
+        for (ulong number = 0; number < levelCount; number++)
+        {
+            Assert.That(repository.LoadLevel(number)?.BlockInfos[0].TotalDifficulty, Is.EqualTo((UInt256)number));
+        }
+
+        Assert.That(db.ReadsCount, Is.EqualTo(readsAfterFirstPass));
+    }
+
+    [Test]
+    public void LoadLevel_keeps_a_level_persisted_while_the_load_read_the_db()
+    {
+        TestMemDb db = new();
+        ChainLevelInfo stale = new(false, new BlockInfo(TestItem.KeccakA, 1));
+        ChainLevelInfo persisted = new(true, new BlockInfo(TestItem.KeccakB, 2));
+        new ChainLevelInfoRepository(db).PersistLevel(1, stale);
+        byte[] staleRlp = db.Get(1UL.ToBigEndianByteArrayWithoutLeadingZeros())!;
+
+        ChainLevelInfoRepository repository = new(db);
+        db.ReadFunc = _ =>
+        {
+            db.ReadFunc = null;
+            repository.PersistLevel(1, persisted);
+            return staleRlp;
+        };
+
+        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
+        Assert.That(repository.LoadLevel(1), Is.SameAs(persisted));
+    }
+
+    [Test]
+    public void Delete_evicts_the_cached_level()
+    {
+        MemDb db = new();
+        ChainLevelInfoRepository repository = new(db);
+        repository.PersistLevel(1, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, 1)));
+        Assert.That(repository.LoadLevel(1), Is.Not.Null);
+
+        repository.Delete(1);
+
+        Assert.That(repository.LoadLevel(1), Is.Null);
+    }
+
+    [Test]
+    public void PersistLevel_in_a_batch_replaces_the_cached_level()
+    {
+        MemDb db = new();
+        ChainLevelInfoRepository repository = new(db);
+        repository.PersistLevel(1, new ChainLevelInfo(false, new BlockInfo(TestItem.KeccakA, 1)));
+        Assert.That(repository.LoadLevel(1), Is.Not.Null);
+        ChainLevelInfo replacement = new(true, new BlockInfo(TestItem.KeccakB, 2));
+
+        using (BatchWrite batch = repository.StartBatch())
+        {
+            repository.PersistLevel(1, replacement, batch);
+            Assert.That(repository.LoadLevel(1), Is.SameAs(replacement));
+        }
+
+        AssertChainLevelInfo(new ChainLevelInfoRepository(db).LoadLevel(1), replacement);
     }
 
     private static void AssertChainLevelInfo(ChainLevelInfo actual, ChainLevelInfo expected)

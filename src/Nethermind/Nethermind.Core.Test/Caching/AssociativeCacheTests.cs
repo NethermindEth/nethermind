@@ -45,6 +45,33 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     }
 
     [Test]
+    public void TryAdd_adds_an_absent_key()
+    {
+        AddressAsKey key = _keys[0];
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryAdd(in key, _accounts[0]), Is.True);
+            Assert.That(_cache.Get(in key), Is.SameAs(_accounts[0]));
+            Assert.That(_cache.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void TryAdd_keeps_the_cached_value()
+    {
+        AddressAsKey key = _keys[0];
+        _cache.Set(in key, _accounts[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_cache.TryAdd(in key, _accounts[1]), Is.False);
+            Assert.That(_cache.Get(in key), Is.SameAs(_accounts[0]));
+            Assert.That(_cache.Count, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
     public void Delete_returns_value()
     {
         AddressAsKey key = _keys[0];

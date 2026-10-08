@@ -212,7 +212,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         AcquireGate(ref gate);
         try
         {
-            return SetCore(in key, val, baseIdx, hashPart);
+            return SetCore<OnFlag>(in key, val, baseIdx, hashPart);
         }
         finally
         {
@@ -220,7 +220,36 @@ public sealed partial class AssociativeCache<TKey, TValue>
         }
     }
 
-    private bool SetCore(in TKey key, TValue val, int baseIdx, long hashPart)
+    /// <summary>Caches <paramref name="val"/> only if <paramref name="key"/> is not cached already.</summary>
+    /// <returns><see langword="true"/> when <paramref name="val"/> was added.</returns>
+    /// <remarks>
+    /// For a reader caching a value it loaded from the backing store: a value a writer cached while that load ran is
+    /// newer than the loaded one, which must not replace it.
+    /// </remarks>
+    public bool TryAdd(in TKey key, TValue val)
+    {
+        ArgumentNullException.ThrowIfNull(val);
+        if (_setCount == 0) return false;
+
+        long hashCode = key.GetHashCode64();
+        int setIndex = (int)hashCode & _setMask;
+        int baseIdx = setIndex << WayShift;
+        long hashPart = ExtractHashPart(hashCode, _hashShift);
+
+        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
+        AcquireGate(ref gate);
+        try
+        {
+            return SetCore<OffFlag>(in key, val, baseIdx, hashPart);
+        }
+        finally
+        {
+            ReleaseGate(ref gate);
+        }
+    }
+
+    private bool SetCore<TReplaceExisting>(in TKey key, TValue val, int baseIdx, long hashPart)
+        where TReplaceExisting : struct, IFlag
     {
         // Retry with fresh epoch if Clear() races at any point — never drop an insert.
         while (true)
@@ -246,6 +275,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
                 {
                     if ((h & HashMask) == hashPart && e.Key.Equals(in key))
                     {
+                        if (!TReplaceExisting.IsActive) return false;
+
                         // Re-caching the stored instance, as lookups that cache every hit do, only refreshes the
                         // ticker: locking the entry would make concurrent readers wait for an unchanged value.
                         if (ReferenceEquals(e.Value, val))
