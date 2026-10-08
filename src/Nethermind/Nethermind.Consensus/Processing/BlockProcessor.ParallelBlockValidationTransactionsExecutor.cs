@@ -549,6 +549,7 @@ public partial class BlockProcessor
 
             public void Add(ulong executionGas, ulong stateGas, ulong gasLimit)
             {
+                // Non-short-circuiting | so both dimensions always accumulate.
                 if (Interlocked.Add(ref _executionGas, executionGas) > gasLimit | Interlocked.Add(ref _stateGas, stateGas) > gasLimit)
                 {
                     _exceedsLimit = true;
