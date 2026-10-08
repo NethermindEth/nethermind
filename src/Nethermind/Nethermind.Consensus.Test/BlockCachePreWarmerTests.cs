@@ -199,19 +199,16 @@ public class BlockCachePreWarmerTests
     }
 
     /// <summary>
-    /// A block of too few transactions to execute them ahead still has its system calls run first and its withdrawals
-    /// credited a fraction of a millisecond later, so its addresses are warmed.
+    /// An empty block has nothing to execute ahead, but it still runs its system calls first and credits its withdrawals
+    /// a fraction of a millisecond later, so its addresses are warmed.
     /// </summary>
     [Test]
-    public async Task PreWarmCaches_TinyBlock_WarmsAddressesWithoutExecutingTransactions()
+    public async Task PreWarmCaches_EmptyBlock_WarmsItsAddresses()
     {
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
         (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
         Address recipient = PackedLoopCopy(0);
-        // The contract reads slot 0, then the slot its value names, which only executing it reads.
         Block block = Build.A.Block.WithNumber(1)
-            .WithTransactions(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressE).WithGasLimit(100_000)
-                .SignedAndResolved(TestItem.PrivateKeyA).TestObject)
             .WithWithdrawals(Build.A.Withdrawal.WithRecipient(recipient).WithAmount(1).TestObject)
             .WithGasLimit(30_000_000)
             .TestObject;
@@ -221,13 +218,29 @@ public class BlockCachePreWarmerTests
             await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
         }
 
-        using (Assert.EnterMultipleScope())
+        Assert.That(preBlockCaches.StateCache.TryGetValue(recipient, out _), Is.True, "the withdrawal recipient is warmed");
+    }
+
+    /// <summary>A block of a single transaction warms it by executing it, as any other block does.</summary>
+    [Test]
+    public async Task PreWarmCaches_SingleTransactionBlock_ExecutesItAhead()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        // The contract reads slot 0, then the slot its value names, which only executing it reads.
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressE).WithGasLimit(100_000)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        using (preWarmer)
         {
-            Assert.That(preBlockCaches.StateCache.TryGetValue(recipient, out _), Is.True, "the withdrawal recipient is warmed");
-            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _), Is.True, "the transaction's recipient is warmed");
-            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.False,
-                "no transaction is executed");
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
         }
+
+        Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.True,
+            "the slot only execution reads is warmed");
     }
 
     [Test]
@@ -1049,7 +1062,7 @@ public class BlockCachePreWarmerTests
         AddressAsKey sentinel = TestItem.AddressD;
         preBlockCaches.StateCache.Set(in sentinel, new Account(123));
 
-        await RunPreWarmCaches(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(parent, EmptyBody), parent, Osaka.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -1072,7 +1085,7 @@ public class BlockCachePreWarmerTests
         AddressAsKey sentinel = TestItem.AddressD;
         preBlockCaches.StateCache.Set(in sentinel, new Account(123));
 
-        await RunPreWarmCaches(preWarmer, BuildChildBlock(head), head, Osaka.Instance);
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(head, EmptyBody), head, Osaka.Instance);
 
         using (Assert.EnterMultipleScope())
         {
@@ -2746,6 +2759,8 @@ public class BlockCachePreWarmerTests
         }
         groups.Dispose();
     }
+
+    private static readonly Block EmptyBody = Build.A.Block.WithNumber(1).WithGasLimit(30_000_000).TestObject;
 
     private Block BuildChildBlock(BlockHeader head, Block? body = null) =>
         Build.A.Block.WithNumber(head.Number + 1).WithTransactions((body ?? BuildTwoSenderBlock()).Transactions)

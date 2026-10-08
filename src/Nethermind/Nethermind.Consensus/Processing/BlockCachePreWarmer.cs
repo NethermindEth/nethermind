@@ -37,7 +37,9 @@ namespace Nethermind.Consensus.Processing;
 
 public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessingProgress
 {
-    private const int MinTransactionsForReactiveWarming = 3;
+    // A block with any transaction warms by executing it: the warm's result is taken over instead of re-executed, and a
+    // session started from the request gives even a block's first transaction a lead.
+    private const int MinTransactionsForReactiveWarming = 1;
 
     /// <summary>The most transactions a block may have for its warming to start from the newPayload request.</summary>
     internal const int MaxTransactionsForEarlyWarming = 50;
@@ -1085,7 +1087,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         || !spec.BlockLevelAccessListsEnabled
         || IsBalReadWarmingEnabled(spec);
 
-    // Tiny blocks normally don't justify reactive warming overhead. BAL read warming is cheap
+    // An empty block has nothing to execute ahead; it still warms its addresses. BAL read warming is cheap
     // and remains useful regardless of transaction count.
     private bool ShouldSkipReactiveWarming(Block block, IReleaseSpec spec)
         => block.Transactions.Length < MinTransactionsForReactiveWarming
@@ -1855,8 +1857,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // lost: the transaction fan-out claims its transaction as it arrives and reads the account when it
                     // executes it, which is the warm this pass would give it. Repeating the pass for late senders would
                     // build a scope per worker and join a fan-out per repeat to warm accounts the fan-out warms anyway.
-                    // Below MinTransactionsForReactiveWarming there is no fan-out, and there a late sender costs the
-                    // main thread one account read.
+                    // An empty block has no transaction fan-out, nor any sender to read.
                     // In ranges, as WarmDiscoveredStorage does: an iteration per transaction would put one interlocked
                     // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
                     // contended writes to one cache line for a few nanoseconds of work each.
