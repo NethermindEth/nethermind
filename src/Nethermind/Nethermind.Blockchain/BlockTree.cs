@@ -425,6 +425,7 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.CannotAccept;
             }
 
+            long sgT0 = Nethermind.Core.Diagnostics.NewPayloadTrace.Enabled ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             if (_invalidBlocks.Contains(header.Hash))
             {
                 return AddBlockResult.InvalidBlock;
@@ -466,7 +467,9 @@ namespace Nethermind.Blockchain
                 return AddBlockResult.UnknownParent;
             }
 
+            long sgT1 = sgT0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
             SetTotalDifficulty(header);
+            long sgT2 = sgT0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
             if (block is not null)
             {
@@ -480,17 +483,25 @@ namespace Nethermind.Blockchain
                 _blockStore.InsertDeferred(block);
                 _balStore.InsertFromBlockDeferred(block);
             }
+            long sgT3 = sgT0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
             if (!isKnown)
             {
                 _headerStore.Insert(header);
             }
+            long sgT4 = sgT0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
 
             if (!isKnown || fillBeaconBlock)
             {
                 BlockInfo blockInfo = new(header.Hash, header.TotalDifficulty ?? 0);
                 UpdateOrCreateLevel(header.Number, blockInfo, setAsMain);
                 NewSuggestedBlock?.Invoke(this, new BlockEventArgs(block!));
+            }
+            long sgT5 = sgT0 != 0 ? System.Diagnostics.Stopwatch.GetTimestamp() : 0;
+            if (sgT0 != 0)
+            {
+                static long Us(long a, long b) => (b - a) * 1_000_000 / System.Diagnostics.Stopwatch.Frequency;
+                Nethermind.Core.Diagnostics.NewPayloadTrace.Note($"sg:known{Us(sgT0, sgT1)}:td{Us(sgT1, sgT2)}:body{Us(sgT2, sgT3)}:hdr{Us(sgT3, sgT4)}:lvl{Us(sgT4, sgT5)}");
             }
 
             if (header.IsGenesis)

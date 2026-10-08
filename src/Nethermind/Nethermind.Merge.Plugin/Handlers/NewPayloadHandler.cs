@@ -775,7 +775,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
             NewPayloadTrace.Stamp(NewPayloadTrace.PreSuggest);
+            long sgCall = NewPayloadTrace.Enabled ? Stopwatch.GetTimestamp() : 0;
             Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
+            if (sgCall != 0) NewPayloadTrace.Note($"sgcall:{(Stopwatch.GetTimestamp() - sgCall) * 1_000_000 / Stopwatch.Frequency}");
             AddBlockResult addResult;
             try
             {
