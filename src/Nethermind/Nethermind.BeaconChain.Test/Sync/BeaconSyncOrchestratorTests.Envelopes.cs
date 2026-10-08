@@ -505,7 +505,15 @@ public partial class BeaconSyncOrchestratorTests
         BeaconSyncOrchestrator orchestrator = container.Resolve<BeaconSyncOrchestrator>();
         ExecutionPayloadEnvelopePool pool = container.Resolve<ExecutionPayloadEnvelopePool>();
         (SignedBeaconBlock anchorBlock, Hash256 anchorRoot, SignedBeaconBlock[] _) = TestChain.BuildLinkedChain(AnchorSlot);
-        orchestrator.Initialize(new ScriptedImporter { Head = CreateHead(anchorRoot, AnchorSlot, finalizedEpoch: 0) }, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
+        orchestrator.Initialize(new ScriptedImporter
+        {
+            Head = CreateHead(anchorRoot, AnchorSlot, finalizedEpoch: 0),
+            EnvelopeVerdict = envelope =>
+            {
+                container.Resolve<BeaconChainStore>().PutExecutionPayloadEnvelope(envelope.Message!.BeaconBlockRoot!, envelope);
+                return ExecutionPayloadEnvelopeImportResult.Valid;
+            }
+        }, new ForkedSignedBeaconBlock.OfFulu(anchorBlock), anchorRoot);
 
         await orchestrator.ImportEnvelopeAsync(EnvelopeFor(TestItem.KeccakA, EnvelopeBlockSlot), CancellationToken.None);
 
