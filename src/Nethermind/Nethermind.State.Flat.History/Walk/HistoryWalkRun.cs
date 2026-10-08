@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
+using System.Numerics;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -18,6 +20,7 @@ internal sealed class HistoryWalkRun
     private const int StorageRanges = 256;
     public const int WorkItems = AccountPartitions + StorageRanges;
     public const long DefaultMinRowsToBorrowASlot = 1 << 12;
+    private const ulong RootFoldChunksPerWorker = 4;
 
     private readonly IColumnsDb<FlatHistoryColumns> _history;
     private readonly ISortedKeyValueStore _accountHistory;
@@ -182,20 +185,64 @@ internal sealed class HistoryWalkRun
             _scheduler.Run(partitions);
 
             if (_logger.IsInfo) _logger.Info($"History walk: all {WorkItems} subtrees replayed; folding the root and comparing every block in [{_from}, {_to}] to its header.");
-            using RootHeaderCheck root = new(_headers, _availableBlocks, _sink, _logger, _token);
-            using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+            ulong compared = FoldRoot(workers);
+            _metadata.ClearWalk(WorkItems);
             using (SeriesWriter series = new(_history))
             {
-                _combiner.CombineRoot((nibble, child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child])), _from, _to, emitter, series, root, _progress, _token);
-                emitter?.FlushOpenWindows();
-                _metadata.ClearWalk(WorkItems);
                 series.DeleteAllScratch();
             }
 
             List<HistoryWalkMismatch> mismatches = _sink.Drain();
-            return new HistoryWalkVerdict(mismatches.Count == 0, root.Compared, mismatches);
+            return new HistoryWalkVerdict(mismatches.Count == 0, compared, mismatches);
         }
     }
+
+    internal static ArrayPoolList<(ulong Anchor, ulong To)> RootFoldChunks(ulong from, ulong to, int workers, ulong interval)
+    {
+        ulong span = workers <= 1 ? 0 : Math.Max(interval, BitOperations.RoundUpToPowerOf2((to - from) / ((ulong)workers * RootFoldChunksPerWorker)));
+        ArrayPoolList<(ulong Anchor, ulong To)> chunks = new(Math.Max(1, workers) * (int)RootFoldChunksPerWorker + 1);
+        for (ulong anchor = from; ;)
+        {
+            ulong seam = span == 0 ? to : (anchor | (span - 1)) + 1;
+            if (seam >= to || seam <= anchor)
+            {
+                chunks.Add((anchor, to));
+                return chunks;
+            }
+
+            chunks.Add((anchor, seam));
+            anchor = seam;
+        }
+    }
+
+    private ulong FoldRoot(int workers)
+    {
+        using ArrayPoolList<(ulong Anchor, ulong To)> chunks = RootFoldChunks(_from, _to, workers, (_emitterSource?.Policy ?? CommitmentDepthPolicy.Default).Interval);
+        using RootFoldMerge merge = new(_sink, chunks.Count);
+        using ArrayPoolList<Action> folds = new(chunks.Count);
+        for (int index = 0; index < chunks.Count; index++)
+        {
+            int chunk = index;
+            folds.Add(() =>
+            {
+                MismatchSink found = new(merge.RemainingCapacity);
+                using RootHeaderCheck root = new(_headers, _availableBlocks, found, chunks[chunk].To, _logger, _token, () => merge.StoppedBefore(chunk));
+                using (CommitmentEmitter? emitter = _emitterSource?.CreateEmitter())
+                using (SeriesWriter series = new(_history))
+                {
+                    _combiner.CombineRoot(RootGrandchildKey, chunks[chunk].Anchor, anchorFolded: chunk > 0, chunks[chunk].To, emitter, series, root, _progress, _token);
+                    emitter?.FlushOpenWindows();
+                }
+
+                merge.Complete(chunk, found, root.Compared, root.Stopped);
+            });
+        }
+
+        _scheduler.Run(folds);
+        return merge.Compared;
+    }
+
+    private SeriesKey RootGrandchildKey(int nibble, int child) => AccountSeriesKey(TreePath.FromNibble([(byte)nibble, (byte)child]));
 
     private static TreePath AccountPartitionPrefix(int item)
     {

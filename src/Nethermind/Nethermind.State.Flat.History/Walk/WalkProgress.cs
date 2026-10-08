@@ -25,10 +25,12 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
     private readonly Stack<(double Base, double Scale)>[] _frames = new Stack<(double Base, double Scale)>[items];
     private readonly CancellationTokenSource _stop = new();
     private long _blocksReplayed;
+    private readonly Lock _foldLock = new();
+    private ulong _folded;
     private long _foldStartedAt;
-    private ulong _foldStartBlock;
+    private ulong _foldStartFolded;
     private long _foldLastReportAt;
-    private ulong _foldLastBlock;
+    private ulong _foldLastFolded;
     private long _lastBlocksReplayed;
     private long _lastReportAt;
     private int _completed;
@@ -114,32 +116,39 @@ internal sealed class WalkProgress(ILogger logger, int items, ulong from, ulong 
         Interlocked.Increment(ref _completed);
     }
 
-    public void Folding(ulong block)
+    public void Folding(ulong blocks)
     {
-        if (!logger.IsInfo) return;
+        if (blocks == 0 || !logger.IsInfo) return;
 
-        long now = Stopwatch.GetTimestamp();
-        if (_foldStartedAt == 0)
+        string line;
+        lock (_foldLock)
         {
-            _foldStartedAt = now;
-            _foldStartBlock = block;
+            _folded += blocks;
+            long now = Stopwatch.GetTimestamp();
+            if (_foldStartedAt == 0)
+            {
+                _foldStartedAt = now;
+                _foldStartFolded = _folded;
+                _foldLastReportAt = now;
+                _foldLastFolded = _folded;
+            }
+            else if (Stopwatch.GetElapsedTime(_foldLastReportAt, now) < Heartbeat)
+            {
+                return;
+            }
+
+            double seconds = Stopwatch.GetElapsedTime(_foldLastReportAt, now).TotalSeconds;
+            double blocksPerSecond = seconds > 0 ? (_folded - _foldLastFolded) / seconds : 0;
+            ulong total = to - from;
+            string eta = Eta(Stopwatch.GetElapsedTime(_foldStartedAt), total - _folded, _folded - _foldStartFolded);
             _foldLastReportAt = now;
-            _foldLastBlock = block;
-        }
-        else if (Stopwatch.GetElapsedTime(_foldLastReportAt, now) < Heartbeat)
-        {
-            return;
+            _foldLastFolded = _folded;
+
+            float fraction = total == 0 ? 1 : _folded / (float)total;
+            line = $"{"Walk root fold",ProgressLogger.PrefixAlignment}{_folded,ProgressLogger.BlockPaddingLength:N0} / {total,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {blocksPerSecond,ProgressLogger.SpeedPaddingLength:N0} blocks/s | ETA {eta}";
         }
 
-        double seconds = Stopwatch.GetElapsedTime(_foldLastReportAt, now).TotalSeconds;
-        double blocksPerSecond = seconds > 0 ? (block - _foldLastBlock) / seconds : 0;
-        ulong doneThisRun = block - _foldStartBlock;
-        string eta = Eta(Stopwatch.GetElapsedTime(_foldStartedAt), to - block, doneThisRun);
-        _foldLastReportAt = now;
-        _foldLastBlock = block;
-
-        float fraction = to == from ? 1 : (block - from) / (float)(to - from);
-        logger.Info($"{"Walk root fold",ProgressLogger.PrefixAlignment}{block,ProgressLogger.BlockPaddingLength:N0} / {to,ProgressLogger.BlockPaddingLength:N0} ({fraction.ToString("P2", CultureInfo.InvariantCulture),8}) {Progress.GetMeter(fraction, 1)}| {blocksPerSecond,ProgressLogger.SpeedPaddingLength:N0} blocks/s | ETA {eta}");
+        logger.Info(line);
     }
 
     private double Fraction(ulong block) => to == from ? 1 : (block - from) / (double)(to - from);

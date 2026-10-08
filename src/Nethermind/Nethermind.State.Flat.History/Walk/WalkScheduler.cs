@@ -32,7 +32,7 @@ internal sealed class WalkScheduler(int workers, CancellationToken token)
     private int _parkedWorkers;
     private bool _failed;
 
-    public void Run(List<Action> items)
+    public void Run(IReadOnlyList<Action> items)
     {
         _items = new Queue<Action>(items);
         Task[] runners = new Task[Math.Max(1, workers)];
