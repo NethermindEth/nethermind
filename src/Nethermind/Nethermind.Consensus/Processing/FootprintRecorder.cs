@@ -35,6 +35,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     private int _slotCount;
 
     private StateEffect[] _effects = new StateEffect[32];
+    // Per effect: the index of its account, or of its slot for a storage write.
+    private int[] _owners = new int[32];
     private int _effectCount;
 
     private (Snapshot Snapshot, int Effects)[] _frames = new (Snapshot, int)[16];
@@ -73,7 +75,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             _slotIndex.TrimExcess();
         }
 
-        if (_effects.Length > RetainedCapacity) _effects = new StateEffect[32];
+        if (_effects.Length > RetainedCapacity)
+        {
+            _effects = new StateEffect[32];
+            _owners = new int[32];
+        }
         if (_merges.Length > RetainedCapacity) _merges = new BalanceMerge[32];
         if (_lastWrites.Length > RetainedCapacity) _lastWrites = new int[64];
         if (_frames.Length > RetainedCapacity) _frames = new (Snapshot, int)[16];
@@ -166,17 +172,18 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         if (_lastWrites.Length < _slotCount) _lastWrites = new int[_slots.Length];
         Span<int> lastWrites = _lastWrites.AsSpan(0, _slotCount);
         Span<StateEffect> effects = _effects.AsSpan(0, effectCount);
+        ReadOnlySpan<int> owners = _owners.AsSpan(0, effectCount);
 
         for (int e = 0; e < effects.Length; e++)
         {
             ref readonly StateEffect effect = ref effects[e];
             if (effect.Kind == EffectKind.SetStorage)
             {
-                lastWrites[_slotIndex[new StorageCell(effect.Address, in effect.Index)]] = e;
+                lastWrites[owners[e]] = e;
                 continue;
             }
 
-            ref BalanceMerge merge = ref merges[_accountIndex[effect.Address]];
+            ref BalanceMerge merge = ref merges[owners[e]];
             switch (effect.Kind)
             {
                 case EffectKind.AddToBalance:
@@ -205,17 +212,17 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             ref StateEffect effect = ref effects[e];
             if (effect.Kind == EffectKind.SetStorage)
             {
-                int slot = _slotIndex[new StorageCell(effect.Address, in effect.Index)];
+                int slot = owners[e];
                 if (lastWrites[slot] != e) continue;
                 if (effect.Value == _slots[slot].Value) _restoredWrites++;
             }
             else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && effect.Value.IsZero)
             {
-                if (effect.Kind == EffectKind.SubtractFromBalance || KeepsCode(_accountIndex[effect.Address], merges)) continue;
+                if (effect.Kind == EffectKind.SubtractFromBalance || KeepsCode(owners[e], merges)) continue;
             }
             else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance)
             {
-                int index = _accountIndex[effect.Address];
+                int index = owners[e];
                 ref BalanceMerge merge = ref merges[index];
                 if (merge.Changes >= 2 && !merge.Unmergeable && merge.Credit != merge.Debit)
                 {
@@ -250,11 +257,14 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private ref AccountPrecondition Account(Address address)
+    private ref AccountPrecondition Account(Address address) => ref _accounts[AccountIndex(address)];
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private int AccountIndex(Address address)
     {
         ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_accountIndex, address, out bool exists);
         if (!exists) index = AddAccount(address);
-        return ref _accounts[index];
+        return index;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -282,7 +292,10 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         return ref account;
     }
 
-    private ref SlotPrecondition Slot(in StorageCell cell, in UInt256 currentValue, bool currentKnown)
+    private ref SlotPrecondition Slot(in StorageCell cell, in UInt256 currentValue, bool currentKnown) =>
+        ref _slots[SlotIndex(in cell, in currentValue, currentKnown)];
+
+    private int SlotIndex(in StorageCell cell, in UInt256 currentValue, bool currentKnown)
     {
         ref int index = ref CollectionsMarshal.GetValueRefOrAddDefault(_slotIndex, cell, out bool exists);
         if (!exists)
@@ -296,12 +309,18 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             else State.Get(in cell, out slot.Value);
         }
 
-        return ref _slots[index];
+        return index;
     }
 
-    private ref StateEffect AddEffect(EffectKind kind, Address address)
+    private ref StateEffect AddEffect(EffectKind kind, Address address, int owner)
     {
-        if (_effectCount == _effects.Length) Array.Resize(ref _effects, _effects.Length * 2);
+        if (_effectCount == _effects.Length)
+        {
+            Array.Resize(ref _effects, _effects.Length * 2);
+            Array.Resize(ref _owners, _effects.Length);
+        }
+
+        _owners[_effectCount] = owner;
         ref StateEffect effect = ref _effects[_effectCount++];
         effect = default;
         effect.Kind = kind;
@@ -311,8 +330,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private ref StateEffect AccountEffect(EffectKind kind, Address address)
     {
-        Account(address).Modified = true;
-        return ref AddEffect(kind, address);
+        int owner = AccountIndex(address);
+        _accounts[owner].Modified = true;
+        return ref AddEffect(kind, address, owner);
     }
 
     private void PushFrame(in Snapshot snapshot)
@@ -502,8 +522,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private void RecordWrite(in StorageCell storageCell, in UInt256 newValue)
     {
-        Slot(in storageCell, default, currentKnown: false).Written = true;
-        ref StateEffect effect = ref AddEffect(EffectKind.SetStorage, storageCell.Address);
+        int slot = SlotIndex(in storageCell, default, currentKnown: false);
+        _slots[slot].Written = true;
+        ref StateEffect effect = ref AddEffect(EffectKind.SetStorage, storageCell.Address, slot);
         effect.Index = storageCell.Index;
         effect.Value = newValue;
     }
