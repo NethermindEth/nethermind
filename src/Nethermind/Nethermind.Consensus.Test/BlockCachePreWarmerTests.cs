@@ -1241,6 +1241,36 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public async Task PreWarmCaches_ForAnotherParent_ClearsTheCachesUnderAStoppedSessionThatWarmsNothingFurther()
+    {
+        PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
+        BlockHeader head = BuildParentHeader();
+        BlockHeader parent = BuildOtherStateHeader(head);
+        using CancellationTokenSource cancellation = new();
+        int passes = 0;
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            Interlocked.Increment(ref passes);
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+        Assert.That(SpinWait.SpinUntil(() => Volatile.Read(ref passes) > 0 && !preWarmer.SpeculativePassActive, DiscoveryTimeout), Is.True,
+            "precondition: the session must be waiting out its idle delay");
+        AddressAsKey sentinel = TestItem.AddressD;
+        caches.StateCache.Set(in sentinel, new Account(123));
+
+        // The block builds on another state, so the caches are cleared while the stopped session may not have ended yet.
+        await RunPreWarmCaches(preWarmer, BuildChildBlock(parent), parent, Osaka.Instance);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(caches.StateCache.TryGetValue(in sentinel, out _), Is.False, "the caches held another state and are cleared");
+            Assert.That(session.Wait(DiscoveryTimeout), Is.True, "the stopped session ends on its own");
+            Assert.That(Volatile.Read(ref passes), Is.EqualTo(1), "and runs no further pass over the cleared caches");
+        }
+    }
+
+    [Test]
     public void ConsumerScope_Opening_LeavesASessionBetweenPassesToEndOnItsOwn()
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);

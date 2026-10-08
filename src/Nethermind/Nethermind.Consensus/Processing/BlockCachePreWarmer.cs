@@ -93,6 +93,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private long _speculativeGeneration = long.MinValue;
     // 1 while the session is in a pass: set with a full fence before each look at its token, cleared once the pass ends.
     private int _speculativePassActive;
+    // Whether the current session was already stopped without a wait: a block stops it at scope open and again when its
+    // pre-warming starts, and the metric counts sessions, not stops.
+    private bool _speculativeStoppedWithoutWaiting;
 
     // Non-null writes come only from the speculative loop; every other writer nulls it after stopping that loop, which
     // is what makes the marker and its shared tx-hash set safe to read without further sync: a loop found between passes
@@ -807,6 +810,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
             CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _speculativeCts = cts;
+            _speculativeStoppedWithoutWaiting = false;
             CancellationToken token = cts.Token;
 
             ClearWarmMarker();
@@ -933,6 +937,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             return;
         }
 
+        if (_speculativeStoppedWithoutWaiting) return;
+        _speculativeStoppedWithoutWaiting = true;
         Blockchain.Metrics.PrewarmSpeculativeStopsWithoutWaiting++;
     }
 
