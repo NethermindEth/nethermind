@@ -387,7 +387,7 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
-                // The message names the sender, which validation no longer recovers up front.
+                // Senders may still be unrecovered here; the error message names the sender.
                 if (transaction.SenderAddress is null && transaction.Signature is not null)
                     transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
