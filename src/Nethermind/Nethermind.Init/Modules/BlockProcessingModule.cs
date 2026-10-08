@@ -87,6 +87,7 @@ public class BlockProcessingModule(IInitConfig initConfig, IBlocksConfig blocksC
                 static (transactionProcessor, adapterFactory) => adapterFactory(transactionProcessor))
             .AddScoped<BalTxProcessorFactory>()
             .AddScoped<ZeroNonceStorageAccountsTransition>()
+            .AddScoped<IdentityPrecompileTransition>()
             .AddScoped<IBlockAccessListManager, BlockAccessListManager>()
 
             .AddScoped<IProcessingStats, ProcessingStats>()

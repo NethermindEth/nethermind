@@ -137,13 +137,14 @@ namespace Nethermind.Specs.Test
         public bool IsEip8246Enabled { get; set; } = spec.IsEip8246Enabled;
         public bool IsEip8253Enabled { get; set; } = spec.IsEip8253Enabled;
         public bool IsEip2780Enabled { get; set; } = spec.IsEip2780Enabled;
+        public bool IsEip7666Enabled { get => field; set { field = value; _precompiles = null; } } = spec.IsEip7666Enabled;
         public bool IsEip3298Enabled { get; set; } = spec.IsEip3298Enabled;
         public bool IsEip7805Enabled { get; set; } = spec.IsEip7805Enabled;
         public SpecGasCosts GasCosts => new(this);
 
         private FrozenSet<AddressAsKey>? _precompiles;
 
-        /// <remarks>Memoized like the production spec; the two flags that decide the set invalidate the cache when overridden.</remarks>
+        /// <remarks>Memoized like the production spec; the flags that decide the set invalidate the cache when overridden.</remarks>
         FrozenSet<AddressAsKey> IReleaseSpec.Precompiles => _precompiles ??= BuildPrecompiles();
 
         private FrozenSet<AddressAsKey> BuildPrecompiles()
@@ -156,6 +157,15 @@ namespace Nethermind.Specs.Test
             else
             {
                 precompiles.Remove(PrecompiledAddresses.P256Verify);
+            }
+
+            if (IsEip7666Enabled)
+            {
+                precompiles.Remove(PrecompiledAddresses.Identity);
+            }
+            else
+            {
+                precompiles.Add(PrecompiledAddresses.Identity);
             }
 
             return precompiles.ToFrozenSet();

@@ -74,6 +74,15 @@ public partial class BlockAccessListManager
         transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
     }
 
+    public void ApplyIdentityPrecompileTransition(BlockHeader header, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7666Enabled) return;
+
+        IdentityPrecompileTransition transition = identityPrecompileTransition
+            ?? throw new InvalidOperationException($"EIP-7666 is enabled but no {nameof(IdentityPrecompileTransition)} was provided.");
+        transition.ApplyIfForkBlock(header, spec, Enabled ? GetPreExecutionWorldState() : stateProvider);
+    }
+
     private IWorldState GetPreExecutionWorldState()
     {
         CheckInitialized();

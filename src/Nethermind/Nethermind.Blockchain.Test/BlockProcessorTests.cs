@@ -3874,6 +3874,10 @@ public partial class BlockProcessorTests
         {
         }
 
+        public void ApplyIdentityPrecompileTransition(BlockHeader header, IReleaseSpec spec)
+        {
+        }
+
         public void ProcessWithdrawals(Block block, IReleaseSpec spec)
         {
         }

@@ -16,7 +16,10 @@ public static class Extensions
         AddPrecompile<ECRecoverPrecompile>();
         AddPrecompile<Sha256Precompile>();
         AddPrecompile<Ripemd160Precompile>();
-        AddPrecompile<IdentityPrecompile>();
+        if (!spec.IsEip7666Enabled)
+        {
+            AddPrecompile<IdentityPrecompile>();
+        }
 
         if (spec.ModExpEnabled)
         {

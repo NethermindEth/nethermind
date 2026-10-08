@@ -45,7 +45,8 @@ public partial class BlockAccessListManager(
     PrewarmerEnvFactory? prewarmerEnvFactory = null,
     PreBlockCaches? preBlockCaches = null,
     IReadOnlyTxProcessingEnvFactory? readOnlyTxProcessingEnvFactory = null,
-    ZeroNonceStorageAccountsTransition? zeroNonceStorageAccountsTransition = null)
+    ZeroNonceStorageAccountsTransition? zeroNonceStorageAccountsTransition = null,
+    IdentityPrecompileTransition? identityPrecompileTransition = null)
     : IBlockAccessListManager, IDisposable
 {
     private readonly ILogger _logger = logManager.GetClassLogger<BlockAccessListManager>();

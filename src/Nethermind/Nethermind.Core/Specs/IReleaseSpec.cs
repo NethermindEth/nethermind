@@ -522,6 +522,15 @@ namespace Nethermind.Core.Specs
         public bool IsEip2780Enabled { get; }
 
         /// <summary>
+        /// EIP-7666: EVM-ify the identity precompile.
+        /// </summary>
+        /// <remarks>
+        /// 0x04 leaves the precompile set, so it is no longer pre-warmed under EIP-2929, and the fork block
+        /// installs <see cref="Eip7666Constants.IdentityCode"/> there before any pre-execution system call.
+        /// </remarks>
+        public bool IsEip7666Enabled { get; }
+
+        /// <summary>
         /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
         /// </summary>
         /// <remarks>
