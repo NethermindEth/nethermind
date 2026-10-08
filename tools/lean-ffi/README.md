@@ -223,8 +223,8 @@ The existing protocol registry
 shares negotiation and shutdown with Ethereum handlers, using the Consensus proof
 admission service and background scheduler.
 
-Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes), pinned
-recursive guest key (32 bytes). All three must match before message 1 is accepted;
+Message 0 is a 72-byte status: chain ID (u64 big-endian), genesis hash (32 bytes) and the
+EIP-8437 profile ID `keccak("lean/1/profile\0" || AGGREGATED_VK)` of the pinned recursive guest key. All three must match before message 1 is accepted;
 a mismatch disables only lean, preserving the session's other protocols.
 The RLP mempool wrapper is the EIP-8437 kind-1 body `[transactions, mode, [deps, proof_content]]`:
 tagged `[0, transaction]` or `[1, hash]` entries in strictly ascending hash order, a list of

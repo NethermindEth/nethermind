@@ -88,7 +88,7 @@ public class NativeLeanProtocolTests
     }
 
     private static LeanStatusMessage Status(Context context) => new(context.Chain.BlockTree.ChainId,
-        context.Chain.BlockTree.Genesis!.Hash!, Eip8288Constants.AggregatedVk.ToArray());
+        context.Chain.BlockTree.Genesis!.Hash!, LeanStatusMessage.ComputeProfileId(Eip8288Constants.AggregatedVk));
 
     private static void Receive<T>(Context context, T message, IZeroMessageSerializer<T> serializer) where T : Nethermind.Network.P2P.Messages.P2PMessage
     {
@@ -131,8 +131,8 @@ public class NativeLeanProtocolTests
         LeanStatusMessage status = new(mismatch == "chain" ? valid.ChainId + 1 : valid.ChainId,
             mismatch == "genesis" ? TestItem.KeccakA : valid.GenesisHash,
             mismatch == "guest" ? new byte[32]
-                : mismatch == "old-guest" ? Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387")
-                : valid.VerificationKey);
+                : mismatch == "old-guest" ? LeanStatusMessage.ComputeProfileId(Convert.FromHexString("23305f2492843c52dfc0cf62ce46827b776071fcc6486504781ab8c8cf8ed387"))
+                : valid.ProfileId);
         context.Handler.Init();
         Receive(context, status, new LeanStatusMessageSerializer());
         Receive(context, new LeanProofWrapperMessage([0]), new LeanProofWrapperMessageSerializer());

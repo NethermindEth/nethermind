@@ -12,13 +12,18 @@ using Nethermind.Serialization.Rlp;
 namespace Nethermind.Network.P2P.Subprotocols.Lean;
 
 /// <summary>Identifies the prototype chain and pinned recursive guest before proof gossip.</summary>
-public sealed class LeanStatusMessage(ulong chainId, Hash256 genesisHash, byte[] verificationKey) : P2PMessage
+public sealed class LeanStatusMessage(ulong chainId, Hash256 genesisHash, byte[] profileId) : P2PMessage
 {
     public override string Protocol => LeanProtocolHandler.Code;
     public override int PacketType => 0;
     public ulong ChainId { get; } = chainId;
     public Hash256 GenesisHash { get; } = genesisHash;
-    public byte[] VerificationKey { get; } = verificationKey;
+    public byte[] ProfileId { get; } = profileId;
+
+    /// <summary>EIP-8437 <c>profile_id = keccak("lean/1/profile\0" || AGGREGATED_VK)</c>.</summary>
+    /// <remarks>Derived from the local key only, so a handshake can select but never introduce a verifier.</remarks>
+    public static byte[] ComputeProfileId(ReadOnlySpan<byte> aggregatedVk) =>
+        ValueKeccak.Compute([.. "lean/1/profile\0"u8, .. aggregatedVk]).ToByteArray();
 }
 
 /// <summary>One complete RLP proof wrapper on the negotiated lean protocol.</summary>
@@ -31,16 +36,16 @@ public sealed class LeanProofWrapperMessage(byte[] wrapper, IDisposable? lease =
     public override void Dispose() => Interlocked.Exchange(ref _lease, null)?.Dispose();
 }
 
-/// <summary>Fixed-width chain ID, genesis hash and guest key encoding.</summary>
+/// <summary>Fixed-width chain ID, genesis hash and profile ID encoding.</summary>
 public sealed class LeanStatusMessageSerializer : IZeroMessageSerializer<LeanStatusMessage>
 {
     public void Serialize(IByteBuffer buffer, LeanStatusMessage message)
     {
-        if (message.VerificationKey.Length != 32) throw new ArgumentException("Invalid lean guest key");
+        if (message.ProfileId.Length != 32) throw new ArgumentException("Invalid lean profile ID");
         byte[] bytes = new byte[72];
         BinaryPrimitives.WriteUInt64BigEndian(bytes, message.ChainId);
         message.GenesisHash.Bytes.CopyTo(bytes.AsSpan(8));
-        message.VerificationKey.CopyTo(bytes.AsSpan(40));
+        message.ProfileId.CopyTo(bytes.AsSpan(40));
         buffer.WriteBytes(bytes);
     }
 

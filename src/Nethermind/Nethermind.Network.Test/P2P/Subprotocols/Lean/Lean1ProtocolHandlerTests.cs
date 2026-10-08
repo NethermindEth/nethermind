@@ -87,7 +87,7 @@ public class Lean1ProtocolHandlerTests
             int initialized = 0;
             Handler.ProtocolInitialized += (_, _) => initialized++;
             Handler.Init();
-            Receive(new LeanStatusMessage(Tree.ChainId, Tree.Genesis.Hash, Eip8288Constants.AggregatedVk.ToArray()), new LeanStatusMessageSerializer());
+            Receive(new LeanStatusMessage(Tree.ChainId, Tree.Genesis.Hash, LeanStatusMessage.ComputeProfileId(Eip8288Constants.AggregatedVk)), new LeanStatusMessageSerializer());
             Assert.That(initialized, Is.EqualTo(1), "the fixture must establish the negotiated handshake before sending wrappers");
         }
 

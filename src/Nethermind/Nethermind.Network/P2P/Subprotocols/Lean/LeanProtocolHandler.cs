@@ -71,7 +71,7 @@ public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
             Dispose();
             return;
         }
-        Send(new LeanStatusMessage(_blockTree.ChainId, genesis, Eip8288Constants.AggregatedVk.ToArray()));
+        Send(new LeanStatusMessage(_blockTree.ChainId, genesis, LeanStatusMessage.ComputeProfileId(Eip8288Constants.AggregatedVk)));
         _ = CheckProtocolInitTimeout();
     }
 
@@ -87,7 +87,7 @@ public abstract class LeanProtocolHandler : ZeroProtocolHandlerBase
                 return true;
             }
             if (!_wrappers.IsEnabled || status.ChainId != _blockTree.ChainId || status.GenesisHash != _blockTree.Genesis?.Hash
-                || !status.VerificationKey.AsSpan().SequenceEqual(Eip8288Constants.AggregatedVk))
+                || !status.ProfileId.AsSpan().SequenceEqual(LeanStatusMessage.ComputeProfileId(Eip8288Constants.AggregatedVk)))
             {
                 ReceivedProtocolInitMsg(status);
                 Dispose();

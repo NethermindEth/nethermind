@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels.Embedded;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -26,6 +27,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Lean;
 [NonParallelizable]
 public class LeanTransportTests
 {
+    [Test]
+    public void Status_carries_the_eip8437_profile_id()
+    {
+        byte[] key = Eip8288Constants.AggregatedVk.ToArray();
+        byte[] preimage = [.. System.Text.Encoding.ASCII.GetBytes("lean/1/profile"), 0, .. key];
+        LeanStatusMessage status = new(1, TestItem.KeccakA, LeanStatusMessage.ComputeProfileId(key));
+        IByteBuffer buffer = Unpooled.Buffer();
+        new LeanStatusMessageSerializer().Serialize(buffer, status);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(status.ProfileId, Is.EqualTo(Keccak.Compute(preimage).BytesToArray()));
+            Assert.That(new LeanStatusMessageSerializer().Deserialize(buffer).ProfileId, Is.EqualTo(status.ProfileId));
+        }
+    }
+
     [Test]
     public void Maximum_wrapper_roundtrips_through_compressed_encrypted_frames()
     {
