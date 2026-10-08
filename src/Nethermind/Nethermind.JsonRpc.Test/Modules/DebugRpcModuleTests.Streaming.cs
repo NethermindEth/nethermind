@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Logging;
 using Newtonsoft.Json.Linq;
@@ -20,6 +21,40 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(false, TestName = "Debug_traceTransaction_WithDeepStack_StreamsInBoundedChunks")]
+    [TestCase(true, TestName = "Debug_traceTransaction_WithDeepStackAndGrowingMemory_StreamsInBoundedChunks")]
+    public async Task Debug_traceTransaction_WithLargeStructLogs_StreamsInBoundedChunks(bool enableMemory)
+    {
+        // Scenario:
+        // 1. A contract creation fills the stack 512 deep, then grows memory in a loop until it runs out of gas.
+        // 2. Every struct log carries the whole stack (and memory), so each entry is tens of KB.
+        // 3. The response goes through the real response writer into a writer that records the bytes between flushes.
+        const long maxUnflushedBytes = 2 * 1024 * 1024;
+        using Context context = await Context.Create();
+        Transaction transaction = Build.A.Transaction
+            .WithNonce(context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA))
+            .WithCode(DeepStackLoopCode.Build(stackDepth: 512, memoryStride: 256))
+            .WithGasLimit(80_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
+        await context.Blockchain.AddBlock(transaction);
+
+        FlushRecordingPipeWriter pipe = new(keepOutput: true);
+        await RpcTest.TestStreamedRequest(context.DebugRpcModule, pipe, "debug_traceTransaction",
+            transaction.Hash, new GethTraceOptions { EnableMemory = enableMemory });
+
+        using JsonDocument document = JsonDocument.Parse(pipe.WrittenSpan.ToArray());
+        JsonElement result = document.RootElement.GetProperty("result");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.GetProperty("failed").GetBoolean(), Is.True, "precondition: the loop ends out of gas");
+            Assert.That(result.GetProperty("structLogs").GetArrayLength(), Is.GreaterThan(1024), "precondition: the whole loop is traced");
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * maxUnflushedBytes), "precondition: the response must span many flush windows");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(maxUnflushedBytes),
+                "the response writer must see a flush every megabyte or so, however large each struct log is");
+        }
+    }
+
     [Test]
     public async Task GethLikeTxTraceStreamingSingleResult_WhenCancelledMidTrace_PropagatesCancellation()
     {

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading;
@@ -12,6 +14,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.IO;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -130,6 +133,129 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         List<StructLog> logs = StreamLogs(ReturnDataCallCode(word), GethTraceOptions.Default);
 
         Assert.That(logs.All(l => l.ReturnData is null), Is.True);
+    }
+
+    private const int DeepStackDepth = 512;
+    private const int MaxEntryOvershootBytes = 64 * 1024;
+
+    [TestCase(false, TestName = "StreamedTrace_WithDeepStack_FlushesBeforeThresholdIsExceeded")]
+    [TestCase(true, TestName = "StreamedTrace_WithDeepStackAndGrowingMemory_FlushesBeforeThresholdIsExceeded")]
+    public void StreamedTrace_WithLargeEntries_FlushesBeforeThresholdIsExceeded(bool enableMemory)
+    {
+        // Scenario:
+        // 1. Fill the stack 512 deep, then loop writing one byte 256 bytes further into memory until out of gas.
+        // 2. Every struct log carries the whole stack (and memory), so each entry is tens of KB.
+        // 3. The default block tracer streams into a writer that records the bytes written between flushes.
+        const long threshold = GethLikeTxDirectStreamingTracer.DefaultFlushThresholdBytes;
+        FlushRecordingPipeWriter pipe = new(keepOutput: false);
+        (Block block, Transaction transaction) = PrepareTx(Activation, 30_000, DeepStackLoopCode.Build(DeepStackDepth, memoryStride: 256));
+
+        using (Utf8JsonWriter writer = new(pipe))
+        using (GethLikeBlockStreamingMemoryTracer blockTracer = new(GethTraceOptions.Default with { EnableMemory = enableMemory }, writer, pipe, CancellationToken.None))
+        {
+            writer.WriteStartArray();
+            ITxTracer tracer = ((IBlockTracer)blockTracer).StartNewTxTrace(transaction);
+            _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+            blockTracer.EndTxTrace();
+            blockTracer.EndBlockTrace();
+            writer.WriteEndArray();
+        }
+
+        Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * threshold), "precondition: the trace must span many flush windows");
+        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + MaxEntryOvershootBytes),
+            "unflushed output must stay near the flush threshold however large each entry is, so a slow reader applies backpressure");
+    }
+
+    [Test]
+    public void StreamedTrace_WithEntryLargerThanThreshold_FlushesWithinTheEntry()
+    {
+        // Scenario:
+        // 1. MSTORE8 at offset 0xffff expands memory to 64 KB.
+        // 2. Every following struct log dumps that memory, about 140 KB of JSON per entry.
+        // 3. With a 4 KB threshold the tracer has to flush partway through each memory dump.
+        const int threshold = 4096;
+        byte[] code = Prepare.EvmCode
+            .PushData(1)
+            .PushData(0xffff)
+            .Op(Instruction.MSTORE8)
+            .PushData(0).Op(Instruction.POP)
+            .PushData(0).Op(Instruction.POP)
+            .PushData(0).Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        FlushRecordingPipeWriter pipe = new(keepOutput: false);
+        StreamTrace(code, GethTraceOptions.Default with { EnableMemory = true }, pipe, threshold);
+
+        Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * 64 * 1024), "precondition: several entries each carry the 64 KB memory");
+        Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 1024),
+            "a single entry larger than the threshold must not be held whole before the flush");
+    }
+
+    [TestCase(1, TestName = "StreamedTrace_FlushedAtEveryCheck_IsByteIdenticalToUnflushedTrace")]
+    [TestCase(256, TestName = "StreamedTrace_FlushedEvery256Bytes_IsByteIdenticalToUnflushedTrace")]
+    public void StreamedTrace_WhenFlushedWithinEntries_IsByteIdenticalToUnflushedTrace(int threshold)
+    {
+        const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+        GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, EnableReturnData = true };
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, StorageMemoryAndReturnDataCode(word));
+
+        ArrayBufferWriter<byte> unflushed = new();
+        FlushRecordingPipeWriter flushed = new(keepOutput: true);
+        using Utf8JsonWriter unflushedWriter = new(unflushed);
+        using Utf8JsonWriter flushedWriter = new(flushed);
+        GethLikeTxDirectStreamingTracer unflushedTracer = new(transaction, options, unflushedWriter, pipeWriter: null, CancellationToken.None, threshold);
+        GethLikeTxDirectStreamingTracer flushedTracer = new(transaction, options, flushedWriter, flushed, CancellationToken.None, threshold);
+        unflushedWriter.WriteStartArray();
+        flushedWriter.WriteStartArray();
+
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CompositeTxTracer(unflushedTracer, flushedTracer));
+        Complete(unflushedTracer, unflushedWriter);
+        Complete(flushedTracer, flushedWriter);
+
+        Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
+        Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+    }
+
+    private void StreamTrace(byte[] code, GethTraceOptions options, PipeWriter pipe, int flushThresholdBytes)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, code);
+
+        using Utf8JsonWriter writer = new(pipe);
+        GethLikeTxDirectStreamingTracer tracer = new(transaction, options, writer, pipe, CancellationToken.None, flushThresholdBytes);
+        writer.WriteStartArray();
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+        Complete(tracer, writer);
+    }
+
+    private static void Complete(GethLikeTxDirectStreamingTracer tracer, Utf8JsonWriter writer)
+    {
+        tracer.BuildResult();
+        tracer.ReleaseResources();
+        writer.WriteEndArray();
+        writer.Flush();
+    }
+
+    private byte[] StorageMemoryAndReturnDataCode(string word)
+    {
+        byte[] calleeCode = Prepare.EvmCode
+            .StoreDataInMemory(0, word)
+            .Return(32, 0)
+            .Done;
+
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+
+        return Prepare.EvmCode
+            .PersistData("0x1", word)
+            .PersistData("0x2", word)
+            .StoreDataInMemory(64, word)
+            .Call(TestItem.AddressC, 50000)
+            .PushData("0x1")
+            .Op(Instruction.SLOAD)
+            .Op(Instruction.STOP)
+            .Done;
     }
 
     private List<StructLog> ExecuteAndStream(bool clearingFrameReverts) =>

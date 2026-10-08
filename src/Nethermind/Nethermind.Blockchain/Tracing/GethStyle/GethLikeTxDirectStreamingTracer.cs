@@ -25,9 +25,14 @@ namespace Nethermind.Blockchain.Tracing.GethStyle;
 /// stack/memory plus, when storage tracing is enabled, the cumulative per-address storage map for the
 /// transaction.
 /// </summary>
+/// <remarks>
+/// The pipe is flushed whenever the unflushed output reaches the flush threshold, including partway through
+/// a large memory or storage dump, so a slow reader holds execution back instead of letting the response
+/// buffer grow with the size of each entry.
+/// </remarks>
 public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 {
-    private const int DefaultFlushIntervalEntries = 8192;
+    internal const int DefaultFlushThresholdBytes = 1024 * 1024;
     private const int EvmWordSize = EvmPooledMemory.WordSize;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
@@ -36,7 +41,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private readonly PipeWriter? _pipeWriter;
     private readonly CancellationToken _cancellationToken;
     private Transaction? _transaction;
-    private readonly int _flushIntervalEntries;
+    private readonly int _flushThresholdBytes;
 
     private bool _hasPendingOpcode;
     private int _pendingPc;
@@ -65,7 +70,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private readonly long _limit;
     private long _resultSize;
-    private int _entriesSinceLastFlush;
+    private long _flushedBytes;
     private bool _disposed;
 
     public GethLikeTxDirectStreamingTracer(
@@ -74,19 +79,19 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         Utf8JsonWriter writer,
         PipeWriter? pipeWriter,
         CancellationToken cancellationToken,
-        int flushIntervalEntries = DefaultFlushIntervalEntries,
+        int flushThresholdBytes = DefaultFlushThresholdBytes,
         long destroyRefund = 0)
         : base(options, destroyRefund)
     {
         ArgumentNullException.ThrowIfNull(writer);
-        if (flushIntervalEntries <= 0) throw new ArgumentOutOfRangeException(nameof(flushIntervalEntries));
+        if (flushThresholdBytes <= 0) throw new ArgumentOutOfRangeException(nameof(flushThresholdBytes));
 
         _transaction = transaction;
         _limit = options.Limit;
         _writer = writer;
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
-        _flushIntervalEntries = flushIntervalEntries;
+        _flushThresholdBytes = flushThresholdBytes;
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -117,7 +122,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         }
         _storageByAddress.Clear();
         _pendingStorageMap = null;
-        _entriesSinceLastFlush = 0;
         _resultSize = 0;
         ResetTrace();
     }
@@ -278,7 +282,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (!_hasPendingOpcode) return;
         WriteOpcodeJson();
         _hasPendingOpcode = false;
-        MaybeFlushToWire();
+        FlushToWireIfOverThreshold();
     }
 
     private void WriteOpcodeJson()
@@ -350,6 +354,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
             {
                 HexWriter.WriteFixed32HexRawValue(_writer, slot, addHexPrefix: true);
             }
+            FlushToWireIfOverThreshold();
         }
         _writer.WriteEndArray();
     }
@@ -360,17 +365,17 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         foreach (KeyValuePair<UInt256, UInt256> kv in _pendingStorageMap!)
         {
             HexWriter.WriteUInt256StorageSlot(_writer, kv.Key, kv.Value);
+            FlushToWireIfOverThreshold();
         }
         _writer.WriteEndObject();
     }
 
-    private void MaybeFlushToWire()
+    private void FlushToWireIfOverThreshold()
     {
-        if (_pipeWriter is null) return;
-        if (++_entriesSinceLastFlush < _flushIntervalEntries) return;
+        if (_pipeWriter is null || _writer.BytesCommitted + _writer.BytesPending - _flushedBytes < _flushThresholdBytes) return;
         _writer.Flush();
         _pipeWriter.FlushAsync(_cancellationToken).SafeWait();
-        _entriesSinceLastFlush = 0;
+        _flushedBytes = _writer.BytesCommitted;
     }
 
 }
