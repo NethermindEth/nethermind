@@ -20,7 +20,6 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     where TKey : unmanaged, IPbtKey<TKey>
     where TPath : struct, IPbtNodePath<TPath>
 {
-    private readonly ValueHash256 _groupHash;
     private RefCountingMemory? _lease;
     private readonly int _offsetTable;
     private readonly uint _stored;
@@ -28,13 +27,12 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     /// <summary>Loads the group stored at <paramref name="path"/>, keyed by <paramref name="groupHash"/>.</summary>
     /// <exception cref="InvalidDataException">The store holds no group at <paramref name="path"/>.</exception>
     internal GroupFrameReader(IPbtStore store, scoped in PbtTraversalPath path, in ValueHash256 groupHash)
-        : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth, groupHash) { }
+        : this(store.GetNodeGroup(path, groupHash) ?? throw new InvalidDataException("A referenced PBT node group is missing."), path.BitDepth) { }
 
     /// <summary>Takes ownership of <paramref name="lease"/>, a group payload stored at depth <paramref name="bitDepth"/>.</summary>
-    internal GroupFrameReader(RefCountingMemory lease, int bitDepth, in ValueHash256 groupHash)
+    internal GroupFrameReader(RefCountingMemory lease, int bitDepth)
     {
         BitDepth = bitDepth;
-        _groupHash = groupHash;
         _lease = lease;
         try
         {
@@ -60,7 +58,7 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
         out GroupFrameReader<TKey, TPath> reader)
     {
         RefCountingMemory? lease = store.GetNodeGroup(path, groupHash);
-        reader = lease is null ? default : new(lease, path.BitDepth, groupHash);
+        reader = lease is null ? default : new(lease, path.BitDepth);
         return lease is not null;
     }
 
@@ -115,18 +113,18 @@ internal struct GroupFrameReader<TKey, TPath> : IGroupFrame<TKey, TPath>, IDispo
     /// <inheritdoc/>
     public readonly uint StoredPositions => _stored;
 
-    /// <summary>Takes the group's own root, whose hash is this frame's identity.</summary>
+    /// <summary>Takes the group's own root, whose hash is <paramref name="groupHash"/>.</summary>
     /// <remarks>
-    /// A root branch is hashed from its own preimage, since the root's group hash may be stale or default when the
-    /// caller does not know it (see <see cref="TryLoad"/>). A root leaf cannot be, as no value is stored.
+    /// A root branch is hashed from its own preimage. A root leaf cannot be, as no value is stored, so it takes
+    /// <paramref name="groupHash"/>.
     /// </remarks>
-    internal readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot()
+    internal readonly TrieUpdater<TKey, TPath>.BoundaryNode TakeRoot(in ValueHash256 groupHash)
     {
         ReadOnlyMemory<byte> encoding = GetEncoding(PbtFourLevelGroupGeometry.RootPosition);
         if (encoding.IsEmpty) return default;
         PbtNodeReader root = PbtNodeReader.FromValidated(encoding.Span);
         return root.IsLeaf
-            ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, _groupHash)
+            ? new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, groupHash)
             : new TrieUpdater<TKey, TPath>.BoundaryNode(encoding, BitDepth, Blake3Hash.Hash(root.Preimage));
     }
 

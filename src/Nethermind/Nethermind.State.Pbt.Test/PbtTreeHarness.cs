@@ -206,7 +206,7 @@ internal static class PbtStoreTestExtensions
     {
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
         PbtNodeGroupCodec.ValidateNodes(cursor, payload);
-        return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth, default);
+        return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth);
     }
 
     internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader)
