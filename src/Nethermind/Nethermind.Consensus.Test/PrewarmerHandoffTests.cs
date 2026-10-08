@@ -600,7 +600,29 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo((UInt256)(2 * 0x4e4d)));
     }
 
-    public enum Report { AsPredicted, OtherValue, Subset, Restored, NoneWithoutFootprint, SomeWithoutFootprint }
+    [Test]
+    public void A_transaction_executed_into_the_writes_its_footprint_predicted_does_not_wake_the_refresh_worker()
+    {
+        // The call reads a balance the transfer changes, so it is executed; its guard slot is set and reset, which the
+        // commit does not report and the footprint does not predict.
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Guarded),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        RunPreWarmCaches(PreWarmer, block);
+        BlockFootprints footprints = PreWarmer.Footprints!;
+        int wakes = footprints.PendingWakes;
+
+        Run run = Process(block, ProductionAdapter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((run.Tally.Replayed, run.Tally.Rejected), Is.EqualTo((2, 1)));
+            Assert.That(footprints.PendingWakes, Is.EqualTo(wakes));
+        }
+    }
+
+    public enum Report { AsPredicted, OtherValue, Subset, Restored, GuardRestoredAndChanged, NoneWithoutFootprint, SomeWithoutFootprint }
 
     [Test]
     public void Block_processing_wakes_the_refresh_worker_only_for_writes_its_footprints_did_not_predict([Values] Report report)
@@ -620,12 +642,16 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 // A write back to the slot's value at the transaction's start, which a commit does not report.
                 footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)], restoredWrites: 1));
                 break;
+            case Report.GuardRestoredAndChanged:
+                // A reentrancy guard set and reset around a change to another slot.
+                footprints.Store(0, Footprint(txs[0], writes: [(other, 1), (cell, 0x4e4d)], restoredWrites: 1));
+                break;
         }
 
         List<(StorageCell Cell, UInt256 Value)>? reported = report switch
         {
             // Committed by the main state, so not the instance the footprint holds.
-            Report.AsPredicted or Report.Subset => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
+            Report.AsPredicted or Report.Subset or Report.GuardRestoredAndChanged => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
             Report.NoneWithoutFootprint or Report.Restored => null,
             _ => [(cell, 2 * 0x4e4d)]
         };
@@ -819,22 +845,24 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
+    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, SlotChangedAfterRestore, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
 
     [Test]
     public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
     {
         StorageCell cell = new(Counter, 0x4e4d);
+        // Starts at 0x4e4d.
+        StorageCell set = new(Child, 0);
         Address empty = TestItem.AddressE;
         BlockHeader parent = WithEmptyAccount(empty);
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        (UInt256, UInt256, bool, UInt256, bool, bool) State() =>
+        (UInt256, UInt256, bool, UInt256, UInt256, bool, bool) State() =>
             (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell),
-                worldState.AccountExists(empty), worldState.AccountExists(Logger));
+                Get(worldState, set), worldState.AccountExists(empty), worldState.AccountExists(Logger));
 
         TransactionFootprint footprint;
         int compacted;
-        (UInt256, UInt256, bool, UInt256, bool, bool) recorded;
+        (UInt256, UInt256, bool, UInt256, UInt256, bool, bool) recorded;
         using (worldState.BeginScope(parent))
         {
             (footprint, _) = Record(worldState, recorder =>
@@ -866,8 +894,12 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                         recorder.Set(cell, 2);
                         return 1;
                     case RecordedChanges.SlotRestored:
-                        recorder.Set(cell, 5);
-                        recorder.Set(cell, 0);
+                        recorder.Set(set, 5);
+                        recorder.Set(set, 0x4e4d);
+                        return 1;
+                    case RecordedChanges.SlotChangedAfterRestore:
+                        recorder.Set(set, 0x4e4d);
+                        recorder.Set(set, 5);
                         return 1;
                     case RecordedChanges.ZeroValueToCode:
                         recorder.GetCode(Counter);
@@ -1109,6 +1141,7 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
     protected static readonly Address ScarcePayer = new("0x00000000000000000000000000000000004e4d0b");
     protected static readonly Address Fresh = new("0x00000000000000000000000000000000004e4d0c");
     protected static readonly Address Copier = new("0x00000000000000000000000000000000004e4d0d");
+    protected static readonly Address Guarded = new("0x00000000000000000000000000000000004e4d0e");
     protected static readonly Address Child = ContractAddress.From(Factory, Salt, ChildInitCode);
     protected static readonly Address Ripemd = new("0x0000000000000000000000000000000000000003");
     protected static readonly PrivateKey CodeOwner = TestItem.PrivateKeys[0x4c];
@@ -1174,6 +1207,8 @@ public abstract class PrewarmerHandoffTestBase(IReleaseSpec spec)
             Deploy(worldState, Gift, [0x5F, 0x5F, 0x5F, 0x5F, 0x61, 0x4E, 0x4D, 0x73, .. Fresh.Bytes, 0x5A, 0xF1, 0x50, 0x00], 1.Ether);
             Deploy(worldState, ScarcePayer, PayerCode, 0x4e4d);
             Deploy(worldState, Copier, CopierCode, 0);
+            // BALANCE(C) POP; SSTORE(0, 1); SSTORE(0, 0); SSTORE(1, 1); STOP
+            Deploy(worldState, Guarded, [0x73, .. TestItem.AddressC.Bytes, 0x31, 0x50, 0x60, 0x01, 0x5F, 0x55, 0x5F, 0x5F, 0x55, 0x60, 0x01, 0x60, 0x01, 0x55, 0x00], 0);
             Deploy(worldState, Child, ChildCode, 0x4e4d);
             worldState.Set(new StorageCell(Child, 0), 0x4e4d);
             worldState.Set(new StorageCell(Child, 1), 2);
