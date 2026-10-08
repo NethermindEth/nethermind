@@ -424,6 +424,16 @@ namespace Nethermind.Core.Specs
         bool IsEip8131Enabled { get; }
 
         /// <summary>
+        /// EIP-8279: Block Access List Byte Floor.
+        /// </summary>
+        /// <remarks>
+        /// Meters the bytes execution adds to the EIP-7928 block access list at 64 gas per byte into the transaction
+        /// floor, checked against the gas limit before each insertion, and adds each authorization's worst-case block
+        /// access list bytes to the static floor. Requires EIP-8131.
+        /// </remarks>
+        bool IsEip8279Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -510,6 +520,17 @@ namespace Nethermind.Core.Specs
         /// </summary>
         /// <remarks>Must be co-activated with EIP-7708: the value-transfer cost prices the transfer log.</remarks>
         public bool IsEip2780Enabled { get; }
+
+        /// <summary>
+        /// EIP-3298: Remove the SSTORE storage-clear refund and the EIP-3529 transaction refund cap.
+        /// </summary>
+        /// <remarks>
+        /// Requires EIP-7778: removing the cap is only safe while block gas excludes refunds, otherwise uncapped
+        /// refunds would let a block exceed its gas limit in work. Specified as a delta on EIP-8037 and EIP-8038;
+        /// enabled without them, it still strikes whichever storage-clear refund and refund cap the spec would
+        /// otherwise apply, and the pre-EIP-3529 SELFDESTRUCT refund, which no same-transaction charge bounds.
+        /// </remarks>
+        public bool IsEip3298Enabled { get; }
 
         /// <summary>
         /// EIP-7805: Inclusion lists

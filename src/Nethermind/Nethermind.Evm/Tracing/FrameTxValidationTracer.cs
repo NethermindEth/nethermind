@@ -27,7 +27,8 @@ public sealed class FrameTxValidationTracer(
     TimeSpan timeout = default,
     TimeProvider? timeProvider = null,
     CancellationToken token = default,
-    Func<bool>? preempt = null)
+    Func<bool>? preempt = null,
+    ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
     : TxTracer, ITxTracer, IFrameTxReceiptTracer, IFrameTxPrefixTracer
 {
     private readonly TimeProvider _time = timeProvider ?? TimeProvider.System;
@@ -92,6 +93,8 @@ public sealed class FrameTxValidationTracer(
     public string? ViolationReason { get; private set; }
 
     public Address? Payer { get; private set; }
+
+    public ulong MaxVerifyGas => maxVerifyGas;
 
     void IFrameTxPrefixTracer.StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target)
     {

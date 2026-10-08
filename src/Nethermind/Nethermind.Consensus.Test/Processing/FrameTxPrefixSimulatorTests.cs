@@ -524,6 +524,21 @@ public class FrameTxPrefixSimulatorTests
         processor.Received(1).SetBlockExecutionContext(Arg.Is<BlockHeader>(header => header.SlotNumber == expectedSlot));
     }
 
+    [TestCase(0ul, Eip8141Constants.MaxVerifyGas)]
+    [TestCase(100_000ul, Eip8141Constants.MaxVerifyGas)]
+    [TestCase(500_000ul, 500_000ul)]
+    public void Simulate_RunsThePrefixUnderTheConfiguredVerifyGasButNeverBelowTheDefault(ulong configured, ulong expected)
+    {
+        using FrameTxPrefixSimulator simulator = CreateOverBuiltEnv(out _, out ITransactionProcessor processor, maxVerifyGas: configured);
+
+        simulator.Simulate(FrameTx());
+
+        processor.Received(1).Process(
+            Arg.Any<Transaction>(),
+            Arg.Is<ITxTracer>(tracer => ((IFrameTxPrefixTracer)tracer).MaxVerifyGas == expected),
+            Arg.Any<ExecutionOptions>());
+    }
+
     /// <summary>A simulator over an env that builds, so a test can choose where inside it the failure lands.</summary>
     private static FrameTxPrefixSimulator CreateOverBuiltEnv(
         out IReadOnlyTxProcessorSource source,
@@ -531,7 +546,8 @@ public class FrameTxPrefixSimulatorTests
         InterfaceLogger? logSink = null,
         int timeoutMs = 250,
         TimeProvider? time = null,
-        ulong? headSlot = null)
+        ulong? headSlot = null,
+        ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas)
     {
         processor = Substitute.For<ITransactionProcessor>();
         IReadOnlyTxProcessingScope scope = Substitute.For<IReadOnlyTxProcessingScope>();
@@ -544,7 +560,7 @@ public class FrameTxPrefixSimulatorTests
         IReadOnlyTxProcessingEnvFactory envFactory = Substitute.For<IReadOnlyTxProcessingEnvFactory>();
         envFactory.Create().Returns(source);
 
-        return CreateSimulator(envFactory, BlockFinderAtHead(headSlot: headSlot), budgetPerHeadMs: 1000, logSink, timeoutMs, time);
+        return CreateSimulator(envFactory, BlockFinderAtHead(headSlot: headSlot), budgetPerHeadMs: 1000, logSink, timeoutMs, time, maxVerifyGas);
     }
 
     /// <param name="secondCallerReachedTheLock">Set when a second caller reads the head, which is the last
@@ -575,11 +591,12 @@ public class FrameTxPrefixSimulatorTests
         int budgetPerHeadMs,
         InterfaceLogger? logSink = null,
         int timeoutMs = 250,
-        TimeProvider? time = null) =>
+        TimeProvider? time = null,
+        ulong maxVerifyGas = Eip8141Constants.MaxVerifyGas) =>
         new(envFactory,
             blockFinder,
             new TestSpecProvider(Eip8141Prototype.Instance),
-            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs },
+            new TxPoolConfig { FrameTxSimulationBudgetPerHeadMs = budgetPerHeadMs, FrameTxSimulationTimeoutMs = timeoutMs, FrameTxMaxVerifyGas = maxVerifyGas },
             logSink is null ? LimboLogs.Instance : new OneLoggerLogManager(new ILogger(logSink)),
             time);
 

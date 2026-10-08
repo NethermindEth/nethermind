@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Text;
 using System.Text.Json;
 using System.Threading.Tasks;
 using Autofac;
+using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
@@ -18,6 +21,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -30,6 +34,305 @@ namespace Nethermind.JsonRpc.Test.Modules;
 [Parallelizable(ParallelScope.Self)]
 public partial class DebugRpcModuleTests
 {
+    private static IEnumerable<TestCaseData> ValidTransactionIndices()
+    {
+        (string Json, ulong? Value)[] cases =
+        [
+            ("null", null),
+            ("\"0x0\"", 0),
+            ("\"0XABCDEF\"", 0xabcdef),
+            ("\"0xffffffffffffffff\"", ulong.MaxValue),
+            ("\"\\u0030\\u0078\\u0031\"", 1),
+            ("\"\\u0030\\u0078" + new string('f', 16).Replace("f", "\\u0066") + "\"", ulong.MaxValue)
+        ];
+        foreach ((string json, ulong? value) in cases)
+            foreach (bool segmented in new[] { false, true })
+                yield return new TestCaseData(json, value, segmented);
+    }
+
+    [TestCaseSource(nameof(ValidTransactionIndices))]
+    public void Trace_options_read_transaction_index_quantities(string json, ulong? expected, bool segmented) =>
+        Assert.That(ReadTransactionIndex(json, segmented), Is.EqualTo(expected));
+
+    private static IEnumerable<TestCaseData> InvalidTransactionIndices()
+    {
+        string[] cases =
+        [
+            "0", "true", "[]", "{}", "\"\"", "\"0x\"", "\"0x00\"", "\"0xg\"", "\"0x1 \"",
+            "\"0x10000000000000000\"", "\"\\u0030\\u0078\\u0030\\u0030\"",
+            "\"0x" + new string('f', 107) + "\""
+        ];
+        foreach (string json in cases)
+            foreach (bool segmented in new[] { false, true })
+                yield return new TestCaseData(json, segmented);
+    }
+
+    [TestCaseSource(nameof(InvalidTransactionIndices))]
+    public void Trace_options_reject_invalid_transaction_index_quantities(string json, bool segmented) =>
+        Assert.Throws<JsonException>(() => ReadTransactionIndex(json, segmented));
+
+    [TestCase("\"0x1\"")]
+    [TestCase("\"\\u0030\\u0078\\u0031\"")]
+    public void Transaction_index_reader_does_not_allocate_strings(string json)
+    {
+        byte[] bytes = Encoding.UTF8.GetBytes(json);
+        GethTraceOptions.TransactionIndexConverter converter = new();
+        JsonSerializerOptions options = new();
+        ulong Read()
+        {
+            Utf8JsonReader reader = new(bytes);
+            reader.Read();
+            return converter.Read(ref reader, typeof(ulong), options);
+        }
+        Assert.That(Read(), Is.EqualTo(1UL));
+        long before = GC.GetAllocatedBytesForCurrentThread();
+        for (int i = 0; i < 100; i++) Read();
+        long allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.That(allocated, Is.Zero);
+    }
+
+    private static ulong? ReadTransactionIndex(string json, bool segmented)
+    {
+        const string prefix = "{\"txIndex\":";
+        byte[] bytes = Encoding.UTF8.GetBytes(prefix + json + "}");
+        if (!segmented) return JsonSerializer.Deserialize<GethTraceOptions>(bytes, EthereumJsonSerializer.JsonOptions)!.TxIndex;
+        int split = prefix.Length + Encoding.UTF8.GetByteCount(json) / 2;
+        TransactionIndexJsonSegment first = new(bytes.AsMemory(0, split));
+        TransactionIndexJsonSegment last = first.Append(bytes.AsMemory(split));
+        Utf8JsonReader reader = new(new ReadOnlySequence<byte>(first, 0, last, last.Memory.Length));
+        Utf8JsonReader tokenReader = reader;
+        tokenReader.Read();
+        tokenReader.Read();
+        tokenReader.Read();
+        if (tokenReader.TokenType == JsonTokenType.String && json.Length > 2)
+            Assert.That(tokenReader.HasValueSequence, Is.True, "the quantity must cross the buffer boundary");
+        return JsonSerializer.Deserialize<GethTraceOptions>(ref reader, EthereumJsonSerializer.JsonOptions)!.TxIndex;
+    }
+
+    private sealed class TransactionIndexJsonSegment : ReadOnlySequenceSegment<byte>
+    {
+        public TransactionIndexJsonSegment(ReadOnlyMemory<byte> memory) => Memory = memory;
+
+        public TransactionIndexJsonSegment Append(ReadOnlyMemory<byte> memory)
+        {
+            TransactionIndexJsonSegment next = new(memory) { RunningIndex = RunningIndex + Memory.Length };
+            Next = next;
+            return next;
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_uses_prefix_before_overrides(
+        [Values(-1, 0, 1, 2)] int index,
+        [Values("buffered", "streamed", "callTracer")] string mode,
+        [Values] bool overridePrefixSender,
+        [Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = mode == "streamed" })
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        UInt256 initial = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressC);
+        UInt256 senderBalance = chain.WorldStateManager.GlobalStateReader.GetBalance(parent, TestItem.AddressB);
+        Block block = await AddTraceCallPrefixTransfers(chain, 3);
+        Transaction[] transactions = block.Transactions;
+        string canonicalHeader = Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString();
+        int prefixLength = index < 0 ? 3 : index;
+        for (int i = 0; i < prefixLength; i++)
+            senderBalance -= transactions[i].Value + transactions[i].GasPrice * transactions[i].BlockGasUsed;
+        if (overridePrefixSender) senderBalance = UInt256.Zero;
+        byte[] code = Prepare.EvmCode.PushData(TestItem.AddressC).Op(Instruction.BALANCE).PushData(0).Op(Instruction.MSTORE)
+            .PushData(TestItem.AddressB).Op(Instruction.BALANCE).PushData(32).Op(Instruction.MSTORE)
+            .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE).Return(96, 0).Done;
+        Dictionary<string, object> overrides = new()
+        {
+            [TestItem.AddressD.ToString()] = new { code = code.ToHexString(true) }
+        };
+        if (overridePrefixSender) overrides[TestItem.AddressB.ToString()] = new { balance = "0x0" };
+        object call = new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" };
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new
+            {
+                txIndex = index < 0 ? null : $"0x{index:x}",
+                tracer = mode == "callTracer" ? "callTracer" : null,
+                stateOverrides = overrides,
+                blockOverrides = new { number = "0x4d2" }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        string output = (string)json["result"]![mode == "callTracer" ? "output" : "returnValue"]!;
+        string expected = (initial + (UInt256)prefixLength).ToBigEndian().ToHexString()
+            + senderBalance.ToBigEndian().ToHexString() + ((UInt256)1234).ToBigEndian().ToHexString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((output.StartsWith("0x") ? output[2..] : output), Is.EqualTo(expected), response);
+            Assert.That(Nethermind.Serialization.Rlp.Rlp.Encode(block.Header).ToString(), Is.EqualTo(canonicalHeader));
+            Assert.That(chain.WorldStateManager.GlobalStateReader.GetBalance(block.Header, TestItem.AddressC), Is.EqualTo(initial + 3));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_keeps_block_overrides_out_of_prefix([Values] bool blockAccessLists)
+    {
+        OverridableReleaseSpec spec = new(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { Eip1559TransitionBlock = 1 };
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        byte[] initCode = Prepare.EvmCode.Op(Instruction.NUMBER).PushData(0).Op(Instruction.SSTORE)
+            .Op(Instruction.BASEFEE).PushData(1).Op(Instruction.SSTORE).STOP().Done;
+        Transaction create = Build.A.Transaction.WithCode(initCode).WithNonce(nonce).WithGasPrice(1_000_000_000)
+            .WithGasLimit(1_000_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Transaction transfer = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + 1).WithGasPrice(1_000_000_000)
+            .WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(create, transfer);
+        Assert.That(block.Transactions, Has.Length.EqualTo(2));
+        Assert.That(block.Header.BaseFeePerGas, Is.Not.EqualTo(UInt256.Zero));
+        Address contract = ContractAddress.From(TestItem.AddressB, nonce);
+        TxReceipt receipt = chain.ReceiptStorage.Get(block)[0];
+        Assert.That(receipt.StatusCode, Is.EqualTo(StatusCode.Success));
+        Assert.That(receipt.ContractAddress, Is.EqualTo(contract));
+        byte[] probe = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(0).Op(Instruction.MSTORE)
+            .PushData(1).Op(Instruction.SLOAD).PushData(32).Op(Instruction.MSTORE)
+            .Op(Instruction.NUMBER).PushData(64).Op(Instruction.MSTORE)
+            .Op(Instruction.BASEFEE).PushData(96).Op(Instruction.MSTORE).Return(128, 0).Done;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = contract.ToString(), gas = "0x186a0" }, block.Hash!.ToString(), new
+            {
+                txIndex = "0x1",
+                blockOverrides = new { number = "0x4d2" },
+                stateOverrides = new Dictionary<string, object> { [contract.ToString()] = new { code = probe.ToHexString(true) } }
+            });
+        JToken json = JToken.Parse(response);
+        string expected = ((UInt256)block.Number).ToBigEndian().ToHexString() + block.Header.BaseFeePerGas.ToBigEndian().ToHexString()
+            + ((UInt256)1234).ToBigEndian().ToHexString() + UInt256.Zero.ToBigEndian().ToHexString();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((string?)json["result"]?["returnValue"], Is.EqualTo("0x" + expected), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_javascript_context_uses_call_overrides(
+        [Values(-1, 0, 1)] int index, [Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        await AddTraceCallPrefixTransfers(chain, 2);
+        const string tracer = "{step:function(){},fault:function(){},result:function(ctx){return {block:ctx.block,gasPrice:ctx.gasPrice.toString(10)};}}";
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), to = TestItem.AddressD.ToString(), gas = "0x186a0" }, "latest",
+            new
+            {
+                txIndex = index < 0 ? null : $"0x{index:x}",
+                tracer,
+                blockOverrides = new { number = "0x4d2" },
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressD.ToString()] = new { code = "0x00" } }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["result"]!["block"], Is.EqualTo(1234), response);
+            Assert.That((string?)json["result"]!["gasPrice"], Is.EqualTo("0"), response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_creation_uses_overridden_sender_nonce(
+        [Values(-1, 0, 1)] int index, [Values] bool blockAccessLists)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .Build(builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(blockAccessLists ? Amsterdam.Instance : Prague.Instance) { AllowTestChainOverride = false }));
+        await AddTraceCallPrefixTransfers(chain, 2);
+        const ulong overriddenNonce = 37;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressA.ToString(), gas = "0x989680", data = "0x00" }, "latest",
+            new
+            {
+                txIndex = index < 0 ? null : $"0x{index:x}",
+                tracer = "callTracer",
+                stateOverrides = new Dictionary<string, object> { [TestItem.AddressA.ToString()] = new { nonce = $"0x{overriddenNonce:x}" } }
+            });
+        JToken json = JToken.Parse(response);
+        Assert.That(json["error"], Is.Null, response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((string?)json["result"]!["type"], Is.EqualTo("CREATE"), response);
+            Assert.That((string?)json["result"]!["to"], Is.EqualTo(ContractAddress.From(TestItem.AddressA, overriddenNonce).ToString()), response);
+        }
+    }
+
+    private static async Task<Block> AddTraceCallPrefixTransfers(TestRpcBlockchain chain, int count)
+    {
+        ulong nonce = chain.WorldStateManager.GlobalStateReader.GetNonce(chain.BlockTree.Head!.Header, TestItem.AddressB);
+        Transaction[] transactions = new Transaction[count];
+        for (int i = 0; i < transactions.Length; i++)
+            transactions[i] = Build.A.Transaction.WithTo(TestItem.AddressC).WithNonce(nonce + (ulong)i)
+                .WithValue(1).WithGasPrice(1_000_000_000).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Block block = await chain.AddBlock(transactions);
+        Assert.That(block.Transactions, Has.Length.EqualTo(count));
+        return block;
+    }
+
+    [TestCase("0x3", -32000)]
+    [TestCase("0xffffffffffffffff", -32000)]
+    [TestCase("0", -32602)]
+    [TestCase("-1", -32602)]
+    [TestCase("0x00", -32602)]
+    [TestCase("0x", -32602)]
+    [TestCase("0xg", -32602)]
+    [TestCase("0x10000000000000000", -32602)]
+    [TestCase("NUMBER", -32602)]
+    public async Task Debug_traceCall_txIndex_rejects_invalid_input(string value, int errorCode)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build();
+        object index = value == "NUMBER" ? 0 : value;
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest", new { txIndex = index });
+        Assert.That((int?)JToken.Parse(response)["error"]?["code"], Is.EqualTo(errorCode), response);
+    }
+
+    [Test]
+    public async Task Debug_traceCall_txIndex_rejects_end_of_nonempty_block([Values] bool streaming)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        Block block = await AddTraceCallPrefixTransfers(chain, 3);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, block.Hash!.ToString(),
+            new { txIndex = $"0x{block.Transactions.Length:x}" });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [TestCase(true, "0x0", -32000, false)]
+    [TestCase(true, "0x0", -32000, true)]
+    [TestCase(false, "0x0", null, false)]
+    [TestCase(false, "0x0", null, true)]
+    [TestCase(false, "0x1", -32000, false)]
+    [TestCase(false, "0x1", -32000, true)]
+    public async Task Debug_traceCall_txIndex_empty_and_genesis(bool genesis, string index, int? errorCode, bool stream)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = stream }).Build();
+        Block empty = await chain.AddBlock();
+        Assert.That(empty.Transactions, Is.Empty);
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { to = TestItem.AddressD.ToString(), gas = "0x186a0" }, genesis ? "0x0" : empty.Hash!.ToString(), new { txIndex = index });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(errorCode), response);
+            if (errorCode is null) Assert.That((bool?)json["result"]?["failed"], Is.False, response);
+            if (genesis) Assert.That((string?)json["error"]?["message"], Is.EqualTo("no transaction in genesis"), response);
+        }
+    }
+
     public static IEnumerable<TestCaseData> TransactionTracingPrefixCases()
     {
         foreach (string method in new[] { "debug_traceTransaction", "trace_transaction", "trace_replayTransaction" })
@@ -459,6 +762,52 @@ public partial class DebugRpcModuleTests
         {
             Assert.That(result["failed"]?.Value<bool>(), Is.False);
             Assert.That(ParseReturnValue(response).ToUInt256(), Is.EqualTo(expectedBaseFee));
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_rejects_conflicting_storage_before_fee_validation(
+        [Values] bool streaming, [Values] bool mixedFees, [Values] bool explicitType)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        const string address = "0x000000000000000000000000000000000000dead";
+        Dictionary<string, object> call = new()
+        {
+            ["from"] = TestItem.AddressB.ToString(),
+            ["to"] = address,
+            ["gas"] = "0x186a0"
+        };
+        if (mixedFees)
+        {
+            call["gasPrice"] = "0x1";
+            call["maxFeePerGas"] = "0x2";
+        }
+        if (explicitType) call["type"] = "0x2";
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall", call, "latest",
+            new { stateOverrides = new Dictionary<string, object> { [address] = new { code = "0x00", state = new { }, stateDiff = new { } } } });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(-32000), response);
+            Assert.That((string?)json["error"]?["message"], Is.EqualTo("account 0x000000000000000000000000000000000000dEaD has both 'state' and 'stateDiff'"), response);
+            Assert.That(json["result"], Is.Null, response);
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceCall_accepts_single_storage_override([Values] bool streaming, [Values("state", "stateDiff")] string field)
+    {
+        using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            .WithConfig(new JsonRpcConfig { EnableTracingStreamMode = streaming }).Build();
+        string response = await RpcTest.TestSerializedRequest(chain.DebugRpcModule, "debug_traceCall",
+            new { from = TestItem.AddressB.ToString(), to = TestItem.AddressC.ToString(), gas = "0x186a0" }, "latest",
+            new { stateOverrides = new Dictionary<string, object> { [TestItem.AddressC.ToString()] = new Dictionary<string, object> { [field] = new { }, ["code"] = "0x00" } } });
+        JToken json = JToken.Parse(response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(json["error"], Is.Null, response);
+            Assert.That((bool?)json["result"]?["failed"], Is.False, response);
         }
     }
 

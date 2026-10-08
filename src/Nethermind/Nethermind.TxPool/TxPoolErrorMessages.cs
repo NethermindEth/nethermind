@@ -44,6 +44,7 @@ public static class TxPoolErrorMessages
     public const string FrameTxRecentRootWithPersistentBlobs = "blob-carrying frame transaction with a recent_root_verify frame is not accepted by a persistent blob pool";
     public const string NonCanonicalPaymasterLimitReached = "non-canonical paymaster already sponsors the maximum number of pending frame transactions";
     public const string WidthUnmet = "sender width insufficient for another pending keyed-nonce frame transaction";
+    public const string PaymasterWidthUnmet = "paymaster width insufficient for another pending sponsored frame transaction";
 
     public const string KeyedNonceOverlap = "keyed nonce set intersects another pending frame transaction from the same sender";
 }

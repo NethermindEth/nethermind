@@ -18,4 +18,7 @@ public interface IFrameTxPrefixTracer
     /// <param name="isDeployFrame">Whether the frame about to run is the prefix-opening <c>deploy</c> frame.</param>
     /// <param name="target">The address the frame dispatches, already resolved from <c>frame.Target</c>.</param>
     void StartPrefixFrame(TxFrame frame, bool isDeployFrame, Address target);
+
+    /// <summary>The <c>MAX_VERIFY_GAS</c> budget the prefix simulation runs under.</summary>
+    ulong MaxVerifyGas => Eip8141Constants.MaxVerifyGas;
 }
