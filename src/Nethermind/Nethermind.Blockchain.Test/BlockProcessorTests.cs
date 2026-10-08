@@ -3296,6 +3296,7 @@ public partial class BlockProcessorTests
     {
         const ulong gasUsed = 1_000_000;
         const int heavyCount = 4096;
+        const int heavyCountUnderLimit = 64;
         int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
         // The lowest gas limit after the canonical prefix is scheduled last, holding the in-order validator
         // there while the heavy tail runs; the prefix and that tx alone stay under the block gas limit.
@@ -3307,7 +3308,7 @@ public partial class BlockProcessorTests
 
         Block block = Build.A.Block
             .WithNumber(1)
-            .WithGasLimit((ulong)(lead + 1 + 64) * gasUsed)
+            .WithGasLimit((ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed)
             .WithTransactions(transactions)
             .WithBlockAccessList(new ReadOnlyBlockAccessList())
             .TestObject;
@@ -3330,7 +3331,9 @@ public partial class BlockProcessorTests
         Assert.Multiple(() =>
         {
             Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
-            Assert.That(transactionProcessor.ExecutedCount, Is.LessThan(heavyCount / 8));
+            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
+            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
         });
     }
 
