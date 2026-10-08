@@ -588,8 +588,9 @@ public partial class DebugRpcModuleTests
         }
     }
 
-    // Opcode logs from the fourth on carry the 64 KiB of memory MSTORE8 grows, so this cap ends the buffered trace at the first of them.
-    private const long BufferedTraceCap = 141613;
+    // The first three opcode logs are small and each later one carries the 64 KiB of memory MSTORE8 grows,
+    // so this cap ends the buffered trace at the fourth without depending on the exact size estimate.
+    private static readonly long BufferedTraceCap = 64.KiB;
 
     [TestCase(false, 0L, 4)]
     [TestCase(false, long.MaxValue, 4)]
