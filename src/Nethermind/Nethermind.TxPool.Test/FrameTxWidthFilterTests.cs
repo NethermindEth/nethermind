@@ -8,6 +8,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
@@ -17,12 +18,14 @@ using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
 using NSubstitute;
 using NUnit.Framework;
+using static Nethermind.Core.Test.Builders.FrameTxTestFrames;
 
 namespace Nethermind.TxPool.Test;
 
 public class FrameTxWidthFilterTests
 {
     private static readonly Address Sender = TestItem.AddressA;
+    private static readonly Address Paymaster = TestItem.AddressB;
     private static readonly UInt256 NonceKey = 0xbeef;
     private const ulong Baseline = 1;
     private const ulong SafetyFactorPermille = 1000;
@@ -292,6 +295,222 @@ public class FrameTxWidthFilterTests
         Assert.That(cache.GetWidth(Sender), Is.EqualTo((UInt256)90_000));
     }
 
+    [TestCase(true, true, 0ul, 90_000ul, TestName = "a sponsored transaction credits its paymaster with the receipt gas")]
+    [TestCase(true, true, 50_000ul, 50_000ul, TestName = "the paymaster credit is held at the width cap")]
+    [TestCase(true, false, 0ul, 0ul, TestName = "a self-paid transaction credits no paymaster")]
+    [TestCase(false, true, 0ul, 0ul, TestName = "disabled width credits no paymaster")]
+    public void EarnWidthOnFinalization_CreditsThePaymasterOfASponsoredFrameTransaction(bool enabled, bool sponsored, ulong widthCap, ulong expected)
+    {
+        FrameTxWidthLedger ledger = new(new TxPoolConfig { FrameTxWidthEnabled = enabled, FrameTxWidthCap = widthCap }, LimboLogs.Instance);
+        Transaction finalized = FrameTx(nonce: 0, nonceKeys: null, frames: sponsored ? [OnlyVerify(), Pay(Paymaster)] : [SelfVerify()]);
+
+        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { Payer = sponsored ? Paymaster : Sender, GasUsed = 90_000 }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ledger.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo((UInt256)expected));
+            Assert.That(ledger.PaymasterWidth.Count, Is.EqualTo(expected == 0 ? 0 : 1));
+            Assert.That(ledger.SenderWidth.Count, Is.Zero, "paymaster width is held apart from sender width");
+        }
+    }
+
+    [Test]
+    public void EarnWidthOnFinalization_FirstPaymentCapableTargetDidNotPay_CreditsThePayerInTheReceipt()
+    {
+        FrameTxWidthLedger ledger = new(new TxPoolConfig { FrameTxWidthEnabled = true }, LimboLogs.Instance);
+        Transaction finalized = FrameTx(nonce: 0, nonceKeys: null, frames: [OnlyVerify(), Pay(Paymaster), Pay(TestItem.AddressC)]);
+
+        ledger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(finalized).TestObject, [new TxReceipt { Payer = TestItem.AddressC, GasUsed = 90_000 }]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(ledger.PaymasterWidth.GetWidth(TestItem.AddressC), Is.EqualTo((UInt256)90_000));
+            Assert.That(ledger.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
+    [Test]
+    public void Sponsored_DisabledWidth_KeepsThePaymasterCapAndLeavesTheLedgerUntouched()
+    {
+        SponsoredAdmission admission = new(enabled: false);
+        Transaction second = SponsoredTx(nonce: 1);
+        UInt256 earned = ChargeOf(second) * 2;
+        admission.PaymasterWidth.Earn(Paymaster, earned);
+
+        AcceptTxResult first = admission.Submit(SponsoredTx(nonce: 0));
+        AcceptTxResult beyondTheCap = admission.Submit(second);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(beyondTheCap, Is.EqualTo(AcceptTxResult.NonCanonicalPaymasterLimitReached));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(earned));
+        }
+    }
+
+    [TestCase(null, false, TestName = "paymaster with zero width")]
+    [TestCase(-1, false, TestName = "paymaster width one short of the cost")]
+    [TestCase(0, true, TestName = "paymaster width exactly covering the cost")]
+    [TestCase(1, true, TestName = "paymaster width above the cost")]
+    public void Sponsored_BeyondThePaymasterBaseline_SpendsPaymasterWidth(int? widthAboveCost, bool accepted)
+    {
+        SponsoredAdmission admission = new();
+        Transaction additional = SponsoredTx(nonce: 1);
+        UInt256 cost = ChargeOf(additional);
+        UInt256 earned = widthAboveCost is int above ? (UInt256)(ulong)((long)(ulong)cost + above) : UInt256.Zero;
+        admission.PaymasterWidth.Earn(Paymaster, earned);
+        admission.SenderWidth.Earn(Sender, cost);
+
+        AcceptTxResult baseline = admission.Submit(SponsoredTx(nonce: 0));
+        AcceptTxResult result = admission.Submit(additional);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(cost, Is.Not.EqualTo(UInt256.Zero));
+            Assert.That(baseline, Is.EqualTo(AcceptTxResult.Accepted), "the single transaction the EIP-8141 cap allows is free");
+            Assert.That(result, Is.EqualTo(accepted ? AcceptTxResult.Accepted : AcceptTxResult.PaymasterWidthUnmet));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(accepted ? earned - cost : earned), "a rejection spends nothing");
+            Assert.That(admission.SenderWidth.GetWidth(Sender), Is.EqualTo(cost), "a transaction on the account nonce spends no sender width");
+            Assert.That(admission.Paymasters.GetPendingCount(Paymaster), Is.EqualTo(accepted ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public void Sponsored_ByATargetWithoutCode_SpendsNoPaymasterWidth()
+    {
+        SponsoredAdmission admission = new(paymasterHasCode: false);
+        Transaction additional = SponsoredTx(nonce: 1);
+        UInt256 earned = ChargeOf(additional);
+        admission.PaymasterWidth.Earn(Paymaster, earned);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0)), Is.EqualTo(AcceptTxResult.Accepted));
+
+        AcceptTxResult result = admission.Submit(additional);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(earned));
+        }
+    }
+
+    [Test]
+    public void Sponsored_SpentPaymasterWidthIsNotReturned_AndTheBaselineIsNotInherited()
+    {
+        SponsoredAdmission admission = new();
+        Transaction baseline = SponsoredTx(nonce: 0);
+        Transaction additional = SponsoredTx(nonce: 1);
+        Transaction next = SponsoredTx(nonce: 2);
+        admission.PaymasterWidth.Earn(Paymaster, ChargeOf(additional));
+        Assert.That(admission.Submit(baseline), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
+
+        admission.Remove(baseline);
+        AcceptTxResult whileOneIsPending = admission.Submit(next);
+        admission.Remove(additional);
+        UInt256 widthAfterRemoval = admission.PaymasterWidth.GetWidth(Paymaster);
+        AcceptTxResult onceNoneIsPending = admission.Submit(next);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(whileOneIsPending, Is.EqualTo(AcceptTxResult.PaymasterWidthUnmet), "the baseline that left is not handed to another pending transaction");
+            Assert.That(widthAfterRemoval, Is.EqualTo(UInt256.Zero), "removal returns no width");
+            Assert.That(onceNoneIsPending, Is.EqualTo(AcceptTxResult.Accepted));
+        }
+    }
+
+    [TestCase(true, TestName = "replacing the paymaster baseline is free")]
+    [TestCase(false, TestName = "replacing a transaction beyond the paymaster baseline spends again")]
+    public void Sponsored_OnlyReplacingThePaymasterBaselineIsFree(bool replacesBaseline)
+    {
+        SponsoredAdmission admission = new();
+        Transaction additional = SponsoredTx(nonce: 1);
+        UInt256 cost = ChargeOf(additional);
+        admission.PaymasterWidth.Earn(Paymaster, cost);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0)), Is.EqualTo(AcceptTxResult.Accepted));
+        Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
+        ulong replacedNonce = replacesBaseline ? 0ul : 1ul;
+
+        AcceptTxResult withoutWidth = admission.Submit(SponsoredTx(replacedNonce, gasPrice: 2));
+        admission.PaymasterWidth.Earn(Paymaster, cost);
+        AcceptTxResult withWidth = admission.Submit(SponsoredTx(replacedNonce, gasPrice: 3));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(withoutWidth, Is.EqualTo(replacesBaseline ? AcceptTxResult.Accepted : AcceptTxResult.PaymasterWidthUnmet));
+            Assert.That(withWidth, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(replacesBaseline ? cost : UInt256.Zero), "a replacement of the baseline stays the baseline");
+            Assert.That(admission.Paymasters.GetPendingCount(Paymaster), Is.EqualTo(2));
+        }
+    }
+
+    [Test]
+    public void Sponsored_BeyondThePaymasterBaseline_RefusedBeforeAnySpend([Values] bool underbidsAPendingOne)
+    {
+        const uint nextBaseFee = 3;
+        SponsoredAdmission admission = new(nextBaseFee: nextBaseFee);
+        Transaction additional = SponsoredTx(nonce: 1, gasPrice: nextBaseFee + 1);
+        UInt256 earned = ChargeOf(additional) * 2;
+        admission.PaymasterWidth.Earn(Paymaster, earned);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0, gasPrice: nextBaseFee)), Is.EqualTo(AcceptTxResult.Accepted));
+        if (underbidsAPendingOne) Assert.That(admission.Submit(additional), Is.EqualTo(AcceptTxResult.Accepted));
+        UInt256 before = admission.PaymasterWidth.GetWidth(Paymaster);
+
+        AcceptTxResult result = admission.Submit(SponsoredTx(nonce: 1, gasPrice: underbidsAPendingOne ? nextBaseFee : nextBaseFee - 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result, Is.EqualTo(underbidsAPendingOne ? AcceptTxResult.ReplacementNotAllowed : AcceptTxResult.FeeTooLow));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(before));
+            Assert.That(admission.Paymasters.GetPendingCount(Paymaster), Is.EqualTo(underbidsAPendingOne ? 2 : 1), "the refused admission holds no paymaster slot");
+        }
+    }
+
+    [Test]
+    public void Sponsored_BeyondBothBaselines_SpendsThePaymasterOnlyWhenTheSenderPays()
+    {
+        SponsoredAdmission admission = new();
+        Transaction additional = SponsoredTx(nonce: 1, nonceKeys: [NonceKey]);
+        UInt256 cost = ChargeOf(additional);
+        admission.PaymasterWidth.Earn(Paymaster, cost);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0, nonceKeys: [NonceKey])), Is.EqualTo(AcceptTxResult.Accepted));
+
+        AcceptTxResult senderWithoutWidth = admission.Submit(additional);
+        UInt256 paymasterWidthAfterRefusal = admission.PaymasterWidth.GetWidth(Paymaster);
+        admission.SenderWidth.Earn(Sender, cost);
+        AcceptTxResult senderWithWidth = admission.Submit(additional);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(senderWithoutWidth, Is.EqualTo(AcceptTxResult.WidthUnmet));
+            Assert.That(paymasterWidthAfterRefusal, Is.EqualTo(cost), "a sender without width cannot spend its paymaster's");
+            Assert.That(senderWithWidth, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.SenderWidth.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(UInt256.Zero), "a transaction beyond both baselines spends both");
+        }
+    }
+
+    [Test]
+    public void Sponsored_PaymasterWidthIsHeldAcrossThePrefixSimulation()
+    {
+        SponsoredAdmission admission = new();
+        Transaction additional = SponsoredTx(nonce: 1, nonceKeys: [NonceKey]);
+        UInt256 cost = ChargeOf(additional);
+        admission.PaymasterWidth.Earn(Paymaster, cost);
+        admission.SenderWidth.Earn(Sender, cost);
+        Assert.That(admission.Submit(SponsoredTx(nonce: 0, nonceKeys: [NonceKey])), Is.EqualTo(AcceptTxResult.Accepted));
+        bool drainedDuringTheSimulation = true;
+
+        AcceptTxResult result = admission.Submit(additional, afterThePaymasterFilter: () => drainedDuringTheSimulation = admission.PaymasterWidth.TrySpend(Paymaster, 1));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(drainedDuringTheSimulation, Is.False);
+            Assert.That(result, Is.EqualTo(AcceptTxResult.Accepted));
+            Assert.That(admission.SenderWidth.GetWidth(Sender), Is.EqualTo(UInt256.Zero));
+            Assert.That(admission.PaymasterWidth.GetWidth(Paymaster), Is.EqualTo(UInt256.Zero));
+        }
+    }
+
     private static AcceptTxResult Accept(SenderWidthCache cache, Transaction tx, TxDistinctSortedPool pending, bool enabled = true, ulong permille = SafetyFactorPermille, Transaction? baseline = null, uint nextBaseFee = 0)
     {
         TxPoolConfig config = new() { FrameTxWidthEnabled = enabled, FrameTxWidthSafetyFactorPermille = permille };
@@ -315,7 +534,7 @@ public class FrameTxWidthFilterTests
 
     private static Transaction KeyedTx(ulong nonceSeq, uint gasPrice = 1, int signatures = 1) => FrameTx(nonceSeq, [NonceKey], gasPrice, signatures);
 
-    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1)
+    private static Transaction FrameTx(ulong nonce, UInt256[]? nonceKeys, uint gasPrice = 1, int signatures = 1, TxFrame[]? frames = null)
     {
         TxFrameSignature[] frameSignatures = new TxFrameSignature[signatures];
         for (int i = 0; i < signatures; i++)
@@ -329,7 +548,7 @@ public class FrameTxWidthFilterTests
             SenderAddress = Sender,
             Nonce = nonce,
             NonceKeys = nonceKeys,
-            Frames = [],
+            Frames = frames ?? [],
             FrameSignatures = frameSignatures,
             GasLimit = 1_000_000,
             GasPrice = gasPrice,
@@ -337,5 +556,65 @@ public class FrameTxWidthFilterTests
         };
         tx.Hash = tx.CalculateHash();
         return tx;
+    }
+
+    private static Transaction SponsoredTx(ulong nonce, UInt256[]? nonceKeys = null, uint gasPrice = 1) =>
+        FrameTx(nonce, nonceKeys, gasPrice, frames: [OnlyVerify(PrefixFrameGas), Pay(Paymaster, PrefixFrameGas)]);
+
+    private static UInt256 ChargeOf(Transaction tx) => FrameTxWidthCharge.For(tx, Eip8141Prototype.Instance, SafetyFactorPermille);
+
+    /// <summary>The paymaster filter and the width filter as the pool chains them, over the pending set they admitted.</summary>
+    private sealed class SponsoredAdmission(bool enabled = true, uint nextBaseFee = 0, bool paymasterHasCode = true)
+    {
+        private readonly TxPoolConfig _config = new() { FrameTxWidthEnabled = enabled };
+        private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
+        private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _paymasterBaselines = new();
+        private readonly List<Transaction> _pending = [];
+
+        public PendingPaymasterCache Paymasters { get; } = new();
+
+        public SenderWidthCache SenderWidth { get; } = new();
+
+        public SenderWidthCache PaymasterWidth { get; } = new(holdsPaymasters: true);
+
+        public AcceptTxResult Submit(Transaction tx, Action? afterThePaymasterFilter = null)
+        {
+            TestReadOnlyStateProvider chain = new();
+            if (paymasterHasCode) chain.InsertCode([0x60, 0x00], Paymaster);
+            TxDistinctSortedPool pool = FrameTxFilterTestPools.Pool(false, [.. _pending]);
+            TxDistinctSortedPool blobPool = FrameTxFilterTestPools.Pool(true);
+            ILogger logger = LimboLogs.Instance.GetClassLogger<FrameTxWidthFilterTests>();
+            FrameTxPaymasterFilter paymasterFilter = new(chain, pool, blobPool, Paymasters, _config, PaymasterWidth, _paymasterBaselines, logger);
+            FrameTxWidthFilter widthFilter = new(_config, new TestChainHeadInfoProvider { NextBaseFee = nextBaseFee }, pool, blobPool, SenderWidth, _senderBaselines, logger);
+            TxFilteringState state = new(tx, Substitute.For<IAccountStateProvider>(), Eip8141Prototype.Instance);
+
+            AcceptTxResult result = paymasterFilter.Accept(tx, ref state, TxHandlingOptions.None);
+            if (result)
+            {
+                afterThePaymasterFilter?.Invoke();
+                result = widthFilter.Accept(tx, ref state, TxHandlingOptions.None);
+            }
+
+            if (state.PaymasterWidthReserved) PaymasterWidth.Release(Paymaster, state.PaymasterWidthHeld);
+            if (!result)
+            {
+                if (state.PaymasterReserved) Paymasters.Decrement(Paymaster);
+                return result;
+            }
+
+            if (PendingReplacement.Find(tx, pool, blobPool) is Transaction replaced) Remove(replaced);
+            _pending.Add(tx);
+            if (state.TakesSenderBaseline) _senderBaselines[Sender] = tx.Hash!.ValueHash256;
+            if (state.TakesPaymasterBaseline) _paymasterBaselines[Paymaster] = tx.Hash!.ValueHash256;
+            return result;
+        }
+
+        public void Remove(Transaction tx)
+        {
+            _pending.Remove(tx);
+            Paymasters.Decrement(Paymaster);
+            _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(Sender, tx.Hash!.ValueHash256));
+            _paymasterBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(Paymaster, tx.Hash!.ValueHash256));
+        }
     }
 }

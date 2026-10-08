@@ -10,11 +10,12 @@ using Nethermind.Logging;
 namespace Nethermind.TxPool;
 
 /// <summary>
-/// Holds the MATCHA width each sender has earned from finalized keyed-nonce frame transactions.
+/// Holds the MATCHA width each sender has earned from finalized keyed-nonce frame transactions, and the width
+/// each paymaster has earned from the finalized frame transactions it paid for.
 /// </summary>
 /// <remarks>
 /// One instance is shared by the transaction pool, which spends width on admission, and the finalization source,
-/// which earns it. Credits are capped per sender at <see cref="ITxPoolConfig.FrameTxWidthCap"/>. Inert unless
+/// which earns it. Credits are capped per sender and per paymaster at <see cref="ITxPoolConfig.FrameTxWidthCap"/>. Inert unless
 /// <see cref="ITxPoolConfig.FrameTxWidthEnabled"/> is set.
 /// </remarks>
 public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager logManager) : IFrameTxWidthLedger
@@ -23,6 +24,8 @@ public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager l
     private int _missingReceiptsWarned;
 
     internal SenderWidthCache SenderWidth { get; } = new();
+
+    internal SenderWidthCache PaymasterWidth { get; } = new(holdsPaymasters: true);
 
     /// <inheritdoc/>
     public void EarnWidthOnFinalization(Block finalizedBlock, TxReceipt[] receipts)
@@ -50,6 +53,11 @@ public sealed class FrameTxWidthLedger(ITxPoolConfig txPoolConfig, ILogManager l
             if (blockTx.SupportsFrames && KeyedNonceManager.UsesKeyedNonce(blockTx))
             {
                 SenderWidth.Earn(blockTx.SenderAddress!, (UInt256)receipts[i].GasUsed, txPoolConfig.FrameTxWidthCap);
+            }
+
+            if (blockTx.SupportsFrames && receipts[i].Payer is Address paymaster && paymaster != blockTx.SenderAddress)
+            {
+                PaymasterWidth.Earn(paymaster, (UInt256)receipts[i].GasUsed, txPoolConfig.FrameTxWidthCap);
             }
         }
     }
