@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -15,14 +16,17 @@ namespace Nethermind.TxPool;
 /// spend at most the head budget divided by the active count on validation that ends in a rejection. Time is
 /// measured, not declared, so one setting fits a fast and a slow node alike. A peer is checked before
 /// validation and charged after it, so it can overshoot its share by one validation per in-flight submission.
-/// Shares reset on every head; the first active peer initially gets the whole head budget. A peer that joins
-/// later shrinks the shares of those already active but cannot recover simulation time already spent.
+/// Charges reset on every head. The active count from the immediately preceding head is a floor for the
+/// divisor, so an early arrival cannot reclaim the allowances of peers that have yet to submit again. Inactive
+/// peers stop contributing after one head; skipped heads discard the floor. The first observed head has no
+/// floor, and late arrivals cannot recover simulation time already spent.
 /// </remarks>
 internal sealed class PeerValidationShares(long headBudgetTicks)
 {
     private readonly Lock _lock = new();
     private readonly Dictionary<object, long> _spentTicks = new(ReferenceEqualityComparer.Instance);
     private long _headGeneration = long.MinValue;
+    private int _previousActiveCount;
 
     /// <summary>Registers <paramref name="peer"/> as active for the head and reports whether it has share left.</summary>
     /// <returns><see langword="false"/> when the transaction must be dropped without validation.</returns>
@@ -32,7 +36,7 @@ internal sealed class PeerValidationShares(long headBudgetTicks)
         {
             if (!TryRoll(headGeneration)) return true;
             long spent = CollectionsMarshal.GetValueRefOrAddDefault(_spentTicks, peer, out _);
-            return spent < headBudgetTicks / _spentTicks.Count;
+            return spent < headBudgetTicks / Math.Max(_spentTicks.Count, _previousActiveCount);
         }
     }
 
@@ -62,6 +66,7 @@ internal sealed class PeerValidationShares(long headBudgetTicks)
         if (headGeneration < _headGeneration) return false;
         if (headGeneration > _headGeneration)
         {
+            _previousActiveCount = headGeneration == _headGeneration + 1 ? _spentTicks.Count : 0;
             _spentTicks.Clear();
             _headGeneration = headGeneration;
         }
