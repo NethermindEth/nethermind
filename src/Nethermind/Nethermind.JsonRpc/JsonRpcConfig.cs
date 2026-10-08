@@ -53,6 +53,7 @@ public class JsonRpcConfig : IJsonRpcConfig
     public bool EnableTracingStreamMode { get; set; } = true;
     public bool EnableLogsStreamMode { get; set; } = false;
     public long? MaxLogsResponseBodySize { get; set; } = null;
+    public long MaxBufferedTraceLogSize { get; set; } = 0;
     public int? DebugModuleConcurrentInstances { get; set; } = null;
     public int? TraceModuleConcurrentInstances { get; set; } = null;
     public int TraceBlockParallelism { get; set; } = 4;
