@@ -225,13 +225,13 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         ITxDecoder decoder = GetDecoder(item.Type);
 
         // A generic interface call resolves its target at run time, so the built-in decoders are bypassed for their
-        // static encoders; any other decoder registered for the type, subclasses included, still owns its encoding.
+        // static encoders; any other decoder registered for the type still owns its encoding.
         switch (item.Type)
         {
             case TxType.EIP1559 when decoder is EIP1559TxDecoder:
                 EIP1559TxDecoder.EncodeTransaction(item, ref writer, rlpBehaviors, forSigning);
                 break;
-            case TxType.Legacy when decoder.GetType() == typeof(LegacyTxDecoder):
+            case TxType.Legacy when decoder is LegacyTxDecoder:
                 LegacyTxDecoder.EncodeTransaction(item, ref writer, forSigning, isEip155Enabled, chainId);
                 break;
             case TxType.Blob when decoder is BlobTxDecoder:
@@ -263,7 +263,7 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
         return tx.Type switch
         {
             TxType.EIP1559 when decoder is EIP1559TxDecoder => EIP1559TxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
-            TxType.Legacy when decoder.GetType() == typeof(LegacyTxDecoder) => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
+            TxType.Legacy when decoder is LegacyTxDecoder => LegacyTxDecoder.GetTransactionLength(tx, forSigning, isEip155Enabled, chainId),
             TxType.Blob when decoder is BlobTxDecoder => BlobTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
             TxType.SetCode when decoder is SetCodeTxDecoder => SetCodeTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),
             TxType.AccessList when decoder is AccessListTxDecoder => AccessListTxDecoder.GetTransactionLength(tx, rlpBehaviors, forSigning),

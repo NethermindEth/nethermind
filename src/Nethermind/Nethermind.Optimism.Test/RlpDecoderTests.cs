@@ -7,6 +7,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using NUnit.Framework;
 
 namespace Nethermind.Optimism.Test;
@@ -20,7 +21,7 @@ public class RlpDecoderTests
     {
         _decoder = TxDecoder.Instance;
         _decoder.RegisterDecoder(new OptimismTxDecoder());
-        _decoder.RegisterDecoder(new OptimismLegacyTxDecoder());
+        _decoder.RegisterDecoder(new LegacyTxDecoder(allowEmptySignature: true));
     }
 
     // Derived with pyrlp: rlp(0x7e || rlp([sourceHash, from, to, mint, value, gas, isSystemTx, data])).

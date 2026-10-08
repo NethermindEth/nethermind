@@ -22,6 +22,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Optimism.CL;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Optimism.ProtocolVersion;
 using Nethermind.Optimism.Cl.Rpc;
@@ -62,7 +63,7 @@ public class OptimismPlugin(ChainSpec chainSpec, IOptimismConfig optimismConfig)
     public void InitTxTypesAndRlpDecoders(INethermindApi api)
     {
         api.RegisterTxType<DepositTransactionForRpc>(new OptimismTxDecoder(), Always.Valid);
-        api.RegisterTxType<LegacyTransactionForRpc>(new OptimismLegacyTxDecoder(), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
+        api.RegisterTxType<LegacyTransactionForRpc>(new LegacyTxDecoder(allowEmptySignature: true), new OptimismLegacyTxValidator(api.SpecProvider!.ChainId));
         Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
     }
 

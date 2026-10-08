@@ -29,6 +29,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
 using Nethermind.Optimism.Rpc;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Serialization.Rlp.TxDecoders;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -47,7 +48,7 @@ public class OptimismEthRpcModuleTest
     {
         TransactionForRpc.RegisterTransactionType<DepositTransactionForRpc>();
         TxDecoder.Instance.RegisterDecoder(new OptimismTxDecoder());
-        TxDecoder.Instance.RegisterDecoder(new OptimismLegacyTxDecoder());
+        TxDecoder.Instance.RegisterDecoder(new LegacyTxDecoder(allowEmptySignature: true));
     }
 
     private static IBlockFinder MockBlockFinder(Block block)

@@ -410,24 +410,30 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Legacy_subclass_reimplementing_encoding_is_used_to_encode()
+        public void Legacy_empty_signature_decodes_as_unsigned_only_when_allowed([Values] bool allowEmptySignature)
         {
+            // A missing signature encodes as v = 0 with empty r and s.
+            byte[] encoded = _txDecoder.Encode(new Transaction { Type = TxType.Legacy, GasLimit = 21_000, To = Address.Zero }).Bytes;
             IsolatedTxDecoder decoder = new();
-            decoder.RegisterDecoder(new ReimplementedLegacyTxDecoder());
+            decoder.RegisterDecoder(new Serialization.Rlp.TxDecoders.LegacyTxDecoder(allowEmptySignature: allowEmptySignature));
 
-            Assert.That(decoder.Encode(new Transaction { Type = TxType.Legacy }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+            if (allowEmptySignature)
+            {
+                Assert.That(Decode().Signature, Is.Null);
+            }
+            else
+            {
+                Assert.That(() => Decode(), Throws.InstanceOf<RlpException>());
+            }
+
+            Transaction Decode()
+            {
+                RlpReader reader = new(encoded);
+                return decoder.Decode(ref reader)!;
+            }
         }
 
         private sealed class IsolatedTxDecoder : TxDecoder<Transaction>;
-
-        private sealed class ReimplementedLegacyTxDecoder : Serialization.Rlp.TxDecoders.LegacyTxDecoder, Serialization.Rlp.TxDecoders.ITxDecoder
-        {
-            void Serialization.Rlp.TxDecoders.ITxDecoder.Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors,
-                bool forSigning, bool isEip155Enabled, ulong chainId) => writer.Write(MarkerTxDecoder.Encoding);
-
-            int Serialization.Rlp.TxDecoders.ITxDecoder.GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
-                bool isEip155Enabled, ulong chainId) => MarkerTxDecoder.Encoding.Length;
-        }
 
         private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
         {
