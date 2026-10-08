@@ -59,6 +59,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly ISpecProvider _specProvider;
     private readonly ITxValidator _txValidator;
     private readonly ILeanProofVerifier _proofVerifier;
+    private readonly IBlockProofSidecarSource? _proofSidecars;
     private readonly RecoverSignatures _senderRecovery;
     private readonly ILogger _logger;
     private readonly LruCache<Hash256AsKey, CachedPayloadResult>? _latestBlocks;
@@ -88,7 +89,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager, ILeanProofVerifier proofVerifier)
+        ILogManager logManager, ILeanProofVerifier proofVerifier, IBlockProofSidecarSource? proofSidecars = null)
     {
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -104,6 +105,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         _specProvider = specProvider;
         _txValidator = txValidator;
         _proofVerifier = proofVerifier ?? throw new ArgumentNullException(nameof(proofVerifier));
+        _proofSidecars = proofSidecars;
         _senderRecovery = senderRecovery;
         _logger = logManager.GetClassLogger<NewPayloadHandler>();
         _defaultProcessingOptions = receiptConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
@@ -155,6 +157,20 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             _logger.Info($"Received {requestStr}      | limit {block.Header.GasLimit,13:N0} {GetGasChange(block.Number == _lastBlockNumber + 1 ? block.Header.GasLimit : _lastBlockGasLimit)} | {block.ParsedExtraData()}");
             _lastBlockNumber = block.Number;
             _lastBlockGasLimit = block.Header.GasLimit;
+        }
+
+        // EIP-8437 kind 2: a payload delivered without the recursive_stark its header commits to is completed from a
+        // proof sidecar keyed by the block hash; the hash check below then binds the recovered proof to the header.
+        if (block.Header.RecursiveStark is null && _proofSidecars is not null && _specProvider.GetSpec(block.Header).IsEip8288Enabled)
+        {
+            using CancellationTokenSource sidecarTimeout = new(RemainingBudget(deadline) / 2);
+            RecursiveStark? proof = await _proofSidecars.TryGetAsync(block, sidecarTimeout.Token);
+            if (proof is null)
+            {
+                if (_logger.IsInfo) _logger.Info($"Block proof sidecar of {block.ToString(Block.Format.Short)} is unavailable. Result of {requestStr}: SYNCING.");
+                return NewPayloadV1Result.Syncing;
+            }
+            block.Header.RecursiveStark = proof;
         }
 
         // This gate is the precondition for the later ValidateSuggestedBlock(validateHashes: false) calls: the roots
