@@ -40,6 +40,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     private (Snapshot Snapshot, int Effects)[] _frames = new (Snapshot, int)[16];
     private int _frameCount;
 
+    private BalanceMerge[] _merges = new BalanceMerge[32];
+    private int[] _lastWrites = new int[64];
+
     private readonly StrongBox<ExecutionCounts> _counts = new();
 
     // Buffers a run grows past this are dropped at the next start, so a huge transaction is not kept for the env's life.
@@ -70,6 +73,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         }
 
         if (_effects.Length > RetainedCapacity) _effects = new StateEffect[32];
+        if (_merges.Length > RetainedCapacity) _merges = new BalanceMerge[32];
+        if (_lastWrites.Length > RetainedCapacity) _lastWrites = new int[64];
         if (_frames.Length > RetainedCapacity) _frames = new (Snapshot, int)[16];
         Outcome.Reset(progress, txIndex, token);
 
@@ -107,6 +112,9 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         ref readonly AccountPrecondition sender = ref _accounts[senderIndex];
         if ((sender.Fields & AccountFields.Nonce) == 0 || sender.Nonce != tx.Nonce || !sender.Exists) return null;
 
+        // Before the accounts are copied: merging balance changes can raise an account's minimum balance.
+        StateEffect[] effects = CompactEffects();
+
         int accountCount = 0;
         for (int i = 0; i < _accountCount; i++)
         {
@@ -133,9 +141,94 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             if (_slots[i].Read) slots[j++] = _slots[i];
         }
 
-        StateEffect[] effects = _effectCount == 0 ? [] : _effects.AsSpan(0, _effectCount).ToArray();
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
         return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed };
+    }
+
+    /// <summary>The run's effects with fewer state calls to replay and the same state after a commit.</summary>
+    /// <remarks>
+    /// An account changed only by non-zero balance changes and nonce changes gets one net balance change. The commit
+    /// keeps only an account's last value, and a touch commits as an update does. A minimum balance as large as the
+    /// deepest deficit along the changes refuses a replay where a subtraction would have failed.
+    /// A slot keeps only its last write, which overwrites the earlier ones whatever happens to the account between them.
+    /// </remarks>
+    private StateEffect[] CompactEffects()
+    {
+        int effectCount = _effectCount;
+        if (effectCount == 0) return [];
+
+        if (_merges.Length < _accountCount) _merges = new BalanceMerge[_accounts.Length];
+        Span<BalanceMerge> merges = _merges.AsSpan(0, _accountCount);
+        merges.Clear();
+        if (_lastWrites.Length < _slotCount) _lastWrites = new int[_slots.Length];
+        Span<int> lastWrites = _lastWrites.AsSpan(0, _slotCount);
+        Span<StateEffect> effects = _effects.AsSpan(0, effectCount);
+
+        for (int e = 0; e < effects.Length; e++)
+        {
+            ref readonly StateEffect effect = ref effects[e];
+            if (effect.Kind == EffectKind.SetStorage)
+            {
+                lastWrites[_slotIndex[new StorageCell(effect.Address, in effect.Index)]] = e;
+                continue;
+            }
+
+            ref BalanceMerge merge = ref merges[_accountIndex[effect.Address]];
+            switch (effect.Kind)
+            {
+                case EffectKind.AddToBalance:
+                    if (effect.Value.IsZero) break;
+                    merge.Changes++;
+                    merge.Credit += effect.Value;
+                    break;
+                case EffectKind.SubtractFromBalance:
+                    if (effect.Value.IsZero) break;
+                    merge.Changes++;
+                    merge.Debit += effect.Value;
+                    if (merge.Debit > merge.Credit && merge.Debit - merge.Credit > merge.Deficit) merge.Deficit = merge.Debit - merge.Credit;
+                    break;
+                case EffectKind.IncrementNonce or EffectKind.DecrementNonce or EffectKind.SetNonce:
+                    break;
+                default:
+                    // Creating or deleting the account sets its balance, which a net change moved past it would miss.
+                    merge.Unmergeable = true;
+                    break;
+            }
+        }
+
+        int kept = 0;
+        for (int e = 0; e < effects.Length; e++)
+        {
+            ref StateEffect effect = ref effects[e];
+            if (effect.Kind == EffectKind.SetStorage)
+            {
+                if (lastWrites[_slotIndex[new StorageCell(effect.Address, in effect.Index)]] != e) continue;
+            }
+            else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && !effect.Value.IsZero)
+            {
+                int index = _accountIndex[effect.Address];
+                ref BalanceMerge merge = ref merges[index];
+                if (merge.Changes >= 2 && !merge.Unmergeable && merge.Credit != merge.Debit)
+                {
+                    // The first change carries the net one; the rest are dropped.
+                    if (merge.Merged) continue;
+                    merge.Merged = true;
+                    bool credit = merge.Credit > merge.Debit;
+                    effect.Kind = credit ? EffectKind.AddToBalance : EffectKind.SubtractFromBalance;
+                    effect.Value = credit ? merge.Credit - merge.Debit : merge.Debit - merge.Credit;
+                    if (!merge.Deficit.IsZero)
+                    {
+                        ref AccountPrecondition account = ref _accounts[index];
+                        account.Fields |= AccountFields.MinimumBalance;
+                        if (merge.Deficit > account.MinimumBalance) account.MinimumBalance = merge.Deficit;
+                    }
+                }
+            }
+
+            effects[kept++] = effect;
+        }
+
+        return effects[..kept].ToArray();
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -516,6 +609,17 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     {
         if (_active) _opaque = true;
         return base.TryApplyAccountOverlay(overlay);
+    }
+
+    // One account's balance changes, while the run's effects are compacted.
+    private struct BalanceMerge
+    {
+        public UInt256 Credit;
+        public UInt256 Debit;
+        public UInt256 Deficit;
+        public int Changes;
+        public bool Unmergeable;
+        public bool Merged;
     }
 
     internal sealed class OutcomeTracer : TxTracer, ITxTracer
