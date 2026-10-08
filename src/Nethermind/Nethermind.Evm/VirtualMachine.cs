@@ -281,21 +281,15 @@ public partial class VirtualMachine<TGasPolicy>(
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
 
-    /// <summary>Whether accessing <paramref name="address"/> now is the cold, first-touch access EIP-8279 meters.</summary>
-    /// <remarks>
-    /// Mirrors the cold charge: precompiles are always warm, and access-list tracing prices every access warm.
-    /// </remarks>
-    internal bool IsColdBalAccess(Address address) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(address) && !_blockExecutionContext.Spec.IsPrecompile(address);
+    /// <summary>Meters the address bytes the transaction's first access to <paramref name="address"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalAddress(Address address) => _txExecutionContext.BalDataMeter?.TryMeterAddress(address) ?? true;
 
-    /// <inheritdoc cref="IsColdBalAccess(Address)"/>
-    internal bool IsColdBalAccess(in StorageCell storageCell) =>
-        !IsTracingAccess && _currentState.AccessTracker.IsCold(in storageCell);
-
-    /// <summary>Meters the address bytes a cold access to <paramref name="address"/> is about to add.</summary>
-    /// <returns><see langword="false"/> when the access is cold and metering it runs out of gas.</returns>
-    internal bool TryMeterColdBalAccess(Address address) =>
-        !IsColdBalAccess(address) || TryMeterBalData(Eip8279Constants.AddressBytes);
+    /// <summary>Meters the key bytes the transaction's first access to <paramref name="storageCell"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalStorageKey(in StorageCell storageCell) => _txExecutionContext.BalDataMeter?.TryMeterStorageKey(in storageCell) ?? true;
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
