@@ -4529,11 +4529,7 @@ namespace Nethermind.TxPool.Test
         }
 
         // A foreign signer fails signature verification, so a deferral instead of Invalid proves no recovery ran.
-        [TestCase(true, false, true, TestName = "SubmitTx_GossipedFrameTx_IsDeferredBeforeSignatures_OnceTheHeadBudgetIsSpent")]
-        [TestCase(false, false, false, TestName = "SubmitTx_GossipedFrameTx_HasItsSignaturesVerified_WhileTheHeadBudgetLasts")]
-        [TestCase(true, true, false, TestName = "SubmitTx_LocalFrameTx_HasItsSignaturesVerified_EvenWithTheHeadBudgetSpent")]
-        [NonParallelizable]
-        public void SubmitTx_FrameTxNeedingSimulation_SkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
+        internal void AssertFrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
             simulator.IsHeadBudgetSpent.Returns(budgetSpent);
@@ -5465,7 +5461,7 @@ namespace Nethermind.TxPool.Test
 
             AcceptTxResult baselineResult = _txPool.SubmitTx(baseline, TxHandlingOptions.None);
             AcceptTxResult withoutWidth = _txPool.SubmitTx(SponsoredFrameTx(TestItem.PrivateKeyB, TestItem.PrivateKeyD), TxHandlingOptions.None);
-            int simulations = simulator.ReceivedCalls().Count();
+            int simulations = simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate));
             _frameTxWidthLedger.EarnWidthOnFinalization(Build.A.Block.WithTransactions(baseline).TestObject, [new TxReceipt { Payer = TestItem.PrivateKeyD.Address, GasUsed = (ulong)WidthChargeOf(additional, Eip8141Prototype.Instance) }]);
             AcceptTxResult withWidth = _txPool.SubmitTx(additional, TxHandlingOptions.None);
             _txPool.RemoveTransaction(additional.Hash);
@@ -5509,7 +5505,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(widthAfterOneRevalidation, Is.EqualTo(UInt256.Zero), "the rerun prefix spent the paymaster's charge");
                 Assert.That(paymastersHeldAfterOneRevalidation, Is.Zero, "a settled reservation releases the drained paymaster");
                 Assert.That(_txPool.GetPendingTransactions().Select(static tx => tx.Hash), Is.EqualTo(new[] { baseline.Hash }), "the baseline survives without width");
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1), "a paymaster short of width evicts without rerunning the prefix");
             }
         }
 
@@ -5686,7 +5682,7 @@ namespace Nethermind.TxPool.Test
                 Assert.That(results.Count(static r => r == AcceptTxResult.Accepted), Is.EqualTo(1 + covered));
                 Assert.That(results.Count(static r => r == AcceptTxResult.PaymasterWidthUnmet), Is.EqualTo(submissions - 1 - covered));
                 Assert.That(_txPool.GetPendingTransactionsCount(), Is.EqualTo(1 + covered));
-                Assert.That(simulator.ReceivedCalls().Count(), Is.EqualTo(1 + covered), "paymaster width bounds the prefixes simulated at once");
+                Assert.That(simulator.ReceivedCalls().Count(static c => c.GetMethodInfo().Name == nameof(IFrameTxPrefixSimulator.Simulate)), Is.EqualTo(1 + covered), "paymaster width bounds the prefixes simulated at once");
                 Assert.That(left, Is.LessThan(charges.Min()), "no refusal left width that covered it");
                 Assert.That(acceptedCharges.Any(baseline => earned - left == acceptedTotal - baseline), Is.True, "every admission but the baseline spent exactly its charge");
             }
@@ -7481,5 +7477,29 @@ namespace Nethermind.TxPool.Test
                 .WithMaxPriorityFeePerGas(1.GWei)
                 .WithNonce(0UL)
                 .SignedAndResolved(_ethereumEcdsa, sender).TestObject;
+    }
+
+    [TestFixture, NonParallelizable]
+    public class FrameTxSimulationBudgetMetricsTests
+    {
+        [OneTimeSetUp]
+        public static void Initialize() => TxPoolTests.OneTimeSetup();
+
+        [TestCase(true, false, true, TestName = "SubmitTx_GossipedFrameTx_IsDeferredBeforeSignatures_OnceTheHeadBudgetIsSpent")]
+        [TestCase(false, false, false, TestName = "SubmitTx_GossipedFrameTx_HasItsSignaturesVerified_WhileTheHeadBudgetLasts")]
+        [TestCase(true, true, false, TestName = "SubmitTx_LocalFrameTx_HasItsSignaturesVerified_EvenWithTheHeadBudgetSpent")]
+        public async Task FrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
+        {
+            TxPoolTests fixture = new();
+            fixture.Setup();
+            try
+            {
+                fixture.AssertFrameTxSkipsSignaturesWhenTheHeadBudgetIsSpent(budgetSpent, local, deferred);
+            }
+            finally
+            {
+                await fixture.TearDown();
+            }
+        }
     }
 }
