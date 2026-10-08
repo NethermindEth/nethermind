@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Diagnostics;
 using System;
 using System.Diagnostics;
 using System.Threading;
@@ -92,6 +93,7 @@ public partial class EngineRpcModule : IEngineRpcModule
 
     protected async Task<ResultWrapper<PayloadStatusV1>> NewPayload(IExecutionPayloadParams executionPayloadParams, int version)
     {
+        NewPayloadTrace.BeginNewPayload();
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
@@ -127,12 +129,15 @@ public partial class EngineRpcModule : IEngineRpcModule
         if (await _locker.WaitAsync(LockTimeout))
         {
             long startTime = Stopwatch.GetTimestamp();
+            NewPayloadTrace.Stamp(NewPayloadTrace.Locked);
             try
             {
                 IDisposable? region = _gcKeeper.TryStartNoGCRegion();
+                NewPayloadTrace.Stamp(NewPayloadTrace.GcRegion);
                 try
                 {
                     ResultWrapper<PayloadStatusV1> result = await _newPayloadV1Handler.HandleAsync(executionPayload);
+                    NewPayloadTrace.Stamp(NewPayloadTrace.HandleEnd);
                     // The answer is out before the block is committed; the region stays for the commit's allocations
                     // and ends when the block leaves the queue, on the thread that sees it leave.
                     _ = EndNoGCRegionAfterCommitAsync(region, executionPayload.BlockHash);

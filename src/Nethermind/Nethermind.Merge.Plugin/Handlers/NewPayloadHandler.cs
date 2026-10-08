@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Diagnostics;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -129,6 +130,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     {
         // Every wait this request takes comes out of one budget, taken here.
         long deadline = Stopwatch.GetTimestamp() + (long)(_timeout.TotalSeconds * Stopwatch.Frequency);
+        NewPayloadTrace.Stamp(NewPayloadTrace.HandleStart);
 
         using ExecutionPayloadPreparation preparation = new(request);
         Result<Block> decodingResult;
@@ -143,6 +145,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block: {decodingResult.Error}");
         }
         Block block = decodingResult.Data;
+        NewPayloadTrace.Stamp(NewPayloadTrace.Decoded);
+        NewPayloadTrace.SetBlock((long)block.Number);
         ParallelUnbalancedWork.WorkerGroup workers = preparation.Workers;
 
         string requestStr = $"New Block:  {request}";
@@ -167,6 +171,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash} does not match calculated hash {actualHash}.");
         }
 
+        NewPayloadTrace.Stamp(NewPayloadTrace.HashChecked);
         _invalidChainTracker.SetChildParent(block.Hash!, block.ParentHash!);
         if (_invalidChainTracker.IsOnKnownInvalidChain(block.Hash!, out Hash256? lastValidHash))
         {
@@ -212,6 +217,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return NewPayloadV1Result.Syncing;
         }
 
+        NewPayloadTrace.Stamp(NewPayloadTrace.ParentFound);
         if (_simulateBlockProduction)
         {
             _payloadPreparationService.CancelBlockProduction(parentHeader.GenerateSimulatedPayload()
@@ -270,6 +276,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // state land when it leaves the processing queue. Judged before that, this block would be taken for one whose
         // parent we do not have, inserted for beacon sync and answered SYNCING. Nothing in flight returns at once.
         if (!await WaitForParentCommitAsync(parentHeader, deadline)) return NewPayloadV1Result.Syncing;
+        NewPayloadTrace.Stamp(NewPayloadTrace.ParentReady);
 
         if (!ShouldProcessBlock(block, parentHeader, out ProcessingOptions processingOptions)) // we shouldn't process block
         {
@@ -335,6 +342,8 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
+
+        NewPayloadTrace.Stamp(NewPayloadTrace.ShouldProcess);
 
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
@@ -740,6 +749,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             return (TryCacheResult(ValidationResult.Invalid, validationMessage), validationMessage);
         }
 
+        NewPayloadTrace.Stamp(NewPayloadTrace.Validated);
         ValidationCompletion blockProcessed = _blockValidationTasks.GetOrAdd(block.Hash!, static _ => new());
         completion = blockProcessed;
 
@@ -748,11 +758,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             using CancellationTokenSource cts = new();
             Task timeoutTask = Task.Delay(RemainingBudget(deadline), cts.Token);
 
+            NewPayloadTrace.Stamp(NewPayloadTrace.PreSuggest);
             Task<AddBlockResult> suggest = _blockTree.SuggestBlockAsync(block, BlockTreeSuggestOptions.ForceDontSetAsMain).AsTask();
             AddBlockResult addResult;
             try
             {
                 addResult = await suggest.TimeoutOn(timeoutTask);
+                NewPayloadTrace.Stamp(NewPayloadTrace.Suggested);
             }
             catch (TimeoutException)
             {
@@ -822,6 +834,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
                 _ = Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
+                NewPayloadTrace.Stamp(NewPayloadTrace.HandlerResumed);
             }
             else
             {
@@ -896,6 +909,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         try
         {
             ValueTask enqueue;
+            NewPayloadTrace.Stamp(NewPayloadTrace.EnqueueStart);
             using (workers.Enter()) enqueue = _processingQueue.Enqueue(block, processingOptions);
             await enqueue;
         }
