@@ -140,8 +140,8 @@ public interface IJsonRpcConfig : IConfig
     public long? MaxLogsResponseBodySize { get; set; }
 
     [ConfigItem(
-        Description = "The max opcode log size, in bytes, of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` to lift the limit, as Geth does.",
-        DefaultValue = "0")]
+        Description = "The max opcode log size, in bytes, of a `debug_trace*` or `debug_simulateV1` trace held in memory rather than streamed. Larger or unlimited `limit` trace options are lowered to it. `0` to lift the limit.",
+        DefaultValue = "268435456")]
     public long MaxBufferedTraceLogSize { get; set; }
 
     [ConfigItem(
