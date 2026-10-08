@@ -679,17 +679,29 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
         foreach (StorageClearChange clear in _storageClearJournal)
         {
-            if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot) continue;
+            if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot)
+            {
+                continue;
+            }
 
             if (TryGetJournalledTransactionStartValue(in storageCell, currentSnapshot, out value))
+            {
                 return true;
+            }
 
             if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
+            {
                 value = trace.After;
+            }
             else if (clear.BlockChange.MissingAreDefault)
+            {
                 value = default;
+            }
             else
+            {
                 GetPureRead(in storageCell, out value);
+            }
+
             return true;
         }
 
