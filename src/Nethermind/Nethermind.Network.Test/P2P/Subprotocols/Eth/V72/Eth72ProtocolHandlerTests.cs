@@ -580,7 +580,7 @@ public class Eth72ProtocolHandlerTests
         _transactionPool.Received(transactions.Length).SubmitTx(Arg.Is<Transaction>(tx => tx.Type == TxType.FrameTx), Arg.Any<TxHandlingOptions>());
     }
 
-    // Three 300k transactions against a one-second bucket; the later ones arrive before it refills.
+    // Three 300k transactions against a one-second bucket with its clock held fixed.
     [TestCase(600_000UL, 0UL, false, 2, TestName = "Peer_validation_budget_drops_frame_txs_once_failing_validation_spends_it")]
     [TestCase(600_000UL, 0UL, true, 3, TestName = "Peer_validation_budget_refunds_admitted_frame_txs")]
     [TestCase(0UL, 0UL, false, 3, TestName = "Peer_validation_budget_off_submits_every_frame_tx")]
@@ -593,7 +593,9 @@ public class Eth72ProtocolHandlerTests
         _specProvider.GetCurrentHeadSpec().Returns(spec);
         _txPoolConfig.FrameTxPeerValidationGasPerSecond.Returns(gasPerSecond);
         _txPoolConfig.FrameTxMaxVerifyGas.Returns(maxVerifyGas);
-        RecreateHandler();
+        RecreateTestHandler(RunImmediatelyScheduler.Instance, gasPerSecond == 0
+            ? null
+            : new PeerValidationGasBudget(gasPerSecond, maxVerifyGas, static () => 0));
         _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>())
             .Returns(admitted ? AcceptTxResult.Accepted : AcceptTxResult.FrameSimulationFailed);
 
@@ -633,7 +635,7 @@ public class Eth72ProtocolHandlerTests
                     : AcceptTxResult.AlreadyKnown;
             });
         _transactionPool = pool;
-        RecreateHandler();
+        RecreateTestHandler(RunImmediatelyScheduler.Instance, new PeerValidationGasBudget(600_000, 0, static () => 0));
 
         Transaction[] transactions =
         [
@@ -5288,7 +5290,7 @@ public class Eth72ProtocolHandlerTests
         _handler.Init();
     }
 
-    private TestEth72ProtocolHandler RecreateTestHandler(IBackgroundTaskScheduler backgroundTaskScheduler)
+    private TestEth72ProtocolHandler RecreateTestHandler(IBackgroundTaskScheduler backgroundTaskScheduler, PeerValidationGasBudget? validationBudget = null)
     {
         _handler.Dispose();
         TestEth72ProtocolHandler handler = new(
@@ -5305,7 +5307,8 @@ public class Eth72ProtocolHandlerTests
             _specProvider,
             _blobCustodyTracker,
             _sparseBlobPoolPeerRegistry,
-            _txGossipPolicy);
+            _txGossipPolicy,
+            validationBudget);
         _handler = handler;
         handler.Init();
         return handler;
@@ -5734,7 +5737,8 @@ public class Eth72ProtocolHandlerTests
         IChainHeadSpecProvider specProvider,
         IBlobCustodyTracker blobCustodyTracker,
         ISparseBlobPoolPeerRegistry sparseBlobPoolPeerRegistry,
-        ITxGossipPolicy? transactionsGossipPolicy)
+        ITxGossipPolicy? transactionsGossipPolicy,
+        PeerValidationGasBudget? validationBudget = null)
         : Eth72ProtocolHandler(
             session,
             serializer,
@@ -5751,6 +5755,8 @@ public class Eth72ProtocolHandlerTests
             sparseBlobPoolPeerRegistry,
             transactionsGossipPolicy)
     {
+        private protected override PeerValidationGasBudget? FrameValidationBudget => validationBudget ?? base.FrameValidationBudget;
+
         public void HandleSlowPublic(IOwnedReadOnlyList<Transaction> transactions, CancellationToken cancellationToken, int startIndex = 0) =>
             HandleSlow(new TransactionsRequest(transactions, startIndex), cancellationToken).GetAwaiter().GetResult();
     }

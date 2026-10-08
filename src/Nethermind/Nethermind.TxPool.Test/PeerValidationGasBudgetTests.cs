@@ -77,11 +77,8 @@ public class PeerValidationGasBudgetTests
         PeerValidationGasBudget budget = Budget(gasPerSecond: 1_000_000);
         Advance(60);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(budget.TryReserve(1_000_000), Is.True);
-            Assert.That(budget.TryReserve(1), Is.False, "an idle peer must not bank more than one burst");
-        }
+        Assert.That(budget.TryReserve(1_000_000), Is.True);
+        Assert.That(budget.TryReserve(1), Is.False, "an idle peer must not bank more than one burst");
     }
 
     [Test]
@@ -89,13 +86,10 @@ public class PeerValidationGasBudgetTests
     {
         PeerValidationGasBudget budget = Budget(gasPerSecond: 200_000);
 
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(budget.TryReserve(300_000), Is.True, "a full bucket must admit a transaction larger than itself");
-            Assert.That(budget.TryReserve(300_000), Is.False);
-            Advance(1);
-            Assert.That(budget.TryReserve(300_000), Is.True, "one second refills a full bucket");
-        }
+        Assert.That(budget.TryReserve(300_000), Is.True, "a full bucket must admit a transaction larger than itself");
+        Assert.That(budget.TryReserve(300_000), Is.False);
+        Advance(1);
+        Assert.That(budget.TryReserve(300_000), Is.True, "one second refills a full bucket");
     }
 
     [Test]
