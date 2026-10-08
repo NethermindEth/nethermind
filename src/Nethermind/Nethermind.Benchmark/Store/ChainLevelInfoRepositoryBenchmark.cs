@@ -3,10 +3,12 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Db;
+using Nethermind.Core.Test.Modules;
 using Nethermind.State.Repositories;
 
 namespace Nethermind.Benchmarks.Store;
@@ -21,7 +23,8 @@ public class ChainLevelInfoRepositoryBenchmark
 {
     private const int LookupsPerWorker = 4096;
 
-    private ChainLevelInfoRepository _repository = null!;
+    private IContainer _container = null!;
+    private IChainLevelInfoRepository _repository = null!;
     private ulong[] _numbers = null!;
 
     [Params(32, 200)]
@@ -30,19 +33,22 @@ public class ChainLevelInfoRepositoryBenchmark
     [GlobalSetup]
     public void Setup()
     {
-        MemDb db = new();
-        ChainLevelInfoRepository writer = new(db);
+        _container = new ContainerBuilder().AddModule(new TestNethermindModule()).Build();
+        _repository = _container.Resolve<IChainLevelInfoRepository>();
         Random random = new(42);
         _numbers = new ulong[DistinctLevels];
         for (int i = 0; i < _numbers.Length; i++)
         {
             ulong number = (ulong)random.NextInt64(24_600_000, 25_490_000);
             _numbers[i] = number;
-            writer.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, number)));
+            _repository.PersistLevel(number, new ChainLevelInfo(true, new BlockInfo(TestItem.KeccakA, number)));
         }
 
-        _repository = new ChainLevelInfoRepository(db);
+        ((IClearableCache)_repository).ClearCache();
     }
+
+    [GlobalCleanup]
+    public void Cleanup() => _container.Dispose();
 
     [Benchmark(OperationsPerInvoke = LookupsPerWorker)]
     public void LoadLevel_from_every_core() =>

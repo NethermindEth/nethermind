@@ -204,20 +204,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
             return Delete(in key);
         }
 
-        int setIndex = (int)hashCode & _setMask;
-        int baseIdx = setIndex << WayShift;
-        long hashPart = ExtractHashPart(hashCode, _hashShift);
-
-        ref int gate = ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_setGates), setIndex);
-        AcquireGate(ref gate);
-        try
-        {
-            return SetCore<OnFlag>(in key, val, baseIdx, hashPart);
-        }
-        finally
-        {
-            ReleaseGate(ref gate);
-        }
+        return SetInSet<OnFlag>(in key, hashCode, val);
     }
 
     /// <summary>Caches <paramref name="val"/> only if <paramref name="key"/> is not cached already.</summary>
@@ -231,7 +218,14 @@ public sealed partial class AssociativeCache<TKey, TValue>
         ArgumentNullException.ThrowIfNull(val);
         if (_setCount == 0) return false;
 
-        long hashCode = key.GetHashCode64();
+        return SetInSet<OffFlag>(in key, key.GetHashCode64(), val);
+    }
+
+    /// <summary>Writes <paramref name="val"/> into the key's set under that set's gate.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool SetInSet<TReplaceExisting>(in TKey key, long hashCode, TValue val)
+        where TReplaceExisting : struct, IFlag
+    {
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
         long hashPart = ExtractHashPart(hashCode, _hashShift);
@@ -240,7 +234,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         AcquireGate(ref gate);
         try
         {
-            return SetCore<OffFlag>(in key, val, baseIdx, hashPart);
+            return SetCore<TReplaceExisting>(in key, val, baseIdx, hashPart);
         }
         finally
         {

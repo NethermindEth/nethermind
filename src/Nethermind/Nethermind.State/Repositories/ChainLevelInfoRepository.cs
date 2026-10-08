@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -22,6 +23,7 @@ namespace Nethermind.State.Repositories
         private const int CacheSize = 512;
 
         private readonly object _writeLock = new();
+        private long _deletions;
         private readonly AssociativeCache<LevelNumber, ChainLevelInfo> _blockInfoCache = new(CacheSize);
         private readonly IRlpDecoder<ChainLevelInfo> _decoder = Rlp.GetDecoder<ChainLevelInfo>()
             ?? throw new InvalidOperationException($"No RLP decoder is registered for {nameof(ChainLevelInfo)}.");
@@ -30,25 +32,22 @@ namespace Nethermind.State.Repositories
 
         public void Delete(ulong number, BatchWrite? batch = null)
         {
-            void LocalDelete()
-            {
-                LevelNumber key = new(number);
-                _blockInfoCache.Delete(in key);
-                _blockInfoDb.Delete(number);
-                // A load that read the level before the db delete may have cached it since.
-                _blockInfoCache.Delete(in key);
-            }
-
+            LevelNumber key = new(number);
             if (batch is null || batch.Disposed)
             {
                 lock (_writeLock)
                 {
-                    LocalDelete();
+                    _blockInfoCache.Delete(in key);
+                    _blockInfoDb.Delete(number);
+                    Interlocked.Increment(ref _deletions);
+                    // A load that read the level before the db delete may have cached it since.
+                    _blockInfoCache.Delete(in key);
                 }
             }
             else
             {
-                _blockInfoCache.Delete(new LevelNumber(number));
+                Interlocked.Increment(ref _deletions);
+                _blockInfoCache.Delete(in key);
                 batch.WriteBatch.Delete(number);
             }
         }
@@ -84,13 +83,21 @@ namespace Nethermind.State.Repositories
             LevelNumber key = new(number);
             if (_blockInfoCache.TryGet(in key, out ChainLevelInfo? level)) return level;
 
+            long deletions = Volatile.Read(ref _deletions);
             level = _blockInfoDb.Get(number, _decoder);
-            // A level persisted while this load ran is newer than the one read, so it stays cached and is returned.
-            // A delete racing this load is not covered here; Delete itself clears the entry again after the db delete.
-            if (level is not null
-                && !_blockInfoCache.TryAdd(in key, level)
-                && _blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached))
+            if (level is null) return null;
+
+            if (_blockInfoCache.TryAdd(in key, level))
             {
+                // A delete that ran during this load may already have cleared the cache, so the level read before it
+                // must not stay cached. The barrier orders the cache insert before the counter read, against Delete's
+                // increment before its last cache removal.
+                Interlocked.MemoryBarrier();
+                if (Volatile.Read(ref _deletions) != deletions) _blockInfoCache.Delete(in key);
+            }
+            else if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached))
+            {
+                // A level persisted while this load ran is newer than the one read.
                 level = cached;
             }
 
