@@ -39,6 +39,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 {
     private const int MinTransactionsForReactiveWarming = 3;
 
+    /// <summary>The most transactions a block may have for its warming to start from the newPayload request.</summary>
+    internal const int MaxTransactionsForEarlyWarming = 50;
+
     /// <summary>How long a warmup pass spins for the next sender before falling back to sleeping.</summary>
     private static readonly TimeSpan SenderArrivalWindow = TimeSpan.FromMilliseconds(1);
 
@@ -200,12 +203,15 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <remarks>
     /// Block processing starts warming only once the block is validated, stored and dequeued, which leaves the warm
     /// of the block's first transactions no lead over their execution: those transactions read cold state on the
-    /// main thread, and on a block of a few transactions they are most of the block. Nothing starts while a block is
-    /// executing: its caches describe its own parent.
+    /// main thread, and on a block of a few transactions they are most of the block. Only such blocks start early: the
+    /// lead is a fraction of a millisecond, a share of a large block's execution its warming does not need, while its
+    /// workers then compete with the request's validation and storing. Nothing starts while a block is executing: its
+    /// caches describe its own parent.
     /// </remarks>
     public void StartEarly(Block block, BlockHeader parent, IReleaseSpec spec)
     {
-        if (_preBlockCaches is null || parent.StateRoot is null || block is BlockToProduce) return;
+        if (_preBlockCaches is null || parent.StateRoot is null || block is BlockToProduce
+            || block.Transactions.Length > MaxTransactionsForEarlyWarming) return;
 
         lock (_speculativeLock)
         {

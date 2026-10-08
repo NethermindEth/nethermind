@@ -4,6 +4,7 @@
 #nullable enable
 
 using System;
+using System.Linq;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -276,6 +277,23 @@ public class BlockCachePreWarmerTests
                     Assert.That(preWarmer.HasEarlySession, Is.False);
                 }
             }
+        }
+    }
+
+    [Test]
+    public void StartEarly_ABlockOfManyTransactions_StartsNothing()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            Transaction[] txs = Enumerable.Range(0, BlockCachePreWarmer.MaxTransactionsForEarlyWarming + 1)
+                .Select(i => Build.A.Transaction.WithNonce((ulong)i).WithTo(TestItem.AddressC).WithValue(1.Wei)
+                    .SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+                .ToArray();
+            Block block = Build.A.Block.WithNumber(1).WithTransactions(txs).WithGasLimit(30_000_000).TestObject;
+
+            preWarmer.StartEarly(block, BuildParentHeader(), Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.False, "block processing starts the warming of a large block itself");
         }
     }
 
