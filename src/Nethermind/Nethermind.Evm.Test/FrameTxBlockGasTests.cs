@@ -376,8 +376,9 @@ public class FrameTxBlockGasTests
     }
 
     [Test]
-    public void Execute_PayloadFrameClearsAStorageSlot_BlockExecutionGasCountsBeforeTheRefund()
+    public void Execute_PayloadFrameClearsAStorageSlot_BlockExecutionGasCountsBeforeTheRefundOnlyUnderEip7778([Values] bool eip7778Enabled)
     {
+        UseSpec(new OverridableReleaseSpec(Eip8141Prototype.Instance) { IsEip7906Enabled = true, IsEip8250Enabled = true, IsEip7778Enabled = eip7778Enabled });
         Address clearer = TestItem.AddressE;
         Deploy(Sender, ApproveCode(FrameFlags.ApproveExecutionAndPayment), UInt256.Parse("100000000000000000000"));
         Deploy(clearer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.SSTORE).Op(Instruction.STOP).Done);
@@ -393,7 +394,7 @@ public class FrameTxBlockGasTests
         {
             Assert.That(StorageAt(new StorageCell(clearer, (UInt256)0)).IsZero, Is.True,
                 "the slot was cleared, so the transaction earned a storage refund");
-            Assert.That(gas.EffectiveBlockGas + gas.BlockStateGas, Is.GreaterThan(gas.SpentGas),
+            Assert.That(gas.EffectiveBlockGas + gas.BlockStateGas, eip7778Enabled ? Is.GreaterThan(gas.SpentGas) : Is.EqualTo(gas.SpentGas),
                 "EIP-7778: a storage refund lowers the payer charge but not the gas counted toward the block");
         }
     }
