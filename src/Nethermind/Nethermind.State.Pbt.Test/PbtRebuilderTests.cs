@@ -107,12 +107,7 @@ public class PbtRebuilderTests
         PbtRocksDbPersistence target = new(db, config, NullTrieNodeLog.Instance);
         Dictionary<string, byte[]> model = [];
         List<RebuildEntry> leaves = BuildFixture(model, target);
-        Random random = new(42);
-        for (int i = leaves.Count - 1; i > 0; i--)
-        {
-            int j = random.Next(i + 1);
-            (leaves[i], leaves[j]) = (leaves[j], leaves[i]);
-        }
+        leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
 
         TestLogger log = new();
         ILogManager logManager = new OneLoggerLogManager(new ILogger(log));

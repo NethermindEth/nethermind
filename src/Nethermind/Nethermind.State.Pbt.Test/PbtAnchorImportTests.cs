@@ -292,7 +292,7 @@ public class PbtAnchorImportTests
             leaves.Add(new(PbtTestLeaves.SlotKey(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
+        ValueHash256 expectedRoot = PbtLeafIngestion.CalculateRoot(leaves, PbtRebuilder.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         using MemoryStream snapshot = new();
         PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(expectedRoot));
         snapshot.Position = 0;
@@ -451,7 +451,7 @@ public class PbtAnchorImportTests
             default: throw new ArgumentOutOfRangeException(nameof(corruption));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
-        ValueHash256 attackerRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
+        ValueHash256 attackerRoot = PbtLeafIngestion.CalculateRoot(leaves, PbtRebuilder.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
         MemoryStream snapshot = new();
         PbtSnapshotCodec.Write(snapshot, leaves, PbtTestLeaves.Claiming(attackerRoot));
         snapshot.Position = 0;

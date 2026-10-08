@@ -38,7 +38,7 @@ public class PbtPortableCodecTests
             using MemoryStream preimageOutput = new();
             PbtArtifactWriter.PbtArtifactDigests digests = new(
                 PbtArtifactWriter.WriteDigested(snapshotOutput, destination => PbtSnapshotCodec.Write(destination, leaves,
-                    written => PbtRightmostGroupStore.CalculateRoot(written, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None))),
+                    written => PbtLeafIngestion.CalculateRoot(written, PbtRebuilder.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None))),
                 PbtArtifactWriter.WriteDigested(preimageOutput, destination => PbtPreimageCodec.Write(destination, PbtTestLeaves.ReadPreimages(preimageInput))));
             using (Assert.EnterMultipleScope())
             {
@@ -52,7 +52,7 @@ public class PbtPortableCodecTests
     }
 
     [Test]
-    public void Streamed_root_matches_independent_oracle([Values("empty", "single", "random", "deep", "wide")] string shape, [Values(1, 7, 1000, PbtRightmostGroupStore.DefaultWindowSize)] int windowSize)
+    public void Streamed_root_matches_independent_oracle([Values("empty", "single", "random", "deep", "wide")] string shape, [Values(1, 7, 1000, PbtRebuilder.DefaultWindowSize)] int windowSize)
     {
         Random random = new(8297);
         int count = shape switch { "empty" => 0, "single" => 1, "deep" => 521, "wide" => 5000, _ => 1000 };
@@ -75,7 +75,7 @@ public class PbtPortableCodecTests
         }
         Array.Sort(entries, (left, right) => left.Key.CompareTo(right.Key));
 
-        Assert.That(PbtRightmostGroupStore.CalculateRoot(entries, windowSize, Environment.ProcessorCount, CancellationToken.None).Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
+        Assert.That(PbtLeafIngestion.CalculateRoot(entries, windowSize, Environment.ProcessorCount, CancellationToken.None).Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()));
     }
 
     /// <remarks>Covers every account kind, the integer width limits, header slots at both ends, a full and a partial code

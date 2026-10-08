@@ -1,111 +1,29 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
-using Nethermind.Core.Threading;
 using Nethermind.Pbt;
 
 namespace Nethermind.State.Pbt.Image;
 
-/// <summary>Node-group store for folding strictly ascending leaves in windows; it retains only the rightmost group at each depth.</summary>
+/// <summary>
+/// Node-group store for folding strictly ascending leaves in windows from an empty tree; it retains only the rightmost
+/// group at each depth and writes every group through to <paramref name="writeThrough"/>.
+/// </summary>
 /// <remarks>
 /// A key above every folded key reaches an existing group only when that group's path prefixes the largest folded key,
-/// so the rightmost group at each depth is the only one a later window can read, and every other write is dropped.
+/// so the rightmost group at each depth is the only one a later window can read, and every other group is only written through.
 /// Zones and buckets fold concurrently, so a group superseded during a fold stays readable until the fold ends.
 /// </remarks>
-internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDisposable
+/// <param name="writeThrough">Receives every group the fold writes, one call at a time under this store's lock.</param>
+internal sealed class PbtRightmostGroupStore(IPbtNodeGroupSink writeThrough) : IPbtStore, IPbtNodeGroupSink, IDisposable
 {
-    internal const int DefaultWindowSize = 2_000_000;
-
     private readonly Lock _lock = new();
     private readonly Group[] _edge = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
     /// <summary>The group each depth held when the fold started, once superseded; released when the fold ends.</summary>
     private readonly Group[] _superseded = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
-
-    /// <summary>Calculates an EIP-8297 root from strictly ordered image leaves.</summary>
-    /// <remarks>The next window is read and batched on another thread while the current one folds.</remarks>
-    /// <param name="entries">Validated, strictly ascending account, code and storage leaves, such as those
-    /// <see cref="PbtSnapshotCodec.Write"/> passes on; an out-of-order leaf is not detected and yields a wrong root.</param>
-    /// <param name="windowSize">Maximum leaves folded per tree update.</param>
-    /// <param name="foldConcurrency">Maximum threads, including the calling one, folding a window.</param>
-    internal static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> entries, int windowSize, int foldConcurrency, CancellationToken cancellationToken)
-    {
-        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowSize);
-        using CancellationTokenSource readCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        using BlockingCollection<PbtPartitionBatches> windows = new(boundedCapacity: 1);
-        Task reading = Task.Run(() => ReadWindows(entries, windowSize, windows, readCancellation.Token), readCancellation.Token);
-        try
-        {
-            using PbtRightmostGroupStore store = new();
-            ConcurrencyController foldQuota = new(foldConcurrency);
-            ValueHash256 root = default;
-            foreach (PbtPartitionBatches window in windows.GetConsumingEnumerable(cancellationToken))
-            {
-                using (window) root = TrieUpdater.UpdateRoot(store, root, window, foldQuota, FoldFanOut.Default, null);
-                store.ReleaseSuperseded();
-            }
-            reading.GetAwaiter().GetResult();
-            return root;
-        }
-        finally
-        {
-            readCancellation.Cancel();
-            Task.WhenAny(reading).GetAwaiter().GetResult();
-            while (windows.TryTake(out PbtPartitionBatches? unfolded)) unfolded.Dispose();
-        }
-    }
-
-    private static void ReadWindows(IEnumerable<RebuildEntry> entries, int windowSize,
-        BlockingCollection<PbtPartitionBatches> windows, CancellationToken cancellationToken)
-    {
-        try
-        {
-            using PbtWriteBatchBuilder<PbtPath> accountChanges = new();
-            using PbtWriteBatchBuilder<PbtPath> codeChanges = new();
-            using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new();
-            int windowCount = 0;
-            foreach (RebuildEntry entry in entries)
-            {
-                cancellationToken.ThrowIfCancellationRequested();
-                PbtPartition? partition = PbtPartitions.PartitionOf(entry.Key);
-                if (partition == PbtPartition.Storage) storageChanges.Set((PbtStoragePath)entry.Key, entry.Leaf);
-                else if (partition == PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                else if (partition == PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
-                else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
-                if (++windowCount == windowSize) AddWindow();
-            }
-
-            if (windowCount != 0) AddWindow();
-
-            void AddWindow()
-            {
-                PbtPartitionBatches window = new();
-                try
-                {
-                    if (accountChanges.Count != 0) window.Account = accountChanges.Build();
-                    if (codeChanges.Count != 0) window.Code = codeChanges.Build();
-                    if (storageChanges.Count != 0) window.Storage = storageChanges.Build();
-                    windows.Add(window, cancellationToken);
-                }
-                catch
-                {
-                    window.Dispose();
-                    throw;
-                }
-                accountChanges.Reset();
-                codeChanges.Reset();
-                storageChanges.Reset();
-                windowCount = 0;
-            }
-        }
-        finally
-        {
-            windows.CompleteAdding();
-        }
-    }
 
     public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
     {
@@ -125,6 +43,7 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
         PbtStorageNodePath path = groupKey.ToPath<PbtStorageNodePath>();
         lock (_lock)
         {
+            writeThrough.SetNodeGroup(groupKey, groupHash, payload);
             ref Group edge = ref _edge[groupKey.BitDepth];
             if (edge.Payload is not null && path.CompareTo(edge.Path) < 0) return;
             payload?.AcquireLease();
@@ -137,7 +56,8 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
 
     public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
 
-    private void ReleaseSuperseded()
+    /// <summary>Releases the groups the last fold superseded; call once each fold ends.</summary>
+    internal void ReleaseSuperseded()
     {
         foreach (ref Group group in _superseded.AsSpan())
         {
