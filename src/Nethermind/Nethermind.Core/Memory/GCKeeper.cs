@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -33,11 +34,21 @@ public class GCKeeper : IDisposable
     private int _pendingEntries;
     private TaskCompletionSource? _entriesDrained;
 
+    // Entry ahead of the payload, see SchedulePrepareNoGCRegion.
+    internal const int PreEntryDelayMs = 3;
+    internal const int PreEntryTimeoutMs = 3_000;
+    // A quarter of the SOH budget may go elsewhere before the payload takes the region over; the rest is the block's.
+    internal static readonly long PreEntryMaxAllocatedBytes = (_defaultSize - _lohSize) / 4;
+    private readonly Func<long> _timestamp;
+    private readonly CancellationTokenSource _preEntryCts = new();
+    private int _preEntryScheduled;
+
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
 
     internal GCKeeper(IGCStrategy gcStrategy, ILogManager logManager, IGcRegionRuntime runtime,
-        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null)
+        Action<IThreadPoolWorkItem>? queue = null, Func<int, CancellationToken, Task<bool>>? delay = null,
+        Func<long>? timestamp = null)
     {
         _gcStrategy = gcStrategy;
         _postBlockDelayMs = gcStrategy.PostBlockDelayMs;
@@ -46,6 +57,7 @@ public class GCKeeper : IDisposable
         _delay = delay ?? TaskExtensions.DelaySafe;
         // One outstanding entry bounds pool usage without a dedicated thread for each keeper.
         _queue = queue ?? (static item => ThreadPool.UnsafeQueueUserWorkItem(item, preferLocal: false));
+        _timestamp = timestamp ?? Stopwatch.GetTimestamp;
     }
 
     public void Dispose()
@@ -55,6 +67,7 @@ public class GCKeeper : IDisposable
         {
             _disposed = true;
             _pendingGcCts?.Cancel();
+            _preEntryCts.Cancel();
             region = _region;
         }
         region?.ForceRelease();
@@ -93,10 +106,16 @@ public class GCKeeper : IDisposable
     }
 
     /// <summary>Queues no-GC-region entry without waiting for the runtime; disposing the lease ends its protection.</summary>
+    /// <remarks>
+    /// A region entered ahead of the payload by <see cref="SchedulePrepareNoGCRegion"/> is taken over while it is still
+    /// usable: the payload becomes its owner and the region ends with the payload's lease, as if the payload had
+    /// entered it itself. One that is no longer usable is ended first and the payload enters a region of its own.
+    /// </remarks>
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
+        NoGCRegion? stale = null;
         lock (_lock)
         {
             if (_disposed) return region;
@@ -106,17 +125,36 @@ public class GCKeeper : IDisposable
                 return region;
             }
             Interlocked.Increment(ref _payloadsSinceDecommit);
-            if (_region is not null)
+            if (_region is { IsPreEntryOwned: true } preEntered)
             {
-                // A payload that starts while the previous one is still inside its region shares that region rather
-                // than running unprotected: it then ends when the last payload leaves, not when the first returns.
-                // The newcomer keeps a lease of its own so its scheduler pause and its collection stay its own.
-                if (_region.TryAddLease()) return new SharedRegionLease(_region, region);
-                if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
-                return region;
+                switch (preEntered.TryHandOver())
+                {
+                    case PreEntryHandOver.TakenOver:
+                        Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesTakenOver);
+                        // The payload owns the region now: its lease ends the region, and its own region (never
+                        // admitted) carries its collection, exactly as when it admits a region itself.
+                        return new SharedRegionLease(preEntered, region, ownerLease: true);
+                    case PreEntryHandOver.Stale:
+                        // Claimed for retirement; ended below, outside the keeper's lock.
+                        stale = preEntered;
+                        break;
+                }
             }
-            _region = region;
-            _pendingEntries++;
+
+            if (stale is null && AdmitLocked(region) is { } held) return held;
+        }
+
+        if (stale is not null)
+        {
+            stale.Release(owner: true);
+            // The stale region may have held the scheduler pause and has let go of it now: the payload's region takes
+            // it, so the payload holds the pause as it would have without the pre-entry.
+            region = new NoGCRegion(this, region.PausedGCScheduler || GCScheduler.MarkGCPaused(), eligible);
+            lock (_lock)
+            {
+                if (_disposed) return region;
+                if (AdmitLocked(region) is { } held) return held;
+            }
         }
 
         try
@@ -132,6 +170,116 @@ public class GCKeeper : IDisposable
         return region;
     }
 
+    /// <summary>Takes the keeper's slot for <paramref name="region"/>, or returns what the payload holds instead.</summary>
+    /// <returns><c>null</c> when the slot was taken and the entry must be queued.</returns>
+    private IDisposable? AdmitLocked(NoGCRegion region)
+    {
+        if (_region is not null)
+        {
+            // A payload that starts while the previous one is still inside its region shares that region rather
+            // than running unprotected: it then ends when the last payload leaves, not when the first returns.
+            // The newcomer keeps a lease of its own so its scheduler pause and its collection stay its own.
+            if (_region.TryAddLease()) return new SharedRegionLease(_region, region);
+            if (_logger.IsDebug) _logger.Debug("No-GC region entry skipped: previous entry or region is still active.");
+            return region;
+        }
+        _region = region;
+        _pendingEntries++;
+        return null;
+    }
+
+    /// <summary>
+    /// Enters the no-GC region ahead of the next payload, so the collection that entry performs runs before
+    /// engine_newPayload arrives rather than under it. Called when engine_getBlobs is answered, which precedes the
+    /// payload carrying those blobs; repeated calls schedule one entry at a time.
+    /// </summary>
+    /// <remarks>
+    /// Deferred a little so the getBlobs answer is on its way before the entry suspends the process. Does nothing
+    /// while the strategy disallows the region, so it is on exactly when the payload's own region is.
+    /// </remarks>
+    public void SchedulePrepareNoGCRegion()
+    {
+        if (!_gcStrategy.CanStartNoGCRegion() || Interlocked.Exchange(ref _preEntryScheduled, 1) != 0) return;
+        _ = PrepareAfterDelayAsync();
+    }
+
+    private async Task PrepareAfterDelayAsync()
+    {
+        try
+        {
+            if (!await _delay(PreEntryDelayMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+            Volatile.Write(ref _preEntryScheduled, 0);
+            PrepareNoGCRegion();
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region pre-entry failed.", e);
+        }
+        finally
+        {
+            Volatile.Write(ref _preEntryScheduled, 0);
+        }
+    }
+
+    /// <summary>
+    /// Enters a no-GC region owned by no payload, which the next payload takes over (see
+    /// <see cref="TryStartNoGCRegion"/>) or which ends by itself after <see cref="PreEntryTimeoutMs"/>.
+    /// </summary>
+    /// <remarks>Does nothing when the strategy disallows a region, or a region is pending or active.</remarks>
+    /// <returns>Whether an entry was queued.</returns>
+    internal bool PrepareNoGCRegion()
+    {
+        if (!_gcStrategy.CanStartNoGCRegion()) return false;
+        NoGCRegion region;
+        lock (_lock)
+        {
+            if (_disposed || _region is not null) return false;
+            // Nothing to collect after it: a pre-entry that expires unused leaves the post-block collections as they were.
+            region = new NoGCRegion(this, GCScheduler.MarkGCPaused(), scheduleGC: false, preEntry: true);
+            _region = region;
+            _pendingEntries++;
+        }
+
+        Interlocked.Increment(ref Metrics.NoGcRegionPreEntries);
+        try
+        {
+            _queue(region);
+        }
+        catch
+        {
+            region.Dispose();
+            CompleteEntry();
+            throw;
+        }
+
+        _ = ExpirePreEntryAsync(region);
+        return true;
+    }
+
+    private async Task ExpirePreEntryAsync(NoGCRegion region)
+    {
+        try
+        {
+            if (!await _delay(PreEntryTimeoutMs, _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+            if (region.ExpirePreEntry()) Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesExpired);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region pre-entry expiry failed.", e);
+        }
+    }
+
+    /// <summary>What a payload found in a region entered ahead of it.</summary>
+    private enum PreEntryHandOver
+    {
+        /// <summary>The pre-entry let go meanwhile; the region is treated as any other region in the slot.</summary>
+        None,
+        /// <summary>The payload owns the region, entered or still being entered.</summary>
+        TakenOver,
+        /// <summary>Too old, too much allocated since entry, or not entered: claimed for the payload to end.</summary>
+        Stale,
+    }
+
     private void ReleaseRegion(NoGCRegion region)
     {
         lock (_lock)
@@ -141,7 +289,8 @@ public class GCKeeper : IDisposable
         }
     }
 
-    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC) : IDisposable, IThreadPoolWorkItem
+    private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC, bool preEntry = false)
+        : IDisposable, IThreadPoolWorkItem
     {
         private readonly Lock _stateLock = new();
         private bool _released;
@@ -150,6 +299,55 @@ public class GCKeeper : IDisposable
         private bool _active;
         private int _leases = 1;
         private bool _ownerReleased;
+        // Entered ahead of the payload: the lease is held by no payload until one takes it over or it expires.
+        private readonly bool _isPreEntry = preEntry;
+        private bool _preEntryOwned = preEntry;
+        private bool _entered;
+        private readonly long _createdTimestamp = preEntry ? keeper._timestamp() : 0;
+        private long _allocatedAtEntry;
+
+        public bool PausedGCScheduler => pausedGCScheduler;
+
+        /// <summary>Read under the keeper's lock as a hint; <see cref="TryHandOver"/> decides under the region's lock.</summary>
+        public bool IsPreEntryOwned => Volatile.Read(ref _preEntryOwned);
+
+        /// <summary>
+        /// Hands a region entered ahead of the payload to that payload while it still has the payload's budget;
+        /// otherwise claims it for retirement, which the caller completes with <c>Release(owner: true)</c>.
+        /// </summary>
+        public PreEntryHandOver TryHandOver()
+        {
+            lock (_stateLock)
+            {
+                if (!_preEntryOwned || _released || _ownerReleased) return PreEntryHandOver.None;
+                _preEntryOwned = false;
+                bool usable = Stopwatch.GetElapsedTime(_createdTimestamp, keeper._timestamp()).TotalMilliseconds < PreEntryTimeoutMs
+                    && (_active
+                        ? keeper._runtime.IsActive && keeper._runtime.AllocatedBytes - _allocatedAtEntry < PreEntryMaxAllocatedBytes
+                        // Still queued or being entered: the payload takes the entry over as if it had queued it.
+                        : !_entered);
+                if (usable) return PreEntryHandOver.TakenOver;
+
+                // Takes no lease meanwhile (TryAddLease checks the owner).
+                _ownerReleased = true;
+                return PreEntryHandOver.Stale;
+            }
+        }
+
+        /// <summary>Ends a region entered ahead of a payload that no payload took over.</summary>
+        /// <returns>Whether this call let go of it (it was neither taken over nor released before).</returns>
+        public bool ExpirePreEntry()
+        {
+            lock (_stateLock)
+            {
+                if (!_preEntryOwned || _released) return false;
+                _preEntryOwned = false;
+                _ownerReleased = true;
+            }
+
+            Release(owner: true);
+            return true;
+        }
 
         /// <summary>Takes a lease for a payload that starts while the payload that admitted this region is inside it.</summary>
         /// <remarks>
@@ -209,15 +407,19 @@ public class GCKeeper : IDisposable
             lock (_stateLock)
             {
                 _starting = false;
+                _entered = true;
                 if (started && !_released)
                 {
                     _active = true;
+                    if (_isPreEntry) _allocatedAtEntry = keeper._runtime.AllocatedBytes;
                     return;
                 }
             }
 
             if (started) EndRegion();
             else keeper.ReleaseRegion(this);
+            // A failed pre-entry nobody took over lets go of the scheduler pause now rather than at its expiry.
+            if (!started && _isPreEntry) ExpirePreEntry();
         }
 
         /// <summary>Released by the payload that admitted the region, after which it takes no new leases.</summary>
@@ -273,17 +475,18 @@ public class GCKeeper : IDisposable
         }
     }
 
-    /// <summary>One overlapping payload's hold on a region another payload admitted.</summary>
+    /// <summary>One overlapping payload's hold on a region another payload admitted, or that it took over from a pre-entry.</summary>
     /// <param name="shared">The region covering this payload, released when the last payload in it is done.</param>
     /// <param name="own">This payload's own region, never admitted, carrying its scheduler pause and its collection.</param>
-    private sealed class SharedRegionLease(NoGCRegion shared, NoGCRegion own) : IDisposable
+    /// <param name="ownerLease">The payload took the region over from a pre-entry and holds it as its owner.</param>
+    private sealed class SharedRegionLease(NoGCRegion shared, NoGCRegion own, bool ownerLease = false) : IDisposable
     {
         private int _disposed;
 
         public void Dispose()
         {
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
-            shared.Release();
+            shared.Release(owner: ownerLease);
             own.Dispose();
         }
     }

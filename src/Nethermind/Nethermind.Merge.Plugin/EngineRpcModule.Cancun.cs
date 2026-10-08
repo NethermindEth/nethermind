@@ -27,5 +27,5 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV3.HandleAsync(payloadId);
 
     public Task<ResultWrapper<IReadOnlyList<BlobAndProofV1?>>> engine_getBlobsV1(byte[][] blobVersionedHashes) =>
-        _getBlobsHandler.HandleAsync(blobVersionedHashes);
+        ThenPrepareNoGCRegion(_getBlobsHandler.HandleAsync(blobVersionedHashes));
 }

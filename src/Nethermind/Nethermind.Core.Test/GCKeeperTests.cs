@@ -485,11 +485,12 @@ public class GCKeeperTests
         public Exception? EndFailure { get; init; }
         public Action? BeforeStart { get; init; }
         public Action? BeforeEnd { get; init; }
-        public bool Refuse { get; init; }
+        public bool Refuse { get; set; }
         public bool Throw { get; init; }
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
+        public long AllocatedBytes { get; set; }
         public bool TryStart(long totalSize, long lohSize)
         {
             BeforeStart?.Invoke();
@@ -667,5 +668,348 @@ public class GCKeeperTests
         private Action? _continuation;
         public override void Post(SendOrPostCallback callback, object? state) => _continuation = () => callback(state);
         public void Resume() => _continuation!();
+    }
+
+    [Test]
+    public void Payload_takes_over_a_pre_entered_region_and_owns_it()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        long takenOver = Interlocked.Read(ref Metrics.NoGcRegionPreEntriesTakenOver);
+        Assert.That(keeper.PrepareNoGCRegion(), Is.True);
+        rig.Queued[0].Execute();
+        rig.Runtime.AllocatedBytes += 10 * 1024 * 1024;
+
+        IDisposable first = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Queued, Has.Count.EqualTo(1), "the payload enters nothing of its own");
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(1));
+            Assert.That(rig.Runtime.IsActive, Is.True);
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreEntriesTakenOver), Is.GreaterThan(takenOver));
+        }
+
+        // As the region's owner the payload admits an overlapping one, and its release ends the chain.
+        IDisposable second = keeper.TryStartNoGCRegion();
+        first.Dispose();
+        IDisposable third = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.True, "the overlapping payload is still inside");
+            Assert.That(rig.Queued, Has.Count.EqualTo(1));
+        }
+
+        second.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False, "the region ends with the payloads it took in, not the third");
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(1));
+        }
+
+        third.Dispose();
+        rig.Strategy.Received(3).GetForcedGCParams();
+
+        // The expiry of a pre-entry that was taken over does nothing.
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        using IDisposable next = keeper.TryStartNoGCRegion();
+        Assert.That(rig.Queued, Has.Count.EqualTo(2), "a later payload admits a region of its own");
+    }
+
+    [Test]
+    public void Unused_pre_entry_expires_without_scheduling_a_collection()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        long expired = Interlocked.Read(ref Metrics.NoGcRegionPreEntriesExpired);
+        keeper.PrepareNoGCRegion();
+        rig.Queued[0].Execute();
+        Assert.That(rig.Runtime.IsActive, Is.True);
+
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        Assert.That(() => rig.Runtime.Ends, Is.EqualTo(1).After(5000, 10));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False);
+            Assert.That(() => Interlocked.Read(ref Metrics.NoGcRegionPreEntriesExpired), Is.GreaterThan(expired).After(5000, 10));
+            rig.Strategy.DidNotReceive().GetForcedGCParams();
+        }
+
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Queued, Has.Count.EqualTo(2), "the slot is free for the payload's own region");
+            Assert.That(GCScheduler.MarkGCPaused(), Is.False, "the payload holds the scheduler pause again");
+        }
+    }
+
+    [Test]
+    public void Pre_entry_that_allocated_too_much_is_ended_and_the_payload_enters_its_own([Values] bool overBudget)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        rig.Queued[0].Execute();
+        rig.Runtime.AllocatedBytes += GCKeeper.PreEntryMaxAllocatedBytes + (overBudget ? 0 : -1);
+
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(overBudget ? 1 : 0));
+            Assert.That(rig.Queued, Has.Count.EqualTo(overBudget ? 2 : 1));
+        }
+
+        if (overBudget) rig.Queued[1].Execute();
+        Assert.That(rig.Runtime.IsActive, Is.True);
+        payload.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False);
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(overBudget ? 2 : 1));
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(overBudget ? 2 : 1));
+        }
+    }
+
+    [Test]
+    public void Pre_entry_past_its_timeout_is_not_taken_over_before_its_expiry_fires([Values] bool entered)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        if (entered) rig.Queued[0].Execute();
+        rig.AdvanceMs(GCKeeper.PreEntryTimeoutMs);
+
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(entered ? 1 : 0));
+            Assert.That(rig.Queued, Has.Count.EqualTo(2), "the payload enters a region of its own");
+        }
+
+        // A stale entry still queued does not enter once it runs.
+        if (!entered) rig.Queued[0].Execute();
+        rig.Queued[1].Execute();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(entered ? 2 : 1));
+            Assert.That(rig.Runtime.IsActive, Is.True);
+        }
+    }
+
+    [Test]
+    public void Stale_pre_entry_hands_the_scheduler_pause_to_the_payload()
+    {
+        // The pre-entry found the scheduler paused by someone else, who let go before the payload arrived.
+        Assert.That(GCScheduler.MarkGCPaused(), Is.True);
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        rig.Queued[0].Execute();
+        GCScheduler.MarkGCResumed();
+        rig.AdvanceMs(GCKeeper.PreEntryTimeoutMs);
+
+        IDisposable payload = keeper.TryStartNoGCRegion();
+        Assert.That(GCScheduler.MarkGCPaused(), Is.False, "the payload holds the pause");
+        payload.Dispose();
+        Assert.That(GCScheduler.MarkGCPaused(), Is.True, "the payload let go of the pause");
+        GCScheduler.MarkGCResumed();
+    }
+
+    [Test]
+    public async Task Payload_takes_over_a_pre_entry_that_is_still_queued_or_running([Values] bool running)
+    {
+        using ManualResetEventSlim entering = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        PreEntryRig rig = new(running ? () => { entering.Set(); proceed.Wait(); } : null);
+        using GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        Task entry = Task.CompletedTask;
+        if (running)
+        {
+            entry = Task.Run(rig.Queued[0].Execute);
+            Assert.That(entering.Wait(TimeSpan.FromSeconds(5)), Is.True);
+        }
+
+        IDisposable payload = keeper.TryStartNoGCRegion();
+        Assert.That(rig.Queued, Has.Count.EqualTo(1), "the payload waits on the pending entry rather than queueing another");
+        if (running) proceed.Set();
+        else rig.Queued[0].Execute();
+        await entry.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(rig.Runtime.IsActive, Is.True);
+
+        // Taken over: its expiry no longer ends the region under the payload.
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        await Task.Delay(50);
+        Assert.That(rig.Runtime.IsActive, Is.True);
+
+        payload.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False);
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(1));
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(1));
+        }
+    }
+
+    [Test]
+    public void Failed_pre_entry_frees_the_slot_at_once()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        rig.Runtime.Refuse = true;
+        keeper.PrepareNoGCRegion();
+        rig.Queued[0].Execute();
+        rig.Runtime.Refuse = false;
+
+        // Nor the scheduler pause it took: that is let go of with the failure, not at the expiry.
+        Assert.That(GCScheduler.MarkGCPaused(), Is.True, "the failed pre-entry still pauses the GC scheduler");
+        GCScheduler.MarkGCResumed();
+
+        Assert.That(keeper.PrepareNoGCRegion(), Is.True, "the failed pre-entry does not hold the slot until its expiry");
+        rig.Queued[1].Execute();
+        using IDisposable payload = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Queued, Has.Count.EqualTo(2));
+            Assert.That(rig.Runtime.IsActive, Is.True);
+        }
+    }
+
+    [Test]
+    public async Task Shutdown_ends_a_pre_entered_region([Values] bool entered)
+    {
+        PreEntryRig rig = new();
+        GCKeeper keeper = rig.Keeper;
+        keeper.PrepareNoGCRegion();
+        if (entered) rig.Queued[0].Execute();
+
+        Task stop = keeper.StopAsync();
+        if (!entered)
+        {
+            Assert.That(stop.IsCompleted, Is.False, "stop waits for the queued pre-entry");
+            rig.Queued[0].Execute();
+        }
+
+        await stop.WaitAsync(TimeSpan.FromSeconds(5));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Runtime.IsActive, Is.False);
+            Assert.That(rig.Runtime.Starts, Is.EqualTo(entered ? 1 : 0));
+            Assert.That(rig.Runtime.Ends, Is.EqualTo(entered ? 1 : 0));
+            Assert.That(keeper.PrepareNoGCRegion(), Is.False);
+        }
+
+        rig.CompleteDelays(GCKeeper.PreEntryTimeoutMs);
+        await Task.Delay(50);
+        Assert.That(rig.Runtime.Ends, Is.EqualTo(entered ? 1 : 0));
+    }
+
+    [Test]
+    public void Pre_entry_is_skipped_when_not_allowed_or_a_region_is_held([Values] bool disallowed)
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        IDisposable? payload = null;
+        if (disallowed) rig.Strategy.CanStartNoGCRegion().Returns(false);
+        else payload = keeper.TryStartNoGCRegion();
+
+        Assert.That(keeper.PrepareNoGCRegion(), Is.False);
+        Assert.That(rig.Queued, Has.Count.EqualTo(disallowed ? 0 : 1));
+        payload?.Dispose();
+    }
+
+    [Test]
+    public void Pre_entry_is_not_scheduled_while_the_region_is_off()
+    {
+        PreEntryRig rig = new();
+        rig.Strategy.CanStartNoGCRegion().Returns(false);
+        using GCKeeper keeper = rig.Keeper;
+        keeper.SchedulePrepareNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Queued, Is.Empty);
+            Assert.That(rig.Delays, Is.Empty);
+        }
+    }
+
+    [Test]
+    public void Scheduled_pre_entry_waits_its_delay_and_is_not_doubled()
+    {
+        PreEntryRig rig = new();
+        using GCKeeper keeper = rig.Keeper;
+        keeper.SchedulePrepareNoGCRegion();
+        keeper.SchedulePrepareNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(rig.Delays, Is.EqualTo(new[] { GCKeeper.PreEntryDelayMs }));
+            Assert.That(rig.Queued, Is.Empty);
+        }
+
+        rig.CompleteDelays(GCKeeper.PreEntryDelayMs);
+        Assert.That(() => rig.Queued.Count, Is.EqualTo(1).After(5000, 10));
+
+        // Once entered, another getBlobs costs no second region while the first is held.
+        Assert.That(() => { keeper.SchedulePrepareNoGCRegion(); return rig.PendingDelays(GCKeeper.PreEntryDelayMs); }, Is.EqualTo(1).After(5000, 10));
+        rig.CompleteDelays(GCKeeper.PreEntryDelayMs);
+        Assert.That(() => rig.PendingDelays(GCKeeper.PreEntryDelayMs), Is.Zero.After(5000, 10));
+        Thread.Sleep(50);
+        Assert.That(rig.Queued, Has.Count.EqualTo(1));
+    }
+
+    private sealed class PreEntryRig
+    {
+        private long _now = 1_000_000;
+        private readonly List<(int Ms, TaskCompletionSource<bool> Done)> _pending = [];
+
+        public PreEntryRig(Action? beforeStart = null)
+        {
+            Runtime = new RegionRuntime { BeforeStart = beforeStart };
+            Strategy.CanStartNoGCRegion().Returns(true);
+            Strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            Keeper = new GCKeeper(Strategy, NullLogManager.Instance, Runtime, Queued.Add, Delay, () => Interlocked.Read(ref _now));
+        }
+
+        public RegionRuntime Runtime { get; }
+        public IGCStrategy Strategy { get; } = Substitute.For<IGCStrategy>();
+        public List<IThreadPoolWorkItem> Queued { get; } = [];
+        public List<int> Delays { get; } = [];
+        public GCKeeper Keeper { get; }
+
+        public void AdvanceMs(int ms) => Interlocked.Add(ref _now, ms * System.Diagnostics.Stopwatch.Frequency / 1000);
+
+        public void CompleteDelays(int ms)
+        {
+            lock (_pending)
+            {
+                foreach ((int Ms, TaskCompletionSource<bool> Done) delay in _pending)
+                {
+                    if (delay.Ms == ms) delay.Done.TrySetResult(true);
+                }
+            }
+        }
+
+        public int PendingDelays(int ms)
+        {
+            lock (_pending)
+            {
+                int count = 0;
+                foreach ((int Ms, TaskCompletionSource<bool> Done) delay in _pending)
+                {
+                    if (delay.Ms == ms && !delay.Done.Task.IsCompleted) count++;
+                }
+                return count;
+            }
+        }
+
+        private Task<bool> Delay(int ms, CancellationToken token)
+        {
+            TaskCompletionSource<bool> done = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            token.Register(() => done.TrySetResult(false));
+            lock (_pending)
+            {
+                Delays.Add(ms);
+                _pending.Add((ms, done));
+            }
+            return done.Task;
+        }
     }
 }
