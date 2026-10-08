@@ -57,6 +57,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Tracing;
 using Nethermind.Evm;
+using Nethermind.Evm.GasPolicy;
 using Nethermind.Core.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -3393,6 +3394,52 @@ public partial class BlockProcessorTests
     }
 
     [Test]
+    public void Parallel_validation_stops_executing_once_out_of_order_gas_exceeds_block_limit([Values] bool stateGas)
+    {
+        const ulong gasUsed = 1_000_000;
+        const int heavyCount = 4096;
+        const int heavyCountUnderLimit = 64;
+        int lead = BlockProcessor.ParallelBlockValidationTransactionsExecutor.GetCanonicalExecutionLead(int.MaxValue);
+        // The lowest gas limit after the canonical prefix is scheduled last, holding the in-order validator
+        // there while the heavy tail runs; the prefix and that tx alone stay under the block gas limit.
+        Transaction[] transactions = CreateParallelValidationTransactions(lead + 1 + heavyCount, gasUsed);
+        transactions[lead].GasLimit = 21_000;
+
+        IWorldState stateProvider = TestWorldStateFactory.CreateForTest();
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+
+        Block block = Build.A.Block
+            .WithNumber(1)
+            .WithGasLimit((ulong)(lead + 1 + heavyCountUnderLimit) * gasUsed)
+            .WithTransactions(transactions)
+            .WithBlockAccessList(new ReadOnlyBlockAccessList())
+            .TestObject;
+
+        using ManualResetEventSlim validationFinished = new(true);
+        GatedTailTransactionProcessorAdapter transactionProcessor = new(int.MaxValue, gasUsed, validationFinished, stateGas);
+        BlockProcessor.ParallelBlockValidationTransactionsExecutor executor = new(
+            Substitute.For<IBlockProcessor.IBlockTransactionsExecutor>(),
+            stateProvider,
+            new TestSingleReleaseSpecProvider(Amsterdam.Instance),
+            new ParallelTestBlockAccessListManager(transactionProcessor) { IncrementalValidationAction = ReplayGasLimitChecks },
+            LimboLogs.Instance);
+
+        InvalidBlockException? ex = Assert.Catch<InvalidBlockException>(() => executor.ProcessTransactions(
+            block,
+            ProcessingOptions.None,
+            new BlockReceiptsTracer(),
+            CancellationToken.None));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ex!.Message, Does.Contain("Block gas limit exceeded"));
+            // The tally trips one tx past the limit; each worker may then finish the tx it already started,
+            // bounded loosely by twice the core count so the assertion does not depend on worker scheduling.
+            Assert.That(transactionProcessor.ExecutedCount, Is.AtMost(lead + heavyCountUnderLimit + 2 + 2 * Environment.ProcessorCount));
+        });
+    }
+
+    [Test]
     public void Parallel_validation_cancel_incomplete_gas_results_preserves_completed_slots()
     {
         GasValidationResultSlot[] gasResults = ResultsForCount(2);
@@ -3457,6 +3504,22 @@ public partial class BlockProcessorTests
         finally
         {
             validationFinished.Set();
+        }
+    }
+
+    /// <summary>Mirrors <see cref="BlockAccessListManager.IncrementalValidation"/>'s in-order worker-failure
+    /// and cumulative block gas checks.</summary>
+    private static void ReplayGasLimitChecks(Block block, GasValidationResultSlot[] gasResults)
+    {
+        ulong totalExecutionGas = 0;
+        ulong totalStateGas = 0;
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            GasValidationResult gasResult = gasResults[i].GetResult();
+            if (gasResult.Exception is not null) throw new BlockAccessListManager.ParallelExecutionException(gasResult.Exception);
+            totalExecutionGas += gasResult.BlockGasUsed;
+            totalStateGas += gasResult.BlockStateGasUsed;
+            if (EthereumGasPolicy.CombineBlockGas(totalExecutionGas, totalStateGas) > block.GasLimit) throw new InvalidBlockException(block, $"Block gas limit exceeded after transaction index {i}.");
         }
     }
 
@@ -4049,7 +4112,8 @@ public partial class BlockProcessorTests
     private sealed class GatedTailTransactionProcessorAdapter(
         int decisiveIndex,
         ulong gasUsed,
-        ManualResetEventSlim validationFinished) : ITransactionProcessorAdapter
+        ManualResetEventSlim validationFinished,
+        bool stateGas = false) : ITransactionProcessorAdapter
     {
         private int _executedCount;
 
@@ -4066,8 +4130,9 @@ public partial class BlockProcessorTests
             }
 
             Interlocked.Increment(ref _executedCount);
-            transaction.BlockGasUsed = gasUsed;
-            txTracer.MarkAsSuccess(Address.Zero, gasUsed, [], []);
+            // BlockGasUsed reads back as GasLimit when zero, so the state-gas case charges 1 execution gas.
+            transaction.BlockGasUsed = stateGas ? 1 : gasUsed;
+            txTracer.MarkAsSuccess(Address.Zero, stateGas ? new GasConsumed(gasUsed, gasUsed, BlockGas: 1, BlockStateGas: gasUsed) : gasUsed, [], []);
 
             return TransactionResult.Ok;
         }
