@@ -95,7 +95,7 @@ public class PrewarmerScopeProvider(
             try
             {
                 // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
-                preBlockCaches.BeginConsumerScope();
+                preBlockCaches.BeginConsumerScope(stateRoot);
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
@@ -136,7 +136,7 @@ public class PrewarmerScopeProvider(
         private readonly SeqlockCache<AddressAsKey, Account> preBlockCache = preBlockCaches.StateCache;
         private readonly SeqlockCache<StorageCell, UInt256> storageCache = preBlockCaches.StorageCache;
         private readonly bool isPrewarmer = isPrewarmer;
-        private readonly IWorldStateScopeProvider.IScope? mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
+        private IWorldStateScopeProvider.IScope? _mainScope = isPrewarmer ? preBlockCaches.MainScope : null;
         private readonly LocalMetrics _metrics = metrics;
         private readonly IMetricObserver _metricObserver = Metrics.PrewarmerGetTime;
         private readonly bool _measureMetric = Metrics.DetailedMetricsEnabled;
@@ -321,14 +321,18 @@ public class PrewarmerScopeProvider(
         public void HintWarmAccount(Address address)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmAccount(address);
+            (isPrewarmer ? MainScopeForHints : baseScope)?.HintWarmAccount(address);
         }
 
         public void HintWarmSlot(Address address, in UInt256 index)
         {
             if (storageReadCapture is not null) return;
-            (isPrewarmer ? mainScope : baseScope)?.HintWarmSlot(address, in index);
+            (isPrewarmer ? MainScopeForHints : baseScope)?.HintWarmSlot(address, in index);
         }
+
+        // Taken when the scope is built, so a block's hints keep their target however the registration moves; a scope
+        // built before the block's consumer scope opened - a session started ahead of its block - takes it once it has.
+        private IWorldStateScopeProvider.IScope? MainScopeForHints => _mainScope ??= preBlockCaches.MainScope;
 
         public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
         {

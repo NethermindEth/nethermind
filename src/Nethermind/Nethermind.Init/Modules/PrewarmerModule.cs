@@ -35,6 +35,9 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 // Parent scope so test modules can override; child scope's PreBlockCaches falls through here.
                 .AddSingleton<PreBlockCachesConfig>()
 
+                // Root level, so the engine API's newPayload handler reaches the main processing's prewarmer.
+                .AddSingleton<EarlyBlockPreWarming>()
+
                 // Note: Need a small modification to have this work on all branch processor due to the shared
                 // NodeStorageCache and the FrozenDictionary and the fact that some processing does not have
                 // branch processor, and use block processor instead.
@@ -53,6 +56,7 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                 .AddSingleton<PrecompileCaches>()
                 .AddSingleton<IPrewarmerState, PreBlockCaches>(static caches => new PrewarmerState(caches, isPrewarmer: false))
                 .AddScoped<IBlockCachePreWarmer, BlockCachePreWarmer>()
+                .OnActivate<IBlockCachePreWarmer>(static (preWarmer, ctx) => ctx.Resolve<EarlyBlockPreWarming>().Attach(preWarmer))
                 // System-contract access-list hints the prewarmer warms alongside tx addresses.
                 .AddScoped<IHasAccessList>(ctx => ctx.Resolve<IBeaconBlockRootHandler>())
                 // Chains may bind their own IBlockhashStore; only hint-capable stores contribute.

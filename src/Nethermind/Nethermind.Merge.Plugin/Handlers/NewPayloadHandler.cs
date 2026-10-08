@@ -64,6 +64,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     private readonly TimeSpan _timeout;
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
+    private readonly EarlyBlockPreWarming? _earlyPreWarming;
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -86,8 +87,10 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         RecoverSignatures senderRecovery,
         ISpecProvider specProvider,
         ITxValidator txValidator,
-        ILogManager logManager)
+        ILogManager logManager,
+        EarlyBlockPreWarming? earlyPreWarming = null)
     {
+        _earlyPreWarming = earlyPreWarming;
         _payloadPreparationService = payloadPreparationService;
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _blockTree = blockTree;
@@ -336,10 +339,23 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         // Otherwise, we can just process this block and we don't need to do BeaconSync anymore.
         _mergeSyncController.StopSyncing();
 
+        // The block is going to processing: from here its validation, storing and queueing come before it executes,
+        // and its warming need not wait for them. A block that does not get there ends the session below.
+        _earlyPreWarming?.Start(block, parentHeader, _specProvider.GetSpec(block.Header));
+
         // Not boosted any more: the block runs on the processing loop's thread, which raises its own priority, and this
         // thread only waits for the verdict - and a boost held across that await would resume on another thread and
         // never be restored.
-        (ValidationResult result, string? message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        ValidationResult result;
+        string? message;
+        try
+        {
+            (result, message) = await ValidateBlockAndProcess(block, parentHeader, processingOptions, deadline, workers);
+        }
+        finally
+        {
+            _earlyPreWarming?.Discard(block);
+        }
 
         switch (result)
         {

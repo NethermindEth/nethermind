@@ -45,4 +45,13 @@ public interface IBlockCachePreWarmer : IDisposable
     /// block enters processing; <paramref name="generation"/> drops the session if a newer head has already started one.
     /// </summary>
     Task StartSpeculativePreWarm(BlockHeader head, IReleaseSpec spec, long generation, Func<CancellationToken, (Block Block, IReleaseSpec Spec)?> nextDelta, int idlePassDelayMs, CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Starts the warming <see cref="PreWarmCaches"/> would start for <paramref name="block"/>, ahead of block processing,
+    /// which takes it over when it reaches the same block object on the same parent state.
+    /// </summary>
+    void StartEarly(Block block, BlockHeader parent, IReleaseSpec spec) { }
+
+    /// <summary>Ends warming <see cref="StartEarly"/> started for <paramref name="block"/>, unless block processing took it over.</summary>
+    void DiscardEarly(Block block) { }
 }

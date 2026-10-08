@@ -26,6 +26,7 @@ public class PreBlockCaches
     private volatile IWorldStateScopeProvider.IScope? _mainScope;
     private volatile CodePrefetcher? _codePrefetcher;
     private int _consumerScopes;
+    private Hash256? _consumerStateRoot;
 
     private readonly Lock _reconcileLock = new();
     private readonly WriteBackBatch _writeBack;
@@ -115,15 +116,24 @@ public class PreBlockCaches
     /// </summary>
     public event Action? ConsumerScopeOpened;
 
+    /// <summary>
+    /// The state root the consumer scope opened last reads, or null when it did not say; what
+    /// <see cref="ConsumerScopeOpened"/> handlers read to tell whether a session warming ahead of the block is warming
+    /// the state that scope reads.
+    /// </summary>
+    public Hash256? ConsumerStateRoot => Volatile.Read(ref _consumerStateRoot);
+
     /// <summary>Opens a consumer scope; see <see cref="ConsumerScopeOpen"/>.</summary>
+    /// <param name="stateRoot">The state root the scope reads, published as <see cref="ConsumerStateRoot"/>.</param>
     /// <remarks>
     /// At most one may be open at a time, which is what leaves the write-back a single writer. Nothing here enforces
     /// it: it holds because only the main processing scope is decorated, leaving the RPC, tracing and simulate world
     /// states out. A second consumer inside that scope would clear the caches mid-block and race the write-back.
     /// </remarks>
-    public void BeginConsumerScope()
+    public void BeginConsumerScope(Hash256? stateRoot = null)
     {
         Interlocked.Increment(ref _consumerScopes);
+        Volatile.Write(ref _consumerStateRoot, stateRoot);
         ConsumerScopeOpened?.Invoke();
     }
 

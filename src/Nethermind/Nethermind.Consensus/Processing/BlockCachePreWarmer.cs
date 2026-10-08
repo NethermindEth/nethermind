@@ -148,28 +148,151 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _nodeStorageCache = nodeStorageCache;
         _warmupQueue = new WarmupQueue(this);
         // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += OnConsumerScopeOpened;
+    }
+
+    private void OnConsumerScopeOpened()
+    {
+        lock (_speculativeLock)
+        {
+            CancelAndJoinSpeculativeLocked();
+            // A session started ahead of its block warms the state that block starts from. A scope opening on another
+            // state is about to read the caches that session keeps writing, so it is joined before the scope reads.
+            if (_early is { } early && early.ParentStateRoot != _preBlockCaches!.ConsumerStateRoot) DisposeEarlyLocked();
+        }
     }
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
-        Volatile.Write(ref _footprints, null);
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
         if (_preBlockCaches is null)
         {
+            Volatile.Write(ref _footprints, null);
             CancelAndJoinSpeculative();
             return null;
         }
 
-        bool carried;
         lock (_speculativeLock)
         {
-            CancelAndJoinSpeculativeLocked();
-            // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
-            // further, but the caches describe the state they were filled from, which need not be this block's parent.
-            carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
+            if (_early is { } early)
+            {
+                _early = null;
+                // The very block object: its transactions are what the session's footprints are matched against.
+                if (ReferenceEquals(early.Block, suggestedBlock) && parent?.StateRoot is not null && early.ParentStateRoot == parent.StateRoot)
+                {
+                    early.Adopt(cancellationToken);
+                    return early;
+                }
+
+                early.Dispose();
+            }
+
+            return StartWarmingLocked(suggestedBlock, parent, spec, cancellationToken);
         }
+    }
+
+    /// <summary>
+    /// Starts warming <paramref name="block"/> from the newPayload request, before it reaches block processing, whose
+    /// <see cref="PreWarmCaches"/> then takes the session over; a later call, or <see cref="DiscardEarly"/>, ends a
+    /// session never taken over.
+    /// </summary>
+    /// <remarks>
+    /// Block processing starts warming only once the block is validated, stored and dequeued, which leaves the warm
+    /// of the block's first transactions no lead over their execution: those transactions read cold state on the
+    /// main thread, and on a block of a few transactions they are most of the block. Nothing starts while a block is
+    /// executing: its caches describe its own parent.
+    /// </remarks>
+    public void StartEarly(Block block, BlockHeader parent, IReleaseSpec spec)
+    {
+        if (_preBlockCaches is null || parent.StateRoot is null || block is BlockToProduce) return;
+
+        lock (_speculativeLock)
+        {
+            DisposeEarlyLocked();
+            if (_preBlockCaches.ConsumerScopeOpen) return;
+
+            CancellationTokenSource cancellation = new();
+            IDisposable? session = null;
+            try
+            {
+                session = StartWarmingLocked(block, parent, spec, cancellation.Token);
+            }
+            finally
+            {
+                if (session is null) cancellation.Dispose();
+            }
+
+            if (session is not null) _early = new EarlySession(block, parent.StateRoot, session, cancellation);
+        }
+    }
+
+    /// <summary>Ends the session <see cref="StartEarly"/> started for <paramref name="block"/>, unless block processing took it over.</summary>
+    public void DiscardEarly(Block block)
+    {
+        lock (_speculativeLock)
+        {
+            if (_early is { } early && ReferenceEquals(early.Block, block)) DisposeEarlyLocked();
+        }
+    }
+
+    // For tests: whether a session started ahead of its block is waiting for block processing.
+    internal bool HasEarlySession
+    {
+        get
+        {
+            lock (_speculativeLock)
+            {
+                return _early is not null;
+            }
+        }
+    }
+
+    private void DisposeEarlyLocked()
+    {
+        EarlySession? early = _early;
+        _early = null;
+        early?.Dispose();
+    }
+
+    private EarlySession? _early;
+
+    /// <summary>A session <see cref="StartEarly"/> started, until block processing takes it over or it is discarded.</summary>
+    private sealed class EarlySession(Block block, Hash256 parentStateRoot, IDisposable session, CancellationTokenSource cancellation) : IDisposable
+    {
+        public readonly Block Block = block;
+        public readonly Hash256 ParentStateRoot = parentStateRoot;
+        private CancellationTokenRegistration _link;
+        private bool _disposed;
+
+        /// <summary>From here on the session ends with block processing's warming, as one it started would.</summary>
+        public void Adopt(CancellationToken token) =>
+            _link = token.UnsafeRegister(static state => ((CancellationTokenSource)state!).Cancel(), cancellation);
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _link.Dispose();
+            try
+            {
+                cancellation.Cancel();
+                session.Dispose();
+            }
+            finally
+            {
+                cancellation.Dispose();
+            }
+        }
+    }
+
+    private IDisposable? StartWarmingLocked(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        Volatile.Write(ref _footprints, null);
+        CancelAndJoinSpeculativeLocked();
+        // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
+        // further, but the caches describe the state they were filled from, which need not be this block's parent.
+        bool carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
 
         bool skipReactiveWarming = !ShouldPreWarm(spec);
         // Too few transactions to warm by executing them, but the block still runs its system calls first and credits
@@ -824,8 +947,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // An equal-or-newer session already started (out-of-order work item); don't clobber it.
             if (generation <= _speculativeGeneration) return _speculativeTask;
             // A consumer is open: the caches describe its parent, and a late session for another head must not
-            // repurpose them underneath it. Its head's own successor will start a session of its own.
-            if (_preBlockCaches.ConsumerScopeOpen) return Task.CompletedTask;
+            // repurpose them underneath it. Its head's own successor will start a session of its own. A session
+            // started ahead of a block that has arrived is warming that block, and the caches are its.
+            if (_preBlockCaches.ConsumerScopeOpen || _early is not null) return Task.CompletedTask;
             _speculativeGeneration = generation;
 
             CancelAndJoinSpeculativeLocked();
@@ -994,7 +1118,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     public void Dispose()
     {
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= CancelAndJoinSpeculative;
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= OnConsumerScopeOpened;
+        lock (_speculativeLock)
+        {
+            DisposeEarlyLocked();
+        }
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         _warmupQueue.Dispose();

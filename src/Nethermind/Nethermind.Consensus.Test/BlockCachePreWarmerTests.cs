@@ -229,6 +229,119 @@ public class BlockCachePreWarmerTests
         }
     }
 
+    [Test]
+    public void StartEarly_TheBlockReachingProcessing_TakesTheSessionOver()
+    {
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            Block block = BuildReactiveWarmBlock();
+            BlockHeader parent = BuildParentHeader();
+            preWarmer.StartEarly(block, parent, Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.True, "nothing is executing, so the session starts");
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                Assert.That(preWarmer.HasEarlySession, Is.True, "a scope on the block's own parent state leaves the session running");
+                using IDisposable? session = preWarmer.PreWarmCaches(block, parent, Osaka.Instance);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(session, Is.Not.Null.And.Not.TypeOf<PrewarmingSession>(), "the session started ahead is the one returned");
+                    Assert.That(preWarmer.HasEarlySession, Is.False);
+                    Assert.That(SpinWait.SpinUntil(() => preBlockCaches.StateCache.TryGetValue(TestItem.AddressC, out _), TimeSpan.FromSeconds(10)),
+                        Is.True, "the session warms the block");
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void StartEarly_AnotherBlockObjectReachingProcessing_GetsASessionOfItsOwn()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            BlockHeader parent = BuildParentHeader();
+            preWarmer.StartEarly(BuildReactiveWarmBlock(), parent, Osaka.Instance);
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                // Equal content in another object: its transactions are not the ones the session's footprints name.
+                using IDisposable? session = preWarmer.PreWarmCaches(BuildReactiveWarmBlock(), parent, Osaka.Instance);
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(session, Is.TypeOf<PrewarmingSession>());
+                    Assert.That(preWarmer.HasEarlySession, Is.False);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public void StartEarly_WhileABlockExecutes_StartsNothing()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            BlockHeader parent = BuildParentHeader();
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(parent))
+            {
+                preWarmer.StartEarly(BuildReactiveWarmBlock(), parent, Osaka.Instance);
+                Assert.That(preWarmer.HasEarlySession, Is.False, "the executing block's caches describe its own parent");
+            }
+        }
+    }
+
+    [Test]
+    public void StartEarly_AScopeOpeningOnAnotherState_JoinsTheSession()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            BlockHeader parent = BuildParentHeader();
+            BlockHeader other = BuildOtherStateHeader(parent);
+            preWarmer.StartEarly(BuildReactiveWarmBlock(), parent, Osaka.Instance);
+            Assert.That(preWarmer.HasEarlySession, Is.True, "precondition: the session started");
+
+            IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+            using (mainWorldState.BeginScope(other))
+            {
+                Assert.That(preWarmer.HasEarlySession, Is.False, "the session warms a state other than the one the scope reads");
+            }
+        }
+    }
+
+    [Test]
+    public void DiscardEarly_EndsOnlyTheSessionOfItsBlock()
+    {
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        using (preWarmer)
+        {
+            Block block = BuildReactiveWarmBlock();
+            preWarmer.StartEarly(block, BuildParentHeader(), Osaka.Instance);
+            preWarmer.DiscardEarly(BuildReactiveWarmBlock());
+            Assert.That(preWarmer.HasEarlySession, Is.True, "another block's discard leaves the session running");
+            preWarmer.DiscardEarly(block);
+            Assert.That(preWarmer.HasEarlySession, Is.False);
+        }
+    }
+
+    [Test]
+    public void EarlyBlockPreWarming_ReachesTheMainProcessingPreWarmer()
+    {
+        BlockCachePreWarmer preWarmer = (BlockCachePreWarmer)_processingScope.Resolve<IBlockCachePreWarmer>();
+        EarlyBlockPreWarming early = _container.Resolve<EarlyBlockPreWarming>();
+        Block block = BuildReactiveWarmBlock();
+
+        early.Start(block, BuildParentHeader(), Osaka.Instance);
+        Assert.That(preWarmer.HasEarlySession, Is.True);
+        early.Discard(block);
+        Assert.That(preWarmer.HasEarlySession, Is.False);
+    }
+
     [TestCase(false, "validation", "transactions")]
     [TestCase(true, "preparation", "new transactions")]
     public async Task PreWarmCaches_LogsPurposeAndTransactionCount(bool speculative, string purpose, string transactionDescription)
