@@ -9,7 +9,8 @@
 // Each row is one benchmark block: its gas value, test id, and the ziskemu step count and cost
 // buckets that scripts/zisk-bench/parse-stats.py extracts. The report lists, per gas value, the
 // costliest blocks and the costliest block of every test module, which is where a regression or a
-// new worst case shows first. Blocks are ranked by the cost model's total rather than steps:
+// new worst case shows first, and lists the blocks that failed. Blocks are ranked by the cost model's
+// total rather than steps:
 // precompile calls cost far more than the few steps they take, so steps understate precompile-heavy
 // blocks. `--shards` maps each gas value to its shard count, e.g. {"30M": 8}.
 
@@ -43,15 +44,32 @@ using (JsonDocument shards = JsonDocument.Parse(options["shards"]))
         shardCounts[gas.Name] = gas.Value.GetInt32();
 }
 
-// Shards write `<gas>-<shard>.json` only once every block of theirs ran and matched, so a missing
-// file is a shard that failed or never ran.
+// A shard writes `<gas>-<shard>.json` with the rows of the blocks that passed once all of its blocks
+// ran, and `<gas>-<shard>.failed.json` beside it for the ones that did not, so a missing rows file
+// is a shard that never got as far as measuring.
 string[] files = Directory.GetFiles(options["results"], "*.json", SearchOption.AllDirectories);
 Array.Sort(files, StringComparer.Ordinal);
+List<string> rowFiles = [];
 List<Row> rows = [];
+List<Failure> failures = [];
 foreach (string file in files)
 {
     using FileStream stream = File.OpenRead(file);
     using JsonDocument shard = JsonDocument.Parse(stream);
+    if (file.EndsWith(".failed.json", StringComparison.Ordinal))
+    {
+        foreach (JsonElement failure in shard.RootElement.EnumerateArray())
+        {
+            failures.Add(new Failure(
+                failure.GetProperty("gas").GetString()!,
+                failure.GetProperty("id").GetString()!,
+                failure.GetProperty("reason").GetString()!));
+        }
+
+        continue;
+    }
+
+    rowFiles.Add(file);
     foreach (JsonElement row in shard.RootElement.EnumerateArray())
     {
         rows.Add(new Row(
@@ -75,19 +93,28 @@ report.AppendLine("## Stateless benchmark fixtures")
     .AppendLine()
     .AppendLine($"ZisK guest cost per benchmark block of `{options["release"]}`, built from `{options["commit"]}`.")
     .AppendLine()
-    .AppendLine("| Gas value | Shards | Blocks | Max cost | Total cost |")
-    .AppendLine("| --- | ---: | ---: | ---: | ---: |");
+    .AppendLine("| Gas value | Shards | Blocks | Failed | Max cost | Total cost |")
+    .AppendLine("| --- | ---: | ---: | ---: | ---: | ---: |");
 
 bool incomplete = false;
 foreach (string gas in gasValues)
 {
     List<Row> measured = rows.FindAll(row => row.Gas == gas);
-    int done = files.Count(file => Path.GetFileName(file).StartsWith($"{gas}-", StringComparison.Ordinal));
+    int failed = failures.Count(failure => failure.Gas == gas);
+    int done = rowFiles.Count(file => Path.GetFileName(file).StartsWith($"{gas}-", StringComparison.Ordinal));
     int expected = shardCounts[gas];
     incomplete |= done != expected;
     string shardCell = done == expected ? $"{done}" : $"{done} of {expected}";
     long max = measured.Count == 0 ? 0 : measured.Max(static row => row.Total);
-    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
+    report.AppendLine($"| {gas} | {shardCell} | {measured.Count} | {failed} | {max:N0} | {measured.Sum(static row => row.Total):N0} |");
+}
+
+if (failures.Count > 0)
+{
+    report.AppendLine().AppendLine("### Failed blocks").AppendLine()
+        .AppendLine("| Gas value | Case | Reason |").AppendLine("| --- | --- | --- |");
+    foreach (Failure failure in failures.OrderBy(static failure => GasKey(failure.Gas)).ThenBy(static failure => failure.Id, StringComparer.Ordinal))
+        report.AppendLine($"| {failure.Gas} | `{Case(failure.Id)}` | {failure.Reason} |");
 }
 
 foreach (string gas in gasValues)
@@ -111,9 +138,9 @@ foreach (string gas in gasValues)
 
 File.AppendAllText(options["summary"], report.ToString());
 
-if (incomplete)
+if (incomplete || failures.Count > 0)
 {
-    Console.Error.WriteLine("Some shards produced no results; see the report.");
+    Console.Error.WriteLine("Some blocks failed or some shards produced no results; see the report.");
     return 1;
 }
 
@@ -166,6 +193,8 @@ static void WriteResults(string path, List<Row> rows)
 }
 
 record Row(string Gas, string Id, long Steps, long Main, long Opcodes, long Precompiles, long Memory, long Total);
+
+record Failure(string Gas, string Id, string Reason);
 
 static partial class ModuleRegex
 {

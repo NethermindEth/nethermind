@@ -198,6 +198,8 @@ jobs:
             timeout "${BLOCK_MINUTES}m" make stats INPUT="$input" < /dev/null > "$dir/stats.log" 2>&1 || status=$?
             if [[ "$status" -eq 124 ]]; then
               verdict="timed out after $BLOCK_MINUTES minutes"
+            elif grep -q 'EmulationNoCompleted' "$dir/stats.log"; then
+              verdict="did not finish within the emulator's step limit"
             elif [[ "$status" -ne 0 ]]; then
               verdict="the guest exited with $status"
             elif ! grep -Fxq "$output" "$dir/stats.log"; then
@@ -216,26 +218,47 @@ jobs:
             | xargs -P "$(nproc)" -L 1 bash -c 'measure "$@"' _
 
           failed=0
+          : > "$RUNNER_TEMP/failures.tsv"
           while read -r input id; do
             dir="$RUNNER_TEMP/blocks/$input"
             echo "::group::${input} ${id}"
             cat "$dir/stats.log" 2> /dev/null || true
             echo "::endgroup::"
             verdict=$(cat "$dir/verdict" 2> /dev/null || echo "the run produced no verdict")
-            [[ "$verdict" == ok ]] || { echo "::error::${id}: ${verdict}"; failed=$((failed + 1)); }
+            if [[ "$verdict" != ok ]]; then
+              echo "::error::${id}: ${verdict}"
+              printf '%s\t%s\n' "$id" "$verdict" >> "$RUNNER_TEMP/failures.tsv"
+              failed=$((failed + 1))
+            fi
           done < <(jq -r '.[] | "\(.input) \(.id)"' "$RUNNER_TEMP/manifest.json")
-          [[ "$failed" -eq 0 ]] || { echo "::error::$failed block(s) failed"; exit 1; }
+
+          # The rows are written even when blocks failed, so one bad block does not hide the rest of the
+          # shard from the report; the failures go beside them and the report lists them.
           mkdir -p "$RUNNER_TEMP/results"
-          jq -s --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
-            ($manifest[0] | INDEX(.input)) as $ids | add | map({gas: $gas, id: $ids[.input].id} + del(.input))
-          ' "$RUNNER_TEMP"/blocks/*/row.json > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          shopt -s nullglob
+          rows=("$RUNNER_TEMP"/blocks/*/row.json)
+          if [[ ${#rows[@]} -gt 0 ]]; then
+            jq -s --arg gas "$GAS" --slurpfile manifest "$RUNNER_TEMP/manifest.json" '
+              ($manifest[0] | INDEX(.input)) as $ids | add | map({gas: $gas, id: $ids[.input].id} + del(.input))
+            ' "${rows[@]}" > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          else
+            echo '[]' > "$RUNNER_TEMP/results/$GAS-$SHARD.json"
+          fi
+          if [[ "$failed" -gt 0 ]]; then
+            jq -R -s --arg gas "$GAS" '
+              split("\n") | map(select(length > 0) | split("\t") | {gas: $gas, id: .[0], reason: .[1]})
+            ' "$RUNNER_TEMP/failures.tsv" > "$RUNNER_TEMP/results/$GAS-$SHARD.failed.json"
+            echo "::error::$failed block(s) failed"
+            exit 1
+          fi
 
       - name: Upload results
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@v7
         with:
           name: results-${{ matrix.gas }}-${{ matrix.shard }}
           path: ${{ runner.temp }}/results
-          if-no-files-found: error
+          if-no-files-found: warn
           retention-days: 1
 
   report:
