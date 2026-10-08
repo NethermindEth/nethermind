@@ -75,4 +75,68 @@ public static class Metrics
     [CounterMetric]
     [Description("Bytes allocated by the process between the entry of slot pre-entered no-GC regions and engine_newPayload finding them stale (sum).")]
     public static long NoGcRegionPreSlotAllocatedBytesAtStale;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls that queued a no-GC region entry of their own (not taken over or shared).")]
+    public static long NoGcRegionPayloadEntries;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls that entered no region (BENCH_GC_REGION_ENTRY never, or the guard found the gen0 budget covering the block); their post-block collection still runs.")]
+    public static long NoGcRegionPayloadSkips;
+
+    [CounterMetric]
+    [Description("Number of pre-entries (getBlobs or slot) not made because the guard found the gen0 budget covering the block.")]
+    public static long NoGcRegionPreEntriesSkippedByGuard;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls whose estimated gen0 budget left was at least BENCH_GC_REGION_GUARD_MB (guard and never modes).")]
+    public static long NoGcRegionGuardCovered;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls judged covered by the gen0 budget that still had a gen0 collection during processing.")]
+    public static long NoGcRegionGuardMisses;
+
+    [GaugeMetric]
+    [Description("Estimated gen0 allocation budget left at the last engine_newPayload or pre-entry (guard and never modes; -1 unknown).")]
+    public static long NoGcRegionGuardBudgetLeftBytes;
+
+    [GaugeMetric]
+    [Description("Gen0 allocation budget summed over heaps at the last estimate (runtime or BENCH_GC_REGION_GUARD_BUDGET_MB; -1 unknown).")]
+    public static long NoGcRegionGuardGen0BudgetBytes;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls whose processing window (start to the region's end, or the same point without a region) was measured.")]
+    public static long NoGcRegionPayloadsMeasured;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls with at least one gen0 (or higher) collection during processing, own region entries excluded.")]
+    public static long NoGcRegionPayloadsWithCollectionInProcessing;
+
+    [CounterMetric]
+    [Description("Collections counted by GC.CollectionCount(0) during engine_newPayload processing (gen0 and higher), own region entries excluded.")]
+    public static long NoGcRegionGen0CollectionsInProcessing;
+
+    [CounterMetric]
+    [Description("Collections counted by GC.CollectionCount(1) during engine_newPayload processing (gen1 and gen2), own region entries excluded.")]
+    public static long NoGcRegionGen1CollectionsInProcessing;
+
+    [CounterMetric]
+    [Description("Collections counted by GC.CollectionCount(2) during engine_newPayload processing (gen2, incl. background), own region entries excluded.")]
+    public static long NoGcRegionGen2CollectionsInProcessing;
+
+    [CounterMetric]
+    [Description("Bytes allocated by the process during engine_newPayload processing windows (sum).")]
+    public static long NoGcRegionPayloadAllocatedBytes;
+
+    [GaugeMetric]
+    [Description("Most bytes allocated by the process during one engine_newPayload processing window.")]
+    public static long NoGcRegionPayloadAllocatedBytesMax;
+
+    [CounterMetric]
+    [Description("Number of throwaway no-GC regions entered and ended right after the aggressive decommit collection, to re-commit the next entry's budget off the payload's path.")]
+    public static long NoGcRegionRecommits;
+
+    [CounterMetric]
+    [Description("Number of re-commits after the aggressive decommit collection that were cancelled, skipped or refused.")]
+    public static long NoGcRegionRecommitsSkipped;
 }

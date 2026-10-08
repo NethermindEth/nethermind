@@ -47,6 +47,12 @@ public class GCKeeper : IDisposable
     private readonly Func<long> _unixTimeMs;
     private long _headTimestamp;
     private int _slotLoopRunning;
+    // BENCH (bench/gc-region-guard): region entries this keeper made (payload, pre-entry, re-commit). Each one moves
+    // GC.CollectionCount(0..2) by one without collecting anything, so they are taken out of the in-processing counts.
+    private long _ownEntries;
+    // Held across the runtime's region entry, and across the re-commit's entry and end, so the two never overlap.
+    private readonly Lock _runtimeLock = new();
+    private readonly Gen0BudgetTracker _budget = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance, settings: PreEntrySettings.FromEnvironment()) { }
@@ -122,6 +128,28 @@ public class GCKeeper : IDisposable
     public IDisposable TryStartNoGCRegion()
     {
         bool eligible = _gcStrategy.CanStartNoGCRegion();
+        if (!eligible) return StartPayloadRegion(eligible, enter: true);
+
+        // BENCH: the processing window opens before the entry is queued, so a collection the entry waits for counts.
+        ProcessingSample start = SampleProcessing();
+        // BENCH: in guard and never modes, whether the gen0 budget left covers the block (never: what the guard would do).
+        bool covered = _settings.Entry != RegionEntry.Always && BudgetCoversBlock();
+        bool enter = _settings.Entry switch
+        {
+            RegionEntry.Never => false,
+            RegionEntry.Guard => !covered,
+            _ => true,
+        };
+        return new ProcessingWindow(this, StartPayloadRegion(eligible, enter), start, covered);
+    }
+
+    /// <param name="enter">
+    /// <c>false</c> when this payload enters no region of its own: a pre-entered region is still taken over and a region
+    /// another payload holds is still shared (both are paid for already), and the post-block collection is still
+    /// scheduled when the lease ends, but nothing is queued.
+    /// </param>
+    private IDisposable StartPayloadRegion(bool eligible, bool enter)
+    {
         NoGCRegion region = new(this, GCScheduler.MarkGCPaused(), eligible);
         NoGCRegion? stale = null;
         lock (_lock)
@@ -157,7 +185,12 @@ public class GCKeeper : IDisposable
                 }
             }
 
-            if (stale is null && AdmitLocked(region) is { } held) return held;
+            if (stale is null)
+            {
+                if (!enter && _region is null) return SkipEntry(region);
+                if (AdmitLocked(region) is { } held) return held;
+                Interlocked.Increment(ref Metrics.NoGcRegionPayloadEntries);
+            }
         }
 
         if (stale is not null)
@@ -170,6 +203,8 @@ public class GCKeeper : IDisposable
             lock (_lock)
             {
                 if (_disposed) return region;
+                // BENCH: the stale region is ended (or being ended) and nothing new is entered.
+                if (!enter) return SkipEntry(region);
                 if (ReferenceEquals(_region, stale))
                 {
                     // Still being ended, by another thread or by its own entry finishing: the payload takes the slot
@@ -178,9 +213,11 @@ public class GCKeeper : IDisposable
                     stale.Successor = region;
                     _region = region;
                     _pendingEntries++;
+                    Interlocked.Increment(ref Metrics.NoGcRegionPayloadEntries);
                     return region;
                 }
                 if (AdmitLocked(region) is { } held) return held;
+                Interlocked.Increment(ref Metrics.NoGcRegionPayloadEntries);
             }
         }
 
@@ -215,6 +252,175 @@ public class GCKeeper : IDisposable
         return null;
     }
 
+    /// <summary>BENCH: the payload enters nothing; its lease still holds the scheduler pause and schedules its collection.</summary>
+    private NoGCRegion SkipEntry(NoGCRegion region)
+    {
+        Interlocked.Increment(ref Metrics.NoGcRegionPayloadSkips);
+        if (_logger.IsTrace) _logger.Trace($"No-GC region entry skipped ({_settings.Entry}).");
+        return region;
+    }
+
+    /// <summary>
+    /// BENCH: whether the gen0 budget left, as estimated by <see cref="Gen0BudgetTracker"/>, is at least
+    /// <see cref="PreEntrySettings.GuardBytes"/>, so the block is expected to run without a gen0 collection.
+    /// </summary>
+    /// <remarks>An unknown budget never covers the block: the guard then enters, as <c>always</c> does.</remarks>
+    private bool BudgetCoversBlock()
+    {
+        long allocated = _runtime.AllocatedBytes;
+        long gcIndex = _runtime.LastGcIndex;
+        long budget = _settings.GuardBudgetBytes > 0 ? _settings.GuardBudgetBytes : _runtime.Gen0Budget;
+        long left = _budget.EstimateLeft(allocated, gcIndex, budget);
+        Volatile.Write(ref Metrics.NoGcRegionGuardGen0BudgetBytes, budget);
+        Volatile.Write(ref Metrics.NoGcRegionGuardBudgetLeftBytes, left == Gen0BudgetTracker.Unknown ? -1 : left);
+        return left != Gen0BudgetTracker.Unknown && left >= _settings.GuardBytes;
+    }
+
+    /// <summary>BENCH: called right after the runtime entered a region for this keeper.</summary>
+    private void OnRegionEntered()
+    {
+        Interlocked.Increment(ref _ownEntries);
+        if (_settings.Entry != RegionEntry.Always) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
+    }
+
+    /// <summary>BENCH: GC counts and allocation where a payload's processing starts.</summary>
+    private readonly record struct ProcessingSample(int Gen0, int Gen1, int Gen2, long OwnEntries, long Allocated);
+
+    private ProcessingSample SampleProcessing()
+    {
+        // Counts before own entries: an entry finishing in between is then left out of both ends of the window.
+        int gen0 = _runtime.CollectionCount(0);
+        int gen1 = _runtime.CollectionCount(1);
+        int gen2 = _runtime.CollectionCount(2);
+        return new(gen0, gen1, gen2, Interlocked.Read(ref _ownEntries), _runtime.AllocatedBytes);
+    }
+
+    /// <summary>
+    /// BENCH: counts the collections that ran between the payload's start and the end of its lease (the region's end,
+    /// or the same point when no region was entered), less this keeper's own region entries in between.
+    /// </summary>
+    private void EndProcessingWindow(in ProcessingSample start, bool covered)
+    {
+        ProcessingSample end = SampleProcessing();
+        int own = (int)(end.OwnEntries - start.OwnEntries);
+        int gen0 = Math.Max(0, end.Gen0 - start.Gen0 - own);
+        int gen1 = Math.Max(0, end.Gen1 - start.Gen1 - own);
+        int gen2 = Math.Max(0, end.Gen2 - start.Gen2 - own);
+        long allocated = Math.Max(0, end.Allocated - start.Allocated);
+
+        Interlocked.Increment(ref Metrics.NoGcRegionPayloadsMeasured);
+        Interlocked.Add(ref Metrics.NoGcRegionPayloadAllocatedBytes, allocated);
+        Max(ref Metrics.NoGcRegionPayloadAllocatedBytesMax, allocated);
+        if (covered) Interlocked.Increment(ref Metrics.NoGcRegionGuardCovered);
+        if (gen0 == 0) return;
+        Interlocked.Increment(ref Metrics.NoGcRegionPayloadsWithCollectionInProcessing);
+        Interlocked.Add(ref Metrics.NoGcRegionGen0CollectionsInProcessing, gen0);
+        Interlocked.Add(ref Metrics.NoGcRegionGen1CollectionsInProcessing, gen1);
+        Interlocked.Add(ref Metrics.NoGcRegionGen2CollectionsInProcessing, gen2);
+        if (covered) Interlocked.Increment(ref Metrics.NoGcRegionGuardMisses);
+    }
+
+    /// <summary>BENCH: a payload's lease that closes its processing window before ending the region or lease it wraps.</summary>
+    private sealed class ProcessingWindow(GCKeeper keeper, IDisposable lease, ProcessingSample start, bool covered) : IDisposable
+    {
+        private int _disposed;
+
+        public void Dispose()
+        {
+            if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+            try
+            {
+                keeper.EndProcessingWindow(start, covered);
+            }
+            finally
+            {
+                lease.Dispose();
+            }
+        }
+    }
+
+    /// <summary>
+    /// BENCH: estimates the gen0 allocation budget the runtime has left before its next gen0 collection.
+    /// </summary>
+    /// <remarks>
+    /// <para>left = budget - (allocated now - allocated at the last collection), where the budget is the gen0 budget
+    /// summed over the heaps (<see cref="IGcRegionRuntime.Gen0Budget"/>) and a collection is seen as a change of
+    /// <see cref="IGcRegionRuntime.LastGcIndex"/>, which region entries do not move. Collections are only seen when
+    /// sampled, so the one seen first is assumed to have happened right after the previous sample (the most
+    /// allocation it can have missed), except after the keeper's own collection, whose start is known.</para>
+    /// <para>A region replaces the budget left with its own per-heap budget and its end does not restore it
+    /// (dotnet/runtime v10.0.0 gc.cpp, set_soh_allocations_for_no_gc / restore_data_for_no_gc), so from a region's
+    /// entry to the next collection what is left is the region's SOH budget less what was allocated since the entry.</para>
+    /// <para>Limits: the runtime collects when one heap's budget runs out; the sum assumes allocation spread evenly
+    /// (heap balancing mostly does that, per-heap skew makes the estimate optimistic). Allocated bytes count LOH and
+    /// POH too, which draw on their own budgets (pessimistic for gen0), and LOH budget exhaustion triggers a gen2
+    /// collection this does not see. The budget is the runtime's current one (it moves with survival) unless pinned
+    /// with DOTNET_GCgen0size or overridden with BENCH_GC_REGION_GUARD_BUDGET_MB. Before the first sampled collection
+    /// everything allocated since start counts. A background GC in progress is not accounted for.</para>
+    /// </remarks>
+    internal sealed class Gen0BudgetTracker
+    {
+        public const long Unknown = long.MinValue;
+        // The SOH budget a region of the keeper's size hands every heap, summed (the runtime adds 5%; left out).
+        internal static readonly long RegionSohBudget = _defaultSize - _lohSize;
+        private readonly Lock _lock = new();
+        private long _seenGcIndex = -1;
+        private long _lastSampleAllocated;
+        private long _allocatedAtGc;
+        private bool _regionSinceGc;
+        private long _allocatedAtRegionEntry;
+
+        /// <returns>The estimated bytes left (may be negative), or <see cref="Unknown"/> when the budget is unknown.</returns>
+        public long EstimateLeft(long allocated, long gcIndex, long budget)
+        {
+            lock (_lock)
+            {
+                ObserveLocked(allocated, gcIndex);
+                if (budget <= 0) return Unknown;
+                return _regionSinceGc
+                    ? RegionSohBudget - (allocated - _allocatedAtRegionEntry)
+                    : budget - (allocated - _allocatedAtGc);
+            }
+        }
+
+        /// <param name="allocatedBefore">Allocated bytes read right before the collection started.</param>
+        public void OnCollected(long allocatedBefore, long allocated, long gcIndex)
+        {
+            lock (_lock)
+            {
+                if (gcIndex != _seenGcIndex)
+                {
+                    _seenGcIndex = gcIndex;
+                    _allocatedAtGc = allocatedBefore;
+                    _regionSinceGc = false;
+                }
+                _lastSampleAllocated = allocated;
+            }
+        }
+
+        public void OnRegionEntered(long allocated, long gcIndex)
+        {
+            lock (_lock)
+            {
+                // A collection seen now ran before the entry: one inside a region ends it, and is seen after this.
+                ObserveLocked(allocated, gcIndex);
+                _regionSinceGc = true;
+                _allocatedAtRegionEntry = allocated;
+            }
+        }
+
+        private void ObserveLocked(long allocated, long gcIndex)
+        {
+            if (gcIndex != _seenGcIndex)
+            {
+                _seenGcIndex = gcIndex;
+                _allocatedAtGc = _lastSampleAllocated;
+                _regionSinceGc = false;
+            }
+            _lastSampleAllocated = allocated;
+        }
+    }
+
     /// <summary>
     /// Enters the no-GC region ahead of the next payload, so the collection that entry performs runs before
     /// engine_newPayload arrives rather than under it. Called when engine_getBlobs is answered, which precedes the
@@ -228,7 +434,7 @@ public class GCKeeper : IDisposable
     /// </remarks>
     public void SchedulePrepareNoGCRegion()
     {
-        if ((_settings.Mode & PreEntryMode.GetBlobs) == 0) return;
+        if ((_settings.Mode & PreEntryMode.GetBlobs) == 0 || _settings.Entry == RegionEntry.Never) return;
         if (!_gcStrategy.CanStartNoGCRegion() || Interlocked.Exchange(ref _preEntryScheduled, 1) != 0) return;
         _ = PrepareAfterDelayAsync();
     }
@@ -258,7 +464,7 @@ public class GCKeeper : IDisposable
     /// </summary>
     public void OnNewHead(ulong timestamp)
     {
-        if ((_settings.Mode & PreEntryMode.Slot) == 0 || _preEntryCts.IsCancellationRequested) return;
+        if ((_settings.Mode & PreEntryMode.Slot) == 0 || _settings.Entry == RegionEntry.Never || _preEntryCts.IsCancellationRequested) return;
         Volatile.Write(ref _headTimestamp, (long)timestamp);
         if (!_gcStrategy.CanStartNoGCRegion() || Interlocked.Exchange(ref _slotLoopRunning, 1) != 0) return;
         _ = RunSlotLoopAsync();
@@ -342,11 +548,20 @@ public class GCKeeper : IDisposable
     /// Enters a no-GC region owned by no payload, which the next payload takes over (see
     /// <see cref="TryStartNoGCRegion"/>) or which ends by itself after <see cref="PreEntryTimeoutMs"/>.
     /// </summary>
-    /// <remarks>Does nothing when the strategy disallows a region, or a region is pending or active.</remarks>
+    /// <remarks>
+    /// Does nothing when the strategy disallows a region, or a region is pending or active. BENCH: nor with
+    /// <c>BENCH_GC_REGION_ENTRY=never</c>, nor in guard mode while the gen0 budget left covers a block (the payload
+    /// asks the guard again when it arrives).
+    /// </remarks>
     /// <returns>Whether an entry was queued.</returns>
     internal bool PrepareNoGCRegion(PreEntryTrigger trigger = PreEntryTrigger.GetBlobs)
     {
-        if (!_gcStrategy.CanStartNoGCRegion()) return false;
+        if (!_gcStrategy.CanStartNoGCRegion() || _settings.Entry == RegionEntry.Never) return false;
+        if (_settings.Entry == RegionEntry.Guard && BudgetCoversBlock())
+        {
+            Interlocked.Increment(ref Metrics.NoGcRegionPreEntriesSkippedByGuard);
+            return false;
+        }
         NoGCRegion region;
         lock (_lock)
         {
@@ -441,9 +656,31 @@ public class GCKeeper : IDisposable
         Both = GetBlobs | Slot,
     }
 
+    /// <summary>BENCH: whether engine_newPayload enters the region of its own.</summary>
+    internal enum RegionEntry
+    {
+        /// <summary>Every payload, as before.</summary>
+        Always,
+        /// <summary>Only while the gen0 budget left is below <see cref="PreEntrySettings.GuardBytes"/>.</summary>
+        Guard,
+        /// <summary>No payload and no pre-entry; the post-block collection and the decommit stay.</summary>
+        Never,
+    }
+
+    /// <summary>BENCH: the default for <c>BENCH_GC_REGION_GUARD_MB</c>, i.e. the allocation a block is allowed.</summary>
+    internal const long DefaultGuardBytes = 256_000_000;
+
     /// <summary>BENCH knobs: <c>BENCH_GC_PREENTRY_MODE</c> (off, getblobs, slot, both), <c>BENCH_GC_PRESLOT_LEAD_MS</c>,
-    /// <c>BENCH_GC_PRESLOT_EXPIRY_MS</c>, <c>BENCH_GC_PREENTRY_MAX_ALLOC_MB</c>; unset or malformed ones take defaults.</summary>
-    internal sealed record PreEntrySettings(PreEntryMode Mode, int SlotLeadMs, int SlotExpiryMs, long MaxAllocatedBytes)
+    /// <c>BENCH_GC_PRESLOT_EXPIRY_MS</c>, <c>BENCH_GC_PREENTRY_MAX_ALLOC_MB</c>, <c>BENCH_GC_REGION_ENTRY</c> (always,
+    /// guard, never), <c>BENCH_GC_REGION_GUARD_MB</c>, <c>BENCH_GC_REGION_GUARD_BUDGET_MB</c> (0: the runtime's),
+    /// <c>BENCH_GC_RECOMMIT_AFTER_DECOMMIT</c> (1/true); unset or malformed ones take defaults.</summary>
+    /// <remarks>
+    /// Pre-entries (getblobs, slot) are made with <c>always</c> as before, never with <c>never</c>, and with
+    /// <c>guard</c> only when the guard would enter at that moment; a payload always takes over a pre-entered region.
+    /// </remarks>
+    internal sealed record PreEntrySettings(PreEntryMode Mode, int SlotLeadMs, int SlotExpiryMs, long MaxAllocatedBytes,
+        RegionEntry Entry = RegionEntry.Always, long GuardBytes = DefaultGuardBytes, long GuardBudgetBytes = 0,
+        bool RecommitAfterDecommit = false)
     {
         public static PreEntrySettings Default { get; } = new(PreEntryMode.Both, 1_000, 6_000, PreEntryMaxAllocatedBytes);
 
@@ -451,9 +688,14 @@ public class GCKeeper : IDisposable
             Environment.GetEnvironmentVariable("BENCH_GC_PREENTRY_MODE"),
             Environment.GetEnvironmentVariable("BENCH_GC_PRESLOT_LEAD_MS"),
             Environment.GetEnvironmentVariable("BENCH_GC_PRESLOT_EXPIRY_MS"),
-            Environment.GetEnvironmentVariable("BENCH_GC_PREENTRY_MAX_ALLOC_MB"));
+            Environment.GetEnvironmentVariable("BENCH_GC_PREENTRY_MAX_ALLOC_MB"),
+            Environment.GetEnvironmentVariable("BENCH_GC_REGION_ENTRY"),
+            Environment.GetEnvironmentVariable("BENCH_GC_REGION_GUARD_MB"),
+            Environment.GetEnvironmentVariable("BENCH_GC_REGION_GUARD_BUDGET_MB"),
+            Environment.GetEnvironmentVariable("BENCH_GC_RECOMMIT_AFTER_DECOMMIT"));
 
-        public static PreEntrySettings Parse(string? mode, string? leadMs, string? expiryMs, string? maxAllocMb) => new(
+        public static PreEntrySettings Parse(string? mode, string? leadMs, string? expiryMs, string? maxAllocMb,
+            string? entry = null, string? guardMb = null, string? guardBudgetMb = null, string? recommit = null) => new(
             mode?.Trim().ToLowerInvariant() switch
             {
                 "off" => PreEntryMode.Off,
@@ -464,10 +706,20 @@ public class GCKeeper : IDisposable
             // Negative: after the slot start.
             int.TryParse(leadMs, out int lead) ? lead : Default.SlotLeadMs,
             int.TryParse(expiryMs, out int expiry) && expiry > 0 ? expiry : Default.SlotExpiryMs,
-            long.TryParse(maxAllocMb, out long mb) && mb >= 0 ? mb.MB : Default.MaxAllocatedBytes);
+            long.TryParse(maxAllocMb, out long mb) && mb >= 0 ? mb.MB : Default.MaxAllocatedBytes,
+            entry?.Trim().ToLowerInvariant() switch
+            {
+                "guard" => RegionEntry.Guard,
+                "never" => RegionEntry.Never,
+                _ => RegionEntry.Always,
+            },
+            long.TryParse(guardMb, out long guard) && guard >= 0 ? guard.MB : Default.GuardBytes,
+            long.TryParse(guardBudgetMb, out long budget) && budget > 0 ? budget.MB : 0,
+            recommit?.Trim().ToLowerInvariant() is "1" or "true");
 
         public override string ToString() =>
-            $"mode {Mode}, slot lead {SlotLeadMs} ms (negative: after the slot start), slot expiry {SlotExpiryMs} ms, takeover allocation cap {MaxAllocatedBytes / 1.MB} MB";
+            $"mode {Mode}, slot lead {SlotLeadMs} ms (negative: after the slot start), slot expiry {SlotExpiryMs} ms, takeover allocation cap {MaxAllocatedBytes / 1.MB} MB, " +
+            $"payload entry {Entry}, guard {GuardBytes / 1.MB} MB, guard budget {(GuardBudgetBytes > 0 ? $"{GuardBudgetBytes / 1.MB} MB" : "runtime's")}, re-commit after decommit {RecommitAfterDecommit}";
     }
 
     private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC, PreEntryTrigger trigger = PreEntryTrigger.None)
@@ -589,7 +841,12 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                // BENCH: waits for a re-commit's throwaway region to end (see RecommitAfterDecommit).
+                lock (keeper._runtimeLock)
+                {
+                    started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                }
+                if (started) keeper.OnRegionEntered();
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
@@ -699,6 +956,63 @@ public class GCKeeper : IDisposable
 
     private long? _lastGcTimeMs;
 
+    /// <summary>
+    /// BENCH: after the aggressive collection has decommitted every free region, enters and at once ends a throwaway
+    /// region, so the regions the next payload's entry needs are committed here, off the payload's path, rather than
+    /// inside that entry's suspension (2.0-2.5 ms instead of ~0.2 ms on the entry after each decommit).
+    /// </summary>
+    /// <remarks>
+    /// <para>dotnet/runtime v10.0.0 gc.cpp: the entry links and commits (mprotect, no touch, no zeroing) gen0 regions
+    /// for the whole budget in extend_soh_for_no_gc; ending it leaves them linked and committed, and nothing decommits
+    /// them before the next collection (decommit_step only takes regions a collection queued). So the next entry finds
+    /// them committed, and RSS does not grow until they are allocated in. The decommit still returns everything
+    /// else.</para>
+    /// <para>Costs: one more suspension (the slow entry, moved), one more count in GC.CollectionCount(0..2), and,
+    /// until the next collection, the region's budget in place of the runtime's own (as after every region).</para>
+    /// <para>Skipped when the next payload has cancelled the pending collection meanwhile, a region is held or
+    /// active, or the keeper is stopping. The runtime lock keeps a payload's entry from starting inside it.</para>
+    /// </remarks>
+    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+            if (pendingGcCts.IsCancellationRequested || _disposed || _region is not null || _runtime.IsActive)
+            {
+                Interlocked.Increment(ref Metrics.NoGcRegionRecommitsSkipped);
+                return;
+            }
+            // Taken under the keeper's lock: a payload admitted after this check queues its entry, which waits here.
+            _runtimeLock.Enter();
+        }
+
+        try
+        {
+            bool started = false;
+            try
+            {
+                started = _runtime.TryStart(_defaultSize, _lohSize);
+                if (started) OnRegionEntered();
+            }
+            finally
+            {
+                if (started && _runtime.IsActive) _runtime.End();
+            }
+
+            if (started) Interlocked.Increment(ref Metrics.NoGcRegionRecommits);
+            else Interlocked.Increment(ref Metrics.NoGcRegionRecommitsSkipped);
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            Interlocked.Increment(ref Metrics.NoGcRegionRecommitsSkipped);
+            if (_logger.IsDebug) _logger.Debug($"No-GC region re-commit failed: {e.Message}");
+        }
+        finally
+        {
+            _runtimeLock.Exit();
+        }
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -776,14 +1090,21 @@ public class GCKeeper : IDisposable
                             _lastGcTimeMs = timeStamp;
                         }
 
-                        if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+                        // BENCH: a re-commit after the decommit stays cancellable by the next payload until it starts.
+                        if (ReferenceEquals(_pendingGcCts, pendingGcCts) && !(decommit && _settings.RecommitAfterDecommit)) _pendingGcCts = null;
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
+                    long allocatedBefore = _runtime.AllocatedBytes;
                     bool collected = _runtime.Collect(generation, mode, compacting);
+                    if (collected && _settings.Entry != RegionEntry.Always)
+                    {
+                        _budget.OnCollected(allocatedBefore, _runtime.AllocatedBytes, _runtime.LastGcIndex);
+                    }
                     if (collected && decommit)
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
+                        if (_settings.RecommitAfterDecommit) RecommitAfterDecommit(pendingGcCts);
                     }
                 }
             }
