@@ -652,9 +652,9 @@ namespace Nethermind.Facade
 
             using ArrayPoolList<Address?> storedSenders = new(transactions.Length);
             int receiptCount = 0;
-            try
+            using (ReceiptsIterator receipts = iterator)
             {
-                while (iterator.TryGetNext(out TxReceiptStructRef receipt))
+                while (receipts.TryGetNext(out TxReceiptStructRef receipt))
                 {
                     if (receiptCount < transactions.Length)
                     {
@@ -666,10 +666,6 @@ namespace Nethermind.Facade
 
                     receiptCount++;
                 }
-            }
-            finally
-            {
-                iterator.Dispose();
             }
 
             if (receiptCount != transactions.Length)
