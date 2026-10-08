@@ -9,12 +9,9 @@ namespace Nethermind.TxPool.Filters;
 
 /// <summary>Defers a gossiped EIP-8141 frame transaction that needs simulation once this head's simulation budget is
 /// spent, before its signatures are verified.</summary>
-/// <remarks>Without it, <see cref="FrameTxSignatureFilter"/> verifies every signature and only then does
-/// <see cref="FrameTxSimulationFilter"/> learn the budget is gone and defer: the recoveries are wasted, and since a
-/// deferral is this node's own load it charges no peer, so a flood that spends the budget buys them for free.
-/// Must run before <see cref="FrameTxSignatureFilter"/> and after the sender is recovered. Reads the simulator's
-/// lock-free hint, so a head transition can let one through that the simulation filter then defers, or defer one the
-/// next head would admit; a local submission is exempt, as it is from the budget itself.</remarks>
+/// <remarks>Runs after sender recovery and before <see cref="FrameTxSignatureFilter"/> to avoid signature recoveries
+/// that a spent head budget would waste. The budget hint is advisory: a head transition may let through a transaction
+/// that simulation then defers, or defer one the next head would admit. Local submissions are exempt.</remarks>
 internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? simulator, ILogger logger) : IIncomingTxFilter
 {
     public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
