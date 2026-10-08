@@ -82,23 +82,35 @@ public class NewPooledTransactionHashesMessageSerializer72 : IZeroMessageSeriali
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage72 message)
     {
-        int sizesLength = 0;
-        foreach (int size in message.Sizes.AsSpan())
-        {
-            sizesLength += Rlp.LengthOf(size);
-        }
-
-        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
-
-        int contentLength = Rlp.LengthOf(message.Types.AsSpan())
-                            + Rlp.LengthOfSequence(sizesLength)
-                            + Rlp.LengthOfSequence(hashesLength)
-                            + Rlp.LengthOf(message.CellMask);
+        int contentLength = GetContentLength(message, out int sizesLength, out int hashesLength);
 
         byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
+        WriteContent(ref writer, message, sizesLength, hashesLength);
+    }
+
+    /// <summary>Gets the encoded length of the eth/72 announcement fields, without the enclosing sequence prefix.</summary>
+    internal static int GetContentLength(NewPooledTransactionHashesMessage72 message, out int sizesLength, out int hashesLength)
+    {
+        sizesLength = 0;
+        foreach (int size in message.Sizes.AsSpan())
+        {
+            sizesLength += Rlp.LengthOf(size);
+        }
+
+        hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
+
+        return Rlp.LengthOf(message.Types.AsSpan())
+               + Rlp.LengthOfSequence(sizesLength)
+               + Rlp.LengthOfSequence(hashesLength)
+               + Rlp.LengthOf(message.CellMask);
+    }
+
+    /// <summary>Writes the eth/72 announcement fields, without the enclosing sequence prefix.</summary>
+    internal static void WriteContent(ref ByteBufferRlpWriter writer, NewPooledTransactionHashesMessage72 message, int sizesLength, int hashesLength)
+    {
         writer.Encode(message.Types.AsSpan());
 
         writer.StartSequence(sizesLength);

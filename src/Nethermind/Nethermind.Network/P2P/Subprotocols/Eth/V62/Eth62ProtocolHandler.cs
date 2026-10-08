@@ -404,9 +404,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 : _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
+            OnTransactionSubmitted(tx);
             if (!accepted && canRecycle) ReturnUnsubmittedTransactions(new ReadOnlySpan<Transaction>(in tx));
 
             void Log(Transaction tx, in AcceptTxResult accepted) => Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
+        }
+
+        /// <summary>Called once the pool has processed an inbound transaction, whether or not it was accepted.</summary>
+        /// <remarks>Runs before a rejected transaction is recycled, so <paramref name="tx"/> is still readable but must not be retained.</remarks>
+        private protected virtual void OnTransactionSubmitted(Transaction tx)
+        {
         }
 
         protected void ReportReceivedTransaction(in AcceptTxResult accepted) => _floodController.Report(accepted);

@@ -12,10 +12,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
-using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.Messages;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -32,6 +33,7 @@ using NSubstitute;
 using NUnit.Framework;
 using PooledTransactionsMessage65 = Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage;
 using PooledTransactionsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage;
+using TransactionsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages.TransactionsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V73;
 
@@ -98,7 +100,6 @@ public class Eth73ProtocolHandlerTests
             _specProvider,
             blobCustodyTracker,
             _sparseBlobPoolPeerRegistry,
-            new EthereumEcdsa(TestBlockchainIds.ChainId),
             txGossipPolicy);
         _handler.Init();
     }
@@ -130,10 +131,8 @@ public class Eth73ProtocolHandlerTests
     {
         Transaction first = Build.A.Transaction.WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
         Transaction second = Build.A.Transaction.WithNonce(7).SignedAndResolved(TestItem.PrivateKeyB).TestObject;
-        Transaction unresolved = Build.A.Transaction.WithNonce(9).SignedAndResolved(TestItem.PrivateKeyC).TestObject;
-        unresolved.SenderAddress = null;
 
-        _handler.SendNewTransactions([first, unresolved, second], sendFullTx: false);
+        _handler.SendNewTransactions([first, second], sendFullTx: false);
 
         NewPooledTransactionHashesMessage73 message = _deliveredMessages.OfType<NewPooledTransactionHashesMessage73>().Single();
         using (Assert.EnterMultipleScope())
@@ -145,21 +144,48 @@ public class Eth73ProtocolHandlerTests
         }
     }
 
-    [TestCase(false, false, TestName = "Matching announcement: submitted")]
-    [TestCase(true, false, TestName = "Wrong announced source: disconnected")]
-    [TestCase(false, true, TestName = "Wrong announced nonce: disconnected")]
-    public void should_disconnect_when_pooled_tx_does_not_match_announced_source_and_nonce(bool wrongSource, bool wrongNonce)
+    [TestCase(Delivery.Matching, true, false, TestName = "Matching announcement: submitted")]
+    [TestCase(Delivery.WrongNonce, false, true, TestName = "Wrong nonce: disconnected before the pool")]
+    [TestCase(Delivery.WrongSourceResolvedByPool, true, true, TestName = "Wrong source resolved by the pool: disconnected after submission")]
+    [TestCase(Delivery.WrongSourceRejectedCheaply, true, false, TestName = "Wrong source rejected before sender recovery: no recovery, no disconnect")]
+    [TestCase(Delivery.WrongFrameTxSender, false, true, TestName = "Wrong explicit frame tx sender: disconnected before the pool")]
+    [TestCase(Delivery.MatchingFrameTx, true, false, TestName = "Matching frame tx: submitted")]
+    public void should_check_delivered_tx_against_announced_source_and_nonce(Delivery delivery, bool submitted, bool disconnected)
     {
-        Transaction tx = Build.A.Transaction.WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
-        bool matches = !wrongSource && !wrongNonce;
+        bool frameTx = delivery is Delivery.WrongFrameTxSender or Delivery.MatchingFrameTx;
+        IReleaseSpec spec = Substitute.For<IReleaseSpec>();
+        spec.IsEip8141Enabled.Returns(frameTx);
+        _specProvider.GetCurrentHeadSpec().Returns(spec);
+        Transaction tx = (frameTx ? Build.A.Transaction.WithType(TxType.FrameTx).WithTo(TestItem.AddressB) : Build.A.Transaction)
+            .WithNonce(5)
+            .WithMaxFeePerGas(1.GWei)
+            .WithMaxPriorityFeePerGas(1.GWei)
+            .WithGasLimit(100_000)
+            .SignedAndResolved(TestItem.PrivateKeyA)
+            .TestObject;
 
+        // The substitute pool stands in for MalformedTxFilter: it resolves the sender, unless it rejects the transaction first.
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(c =>
+        {
+            Transaction submittedTx = c.Arg<Transaction>();
+            if (delivery == Delivery.WrongSourceRejectedCheaply)
+            {
+                Assert.That(submittedTx.SenderAddress, Is.Null, "the handler must not recover the sender before the pool");
+                return AcceptTxResult.FeeTooLow;
+            }
+
+            submittedTx.SenderAddress ??= TestItem.AddressA;
+            return AcceptTxResult.Accepted;
+        });
+
+        bool wrongSource = delivery is Delivery.WrongSourceResolvedByPool or Delivery.WrongSourceRejectedCheaply or Delivery.WrongFrameTxSender;
         using NewPooledTransactionHashesMessage73 announcement = new(
             [(byte)tx.Type],
             [tx.GetLength()],
             [tx.Hash!.ValueHash256],
             BlobCellMask.Empty.ToBytes(),
             [wrongSource ? TestItem.AddressB : TestItem.AddressA],
-            [wrongNonce ? 6UL : 5UL]);
+            [delivery == Delivery.WrongNonce ? 6UL : 5UL]);
         HandleIncomingStatusMessage();
         HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
 
@@ -171,13 +197,54 @@ public class Eth73ProtocolHandlerTests
 
         using (Assert.EnterMultipleScope())
         {
-            _transactionPool.Received(matches ? 1 : 0).SubmitTx(
-                Arg.Is<Transaction>(t => t.Hash == tx.Hash && t.SenderAddress == TestItem.AddressA),
-                Arg.Any<TxHandlingOptions>());
-            _session.Received(matches ? 0 : 1).InitiateDisconnect(
-                DisconnectReason.BackgroundTaskFailure,
+            _transactionPool.Received(submitted ? 1 : 0).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _session.Received(disconnected ? 1 : 0).InitiateDisconnect(
+                DisconnectReason.BreachOfProtocol,
                 "pooled tx does not match its announced source or nonce");
         }
+    }
+
+    [Test]
+    public void should_not_remember_announcements_that_are_not_requested()
+    {
+        Transaction tx = Build.A.Transaction.WithNonce(5).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        _transactionPool.NotifyAboutTx(Arg.Any<ValueHash256>(), Arg.Any<IMessageHandler<PooledTransactionRequestMessage>>())
+            .Returns(AnnounceResult.Delayed);
+        _transactionPool.SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>()).Returns(c =>
+        {
+            c.Arg<Transaction>().SenderAddress ??= TestItem.AddressA;
+            return AcceptTxResult.Accepted;
+        });
+
+        using NewPooledTransactionHashesMessage73 announcement = new(
+            [(byte)tx.Type],
+            [tx.GetLength()],
+            [tx.Hash!.ValueHash256],
+            BlobCellMask.Empty.ToBytes(),
+            [TestItem.AddressB],
+            [6UL]);
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(announcement, Eth72MessageCode.NewPooledTransactionHashes);
+
+        using TransactionsMessage broadcast = new(new[] { tx }.ToPooledList());
+        HandleZeroMessage(broadcast, Eth62MessageCode.Transactions);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(_deliveredMessages.OfType<GetPooledTransactionsMessage>(), Is.Empty);
+            _transactionPool.Received(1).SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
+            _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+        }
+    }
+
+    public enum Delivery
+    {
+        Matching,
+        WrongNonce,
+        WrongSourceResolvedByPool,
+        WrongSourceRejectedCheaply,
+        WrongFrameTxSender,
+        MatchingFrameTx,
     }
 
     private void HandleIncomingStatusMessage()

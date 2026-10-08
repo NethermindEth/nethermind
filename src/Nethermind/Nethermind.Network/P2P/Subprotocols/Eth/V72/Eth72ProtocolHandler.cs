@@ -291,6 +291,11 @@ public class Eth72ProtocolHandler(
     private protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
         Deserialize<NewPooledTransactionHashesMessage72>(content);
 
+    /// <summary>Called when the transaction at <paramref name="index"/> of a received announcement is requested from this peer.</summary>
+    private protected virtual void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
+    {
+    }
+
     protected override void SendNewTransactionCore(Transaction tx)
     {
         if (!tx.SupportsBlobs)
@@ -475,6 +480,7 @@ public class Eth72ProtocolHandler(
                 && (_blobSupportEnabled || !supportsBlobs))
             {
                 TxShapeAnnouncements.Set(hash, (txSize, txType));
+                OnPooledTransactionRequested(msg, i);
                 hashesToRequest ??= new(Math.Min(hashes.Length - i, 256));
 
                 if ((txSize > packetSizeLeft && toRequestCount > 0) || toRequestCount >= 256)
@@ -1882,20 +1888,7 @@ public class Eth72ProtocolHandler(
         ArrayPoolList<int> sizes = new(count);
         ArrayPoolList<ValueHash256> hashes = new(count);
 
-        for (int i = 0; i < count; i++)
-        {
-            Transaction tx = txs[i];
-            int announcementSize = GetAnnouncementSize(tx);
-            if (announcementSize <= 0)
-            {
-                continue;
-            }
-
-            types.Add((byte)tx.Type);
-            sizes.Add(announcementSize);
-            hashes.Add(tx.Hash!.ValueHash256);
-            TxPool.Metrics.PendingTransactionsHashesSent++;
-        }
+        AddAnnouncedTransactions(txs, types, sizes, hashes);
 
         if (hashes.Count != 0)
         {
@@ -1909,7 +1902,48 @@ public class Eth72ProtocolHandler(
         }
     }
 
-    private protected static int GetAnnouncementSize(Transaction tx)
+    /// <summary>Appends the announceable transactions of <paramref name="txs"/> to the announcement fields.</summary>
+    /// <param name="sources">When set, also collects each transaction's source address, skipping transactions without one.</param>
+    /// <param name="nonces">Collects each transaction's nonce; required when <paramref name="sources"/> is set.</param>
+    private protected static void AddAnnouncedTransactions(
+        IReadOnlyList<Transaction> txs,
+        ArrayPoolList<byte> types,
+        ArrayPoolList<int> sizes,
+        ArrayPoolList<ValueHash256> hashes,
+        ArrayPoolList<Address>? sources = null,
+        ArrayPoolList<ulong>? nonces = null)
+    {
+        for (int i = 0; i < txs.Count; i++)
+        {
+            Transaction tx = txs[i];
+            int announcementSize = GetAnnouncementSize(tx);
+            if (announcementSize <= 0)
+            {
+                continue;
+            }
+
+            if (sources is not null)
+            {
+                // Pool transactions always have a resolved sender. One without would never be announced to this peer,
+                // as ShouldNotifyTransactionCore has already marked it notified.
+                Debug.Assert(tx.SenderAddress is not null, $"Announced transaction {tx.Hash} has no resolved sender.");
+                if (tx.SenderAddress is not { } source)
+                {
+                    continue;
+                }
+
+                sources.Add(source);
+                nonces!.Add(tx.Nonce);
+            }
+
+            types.Add((byte)tx.Type);
+            sizes.Add(announcementSize);
+            hashes.Add(tx.Hash!.ValueHash256);
+            TxPool.Metrics.PendingTransactionsHashesSent++;
+        }
+    }
+
+    private static int GetAnnouncementSize(Transaction tx)
     {
         if (!tx.SupportsBlobs)
         {

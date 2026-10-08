@@ -89,25 +89,14 @@ public class NewPooledTransactionHashesMessageSerializer73 : IZeroMessageSeriali
 
     public void Serialize(IByteBuffer byteBuffer, NewPooledTransactionHashesMessage73 message)
     {
-        int sizesLength = 0;
-        foreach (int size in message.Sizes.AsSpan())
-        {
-            sizesLength += Rlp.LengthOf(size);
-        }
-
-        int hashesLength = checked(message.Hashes.Count * Rlp.LengthOfKeccakRlp);
         int sourcesLength = checked(message.Sources.Count * Rlp.LengthOfAddressRlp);
-
         int noncesLength = 0;
         foreach (ulong nonce in message.Nonces.AsSpan())
         {
             noncesLength += Rlp.LengthOf(nonce);
         }
 
-        int contentLength = Rlp.LengthOf(message.Types.AsSpan())
-                            + Rlp.LengthOfSequence(sizesLength)
-                            + Rlp.LengthOfSequence(hashesLength)
-                            + Rlp.LengthOf(message.CellMask)
+        int contentLength = NewPooledTransactionHashesMessageSerializer72.GetContentLength(message, out int sizesLength, out int hashesLength)
                             + Rlp.LengthOfSequence(sourcesLength)
                             + Rlp.LengthOfSequence(noncesLength);
 
@@ -115,21 +104,7 @@ public class NewPooledTransactionHashesMessageSerializer73 : IZeroMessageSeriali
 
         ByteBufferRlpWriter writer = new(byteBuffer);
         writer.StartSequence(contentLength);
-        writer.Encode(message.Types.AsSpan());
-
-        writer.StartSequence(sizesLength);
-        foreach (int size in message.Sizes.AsSpan())
-        {
-            writer.Encode(size);
-        }
-
-        writer.StartSequence(hashesLength);
-        foreach (ValueHash256 hash in message.Hashes.AsSpan())
-        {
-            writer.Encode(hash);
-        }
-
-        writer.Encode(message.CellMask);
+        NewPooledTransactionHashesMessageSerializer72.WriteContent(ref writer, message, sizesLength, hashesLength);
 
         writer.StartSequence(sourcesLength);
         foreach (Address source in message.Sources.AsSpan())
