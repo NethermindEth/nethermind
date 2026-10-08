@@ -326,6 +326,25 @@ public sealed partial class AssociativeCache<TKey, TValue>
             return false;
         }
 
+        return RemoveInSet<OffFlag>(in key, null, out value);
+    }
+
+    /// <summary>Removes <paramref name="key"/> only while it still maps to <paramref name="expected"/>.</summary>
+    /// <returns><see langword="true"/> when the entry was removed.</returns>
+    /// <remarks>
+    /// For a reader withdrawing a value it cached itself: a value a writer cached for the key since then must stay.
+    /// </remarks>
+    public bool TryRemove(in TKey key, TValue expected)
+    {
+        ArgumentNullException.ThrowIfNull(expected);
+        return _setCount != 0 && RemoveInSet<OnFlag>(in key, expected, out _);
+    }
+
+    /// <summary>Removes the key's entry under its set's gate, when <typeparamref name="TMatchValue"/> is on only while it holds <paramref name="expected"/>.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool RemoveInSet<TMatchValue>(in TKey key, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
+    {
         long hashCode = key.GetHashCode64();
         int setIndex = (int)hashCode & _setMask;
         int baseIdx = setIndex << WayShift;
@@ -335,7 +354,7 @@ public sealed partial class AssociativeCache<TKey, TValue>
         AcquireGate(ref gate);
         try
         {
-            return DeleteCore(in key, baseIdx, hashPart, out value);
+            return DeleteCore<TMatchValue>(in key, baseIdx, hashPart, expected, out value);
         }
         finally
         {
@@ -343,7 +362,8 @@ public sealed partial class AssociativeCache<TKey, TValue>
         }
     }
 
-    private bool DeleteCore(in TKey key, int baseIdx, long hashPart, out TValue? value)
+    private bool DeleteCore<TMatchValue>(in TKey key, int baseIdx, long hashPart, TValue? expected, out TValue? value)
+        where TMatchValue : struct, IFlag
     {
         long epochTag = ReadEpoch(ref _epochAndCount);
         ref Entry entries = ref MemoryMarshal.GetArrayDataReference(_entries);
@@ -360,6 +380,11 @@ public sealed partial class AssociativeCache<TKey, TValue>
             if (e.Key.Equals(in key))
             {
                 value = e.Value;
+                if (TMatchValue.IsActive && !ReferenceEquals(value, expected))
+                {
+                    value = null;
+                    return false;
+                }
 
                 long newSeq = ((h & SeqMask) + SeqInc) & SeqMask;
                 long lockedHeader = (h & EpochMask) | newSeq | LockMarker;

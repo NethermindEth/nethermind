@@ -91,9 +91,10 @@ namespace Nethermind.State.Repositories
             {
                 // A delete that ran during this load may already have cleared the cache, so the level read before it
                 // must not stay cached. The barrier orders the cache insert before the counter read, against Delete's
-                // increment before its last cache removal.
+                // increment before its last cache removal. Only this load's own entry is withdrawn: a level a writer
+                // cached since, possibly in a batch not yet committed, stays.
                 Interlocked.MemoryBarrier();
-                if (Volatile.Read(ref _deletions) != deletions) _blockInfoCache.Delete(in key);
+                if (Volatile.Read(ref _deletions) != deletions) _blockInfoCache.TryRemove(in key, level);
             }
             else if (_blockInfoCache.TryGetNoRefresh(in key, out ChainLevelInfo? cached))
             {

@@ -61,6 +61,23 @@ public class AssociativeCacheTests : AssociativeCacheTestsBase
     }
 
     [Test]
+    public void TryRemove_removes_only_the_expected_value([Values] bool replacedSinceInsert)
+    {
+        AddressAsKey key = _keys[0];
+        _cache.TryAdd(in key, _accounts[0]);
+        if (replacedSinceInsert) _cache.Set(in key, _accounts[1]);
+
+        bool removed = _cache.TryRemove(in key, _accounts[0]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(removed, Is.EqualTo(!replacedSinceInsert));
+            Assert.That(_cache.Get(in key), Is.SameAs(replacedSinceInsert ? _accounts[1] : null));
+            Assert.That(_cache.Count, Is.EqualTo(replacedSinceInsert ? 1 : 0));
+        }
+    }
+
+    [Test]
     public void Delete_returns_value()
     {
         AddressAsKey key = _keys[0];
