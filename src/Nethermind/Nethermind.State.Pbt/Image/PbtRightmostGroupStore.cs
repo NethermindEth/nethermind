@@ -21,9 +21,9 @@ internal sealed class PbtRightmostGroupStore : IPbtStore, IPbtNodeGroupSink, IDi
     internal const int DefaultWindowSize = 2_000_000;
 
     private readonly Lock _lock = new();
-    private readonly Group[] _edge = new Group[PbtStorageTreeKey.MaxLength * 8 + 1];
+    private readonly Group[] _edge = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
     /// <summary>The group each depth held when the fold started, once superseded; released when the fold ends.</summary>
-    private readonly Group[] _superseded = new Group[PbtStorageTreeKey.MaxLength * 8 + 1];
+    private readonly Group[] _superseded = new Group[PbtVariableTreeKey.MaxLength * 8 + 1];
 
     /// <summary>Calculates an EIP-8297 root from strictly ordered image leaves.</summary>
     /// <remarks>The next window is read and batched on another thread while the current one folds.</remarks>

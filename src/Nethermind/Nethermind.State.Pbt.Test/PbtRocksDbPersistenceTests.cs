@@ -85,7 +85,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
-        static PbtStorageTreeKey Key(uint slot) => PbtStateKey.Storage(TestItem.AddressA, slot);
+        static PbtPath Key(uint slot) => PbtStateKey.HeaderStorage(PbtStateKey.AddressKeyHash(TestItem.AddressA), slot);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         StateId third = new(3, TestItem.KeccakC.ValueHash256);
@@ -141,9 +141,9 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtStorageTreeKey headerKey = PbtStateKey.Storage(TestItem.AddressA, 1);
-        PbtStorageTreeKey overflowKey = PbtStateKey.Storage(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
-        PbtStorageTreeKey otherAddressKey = PbtStateKey.Storage(TestItem.AddressB, otherAddressSlot);
+        PbtVariableTreeKey headerKey = PbtStateKey.Slot(TestItem.AddressA, 1);
+        PbtVariableTreeKey overflowKey = PbtStateKey.Slot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
+        PbtVariableTreeKey otherAddressKey = PbtStateKey.Slot(TestItem.AddressB, otherAddressSlot);
         EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -171,7 +171,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 0);
+        PbtVariableTreeKey storageKey = PbtStateKey.Slot(TestItem.AddressA, 0);
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
         EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("0xabcd"));
@@ -386,7 +386,7 @@ public class PbtRocksDbPersistenceTests
         ValueHash256 treeRoot = TestItem.KeccakD.ValueHash256;
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
-        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, 64);
+        PbtVariableTreeKey storageKey = PbtStateKey.Slot(TestItem.AddressA, 64);
         EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakD.Bytes);
         CodeInfo code = new(TestItem.KeccakA.Bytes.ToArray());
 
@@ -530,7 +530,7 @@ public class PbtRocksDbPersistenceTests
             new StateId(7, TestItem.KeccakB.ValueHash256),
             TestItem.KeccakA.ValueHash256,
             WriteFlags.None);
-        PbtStorageTreeKey nodeKey = new([0x80]);
+        PbtVariableTreeKey nodeKey = new([0x80]);
         WriteGroup(final, new PbtNodePath([], 0), PbtTreeHarness.EncodeLeaf(nodeKey), memoryProvider);
 
         Assert.That(() => final.Commit(), Throws.TypeOf<IOException>());
@@ -688,7 +688,7 @@ public class PbtRocksDbPersistenceTests
         new ValueHash256(Value(marker)),
         new ValueHash256(Value((byte)(marker + 1))));
 
-    private static byte[] Persisted(in PbtStorageTreeKey key) => PbtStorageKeyLayout.Encode(key, new byte[PbtStorageTreeKey.MaxLength]).ToArray();
+    private static byte[] Persisted<TKey>(in TKey key) where TKey : struct, IPbtKey<TKey> => PbtStorageKeyLayout.Encode(key, new byte[TKey.Capacity]).ToArray();
 
     private static byte[] Epoch(int epoch)
     {

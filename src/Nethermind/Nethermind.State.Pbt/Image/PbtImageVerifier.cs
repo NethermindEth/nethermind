@@ -55,7 +55,7 @@ internal static class PbtImageVerifier
     /// <summary>A listed account or slot: where the staged state holds it, and where the MPT places it.</summary>
     /// <param name="StateKey">The account's basic-data key, or the slot's storage key.</param>
     /// <param name="SlotCount">The slots listed for an account; unused for a slot.</param>
-    private readonly record struct Job(PbtStorageTreeKey StateKey, Address Address, ValueHash256 AddressHash,
+    private readonly record struct Job(PbtVariableTreeKey StateKey, Address Address, ValueHash256 AddressHash,
         ValueHash256 SlotHash, uint SlotCount, bool IsSlot);
 
     /// <param name="bucketBytes">Memory for the bucket tables, shared by all workers.</param>
@@ -167,13 +167,13 @@ internal static class PbtImageVerifier
                 ValueHash256 addressHash = reader.AccountHash!.Value;
                 walked = PbtImageProgress.KeyspaceFraction(addressHash);
                 progress.Update(++accounts);
-                Queue(new Job((PbtStorageTreeKey)PbtStateKey.Account(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
+                Queue(new Job((PbtVariableTreeKey)PbtStateKey.Account(addressKeyHash, PbtKeyDerivation.BasicDataLeafKey),
                     address, addressHash, default, slotCount, IsSlot: false));
                 for (uint index = 0; index < slotCount; index++)
                 {
                     slots++;
                     ValueHash256 slot = reader.ReadSlot(abort.Token);
-                    Queue(new Job(PbtStateKey.Storage(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)),
+                    Queue(new Job(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)),
                         address, addressHash, reader.SlotHash!.Value, 0, IsSlot: true));
                 }
             }
@@ -253,7 +253,7 @@ internal static class PbtImageVerifier
         Span<Job> jobs = CollectionsMarshal.AsSpan(bucket);
         jobs.Sort((left, right) => PbtStorageKeyLayout.Comparer.Compare(left.StateKey, right.StateKey));
         Span<byte> key = stackalloc byte[SpoolKeyLength];
-        PbtStorageTreeKey? runKey = null;
+        PbtVariableTreeKey? runKey = null;
         PackedSlotRun run = SlotRun.Empty;
         try
         {
@@ -275,12 +275,12 @@ internal static class PbtImageVerifier
                     continue;
                 }
 
-                PbtStorageTreeKey slotRunKey = SlotRun.RunKey(job.StateKey);
+                PbtVariableTreeKey slotRunKey = SlotRun.RunKey(job.StateKey);
                 if (runKey != slotRunKey)
                 {
                     SlotRun.Return(run);
                     run = SlotRun.Empty;
-                    run = state.GetSlotRun(slotRunKey);
+                    run = slotRunKey.Length == PbtPath.KeyLength ? state.GetSlotRun((PbtPath)slotRunKey) : state.GetSlotRun((PbtStoragePath)slotRunKey);
                     runKey = slotRunKey;
                 }
                 EvmWord word = run.Get(SlotRun.IndexOf(job.StateKey));
@@ -302,11 +302,11 @@ internal static class PbtImageVerifier
     /// storage-zone slot by the 16-bit prefix of its suffix hash, wrapping around.</summary>
     /// <remarks>The offset spreads one contract's storage over consecutive buckets, in its suffix order, rather than
     /// piling it into its address's bucket.</remarks>
-    private static int BucketOf(in PbtStorageTreeKey stateKey)
+    private static int BucketOf(in PbtVariableTreeKey stateKey)
     {
         ReadOnlySpan<byte> key = stateKey.Bytes;
         int bucket = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
-        if (key.Length == PbtStorageTreeKey.MaxLength) bucket += BinaryPrimitives.ReadUInt16BigEndian(key[33..]);
+        if (key.Length == PbtVariableTreeKey.MaxLength) bucket += BinaryPrimitives.ReadUInt16BigEndian(key[33..]);
         return bucket % BucketCount;
     }
 }

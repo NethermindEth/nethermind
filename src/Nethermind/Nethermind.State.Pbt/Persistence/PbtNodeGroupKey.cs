@@ -18,7 +18,7 @@ internal static class PbtNodeGroupKey
     private const int TrailerLength = 1;
     private const byte ByteAlignedTrailer = 0;
     private const byte NibbleAlignedTrailer = 1;
-    internal const int MaxLength = PbtStorageTreeKey.MaxLength + TrailerLength;
+    internal const int MaxLength = PbtVariableTreeKey.MaxLength + TrailerLength;
 
     internal static ReadOnlySpan<byte> Encode<TPath>(TPath groupKey, Span<byte> destination)
         where TPath : struct, IPbtNodePath<TPath>
@@ -32,7 +32,7 @@ internal static class PbtNodeGroupKey
     internal static PbtStorageNodePath Decode(ReadOnlySpan<byte> key)
     {
         // The root group lives under its own metadata key, never in a node-group column.
-        if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtStorageTreeKey.MaxLength)
+        if (key.Length < 1 + TrailerLength || key.Length - TrailerLength > PbtVariableTreeKey.MaxLength)
             throw new InvalidDataException("Invalid persisted PBT node-group key length.");
         int bitsInLastByte = key[^1] switch
         {

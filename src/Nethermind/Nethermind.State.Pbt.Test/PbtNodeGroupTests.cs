@@ -24,7 +24,7 @@ public class PbtNodeGroupTests
     [Test]
     public void Store_identity_and_reader_payload_survive_cursor_mutation([Values] bool storage, [Values(0, 4, -1)] int groupDepth)
     {
-        int capacity = storage ? PbtStorageTreeKey.MaxLength : PbtPath.KeyLength;
+        int capacity = storage ? PbtVariableTreeKey.MaxLength : PbtPath.KeyLength;
         int depth = groupDepth < 0 ? capacity * 8 - 4 : groupDepth;
         byte[] key = Bytes.FromHexString(new string('D', capacity * 2));
         PbtStorageNodePath groupKey = PbtTestPaths.Prefix<PbtStorageNodePath>(key, depth);
@@ -37,7 +37,7 @@ public class PbtNodeGroupTests
         PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[capacity], groupKey);
         ValueHash256 hash = PbtTreeHarness.HashBranch(encoding);
         store.SetNodeGroup(cursor, hash, payload);
-        using GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, cursor, hash);
+        using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store, cursor, hash);
         cursor.Truncate(0);
         cursor.AppendMut(0);
         using RefCountingMemory? retained = store.GetNodeGroup(groupKey, hash);
@@ -84,9 +84,9 @@ public class PbtNodeGroupTests
     [TestCase(268)]
     public void Small_and_storage_paths_share_identity_and_accept_wide_leaf_payloads(int depth)
     {
-        byte[] keyBytes = new byte[PbtStorageTreeKey.MaxLength];
+        byte[] keyBytes = new byte[PbtVariableTreeKey.MaxLength];
         keyBytes[0] = Eip8297KeyDerivation.StorageZone;
-        PbtStorageTreeKey storageKey = new(keyBytes);
+        PbtVariableTreeKey storageKey = new(keyBytes);
         PbtNodePath smallPath = PbtTestPaths.Prefix<PbtNodePath>(keyBytes, depth);
         PbtStorageNodePath storagePath = PbtTestPaths.Prefix<PbtStorageNodePath>(storageKey.Bytes, depth);
         Dictionary<PbtStorageNodePath, int?> entries = new() { [smallPath.ToPath<PbtStorageNodePath>()] = 1 };
@@ -94,7 +94,7 @@ public class PbtNodeGroupTests
         PbtStorageNodePath leafPath = PbtTestPaths.Prefix<PbtStorageNodePath>(storageKey.Bytes, depth == 0 ? 0 : depth + 4);
         byte[] encoding = LeafBranch(keyBytes.AsSpan(PbtNodeCodec.InlineKeyOffset(leafPath.BitDepth)), 1);
         byte[] payload = PbtNodeGroupEncoder.Encode(smallPath, [new PbtNodeRecord(leafPath, encoding)], default);
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(storagePath, payload);
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(storagePath, payload);
 
         using (Assert.EnterMultipleScope())
         {
@@ -130,16 +130,16 @@ public class PbtNodeGroupTests
     {
         Assert.That(Unsafe.SizeOf<PbtPath>(), Is.EqualTo(34));
         Assert.That(Unsafe.SizeOf<PbtStoragePath>(), Is.EqualTo(66));
-        Assert.That(Unsafe.SizeOf<PbtStorageTreeKey>(), Is.EqualTo(72));
+        Assert.That(Unsafe.SizeOf<PbtVariableTreeKey>(), Is.EqualTo(72));
         byte[] keyBytes = new byte[length];
         keyBytes[^1] = 1;
-        PbtStorageTreeKey storageKey = new(keyBytes);
-        Assert.That(storageKey.FirstDifferingBit(new PbtStorageTreeKey(new byte[length]), 0), Is.EqualTo(depth - 1));
+        PbtVariableTreeKey storageKey = new(keyBytes);
+        Assert.That(storageKey.FirstDifferingBit(new PbtVariableTreeKey(new byte[length]), 0), Is.EqualTo(depth - 1));
         if (length == PbtPath.KeyLength)
         {
             PbtPath key = (PbtPath)storageKey;
             Assert.That(key.FirstDifferingBit(new PbtPath(new byte[length]), 0), Is.EqualTo(depth - 1));
-            Assert.That(((PbtStorageTreeKey)key).Bytes.ToArray(), Is.EqualTo(keyBytes));
+            Assert.That(((PbtVariableTreeKey)key).Bytes.ToArray(), Is.EqualTo(keyBytes));
             Assert.Throws<ArgumentOutOfRangeException>(() => _ = (PbtStoragePath)storageKey);
         }
         else
@@ -150,8 +150,8 @@ public class PbtNodeGroupTests
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtPath(new byte[33]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtPath(new byte[35]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStoragePath(new byte[65]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageTreeKey([]));
-        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageTreeKey(new byte[67]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtVariableTreeKey([]));
+        Assert.Throws<ArgumentOutOfRangeException>(() => new PbtVariableTreeKey(new byte[67]));
         Assert.Throws<ArgumentOutOfRangeException>(() => new PbtStorageNodePath(new byte[67], 529));
     }
 
@@ -160,10 +160,10 @@ public class PbtNodeGroupTests
     public void Root_node_round_trip_preserves_encoding_and_allows_root_position_access(byte keyByte, string expectedPayloadHex)
     {
         PbtNodePath rootPath = new([], 0);
-        byte[] encoding = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey([keyByte]));
+        byte[] encoding = PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([keyByte]));
 
         byte[] payload = RootGroup(encoding);
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> group = PbtStoreTestExtensions.ReadGroup(rootPath, payload);
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> group = PbtStoreTestExtensions.ReadGroup(rootPath, payload);
 
         using (Assert.EnterMultipleScope())
         {
@@ -192,7 +192,7 @@ public class PbtNodeGroupTests
             // An inline key omits the group path's whole bytes, whose bits the group key implies.
             byte[] storedKey = rootLeaf ? key : key[PbtNodeCodec.InlineKeyOffset(path.BitDepth)..];
             int omittedBits = (key.Length - storedKey.Length) * 8;
-            byte[] encoding = rootLeaf ? PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(key)) : LeafBranch(storedKey, 1);
+            byte[] encoding = rootLeaf ? PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(key)) : LeafBranch(storedKey, 1);
             byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(path, encoding)], default);
             Assert.That(ValidateLeafGroup(groupKey, position, payload, streamingWriter), Is.EqualTo(1));
 
@@ -298,7 +298,7 @@ public class PbtNodeGroupTests
     {
         // A group with nothing below it keeps every slot at zero; only a spanning branch carries a size here.
         long spanningBytes = inherited ? 1234 : 0;
-        AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath> frame = inherited ? new(8, 5, spanningBytes) : new(8);
+        AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> frame = inherited ? new(8, 5, spanningBytes) : new(8);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(frame.DescendantBytes(5), Is.EqualTo(spanningBytes));
@@ -314,7 +314,7 @@ public class PbtNodeGroupTests
     {
         TrackingMemoryProvider memory = new();
         using PbtNodeGroupStore store = new(memory);
-        byte[] key = Bytes.FromHexString(new string('D', PbtStorageTreeKey.MaxLength * 2));
+        byte[] key = Bytes.FromHexString(new string('D', PbtVariableTreeKey.MaxLength * 2));
         PbtStorageNodePath groupKey = PbtTestPaths.Prefix<PbtStorageNodePath>(key, groupDepth);
         PbtStorageNodePath leafPath = PbtTestPaths.Prefix<PbtStorageNodePath>(key, groupDepth == 0 ? 0 : groupDepth + 4);
         int position = PbtTestPaths.Locate(leafPath).Position;
@@ -324,8 +324,8 @@ public class PbtNodeGroupTests
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
         ValueHash256 groupHash = store.GetGroupHash(groupKey);
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, memory);
-        Assert.That(GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.TryLoad(persistence, groupPath, groupHash, out GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader), Is.EqualTo(present));
-        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        Assert.That(GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.TryLoad(persistence, groupPath, groupHash, out GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader), Is.EqualTo(present));
+        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             Assert.That(persistence.Reads, Is.EqualTo(new[] { groupKey }));
             if (present)
@@ -337,7 +337,7 @@ public class PbtNodeGroupTests
         }
         // Only the tree root's group may be missing; a frame opened for any other is reported, not read as empty.
         if (!present)
-            Assert.Throws<InvalidDataException>(() => _ = new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>(persistence, PbtTraversalPath.FromPath(stackalloc byte[66], groupKey), groupHash));
+            Assert.Throws<InvalidDataException>(() => _ = new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>(persistence, PbtTraversalPath.FromPath(stackalloc byte[66], groupKey), groupHash));
 
         writer.Dispose();
         store.Dispose();
@@ -357,16 +357,16 @@ public class PbtNodeGroupTests
         byte[] encoding = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 4, new ValueHash256(Value(1)), new ValueHash256(Value(2)), inlineLeaf ? key[(groupDepth >> 3)..] : [], []);
         store.SetNode(path, encoding);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.StoredGroupHashes hashes = default;
-        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
+        TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.StoredGroupHashes hashes = default;
+        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
-            TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode source = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode.StoredAt(ref reader, position, hashes.GetHash(ref reader, position));
+            TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode source = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.StoredAt(ref reader, position, hashes.GetHash(ref reader, position));
             Assert.That(source.AnchorDepth, Is.EqualTo(path.BitDepth));
             if (inlineLeaf)
             {
-                TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode leaf = TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode.InlineLeafAt(ref reader, position, right: false);
-                PbtStorageTreeKey leafKey = leaf.LeafKey(groupPath);
+                TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode leaf = TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode.InlineLeafAt(ref reader, position, right: false);
+                PbtVariableTreeKey leafKey = leaf.LeafKey(groupPath);
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(leaf.KeyOffset, Is.EqualTo(groupDepth >> 3));
@@ -385,16 +385,16 @@ public class PbtNodeGroupTests
         // A branch anchored at depth 12 lies in group 8, whose path byte its inline keys omit.
         byte[] keyPostfix = key[PbtNodeCodec.InlineKeyOffset(anchorDepth)..];
         byte[] encoding = stored
-            ? PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(key))
+            ? PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(key))
             : right
                 ? PbtTreeHarness.EncodeBranch([], 0, siblingHash, leafHash, [], keyPostfix)
                 : PbtTreeHarness.EncodeBranch([], 0, leafHash, siblingHash, keyPostfix, []);
         PbtTraversalPath cursor = new(stackalloc byte[66]);
         cursor.AppendKey(key, anchorDepth);
-        TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode borrowed = stored
+        TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode borrowed = stored
             ? new(encoding, leafHash)
             : new(encoding, anchorDepth, right);
-        PbtStorageTreeKey borrowedKey = borrowed.LeafKey(cursor);
+        PbtVariableTreeKey borrowedKey = borrowed.LeafKey(cursor);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(borrowed.IsLeaf, Is.True);
@@ -411,9 +411,9 @@ public class PbtNodeGroupTests
         {
             // A boundary node reads its key out of the encoding it points at, so its size does not follow the key type
             // and stays under the 72 bytes a storage key alone used to take inside it.
-            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>(),
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode>(),
                 Is.EqualTo(Unsafe.SizeOf<TrieUpdater<PbtPath, PbtNodePath>.BoundaryNode>()));
-            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtStorageTreeKey, PbtStorageNodePath>.BoundaryNode>(), Is.LessThan(72));
+            Assert.That(Unsafe.SizeOf<TrieUpdater<PbtVariableTreeKey, PbtStorageNodePath>.BoundaryNode>(), Is.LessThan(72));
         }
     }
 
@@ -425,7 +425,7 @@ public class PbtNodeGroupTests
         RefCountingMemory payload = memory.Rent(1);
         payload.GetSpan()[0] = 0xff;
         WarmReadStore persistence = new(store) { Payload = payload };
-        Assert.Catch(() => _ = new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>(persistence, new PbtTraversalPath(Span<byte>.Empty), new ValueHash256(Value(1))));
+        Assert.Catch(() => _ = new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>(persistence, new PbtTraversalPath(Span<byte>.Empty), new ValueHash256(Value(1))));
 
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(1), "the caller still owns its payload lease");
         ((IDisposable)payload).Dispose();
@@ -904,7 +904,7 @@ public class PbtNodeGroupTests
 
         byte[] payload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         using RefCountingMemory streamedPayload = streamingWriter.Detach(default, ushort.MaxValue)!;
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload);
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(fullLength - payload.Length, Is.EqualTo((PbtNodeCodec.BranchLength(0, 0, 0) + sizeof(ushort)) * omitted));
@@ -944,10 +944,10 @@ public class PbtNodeGroupTests
         byte[] sourcePayload = PbtNodeGroupEncoder.Encode(groupKey, records, default);
         using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads([new(groupKey, sourcePayload)]);
         PbtTraversalPath groupPath = PbtTraversalPath.FromPath(stackalloc byte[66], groupKey);
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(store, groupPath, new ValueHash256(Value(1)));
         TrackingMemoryProvider provider = new();
         using PbtNodeGroupWriter<PbtStorageNodePath> writer = new(groupKey.BitDepth, provider);
-        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref reader))
+        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref reader))
         {
             int nextPosition = 0;
             foreach (int endPosition in new[] { 0, 3, 8, 19, 31 })
@@ -1039,7 +1039,7 @@ public class PbtNodeGroupTests
         using (RefCountingMemory payload = writer.Detach(default, ushort.MaxValue)!)
         {
             writer.Dispose();
-            GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
+            GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan());
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(payload.GetSpan().ToArray(), Is.EqualTo(expected));
@@ -1192,7 +1192,7 @@ public class PbtNodeGroupTests
         return result;
     }
 
-    private static byte[] LeafEncoding(byte keyMarker) => PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey([keyMarker]));
+    private static byte[] LeafEncoding(byte keyMarker) => PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey([keyMarker]));
 
     /// <summary>A prefixless branch inlining <paramref name="key"/> as its left leaf: the smallest node stored below the root.</summary>
     private static byte[] LeafBranch(ReadOnlySpan<byte> key, byte marker) =>

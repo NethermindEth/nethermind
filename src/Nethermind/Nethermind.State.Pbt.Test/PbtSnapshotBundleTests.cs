@@ -26,8 +26,8 @@ public class PbtSnapshotBundleTests
     public void First_write_to_a_run_seeds_the_whole_run_from_the_newest_layer_holding_it([Values] bool heldByLayer)
     {
         // Slots 3, 5 and 6 share one run.
-        PbtStorageTreeKey persistedKey = PbtStateKey.Storage(TestItem.AddressA, 5);
-        PbtStorageTreeKey layerKey = PbtStateKey.Storage(TestItem.AddressA, 6);
+        PbtVariableTreeKey persistedKey = PbtStateKey.Slot(TestItem.AddressA, 5);
+        PbtVariableTreeKey layerKey = PbtStateKey.Slot(TestItem.AddressA, 6);
         EvmWord persisted = EvmWordSlot.FromStripped(Value(1));
         EvmWord layer = EvmWordSlot.FromStripped(Value(2));
         EvmWord local = EvmWordSlot.FromStripped(Value(3));
@@ -232,7 +232,7 @@ public class PbtSnapshotBundleTests
     public void Storage_mutations_use_small_header_and_wide_storage_partitions([Values(0u, 63u, 64u, 256u, uint.MaxValue)] uint slotValue)
     {
         UInt256 slot = slotValue == uint.MaxValue ? UInt256.MaxValue : new UInt256(slotValue);
-        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
+        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, slot);
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
         EvmWord value = EvmWordSlot.FromStripped(Value(9));
         foreach (bool delete in new[] { false, true })
@@ -255,7 +255,7 @@ public class PbtSnapshotBundleTests
     [TestCase(true, true)]
     public void Trie_updates_leave_independently_staged_flat_entries_unchanged(bool leafExists, bool delete)
     {
-        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, 1);
         ValueHash256 flatValue = new(Value(9));
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
         ValueHash256 root;
@@ -758,7 +758,7 @@ public class PbtSnapshotBundleTests
         byte[] shared = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(3))], default);
         byte[] local = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(4))], default);
         byte[] write = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(5))], default);
-        Reader reader = new(new PbtStorageTreeKey([0]), null) { GroupPayload = persisted };
+        Reader reader = new(new PbtVariableTreeKey([0]), null) { GroupPayload = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
             ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared))
@@ -792,11 +792,11 @@ public class PbtSnapshotBundleTests
     public void Failed_group_read_during_fold_leaves_the_write_buffer_unchanged([Values] bool malformed)
     {
         TrackingMemoryProvider memoryProvider = new();
-        PbtStorageTreeKey originalLeafKey = PbtStateKey.Storage(TestItem.AddressA, 1);
+        PbtVariableTreeKey originalLeafKey = PbtStateKey.Slot(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         PbtNodePath originalNodePath = new([0x80], 4);
         byte[] originalNode = PbtNodeGroupEncoder.Encode(originalNodePath, [new PbtNodeRecord(PbtTestPaths.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
-        Reader reader = new(new PbtStorageTreeKey([0]), null)
+        Reader reader = new(new PbtVariableTreeKey([0]), null)
         {
             GroupPayload = malformed ? Bytes.FromHexString("01") : null,
             GroupReadException = malformed ? null : new InvalidDataException("Configured group read failure."),
@@ -821,7 +821,7 @@ public class PbtSnapshotBundleTests
             Assert.That(reader.GroupReadCount, Is.EqualTo(1));
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
-            Assert.That(snapshot.Content.Storages, Has.Count.EqualTo(1));
+            Assert.That(snapshot.Content.HeaderStorages, Has.Count.EqualTo(1));
             Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(EvmWordSlot.FromStripped(originalLeafValue.Bytes)));
             Assert.That(snapshot.Content.NodeGroupCount(), Is.EqualTo(1));
             Assert.That(foundGroup, Is.True);
@@ -1182,7 +1182,7 @@ public class PbtSnapshotBundleTests
         return PbtTreeHarness.EncodeBranch([], 0, left, right);
     }
 
-    private sealed class Reader(PbtStorageTreeKey key, ValueHash256? value) : IPbtPersistence.IReader
+    private sealed class Reader(PbtVariableTreeKey key, ValueHash256? value) : IPbtPersistence.IReader
     {
         public IEnumerable<KeyValuePair<ValueHash256, Account>> Accounts { get; init; } = [];
         public PbtNodePath GroupKey { get; set; } = new([], 0);
@@ -1203,11 +1203,10 @@ public class PbtSnapshotBundleTests
             return null;
         }
         private PbtAccount ToPbtAccount(Account account) => PbtAccount.From(account, account.HasCode ? Codes[account.CodeHash.ValueHash256] : null);
-        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
         {
-            PbtStorageTreeKey wanted = runKey;
             PackedSlotRun run = SlotRun.Empty;
-            if (value is { } word && SlotRun.RunKey(key) == wanted)
+            if (value is { } word && SlotRun.RunKey(key).Bytes.SequenceEqual(runKey.Bytes))
             {
                 PackedSlotRun previous = run;
                 run = run.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped(word.Bytes));

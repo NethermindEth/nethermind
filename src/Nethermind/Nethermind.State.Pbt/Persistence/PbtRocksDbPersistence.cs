@@ -214,9 +214,9 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
         {
-            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            Span<byte> persistedKey = stackalloc byte[TKey.Capacity];
             ReadOnlySpan<byte> value = _storages.GetSpan(PbtStorageKeyLayout.Encode(runKey, persistedKey));
             try
             {
@@ -317,11 +317,11 @@ public class PbtRocksDbPersistence(
             }
         }
 
-        public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run)
+        public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
         {
             if (!IsStorageKey(runKey.Bytes)) throw new ArgumentException("A complete storage run key is required.", nameof(runKey));
             IWriteBatch storage = batch.GetColumnBatch(PbtColumns.Storages);
-            Span<byte> persistedKey = stackalloc byte[PbtStorageTreeKey.MaxLength];
+            Span<byte> persistedKey = stackalloc byte[TKey.Capacity];
             ReadOnlySpan<byte> encodedKey = PbtStorageKeyLayout.Encode(runKey, persistedKey);
             if (run.Count == 0) storage.Set(encodedKey, null, flags);
             else

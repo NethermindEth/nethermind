@@ -39,7 +39,7 @@ internal static class PbtLeafStaging
         ValueHash256 basicData = default;
         ValueHash256? codeHash = null;
         ValueHash256? delegation = null;
-        PbtStorageTreeKey? runKey = null;
+        PbtVariableTreeKey? runKey = null;
         PackedSlotRun run = SlotRun.Empty;
 
         foreach (RebuildEntry entry in leaves)
@@ -79,7 +79,7 @@ internal static class PbtLeafStaging
             else FlushAccount();
 
             slots++;
-            PbtStorageTreeKey slotRunKey = SlotRun.RunKey(entry.Key);
+            PbtVariableTreeKey slotRunKey = SlotRun.RunKey(entry.Key);
             if (runKey != slotRunKey) FlushRun();
             runKey = slotRunKey;
             PackedSlotRun previous = run;
@@ -130,7 +130,8 @@ internal static class PbtLeafStaging
         void FlushRun()
         {
             if (runKey is not { } key) return;
-            batch.Next().SetSlotRun(key, run);
+            if (key.Length == PbtPath.KeyLength) batch.Next().SetSlotRun((PbtPath)key, run);
+            else batch.Next().SetSlotRun((PbtStoragePath)key, run);
             SlotRun.Return(run);
             run = SlotRun.Empty;
             runKey = null;

@@ -70,7 +70,7 @@ public class PbtPortableCodecTests
             key[0] = zone;
             byte[] value = new byte[32];
             random.NextBytes(value);
-            entries[index] = new(new PbtStorageTreeKey(key), new ValueHash256(value));
+            entries[index] = new(new PbtVariableTreeKey(key), new ValueHash256(value));
             oracle.Insert(key, value);
         }
         Array.Sort(entries, (left, right) => left.Key.CompareTo(right.Key));
@@ -234,7 +234,7 @@ public class PbtPortableCodecTests
     private static readonly RebuildEntry CodeHashLeaf = Leaf("00" + AddressHash + "01", "0xc5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470");
 
     private static RebuildEntry Leaf(string key, string value) =>
-        new(new PbtStorageTreeKey(Bytes.FromHexString(key)), new ValueHash256(Bytes.FromHexString(value).PadLeft(32)));
+        new(new PbtVariableTreeKey(Bytes.FromHexString(key)), new ValueHash256(Bytes.FromHexString(value).PadLeft(32)));
 
     /// <summary>A snapshot of the given tagged records, each already hex-encoded, with an end tag and a zero root.</summary>
     private static byte[] Snapshot(params string[] records) =>

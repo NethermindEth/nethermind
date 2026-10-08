@@ -9,13 +9,13 @@ namespace Nethermind.Pbt;
 
 /// <summary>An immutable complete EIP-8297 tree key of any zone and length.</summary>
 /// <remarks>Keys larger than 66 bytes are unsupported. The default value is not a valid complete key. Storage-zone keys of the fixed 66-byte layout are also represented by <see cref="PbtStoragePath"/>.</remarks>
-public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
+public readonly struct PbtVariableTreeKey : IPbtKey<PbtVariableTreeKey>
 {
     public const int MaxLength = Eip8297KeyDerivation.StorageKeyLength;
     /// <inheritdoc/>
     public static int Capacity => MaxLength;
     /// <inheritdoc/>
-    public static PbtStorageTreeKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
+    public static PbtVariableTreeKey Create(ReadOnlySpan<byte> bytes) => new(bytes);
     private readonly KeyBytes _bytes;
 
     [InlineArray(MaxLength)]
@@ -24,7 +24,7 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
         private byte _element0;
     }
 
-    public PbtStorageTreeKey(ReadOnlySpan<byte> bytes)
+    public PbtVariableTreeKey(ReadOnlySpan<byte> bytes)
     {
         if (bytes.Length is < 1 or > MaxLength)
         {
@@ -36,10 +36,13 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
     }
 
     /// <summary>Widens a key without changing its bytes.</summary>
-    public static explicit operator PbtStorageTreeKey(in PbtPath key) => new(key.Bytes);
+    public static explicit operator PbtVariableTreeKey(in PbtPath key) => new(key.Bytes);
+
+    /// <summary>Widens a key without changing its bytes.</summary>
+    public static explicit operator PbtVariableTreeKey(in PbtStoragePath key) => new(key.Bytes);
 
     /// <summary>Narrows a key, rejecting any length other than <see cref="PbtPath.KeyLength"/>.</summary>
-    public static explicit operator PbtPath(in PbtStorageTreeKey key) => new(key.Bytes);
+    public static explicit operator PbtPath(in PbtVariableTreeKey key) => new(key.Bytes);
 
     public int Length { get; }
     public int BitLength => Length * 8;
@@ -48,14 +51,14 @@ public readonly struct PbtStorageTreeKey : IPbtKey<PbtStorageTreeKey>
 
     public int GetBit(int bitIndex) => TrieUpdater.GetBit(Bytes, bitIndex);
 
-    public int FirstDifferingBit(in PbtStorageTreeKey other, int startBit) =>
+    public int FirstDifferingBit(in PbtVariableTreeKey other, int startBit) =>
         PbtKeyOperations.FirstDifferingBit(Bytes, other.Bytes, startBit);
 
-    public int CompareTo(PbtStorageTreeKey other) => Bytes.SequenceCompareTo(other.Bytes);
-    public bool Equals(PbtStorageTreeKey other) => Bytes.SequenceEqual(other.Bytes);
-    public override bool Equals(object? obj) => obj is PbtStorageTreeKey other && Equals(other);
-    public static bool operator ==(in PbtStorageTreeKey left, in PbtStorageTreeKey right) => left.Equals(right);
-    public static bool operator !=(in PbtStorageTreeKey left, in PbtStorageTreeKey right) => !left.Equals(right);
+    public int CompareTo(PbtVariableTreeKey other) => Bytes.SequenceCompareTo(other.Bytes);
+    public bool Equals(PbtVariableTreeKey other) => Bytes.SequenceEqual(other.Bytes);
+    public override bool Equals(object? obj) => obj is PbtVariableTreeKey other && Equals(other);
+    public static bool operator ==(in PbtVariableTreeKey left, in PbtVariableTreeKey right) => left.Equals(right);
+    public static bool operator !=(in PbtVariableTreeKey left, in PbtVariableTreeKey right) => !left.Equals(right);
 
     public override int GetHashCode() => Bytes.FastHash();
 }

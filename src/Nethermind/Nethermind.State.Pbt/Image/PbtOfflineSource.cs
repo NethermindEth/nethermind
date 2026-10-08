@@ -113,7 +113,7 @@ internal static class PbtOfflineSource
                     while (cursor.MoveNext())
                     {
                         progress.Update(++leafCount);
-                        yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+                        yield return new RebuildEntry(new PbtVariableTreeKey(cursor.Key), new ValueHash256(cursor.Value));
                     }
                 }
                 // The snapshot is the spool's only reader, so its runs need not outlive it while the preimage drain finishes.
@@ -271,7 +271,7 @@ internal static class PbtOfflineSource
             }
             ValueHash256 addressKeyHash = PbtStateKey.AddressKeyHash(address);
             foreach ((PbtPath key, ValueHash256 value) in PbtFlatState.AccountLeaves(addressKeyHash, account, code))
-                AddLeaf((PbtStorageTreeKey)key, value);
+                AddLeaf((PbtVariableTreeKey)key, value);
 
             ValueHash256 addressHash = ValueKeccak.Compute(address.Bytes);
             uint count = 0;
@@ -283,7 +283,7 @@ internal static class PbtOfflineSource
                     ValueHash256 slot = slots.CurrentKey;
                     EvmWord value = EvmWordSlot.FromStripped(slots.CurrentValue);
                     if (EvmWordSlot.IsZero(value)) throw new InvalidDataException("Source contains a zero storage slot.");
-                    AddLeaf(PbtStateKey.Storage(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
+                    AddLeaf(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
                     if (rawKeys is not null)
                     {
                         addressHash.Bytes.CopyTo(_preimageKey);
@@ -322,7 +322,7 @@ internal static class PbtOfflineSource
         }
 
         // Leaf keys are prefix-free (34 bytes in zone 0/1, 66 in zone 255), so their raw order is total.
-        private void AddLeaf(in PbtStorageTreeKey key, ValueHash256 value)
+        private void AddLeaf(in PbtVariableTreeKey key, ValueHash256 value)
         {
             leaves.Add(key.Bytes, value.Bytes);
             _pendingLeaves++;

@@ -374,7 +374,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         public ValueHash256 CurrentRoot => default;
         public PbtAccount? GetAccount(in ValueHash256 addressHash) => null;
-        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey) => SlotRun.Empty;
+        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => SlotRun.Empty;
         public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
         public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value)
         {

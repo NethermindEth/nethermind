@@ -27,7 +27,8 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private readonly int _maxEntriesPerKind;
 
     private readonly ConcurrentDictionary<ValueHash256, PbtAccount?> _accounts = new();
-    private readonly ConcurrentDictionary<PbtStorageTreeKey, PackedSlotRun> _runs = new();
+    private readonly ConcurrentDictionary<PbtPath, PackedSlotRun> _headerRuns = new();
+    private readonly ConcurrentDictionary<PbtStoragePath, PackedSlotRun> _storageRuns = new();
     private int _accountCount;
     private int _runCount;
 
@@ -65,10 +66,13 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     {
         _inner.ClearCaches();
         using IPbtPersistence.IReader reader = _inner.CreateReader();
-        OnCommitted(reader.CurrentState, writtenAccounts: null, writtenRuns: null, clearAll: true);
+        OnCommitted(reader.CurrentState, writtenAccounts: null, writtenHeaderRuns: null, writtenStorageRuns: null, clearAll: true);
     }
 
     private bool IsCurrent(long readerGeneration) => Volatile.Read(ref _generation) == readerGeneration;
+
+    private ConcurrentDictionary<TKey, PackedSlotRun> Runs<TKey>() where TKey : struct, IPbtKey<TKey> =>
+        SlotRun.ByZone<TKey, ConcurrentDictionary<TKey, PackedSlotRun>>(_headerRuns, _storageRuns);
 
     private void TryCacheAccount(in ValueHash256 addressHash, PbtAccount? account, long readerGeneration)
     {
@@ -87,22 +91,27 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     }
 
     // Cached runs are never returned to their pool: a concurrent reader may still be cloning an evicted one.
-    private void TryCacheRun(in PbtStorageTreeKey runKey, PackedSlotRun run, long readerGeneration)
+    private void TryCacheRun<TKey>(in TKey runKey, PackedSlotRun run, long readerGeneration) where TKey : struct, IPbtKey<TKey>
     {
+        ConcurrentDictionary<TKey, PackedSlotRun> runs = Runs<TKey>();
         using (_lock.EnterScope())
         {
             if (_generation != readerGeneration) return;
-            if (_runs.ContainsKey(runKey)) return;
-            if (_runCount >= _maxEntriesPerKind)
-            {
-                _runs.Clear();
-                _runCount = 0;
-            }
-            if (_runs.TryAdd(runKey, run)) _runCount++;
+            if (runs.ContainsKey(runKey)) return;
+            if (_runCount >= _maxEntriesPerKind) ClearRuns();
+            if (runs.TryAdd(runKey, run)) _runCount++;
         }
     }
 
-    private void OnCommitted(StateId to, HashSet<ValueHash256>? writtenAccounts, HashSet<PbtStorageTreeKey>? writtenRuns, bool clearAll)
+    private void ClearRuns()
+    {
+        _headerRuns.Clear();
+        _storageRuns.Clear();
+        _runCount = 0;
+    }
+
+    private void OnCommitted(StateId to, HashSet<ValueHash256>? writtenAccounts, HashSet<PbtPath>? writtenHeaderRuns,
+        HashSet<PbtStoragePath>? writtenStorageRuns, bool clearAll)
     {
         using (_lock.EnterScope())
         {
@@ -112,17 +121,22 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             {
                 _accounts.Clear();
                 _accountCount = 0;
-                _runs.Clear();
-                _runCount = 0;
+                ClearRuns();
                 return;
             }
             if (writtenAccounts is not null)
                 foreach (ValueHash256 addressHash in writtenAccounts)
                     if (_accounts.TryRemove(addressHash, out _)) _accountCount--;
-            if (writtenRuns is not null)
-                foreach (PbtStorageTreeKey runKey in writtenRuns)
-                    if (_runs.TryRemove(runKey, out _)) _runCount--;
+            RemoveRuns(_headerRuns, writtenHeaderRuns);
+            RemoveRuns(_storageRuns, writtenStorageRuns);
         }
+    }
+
+    private void RemoveRuns<TKey>(ConcurrentDictionary<TKey, PackedSlotRun> runs, HashSet<TKey>? writtenRuns) where TKey : struct, IPbtKey<TKey>
+    {
+        if (writtenRuns is null) return;
+        foreach (TKey runKey in writtenRuns)
+            if (runs.TryRemove(runKey, out _)) _runCount--;
     }
 
     private sealed class CachingReader(PbtCarryForwardCachingPersistence parent, IPbtPersistence.IReader inner, long generation) : IPbtPersistence.IReader
@@ -145,10 +159,11 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             return account;
         }
 
-        public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
         {
+            ConcurrentDictionary<TKey, PackedSlotRun> runs = parent.Runs<TKey>();
             bool current = parent.IsCurrent(generation);
-            if (current && parent._runs.TryGetValue(runKey, out PackedSlotRun? cached))
+            if (current && runs.TryGetValue(runKey, out PackedSlotRun? cached))
             {
                 // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
                 if (parent.IsCurrent(generation)) return cached.Clone();
@@ -156,7 +171,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             }
 
             PackedSlotRun run = inner.GetSlotRun(runKey);
-            if (current && !parent._runs.ContainsKey(runKey)) parent.TryCacheRun(runKey, run.Clone(), generation);
+            if (current && !runs.ContainsKey(runKey)) parent.TryCacheRun(runKey, run.Clone(), generation);
             return run;
         }
 
@@ -170,7 +185,8 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
     private sealed class InvalidatingWriteBatch(PbtCarryForwardCachingPersistence parent, IPbtPersistence.IWriteBatch inner, StateId to) : IPbtPersistence.IWriteBatch
     {
         private HashSet<ValueHash256>? _writtenAccounts;
-        private HashSet<PbtStorageTreeKey>? _writtenRuns;
+        private HashSet<PbtPath>? _writtenHeaderRuns;
+        private HashSet<PbtStoragePath>? _writtenStorageRuns;
 
         public void SetAccount(in ValueHash256 addressHash, PbtAccount? account)
         {
@@ -178,9 +194,9 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
             inner.SetAccount(addressHash, account);
         }
 
-        public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run)
+        public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>
         {
-            (_writtenRuns ??= []).Add(runKey);
+            SlotRun.ByZone<TKey, HashSet<TKey>>(_writtenHeaderRuns ??= [], _writtenStorageRuns ??= []).Add(runKey);
             inner.SetSlotRun(runKey, run);
         }
 
@@ -192,7 +208,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public void Commit()
         {
             inner.Commit();
-            parent.OnCommitted(to, _writtenAccounts, _writtenRuns, clearAll: false);
+            parent.OnCommitted(to, _writtenAccounts, _writtenHeaderRuns, _writtenStorageRuns, clearAll: false);
         }
 
         public void Dispose() => inner.Dispose();

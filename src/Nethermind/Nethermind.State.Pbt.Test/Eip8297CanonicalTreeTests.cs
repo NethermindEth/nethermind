@@ -45,21 +45,21 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Builder_prepares_selected_nibble_and_independent_single_use_outputs()
     {
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> builder = new();
-        static PbtStorageTreeKey Key(byte nibble, byte suffix) => new([suffix, (byte)(nibble << 4)]);
-        PbtStorageTreeKey setKey = Key(15, 1);
-        PbtStorageTreeKey deleteKey = Key(2, 2);
-        PbtStorageTreeKey zeroKey = Key(8, 3);
+        using PbtWriteBatchBuilder<PbtVariableTreeKey> builder = new();
+        static PbtVariableTreeKey Key(byte nibble, byte suffix) => new([suffix, (byte)(nibble << 4)]);
+        PbtVariableTreeKey setKey = Key(15, 1);
+        PbtVariableTreeKey deleteKey = Key(2, 2);
+        PbtVariableTreeKey zeroKey = Key(8, 3);
         builder.Set(setKey, new ValueHash256(Value(1)));
         builder.SetLeaf(setKey, null);
         builder.Set(setKey, new ValueHash256(Value(2)));
         builder.Set(deleteKey, new ValueHash256(Value(1)));
         builder.SetLeaf(deleteKey, default(ValueHash256));
         builder.Set(zeroKey, default);
-        using PbtWriteBatch<PbtStorageTreeKey> first = builder.Build();
-        using PbtWriteBatch<PbtStorageTreeKey> second = builder.Build();
-        first.Consume(out ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>> operations, out ArrayPoolList<int> table);
-        using ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>> ownedOperations = operations;
+        using PbtWriteBatch<PbtVariableTreeKey> first = builder.Build();
+        using PbtWriteBatch<PbtVariableTreeKey> second = builder.Build();
+        first.Consume(out ArrayPoolList<PbtWriteOperation<PbtVariableTreeKey>> operations, out ArrayPoolList<int> table);
+        using ArrayPoolList<PbtWriteOperation<PbtVariableTreeKey>> ownedOperations = operations;
         using ArrayPoolList<int> ownedTable = table;
         first.Dispose();
         using (Assert.EnterMultipleScope())
@@ -67,21 +67,21 @@ public class Eip8297CanonicalTreeTests
             Assert.That(builder.Count, Is.EqualTo(3));
             Assert.That(table[0], Is.EqualTo((1 << 2) | (1 << 8) | (1 << 15)));
             Assert.That(table.AsSpan().Slice(1, 3).ToArray(), Is.EqualTo(new[] { 1, 1, 1 }));
-            Assert.That(operations, Is.EqualTo(new PbtWriteOperation<PbtStorageTreeKey>[]
+            Assert.That(operations, Is.EqualTo(new PbtWriteOperation<PbtVariableTreeKey>[]
             {
                 new(deleteKey, default),
                 new(zeroKey, default),
                 new(setKey, new ValueHash256(Value(2))),
             }));
         }
-        PbtWriteOperation<PbtStorageTreeKey>[] expected = operations.AsSpan().ToArray();
+        PbtWriteOperation<PbtVariableTreeKey>[] expected = operations.AsSpan().ToArray();
         operations.AsSpan().Clear();
         table.AsSpan().Clear();
         builder.Reset();
-        second.Consume(out ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>> independentOperations, out ArrayPoolList<int> independentTable);
-        using ArrayPoolList<PbtWriteOperation<PbtStorageTreeKey>> ownedIndependentOperations = independentOperations;
+        second.Consume(out ArrayPoolList<PbtWriteOperation<PbtVariableTreeKey>> independentOperations, out ArrayPoolList<int> independentTable);
+        using ArrayPoolList<PbtWriteOperation<PbtVariableTreeKey>> ownedIndependentOperations = independentOperations;
         using ArrayPoolList<int> ownedIndependentTable = independentTable;
-        using PbtWriteBatch<PbtStorageTreeKey> empty = builder.Build();
+        using PbtWriteBatch<PbtVariableTreeKey> empty = builder.Build();
         using (Assert.EnterMultipleScope())
         {
             Assert.That(independentOperations, Is.EqualTo(expected));
@@ -327,9 +327,9 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Inline_paths_preserve_occupied_bytes_and_value_behavior([Values(0, 1, 7, 8, 271, 272, 527, 528)] int bitDepth)
     {
-        byte[] source = new byte[PbtStorageTreeKey.MaxLength];
+        byte[] source = new byte[PbtVariableTreeKey.MaxLength];
         source.AsSpan().Fill(0xA5);
-        PbtStorageTreeKey key = new(source);
+        PbtVariableTreeKey key = new(source);
         PbtStorageNodePath fromKey = PbtTestPaths.Prefix<PbtStorageNodePath>(key.Bytes, bitDepth);
         byte[] expected = source.AsSpan(0, (bitDepth + 7) >> 3).ToArray();
         if ((bitDepth & 7) != 0) expected[^1] &= (byte)(0xFF << (8 - (bitDepth & 7)));
@@ -356,13 +356,13 @@ public class Eip8297CanonicalTreeTests
     {
         byte[] source = new byte[length];
         source.AsSpan().Fill(0xA5);
-        PbtStorageTreeKey key = new(source);
-        PbtStorageTreeKey copy = key;
+        PbtVariableTreeKey key = new(source);
+        PbtVariableTreeKey copy = key;
         source[^1] ^= 1;
-        PbtStorageTreeKey different = new(source);
+        PbtVariableTreeKey different = new(source);
         source[^1] ^= 1;
-        PbtStorageTreeKey equal = new(source);
-        Dictionary<PbtStorageTreeKey, int> keys = new() { [key] = 42 };
+        PbtVariableTreeKey equal = new(source);
+        Dictionary<PbtVariableTreeKey, int> keys = new() { [key] = 42 };
         source.AsSpan().Clear();
         key = default;
 
@@ -379,16 +379,16 @@ public class Eip8297CanonicalTreeTests
             Assert.That(key.Bytes.Length, Is.Zero);
             Assert.That(key.Equals(default), Is.True);
             Assert.That(key.CompareTo(copy), Is.LessThan(0));
-            Assert.That(key.GetHashCode(), Is.EqualTo(default(PbtStorageTreeKey).GetHashCode()));
+            Assert.That(key.GetHashCode(), Is.EqualTo(default(PbtVariableTreeKey).GetHashCode()));
         }
     }
 
     [Test]
     public void First_differing_bit_checks_every_bit_from_each_start(
-        [Range(0, PbtStorageTreeKey.MaxLength * 8)] int startBit,
+        [Range(0, PbtVariableTreeKey.MaxLength * 8)] int startBit,
         [Values] bool earlierDifferences)
     {
-        byte[] bytes = new byte[PbtStorageTreeKey.MaxLength];
+        byte[] bytes = new byte[PbtVariableTreeKey.MaxLength];
         bytes.AsSpan().Fill(0xA5);
         byte[] other = (byte[])bytes.Clone();
         int commonBits = bytes.Length * 8;
@@ -427,12 +427,12 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Matching_prefix_bits_matches_reference_at_offsets_and_word_boundaries(
         [Range(0, 15)] int keyOffset,
-        [Values(0, 1, 7, 8, 63, 64, 65, 127, 128, 129, PbtStorageTreeKey.MaxLength * 8)] int requestedBitCount,
-        [Values(16, PbtStorageTreeKey.MaxLength)] int keyLength)
+        [Values(0, 1, 7, 8, 63, 64, 65, 127, 128, 129, PbtVariableTreeKey.MaxLength * 8)] int requestedBitCount,
+        [Values(16, PbtVariableTreeKey.MaxLength)] int keyLength)
     {
-        byte[] source = new byte[PbtStorageTreeKey.MaxLength];
+        byte[] source = new byte[PbtVariableTreeKey.MaxLength];
         new Random(8297).NextBytes(source);
-        PbtStorageTreeKey key = new(source.AsSpan(0, keyLength));
+        PbtVariableTreeKey key = new(source.AsSpan(0, keyLength));
         int bitCount = Math.Min(requestedBitCount, source.Length * 8 - keyOffset);
         byte[] encoding = new byte[sizeof(ushort) + ((bitCount + 7) >> 3)];
         BinaryPrimitives.WriteUInt16BigEndian(encoding, (ushort)bitCount);
@@ -477,7 +477,7 @@ public class Eip8297CanonicalTreeTests
         EipReferenceTree oracle = new();
         byte[] first = AccountKey(0x12, 0x34);
         byte[] second = AccountKey(0x12, 0x3C);
-        byte[] rootLeaf = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(first));
+        byte[] rootLeaf = PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(first));
 
         tree.ApplyBatch([(first, Value(1))]);
         oracle.Insert(first, Value(1));
@@ -513,7 +513,7 @@ public class Eip8297CanonicalTreeTests
         {
             Assert.That(tree.RootHash.Bytes.ToArray(), Is.EqualTo(oracle.Merkelize()), "collapsed to the remaining leaf");
             Assert.That(tree.Nodes, Has.Count.EqualTo(1));
-            Assert.That(tree.Nodes[0].Encoding.ToArray(), Is.EqualTo(PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(second))));
+            Assert.That(tree.Nodes[0].Encoding.ToArray(), Is.EqualTo(PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(second))));
         }
     }
 
@@ -538,7 +538,7 @@ public class Eip8297CanonicalTreeTests
             ? [0, (byte)length, .. field]
             : [.. preimage, (byte)leftKey.Length, (byte)rightKey.Length, .. leftKey, .. rightKey];
         byte[] encoding = leaf
-            ? PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(field))
+            ? PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(field))
             : PbtTreeHarness.EncodeBranch(field, length, left, right, leftKey, rightKey);
         byte[] backing = new byte[encoding.Length + 11];
         encoding.CopyTo(backing, 7);
@@ -620,7 +620,7 @@ public class Eip8297CanonicalTreeTests
             invalidLeaf[1] = (byte)length;
             yield return new TestCaseData(invalidLeaf).SetName($"Node_reader_rejects_invalid_leaf_length_{length}");
         }
-        byte[] leaf = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(Bytes.FromHexString("A0A1")));
+        byte[] leaf = PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(Bytes.FromHexString("A0A1")));
         yield return new TestCaseData(leaf[..^1]).SetName("Node_reader_rejects_truncated_leaf");
         yield return new TestCaseData((byte[])[.. leaf, 0]).SetName("Node_reader_rejects_trailing_leaf_bytes");
         byte[] branch = PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 5, new ValueHash256(Value(1)), new ValueHash256(Value(2)), Bytes.FromHexString("A0"), []);
@@ -648,7 +648,7 @@ public class Eip8297CanonicalTreeTests
     [Test]
     public void Node_reader_rejects_wrong_kind_access()
     {
-        byte[] encoding = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(Bytes.FromHexString("A0")));
+        byte[] encoding = PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(Bytes.FromHexString("A0")));
         Assert.Throws<InvalidOperationException>(() => _ = PbtBranchReader.FromValidated(encoding));
     }
 #endif
@@ -657,7 +657,7 @@ public class Eip8297CanonicalTreeTests
     public void Node_reader_construction_and_field_access_do_not_allocate([Values] bool leaf)
     {
         byte[] encoding = leaf
-            ? PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(Bytes.FromHexString("A0")))
+            ? PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(Bytes.FromHexString("A0")))
             : PbtTreeHarness.EncodeBranch(Bytes.FromHexString("A0"), 5, new ValueHash256(Value(1)), new ValueHash256(Value(2)), Bytes.FromHexString("A1"), Bytes.FromHexString("A2"));
         int expected = ReadNodeFields(encoding);
         for (int index = 0; index < 1000; index++) _ = ReadNodeFields(encoding);
@@ -685,8 +685,8 @@ public class Eip8297CanonicalTreeTests
         byte[] address32 = new byte[32];
         address32[0] = 0xA5;
         PbtPath account = Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address32), 0);
-        PbtStorageTreeKey headerStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(63));
-        PbtStorageTreeKey overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
+        PbtPath headerStorage = Eip8297KeyDerivation.HeaderStorageKey(Blake3Hash.Hash(address32), new Nethermind.Int256.UInt256(63));
+        PbtStoragePath overflowStorage = Eip8297KeyDerivation.StorageKey(address32, new Nethermind.Int256.UInt256(64));
         byte[] expectedAddressHash = EipReferenceTree.Hash(address32);
         using (Assert.EnterMultipleScope())
         {
@@ -999,7 +999,7 @@ public class Eip8297CanonicalTreeTests
 
         ValueHash256 rootAfterUpdate = store.Fold(root, [(deleteKeyBytes, null), (setKeyBytes, Value(2))]);
 
-        byte[] expectedLeaf = PbtTreeHarness.EncodeLeaf(new PbtStorageTreeKey(setKeyBytes));
+        byte[] expectedLeaf = PbtTreeHarness.EncodeLeaf(new PbtVariableTreeKey(setKeyBytes));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(rootAfterUpdate, Is.EqualTo(PbtTreeHarness.HashLeaf(setKeyBytes, Value(2))));
@@ -1394,7 +1394,7 @@ public class Eip8297CanonicalTreeTests
         oracle.Insert(left, Value(1));
         oracle.Insert(right, Value(2));
         using RefCountingMemory? updated = store.GetPhysicalNodeGroup(groupKey);
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> updatedReader = PbtStoreTestExtensions.ReadGroup(groupKey, updated!.GetSpan());
         PbtBranchReader promoted = PbtBranchReader.FromValidated(updatedReader.GetEncoding(30).Span);
         using (Assert.EnterMultipleScope())
         {

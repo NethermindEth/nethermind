@@ -28,7 +28,7 @@ internal static class PbtNodeCodec
     internal static int BranchPreimageLength(int bitCount) => 3 + PbtBitPrefix.ByteCount(bitCount) + 64;
 
     /// <summary>The longest branch preimage a tree can hold: a prefix is bounded by the longest complete key.</summary>
-    internal const int MaxBranchPreimageLength = 3 + PbtStorageTreeKey.MaxLength + 64;
+    internal const int MaxBranchPreimageLength = 3 + PbtVariableTreeKey.MaxLength + 64;
 
     /// <summary>The length of a complete branch encoding.</summary>
     internal static int BranchLength(int bitCount, int leftKeyLength, int rightKeyLength) =>
@@ -137,7 +137,7 @@ internal static class PbtNodeCodec
         if (encoding[0] == LeafTag)
         {
             int keyLength = encoding[1];
-            if (keyLength is < 1 or > PbtStorageTreeKey.MaxLength)
+            if (keyLength is < 1 or > PbtVariableTreeKey.MaxLength)
                 throw new InvalidDataException("Invalid PBT leaf key length.");
             if (encoding.Length != LeafLength(keyLength)) throw new InvalidDataException("Invalid PBT leaf encoding length.");
             return;
@@ -149,7 +149,7 @@ internal static class PbtNodeCodec
         if (encoding.Length < preimageLength + BranchTrailerHeaderLength) throw new InvalidDataException("Invalid PBT branch encoding length.");
         int leftKeyLength = encoding[preimageLength];
         int rightKeyLength = encoding[preimageLength + 1];
-        if (leftKeyLength > PbtStorageTreeKey.MaxLength || rightKeyLength > PbtStorageTreeKey.MaxLength)
+        if (leftKeyLength > PbtVariableTreeKey.MaxLength || rightKeyLength > PbtVariableTreeKey.MaxLength)
             throw new InvalidDataException("Invalid PBT branch leaf key length.");
         if (encoding.Length != BranchLength(bitCount, leftKeyLength, rightKeyLength)) throw new InvalidDataException("Invalid PBT branch encoding length.");
         if (bitCount % 8 != 0 && (encoding[2 + prefixByteCount] & (0xFF >> (bitCount % 8))) != 0)
@@ -204,7 +204,7 @@ internal static class PbtNodeCodec
     /// <summary>Writes the trailer's key lengths; the caller copies the keys behind them.</summary>
     internal static void WriteBranchTrailer(Span<byte> trailer, int leftKeyLength, int rightKeyLength)
     {
-        if (leftKeyLength > PbtStorageTreeKey.MaxLength || rightKeyLength > PbtStorageTreeKey.MaxLength)
+        if (leftKeyLength > PbtVariableTreeKey.MaxLength || rightKeyLength > PbtVariableTreeKey.MaxLength)
             throw new ArgumentException("An inline leaf key exceeds the maximum key length.");
         trailer[0] = (byte)leftKeyLength;
         trailer[1] = (byte)rightKeyLength;

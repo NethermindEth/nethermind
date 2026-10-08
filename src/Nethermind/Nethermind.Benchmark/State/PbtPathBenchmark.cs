@@ -13,10 +13,10 @@ namespace Nethermind.Benchmarks.State;
 public class PbtPathBenchmark
 {
     private byte[] _bytes;
-    private PbtStorageTreeKey _key;
-    private PbtStorageTreeKey _equalKey;
-    private PbtStorageTreeKey _differentKey;
-    private Dictionary<PbtStorageTreeKey, int> _dictionary;
+    private PbtVariableTreeKey _key;
+    private PbtVariableTreeKey _equalKey;
+    private PbtVariableTreeKey _differentKey;
+    private Dictionary<PbtVariableTreeKey, int> _dictionary;
 
     [Params(1, 34, 66)]
     public int ByteLength { get; set; }
@@ -26,16 +26,16 @@ public class PbtPathBenchmark
     {
         _bytes = new byte[ByteLength];
         new Random(8297).NextBytes(_bytes);
-        _key = new PbtStorageTreeKey(_bytes);
-        _equalKey = new PbtStorageTreeKey(_bytes);
+        _key = new PbtVariableTreeKey(_bytes);
+        _equalKey = new PbtVariableTreeKey(_bytes);
         byte[] differentBytes = (byte[])_bytes.Clone();
         differentBytes[^1] ^= 1;
-        _differentKey = new PbtStorageTreeKey(differentBytes);
-        _dictionary = new Dictionary<PbtStorageTreeKey, int> { [_key] = 42 };
+        _differentKey = new PbtVariableTreeKey(differentBytes);
+        _dictionary = new Dictionary<PbtVariableTreeKey, int> { [_key] = 42 };
     }
 
     [Benchmark]
-    public PbtStorageTreeKey Construct() => new(_bytes);
+    public PbtVariableTreeKey Construct() => new(_bytes);
 
     [Benchmark]
     public bool EqualKeys() => _key.Equals(_equalKey);
@@ -70,12 +70,12 @@ public class PbtPathDerivationBenchmark
     public PbtPath Account() => Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(_address), 0);
 
     [Benchmark]
-    public PbtStorageTreeKey Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
+    public PbtStoragePath Storage() => Eip8297KeyDerivation.StorageKey(_address, _slot);
 }
 
 [MemoryDiagnoser]
 [GenericTypeArguments(typeof(PbtPath))]
-[GenericTypeArguments(typeof(PbtStorageTreeKey))]
+[GenericTypeArguments(typeof(PbtVariableTreeKey))]
 public class PbtWriteBatchMemoryBenchmark<TKey> where TKey : struct, IPbtKey<TKey>
 {
     private TKey[] _keys;

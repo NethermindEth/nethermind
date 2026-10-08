@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
-using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtStorageTreeKey, Nethermind.Pbt.PbtStorageNodePath>;
+using static Nethermind.Pbt.TrieUpdater<Nethermind.Pbt.PbtVariableTreeKey, Nethermind.Pbt.PbtStorageNodePath>;
 
 namespace Nethermind.Pbt;
 
@@ -67,21 +67,21 @@ public static partial class TrieUpdater
             ? accountFold.Fold(slot, boundary, descendantBytes, encoding)
             : storageFold.Fold(slot, boundary, descendantBytes, encoding);
         PbtTraversalPath rootPath = new(Span<byte>.Empty);
-        if (!GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.TryLoad(store, rootPath, currentRoot,
-                out GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> rootReader))
+        if (!GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.TryLoad(store, rootPath, currentRoot,
+                out GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> rootReader))
         {
             if (currentRoot != default) throw new InvalidDataException("A referenced PBT node group is missing.");
-            AbsentGroupFrame<PbtStorageTreeKey, PbtStorageNodePath> emptyRoot = new(0);
+            AbsentGroupFrame<PbtVariableTreeKey, PbtStorageNodePath> emptyRoot = new(0);
             return FoldRoot(store, ref emptyRoot, default, touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
         }
-        using (new GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
+        using (new GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath>.Scope(ref rootReader))
             return FoldRoot(store, ref rootReader, rootReader.TakeRoot(currentRoot), touchedSlots, foldSlot, foldQuota, fanOut, memoryProvider);
     }
 
     /// <summary>Rebuilds the root group of <paramref name="rootReader"/> around its touched slots, each folded by <paramref name="foldSlot"/>, and publishes it.</summary>
     private static ValueHash256 FoldRoot<TRoot>(IPbtStore store, ref TRoot rootReader, in BoundaryNode root, int touchedSlots, ForeignSlotFold foldSlot,
         ConcurrencyController foldQuota, FoldFanOut fanOut, IRefCountingMemoryProvider memoryProvider)
-        where TRoot : struct, IGroupFrame<PbtStorageTreeKey, PbtStorageNodePath>
+        where TRoot : struct, IGroupFrame<PbtVariableTreeKey, PbtStorageNodePath>
     {
         using IPbtConcurrentWriter storeWriter = store.CreateWriter();
         using PbtNodeGroupWriter<PbtStorageNodePath> rootWriter = PbtNodeGroupWriter<PbtStorageNodePath>.Rent(0, memoryProvider);
@@ -145,7 +145,7 @@ public static partial class TrieUpdater
                 TrieUpdater<TKey, TPath>.SortShards(context, operations.Slice(zoneStart, count), table.AsSpan());
             TrieUpdater<TKey, TPath>.AssertSorted(operations);
             TrieUpdater<TKey, TPath>.SlotNode result = TrieUpdater<TKey, TPath>.FoldDetachedSlot(context, TPath.Create(ReadOnlySpan<byte>.Empty, 0), 0, slot,
-                TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtStorageTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
+                TrieUpdater<TKey, TPath>.BoundaryNode.TakeFrom<PbtVariableTreeKey, PbtStorageNodePath>(boundary), descendantBytes, operations, encoding);
             foldTime?.Observe(Stopwatch.GetTimestamp() - start, foldLabel);
             return new(result.Length, result.Hash) { SizeDelta = result.SizeDelta };
         }

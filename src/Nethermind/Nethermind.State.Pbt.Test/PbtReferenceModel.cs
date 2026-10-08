@@ -59,7 +59,7 @@ internal static class PbtReferenceModel
     {
         byte[] value32 = new byte[32];
         value.ToBigEndian(value32);
-        Set(model, PbtStateKey.Storage(address, slot), value32);
+        Set(model, PbtStateKey.Slot(address, slot), value32);
     }
 
     public static ValueHash256 Root(Dictionary<string, byte[]> model)

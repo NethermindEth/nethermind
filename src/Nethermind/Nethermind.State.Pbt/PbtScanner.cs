@@ -155,9 +155,9 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
 
     private static void ScanGroup<TPath>(TPath groupPath, ReadOnlySpan<byte> value, PbtScanReport.NodeGroupStats stats) where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupPath);
+        PbtTraversalPath traversalPath = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupPath);
         PbtNodeGroupCodec.ValidateNodes(traversalPath, value);
-        using GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = new(RefCountingMemory.Wrapping(value.ToArray()), groupPath.BitDepth);
+        using GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = new(RefCountingMemory.Wrapping(value.ToArray()), groupPath.BitDepth);
         stats.GroupsByDepth[groupPath.BitDepth]++;
         stats.PayloadBytesByDepth[groupPath.BitDepth] += value.Length;
         stats.GroupsByOccupancy[BitOperations.PopCount(reader.StoredPositions)]++;
@@ -221,7 +221,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                 bounds.Add(boundary);
             }
         }
-        byte[] upper = new byte[5 + PbtStorageTreeKey.MaxLength];
+        byte[] upper = new byte[5 + PbtVariableTreeKey.MaxLength];
         Array.Fill(upper, byte.MaxValue);
         bounds.Add(upper);
         return bounds.ToArray();

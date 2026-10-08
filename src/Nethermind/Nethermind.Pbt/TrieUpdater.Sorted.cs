@@ -24,7 +24,7 @@ internal static partial class TrieUpdater<TKey, TPath>
     }
 
     /// <summary>The longest node encoding: a branch whose prefix and both inlined keys are as long as a key can be.</summary>
-    private const int MaxNodeLength = PbtNodeCodec.MaxBranchPreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + 2 * PbtStorageTreeKey.MaxLength;
+    private const int MaxNodeLength = PbtNodeCodec.MaxBranchPreimageLength + PbtNodeCodec.BranchTrailerHeaderLength + 2 * PbtVariableTreeKey.MaxLength;
 
     /// <summary>A node a fold encoded for its caller to place, anchored at the depth the caller places it at.</summary>
     internal struct SlotNode(int length, in ValueHash256 hash)

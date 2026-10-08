@@ -161,7 +161,8 @@ public class PbtPersistenceCoordinator(
         using IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(snapshot.From, snapshot.To, snapshot.TreeRoot, WriteFlags.None);
 
         foreach ((ValueHash256 addressHash, PbtAccount? account) in content.Accounts) batch.SetAccount(addressHash, account);
-        foreach ((HashedKey<PbtStorageTreeKey> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey, run);
+        foreach ((HashedKey<PbtPath> runKey, PackedSlotRun run) in content.HeaderStorages) batch.SetSlotRun(runKey.Key, run);
+        foreach ((HashedKey<PbtStoragePath> runKey, PackedSlotRun run) in content.Storages) batch.SetSlotRun(runKey.Key, run);
         foreach ((ValueHash256 codeHash, CodeInfo code) in content.Codes) batch.SetCode(codeHash, code);
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.AccountNodeGroups) batch.SetNodeGroup(groupKey, payload);
         foreach ((PbtNodePath groupKey, RefCountingMemory? payload) in content.CodeNodeGroups) batch.SetNodeGroup(groupKey, payload);

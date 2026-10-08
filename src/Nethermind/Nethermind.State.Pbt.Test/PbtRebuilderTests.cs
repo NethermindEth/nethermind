@@ -55,7 +55,7 @@ public class PbtRebuilderTests
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             PbtTestLeaves.AddSlot(leaves, address, slot, value);
-            stagingBatch.SetSlot(PbtStateKey.Storage(address, slot), EvmWordSlot.FromStripped(value.ToBigEndian()));
+            stagingBatch.SetSlot(PbtStateKey.Slot(address, slot), EvmWordSlot.FromStripped(value.ToBigEndian()));
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA
@@ -125,7 +125,7 @@ public class PbtRebuilderTests
         using PbtNodeGroupStore incrementalStore = new();
         ValueHash256 incrementalRoot = default;
         using IPbtPersistence.IReader reader = target.CreateReader();
-        foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves)
+        foreach ((PbtVariableTreeKey key, ValueHash256 value) in leaves)
         {
             incrementalRoot = incrementalStore.Fold(incrementalRoot, [(key.Bytes.ToArray(), value.ToByteArray())],
                 PbtTreeHarness.DefaultFanOut, null);
@@ -181,7 +181,7 @@ public class PbtRebuilderTests
         {
             for (int index = 0; index < 2; index++)
             {
-                PbtStorageTreeKey key = (PbtStorageTreeKey)PbtStateKey.Code(TestItem.KeccakB.ValueHash256, 256 + index);
+                PbtVariableTreeKey key = (PbtVariableTreeKey)PbtStateKey.Code(TestItem.KeccakB.ValueHash256, 256 + index);
                 ArrayPoolList<RebuildEntry> chunk = new(windowSize);
                 for (int repeat = 0; repeat < windowSize; repeat++) chunk.Add(new(key, TestItem.KeccakC.ValueHash256));
                 await channel.Writer.WriteAsync(chunk);

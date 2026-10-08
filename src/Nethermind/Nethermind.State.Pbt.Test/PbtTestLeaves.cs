@@ -37,17 +37,17 @@ internal static class PbtTestLeaves
     }
 
     public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
-        reader.GetSlot(PbtStateKey.Storage(address, slot));
+        reader.GetSlot(PbtStateKey.Slot(address, slot));
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
         foreach ((PbtPath key, ValueHash256 leaf) in PbtFlatState.AccountLeaves(
             PbtStateKey.AddressKeyHash(address), account, code is { Length: > 0 } ? new CodeInfo(code) : null))
-            into.Add(new RebuildEntry((PbtStorageTreeKey)key, leaf));
+            into.Add(new RebuildEntry((PbtVariableTreeKey)key, leaf));
     }
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
-        into.Add(new RebuildEntry(PbtStateKey.Storage(address, slot), value.ToValueHash()));
+        into.Add(new RebuildEntry(PbtStateKey.Slot(address, slot), value.ToValueHash()));
 
     /// <summary>Reads every account preimage and its slot preimages from <paramref name="source"/>.</summary>
     public static List<PbtAccountPreimages> ReadPreimages(Stream source)

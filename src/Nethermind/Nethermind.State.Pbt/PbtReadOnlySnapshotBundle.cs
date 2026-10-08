@@ -103,7 +103,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
-    internal EvmWord GetSlot(in HashedKey<PbtStorageTreeKey> runKey, int index)
+    internal EvmWord GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -127,7 +127,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>A caller-owned copy of the whole run keyed by <paramref name="runKey"/> as this view sees it.</summary>
-    internal PackedSlotRun RentRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    internal PackedSlotRun RentRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;

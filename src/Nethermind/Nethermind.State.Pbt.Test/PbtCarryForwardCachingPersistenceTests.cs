@@ -24,8 +24,8 @@ public class PbtCarryForwardCachingPersistenceTests
     private static readonly StateId Basis0 = new(0, Keccak.EmptyTreeHash);
     private static readonly StateId Basis1 = new(1, Keccak.EmptyTreeHash);
     private static readonly ValueHash256 AddressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-    private static readonly PbtStorageTreeKey Run1 = PbtStateKey.StorageRun(TestItem.AddressA, AddressHash, 1, out _);
-    private static readonly PbtStorageTreeKey Run2 = PbtStateKey.StorageRun(TestItem.AddressA, AddressHash, 100, out _);
+    private static readonly PbtPath Run1 = SlotRun.RunKey(PbtStateKey.HeaderStorage(AddressHash, 1));
+    private static readonly PbtStoragePath Run2 = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, AddressHash, 100));
 
     [TestCaseSource(nameof(ReadCases))]
     public void SecondReadAfterScenario_ReadsInnerExpectedTimes(Action<PbtCarryForwardCachingPersistence, FakePersistence> scenario, int expectedAccountReads, int expectedRunReads)
@@ -207,7 +207,7 @@ public class PbtCarryForwardCachingPersistenceTests
                 return PbtAccount.From(new Account(1, CurrentState.BlockNumber), null);
             }
 
-            public PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey)
+            public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
             {
                 parent.RunReads++;
                 Span<EvmWord> values = stackalloc EvmWord[SlotRun.Width];
@@ -225,7 +225,7 @@ public class PbtCarryForwardCachingPersistenceTests
         private sealed class WriteBatch : IPbtPersistence.IWriteBatch
         {
             public void SetAccount(in ValueHash256 addressHash, PbtAccount? account) { }
-            public void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run) { }
+            public void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey> { }
             public void SetCode(in ValueHash256 codeHash, CodeInfo code) { }
             public void SetCodeLeaf(in PbtPath key, in ValueHash256 value) { }
             public void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath> { }

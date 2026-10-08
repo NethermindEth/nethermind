@@ -24,7 +24,7 @@ public class PbtFormatInteropTests
         byte[][] keys =
         [
             Eip8297KeyDerivation.AccountKey(Blake3Hash.Hash(address), 0).Bytes.ToArray(),
-            Eip8297KeyDerivation.StorageKey(address, new UInt256(63)).Bytes.ToArray(),
+            Eip8297KeyDerivation.HeaderStorageKey(Blake3Hash.Hash(address), new UInt256(63)).Bytes.ToArray(),
             Eip8297KeyDerivation.OverflowCodeKey(codeHash, 127).Bytes.ToArray(),
             Eip8297KeyDerivation.OverflowCodeKey(codeHash, 128).Bytes.ToArray(),
             Eip8297KeyDerivation.StorageKey(address, new UInt256(64)).Bytes.ToArray(),
@@ -87,11 +87,11 @@ public class PbtFormatInteropTests
     public void Key_path_and_batch_memory_evidence()
     {
         (long smallPath, long smallBuilder, long smallBuild) = MeasureMemory<PbtPath, PbtNodePath>();
-        (long widePath, long wideBuilder, long wideBuild) = MeasureMemory<PbtStorageTreeKey, PbtStorageNodePath>();
+        (long widePath, long wideBuilder, long wideBuild) = MeasureMemory<PbtVariableTreeKey, PbtStorageNodePath>();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(Unsafe.SizeOf<PbtPath>(), Is.LessThan(Unsafe.SizeOf<PbtStorageTreeKey>()));
-            Assert.That(Unsafe.SizeOf<PbtWriteOperation<PbtPath>>(), Is.LessThan(Unsafe.SizeOf<PbtWriteOperation<PbtStorageTreeKey>>()));
+            Assert.That(Unsafe.SizeOf<PbtPath>(), Is.LessThan(Unsafe.SizeOf<PbtVariableTreeKey>()));
+            Assert.That(Unsafe.SizeOf<PbtWriteOperation<PbtPath>>(), Is.LessThan(Unsafe.SizeOf<PbtWriteOperation<PbtVariableTreeKey>>()));
             Assert.That(Unsafe.SizeOf<PbtNodePath>(), Is.LessThan(Unsafe.SizeOf<PbtStorageNodePath>()));
             Assert.That(smallPath, Is.Zero);
             Assert.That(widePath, Is.Zero);
@@ -99,7 +99,7 @@ public class PbtFormatInteropTests
             Assert.That(smallBuilder, Is.LessThanOrEqualTo(wideBuilder));
         }
         TestContext.Out.WriteLine($"MEMORY small key={Unsafe.SizeOf<PbtPath>()} operation={Unsafe.SizeOf<PbtWriteOperation<PbtPath>>()} path={smallPath} cold-builder={smallBuilder} warm-build={smallBuild}");
-        TestContext.Out.WriteLine($"MEMORY wide key={Unsafe.SizeOf<PbtStorageTreeKey>()} operation={Unsafe.SizeOf<PbtWriteOperation<PbtStorageTreeKey>>()} path={widePath} cold-builder={wideBuilder} warm-build={wideBuild}");
+        TestContext.Out.WriteLine($"MEMORY wide key={Unsafe.SizeOf<PbtVariableTreeKey>()} operation={Unsafe.SizeOf<PbtWriteOperation<PbtVariableTreeKey>>()} path={widePath} cold-builder={wideBuilder} warm-build={wideBuild}");
     }
 
     private static (long Path, long Builder, long Build) MeasureMemory<TKey, TPath>()

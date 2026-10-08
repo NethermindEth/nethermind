@@ -101,7 +101,7 @@ internal static class PbtSnapshotCodec
 
         IEnumerable<RebuildEntry> Written()
         {
-            PbtStorageTreeKey previous = default;
+            PbtVariableTreeKey previous = default;
             foreach (RebuildEntry entry in leaves)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -174,7 +174,7 @@ internal static class PbtSnapshotCodec
     }
 
     private static RebuildEntry AccountLeaf(in ValueHash256 addressHash, byte subIndex, in ValueHash256 value) =>
-        new((PbtStorageTreeKey)PbtStateKey.Account(addressHash, subIndex), value);
+        new((PbtVariableTreeKey)PbtStateKey.Account(addressHash, subIndex), value);
 
     /// <summary>Reads one stem group, whose leaf keys are <paramref name="prefix"/>, the stem hash and each entry's sub-index.</summary>
     /// <param name="single">Whether the group holds one entry and so omits its entry count.</param>
@@ -192,7 +192,7 @@ internal static class PbtSnapshotCodec
             if (subIndex <= previousIndex) throw new InvalidDataException("Group entries must be strictly ascending.");
             previousIndex = subIndex;
             key[^1] = (byte)subIndex;
-            leaves.Add(new(new PbtStorageTreeKey(key), ReadValue(source)));
+            leaves.Add(new(new PbtVariableTreeKey(key), ReadValue(source)));
         }
         return stemHash;
     }
@@ -235,7 +235,7 @@ internal static class PbtSnapshotCodec
     private static int ReadByte(Stream source) =>
         source.ReadByte() is var value and >= 0 ? value : throw new InvalidDataException("Truncated artifact record.");
 
-    private static void Validate(RebuildEntry entry, in PbtStorageTreeKey previous)
+    private static void Validate(RebuildEntry entry, in PbtVariableTreeKey previous)
     {
         ReadOnlySpan<byte> key = entry.Key.Bytes;
         if (key.IsEmpty || key.Length != (key[0] switch { Eip8297KeyDerivation.AccountZone or Eip8297KeyDerivation.CodeZone => Eip8297KeyDerivation.AccountKeyLength, Eip8297KeyDerivation.StorageZone => Eip8297KeyDerivation.StorageKeyLength, _ => -1 }))
@@ -300,7 +300,7 @@ internal static class PbtSnapshotCodec
     /// <summary>Buffers one stem of the ascending leaf stream and writes it as a tagged record once the stem ends.</summary>
     private sealed class StemWriter(Stream destination)
     {
-        private readonly byte[] _stem = new byte[PbtStorageTreeKey.MaxLength - 1];
+        private readonly byte[] _stem = new byte[PbtVariableTreeKey.MaxLength - 1];
         private readonly byte[] _subIndexes = new byte[GroupWidth];
         private readonly ValueHash256[] _values = new ValueHash256[GroupWidth];
         private readonly byte[] _storageAddress = new byte[ValueHash256.MemorySize];

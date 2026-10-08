@@ -109,13 +109,13 @@ public class PbtResourcePoolTests
     [Test]
     public void Returned_shards_are_empty_and_not_shared_with_the_previous_builder()
     {
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> original = new();
-        PbtStorageTreeKey key = new(Bytes.FromHexString("1234"));
+        using PbtWriteBatchBuilder<PbtVariableTreeKey> original = new();
+        PbtVariableTreeKey key = new(Bytes.FromHexString("1234"));
         original.Set(key, TestItem.KeccakA.ValueHash256);
         original.Reset();
 
-        using PbtWriteBatchBuilder<PbtStorageTreeKey> replacement = new();
-        PbtStorageTreeKey replacementKey = new(Bytes.FromHexString("1235"));
+        using PbtWriteBatchBuilder<PbtVariableTreeKey> replacement = new();
+        PbtVariableTreeKey replacementKey = new(Bytes.FromHexString("1235"));
         replacement.Set(replacementKey, TestItem.KeccakB.ValueHash256);
         original.Reset();
         original.Dispose();
@@ -125,11 +125,11 @@ public class PbtResourcePoolTests
         {
             Assert.That(original.Build().ConsumeOperations(), Is.EqualTo(new[]
             {
-                new PbtWriteOperation<PbtStorageTreeKey>(key, TestItem.KeccakC.ValueHash256)
+                new PbtWriteOperation<PbtVariableTreeKey>(key, TestItem.KeccakC.ValueHash256)
             }));
             Assert.That(replacement.Build().ConsumeOperations(), Is.EqualTo(new[]
             {
-                new PbtWriteOperation<PbtStorageTreeKey>(replacementKey, TestItem.KeccakB.ValueHash256)
+                new PbtWriteOperation<PbtVariableTreeKey>(replacementKey, TestItem.KeccakB.ValueHash256)
             }));
         }
     }
@@ -248,7 +248,7 @@ public class PbtResourcePoolTests
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         content.Accounts[addressHash] = Build.An.Account.TestObject.ToPbtAccount();
-        content.SetSlot(PbtStateKey.Storage(TestItem.AddressA, 1), EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        content.SetSlot(PbtStateKey.Slot(TestItem.AddressA, 1), EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);
@@ -257,7 +257,7 @@ public class PbtResourcePoolTests
         {
             Assert.That(rented, Is.SameAs(content));
             Assert.That(rented.Accounts, Is.Empty);
-            Assert.That(rented.Storages, Is.Empty);
+            Assert.That(rented.HeaderStorages, Is.Empty);
             Assert.That(rented.Codes, Is.Empty);
             Assert.That(rented.SelfDestructedStorageAddresses, Is.Empty);
             Assert.That(rented.GetPayloadSize(), Is.EqualTo(default(PbtSnapshotPayloadSize)));

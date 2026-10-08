@@ -23,26 +23,32 @@ internal static class PbtStateKey
     public static PbtPath Code(in ValueHash256 codeHash, int chunkId) =>
         Eip8297KeyDerivation.OverflowCodeKey(codeHash.Bytes, chunkId);
 
-    public static PbtStorageTreeKey Storage(Address address, in UInt256 slot)
+    /// <summary>Whether <paramref name="slot"/> is a header slot, which <see cref="HeaderStorage"/> keys; others are keyed by <see cref="Storage(Address, in ValueHash256, in UInt256)"/>.</summary>
+    public static bool IsHeaderSlot(in UInt256 slot) => slot < PbtKeyDerivation.HeaderStorageSlots;
+
+    public static PbtPath HeaderStorage(in ValueHash256 addressHash, in UInt256 slot) =>
+        Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot);
+
+    public static PbtStoragePath Storage(Address address, in UInt256 slot)
     {
         ValueHash256 address32 = address.ToHash();
         return Eip8297KeyDerivation.StorageKey(address32.Bytes, slot);
     }
 
     /// <summary><see cref="Storage(Address, in UInt256)"/> reusing a precomputed <see cref="AddressKeyHash"/>.</summary>
-    public static PbtStorageTreeKey Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
+    public static PbtStoragePath Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         ValueHash256 address32 = address.ToHash();
         return Eip8297KeyDerivation.StorageKey(address32.Bytes, addressHash, slot);
     }
 
-    /// <summary>The <see cref="SlotRun.RunKey"/> of the slot's storage key, and the slot's index within the run.</summary>
-    public static PbtStorageTreeKey StorageRun(Address address, in ValueHash256 addressHash, in UInt256 slot, out int index)
-    {
-        PbtStorageTreeKey slotKey = Storage(address, addressHash, slot);
-        index = SlotRun.IndexOf(slotKey);
-        return SlotRun.RunKey(slotKey);
-    }
+    /// <summary>The leaf key of any slot, header or not, for leaf streams that mix zones.</summary>
+    public static PbtVariableTreeKey Slot(Address address, in ValueHash256 addressHash, in UInt256 slot) => IsHeaderSlot(slot)
+        ? (PbtVariableTreeKey)HeaderStorage(addressHash, slot)
+        : (PbtVariableTreeKey)Storage(address, addressHash, slot);
 
-    internal static ValueHash256 StorageAddress(in PbtStorageTreeKey key) => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
+    /// <inheritdoc cref="Slot(Address, in ValueHash256, in UInt256)"/>
+    public static PbtVariableTreeKey Slot(Address address, in UInt256 slot) => Slot(address, AddressKeyHash(address), slot);
+
+    internal static ValueHash256 StorageAddress<TKey>(in TKey key) where TKey : struct, IPbtKey<TKey> => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
 }

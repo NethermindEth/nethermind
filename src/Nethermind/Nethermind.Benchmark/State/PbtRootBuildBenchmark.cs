@@ -50,7 +50,7 @@ public class PbtRootBuildBenchmark
     public void GlobalSetup()
     {
         Random random = new(8297);
-        SortedDictionary<PbtStorageTreeKey, ValueHash256> leaves = [];
+        SortedDictionary<PbtVariableTreeKey, ValueHash256> leaves = [];
         Span<byte> bytes = stackalloc byte[PbtPath.KeyLength];
         Span<byte> value = stackalloc byte[32];
         while (leaves.Count < LeafCount)
@@ -59,13 +59,13 @@ public class PbtRootBuildBenchmark
             bytes[0] = Eip8297KeyDerivation.AccountZone;
             random.NextBytes(value);
             value[0] |= 1;
-            leaves[new PbtStorageTreeKey(bytes)] = new ValueHash256(value);
+            leaves[new PbtVariableTreeKey(bytes)] = new ValueHash256(value);
         }
 
         _entries = new RebuildEntry[LeafCount];
         PbtWriteOperation<PbtPath>[] accountOperations = new PbtWriteOperation<PbtPath>[LeafCount];
         int index = 0;
-        foreach ((PbtStorageTreeKey key, ValueHash256 leaf) in leaves)
+        foreach ((PbtVariableTreeKey key, ValueHash256 leaf) in leaves)
         {
             _entries[index] = new RebuildEntry(key, leaf);
             accountOperations[index++] = new(new PbtPath(key.Bytes), leaf);

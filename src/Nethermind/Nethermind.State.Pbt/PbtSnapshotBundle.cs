@@ -63,11 +63,10 @@ public sealed class PbtSnapshotBundle(
         else throw new ArgumentException("A canonical account or code key is required.", nameof(key));
     }
 
-    private void SetPbtLeaf(in PbtStorageTreeKey key, ValueHash256? value)
+    private void SetPbtLeaf(in PbtStoragePath key, ValueHash256? value)
     {
         ObjectDisposedException.ThrowIf(_isDisposed, this);
-        if (PbtPartitions.PartitionOf(key) == PbtPartition.Storage) _storageBatch.SetLeaf((PbtStoragePath)key, value);
-        else SetPbtLeaf((PbtPath)key, value);
+        _storageBatch.SetLeaf(key, value);
     }
 
     internal PbtPartitionBatches PrepareLeafChanges()
@@ -152,14 +151,15 @@ public sealed class PbtSnapshotBundle(
     public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtStateKey.AddressKeyHash(address), slot);
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
-    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot)
-    {
-        HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, addressHash, slot, out int index);
-        return BufferRun(WriteBuffer, runKey, addressHash).Get(index);
-    }
+    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => PbtStateKey.IsHeaderSlot(slot)
+        ? GetSlot(PbtStateKey.HeaderStorage(addressHash, slot), addressHash)
+        : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
+
+    private EvmWord GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+        BufferRun<TKey>(WriteBuffer, SlotRun.RunKey(slotKey), addressHash).Get(SlotRun.IndexOf(slotKey));
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
-    private PackedSlotRun BufferRun(PbtSnapshotContent writeBuffer, in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    private PackedSlotRun BufferRun<TKey>(PbtSnapshotContent writeBuffer, in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
     {
         PackedSlotRun? run;
         while (!writeBuffer.TryGetSlotRun(runKey, out run))
@@ -226,10 +226,25 @@ public sealed class PbtSnapshotBundle(
     /// <summary>Sets a storage slot, reusing a precomputed <see cref="PbtStateKey.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
     public void SetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot, in EvmWord value)
     {
-        PbtStorageTreeKey key = PbtStateKey.Storage(address, addressHash, slot);
-        SetPbtLeaf(key, EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
-        HashedKey<PbtStorageTreeKey> runKey = SlotRun.RunKey(key);
-        int index = SlotRun.IndexOf(key);
+        ValueHash256? leaf = EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
+        if (PbtStateKey.IsHeaderSlot(slot))
+        {
+            PbtPath key = PbtStateKey.HeaderStorage(addressHash, slot);
+            SetPbtLeaf(key, leaf);
+            SetRunSlot(key, addressHash, value);
+        }
+        else
+        {
+            PbtStoragePath key = PbtStateKey.Storage(address, addressHash, slot);
+            SetPbtLeaf(key, leaf);
+            SetRunSlot(key, addressHash, value);
+        }
+    }
+
+    private void SetRunSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash, in EvmWord value) where TKey : struct, IPbtKey<TKey>
+    {
+        HashedKey<TKey> runKey = SlotRun.RunKey(slotKey);
+        int index = SlotRun.IndexOf(slotKey);
         PbtSnapshotContent writeBuffer = WriteBuffer;
         while (true)
         {
@@ -245,7 +260,7 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>The run as the local snapshots see it, borrowed; null when they say nothing about it.</summary>
-    private PackedSlotRun? FindLocalRun(in HashedKey<PbtStorageTreeKey> runKey, in ValueHash256 addressHash)
+    private PackedSlotRun? FindLocalRun<TKey>(in HashedKey<TKey> runKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey>
     {
         if (WriteBuffer.SelfDestructedStorageAddresses.ContainsKey(addressHash)) return SlotRun.Empty;
         for (int layer = snapshots.Count - 1; layer >= 0; layer--)

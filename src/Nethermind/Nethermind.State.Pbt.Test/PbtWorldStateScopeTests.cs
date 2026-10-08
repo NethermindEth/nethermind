@@ -280,10 +280,10 @@ public class PbtWorldStateScopeTests
         PbtTestLeaves.AddAccount(expected, TestItem.AddressA, Build.An.Account.WithBalance(1).WithCode(code).TestObject, code);
         PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 7, (UInt256)(updatedSlot == 7 ? 0xef : 0xab));
         PbtTestLeaves.AddSlot(expected, TestItem.AddressA, 1000, (UInt256)(updatedSlot == 1000 ? 0xef : 0xcd));
-        Dictionary<PbtStorageTreeKey, ValueHash256> leaves = expected.ToDictionary(entry => entry.Key, entry => entry.Leaf);
+        Dictionary<PbtVariableTreeKey, ValueHash256> leaves = expected.ToDictionary(entry => entry.Key, entry => entry.Leaf);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(leaves.ContainsKey((PbtStorageTreeKey)PbtStateKey.Code(codeHash.ValueHash256, 256)), Is.True);
+            Assert.That(leaves.ContainsKey((PbtVariableTreeKey)PbtStateKey.Code(codeHash.ValueHash256, 256)), Is.True);
             Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(leaves)));
             Assert.That(reopened.TreeRoot, Is.EqualTo(scope.RootHash.ValueHash256));
         }
@@ -436,10 +436,10 @@ public class PbtWorldStateScopeTests
         batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(balance).TestObject);
     }
 
-    private static byte[] ReferenceRoot(Dictionary<PbtStorageTreeKey, ValueHash256> leaves)
+    private static byte[] ReferenceRoot(Dictionary<PbtVariableTreeKey, ValueHash256> leaves)
     {
         EipReferenceTree reference = new();
-        foreach ((PbtStorageTreeKey key, ValueHash256 value) in leaves) reference.Insert(key.Bytes, value.Bytes.ToArray());
+        foreach ((PbtVariableTreeKey key, ValueHash256 value) in leaves) reference.Insert(key.Bytes, value.Bytes.ToArray());
         return reference.Merkelize();
     }
 }

@@ -10,7 +10,7 @@ namespace Nethermind.Pbt;
 /// <remarks>Paths are limited to 528 bits.</remarks>
 public readonly struct PbtStorageNodePath : IPbtNodePath<PbtStorageNodePath>, IEquatable<PbtStorageNodePath>, IComparable<PbtStorageNodePath>
 {
-    private const int MaxByteLength = PbtStorageTreeKey.MaxLength;
+    private const int MaxByteLength = PbtVariableTreeKey.MaxLength;
 
     private readonly PathBytes _bytes;
 

@@ -20,7 +20,7 @@ public class PbtOperationSortTests
         AssertSorted(Operations(count, keysPerStem, random, static bytes => new PbtPath(bytes), PbtPath.KeyLength));
         AssertSorted(Operations(count, keysPerStem, random, static bytes => new PbtStoragePath(bytes), PbtStoragePath.KeyLength));
         // Variable-length keys that prefix one another, padded chunks included, sort shorter first.
-        AssertSorted(Operations(count, keysPerStem, random, static bytes => new PbtStorageTreeKey(bytes), 0));
+        AssertSorted(Operations(count, keysPerStem, random, static bytes => new PbtVariableTreeKey(bytes), 0));
     }
 
     private static PbtWriteOperation<TKey>[] Operations<TKey>(int count, int keysPerStem, Random random, Func<byte[], TKey> create, int keyLength)
@@ -30,8 +30,8 @@ public class PbtOperationSortTests
         return Enumerable.Range(0, count)
             .Select(index =>
             {
-                int length = keyLength != 0 ? keyLength : random.Next(1, PbtStorageTreeKey.MaxLength + 1);
-                if (index % keysPerStem == 0) stem = RandomBytes(random, PbtStorageTreeKey.MaxLength);
+                int length = keyLength != 0 ? keyLength : random.Next(1, PbtVariableTreeKey.MaxLength + 1);
+                if (index % keysPerStem == 0) stem = RandomBytes(random, PbtVariableTreeKey.MaxLength);
                 byte[] key = stem[..length];
                 key[^1] = (byte)(index % keysPerStem);
                 return create(key);

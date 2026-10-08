@@ -31,7 +31,8 @@ public interface IPbtPersistence
 
         PbtAccount? GetAccount(in ValueHash256 addressHash);
         /// <summary>Gets a caller-owned copy of the persisted run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); <see cref="SlotRun.Empty"/> when absent.</summary>
-        PackedSlotRun GetSlotRun(in PbtStorageTreeKey runKey);
+        /// <typeparam name="TKey"><see cref="PbtPath"/> for a header-slot run, <see cref="PbtStoragePath"/> for any other.</typeparam>
+        PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>;
         CodeInfo? GetCode(in ValueHash256 codeHash);
         /// <summary>Gets the code-chunk leaf keyed by <paramref name="key"/>; false when absent, which an all-zero chunk always is.</summary>
         bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value);
@@ -55,7 +56,8 @@ public interface IPbtPersistence
     {
         void SetAccount(in ValueHash256 addressHash, PbtAccount? account);
         /// <summary>Stages the whole run keyed by <paramref name="runKey"/> (a <see cref="SlotRun.RunKey"/>); an empty run deletes it. The run is borrowed for the call.</summary>
-        void SetSlotRun(in PbtStorageTreeKey runKey, PackedSlotRun run);
+        /// <typeparam name="TKey"><see cref="PbtPath"/> for a header-slot run, <see cref="PbtStoragePath"/> for any other.</typeparam>
+        void SetSlotRun<TKey>(in TKey runKey, PackedSlotRun run) where TKey : struct, IPbtKey<TKey>;
         void SetCode(in ValueHash256 codeHash, CodeInfo code);
         /// <summary>Stages the code-chunk leaf keyed by <paramref name="key"/>; the caller omits all-zero chunks.</summary>
         void SetCodeLeaf(in PbtPath key, in ValueHash256 value);

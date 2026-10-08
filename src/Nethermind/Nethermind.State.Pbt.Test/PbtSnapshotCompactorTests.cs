@@ -22,7 +22,7 @@ public class PbtSnapshotCompactorTests
     {
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath alternateGroupKey = new([], 0);
-        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, 64);
+        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, 64);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
@@ -56,7 +56,7 @@ public class PbtSnapshotCompactorTests
 
         RefCountingMemory CreateStorageLeafGroup()
         {
-            PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
+            PbtTraversalPath path = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
             using PbtNodeGroupWriter<PbtNodePath> writer = new(groupKey.BitDepth, memoryProvider);
             writer.Write(path, PbtFourLevelGroupGeometry.RootPosition, PbtTreeHarness.EncodeLeaf(key));
             return writer.Detach(default, ushort.MaxValue)!;
@@ -67,9 +67,9 @@ public class PbtSnapshotCompactorTests
     public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtStorageTreeKey key = PbtStateKey.Storage(TestItem.AddressA, slot);
-        PbtStorageTreeKey otherSlot = PbtStateKey.Storage(TestItem.AddressA, slot + 1);
-        PbtStorageTreeKey otherAddress = PbtStateKey.Storage(TestItem.AddressB, slot);
+        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, slot);
+        PbtVariableTreeKey otherSlot = PbtStateKey.Slot(TestItem.AddressA, slot + 1);
+        PbtVariableTreeKey otherAddress = PbtStateKey.Slot(TestItem.AddressB, slot);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
         CodeInfo code = new(Bytes.FromHexString("6001600055"));
@@ -83,7 +83,7 @@ public class PbtSnapshotCompactorTests
         clearing.ClearStorage(addressHash);
         PbtSnapshotContent writing = new();
         writing.SetSlot(key, replacement);
-        PackedSlotRun writtenRun = writing.Storages[SlotRun.RunKey(key)];
+        PackedSlotRun writtenRun = writing.GetRun(key);
         writing.Accounts[addressHash] = PbtAccount.From(account, code);
         writing.Codes[account.CodeHash.ValueHash256] = code;
         using (PbtSnapshot compacted = Compact(older, clearLast ? writing : clearing, clearLast ? clearing : writing))
@@ -94,7 +94,7 @@ public class PbtSnapshotCompactorTests
             Assert.That(compacted.Content.SelfDestructedStorageAddresses.ContainsKey(addressHash), Is.True);
             Assert.That(compacted.Content.TryGetSlot(key, out _), Is.EqualTo(!clearLast));
             if (!clearLast) Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(replacement));
-            if (!clearLast) Assert.That(compacted.Content.Storages[SlotRun.RunKey(key)], Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
+            if (!clearLast) Assert.That(compacted.Content.GetRun(key), Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
             // The rewritten run is whole, so the older layer's neighbouring slot does not survive the rewrite.
             Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(default(EvmWord)));
             Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));

@@ -11,7 +11,7 @@ internal static class PbtColumnSweep
     /// <summary>An exclusive upper bound past every PBT column key, including the storage keys longer than 32 bytes.</summary>
     public static byte[] PastEveryKey()
     {
-        byte[] key = new byte[PbtStorageTreeKey.MaxLength + 1];
+        byte[] key = new byte[PbtVariableTreeKey.MaxLength + 1];
         key.AsSpan().Fill(0xFF);
         return key;
     }

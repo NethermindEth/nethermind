@@ -101,8 +101,8 @@ public class PbtMetricsTests
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         ValueHash256 codeHash = TestItem.KeccakA.ValueHash256;
-        PbtStorageTreeKey headerStorageKey = PbtStateKey.Storage(TestItem.AddressA, 1);
-        PbtStorageTreeKey storageKey = PbtStateKey.Storage(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
+        PbtPath headerStorageKey = PbtStateKey.HeaderStorage(addressHash, 1);
+        PbtStoragePath storageKey = PbtStateKey.Storage(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
         string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
         Account account = new(1, 100);
@@ -110,7 +110,8 @@ public class PbtMetricsTests
         CodeInfo code = new(Bytes.FromHexString("6001"));
         using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(1);
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
-        reader.GetSlotRun(Arg.Any<PbtStorageTreeKey>()).Returns(SlotRun.Empty);
+        reader.GetSlotRun(Arg.Any<PbtPath>()).Returns(SlotRun.Empty);
+        reader.GetSlotRun(Arg.Any<PbtStoragePath>()).Returns(SlotRun.Empty);
         if (scenario != "missing")
         {
             reader.GetAccount(addressHash).Returns(account.ToPbtAccount());
@@ -145,10 +146,10 @@ public class PbtMetricsTests
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
-        EvmWord actualHeaderSlot = bundle.GetSlot(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
-        EvmWord actualSlot = bundle.GetSlot(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
-        PackedSlotRun headerRun = bundle.RentRun(SlotRun.RunKey(headerStorageKey), addressHash);
-        PackedSlotRun storageRun = bundle.RentRun(SlotRun.RunKey(storageKey), addressHash);
+        EvmWord actualHeaderSlot = bundle.GetSlot<PbtPath>(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
+        EvmWord actualSlot = bundle.GetSlot<PbtStoragePath>(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
+        PackedSlotRun headerRun = bundle.RentRun<PbtPath>(SlotRun.RunKey(headerStorageKey), addressHash);
+        PackedSlotRun storageRun = bundle.RentRun<PbtStoragePath>(SlotRun.RunKey(storageKey), addressHash);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
         CodeInfo? actualCode = bundle.GetCode(codeHash);
 

@@ -3,7 +3,6 @@
 
 using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -37,10 +36,15 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
             return;
         }
 
-        HashedKey<PbtStorageTreeKey> runKey = PbtStateKey.StorageRun(address, PbtStateKey.AddressKeyHash(address), index, out int slotIndex);
-        EvmWord word = bundle.GetSlot(runKey, slotIndex);
+        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        EvmWord word = PbtStateKey.IsHeaderSlot(index)
+            ? GetSlot(bundle, PbtStateKey.HeaderStorage(addressHash, index))
+            : GetSlot(bundle, PbtStateKey.Storage(address, addressHash, index));
         value = EvmWordSlot.ToUInt256(in word);
     }
+
+    private static EvmWord GetSlot<TKey>(PbtReadOnlySnapshotBundle bundle, in TKey slotKey) where TKey : struct, IPbtKey<TKey> =>
+        bundle.GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
 

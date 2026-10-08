@@ -31,7 +31,7 @@ internal static class PbtKeyOperations
     internal static TKey CreateKey<TKey>(scoped ReadOnlySpan<byte> prefix, scoped ReadOnlySpan<byte> postfix) where TKey : struct, IPbtKey<TKey>
     {
         if (prefix.IsEmpty) return TKey.Create(postfix);
-        Span<byte> key = stackalloc byte[PbtStorageTreeKey.MaxLength];
+        Span<byte> key = stackalloc byte[PbtVariableTreeKey.MaxLength];
         prefix.CopyTo(key);
         postfix.CopyTo(key[prefix.Length..]);
         return TKey.Create(key[..(prefix.Length + postfix.Length)]);

@@ -184,14 +184,14 @@ internal static class PbtStoreTestExtensions
     internal static RefCountingMemory? GetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         return store.GetNodeGroup(cursor, groupHash);
     }
 
     internal static void SetNodeGroup<TPath>(this IPbtStore store, TPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         store.SetNodeGroup(cursor, groupHash, payload);
     }
 
@@ -201,15 +201,15 @@ internal static class PbtStoreTestExtensions
         writer.SetNodeGroup(groupKey, groupHash, payload);
     }
 
-    internal static GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
+    internal static GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> ReadGroup<TPath>(TPath groupKey, ReadOnlySpan<byte> payload)
         where TPath : struct, IPbtNodePath<TPath>
     {
-        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtStorageTreeKey.MaxLength], groupKey);
+        PbtTraversalPath cursor = PbtTraversalPath.FromPath(stackalloc byte[PbtVariableTreeKey.MaxLength], groupKey);
         PbtNodeGroupCodec.ValidateNodes(cursor, payload);
         return new(RefCountingMemory.Wrapping(payload.ToArray()), groupKey.BitDepth);
     }
 
-    internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader)
+    internal static List<(int Position, ReadOnlyMemory<byte> Encoding)> Nodes(this GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader)
     {
         List<(int Position, ReadOnlyMemory<byte> Encoding)> nodes = [];
         for (uint stored = reader.StoredPositions; stored != 0; stored &= stored - 1)
@@ -439,11 +439,11 @@ internal static class PbtStoreTestExtensions
         PbtNodeGroupLocation<TPath> location = PbtTestPaths.Locate(path);
         using RefCountingMemory? payload = store.GetPhysicalNodeGroup(location.GroupKey);
         if (payload is null) return null;
-        GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
+        GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader = PbtStoreTestExtensions.ReadGroup(location.GroupKey, payload.GetSpan());
         return ResolveNode(reader, location.GroupKey, location.Position);
     }
 
-    private static byte[]? ResolveNode<TPath>(GroupFrameReader<PbtStorageTreeKey, PbtStorageNodePath> reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
+    private static byte[]? ResolveNode<TPath>(GroupFrameReader<PbtVariableTreeKey, PbtStorageNodePath> reader, TPath groupKey, int position) where TPath : struct, IPbtNodePath<TPath>
     {
         ReadOnlySpan<byte> encoding = reader.GetEncoding(position).Span;
         if (!encoding.IsEmpty) return encoding.ToArray();

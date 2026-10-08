@@ -78,7 +78,7 @@ internal static class PbtLeafIngestion
     public static IEnumerable<RebuildEntry> SpoolLeaves(PbtSortedSpool spool)
     {
         using PbtSortedSpool.Cursor cursor = spool.Read();
-        while (cursor.MoveNext()) yield return new RebuildEntry(new PbtStorageTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+        while (cursor.MoveNext()) yield return new RebuildEntry(new PbtVariableTreeKey(cursor.Key), new ValueHash256(cursor.Value));
     }
 
     /// <param name="fraction">The fraction of the pass done after the given number of leaves, sampled on the reading

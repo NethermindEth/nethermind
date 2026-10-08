@@ -43,20 +43,26 @@ public static class SlotRun
     public static void Return(PackedSlotRun run) => run.ReturnSelf();
 
     /// <summary>The storage key with its low four bits cleared: the key of the run holding <paramref name="slotKey"/>.</summary>
-    public static PbtStorageTreeKey RunKey(in PbtStorageTreeKey slotKey) => WithLastByte(slotKey, (byte)(slotKey.Bytes[^1] & ~IndexMask));
+    public static TKey RunKey<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => WithLastByte(slotKey, (byte)(slotKey.Bytes[^1] & ~IndexMask));
 
     /// <summary>The slot's position within its run: the low four bits of the storage key.</summary>
-    public static int IndexOf(in PbtStorageTreeKey slotKey) => slotKey.Bytes[^1] & IndexMask;
+    public static int IndexOf<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => slotKey.Bytes[^1] & IndexMask;
 
     /// <summary>The storage key of slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>.</summary>
-    public static PbtStorageTreeKey SlotKey(in PbtStorageTreeKey runKey, int index) => WithLastByte(runKey, (byte)(runKey.Bytes[^1] | index));
+    public static TKey SlotKey<TKey>(in TKey runKey, int index) where TKey : struct, IPbtKey<TKey> => WithLastByte(runKey, (byte)(runKey.Bytes[^1] | index));
 
-    private static PbtStorageTreeKey WithLastByte(in PbtStorageTreeKey key, byte last)
+    /// <summary>Picks <paramref name="header"/> for header-slot runs, keyed by <see cref="PbtPath"/>, and <paramref name="storage"/> for storage-zone runs, keyed by <see cref="PbtStoragePath"/>.</summary>
+    internal static T ByZone<TKey, T>(object header, object storage) where TKey : struct, IPbtKey<TKey> where T : class =>
+        (T)(typeof(TKey) == typeof(PbtPath) ? header
+            : typeof(TKey) == typeof(PbtStoragePath) ? storage
+            : throw new NotSupportedException($"Slot runs are keyed by {nameof(PbtPath)} or {nameof(PbtStoragePath)}, not {typeof(TKey).Name}."));
+
+    private static TKey WithLastByte<TKey>(in TKey key, byte last) where TKey : struct, IPbtKey<TKey>
     {
-        Span<byte> bytes = stackalloc byte[PbtStorageTreeKey.MaxLength];
+        Span<byte> bytes = stackalloc byte[TKey.Capacity];
         key.Bytes.CopyTo(bytes);
         bytes[key.Length - 1] = last;
-        return new PbtStorageTreeKey(bytes[..key.Length]);
+        return TKey.Create(bytes[..key.Length]);
     }
 }
 

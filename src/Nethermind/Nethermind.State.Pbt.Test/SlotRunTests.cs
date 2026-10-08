@@ -105,16 +105,14 @@ public class SlotRunTests
     [TestCase(256u, 0, 0)]
     public void Run_key_clears_the_slot_index_nibble(uint slot, int index, byte runLastByte)
     {
-        PbtStorageTreeKey slotKey = PbtStateKey.Storage(TestItem.AddressA, slot);
-        PbtStorageTreeKey runKey = SlotRun.RunKey(slotKey);
+        PbtVariableTreeKey slotKey = PbtStateKey.Slot(TestItem.AddressA, slot);
+        PbtVariableTreeKey runKey = SlotRun.RunKey(slotKey);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(SlotRun.IndexOf(slotKey), Is.EqualTo(index));
             Assert.That(runKey.Bytes[..^1].ToArray(), Is.EqualTo(slotKey.Bytes[..^1].ToArray()));
             Assert.That(runKey.Bytes[^1], Is.EqualTo(runLastByte));
             Assert.That(SlotRun.SlotKey(runKey, index), Is.EqualTo(slotKey));
-            Assert.That(PbtStateKey.StorageRun(TestItem.AddressA, PbtStateKey.AddressKeyHash(TestItem.AddressA), slot, out int runIndex), Is.EqualTo(runKey));
-            Assert.That(runIndex, Is.EqualTo(index));
         }
     }
 }

@@ -139,7 +139,7 @@ public class ImportPbtFromPreimageFlatTests
         using (IPbtPersistence.IWriteBatch staging = pbtTarget.CreateStagingWriteBatch(WriteFlags.None))
         {
             staging.SetAccount(PbtStateKey.AddressKeyHash(TestItem.AddressC), new Account(1, 2).ToPbtAccount());
-            PbtStorageTreeKey staleNodeKey = new([0x80]);
+            PbtVariableTreeKey staleNodeKey = new([0x80]);
             PbtNodePath groupKey = new([], 0);
             using PbtNodeGroupStore staleNodes = new();
             staleNodes.SetNode(groupKey, PbtTreeHarness.EncodeLeaf(staleNodeKey));
@@ -147,7 +147,7 @@ public class ImportPbtFromPreimageFlatTests
             staging.SetNodeGroup(groupKey, payload);
             staging.Commit();
         }
-        byte[] maximumLengthKey = new byte[PbtStorageTreeKey.MaxLength];
+        byte[] maximumLengthKey = new byte[PbtVariableTreeKey.MaxLength];
         maximumLengthKey.AsSpan().Fill(0xFF);
         pbtDb.GetColumnDb(PbtColumns.Storages)[maximumLengthKey] = SlotRunTestExtensions.SingleSlotRow(TestItem.KeccakA.Bytes);
 
@@ -246,7 +246,7 @@ public class ImportPbtFromPreimageFlatTests
             PbtStorageNodePath node = depth == 0 ? group : PbtTestPaths.PathOf(group, 0);
             // Below the root every group stores one branch over two inline leaves, except where no longer key fits.
             bool inlineLeaves = depth != 0 && node.BitDepth < PbtFourLevelGroupGeometry.MaxPathDepth;
-            byte[] leftKey = new byte[inlineLeaves ? PbtStorageTreeKey.MaxLength : 0];
+            byte[] leftKey = new byte[inlineLeaves ? PbtVariableTreeKey.MaxLength : 0];
             byte[] rightKey = (byte[])leftKey.Clone();
             if (inlineLeaves)
             {

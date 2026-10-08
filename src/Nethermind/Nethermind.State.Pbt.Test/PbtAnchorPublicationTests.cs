@@ -286,9 +286,9 @@ public class PbtAnchorPublicationTests
             Address address = addresses[index] = Address.FromNumber((UInt256)(index + 1));
             ValueHash256 basicData = default;
             PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
-            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 0), basicData));
-            leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
-            leaves.Add(new(PbtStateKey.Storage(address, 100), ((UInt256)(index + 1)).ToValueHash()));
+            leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 0), basicData));
+            leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
+            leaves.Add(new(PbtStateKey.Slot(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
@@ -305,7 +305,7 @@ public class PbtAnchorPublicationTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.GetAccount(PbtStateKey.AddressKeyHash(addresses[index]))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
-                Assert.That(reader.GetSlot(PbtStateKey.Storage(addresses[index], 100)),
+                Assert.That(reader.GetSlot(PbtStateKey.Slot(addresses[index], 100)),
                     Is.EqualTo(EvmWordSlot.FromStripped(((UInt256)(index + 1)).ToBigEndian())));
             }
         }
@@ -392,10 +392,10 @@ public class PbtAnchorPublicationTests
         Address authority = new("0x2b5ad5c4795c026514f8317c7a215e218dccd6cf");
         Address history = new("0x0000f90827f1c53a10cb7a02335b175320002935");
         ValueHash256 writerCodeHash = ValueKeccak.Compute(Bytes.FromHexString("60003560005500"));
-        PbtStorageTreeKey basic = (PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(writer), 0);
-        PbtStorageTreeKey chunk = (PbtStorageTreeKey)PbtStateKey.Code(writerCodeHash, 0);
-        PbtStorageTreeKey delegation = (PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(authority), 2);
-        PbtStorageTreeKey storageKey = PbtStateKey.Storage(history, UInt256.Zero);
+        PbtVariableTreeKey basic = (PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(writer), 0);
+        PbtVariableTreeKey chunk = (PbtVariableTreeKey)PbtStateKey.Code(writerCodeHash, 0);
+        PbtVariableTreeKey delegation = (PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(authority), 2);
+        PbtVariableTreeKey storageKey = PbtStateKey.Slot(history, UInt256.Zero);
         switch (corruption)
         {
             case "code": Mutate(chunk, 1); break;
@@ -416,19 +416,19 @@ public class PbtAnchorPublicationTests
             case "missing-code": Remove(chunk); break;
             case "delegation-with-code-leaves":
                 byte[] delegationCode = leaves.Find(entry => entry.Key.Equals(delegation)).Leaf.Bytes[..23].ToArray();
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(ValueKeccak.Compute(delegationCode), 0), new ValueHash256(PbtTreeHarness.ChunkifyCode(delegationCode))));
+                leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Code(ValueKeccak.Compute(delegationCode), 0), new ValueHash256(PbtTreeHarness.ChunkifyCode(delegationCode))));
                 break;
             // A chunk past the account's code size: reachable by no code read, so nothing accounts for it.
-            case "extra-code-chunk": leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Code(writerCodeHash, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
+            case "extra-code-chunk": leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Code(writerCodeHash, 1), Keccak.OfAnEmptyString.ValueHash256)); break;
             case "surplus-account-leaves":
                 Address surplus = new("0x00000000000000000000000000000000deadbeef");
                 ValueHash256 basicData = default;
                 PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, 1, UInt256.Zero);
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 0), basicData));
-                leaves.Add(new((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 1), Keccak.OfAnEmptyString.ValueHash256));
+                leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 0), basicData));
+                leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 1), Keccak.OfAnEmptyString.ValueHash256));
                 break;
             case "orphan-storage-leaf":
-                leaves.Add(new(PbtStateKey.Storage(new Address("0x00000000000000000000000000000000cafebabe"), 100),
+                leaves.Add(new(PbtStateKey.Slot(new Address("0x00000000000000000000000000000000cafebabe"), 100),
                     new ValueHash256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001"))));
                 break;
             // Both artifacts drop one account consistently: the image is whole, but not the anchor's state.
@@ -459,7 +459,7 @@ public class PbtAnchorPublicationTests
         preimages.Position = 0;
         return (snapshot, preimages);
 
-        void Mutate(PbtStorageTreeKey key, int offset)
+        void Mutate(PbtVariableTreeKey key, int offset)
         {
             int index = leaves.FindIndex(entry => entry.Key.Equals(key));
             Assert.That(index, Is.GreaterThanOrEqualTo(0), corruption);
@@ -468,11 +468,11 @@ public class PbtAnchorPublicationTests
             leaves[index] = new(key, new ValueHash256(bytes));
         }
 
-        void Remove(PbtStorageTreeKey key) => Assert.That(leaves.RemoveAll(entry => entry.Key.Equals(key)), Is.EqualTo(1));
+        void Remove(PbtVariableTreeKey key) => Assert.That(leaves.RemoveAll(entry => entry.Key.Equals(key)), Is.EqualTo(1));
 
         // A codeless account without storage, whose leaves are only its basic data and empty code hash.
         Address Eoa() => accounts.Find(account => account.SlotCount == 0 && leaves.Exists(entry =>
-            entry.Key.Equals((PbtStorageTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(account.Address), 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
+            entry.Key.Equals((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(account.Address), 1)) && entry.Leaf == Keccak.OfAnEmptyString.ValueHash256)).Address;
 
         void ChangeSlots(Action<List<ValueHash256>> change)
         {
@@ -534,7 +534,7 @@ public class PbtAnchorPublicationTests
             }
             if (expected.Storage is null) continue;
             foreach ((UInt256 slot, byte[] value) in expected.Storage)
-                Assert.That(reader.GetSlot(PbtStateKey.Storage(address, slot)),
+                Assert.That(reader.GetSlot(PbtStateKey.Slot(address, slot)),
                     Is.EqualTo(EvmWordSlot.FromStripped(new UInt256(value, isBigEndian: true).ToBigEndian())), slot.ToString());
         }
 

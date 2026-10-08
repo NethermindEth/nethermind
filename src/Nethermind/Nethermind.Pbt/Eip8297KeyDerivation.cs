@@ -27,13 +27,17 @@ public static class Eip8297KeyDerivation
         return new PbtPath(key);
     }
 
-    public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
+    /// <summary>The account-zone key of header storage slot <paramref name="slot"/>, which the account keeps in its own subtree.</summary>
+    public static PbtPath HeaderStorageKey(in ValueHash256 addressHash, in UInt256 slot)
     {
-        if (slot < PbtKeyDerivation.HeaderStorageSlots)
-        {
-            return StorageKey(address32, Blake3Hash.Hash(address32), slot);
-        }
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(slot, (UInt256)PbtKeyDerivation.HeaderStorageSlots);
+        return AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
+    }
 
+    /// <summary>The storage-zone key of overflow slot <paramref name="slot"/>; header slots derive <see cref="HeaderStorageKey"/> instead.</summary>
+    public static PbtStoragePath StorageKey(ReadOnlySpan<byte> address32, in UInt256 slot)
+    {
+        ThrowIfHeaderSlot(slot);
         // The address hash and the suffix hash are independent, so both run in one two-lane call.
         Span<byte> suffixInput = stackalloc byte[64];
         WriteSuffixInput(address32, slot, suffixInput);
@@ -45,17 +49,16 @@ public static class Eip8297KeyDerivation
     /// <see cref="StorageKey(ReadOnlySpan{byte}, in UInt256)"/> reusing a precomputed address hash, so a run of
     /// slots for one address pays only the per-tree-index suffix hash.
     /// </summary>
-    public static PbtStorageTreeKey StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
+    public static PbtStoragePath StorageKey(ReadOnlySpan<byte> address32, in ValueHash256 addressHash, in UInt256 slot)
     {
-        if (slot < PbtKeyDerivation.HeaderStorageSlots)
-        {
-            return (PbtStorageTreeKey)AccountKey(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot.u0));
-        }
-
+        ThrowIfHeaderSlot(slot);
         Span<byte> suffixInput = stackalloc byte[64];
         WriteSuffixInput(address32, slot, suffixInput);
         return StorageKey(addressHash, Blake3Hash.Hash(suffixInput), slot);
     }
+
+    private static void ThrowIfHeaderSlot(in UInt256 slot) =>
+        ArgumentOutOfRangeException.ThrowIfLessThan(slot, (UInt256)PbtKeyDerivation.HeaderStorageSlots);
 
     private static void WriteSuffixInput(ReadOnlySpan<byte> address32, in UInt256 slot, Span<byte> suffixInput)
     {
@@ -64,14 +67,14 @@ public static class Eip8297KeyDerivation
         treeIndex.ToBigEndian(suffixInput[32..]);
     }
 
-    private static PbtStorageTreeKey StorageKey(in ValueHash256 addressHash, in ValueHash256 suffixHash, in UInt256 slot)
+    private static PbtStoragePath StorageKey(in ValueHash256 addressHash, in ValueHash256 suffixHash, in UInt256 slot)
     {
         Span<byte> key = stackalloc byte[StorageKeyLength];
         key[0] = StorageZone;
         addressHash.Bytes.CopyTo(key[1..]);
         suffixHash.Bytes.CopyTo(key[33..]);
         key[^1] = (byte)slot.u0;
-        return new PbtStorageTreeKey(key);
+        return new PbtStoragePath(key);
     }
 
     public static PbtPath OverflowCodeKey(ReadOnlySpan<byte> codeHash32, int chunkId)
