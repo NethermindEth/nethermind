@@ -1118,7 +1118,7 @@ public partial class BlockProcessorTests
         public void Dispose() => (inner as IDisposable)?.Dispose();
     }
 
-    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, budget);
+    private static ParallelTraceBudgets Budgets(BasicTestBlockchain chain, ParallelTraceBudget budget) => new(chain.SpecProvider, budget, changesetSeeds: true);
 
     private static ParallelBlockTracer.OwnedEnvironment BuildParallelEnvironment(
         BasicTestBlockchain chain, bool? hideRewardBoundary = null, bool refuseOverlay = false, bool refuseNonEmpty = false, ExecutionCounter? executions = null)

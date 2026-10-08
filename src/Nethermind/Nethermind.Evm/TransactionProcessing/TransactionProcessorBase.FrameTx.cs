@@ -519,9 +519,11 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         }
         ulong gasAfterRefund = grossGas - gasRefund;
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
-        // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.
+        // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund once active.
         ulong payerRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(gasAfterRefund, blockStateGas, floorGas);
-        ulong blockRegularGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas);
+        ulong blockRegularGas = spec.IsEip7778Enabled
+            ? Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(grossGas, blockStateGas, floorGas)
+            : payerRegularGas;
         ulong spentGas = payerRegularGas + blockStateGas;
         // Set explicitly like the regular path: the BlockGasUsed getter otherwise falls back to tx.GasLimit,
         // which for a frame tx is the frame-gas sum rather than the gas spent that block validation sums.
