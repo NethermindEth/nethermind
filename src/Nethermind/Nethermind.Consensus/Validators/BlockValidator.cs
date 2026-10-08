@@ -334,10 +334,22 @@ public class BlockValidator(
 
             // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
             // makes the intrinsic-gas validation below sender-dependent.
-            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            // Experiment (on demand): an unknown sender is priced as a non-self transfer, the higher charge, so a
+            // transaction that passes without its sender passes with it; only one that fails needs the recovery.
+            bool onDemand = Core.Diagnostics.MainnetExperiment.BlockValidatorRecoversOnDemand;
+            if (!onDemand && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            {
                 transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
+            }
 
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            if (!isWellFormed && onDemand && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            {
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                Core.Diagnostics.NewPayloadTrace.AddExtra(Core.Diagnostics.NewPayloadTrace.BvRecovered, 1);
+                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            }
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");

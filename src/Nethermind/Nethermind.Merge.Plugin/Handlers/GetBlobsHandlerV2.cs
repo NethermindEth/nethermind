@@ -26,6 +26,11 @@ public class GetBlobsHandlerV2(ITxPool txPool) : IAsyncHandler<GetBlobsHandlerV2
         }
 
         Metrics.GetBlobsRequestsTotal += request.BlobVersionedHashes.Length;
+        Core.Diagnostics.NewPayloadTrace.OnGetBlobs();
+        // Mainnet experiment (early-cancel arm): getBlobs announces the block a few ms before its newPayload.
+        if (Core.Diagnostics.MainnetExperiment.RotationEnabled
+            && Core.Diagnostics.MainnetExperiment.PredictedArm == Core.Diagnostics.MainnetExperiment.EarlyCancel)
+            Core.Diagnostics.MainnetExperiment.SignalIncomingBlock();
 
         int n = request.BlobVersionedHashes.Length;
         if (n == 0)

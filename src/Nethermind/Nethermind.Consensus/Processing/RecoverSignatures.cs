@@ -7,6 +7,7 @@ using System.Security.Cryptography;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Crypto;
@@ -117,7 +118,12 @@ namespace Nethermind.Consensus.Processing
             if (current is not null && !current.IsCompleted && current.BlockHash == blockHash)
                 return;
 
-            Recovery recovery = new(this, blockHash, txs, releaseSpec, group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2));
+            int concurrency = group?.Concurrency ?? Math.Max(1, Environment.ProcessorCount / 2);
+            // Mainnet experiment: #14164's half-the-processors cap, which the shared payload budget (#14182) replaced.
+            bool capped = MainnetExperiment.IsActive(MainnetExperiment.RecoveryCap);
+            if (capped) concurrency = Math.Min(concurrency, Math.Max(1, Environment.ProcessorCount / 2));
+            NewPayloadTrace.SetExtra(NewPayloadTrace.RecoveryWorkers, concurrency);
+            Recovery recovery = new(this, blockHash, txs, releaseSpec, concurrency, capped);
             Volatile.Write(ref _current, recovery);
             try
             {
@@ -219,7 +225,11 @@ namespace Nethermind.Consensus.Processing
         private void Recover(Transaction tx, IReleaseSpec releaseSpec)
         {
             _ = tx.Hash;
-            tx.SenderAddress ??= _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+            if (tx.SenderAddress is null)
+            {
+                tx.SenderAddress = _ecdsa.RecoverAddress(tx, !releaseSpec.ValidateChainId);
+                NewPayloadTrace.AddExtra(EthereumEcdsaExtensions.LastRecoveryWasCacheHit ? NewPayloadTrace.RecHit : NewPayloadTrace.RecEcdsa, 1);
+            }
             RecoverAuthorities(tx, releaseSpec);
             if (tx.SupportsFrames) FrameTxSignatureValidator.RecoverSecp256k1Signers(tx, _ecdsa);
             if (_logger.IsTrace) _logger.Trace($"Recovered {tx.SenderAddress} sender for {tx.Hash}");
@@ -242,7 +252,7 @@ namespace Nethermind.Consensus.Processing
                     static (i, state) =>
                     {
                         AuthorizationTuple tuple = state.list[i];
-                        tuple.Authority ??= state.ecdsa.RecoverAddress(tuple);
+                        tuple.Authority ??= RecoverCounted(state.ecdsa, tuple);
                         return state;
                     });
             }
@@ -250,9 +260,16 @@ namespace Nethermind.Consensus.Processing
             {
                 foreach (AuthorizationTuple tuple in tx.AuthorizationList.AsSpan())
                 {
-                    tuple.Authority ??= _ecdsa.RecoverAddress(tuple);
+                    tuple.Authority ??= RecoverCounted(_ecdsa, tuple);
                 }
             }
+        }
+
+        private static Address? RecoverCounted(IEthereumEcdsa ecdsa, AuthorizationTuple tuple)
+        {
+            Address? authority = ecdsa.RecoverAddress(tuple);
+            NewPayloadTrace.AddExtra(EthereumEcdsaExtensions.LastRecoveryWasCacheHit ? NewPayloadTrace.AuthHit : NewPayloadTrace.AuthEcdsa, 1);
+            return authority;
         }
 
         /// <summary>
@@ -261,7 +278,7 @@ namespace Nethermind.Consensus.Processing
         /// touched a few times per worker rather than once per transaction; completion is pulsed under the gate the
         /// waiters wait on.
         /// </summary>
-        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency) : IThreadPoolWorkItem, ISenderRecoveryProgress
+        private sealed class Recovery(RecoverSignatures owner, Hash256 blockHash, Transaction[] txs, IReleaseSpec releaseSpec, int concurrency, bool capped = false) : IThreadPoolWorkItem, ISenderRecoveryProgress
         {
             private readonly object _gate = new();
             private readonly int _progressBatch = Math.Max(1, txs.Length / (concurrency * ProgressPublicationsPerWorker));
@@ -285,7 +302,10 @@ namespace Nethermind.Consensus.Processing
             {
                 try
                 {
-                    using ParallelUnbalancedWork.WorkerScope workers = ParallelUnbalancedWork.BeginWorkerScope(concurrency);
+                    // A plain nested scope inherits the payload's budget; the capped arm must limit it.
+                    using ParallelUnbalancedWork.WorkerScope workers = capped
+                        ? ParallelUnbalancedWork.BeginLimitedWorkerScope(concurrency)
+                        : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
                     // Skip errors: one malformed signature must not abort the parallel loop and leave every
                     // later sender to the processing thread. A null sender still rejects the block.
                     if (txs.Length > 3)
@@ -311,6 +331,7 @@ namespace Nethermind.Consensus.Processing
                 }
                 finally
                 {
+                    NewPayloadTrace.Stamp(NewPayloadTrace.RecoveryDone);
                     lock (_gate)
                     {
                         _completed = true;

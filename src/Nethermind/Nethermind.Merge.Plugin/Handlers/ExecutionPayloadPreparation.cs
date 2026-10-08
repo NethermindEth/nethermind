@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Cpu;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Diagnostics;
 using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Merge.Plugin.Data;
@@ -30,7 +31,7 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
     {
         _payload = payload;
         _encodedTransactions = payload.Transactions;
-        if (payload.TransactionsRoot is null && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor)
+        if (payload.TransactionsRoot is null && payload.EarlyTxRoot is null && _encodedTransactions.Length >= MinTxsForBackgroundRoot && !RuntimeInformation.IsSingleProcessor)
         {
             using ParallelUnbalancedWork.WorkerScope workers = Workers.Enter();
             _txRootWork = ParallelUnbalancedWork.BackgroundFor(0, 1, ParallelUnbalancedWork.DefaultOptions,
@@ -48,7 +49,11 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
             return transactions.Error;
         }
 
-        if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
+        if (_payload.EarlyTxRoot is { } earlyRoot && ReferenceEquals(_encodedTransactions, _payload.Transactions))
+        {
+            _payload.TransactionsRoot ??= earlyRoot.GetAwaiter().GetResult();
+        }
+        else if (_txRootWork is not null && ReferenceEquals(_encodedTransactions, _payload.Transactions))
         {
             _txRootWork.WaitForCompletion();
             _payload.TransactionsRoot = _txRoot;
@@ -57,6 +62,7 @@ internal sealed class ExecutionPayloadPreparation : IDisposable
         {
             _txRootWork?.Dispose();
         }
+        NewPayloadTrace.Stamp(NewPayloadTrace.TxRootJoined);
 
         return _payload.TryGetBlock(totalDifficulty);
     }

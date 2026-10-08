@@ -17,7 +17,8 @@ namespace Nethermind.Core.Diagnostics;
 /// </summary>
 public static class NewPayloadTrace
 {
-    public static readonly bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_NP_TRACE") == "1";
+    // On unless NETHERMIND_NP_TRACE=0: the mainnet experiment nodes cannot set environment variables.
+    public static readonly bool Enabled = Environment.GetEnvironmentVariable("NETHERMIND_NP_TRACE") != "0";
 
     public const int HttpStart = 0, BodyRead = 1, MethodEntry = 2, Locked = 3, GcRegion = 4, HandleStart = 5, Decoded = 6,
         PreSuggest = 7, Suggested = 8, EnqueueStart = 9, Dequeued = 10, BranchStart = 11, ProcessOneStart = 12, TxsDone = 13,
@@ -28,9 +29,11 @@ public static class NewPayloadTrace
         // Request-thread checkpoints between the decoded block and its suggestion.
         HashChecked = 31, ParentFound = 32, ParentReady = 33, ShouldProcess = 34, Validated = 35,
         // Early sender recovery finished.
-        RecoveryDone = 36;
+        RecoveryDone = 36,
+        // The mempool prewarmer's speculative session cancelled: at enqueue (master) or on arrival (early-cancel arm).
+        SpecCancel = 37, SpecCancelEarly = 38;
 
-    private const int Count = 37;
+    private const int Count = 39;
     private static readonly string[] Names =
     [
         "http", "body", "entry", "locked", "gcregion", "handle", "decoded", "presuggest", "suggested", "enqueue", "dequeued",
@@ -38,8 +41,28 @@ public static class NewPayloadTrace
         "recdecoded", "recstarted", "txsdecoded", "txrootjoined",
         "mstart", "mjournal", "mstorage", "mflush", "minsert", "mroot",
         "hashok", "parent", "parentok", "shouldok", "validated",
-        "recdone"
+        "recdone",
+        "speccancel", "specearly"
     ];
+
+    /// <summary>Additive per-request fields, from any thread.</summary>
+    public const int Arm = 0, Legacy = 1, AuthTuples = 2, RecHit = 3, RecEcdsa = 4, AuthHit = 5, AuthEcdsa = 6, InlineTp = 7,
+        InlineAuth = 8, BvRecovered = 9, SpecActive = 10, SpecPasses = 11, SpecJoinUs = 12, SpecJoins = 13, GetBlobsLeadUs = 14,
+        GetBlobsCalls = 15, RecoveryWorkers = 16, EarlyRoot = 17, BvUs = 18;
+    private const int ExtraCount = 19;
+    private static readonly string[] ExtraNames =
+    [
+        "arm", "nlegacy", "nauth", "rechit", "recec", "authhit", "authec", "inltp", "inlauth", "bvrec", "specact", "specpass",
+        "specjoinus", "specjoins", "gblead", "gbcalls", "recw", "earlyroot", "bvus"
+    ];
+
+    private static int s_speculativeActive;
+    private static int s_speculativePasses;
+    private static long s_lastGetBlobs;
+    private static int s_getBlobsCalls;
+    private static readonly object s_fileLock = new();
+    private static System.IO.StreamWriter? s_file;
+    private static bool s_fileTried;
 
     public const int StorageTries = 0, StorageSlots = 1, AccountsWritten = 2;
     private const int CounterCount = 3;
@@ -61,6 +84,7 @@ public static class NewPayloadTrace
         public long Start => Stamps[HttpStart] != 0 ? Stamps[HttpStart] : Stamps[MethodEntry];
         public readonly long[] Stamps = new long[Count];
         public readonly long[] Counters = [-1, -1, -1];
+        public readonly long[] Extra = new long[ExtraCount];
         public long Block = -1;
         // The processing thread's /proc schedstat across ProcessOne: nanoseconds run and waited on a runqueue.
         public long RunStart, WaitStart, RunNs = -1, WaitNs = -1, Slices = -1, SlicesStart;
@@ -180,7 +204,14 @@ public static class NewPayloadTrace
     {
         if (!Enabled) return;
         Record record = s_request.Value ?? new Record();
-        record.Stamps[MethodEntry] = Stopwatch.GetTimestamp();
+        long entry = Stopwatch.GetTimestamp();
+        record.Stamps[MethodEntry] = entry;
+        record.Extra[SpecActive] = Volatile.Read(ref s_speculativeActive) > 0 ? 1 : 0;
+        record.Extra[SpecPasses] = Interlocked.Exchange(ref s_speculativePasses, 0);
+        record.Extra[GetBlobsCalls] = Interlocked.Exchange(ref s_getBlobsCalls, 0);
+        long lastGetBlobs = Volatile.Read(ref s_lastGetBlobs);
+        long leadUs = lastGetBlobs == 0 ? -1 : (entry - lastGetBlobs) * 1_000_000 / Stopwatch.Frequency;
+        record.Extra[GetBlobsLeadUs] = leadUs is >= 0 and < 4_000_000 ? leadUs : -1;
         Record? previous = Interlocked.Exchange(ref s_active, record);
         // Off the request path: the next payload's latency must not include the previous one's line.
         if (previous is not null) ThreadPool.UnsafeQueueUserWorkItem(static r => Print(r), previous, preferLocal: false);
@@ -230,6 +261,42 @@ public static class NewPayloadTrace
             else tx.Accounts++;
         }
     }
+
+    /// <summary>Sets an additive field of the active newPayload.</summary>
+    public static void SetExtra(int field, long value)
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record) Volatile.Write(ref record.Extra[field], value);
+    }
+
+    /// <summary>Adds to an additive field of the active newPayload, from any thread.</summary>
+    public static void AddExtra(int field, long value)
+    {
+        if (Enabled && Volatile.Read(ref s_active) is { } record) Interlocked.Add(ref record.Extra[field], value);
+    }
+
+    /// <summary>Adds to a field only on the block-processing thread.</summary>
+    public static void AddExtraProcessing(int field, long value)
+    {
+        if (Enabled && Threading.ProcessingThread.IsBlockProcessingThread) AddExtra(field, value);
+    }
+
+    public static void SpeculativePassStarted()
+    {
+        Interlocked.Increment(ref s_speculativeActive);
+        Interlocked.Increment(ref s_speculativePasses);
+    }
+
+    public static void SpeculativePassEnded() => Interlocked.Decrement(ref s_speculativeActive);
+
+    public static void OnGetBlobs()
+    {
+        Volatile.Write(ref s_lastGetBlobs, Stopwatch.GetTimestamp());
+        Interlocked.Increment(ref s_getBlobsCalls);
+    }
+
+    public static long Timestamp() => Stopwatch.GetTimestamp();
+
+    public static long MicrosecondsSince(long timestamp) => (Stopwatch.GetTimestamp() - timestamp) * 1_000_000 / Stopwatch.Frequency;
 
     /// <summary>Microseconds since the active newPayload started, or -1 without one.</summary>
     public static long NowUs() => Enabled && Volatile.Read(ref s_active) is { } record ? ElapsedUs(record) : -1;
@@ -288,7 +355,46 @@ public static class NewPayloadTrace
         }
 
         if (printed == 0) line.Append("na");
+        for (int i = 0; i < ExtraCount; i++)
+            line.Append(' ').Append(ExtraNames[i]).Append('=').Append(Volatile.Read(ref record.Extra[i]));
         lock (record.Notes) line.Append(" notes=").Append(record.Notes.Length == 0 ? "na" : record.Notes.ToString());
-        Console.Out.WriteLine(line.ToString());
+        string text = line.ToString();
+        Console.Out.WriteLine(text);
+        WriteToFile(text);
+    }
+
+    /// <summary>Appends the line to a file the node's file-access allowlist can read, where that directory exists.</summary>
+    private static void WriteToFile(string text)
+    {
+        lock (s_fileLock)
+        {
+            if (!s_fileTried)
+            {
+                s_fileTried = true;
+                try
+                {
+                    string? dir = Environment.GetEnvironmentVariable("NETHERMIND_NP_TRACE_DIR");
+                    if (string.IsNullOrEmpty(dir) && System.IO.Directory.Exists("/nethermind/data/logs")) dir = "/nethermind/data/logs/coremcp-diag";
+                    if (!string.IsNullOrEmpty(dir))
+                    {
+                        System.IO.Directory.CreateDirectory(dir);
+                        s_file = new System.IO.StreamWriter(System.IO.Path.Combine(dir, "np-trace.log"), append: true) { AutoFlush = true };
+                    }
+                }
+                catch (Exception)
+                {
+                    s_file = null;
+                }
+            }
+
+            try
+            {
+                s_file?.WriteLine(text);
+            }
+            catch (Exception)
+            {
+                // Diagnostics must never fail the node.
+            }
+        }
     }
 }

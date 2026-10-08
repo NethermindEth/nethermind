@@ -96,6 +96,9 @@ public partial class EngineRpcModule : IEngineRpcModule
         NewPayloadTrace.BeginNewPayload();
         _engineRequestsTracker.OnNewPayloadCalled();
         ExecutionPayload executionPayload = executionPayloadParams.ExecutionPayload;
+        MainnetExperiment.BeginBlock((long)executionPayload.BlockNumber);
+        NewPayloadTrace.SetExtra(NewPayloadTrace.Arm, MainnetExperiment.CurrentArm);
+        if (MainnetExperiment.IsActive(MainnetExperiment.EarlyCancel)) MainnetExperiment.SignalIncomingBlock();
         executionPayload.ExecutionRequests = executionPayloadParams.ExecutionRequests;
         executionPayload.InclusionListTransactions = executionPayloadParams.InclusionListTransactions;
 
@@ -125,6 +128,9 @@ public partial class EngineRpcModule : IEngineRpcModule
                 ? ResultWrapper<PayloadStatusV1>.Fail(error!, ErrorCodes.InvalidParams)
                 : ResultWrapper<PayloadStatusV1>.Success(PayloadStatusV1.Invalid(null, error));
         }
+
+        // The transactions are decoded by now; this arm hashes their trie while the request waits for the lock.
+        if (MainnetExperiment.IsActive(MainnetExperiment.EarlyTxRoot)) executionPayload.StartEarlyTxRoot();
 
         if (await _locker.WaitAsync(LockTimeout))
         {
