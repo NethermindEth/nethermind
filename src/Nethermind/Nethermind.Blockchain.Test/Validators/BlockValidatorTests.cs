@@ -21,6 +21,7 @@ using Nethermind.Core.BlockAccessLists;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
+using Nethermind.Crypto;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -478,6 +479,74 @@ public class BlockValidatorTests
         {
             Assert.That(error, Does.StartWith("InvalidBlockLevelAccessList"));
         }
+    }
+
+    /// <summary>
+    /// EIP-2780 prices an unknown sender as a transfer to someone else, the higher charge, so a transaction that
+    /// validates without its sender is left for the background recovery instead of being recovered on the request thread.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_leaves_senders_it_does_not_need_unrecovered()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(
+            Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyB, TestItem.AddressC, gasLimit: 50_000),
+            Eip2780Transfer(TestItem.PrivateKeyC, TestItem.AddressC, gasLimit: 50_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress), Is.All.Null);
+    }
+
+    /// <summary>A self-transfer priced between the two charges is valid only for its own sender, so that one is recovered.</summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_recovers_the_sender_of_a_self_transfer_below_the_non_self_charge()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.True, error);
+        Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
+    }
+
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rejects_a_transfer_to_someone_else_below_its_intrinsic_gas()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressB, gasLimit: 15_000));
+
+        bool isValid = AmsterdamSut().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(isValid, Is.False);
+        Assert.That(error, Does.StartWith(TxErrorMessages.IntrinsicGasTooLow));
+    }
+
+    private static Transaction Eip2780Transfer(PrivateKey signer, Address to, ulong gasLimit) =>
+        Build.A.Transaction
+            .WithType(TxType.EIP1559)
+            .WithChainId(TestBlockchainIds.ChainId)
+            .WithTo(to)
+            .WithValue(1)
+            .WithGasLimit(gasLimit)
+            .WithMaxFeePerGas(2_000_000_000)
+            .WithMaxPriorityFeePerGas(1_000_000_000)
+            .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId), signer)
+            .TestObject;
+
+    private static (Block Block, BlockHeader Parent) Eip2780Block(params Transaction[] transactions)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithPrecompileChanges(parent.Hash!, timestamp: 12).TestObject;
+        Block block = Build.A.Block
+            .WithParent(parent)
+            .WithGasLimit(30_000_000)
+            .WithBlobGasUsed(0)
+            .WithWithdrawals([])
+            .WithTransactions(transactions)
+            .WithBal(bal)
+            .TestObject;
+        return (block, parent);
     }
 
     private static BlockValidator AmsterdamSut(ITxValidator? tx = null) =>

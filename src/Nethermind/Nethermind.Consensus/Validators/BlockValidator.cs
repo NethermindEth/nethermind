@@ -332,12 +332,18 @@ public class BlockValidator(
         {
             Transaction transaction = transactions[txIndex];
 
-            // Recover the sender if a preprocessor hasn't yet: the EIP-2780 self-transfer discount
-            // makes the intrinsic-gas validation below sender-dependent.
-            if (isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
-
             ValidationResult isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+
+            // The EIP-2780 self-transfer discount makes intrinsic gas sender-dependent, but an unknown sender is
+            // priced as a transfer to someone else, the higher charge: a transaction that is well formed without
+            // its sender is well formed with it. Only one that fails needs the sender, so the request thread
+            // doesn't recover, one by one, the senders the background recovery has not reached yet.
+            if (!isWellFormed && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            {
+                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
+            }
+
             if (!isWellFormed)
             {
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid transaction: {isWellFormed}");
@@ -381,6 +387,9 @@ public class BlockValidator(
 
             if (transaction.MaxFeePerBlobGas < feePerBlobGas)
             {
+                // The message names the sender, which validation no longer recovers up front.
+                if (transaction.SenderAddress is null && transaction.Signature is not null)
+                    transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 error = BlockErrorMessages.InsufficientMaxFeePerBlobGas(transaction.SenderAddress, transaction.MaxFeePerBlobGas, feePerBlobGas);
                 if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction at index {txIndex} has insufficient {nameof(transaction.MaxFeePerBlobGas)} to cover current blob gas fee: {transaction.MaxFeePerBlobGas} < {feePerBlobGas}.");
                 return false;
