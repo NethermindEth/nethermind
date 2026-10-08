@@ -51,7 +51,7 @@ internal static class GloasTestFixtures
         SlotsPerEpoch = 32,
         GenesisTime = 1_606_824_023,
         GenesisValidatorsRoot = Hash256.Zero,
-        Forks = [new(Bytes.FromHexString("0x06000000"), 0)],
+        Forks = [.. BeaconChainSpec.Mainnet.Forks.Select(static fork => fork with { Epoch = 0 })],
         BlobSchedule = [],
         ElectraForkEpoch = 0,
         FuluForkEpoch = 0,
@@ -468,18 +468,18 @@ internal static class GloasTestFixtures
         Slot = slot,
     };
 
-    public static PendingDeposit NewValidatorDeposit(int keyIndex, ulong amount, ulong slot, int? signerKeyIndex = null)
+    public static PendingDeposit NewValidatorDeposit(int keyIndex, ulong amount, ulong slot, int? signerKeyIndex = null, byte[]? genesisForkVersion = null)
     {
         Hash256 withdrawalCredentials = EthWithdrawalCredentials(0xEE);
-        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(DeriveKey(keyIndex), withdrawalCredentials, amount, signerKeyIndex);
+        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(DeriveKey(keyIndex), withdrawalCredentials, amount, signerKeyIndex, genesisForkVersion);
         return new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount, Signature = signature, Slot = slot };
     }
 
-    public static (BlsPublicKey Pubkey, BlsSignature Signature) SignDeposit(Bls.SecretKey key, Hash256 withdrawalCredentials, ulong amount, int? signerKeyIndex = null)
+    public static (BlsPublicKey Pubkey, BlsSignature Signature) SignDeposit(Bls.SecretKey key, Hash256 withdrawalCredentials, ulong amount, int? signerKeyIndex = null, byte[]? genesisForkVersion = null)
     {
         BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
         DepositMessage.Merkleize(new DepositMessage { Pubkey = pubkey, WithdrawalCredentials = withdrawalCredentials, Amount = amount }, out UInt256 root);
-        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, genesisForkVersion ?? BeaconChainSpec.Mainnet.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
         return (pubkey, Sign(signerKeyIndex is int index ? DeriveKey(index) : key, signingRoot));
     }

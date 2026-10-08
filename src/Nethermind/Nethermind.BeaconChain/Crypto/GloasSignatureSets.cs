@@ -81,10 +81,10 @@ public static class GloasSignatureSets
     }
 
     /// <summary>Verifies a voluntary exit signature over the EIP-7044 fork-agnostic Capella domain.</summary>
-    public static bool VerifyVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null)
+    public static bool VerifyVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral = null, BeaconChainSpec? spec = null)
     {
         VoluntaryExit exit = signedExit.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).CapellaForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, (spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!)).CapellaForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain);
         return SignatureSets.TryGetValidatorKey(pubkeys, exit.ValidatorIndex, out G1Affine key) && BlockSignatureBatch.Verify(key, signedExit.Signature, signingRoot, deferral);
     }
@@ -94,10 +94,10 @@ public static class GloasSignatureSets
     /// (genesis fork version with the state's genesis validators root) and the pubkey is the
     /// message's <c>from_bls_pubkey</c>, not a registered validator key.
     /// </summary>
-    public static bool VerifyBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, BlockSignatureBatch.Deferral? deferral = null)
+    public static bool VerifyBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, BlockSignatureBatch.Deferral? deferral = null, BeaconChainSpec? spec = null)
     {
         BlsToExecutionChange change = signedChange.Message!;
-        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).GenesisForkVersion, state.GenesisValidatorsRoot!);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, (spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!)).GenesisForkVersion, state.GenesisValidatorsRoot!);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);

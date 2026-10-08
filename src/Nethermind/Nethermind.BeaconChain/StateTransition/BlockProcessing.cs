@@ -298,7 +298,7 @@ public static partial class BlockProcessing
         }
         foreach (Deposit deposit in body.Deposits ?? [])
         {
-            ProcessDeposit(state, deposit);
+            ProcessDeposit(state, deposit, cache.SigningSpec);
         }
         foreach (SignedVoluntaryExit exit in body.VoluntaryExits ?? [])
         {
@@ -306,7 +306,7 @@ public static partial class BlockProcessing
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
-            ProcessBlsToExecutionChange(state, change, verifySignatures, batch);
+            ProcessBlsToExecutionChange(state, change, verifySignatures, batch, cache.SigningSpec);
         }
         ExecutionRequests requests = body.ExecutionRequests!;
         foreach (DepositRequest request in requests.Deposits ?? [])
@@ -342,7 +342,7 @@ public static partial class BlockProcessing
     private static partial byte GetAttestationParticipationFlagIndices(BeaconStateFulu state, AttestationData data, ulong inclusionDelay);
 
     /// <summary>Spec <c>process_deposit</c>: verifies the Eth1 deposit tree Merkle branch, then applies the deposit.</summary>
-    public static void ProcessDeposit(BeaconStateFulu state, Deposit deposit)
+    public static void ProcessDeposit(BeaconStateFulu state, Deposit deposit, BeaconChainSpec? spec = null)
     {
         DepositData data = deposit.Data!;
         // The +1 accounts for the SSZ list-length mix-in of the deposit tree.
@@ -352,7 +352,7 @@ public static partial class BlockProcessing
         // Deposits must be processed in order.
         state.Eth1DepositIndex++;
 
-        ApplyDeposit(state, data.Pubkey, data.WithdrawalCredentials!, data.Amount, data.Signature);
+        ApplyDeposit(state, data.Pubkey, data.WithdrawalCredentials!, data.Amount, data.Signature, spec);
     }
 
     /// <summary>Spec <c>is_valid_merkle_branch</c>.</summary>
@@ -383,11 +383,11 @@ public static partial class BlockProcessing
     /// is valid (an invalid signature silently skips the deposit), and queues the amount as a
     /// pending deposit.
     /// </summary>
-    private static void ApplyDeposit(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature)
+    private static void ApplyDeposit(BeaconStateFulu state, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature, BeaconChainSpec? spec)
     {
         if (FindValidatorIndex(state, pubkey) is null)
         {
-            if (!DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, pubkey, withdrawalCredentials, amount, signature))
+            if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), pubkey, withdrawalCredentials, amount, signature))
                 return;
             state.AddValidatorToRegistry(pubkey, withdrawalCredentials, 0);
         }
@@ -404,7 +404,7 @@ public static partial class BlockProcessing
     }
 
     public static partial void ProcessVoluntaryExit(BeaconStateFulu state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
-    public static partial void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null);
+    public static partial void ProcessBlsToExecutionChange(BeaconStateFulu state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null, BeaconChainSpec? spec = null);
     public static partial void ProcessDepositRequest(BeaconStateFulu state, DepositRequest request);
     public static partial void ProcessWithdrawalRequest(BeaconStateFulu state, WithdrawalRequest request, EpochCache cache);
     public static partial void ProcessConsolidationRequest(BeaconStateFulu state, ConsolidationRequest request, EpochCache cache);

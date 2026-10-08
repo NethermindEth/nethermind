@@ -36,6 +36,7 @@ public static class StateTransition
         bool validateResult = true,
         bool verifySignatures = true)
     {
+        cache.SigningSpec = spec;
         BeaconBlock block = signedBlock.Message!;
         SlotProcessing.ProcessSlots(state, block.Slot, cache);
 

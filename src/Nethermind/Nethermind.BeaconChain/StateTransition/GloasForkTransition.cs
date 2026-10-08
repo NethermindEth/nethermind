@@ -118,7 +118,7 @@ public static class GloasForkTransition
         };
 
         // [New in Gloas:EIP7732]
-        OnboardBuildersFromPendingDeposits(post, epoch);
+        OnboardBuildersFromPendingDeposits(post, epoch, spec);
 
         // [New in Gloas:EIP7732]
         post.PtcWindow = InitializePtcWindow(pre, epoch);
@@ -138,12 +138,12 @@ public static class GloasForkTransition
         withdrawalCredentials.Bytes[0] == Presets.BuilderWithdrawalPrefix;
 
     /// <summary>Spec <c>is_pending_validator</c>: is there a signature-valid pending deposit for <paramref name="pubkey"/>?</summary>
-    public static bool IsPendingValidator(Hash256 genesisValidatorsRoot, IReadOnlyList<PendingDeposit> pendingDeposits, BlsPublicKey pubkey)
+    public static bool IsPendingValidator(Hash256 genesisValidatorsRoot, IReadOnlyList<PendingDeposit> pendingDeposits, BlsPublicKey pubkey, BeaconChainSpec? spec = null)
     {
         foreach (PendingDeposit deposit in pendingDeposits)
         {
             if (deposit.Pubkey.Equals(pubkey) &&
-                DepositSignatureVerifier.IsValid(genesisValidatorsRoot, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+                DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                 return true;
         }
         return false;
@@ -185,7 +185,7 @@ public static class GloasForkTransition
     /// Spec <c>onboard_builders_from_pending_deposits</c>: the only path, from the fork onward, that
     /// creates a builder from a deposit rather than a <c>BuilderDepositRequest</c>.
     /// </summary>
-    public static void OnboardBuildersFromPendingDeposits(BeaconStateGloas state, ulong currentEpoch)
+    public static void OnboardBuildersFromPendingDeposits(BeaconStateGloas state, ulong currentEpoch, BeaconChainSpec? spec = null)
     {
         HashSet<BlsPublicKey> validatorPubkeys = state.Validators!.Select(static v => v.Pubkey).ToHashSet();
         List<PendingDeposit> kept = [];
@@ -209,12 +209,12 @@ public static class GloasForkTransition
                     kept.Add(deposit);
                     continue;
                 }
-                if (IsPendingValidator(state.GenesisValidatorsRoot!, kept, deposit.Pubkey))
+                if (IsPendingValidator(state.GenesisValidatorsRoot!, kept, deposit.Pubkey, spec))
                 {
                     kept.Add(deposit);
                     continue;
                 }
-                if (!DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+                if (!DepositSignatureVerifier.IsValid(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
                     continue;
 
                 AddBuilderToRegistry(

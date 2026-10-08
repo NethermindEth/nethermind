@@ -19,6 +19,9 @@ public static class DepositSignatureVerifier
 {
     /// <param name="genesisValidatorsRoot">The root of the state the deposit applies to; it selects the network whose <c>GENESIS_FORK_VERSION</c> signs deposits.</param>
     public static bool IsValid(Hash256 genesisValidatorsRoot, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature)
+        => IsValid(BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot), pubkey, withdrawalCredentials, amount, signature);
+
+    internal static bool IsValid(BeaconChainSpec spec, BlsPublicKey pubkey, Hash256 withdrawalCredentials, ulong amount, BlsSignature signature)
     {
         DepositMessage.Merkleize(new DepositMessage
         {
@@ -27,7 +30,7 @@ public static class DepositSignatureVerifier
             Amount = amount,
         }, out UInt256 root);
 
-        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot).GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, spec.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         Bls.P1Affine publicKey = new(stackalloc long[Bls.P1Affine.Sz]);

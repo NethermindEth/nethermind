@@ -62,37 +62,41 @@ public class MessageKeyValidationTests
     }
 
     [Test]
-    public void Builder_deposit_registers_only_a_key_that_passes_key_validation([Values] KeyKind kind)
+    public void Builder_deposit_registers_only_a_key_that_passes_key_validation([Values] KeyKind kind, [Values] bool customNetwork)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
+        BeaconChainSpec spec = customNetwork ? NetworkSigningDomainTests.CustomSigningSpec : BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!);
+        state.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
         Bls.SecretKey sk = DeriveKey(310);
         BlsPublicKey key = KeyOf(kind, sk);
         Hash256 credentials = BuilderWithdrawalCredentials(0xC1);
         const ulong amount = 10 * Gwei;
-        Hash256 signingRoot = BuilderDepositSigningRoot(state, key, credentials, amount);
+        Hash256 signingRoot = BuilderDepositSigningRoot(spec, key, credentials, amount);
         BlsSignature signature = SignatureFor(kind, Sign(sk, signingRoot));
         AssertPairingHolds(kind, key, signature, signingRoot);
         int buildersBefore = state.Builders!.Length;
 
-        GloasBlockProcessing.ProcessBuilderDepositRequest(state, new BuilderDepositRequest { Pubkey = key, WithdrawalCredentials = credentials, Amount = amount, Signature = signature });
+        GloasBlockProcessing.ProcessBuilderDepositRequest(state, new BuilderDepositRequest { Pubkey = key, WithdrawalCredentials = credentials, Amount = amount, Signature = signature }, spec);
 
         Assert.That(state.Builders!.Length, Is.EqualTo(kind == KeyKind.Valid ? buildersBefore + 1 : buildersBefore));
     }
 
     [Test]
-    public void Bls_change_verifies_only_under_a_from_key_that_passes_key_validation([Values] KeyKind kind, [Values] bool gloas, [Values] bool batched)
+    public void Bls_change_verifies_only_under_a_from_key_that_passes_key_validation([Values] KeyKind kind, [Values] bool gloas, [Values] bool batched, [Values] bool customNetwork)
     {
         const int changing = 4;
         Bls.SecretKey sk = DeriveKey(500);
         BlsPublicKey key = KeyOf(kind, sk);
         BeaconStateGloas gloasState = CreateGloasState(out _, out _);
         BeaconStateFulu fuluState = CreateFuluState(changing + 1);
+        BeaconChainSpec spec = customNetwork ? NetworkSigningDomainTests.CustomSigningSpec : BeaconChainSpec.ForGenesisValidatorsRoot(gloasState.GenesisValidatorsRoot!);
+        gloasState.GenesisValidatorsRoot = fuluState.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
         Validator[] validators = gloas ? gloasState.Validators! : fuluState.Validators!;
         Hash256 genesisValidatorsRoot = gloas ? gloasState.GenesisValidatorsRoot! : fuluState.GenesisValidatorsRoot!;
         validators[changing].WithdrawalCredentials = BlsWithdrawalCredentials(key);
 
         BlsToExecutionChange change = new() { ValidatorIndex = changing, FromBlsPubkey = key, ToExecutionAddress = new Address(Hash(0xE7).Bytes[12..]) };
-        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot).GenesisForkVersion, genesisValidatorsRoot);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, spec.GenesisForkVersion, genesisValidatorsRoot);
         Hash256 signingRoot = Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain);
         SignedBlsToExecutionChange signed = new() { Message = change, Signature = SignatureFor(kind, Sign(sk, signingRoot)) };
         AssertPairingHolds(kind, key, signed.Signature, signingRoot);
@@ -101,9 +105,9 @@ public class MessageKeyValidationTests
         Action process = () =>
         {
             if (gloas)
-                GloasBlockProcessing.ProcessBlsToExecutionChange(gloasState, signed, verifySignature: true, batch);
+                GloasBlockProcessing.ProcessBlsToExecutionChange(gloasState, signed, verifySignature: true, batch, spec);
             else
-                BlockProcessing.ProcessBlsToExecutionChange(fuluState, signed, verifySignature: true, batch);
+                BlockProcessing.ProcessBlsToExecutionChange(fuluState, signed, verifySignature: true, batch, spec);
             batch?.Verify();
         };
 
@@ -138,10 +142,10 @@ public class MessageKeyValidationTests
             Assert.That(process, Throws.TypeOf<BeaconStateException>().With.Message.EqualTo(refusal));
     }
 
-    private static Hash256 BuilderDepositSigningRoot(BeaconStateGloas state, BlsPublicKey key, Hash256 credentials, ulong amount)
+    private static Hash256 BuilderDepositSigningRoot(BeaconChainSpec spec, BlsPublicKey key, Hash256 credentials, ulong amount)
     {
         DepositMessage.Merkleize(new DepositMessage { Pubkey = key, WithdrawalCredentials = credentials, Amount = amount }, out UInt256 root);
-        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!).GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, spec.GenesisForkVersion, Hash256.Zero);
         return Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
     }
 }

@@ -121,14 +121,14 @@ public static partial class BlockProcessing
         if (state.GetPendingBalanceToWithdraw((int)exit.ValidatorIndex) != 0)
             throw new BeaconStateException($"Validator {exit.ValidatorIndex} has pending partial withdrawals");
         const string invalidSignature = "Invalid voluntary exit signature";
-        if (verifySignature && !ForkSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature)))
+        if (verifySignature && !ForkSignatureSets.VerifyVoluntaryExit(state, signedExit, pubkeys, batch?.Defer(invalidSignature), cache.SigningSpec))
             throw new BeaconStateException(invalidSignature);
 
         state.InitiateValidatorExit((int)exit.ValidatorIndex, cache);
     }
 
     /// <summary>Spec <c>process_bls_to_execution_change</c> (Capella).</summary>
-    public static partial void ProcessBlsToExecutionChange(ForkState state, SignedBlsToExecutionChange signedChange, bool verifySignature, BlockSignatureBatch? batch)
+    public static partial void ProcessBlsToExecutionChange(ForkState state, SignedBlsToExecutionChange signedChange, bool verifySignature, BlockSignatureBatch? batch, BeaconChainSpec? spec)
     {
         BlsToExecutionChange change = signedChange.Message!;
         if (change.ValidatorIndex >= (ulong)state.Validators!.Length)
@@ -141,7 +141,7 @@ public static partial class BlockProcessing
         if (!credentials[1..].SequenceEqual(SHA256.HashData(change.FromBlsPubkey.Bytes).AsSpan(1)))
             throw new BeaconStateException("BLS change pubkey does not match the withdrawal credentials");
         const string invalidSignature = "Invalid BLS to execution change signature";
-        if (verifySignature && !ForkSignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature)))
+        if (verifySignature && !ForkSignatureSets.VerifyBlsToExecutionChange(state, signedChange, batch?.Defer(invalidSignature), spec))
             throw new BeaconStateException(invalidSignature);
 
         Span<byte> newCredentials = stackalloc byte[32];

@@ -499,15 +499,36 @@ public class GloasEpochProcessingTests
     }
 
     [Test]
-    public void ProcessPendingDeposits_admits_a_new_pubkey_only_with_a_valid_deposit_signature()
+    public void ProcessPendingDeposits_admits_a_new_pubkey_only_with_a_valid_deposit_signature([Values] bool explicitSpec, [Values] bool throughEpoch)
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);
+        byte[] genesisVersion = explicitSpec ? Bytes.FromHexString("0x10761968") : BeaconChainSpec.Mainnet.GenesisForkVersion;
+        EpochCache cache = new();
+        if (explicitSpec)
+            state.GenesisValidatorsRoot = new Hash256(Enumerable.Repeat((byte)0xAB, 32).ToArray());
+        BeaconChainSpec spec = UpgradeEpochSpec() with
+        {
+            GenesisValidatorsRoot = state.GenesisValidatorsRoot!,
+            Forks = [new(genesisVersion, 0), .. BeaconChainSpec.Mainnet.Forks[1..]],
+        };
         int registrySize = state.Validators!.Length;
-        PendingDeposit signed = NewValidatorDeposit(keyIndex: 300, 32 * Gwei, BoundarySlot);
-        PendingDeposit forged = NewValidatorDeposit(keyIndex: 301, 32 * Gwei, BoundarySlot, signerKeyIndex: 302);
+        PendingDeposit signed = NewValidatorDeposit(keyIndex: 300, 32 * Gwei, BoundarySlot, genesisForkVersion: genesisVersion);
+        PendingDeposit forged = NewValidatorDeposit(keyIndex: 301, 32 * Gwei, BoundarySlot, signerKeyIndex: 302, genesisForkVersion: genesisVersion);
         state.PendingDeposits = [signed, forged];
 
-        GloasEpochProcessing.ProcessPendingDeposits(state, new EpochCache());
+        if (throughEpoch)
+        {
+            SignedBeaconBlockGloas block = Nethermind.BeaconChain.Test.Types.SignedBeaconBlockBuilders.CreateMinimalGloasBlock(2 * SlotsPerEpoch);
+            block.Message!.ProposerIndex = state.ProposerLookahead![(int)SlotsPerEpoch];
+            Assert.That(() => ForkedStateTransition.Apply(new ForkedBeaconState.OfGloas(state), new ForkedSignedBeaconBlock.OfGloas(block), cache,
+                    new Nethermind.BeaconChain.Crypto.PubkeyCache(), new AcceptingNotifier(), spec, validateResult: false, verifySignatures: false),
+                Throws.TypeOf<BeaconStateException>().With.Message.Contains("does not match latest header root"));
+        }
+        else
+        {
+            if (explicitSpec) cache.SigningSpec = spec;
+            GloasEpochProcessing.ProcessPendingDeposits(state, cache);
+        }
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(state.Validators, Has.Length.EqualTo(registrySize + 1), "the forged deposit is consumed without adding a validator");

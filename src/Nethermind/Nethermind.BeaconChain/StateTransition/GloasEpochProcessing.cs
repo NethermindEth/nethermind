@@ -55,7 +55,7 @@ public static partial class GloasEpochProcessing
     /// </summary>
     public static partial void ProcessPendingDeposits(BeaconStateGloas state, EpochCache cache);
     private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
-    private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
+    private static partial void ApplyPendingDeposit(BeaconStateGloas state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, EpochCache cache);
 
     /// <summary>Electra <c>process_pending_consolidations</c>, unmodified in Gloas.</summary>
     public static partial void ProcessPendingConsolidations(BeaconStateGloas state);
