@@ -773,7 +773,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice, ZeroValueToCode, ZeroValueToEmpty }
+    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
 
     [Test]
     public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
@@ -782,12 +782,13 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Address empty = TestItem.AddressE;
         BlockHeader parent = WithEmptyAccount(empty);
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        (UInt256, UInt256, bool, UInt256, bool) State() =>
-            (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell), worldState.AccountExists(empty));
+        (UInt256, UInt256, bool, UInt256, bool, bool) State() =>
+            (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell),
+                worldState.AccountExists(empty), worldState.AccountExists(Logger));
 
         TransactionFootprint footprint;
         int compacted;
-        (UInt256, UInt256, bool, UInt256, bool) recorded;
+        (UInt256, UInt256, bool, UInt256, bool, bool) recorded;
         using (worldState.BeginScope(parent))
         {
             (footprint, _) = Record(worldState, recorder =>
@@ -818,11 +819,18 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                         recorder.AddToBalance(Counter, 0, Spec, out _);
                         recorder.SubtractFromBalance(ScarcePayer, 0, Spec, out _);
                         return 0;
-                    default:
+                    case RecordedChanges.ZeroValueToEmpty:
                         // The touch of an empty account deletes it (EIP-161).
                         recorder.GetCode(empty);
                         recorder.AddToBalance(empty, 0, Spec, out _);
                         return 1;
+                    default:
+                        // Recreated empty, the contract is deleted only by the touch.
+                        recorder.GetCode(Logger);
+                        recorder.DeleteAccount(Logger);
+                        recorder.CreateAccount(Logger, 0);
+                        recorder.AddToBalance(Logger, 0, Spec, out _);
+                        return 3;
                 }
             }, out compacted);
             worldState.Commit(Spec);
@@ -844,6 +852,28 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         {
             state.Get(in cell, out UInt256 value);
             return value;
+        }
+    }
+
+    [Test]
+    public void A_zero_value_credit_to_an_account_whose_code_the_run_did_not_require_still_needs_the_account()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        TransactionFootprint footprint;
+        using (worldState.BeginScope(Parent))
+        {
+            (footprint, _) = Record(worldState, recorder =>
+            {
+                recorder.AddToBalance(Logger, 0, Spec, out _);
+                return 1;
+            }, out _);
+        }
+
+        // An earlier transaction of the block destroyed the contract; the touch the run made cannot be made.
+        using (worldState.BeginScope(Parent))
+        {
+            worldState.DeleteAccount(Logger);
+            Assert.That(() => footprint.Replay(worldState, Spec), Throws.InvalidOperationException);
         }
     }
 
