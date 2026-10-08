@@ -6,13 +6,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Steps;
+using Nethermind.Config;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps;
 
-public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initConfig, ILogManager logManager) : IStep
+public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initConfig, ILogManager logManager, IProcessExitSource processExitSource) : IStep
 {
     private static SemaphoreSlim _setupLock = new(1);
     private static bool _wasSetup = false;
@@ -30,6 +31,13 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
                     await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
                     _wasSetup = true;
                 }
+            }
+            catch (KzgSetupUnavailableException e)
+            {
+                if (logger.IsError) logger.Error(e.Message);
+                processExitSource.Exit(ExitCodes.MissingPrecompile);
+                // Cancel dependent steps without the step manager logging the failure again.
+                throw new TaskCanceledException();
             }
             catch (Exception e)
             {

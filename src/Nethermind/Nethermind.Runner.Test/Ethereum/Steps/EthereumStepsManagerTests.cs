@@ -7,7 +7,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -22,7 +24,9 @@ using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Core;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.IO;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -39,6 +43,49 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumStepsManagerTests
     {
+        [Test]
+        public async Task Invalid_kzg_setup_exits_without_logging_exception_traces([Values] bool malformed)
+        {
+            using TempPath setupPath = TempPath.GetTempFile();
+            if (malformed) File.WriteAllText(setupPath.Path, "2\nzz\nzz\n");
+
+            // Isolate the process-wide setup state from other tests that already loaded it.
+            AssemblyLoadContext context = new(nameof(Invalid_kzg_setup_exits_without_logging_exception_traces), isCollectible: true);
+            ProcessExitSource exitSource = new(CancellationToken.None);
+            try
+            {
+                context.LoadFromAssemblyPath(typeof(KzgPolynomialCommitments).Assembly.Location);
+                Type stepType = context.LoadFromAssemblyPath(typeof(InitializePrecompiles).Assembly.Location)
+                    .GetType(typeof(InitializePrecompiles).FullName!, throwOnError: true)!;
+                InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+                logger.IsError.Returns(true);
+                IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
+                consensusPlugin.ApiType.Returns(typeof(NethermindApi));
+                using IContainer container = CreateCommonBuilder(new StepInfo(stepType))
+                    .AddSingleton(consensusPlugin)
+                    .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
+                    .AddSingleton<IInitConfig>(new InitConfig { KzgSetupPath = setupPath.Path })
+                    .AddSingleton<IProcessExitSource>(exitSource)
+                    .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
+                    .Build();
+
+                await container.Resolve<EthereumStepsManager>().InitializeAll(exitSource.Token);
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.MissingPrecompile));
+                    Assert.That(exitSource.Token.IsCancellationRequested, Is.True);
+                    logger.Received(1).Error(Arg.Is<string>(message => message.Contains(setupPath.Path) && message.Contains("restart")), null);
+                    logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Is<Exception?>(exception => exception != null));
+                }
+            }
+            finally
+            {
+                exitSource.Exit(ExitCodes.Ok);
+                context.Unload();
+            }
+        }
+
         [TestCase(true, true, true, true)]
         [TestCase(true, true, false, true)]
         [TestCase(true, false, false, false)]
