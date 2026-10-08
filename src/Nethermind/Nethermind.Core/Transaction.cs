@@ -43,7 +43,6 @@ namespace Nethermind.Core
         // Field indicating if this transaction is exempt from the L2 gas limit.
         public bool IsOPSystemTransaction { get; set; }
 
-        private UInt256 _gasPrice;
         public ulong Nonce { get; set; }
         public UInt256 GasPrice { get => _gasPrice; set => _gasPrice = value; }
         public UInt256? GasBottleneck { get; set; }
@@ -72,6 +71,7 @@ namespace Nethermind.Core
         [JsonIgnore]
         public ulong BlockGasUsed { get => _blockGasUsed > 0 ? _blockGasUsed : GasLimit; set => _blockGasUsed = value; }
         public Address? To { get; set; }
+        private UInt256 _gasPrice;
         private UInt256 _value;
         public UInt256 Value { get => _value; set => _value = value; }
         [JsonIgnore]
