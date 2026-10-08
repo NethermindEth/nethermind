@@ -29,7 +29,7 @@ internal static class PbtLeafStaging
     private const string CodePhase = "PBT import code";
 
     /// <returns>The staged accounts and slots, and the code chunks <see cref="RebuildCodes"/> must consume.</returns>
-    public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtAnchorPublication.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
+    public static (ulong Accounts, ulong Slots, long CodeChunks) Stage(PbtLeafIngestion.LogicalBatch batch, IEnumerable<RebuildEntry> leaves,
         CancellationToken cancellationToken)
     {
         ulong accounts = 0;
@@ -175,7 +175,7 @@ internal static class PbtLeafStaging
                 consumed += Rebuild(staged, codeHash, (int)size, batch, cancellationToken);
                 pending[codeHash] = size;
                 progress.Update(++rebuilt);
-                if (pending.Count < PbtAnchorPublication.BatchSize) continue;
+                if (pending.Count < PbtLeafIngestion.BatchSize) continue;
                 batch.Commit();
                 batch.Dispose();
                 batch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL);

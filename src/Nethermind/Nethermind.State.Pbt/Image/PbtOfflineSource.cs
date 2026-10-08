@@ -65,8 +65,7 @@ internal static class PbtOfflineSource
             { MaxConcurrentPreMerges = workers };
             using PbtSortedSpool? rawKeys = preimages is null ? null : new("export preimages", directory, spoolBytes, workers, logManager, cancellationToken)
             { MaxConcurrentPreMerges = workers };
-            ScanTotals totals = new();
-            Scan();
+            ScanTotals totals = Spool(source, codeSource, leaves, rawKeys, workers, logManager, cancellationToken);
 
             ulong leafCount = 0;
             ulong accountCount = (ulong)totals.Accounts;
@@ -105,55 +104,6 @@ internal static class PbtOfflineSource
                     throw;
                 }
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default);
-
-            // Workers claim address ranges on demand; the spools restore the total order the walk does not have.
-            void Scan()
-            {
-                int partitionCount = Math.Min(workers * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
-                PbtPrefixPartitions partitions = new(partitionCount);
-                int nextPartition = -1;
-                PbtKeyspaceProgress keyspace = new(partitionCount);
-                using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
-                Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref totals.Slots));
-                progress.Logger.SetFormat(p => PbtImageProgress.Format(ScanPhase, keyspace.Walked / (float)PbtKeyspaceProgress.Keyspace,
-                    $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
-
-                void ScanPartitions()
-                {
-                    using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
-                    using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
-                    ScanWorker worker = new(codeSource, leafWriter, rawKeyWriter, progress, keyspace, totals);
-                    int partition;
-                    while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
-                    {
-                        (ValueHash256 start, ValueHash256 end) = partitions.Bounds(partition);
-                        worker.ScanRange(source, partition, start, end, cancellationToken);
-                        // The flat iterator's upper bound is exclusive and truncates to twenty bytes, so the
-                        // maximum address is reached only by the last range, and only by an explicit lookup.
-                        if (partition == partitionCount - 1) worker.ScanMaximumAddress(source);
-                        keyspace.Complete(partition);
-                    }
-                    worker.PublishProgress();
-                }
-
-                Task[] running = new Task[workers];
-                for (int index = 0; index < workers; index++)
-                    // Dedicated threads: a worker blocked on the spool's segment pool must not hold a pool thread
-                    // that one of the sorts freeing that segment is queued behind.
-                    running[index] = Task.Factory.StartNew(ScanPartitions, cancellationToken,
-                        TaskCreationOptions.LongRunning, TaskScheduler.Default);
-
-                // Joined without the token: the workers observe it themselves, and abandoning one of them here
-                // would leave it writing into spools the unwinding caller is about to dispose.
-                try
-                {
-                    Task.WaitAll(running, CancellationToken.None);
-                }
-                catch (AggregateException failures)
-                {
-                    ExceptionDispatchInfo.Capture(failures.Flatten().InnerExceptions[0]).Throw();
-                }
-            }
 
             IEnumerable<RebuildEntry> SnapshotLeaves()
             {
@@ -203,8 +153,63 @@ internal static class PbtOfflineSource
         }
     }
 
+    /// <summary>Scans every account and slot of <paramref name="source"/> into <paramref name="leaves"/> as tree leaves, and
+    /// into <paramref name="rawKeys"/> as preimage keys when given.</summary>
+    /// <remarks>Workers claim address ranges on demand; the spools restore the total order the walk does not have.</remarks>
+    /// <param name="workers">Scan workers, each holding one writer of every spool.</param>
+    internal static ScanTotals Spool(FlatPersistence.IPersistenceReader source, IReadOnlyKeyValueStore codeSource,
+        PbtSortedSpool leaves, PbtSortedSpool? rawKeys, int workers, ILogManager logManager, CancellationToken cancellationToken)
+    {
+        ScanTotals totals = new();
+        int partitionCount = Math.Min(workers * PartitionsPerWorker, PbtPrefixPartitions.PrefixSpace);
+        PbtPrefixPartitions partitions = new(partitionCount);
+        int nextPartition = -1;
+        PbtKeyspaceProgress keyspace = new(partitionCount);
+        using ProgressReporter progress = PbtImageProgress.Start(ScanPhase, "acc", 0, logManager);
+        Func<string> slotCounter = PbtImageProgress.Counter("slot", () => (ulong)Interlocked.Read(ref totals.Slots));
+        progress.Logger.SetFormat(p => PbtImageProgress.Format(ScanPhase, keyspace.Walked / (float)PbtKeyspaceProgress.Keyspace,
+            $"{PbtImageProgress.Counted("acc", p)} | {slotCounter()}"));
+
+        void ScanPartitions()
+        {
+            using PbtSortedSpool.Writer leafWriter = leaves.CreateWriter();
+            using PbtSortedSpool.Writer? rawKeyWriter = rawKeys?.CreateWriter();
+            ScanWorker worker = new(codeSource, leafWriter, rawKeyWriter, progress, keyspace, totals);
+            int partition;
+            while ((partition = Interlocked.Increment(ref nextPartition)) < partitionCount)
+            {
+                (ValueHash256 start, ValueHash256 end) = partitions.Bounds(partition);
+                worker.ScanRange(source, partition, start, end, cancellationToken);
+                // The flat iterator's upper bound is exclusive and truncates to twenty bytes, so the
+                // maximum address is reached only by the last range, and only by an explicit lookup.
+                if (partition == partitionCount - 1) worker.ScanMaximumAddress(source);
+                keyspace.Complete(partition);
+            }
+            worker.PublishProgress();
+        }
+
+        Task[] running = new Task[workers];
+        for (int index = 0; index < workers; index++)
+            // Dedicated threads: a worker blocked on the spool's segment pool must not hold a pool thread
+            // that one of the sorts freeing that segment is queued behind.
+            running[index] = Task.Factory.StartNew(ScanPartitions, cancellationToken,
+                TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+        // Joined without the token: the workers observe it themselves, and abandoning one of them here
+        // would leave it writing into spools the unwinding caller is about to dispose.
+        try
+        {
+            Task.WaitAll(running, CancellationToken.None);
+        }
+        catch (AggregateException failures)
+        {
+            ExceptionDispatchInfo.Capture(failures.Flatten().InnerExceptions[0]).Throw();
+        }
+        return totals;
+    }
+
     /// <summary>The scan's shared record counts, published by the workers and read by the progress format.</summary>
-    private sealed class ScanTotals
+    internal sealed class ScanTotals
     {
         public long Accounts;
         public long Slots;

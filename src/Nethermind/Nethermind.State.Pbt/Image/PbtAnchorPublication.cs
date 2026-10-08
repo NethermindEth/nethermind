@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
-using System.Runtime.ExceptionServices;
-using System.Threading.Channels;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -35,10 +32,6 @@ internal sealed class PbtAnchorPublication(
     private static byte[] Provenance(PbtImageAnchor anchor) => System.Text.Json.JsonSerializer.SerializeToUtf8Bytes(
         new AnchorProvenance(anchor.ChainId, anchor.GenesisHash.ToString(), anchor.Header.Hash!.ToString(),
             (long)anchor.Header.Number, anchor.Header.StateRoot!.ToString()));
-    // Below DbOnTheRocks.RocksDbWriteBatch.MaxWritesOnNoWal, so a no-WAL batch is written by its flusher, not inline by the reader.
-    internal const int BatchSize = 255;
-    private const string StagePhase = "PBT import stage";
-    private const string FoldPhase = "PBT import fold";
     private readonly ILogger _logger = logManager.GetClassLogger<PbtAnchorPublication>();
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
@@ -68,13 +61,7 @@ internal sealed class PbtAnchorPublication(
         Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
     {
         PrepareStaging(anchor, cancellationToken);
-        (ulong Accounts, ulong Slots, long CodeChunks) staged;
-        using (LogicalBatch batch = new(target, config.ImportConcurrency > 0 ? config.ImportConcurrency : Environment.ProcessorCount, cancellationToken))
-        {
-            staged = PbtLeafStaging.Stage(batch, Reported(StagePhase, leaves(cancellationToken), fraction), cancellationToken);
-            batch.Commit();
-        }
-        PbtLeafStaging.RebuildCodes(target, staged.CodeChunks, logManager, cancellationToken);
+        (ulong Accounts, ulong Slots) staged = PbtLeafIngestion.Stage(target, leaves, fraction, config.ImportConcurrency, logManager, cancellationToken);
         if (preimages is not null)
         {
             using (IPbtPersistence.IReader reader = target.CreateReader())
@@ -83,7 +70,8 @@ internal sealed class PbtAnchorPublication(
                     throw new InvalidDataException("Snapshot holds state its preimages do not list.");
             if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor or MPT state changed during verification.");
         }
-        ValueHash256 root = await Fold(token => Reported(FoldPhase, leaves(token), fraction), new StateId(anchor.Header), claimedRoot, cancellationToken);
+        ValueHash256 root = await PbtLeafIngestion.Fold(new PbtRebuilder(target, config, config.ImportConcurrency, logManager), leaves, fraction,
+            new StateId(anchor.Header), windowSize: 16_384, claimedRoot, logManager, cancellationToken);
         Finish(anchor, root, staged.Accounts, staged.Slots, importing, cancellationToken);
         return root;
     }
@@ -108,39 +96,6 @@ internal sealed class PbtAnchorPublication(
             throw new InvalidOperationException("PBT anchor staging must start empty.");
     }
 
-    /// <summary>Folds the ascending leaves into the tree and publishes them as <paramref name="anchorState"/>, unless the root differs from <paramref name="expectedRoot"/>.</summary>
-    private async Task<ValueHash256> Fold(Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, StateId anchorState, ValueHash256? expectedRoot, CancellationToken cancellationToken)
-    {
-        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(2);
-        Task producer = Task.Run(async () =>
-        {
-            try
-            {
-                using (PbtRebuilder.EntrySink sink = new(channel.Writer, 2048, linked.Token))
-                {
-                    foreach (RebuildEntry entry in leaves(linked.Token)) await sink.Add(entry);
-                    await sink.Complete();
-                }
-                channel.Writer.TryComplete();
-            }
-            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
-        }, CancellationToken.None);
-        try
-        {
-            ValueHash256 root = await new PbtRebuilder(target, config, config.ImportConcurrency, logManager).Rebuild(channel.Reader, anchorState, linked.Token, 16_384, expectedRoot);
-            await producer;
-            return root;
-        }
-        finally
-        {
-            await linked.CancelAsync();
-            try { await producer; }
-            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
-            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
-        }
-    }
-
     private void Finish(PbtImageAnchor anchor, in ValueHash256 root, ulong stagedAccounts, ulong stagedSlots, Stopwatch importing, CancellationToken cancellationToken)
     {
         foreach (PbtColumns column in targetDb.ColumnKeys) targetDb.GetColumnDb(column).SyncWal();
@@ -151,22 +106,6 @@ internal sealed class PbtAnchorPublication(
         if (_logger.IsInfo)
             _logger.Info($"Imported the PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} with root {root}: " +
                 $"{stagedAccounts:N0} accounts and {stagedSlots:N0} slots in {importing.Elapsed:hh\\:mm\\:ss}.");
-    }
-
-    /// <param name="fraction">The fraction of the pass done after the given number of leaves, sampled on the reading
-    /// thread since a snapshot's offset briefly moves while its reader re-reads the header section.</param>
-    private IEnumerable<RebuildEntry> Reported(string phase, IEnumerable<RebuildEntry> leaves, Func<ulong, float> fraction)
-    {
-        ulong read = 0;
-        float walked = 0;
-        using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", 0, logManager);
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(phase, walked, PbtImageProgress.Counted("leaf", p)));
-        foreach (RebuildEntry entry in leaves)
-        {
-            walked = fraction(++read);
-            progress.Update(read);
-            yield return entry;
-        }
     }
 
     private static IEnumerable<RebuildEntry> SnapshotLeaves(Stream snapshot, CancellationToken cancellationToken)
@@ -205,93 +144,6 @@ internal sealed class PbtAnchorPublication(
                         throw new InvalidDataException("Populated native anchor has no matching prepared provenance.");
             metadata.Set(_provenanceKey, provenance);
             metadata.SyncWal();
-        }
-    }
-
-    /// <summary>Compiles staged writes into no-WAL batches on the caller's thread and writes them on parallel flushers.</summary>
-    /// <remarks>Staged keys are unique, so the order the flushers write in does not matter. Nothing is durable until
-    /// <see cref="Commit"/> flushes the write buffers; an interrupted staging is wiped by <see cref="RecoverStaging"/>.</remarks>
-    internal sealed class LogicalBatch : IDisposable
-    {
-        private readonly PbtRocksDbPersistence _target;
-        private readonly CancellationTokenSource _cancellation;
-        private readonly Task[] _flushers;
-        private readonly Channel<IPbtPersistence.IWriteBatch> _pending;
-        private ExceptionDispatchInfo? _failure;
-        private IPbtPersistence.IWriteBatch? _batch;
-        private int _count;
-
-        public LogicalBatch(PbtRocksDbPersistence target, int flusherCount, CancellationToken cancellationToken)
-        {
-            _target = target;
-            _flushers = new Task[flusherCount];
-            _cancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            _pending = Channel.CreateBounded<IPbtPersistence.IWriteBatch>(
-                new BoundedChannelOptions(2 * flusherCount) { SingleWriter = true });
-            for (int i = 0; i < _flushers.Length; i++)
-                _flushers[i] = Task.Run(Flush, CancellationToken.None);
-        }
-
-        public IPbtPersistence.IWriteBatch Next()
-        {
-            if (_count == BatchSize) Enqueue();
-            _count++;
-            return _batch ??= _target.CreateStagingWriteBatch(WriteFlags.DisableWAL);
-        }
-
-        /// <summary>Waits for every staged write, then flushes the write buffers so the no-WAL writes are durable.</summary>
-        public void Commit()
-        {
-            if (_batch is not null) Enqueue();
-            _pending.Writer.Complete();
-            WaitFlushers();
-            _target.Flush();
-        }
-
-        public void Dispose()
-        {
-            _pending.Writer.TryComplete();
-            _cancellation.Cancel();
-            Task.WaitAll(_flushers);
-            _batch?.Dispose();
-            while (_pending.Reader.TryRead(out IPbtPersistence.IWriteBatch? batch)) batch.Dispose();
-            _cancellation.Dispose();
-        }
-
-        private void Enqueue()
-        {
-            try
-            {
-                if (!_pending.Writer.TryWrite(_batch!)) _pending.Writer.WriteAsync(_batch!, _cancellation.Token).AsTask().GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException)
-            {
-                WaitFlushers();
-                throw;
-            }
-            _batch = null;
-            _count = 0;
-        }
-
-        private async Task Flush()
-        {
-            try
-            {
-                await foreach (IPbtPersistence.IWriteBatch batch in _pending.Reader.ReadAllAsync(_cancellation.Token))
-                    using (batch) batch.Commit();
-            }
-            catch (Exception exception)
-            {
-                Interlocked.CompareExchange(ref _failure, ExceptionDispatchInfo.Capture(exception), null);
-                _cancellation.Cancel();
-            }
-        }
-
-        /// <summary>Waits for the flushers to stop and rethrows the first failure among them.</summary>
-        private void WaitFlushers()
-        {
-            Task.WaitAll(_flushers);
-            _failure?.Throw();
         }
     }
 }

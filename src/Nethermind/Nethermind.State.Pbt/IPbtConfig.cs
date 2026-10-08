@@ -44,17 +44,17 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Distance from the export anchor, in blocks, within which flat persistence stops batching by FlatDb.CompactSize and persists one block at a time so that it lands exactly on the anchor. 0 uses FlatDb.CompactSize.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExportStepDistance { get; set; }
 
-    /// <summary>Address ranges scanned in parallel when writing the EIP-8347 artifacts. Defaults to 0.</summary>
+    /// <summary>Address ranges scanned in parallel when writing the EIP-8347 artifacts or the preimage-flat import's leaf spool. Defaults to 0.</summary>
     /// <remarks>The scan derives a tree key per leaf and hashes every account's code, so it is CPU-bound; the
     /// spools restore the total order the partitioned walk does not have.</remarks>
-    [ConfigItem(Description = "Number of parallel workers scanning address ranges of the source state while exporting the EIP-8347 artifacts. 0 uses the processor count.", DefaultValue = "0", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Number of parallel workers scanning address ranges of the source state while exporting the EIP-8347 artifacts or importing from a preimage-flat database. 0 uses the processor count.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExportConcurrency { get; set; }
 
-    /// <summary>Export sort budget per scan worker, in bytes, split between the two spools. Defaults to 256 MiB.</summary>
+    /// <summary>Export and preimage-flat import sort budget per scan worker, in bytes, split between the spools. Defaults to 256 MiB.</summary>
     /// <remarks>Resident sort memory is this times ExportConcurrency, plus up to half as many spare buffers again,
     /// which absorb the sort of a filled buffer while its worker fills the next one. Larger buffers spill fewer,
     /// longer runs and so leave less to merge.</remarks>
-    [ConfigItem(Description = "Bytes buffered per export scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
+    [ConfigItem(Description = "Bytes buffered per export or preimage-flat import scan worker before the records are sorted and spilled to a temporary run, split between the leaf and preimage spools. Resident sort memory is roughly this times the worker count.", DefaultValue = "268435456", HiddenFromDocs = true)]
     int ExportSortBufferBytes { get; set; }
 
     /// <summary>Whether the export also writes the EIP-8347 preimage stream beside the snapshot. Defaults to true.</summary>
@@ -121,9 +121,6 @@ public interface IPbtConfig : IConfig
 
     [ConfigItem(Description = "Minimum number of leaf operations per worker when the buckets a worker takes hold at least FoldLargeSubtreeBytes below them.", DefaultValue = "16")]
     int FoldLargeSubtreeMinOperationsPerWorker { get; set; }
-
-    [ConfigItem(Description = "Number of parallel workers copying the source and scanning staged key ranges to derive leaves during the preimage-flat import. 0 uses the processor count. The tree fold runs in a separate single consumer whose zones and wide buckets fold with FoldConcurrency threads.", DefaultValue = "0")]
-    int ImportStorageReadConcurrency { get; set; }
 
     [ConfigItem(Description = "Number of tree leaves buffered per window during the preimage-flat import before it is folded into the tree and committed. 0 uses the built-in default (2000000). Larger windows fold in fewer passes at the cost of memory.", DefaultValue = "0")]
     int ImportWindowSize { get; set; }
