@@ -38,6 +38,7 @@ public static class ConsensusSpecArchive
         ("epoch_processing", StateTransitionForks),
         ("sanity", StateTransitionForks),
         ("fork_choice", ["fulu", "gloas"]),
+        ("fast_confirmation", ["fulu", "gloas"]),
         ("fork", ForkUpgradeForks),
         ("transition", TransitionForks),
         ("networking", ["fulu", "gloas"]),

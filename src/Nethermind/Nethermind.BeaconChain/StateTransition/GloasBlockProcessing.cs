@@ -339,15 +339,18 @@ public static partial class GloasBlockProcessing
     /// <param name="hasher">Computes the state root the envelope's block root is checked against; <c>null</c> merkleizes the whole state.</param>
     /// <exception cref="BeaconStateException">The envelope names an unknown block, or fails any spec check.</exception>
     public static void VerifyExecutionPayloadEnvelope(IGloasBlockStateProvider states, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, IBeaconStateHasher? hasher = null)
+        => VerifyExecutionPayloadEnvelopeCore(states, signedEnvelope, notifier, pubkeys, verifySignatures: true, hasher);
+
+    internal static void VerifyExecutionPayloadEnvelopeCore(IGloasBlockStateProvider states, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, bool verifySignatures, IBeaconStateHasher? hasher = null)
     {
         Hash256 blockRoot = signedEnvelope.Message!.BeaconBlockRoot ?? throw new BeaconStateException("Envelope carries no beacon block root");
         BeaconStateGloas state = states.GetGloasBlockState(blockRoot)
             ?? throw new BeaconStateException($"Envelope names beacon block {blockRoot}, whose post-state is not known");
-        VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys, hasher);
+        VerifyExecutionPayloadEnvelopeAgainst(state, signedEnvelope, notifier, pubkeys, verifySignatures, hasher);
     }
 
     /// <summary>Verifies against the frozen state resolved by <see cref="VerifyExecutionPayloadEnvelope"/>.</summary>
-    private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, IBeaconStateHasher? hasher)
+    private static void VerifyExecutionPayloadEnvelopeAgainst(BeaconStateGloas state, SignedExecutionPayloadEnvelope signedEnvelope, INewPayloadNotifier notifier, PubkeyCache pubkeys, bool verifySignatures, IBeaconStateHasher? hasher)
     {
         ExecutionPayloadEnvelope envelope = signedEnvelope.Message!;
         ExecutionPayloadGloas payload = envelope.Payload!;
@@ -356,7 +359,7 @@ public static partial class GloasBlockProcessing
         if (envelope.BuilderIndex != Presets.BuilderIndexSelfBuild && envelope.BuilderIndex >= (ulong)state.Builders!.Length)
             throw new BeaconStateException($"Envelope builder index {envelope.BuilderIndex} is not in the builder registry");
 
-        if (!VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys))
+        if (verifySignatures && !VerifyExecutionPayloadEnvelopeSignature(state, signedEnvelope, pubkeys))
             throw new BeaconStateException("Invalid execution payload envelope signature");
 
         BeaconBlockHeader header = new()

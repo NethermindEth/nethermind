@@ -80,10 +80,10 @@ internal static class GloasForkChoiceStepDriver
             RunEnvelopeStep(context, envelopeKey!, valid, stepIndex);
         else if (TryGetScalar(step, "attestation", out string? attestationKey))
             RunOperandStep<AttestationGloas>($"step {stepIndex}: attestation {attestationKey}", valid, context.Read(attestationKey!),
-                operand => context.Runner.OnAttestation(operand, isFromBlock: false, verifySignature: true));
+                operand => context.Runner.OnAttestation(operand, isFromBlock: false, verifySignature: context.VerifySignatures));
         else if (TryGetScalar(step, "attester_slashing", out string? slashingKey))
             RunOperandStep<AttesterSlashingGloas>($"step {stepIndex}: attester_slashing {slashingKey}", valid, context.Read(slashingKey!),
-                operand => context.Runner.OnAttesterSlashing(operand, verifySignatures: true));
+                operand => context.Runner.OnAttesterSlashing(operand, verifySignatures: context.VerifySignatures));
         else if (TryGetScalar(step, "payload_attestation_message", out string? messageKey))
             RunOperandStep<PayloadAttestationMessage>($"step {stepIndex}: payload_attestation_message {messageKey}", valid, context.Read(messageKey!),
                 operand => context.Runner.OnPayloadAttestationMessage(operand, isFromBlock: false, verifySignature: context.VerifySignatures));
@@ -140,7 +140,8 @@ internal static class GloasForkChoiceStepDriver
 
         Exception? rejection = Attempt(() =>
         {
-            GloasBlockProcessing.VerifyExecutionPayloadEnvelope(context.States, signedEnvelope, new ValidPayloadNotifier(), context.Pubkeys);
+            GloasBlockProcessing.VerifyExecutionPayloadEnvelopeCore(context.States, signedEnvelope, new ValidPayloadNotifier(), context.Pubkeys, verifySignatures: context.VerifySignatures);
+            context.Runner.ValidateExecutionChainAndGetPayloadRoot(blockRoot!, signedEnvelope.Message!.Payload!.BlockHash!);
             context.Runner.OnExecutionPayloadVerified(blockRoot!);
         });
 
@@ -150,6 +151,7 @@ internal static class GloasForkChoiceStepDriver
     private static void RunChecksStep(Context context, YamlMappingNode checks, int stepIndex)
     {
         ForkChoiceRunner runner = context.Runner;
+        RunFastConfirmationChecks(checks, runner, stepIndex);
         foreach (string key in Keys(checks))
         {
             switch (key)
@@ -188,6 +190,14 @@ internal static class GloasForkChoiceStepDriver
                 case "payload_data_availability_vote":
                     TryGetChild(checks, key, out YamlNode? voteNode);
                     AssertPtcVotes(runner, stepIndex, key, (YamlMappingNode)voteNode!);
+                    break;
+                case "previous_epoch_observed_justified_checkpoint":
+                case "current_epoch_observed_justified_checkpoint":
+                case "previous_epoch_greatest_unrealized_checkpoint":
+                case "previous_slot_head":
+                case "current_slot_head":
+                case "confirmed_root":
+                case "safe_execution_block_hash":
                     break;
                 default:
                     throw new NotImplementedInDriverException($"step {stepIndex}: check '{key}' has no entry point in this driver.");

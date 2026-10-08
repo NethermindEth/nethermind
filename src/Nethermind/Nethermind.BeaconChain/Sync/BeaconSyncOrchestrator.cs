@@ -2451,7 +2451,7 @@ public sealed class BeaconSyncOrchestrator(
         return null;
     }
 
-    /// <summary>Recomputes head and updates the engine (safe=justified, finalized=finalized), finality and status.</summary>
+    /// <summary>Recomputes head and updates the engine with the confirmed safe hash, finality and status.</summary>
     /// <remarks>An INVALID verdict invalidates the payload and retries once.</remarks>
     internal async Task RunHeadStepAsync(CancellationToken token)
     {
@@ -2565,7 +2565,8 @@ public sealed class BeaconSyncOrchestrator(
     private async Task<PayloadStatusV1?> ForkchoiceUpdatedAsync(HeadView head, Hash256 headExec, CancellationToken token)
     {
         token.ThrowIfCancellationRequested();
-        ForkchoiceHashes sent = new(headExec, head.JustifiedExecutionHash ?? headExec, head.FinalizedExecutionHash ?? _anchorExecutionHash);
+        Hash256 finalized = head.FinalizedExecutionHash ?? _anchorExecutionHash;
+        ForkchoiceHashes sent = new(headExec, head.SafeExecutionHash ?? finalized, finalized);
         long now = slotClock.UnixMilliseconds;
         if (_lastForkchoice is { } last && last.Hashes == sent && last.Status.Status != PayloadStatus.Invalid
             && now - last.SentAtMs < (long)ForkchoiceResendInterval.TotalMilliseconds)
