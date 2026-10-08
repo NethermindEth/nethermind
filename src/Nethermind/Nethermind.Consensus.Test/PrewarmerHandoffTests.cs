@@ -773,16 +773,24 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice }
+    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice, ZeroValueToCode, ZeroValueToEmpty }
 
     [Test]
-    public void A_compacted_footprint_replays_into_the_state_of_its_run([Values] RecordedChanges changes)
+    public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
     {
         StorageCell cell = new(Counter, 0x4e4d);
+        Address empty = TestItem.AddressE;
+        BlockHeader parent = WithEmptyAccount(empty);
         IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
-        using (worldState.BeginScope(Parent))
+        (UInt256, UInt256, bool, UInt256, bool) State() =>
+            (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell), worldState.AccountExists(empty));
+
+        TransactionFootprint footprint;
+        int compacted;
+        (UInt256, UInt256, bool, UInt256, bool) recorded;
+        using (worldState.BeginScope(parent))
         {
-            (TransactionFootprint footprint, Snapshot before) = Record(worldState, recorder =>
+            (footprint, _) = Record(worldState, recorder =>
             {
                 switch (changes)
                 {
@@ -790,34 +798,45 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                         recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
                         recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
                         recorder.AddToBalance(ScarcePayer, 3, Spec, out _);
-                        return 3;
+                        return 1;
                     case RecordedChanges.NetDebit:
                         recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
                         recorder.SubtractFromBalance(ScarcePayer, 0x4e4e, Spec, out _);
-                        return 2;
+                        return 1;
                     case RecordedChanges.AcrossRecreation:
                         recorder.AddToBalance(TestItem.AddressC, 3, Spec, out _);
                         recorder.DeleteAccount(TestItem.AddressC);
                         recorder.CreateAccount(TestItem.AddressC, 0);
                         recorder.AddToBalance(TestItem.AddressC, 2, Spec, out _);
-                        return 0;
-                    default:
+                        return 4;
+                    case RecordedChanges.SlotWrittenTwice:
                         recorder.Set(cell, 1);
                         recorder.Set(cell, 2);
-                        return 2;
+                        return 1;
+                    case RecordedChanges.ZeroValueToCode:
+                        recorder.GetCode(Counter);
+                        recorder.AddToBalance(Counter, 0, Spec, out _);
+                        recorder.SubtractFromBalance(ScarcePayer, 0, Spec, out _);
+                        return 0;
+                    default:
+                        // The touch of an empty account deletes it (EIP-161).
+                        recorder.GetCode(empty);
+                        recorder.AddToBalance(empty, 0, Spec, out _);
+                        return 1;
                 }
-            }, out int compactable);
+            }, out compacted);
+            worldState.Commit(Spec);
+            recorded = State();
+        }
 
-            (UInt256, UInt256, bool, UInt256) State() =>
-                (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell));
-            (UInt256, UInt256, bool, UInt256) recorded = State();
-            worldState.Restore(before);
+        using (worldState.BeginScope(parent))
+        {
             footprint.Replay(worldState, Spec);
-
+            worldState.Commit(Spec);
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(State(), Is.EqualTo(recorded));
-                if (compactable > 0) Assert.That(footprint.Effects.Length, Is.EqualTo(1));
+                Assert.That(footprint.Effects.Length, Is.EqualTo(compacted));
             }
         }
 
@@ -828,6 +847,19 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    /// <summary>A child of <see cref="Parent"/> whose state holds <paramref name="address"/> as an empty account.</summary>
+    private BlockHeader WithEmptyAccount(Address address)
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            worldState.CreateAccount(address, 0);
+            // As genesis, which keeps empty accounts.
+            worldState.Commit(Spec, Evm.Tracing.State.NullStateTracer.Instance, isGenesis: true);
+            worldState.CommitTree(Parent.Number + 1);
+            return Processed(BuildBlock(), worldState.StateRoot);
+        }
+    }
     [Test]
     public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made()
     {

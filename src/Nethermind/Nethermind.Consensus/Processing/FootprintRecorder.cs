@@ -151,6 +151,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     /// keeps only an account's last value, and a touch commits as an update does. A minimum balance as large as the
     /// deepest deficit along the changes refuses a replay where a subtraction would have failed.
     /// A slot keeps only its last write, which overwrites the earlier ones whatever happens to the account between them.
+    /// A zero-value debit changes nothing, and neither does a zero-value credit to an account that cannot be empty.
     /// </remarks>
     private StateEffect[] CompactEffects()
     {
@@ -204,7 +205,11 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             {
                 if (lastWrites[_slotIndex[new StorageCell(effect.Address, in effect.Index)]] != e) continue;
             }
-            else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && !effect.Value.IsZero)
+            else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && effect.Value.IsZero)
+            {
+                if (effect.Kind == EffectKind.SubtractFromBalance || KeepsCode(_accountIndex[effect.Address], merges)) continue;
+            }
+            else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance)
             {
                 int index = _accountIndex[effect.Address];
                 ref BalanceMerge merge = ref merges[index];
@@ -225,10 +230,19 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
                 }
             }
 
-            effects[kept++] = effect;
+            if (kept != e) effects[kept] = effect;
+            kept++;
         }
 
         return effects[..kept].ToArray();
+    }
+
+    // An account the run requires code of, and does not create, delete or give code, is never empty (EIP-161), so a
+    // zero-value credit touches nothing.
+    private bool KeepsCode(int index, ReadOnlySpan<BalanceMerge> merges)
+    {
+        ref readonly AccountPrecondition account = ref _accounts[index];
+        return (account.Fields & AccountFields.Code) != 0 && account.CodeHash != ValueKeccak.OfAnEmptyString && !merges[index].Unmergeable;
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
