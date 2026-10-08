@@ -1196,6 +1196,64 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void ConsumerScope_Opening_StopsAnIdleSessionWithoutWaiting()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false, skipIdleSpeculativeJoin: true);
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        using CancellationTokenSource cancellation = new();
+        using ManualResetEventSlim passed = new(false);
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            passed.Set();
+            return null;
+        }, idlePassDelayMs: 60_000, cancellation.Token);
+        Assert.That(passed.Wait(DiscoveryTimeout), Is.True, "precondition: the session must have run a pass");
+        // Leaves the session in its idle delay.
+        Thread.Sleep(PendingProbe);
+
+        long skipped = Volatile.Read(ref Blockchain.Metrics.PrewarmSpeculativeJoinsSkippedIdle);
+        using (mainWorldState.BeginScope(head))
+        {
+            Assert.That(Volatile.Read(ref Blockchain.Metrics.PrewarmSpeculativeJoinsSkippedIdle), Is.GreaterThan(skipped), "an idle session is stopped, not waited for");
+        }
+
+        Assert.That(session.Wait(DiscoveryTimeout), Is.True, "the stopped session ends on its own");
+    }
+
+    [Test]
+    public void ConsumerScope_Opening_StillWaitsForASessionInAPass_WhenOnlyIdleOnesAreSkipped()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false, skipIdleSpeculativeJoin: true);
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        using CancellationTokenSource cancellation = new();
+        using ManualResetEventSlim inPass = new(false);
+        // Not disposed: the fallback below may still set it after the test ends.
+        ManualResetEventSlim release = new(false);
+        _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            inPass.Set();
+            release.Wait();
+            return null;
+        }, idlePassDelayMs: 5, cancellation.Token);
+        Assert.That(inPass.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be in a pass");
+
+        Task open = Task.Run(() =>
+        {
+            using (mainWorldState.BeginScope(head)) { }
+        });
+        Assert.That(open.Wait(PendingProbe), Is.False, "a session in a pass may still write, so the open waits for it");
+        release.Set();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(open.Wait(DiscoveryTimeout), Is.True, "the open goes ahead once the pass ends");
+            Assert.That(session.IsCompleted, Is.True);
+        }
+    }
+
+    [Test]
     public async Task StartSpeculativePreWarm_CancellationInterruptsIdleDelay()
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
@@ -2648,7 +2706,8 @@ public class BlockCachePreWarmerTests
         bool parallelExecution,
         bool parallelExecutionBatchRead,
         ILogManager? logManager = null,
-        bool deferSpeculativeJoin = false)
+        bool deferSpeculativeJoin = false,
+        bool skipIdleSpeculativeJoin = false)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -2660,7 +2719,8 @@ public class BlockCachePreWarmerTests
             PreWarmStateConcurrency = 2,
             ParallelExecution = parallelExecution,
             ParallelExecutionBatchRead = parallelExecutionBatchRead,
-            PreWarmDeferSpeculativeJoin = deferSpeculativeJoin
+            PreWarmDeferSpeculativeJoin = deferSpeculativeJoin,
+            PreWarmSkipIdleSpeculativeJoin = skipIdleSpeculativeJoin
         };
 
         return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, logManager ?? LimboLogs.Instance);

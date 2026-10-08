@@ -138,6 +138,10 @@ public static class Metrics
     public static long PrewarmSpeculativeJoinsDeferred;
 
     [CounterMetric]
+    [Description("Mempool pre-warm sessions stopped without waiting because no pass of them was running")]
+    public static long PrewarmSpeculativeJoinsSkippedIdle;
+
+    [CounterMetric]
     [Description("Times a block stopped and joined the mempool pre-warm session")]
     public static long PrewarmSpeculativeJoins;
 

@@ -80,6 +80,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Opening a block's state stops the mempool pre-warm session without waiting for it while the caches already hold the block's parent state; it is waited for before the caches are cleared or written back.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmDeferSpeculativeJoin { get; set; }
 
+    [ConfigItem(Description = "Opening a block's state stops the mempool pre-warm session without waiting for it when no pass of it is running, since it then warms nothing further.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PreWarmSkipIdleSpeculativeJoin { get; set; }
+
     [ConfigItem(Description = "The blocks the experiment flags apply to: 0 all, 1 even block numbers only, 2 odd ones only.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExperimentParity { get; set; }
 

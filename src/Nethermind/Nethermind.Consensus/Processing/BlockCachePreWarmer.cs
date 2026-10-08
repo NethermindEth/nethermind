@@ -87,6 +87,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private int _discoveryReadThreads;
     private DiscoveryReads? _discoveryReads;
     private bool _deferSpeculativeJoin;
+    private bool _skipIdleSpeculativeJoin;
+    // 1 while the mempool session is in a pass, from before it looks at its token until the pass ends.
+    private int _speculativePassActive;
     // 1 while a stopped session was left running; the next JoinWriters waits for it.
     private int _deferredJoinPending;
     // Orders the mempool session's additions to the warmed set against a block taking it over.
@@ -139,6 +142,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _discoveredCellBudget = Math.Max(0, blocksConfig.PreWarmMaxDiscoveredCells);
         _discoverFirst = blocksConfig.PreWarmDiscoverFirst;
         _deferSpeculativeJoin = blocksConfig.PreWarmDeferSpeculativeJoin;
+        _skipIdleSpeculativeJoin = blocksConfig.PreWarmSkipIdleSpeculativeJoin;
         _discoveryReadThreads = Math.Max(1, blocksConfig.PreWarmDiscoveryReadThreads);
         if (_discoverFirst)
         {
@@ -182,6 +186,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
     }
 
+    /// <summary>Stops the mempool session, and reports whether it was between passes, in which case it warms nothing further.</summary>
+    /// <remarks>
+    /// The session sets <see cref="_speculativePassActive"/> with a full fence before it looks at its token, and this
+    /// cancels (a full fence too) before reading it: either this sees the pass, or the pass sees the stop and ends before
+    /// it warms. A session left to end on its own is joined by whatever next needs it gone.
+    /// </remarks>
+    private bool TryStopIdleSpeculativeLocked(bool count)
+    {
+        if (_speculativeCts is null) return false;
+        _speculativeCts.Cancel();
+        if (Volatile.Read(ref _speculativePassActive) != 0) return false;
+        if (count) Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeJoinsSkippedIdle);
+        return true;
+    }
+
     private void JoinDeferredSpeculative()
     {
         if (Volatile.Read(ref _deferredJoinPending) != 0) CancelAndJoinSpeculative();
@@ -193,21 +212,33 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Interlocked.Increment(ref Blockchain.Metrics.PrewarmConsumerOpens);
         lock (_speculativeLock)
         {
-            // While the caches hold the state the session warmed, whatever it still writes is a value the block reads
-            // anyway; JoinWriters stops it before the caches are cleared or written back.
-            if (_deferSpeculativeJoin && ExperimentBlocks.ApplyToCurrent && _preBlockCaches.ValidFor is not null && _speculativeCts is not null)
-            {
-                _speculativeCts.Cancel();
-                Volatile.Write(ref _deferredJoinPending, 1);
-                Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeJoinsDeferred);
-            }
-            else
-            {
-                CancelAndJoinSpeculativeLocked();
-            }
+            // The scope opens at the state the block reads; EnsureNotStaleFor joins before clearing if that is not the one held.
+            StopSpeculativeForBlockLocked(ExperimentBlocks.ApplyToCurrent, holdsBlockState: _preBlockCaches.ValidFor is not null, atScopeOpen: true);
         }
 
         Interlocked.Add(ref Blockchain.Metrics.PrewarmConsumerOpenMicros, (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds);
+    }
+
+    /// <summary>Stops the mempool session for a block about to read the caches, waiting for it only while it may still write.</summary>
+    /// <param name="applies">Whether the experiment flags apply to the block.</param>
+    /// <param name="holdsBlockState">Whether the caches hold the state the session warmed and the block reads.</param>
+    /// <param name="atScopeOpen">Counts the outcome; the block's own prewarm start sees what the scope open left.</param>
+    private void StopSpeculativeForBlockLocked(bool applies, bool holdsBlockState, bool atScopeOpen)
+    {
+        // Between passes, a stopped session warms nothing further.
+        if (_skipIdleSpeculativeJoin && applies && TryStopIdleSpeculativeLocked(atScopeOpen)) return;
+
+        // While the caches hold the state the session warmed, whatever it still writes is a value the block reads
+        // anyway; JoinWriters waits for it before the caches are cleared or written back.
+        if (_deferSpeculativeJoin && applies && holdsBlockState && _speculativeCts is not null)
+        {
+            _speculativeCts.Cancel();
+            Volatile.Write(ref _deferredJoinPending, 1);
+            if (atScopeOpen) Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeJoinsDeferred);
+            return;
+        }
+
+        CancelAndJoinSpeculativeLocked();
     }
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
@@ -227,16 +258,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         lock (_speculativeLock)
         {
             // A session left running when the state opened is still writing the parent state's values; anything else waits.
-            if (_deferSpeculativeJoin && ExperimentBlocks.Apply(suggestedBlock.Number) && parent?.StateRoot is { } parentRoot && _preBlockCaches.ValidFor == parentRoot
-                && _speculativeCts is not null)
-            {
-                _speculativeCts.Cancel();
-                Volatile.Write(ref _deferredJoinPending, 1);
-            }
-            else
-            {
-                CancelAndJoinSpeculativeLocked();
-            }
+            StopSpeculativeForBlockLocked(ExperimentBlocks.Apply(suggestedBlock.Number),
+                holdsBlockState: parent?.StateRoot is { } parentRoot && _preBlockCaches.ValidFor == parentRoot, atScopeOpen: false);
             // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
             // further, but the caches describe the state they were filled from, which need not be this block's parent.
             carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
@@ -1110,44 +1133,54 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             int systemWarmAttempts = 0;
             while (!token.IsCancellationRequested)
             {
-                (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
-                if (token.IsCancellationRequested) break;
-
-                if (next is (Block delta, IReleaseSpec deltaSpec))
+                // Before the token is looked at again, so a stop that finds no pass knows this one ends before warming.
+                Interlocked.Exchange(ref _speculativePassActive, 1);
+                try
                 {
-                    bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
-                    // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
-                    if (warmSystemAccessLists || delta.Transactions.Length > 0)
+                    if (token.IsCancellationRequested) break;
+                    (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
+                    if (token.IsCancellationRequested) break;
+
+                    if (next is (Block delta, IReleaseSpec deltaSpec))
                     {
-                        bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
-                        // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
-                        if (token.IsCancellationRequested) break;
-                        if (warmSystemAccessLists)
+                        bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
+                        // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
+                        if (warmSystemAccessLists || delta.Transactions.Length > 0)
                         {
-                            systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
-                            attemptedSystemTimestamp = delta.Timestamp;
-                            // Retire the slot only once its hints actually landed, since re-warming on the next pass is
-                            // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
-                            // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
-                            if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
-                        }
-                        // A block may take the set over once the session is stopped, even before the session ends.
-                        lock (_warmedLock)
-                        {
+                            bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
+                            // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
                             if (token.IsCancellationRequested) break;
-                            foreach (Transaction tx in delta.Transactions)
+                            if (warmSystemAccessLists)
                             {
-                                if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                                systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
+                                attemptedSystemTimestamp = delta.Timestamp;
+                                // Retire the slot only once its hints actually landed, since re-warming on the next pass is
+                                // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
+                                // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
+                                if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
+                            }
+                            // A block may take the set over once the session is stopped, even before the session ends.
+                            lock (_warmedLock)
+                            {
+                                if (token.IsCancellationRequested) break;
+                                foreach (Transaction tx in delta.Transactions)
+                                {
+                                    if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                                }
+
+                                // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
+                                if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
+                                Volatile.Write(ref _warmMarker, marker);
                             }
 
-                            // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
-                            if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
-                            Volatile.Write(ref _warmMarker, marker);
+                            Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativePasses);
+                            Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeTxs, delta.Transactions.Length);
                         }
-
-                        Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativePasses);
-                        Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeTxs, delta.Transactions.Length);
                     }
+                }
+                finally
+                {
+                    Volatile.Write(ref _speculativePassActive, 0);
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
