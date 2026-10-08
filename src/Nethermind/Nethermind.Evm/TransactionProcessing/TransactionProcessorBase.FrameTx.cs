@@ -634,8 +634,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         try
         {
             using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
+            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
+            ulong maxVerifyGas = prefixTracer?.MaxVerifyGas ?? Eip8141Constants.MaxVerifyGas;
             TransactionResult prepared = PrepareValidationPrefixSimulation(
-                tx, opts, header, spec, in accessTracker,
+                tx, opts, header, spec, maxVerifyGas, in accessTracker,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
             if (!prepared)
             {
@@ -643,7 +645,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             TxFrame[] frames = tx.Frames!;
-            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
@@ -669,7 +670,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 frameContext.CurrentFrameIndex = i;
 
-                TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
+                TxFrame boundedFrame = CapFrameGas(frame, maxVerifyGas - verifyGasUsed, out bool capped);
 
                 Address resolvedTarget = frame.Target ?? sender;
                 Address caller = Eip8141Constants.EntryPointAddress;
@@ -739,6 +740,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ExecutionOptions opts,
         BlockHeader header,
         IReleaseSpec spec,
+        ulong maxVerifyGas,
         in StackAccessTracker accessTracker,
         out FrameTxContext frameContext,
         out UInt256 effectiveGasPrice,
@@ -765,7 +767,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
         }
-        if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+        if (verifyGasUsed > maxVerifyGas)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
