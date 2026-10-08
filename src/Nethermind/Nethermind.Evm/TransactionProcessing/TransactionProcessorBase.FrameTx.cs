@@ -267,7 +267,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             Snapshot.Empty, Index: 0, Refund: 0, StateGas: 0, Journal: 0,
             Destroys: accessTracker.DestroyList.TakeSnapshot());
 
-        FrameCheckpoint prefixEnd = new(
+        FrameCheckpoint postTxRollbackPoint = new(
             txSnapshot, Index: -1, Refund: 0, StateGas: 0, Journal: 0,
             Destroys: accessTracker.DestroyList.TakeSnapshot());
         bool postTxReverted = false;
@@ -355,20 +355,19 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
             if (frame.Mode == FrameMode.PostTx && !frameSucceeded)
             {
-                // A failed assertion discards the body down to the validation prefix, overriding any
-                // batch unroll, but unlike a VERIFY revert it leaves the transaction valid.
-                WorldState.Restore(prefixEnd.Snapshot);
-                accessTracker.DestroyList.Restore(prefixEnd.Destroys);
+                // EIP-7906: a failed assertion unwinds the non-exempt body past any batch unroll and keeps the transaction valid.
+                WorldState.Restore(postTxRollbackPoint.Snapshot);
+                accessTracker.DestroyList.Restore(postTxRollbackPoint.Destroys);
                 VirtualMachineStatics.RestoreRipemdTouch(WorldState, spec, shouldRestoreRipemdTouch);
-                refundCounter = prefixEnd.Refund;
+                refundCounter = postTxRollbackPoint.Refund;
 
                 // Body logs go with the state that produced them, and the bloom derives from these receipts.
-                FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, prefixEnd.Index + 1, i);
-                frameReceiptTracer?.ReportFramesRolledBack(prefixEnd.Index + 1, i);
+                FrameTxRollback.ScrubReceipts(frameReceipts, frameContext, postTxRollbackPoint.Index + 1, i);
+                frameReceiptTracer?.ReportFramesRolledBack(postTxRollbackPoint.Index + 1, i);
 
-                totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - prefixEnd.StateGas);
-                totalFrameStateGasUsed = prefixEnd.StateGas;
-                frameContext.RestoreFrameJournal(prefixEnd.Journal);
+                totalFrameGasUsed -= (ulong)(totalFrameStateGasUsed - postTxRollbackPoint.StateGas);
+                totalFrameStateGasUsed = postTxRollbackPoint.StateGas;
+                frameContext.RestoreFrameJournal(postTxRollbackPoint.Journal);
 
                 for (int s = i + 1; s < frames.Length; s++)
                 {
@@ -380,24 +379,16 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                 break;
             }
 
-            if (frameSucceeded)
-            {
-                if (!payerWasSet && frameContext.Payer is not null)
-                {
-                    // End of the validation prefix: EIP-7906 keeps everything up to here when POST_TX reverts.
-                    prefixEnd = new FrameCheckpoint(
-                        WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
-                        Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
-                }
-            }
-            else if (!inBatch)
+            if (!frameSucceeded && !inBatch)
             {
                 frameContext.RestoreFrameJournal(frameStartJournal);
             }
 
-            if (payerWasSet && frame.IsPostTxExempt)
+            bool closesValidationPrefix = frameSucceeded && !payerWasSet && frameContext.Payer is not null;
+            if (closesValidationPrefix || (payerWasSet && frame.IsPostTxExempt))
             {
-                prefixEnd = new FrameCheckpoint(
+                // EIP-7906 process_frames: a POST_TX revert keeps the validation prefix and each exempt frame behind it, failed or not.
+                postTxRollbackPoint = new FrameCheckpoint(
                     WorldState.TakeSnapshot(), Index: i, Refund: refundCounter, StateGas: totalFrameStateGasUsed,
                     Journal: frameContext.FrameJournalCheckpoint, Destroys: accessTracker.DestroyList.TakeSnapshot());
             }
@@ -424,10 +415,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
                     // Refunds from the reverted batch are discarded with its state, so roll the counter back.
                     refundCounter = batchStart.Refund;
 
-                    if (prefixEnd.Index >= batchStart.Index)
+                    if (postTxRollbackPoint.Index >= batchStart.Index)
                     {
                         // Its snapshot points past the truncated journal; unwinding to it would throw.
-                        prefixEnd = batchStart with { Index = batchStart.Index - 1 };
+                        postTxRollbackPoint = batchStart with { Index = batchStart.Index - 1 };
                     }
 
                     int terminal = i;
