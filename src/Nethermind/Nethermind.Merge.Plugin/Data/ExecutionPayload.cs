@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Diagnostics;
 using System;
 using System.Linq;
 using System.Numerics;
@@ -221,6 +222,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecut
         byte[][] encodedTransactions = Transactions;
 
         Result<Transaction[]> transactions = TryGetTransactions();
+        NewPayloadTrace.Stamp(NewPayloadTrace.TxsDecoded);
         if (transactions.IsError)
         {
             return transactions.Error;

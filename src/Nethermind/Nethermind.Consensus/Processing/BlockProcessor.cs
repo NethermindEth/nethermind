@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2025 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Diagnostics;
 using System;
 using System.Diagnostics;
 using System.Numerics;
@@ -289,6 +290,7 @@ public partial class BlockProcessor(
 
     private void CommitStateAndStorageRoots(IReleaseSpec spec)
     {
+        NewPayloadTrace.StampProcessing(NewPayloadTrace.MerkleStart);
         using MetricsTimer<StorageMerkleTimeSink> _ = new();
         _stateProvider.Commit(spec, commitRoots: true);
     }
@@ -299,6 +301,7 @@ public partial class BlockProcessor(
         {
             _stateProvider.RecalculateStateRoot();
         }
+        NewPayloadTrace.StampProcessing(NewPayloadTrace.StateRootDone);
         header.StateRoot = _stateProvider.StateRoot;
     }
 
