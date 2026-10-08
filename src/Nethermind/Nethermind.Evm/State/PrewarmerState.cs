@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Int256;
 
@@ -64,7 +65,23 @@ internal sealed class CommittedStorageWrites
     public void Add(Address address, in UInt256 index, in UInt256 value)
     {
         if (!_collecting) return;
-        if (_used == _chunk.Length) NextChunk();
+        (StorageCell Cell, UInt256 Value)[] chunk = _chunk;
+        int used = _used;
+        if ((uint)used < (uint)chunk.Length)
+        {
+            chunk[used] = (new StorageCell(address, in index), value);
+            _used = used + 1;
+        }
+        else
+        {
+            AddToNextChunk(address, in index, in value);
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private void AddToNextChunk(Address address, in UInt256 index, in UInt256 value)
+    {
+        NextChunk();
         _chunk[_used++] = (new StorageCell(address, in index), value);
     }
 
