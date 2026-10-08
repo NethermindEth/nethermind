@@ -4532,6 +4532,7 @@ namespace Nethermind.TxPool.Test
         [TestCase(true, false, true, TestName = "SubmitTx_GossipedFrameTx_IsDeferredBeforeSignatures_OnceTheHeadBudgetIsSpent")]
         [TestCase(false, false, false, TestName = "SubmitTx_GossipedFrameTx_HasItsSignaturesVerified_WhileTheHeadBudgetLasts")]
         [TestCase(true, true, false, TestName = "SubmitTx_LocalFrameTx_HasItsSignaturesVerified_EvenWithTheHeadBudgetSpent")]
+        [NonParallelizable]
         public void SubmitTx_FrameTxNeedingSimulation_SkipsSignaturesWhenTheHeadBudgetIsSpent(bool budgetSpent, bool local, bool deferred)
         {
             IFrameTxPrefixSimulator simulator = CreatePoolWithSimulator(FrameTxSimulationResult.Accept(TestItem.PrivateKeyA.Address));
@@ -4541,9 +4542,17 @@ namespace Nethermind.TxPool.Test
                 new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, Eip8038Constants.WarmAccess - 1, UInt256.Zero, Array.Empty<byte>())
             ], defect: FrameSignatureDefect.ForeignSigner);
 
+            long budgetExhaustedBefore = Volatile.Read(ref Metrics.FrameTxSimulationsBudgetExhausted);
+            long deferredBefore = Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
+
             AcceptTxResult result = _txPool.SubmitTx(tx, local ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None);
 
-            Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Invalid));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(result, Is.EqualTo(deferred ? AcceptTxResult.FrameSimulationDeferred : AcceptTxResult.Invalid));
+                Assert.That(Volatile.Read(ref Metrics.FrameTxSimulationsBudgetExhausted) - budgetExhaustedBefore, Is.EqualTo(deferred ? 1 : 0));
+                Assert.That(Volatile.Read(ref Metrics.PendingTransactionsFrameTxSimulationDeferred) - deferredBefore, Is.EqualTo(deferred ? 1 : 0));
+            }
         }
 
         // The native shortcut skips simulation, so it may only name a payer for a frame that provably

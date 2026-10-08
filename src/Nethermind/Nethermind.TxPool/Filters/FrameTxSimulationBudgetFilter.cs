@@ -31,6 +31,7 @@ internal sealed class FrameTxSimulationBudgetFilter(IFrameTxPrefixSimulator? sim
             return AcceptTxResult.Accepted;
         }
 
+        Interlocked.Increment(ref Metrics.FrameTxSimulationsBudgetExhausted);
         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxSimulationDeferred);
         if (logger.IsTrace) logger.Trace($"Deferred frame transaction {tx.Hash} before signature verification, this head's validation-prefix simulation budget is spent.");
         return AcceptTxResult.FrameSimulationDeferred.WithMessage(TxPoolErrorMessages.FrameSimulationBudgetSpent);
