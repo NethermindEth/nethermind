@@ -69,6 +69,8 @@ using System.Linq;
 using Nethermind.Trie;
 using Nethermind.State.Proofs;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Blockchain.Test.Builders;
+using Nethermind.Facade.Filters;
 
 namespace Nethermind.Blockchain.Test;
 
@@ -179,6 +181,64 @@ public partial class BlockProcessorTests
             Assert.That(processed.Header.StateRoot, expectStateRoot ? Is.EqualTo(block.Header.StateRoot) : Is.Null,
                 "only a validated or persisted block needs its state root derived");
             Assert.That(processed.Hash, Is.EqualTo(block.Hash), "the processed header must keep the canonical hash either way");
+        }
+    }
+
+    [Test]
+    public async Task Eip7668_ProducedBlock_HasZeroLengthBloomsAndLogsStayFindable([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        Address contract = ContractAddress.From(TestItem.AddressB, deploy.Nonce);
+
+        Block block = await chain.AddBlock(deploy);
+        TxReceipt[] receipts = chain.ReceiptStorage.Get(block);
+        FilterLog[] logs = chain.LogFinder.FindLogs(FilterBuilder.New().FromBlock(block.Number).ToBlock(block.Number).WithAddress(contract).Build()).ToArray();
+
+        // Pre-EIP-7668 semantics, computed independently: each receipt bloom from its logs, the header bloom their union.
+        Bloom[] logBlooms = receipts.Select(static r => new Bloom(r.Logs)).ToArray();
+        TxReceipt[] withLogBlooms = receipts.Select((r, i) => new TxReceipt(r) { Bloom = logBlooms[i] }).ToArray();
+        Bloom expectedHeaderBloom = eip7668 ? Bloom.ZeroLength : new Bloom(logBlooms);
+        Hash256 expectedRoot = ReceiptTrie.CalculateRoot(eip7668 ? spec : Bogota.Instance, withLogBlooms, new ReceiptMessageDecoder());
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.Bloom!.IsZeroLength, Is.EqualTo(eip7668));
+            Assert.That(block.Header.Bloom, Is.EqualTo(expectedHeaderBloom));
+            Assert.That(block.Header.Bloom.Matches(contract), Is.True);
+            Assert.That(receipts.Select(static r => r.Bloom.IsZeroLength), Is.All.EqualTo(eip7668));
+            Assert.That(receipts.Select(static r => r.Bloom), Is.EqualTo(eip7668 ? receipts.Select(static _ => Bloom.ZeroLength) : logBlooms));
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot));
+            Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { contract }));
+        }
+    }
+
+    /// <remarks>Block-builder validation passes its own <see cref="BlockReceiptsTracer"/>, whose block-trace end must not
+    /// replace the EIP-7668 bloom with one accumulated from its receipts.</remarks>
+    [Test]
+    public async Task Eip7668_ReprocessingWithOuterReceiptsTracer_KeepsHeaderBloomAndHash([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        byte[] logInInitCode = Prepare.EvmCode.PushData(TestItem.KeccakA.Bytes.ToArray()).PushData(0).PushData(0).Op(Instruction.LOG1).Done;
+        Transaction deploy = Build.A.Transaction.WithCode(logInInitCode).WithTo(null).WithGasLimit(1_000_000)
+            .SignedAndResolved(TestItem.PrivateKeyB).TestObject;
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = await chain.AddBlock(deploy);
+
+        using IDisposable scope = chain.MainWorldState.BeginScope(parent);
+        (Block processed, _) = chain.BlockProcessor.ProcessOne(block,
+            ProcessingOptions.ReadOnlyChain | ProcessingOptions.ForceProcessing, new BlockReceiptsTracer(), spec, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(processed.Header.Bloom, Is.EqualTo(block.Header.Bloom));
+            Assert.That(processed.Header.Hash, Is.EqualTo(block.Hash));
         }
     }
 
@@ -772,8 +832,8 @@ public partial class BlockProcessorTests
         Assert.That(seeds.TryOpenBlock(three, out ICoveredBlock? covered), Is.True);
         StateReadOverlaySlot slot = new();
         Assert.That(covered!.CreateWorkerSeeds().TrySeed(three, 0, slot), Is.True);
-        bool chained = slot.Current!.TryGetAccount(TestItem.AddressB, null, out _);
-        bool withdrawalRecipientRefused = !slot.Current.TryGetAccount(TestItem.AddressC, null, out _);
+        bool chained = slot.ParentState!.TryGetAccount(TestItem.AddressB, null, out _);
+        bool withdrawalRecipientRefused = !slot.ParentState.TryGetAccount(TestItem.AddressC, null, out _);
         covered.Dispose();
 
         string expected = chain.JsonSerializer.Serialize(new GethLikeTxTraceCollection(TraceWholeBlockThroughTraceEnvironment(chain, third, three,
@@ -1897,9 +1957,6 @@ public partial class BlockProcessorTests
 
     private static IEnumerable<TestCaseData> PredeployInstallCases()
     {
-        // EIP-8141 mandates the runtime code alone, so its account keeps the nonce it already had.
-        yield return new TestCaseData(Eip8141Prototype.Instance, Eip8141Constants.ExpiryVerifierAddress, Eip8141Constants.ExpiryVerifierCode, 0ul)
-            .SetName("Installs_eip8141_expiry_verifier_predeploy_once_and_captures_it_in_bal");
         yield return new TestCaseData(new OverridableReleaseSpec(Amsterdam.Instance) { IsEip8250Enabled = true }, Eip8250Constants.NonceManagerAddress, Eip8250Constants.NonceManagerCode.ToArray(), 1ul)
             .SetName("Installs_eip8250_nonce_manager_predeploy_once_and_captures_it_in_bal");
         // A storage namespace with empty canonical code: its activation update is the nonce alone, so a
@@ -1958,6 +2015,41 @@ public partial class BlockProcessorTests
         Assert.That(stateProvider.GetNonce(predeploy), Is.EqualTo(expectedNonce));
         Assert.That(processed2.GeneratedBlockAccessList!.GetAccountChanges(predeploy), Is.Null,
             "a re-install must not churn state or the BAL once the code is already present");
+    }
+
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public void Eip8141_activation_leaves_the_expiry_verifier_untouched_and_out_of_the_bal([Values] bool existingAccount)
+    {
+        ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Eip8141Prototype.Instance);
+        (BlockProcessor processor, _, IWorldState stateProvider, _) = CreateProcessorAndBranch(specProvider: specProvider);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)1);
+        Address verifier = Eip8141Constants.ExpiryVerifierAddress;
+        byte[] code = existingAccount ? [0x00] : [];
+        ulong nonce = existingAccount ? 7UL : 0UL;
+        UInt256 balance = existingAccount ? 3UL : 0UL;
+
+        using IDisposable scope = stateProvider.BeginScope(IWorldState.PreGenesis);
+        InstallExecutionRequestPredeploys(stateProvider, spec);
+        if (existingAccount)
+        {
+            stateProvider.CreateAccount(verifier, balance, nonce);
+            stateProvider.InsertCode(verifier, code, spec);
+        }
+
+        stateProvider.Commit(spec);
+        stateProvider.CommitTree(0);
+
+        Block block = Build.A.Block.WithNumber(1).WithAuthor(TestItem.AddressD).TestObject;
+        (Block processed, _) = processor.ProcessOne(block, ProcessingOptions.NoValidation, NullBlockTracer.Instance, spec, CancellationToken.None);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(stateProvider.AccountExists(verifier), Is.EqualTo(existingAccount));
+            Assert.That(stateProvider.GetCode(verifier), Is.SequenceEqualTo(code));
+            Assert.That(stateProvider.GetNonce(verifier), Is.EqualTo(nonce));
+            Assert.That(stateProvider.GetBalance(verifier), Is.EqualTo(balance));
+            Assert.That(processed.GeneratedBlockAccessList!.GetAccountChanges(verifier), Is.Null);
+        }
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
@@ -3807,6 +3899,10 @@ public partial class BlockProcessorTests
         }
 
         public void InstallPredeploys(IReleaseSpec spec)
+        {
+        }
+
+        public void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec)
         {
         }
 

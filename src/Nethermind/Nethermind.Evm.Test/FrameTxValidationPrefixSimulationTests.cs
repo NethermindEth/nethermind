@@ -46,9 +46,14 @@ public class FrameTxValidationPrefixSimulationTests
     [SetUp]
     public void Setup()
     {
-        _specProvider = new TestSpecProvider(Eip8141Prototype.Instance);
         _stateProvider = TestWorldStateFactory.CreateForTest();
         _worldStateCloser = _stateProvider.BeginScope(IWorldState.PreGenesis);
+        UseSpec(Eip8141Prototype.Instance);
+    }
+
+    private void UseSpec(IReleaseSpec spec)
+    {
+        _specProvider = new TestSpecProvider(spec);
         EthereumCodeInfoRepository codeInfoRepository = new(_stateProvider);
         _virtualMachine = new(new TestBlockhashProvider(_specProvider), _specProvider, LimboLogs.Instance);
         _transactionProcessor = new EthereumTransactionProcessor(BlobBaseFeeCalculator.Instance, _specProvider, _stateProvider, _virtualMachine, codeInfoRepository, LimboLogs.Instance);
@@ -240,6 +245,27 @@ public class FrameTxValidationPrefixSimulationTests
     }
 
     [Test]
+    public void Simulate_PrefixRunsAnEip7979Subroutine_ResolvesPayerOnlyWhenEnabled([Values] bool eip7979)
+    {
+        // CALLSUB and RETURNSUB are pure control flow, so the prefix may use them once they are defined.
+        UseSpec(new Bogota { IsEip8141Enabled = true, IsEip7979Enabled = eip7979 });
+        byte[] approve = ApproveCode(FrameFlags.ApproveExecutionAndPayment);
+        byte subroutine = (byte)(3 + approve.Length);
+        byte[] code = [(byte)Instruction.PUSH1, subroutine, (byte)Instruction.CALLSUB, .. approve, (byte)Instruction.CALLDEST, (byte)Instruction.RETURNSUB];
+        DeployContract(Sender, code, 1.Ether);
+        Transaction tx = FrameTx(nonce: 0, SelfVerifyFrame());
+
+        (TransactionResult result, FrameTxValidationTracer tracer) = Simulate(tx);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(eip7979));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(eip7979 ? Sender : null));
+        }
+    }
+
+    [Test]
     public void Simulate_PrefixUsesAnUndefinedOpcode_RejectedByTheBadInstructionHalt()
     {
         // 0xF6 is undefined on every fork we ship, so the EVM's own halt fails the prefix and the tracer
@@ -273,6 +299,27 @@ public class FrameTxValidationPrefixSimulationTests
             Assert.That(result.TransactionExecuted, Is.False);
             Assert.That(result.ErrorDescription, Does.Contain("MAX_VERIFY_GAS"));
             Assert.That(tracer.Payer, Is.Null);
+        }
+    }
+
+    [TestCase(Eip8141Constants.MaxVerifyGas, false, TestName = "Simulate_PrefixAboveTheDefaultBudget_RejectedAsOverBudget")]
+    [TestCase(500_000ul, true, TestName = "Simulate_PrefixAboveTheDefaultBudget_ResolvesPayerUnderARaisedBudget")]
+    public void Simulate_PrefixAboveTheDefaultBudget_IsJudgedAgainstTheTracersBudget(ulong maxVerifyGas, bool resolves)
+    {
+        byte[] countdownFrom15400 = [0x61, 0x3c, 0x28, 0x5b, 0x60, 0x01, 0x90, 0x03, 0x80, 0x60, 0x03, 0x57, 0x50];
+        DeployContract(Sender, [.. countdownFrom15400, .. ApproveCode(FrameFlags.ApproveExecutionAndPayment)], 1.Ether);
+        Transaction tx = FrameTx(nonce: 0,
+            new TxFrame(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 450_000, UInt256.Zero, default));
+        FrameTxValidationTracer tracer = new(tx.SenderAddress!, Eip8141Constants.ExpiryVerifierAddress, _stateProvider, Spec, maxVerifyGas: maxVerifyGas);
+
+        TransactionResult result = Run(tx, tracer);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.EqualTo(resolves));
+            Assert.That(tracer.Violated, Is.False);
+            Assert.That(tracer.Payer, Is.EqualTo(resolves ? Sender : null));
+            Assert.That(result.ErrorDescription ?? string.Empty, resolves ? Is.Empty : Does.Contain("MAX_VERIFY_GAS"));
         }
     }
 

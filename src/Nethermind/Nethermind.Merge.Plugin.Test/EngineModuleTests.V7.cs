@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Linq;
+using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,6 +15,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Int256;
@@ -23,6 +25,7 @@ using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.TxPool;
@@ -81,6 +84,28 @@ public partial class EngineModuleTests
             // execution-apis#609: FCU V5 reports the head's inclusion-list compliance retained from newPayloadV6.
             Assert.That(finalFcu.Data.PayloadStatus.InclusionListSatisfied, Is.True);
         }
+    }
+
+    [Test]
+    public async Task NewPayloadV6_accepts_empty_hex_logs_bloom_of_log_less_block([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using MergeTestBlockchain chain = await CreateBlockchain(spec, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = chain.EngineRpcModule;
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        ResultWrapper<ForkchoiceUpdatedV2Result> fcuResult = await rpc.engine_forkchoiceUpdatedV5(
+            new ForkchoiceStateV1(startingHead, Keccak.Zero, startingHead), BuildBogotaPayloadAttributes(inclusionList: []));
+        ResultWrapper<GetPayloadV6Result?> payloadResult = await rpc.engine_getPayloadV6(Bytes.FromHexString(fcuResult.Data.PayloadId!));
+
+        // Before EIP-7668 "0x" reads as the zero bloom, so the hash computed over 256 zero bytes still matches.
+        JsonNode payloadJson = JsonNode.Parse(chain.JsonSerializer.Serialize(payloadResult.Data!.ExecutionPayload))!;
+        payloadJson["logsBloom"] = "0x";
+        ExecutionPayloadV4 executionPayload = chain.JsonSerializer.Deserialize<ExecutionPayloadV4>(payloadJson.ToJsonString())!;
+
+        ResultWrapper<PayloadStatusV2> newPayload = await rpc.engine_newPayloadV6(
+            executionPayload, [], Keccak.Zero, payloadResult.Data!.ExecutionRequests, []);
+
+        Assert.That(newPayload.Data.Status, Is.EqualTo(PayloadStatus.Valid), newPayload.Data.ValidationError);
     }
 
     [Test]
@@ -696,7 +721,7 @@ public partial class EngineModuleTests
         ConcurrentDictionary<Hash256, byte> pruned = new();
         CommitWaitProbe probe = new();
         using MergeTestBlockchain chain = await CreateBlockchainWithPrunableState(pruned,
-            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe)),
+            builder => builder.AddDecorator<IBlockProcessingQueue>((_, inner) => new CommitWaitObservingQueue(inner, probe, typeof(NewPayloadHandler))),
             Bogota.Instance);
         IEngineRpcModule rpc = chain.EngineRpcModule;
         Hash256 genesisHash = chain.BlockTree.HeadHash!;
@@ -715,21 +740,10 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV5(new ForkchoiceStateV1(genesisHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
         pruned[block.BlockHash] = 0;
 
-        // Holds the processing thread between the re-execution's verdict and its commit.
-        TaskCompletionSource commit = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        chain.Container.Resolve<IBlockProcessingQueue>().BlockExecuted += (_, e) =>
-        {
-            if (e.BlockHash == block.BlockHash) commit.Task.Wait(TimeSpan.FromSeconds(30));
-        };
+        TaskCompletionSource commit = HoldCommit(chain, block.BlockHash);
 
         Assert.That((await rpc.engine_newPayloadV6(block, [], Keccak.Zero, requests, [])).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-        using (Assert.EnterMultipleScope())
-        {
-            ResultWrapper<ForkchoiceUpdatedV2Result> toBlock = await rpc.engine_forkchoiceUpdatedV5(
-                new ForkchoiceStateV1(block.BlockHash, Keccak.Zero, Keccak.Zero), payloadAttributes: null);
-            Assert.That(toBlock.Data.PayloadStatus.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(block.BlockHash));
-        }
+        MoveHeadBeforeCommit(chain, block.BlockHash);
 
         // A different list misses the (block, IL) cache; release the commit once the re-send waits on it or answers.
         Transaction censoredTx = Build.A.Transaction
@@ -1289,8 +1303,9 @@ public partial class EngineModuleTests
             new MergeConfig { TerminalTotalDifficulty = "0", NewPayloadCacheSize = newPayloadCacheSize },
             configurer: builder => builder
                 .WithGenesisPostProcessor((genesis, _) => genesis.Header.GasLimit = gasLimit)
+                // Every handler resolves its own decorated reader, so all share the first one's count.
                 .AddDecorator<IStateReader>((_, reader) =>
-                    accountReader = new AccountReadCountingStateReader(reader, TestItem.AddressC)));
+                    accountReader ??= new AccountReadCountingStateReader(reader, TestItem.AddressC)));
         IEngineRpcModule rpc = chain.EngineRpcModule;
 
         // A transaction of its own, so the block's execution dimension outgrows its state dimension.

@@ -469,8 +469,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
     /// payer and block gas, returns the unspent <c>max_cost</c> escrow, credits the fee recipients, finalizes
     /// EIP-6780 destructions and commits or restores the transaction-wide snapshot.</summary>
     /// <remarks>Straight-line tail of <see cref="ExecuteFrameTx{TTracing}"/>, taking the loop's accumulated totals as
-    /// inputs. The only failure it can report is a transaction that never set a payer, which unwinds to
-    /// <paramref name="txSnapshot"/>.</remarks>
+    /// inputs. Invalid settlement restores <paramref name="txSnapshot"/>.</remarks>
     /// <param name="intrinsicGas">The transaction's intrinsic gas, gross of any frame execution.</param>
     /// <param name="floorGas">The EIP-7623 calldata floor the net charge cannot fall below.</param>
     /// <param name="totalFrameGasUsed">Gas charged across all frames whose effects survived the loop.</param>
@@ -508,7 +507,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction never set a payer");
         }
 
-        // EIP-3529 refunds are netted once at the transaction level, capped at a fifth of the gross gas;
+        // EIP-3529 refunds are netted once at the transaction level, capped at a fifth of the gross gas (uncapped under EIP-3298);
         // per-frame receipts stay gross of them, and the EIP-7623 floor bounds the net charge from below.
         long stateGasCorrection = 0;
         for (int f = 0; f < frameReceipts.Length; f++)
@@ -526,8 +525,13 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ulong grossGasBeforeCorrection = intrinsicGas + totalFrameGasUsed;
         ulong stateGasCorrectionApplied = (ulong)Math.Max(0, stateGasCorrection);
         ulong grossGas = grossGasBeforeCorrection > stateGasCorrectionApplied ? grossGasBeforeCorrection - stateGasCorrectionApplied : 0;
-        Debug.Assert(refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
+        Debug.Assert(spec.IsEip3298Enabled || refundCounter >= 0, $"frame-tx settlement invariant violated: negative refund counter ({refundCounter}).");
         ulong gasRefund = RefundHelper.CalculateClaimableRefund(grossGas, (ulong)Math.Max(0, refundCounter), spec);
+        if (spec.IsEip3298Enabled && (refundCounter < 0 || gasRefund > grossGas))
+        {
+            WorldState.Restore(txSnapshot);
+            return InvalidStateGas(Logger, $"Frame-tx settlement invariant violated: refund counter ({refundCounter}), claimable refund ({gasRefund}), gross gas ({grossGas}).").Result;
+        }
         ulong gasAfterRefund = grossGas - gasRefund;
         ulong blockStateGas = (ulong)Math.Max(0, totalFrameStateGasUsed - stateGasCorrection);
         // EIP-7778: the payer pays the post-refund execution dimension, but the block counts it before the refund.
@@ -630,8 +634,10 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         try
         {
             using StackAccessTracker accessTracker = new(_tracerFlags.IsTracingAccess);
+            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
+            ulong maxVerifyGas = prefixTracer?.MaxVerifyGas ?? Eip8141Constants.MaxVerifyGas;
             TransactionResult prepared = PrepareValidationPrefixSimulation(
-                tx, opts, header, spec, in accessTracker,
+                tx, opts, header, spec, maxVerifyGas, in accessTracker,
                 out FrameTxContext frameContext, out UInt256 effectiveGasPrice, out ulong verifyGasUsed);
             if (!prepared)
             {
@@ -639,7 +645,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
             }
 
             TxFrame[] frames = tx.Frames!;
-            IFrameTxPrefixTracer? prefixTracer = tracer as IFrameTxPrefixTracer;
             for (int i = 0; i < frames.Length; i++)
             {
                 TxFrame frame = frames[i];
@@ -665,7 +670,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                 frameContext.CurrentFrameIndex = i;
 
-                TxFrame boundedFrame = CapFrameGas(frame, Eip8141Constants.MaxVerifyGas - verifyGasUsed, out bool capped);
+                TxFrame boundedFrame = CapFrameGas(frame, maxVerifyGas - verifyGasUsed, out bool capped);
 
                 Address resolvedTarget = frame.Target ?? sender;
                 Address caller = Eip8141Constants.EntryPointAddress;
@@ -735,6 +740,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         ExecutionOptions opts,
         BlockHeader header,
         IReleaseSpec spec,
+        ulong maxVerifyGas,
         in StackAccessTracker accessTracker,
         out FrameTxContext frameContext,
         out UInt256 effectiveGasPrice,
@@ -761,7 +767,7 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
         {
             verifyGasUsed += FrameTxValidation.SignatureVerificationGas(signature.Scheme);
         }
-        if (verifyGasUsed > Eip8141Constants.MaxVerifyGas)
+        if (verifyGasUsed > maxVerifyGas)
         {
             return TransactionResult.ErrorType.MalformedTransaction.WithDetail("frame transaction validation prefix exceeds MAX_VERIFY_GAS");
         }
