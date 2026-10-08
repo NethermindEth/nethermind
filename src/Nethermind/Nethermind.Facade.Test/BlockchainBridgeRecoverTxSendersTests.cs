@@ -115,6 +115,19 @@ public class BlockchainBridgeRecoverTxSendersTests(bool compactReceipts)
     }
 
     [Test]
+    public void Leaves_an_unsigned_transaction_without_a_sender_on_every_path([Values] bool receiptsCoverTheBlock)
+    {
+        Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB);
+        block.Transactions[1].Signature = null;
+        if (receiptsCoverTheBlock) StoreReceipts(block, TestItem.AddressC, null);
+
+        _blockchainBridge.RecoverTxSenders(block);
+
+        Assert.That(block.Transactions.Select(static tx => tx.SenderAddress),
+            Is.EqualTo(new[] { receiptsCoverTheBlock ? TestItem.AddressC : TestItem.AddressA, null }));
+    }
+
+    [Test]
     public void Keeps_known_senders_and_reads_no_receipts()
     {
         Block block = BuildBlock(TestItem.PrivateKeyA, TestItem.PrivateKeyB);

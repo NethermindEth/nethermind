@@ -670,25 +670,16 @@ namespace Nethermind.Facade
 
             if (receiptCount != transactions.Length)
             {
-                RecoverEachTxSender(transactions);
+                RecoverEachTxSender(block);
                 return;
             }
 
-            bool useSignatureChainId = false;
-            bool specRead = false;
+            bool? useSignatureChainId = null;
             for (int i = 0; i < transactions.Length; i++)
             {
                 Transaction transaction = transactions[i];
-                if (transaction.SenderAddress is not null) continue;
-
-                Address? storedSender = storedSenders[i];
-                if (storedSender is null && !specRead)
-                {
-                    useSignatureChainId = !specProvider.GetSpec(block.Header).ValidateChainId;
-                    specRead = true;
-                }
-
-                transaction.SenderAddress = storedSender ?? ecdsa.RecoverAddress(transaction, useSignatureChainId);
+                transaction.SenderAddress ??= storedSenders[i]
+                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
         }
 
@@ -705,29 +696,37 @@ namespace Nethermind.Facade
         private void RecoverTxSendersFromReceipts(Block block)
         {
             TxReceipt[] receipts = receiptStorage.Get(block);
-            if (block.Transactions.Length == receipts.Length)
+            if (block.Transactions.Length != receipts.Length)
             {
-                for (int i = 0; i < block.Transactions.Length; i++)
-                {
-                    Transaction transaction = block.Transactions[i];
-                    TxReceipt receipt = receipts[i];
-                    transaction.SenderAddress ??= receipt.Sender ?? RecoverTxSender(transaction);
-                }
+                RecoverEachTxSender(block);
+                return;
             }
-            else
+
+            bool? useSignatureChainId = null;
+            for (int i = 0; i < block.Transactions.Length; i++)
             {
-                RecoverEachTxSender(block.Transactions);
+                Transaction transaction = block.Transactions[i];
+                transaction.SenderAddress ??= receipts[i].Sender
+                    ?? RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
         }
 
-        private void RecoverEachTxSender(Transaction[] transactions)
+        private void RecoverEachTxSender(Block block)
         {
+            Transaction[] transactions = block.Transactions;
+            bool? useSignatureChainId = null;
             for (int i = 0; i < transactions.Length; i++)
             {
                 Transaction transaction = transactions[i];
-                transaction.SenderAddress ??= RecoverTxSender(transaction);
+                transaction.SenderAddress ??= RecoverTxSender(transaction, useSignatureChainId ??= UsesSignatureChainId(block.Header));
             }
         }
+
+        /// <summary>Whether a legacy signature's own chain id recovers the sender, as the receipts recovery does.</summary>
+        private bool UsesSignatureChainId(BlockHeader header) => !specProvider.GetSpec(header).ValidateChainId;
+
+        private Address? RecoverTxSender(Transaction tx, bool useSignatureChainId) =>
+            ecdsa.TryRecoverAddress(tx, out Address? senderAddress, useSignatureChainId) ? senderAddress : null;
 
         public ArrayPoolList<Hash256> GetPendingTransactionFilterChanges(int filterId) =>
             filterManager.PollPendingTransactionHashes(filterId);
