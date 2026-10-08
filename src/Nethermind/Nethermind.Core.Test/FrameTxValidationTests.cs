@@ -628,8 +628,9 @@ public class FrameTxValidationTests
         yield return DepCase("StateGas_DependencyFrameGasMismatch",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], stateGasLimit: 1)],
             FrameTxValidation.DependencyFrameGasMismatch);
-        yield return DepCase("ZeroAddressTarget_Valid",
-            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: Address.Zero)], null);
+        yield return DepCase("ZeroAddressTarget_DependencyFrameShape",
+            static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: Address.Zero)],
+            FrameTxValidation.DependencyFrameShape);
 
         yield return DepCase("NonNullTarget_DependencyFrameShape",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], target: TestItem.AddressB)],
@@ -640,6 +641,15 @@ public class FrameTxValidationTests
         yield return DepCase("NonZeroFlags_DependencyFrameShape",
             static tx => tx.Frames = [DepFrameRaw([Eip8288Constants.LeanSphincsScheme], flags: FrameFlags.ApprovePayment)],
             FrameTxValidation.DependencyFrameShape);
+
+        yield return DepCase("AfterAtomicBatchFlag_DependencyFrameInAtomicBatch",
+            static tx => tx.Frames = [new TxFrame(FrameMode.Default, FrameFlags.AtomicBatch, TestItem.AddressB, 100_000, UInt256.Zero, Array.Empty<byte>()),
+                DepFrame(Eip8288Constants.LeanSphincsScheme)],
+            FrameTxValidation.DependencyFrameInAtomicBatch);
+        yield return DepCase("AfterUnflaggedFrame_Valid",
+            static tx => tx.Frames = [new TxFrame(FrameMode.Default, FrameFlags.None, TestItem.AddressB, 100_000, UInt256.Zero, Array.Empty<byte>()),
+                DepFrame(Eip8288Constants.LeanSphincsScheme)],
+            null);
 
         yield return DepCase("TooManySigDeps_TooManySigDeps",
             static tx => tx.Frames = [DepFrame(Enumerable.Repeat(Eip8288Constants.LeanSphincsScheme, Eip8288Constants.MaxSigsPerTx + 1).ToArray())],

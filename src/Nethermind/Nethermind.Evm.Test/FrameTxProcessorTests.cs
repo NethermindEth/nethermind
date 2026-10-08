@@ -81,29 +81,22 @@ public partial class FrameTxProcessorTests
         _transactionProcessor = BuildProcessor(_stateProvider, new EthereumCodeInfoRepository(_stateProvider));
     }
 
-    [TestCase(0, TestName = "Execute_LeadingDependencyFrame_ChargesGas")]
-    [TestCase(1, TestName = "Execute_FailedBatch_DependencyTerminalStillChargesGas")]
-    [TestCase(2, TestName = "Execute_PostTxRevert_DependencyStillChargesGas")]
-    public void Execute_DependencyDeclaration_RemainsCharged(int scenario)
+    [TestCase(false, TestName = "Execute_LeadingDependencyFrame_ChargesGas")]
+    [TestCase(true, TestName = "Execute_PostTxRevert_DependencyStillChargesGas")]
+    public void Execute_DependencyDeclaration_RemainsCharged(bool postTxReverts)
     {
         _spec.IsEip8288Enabled = true;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
         DeployContract(Observer, Prepare.EvmCode.PushData(0).PushData(0).Op(Instruction.REVERT).Done);
-        byte[] dependencyData = new byte[Eip8288Constants.DependencyTripleLength];
-        dependencyData[31] = Eip8288Constants.LeanSphincsScheme;
-        TxFrame dependency = new(FrameMode.DepVerify, FrameFlags.None, null,
-            Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependencyData);
-        TxFrame[] frames = scenario switch
-        {
-            0 => [dependency, SelfVerifyFrame()],
-            1 => [SelfVerifyFrame(), Frame(FrameMode.Default, FrameFlags.AtomicBatch, Observer), dependency],
-            _ => [SelfVerifyFrame(), dependency, Frame(FrameMode.PostTx, target: Observer)]
-        };
+        TxFrame dependency = DependencyFrame();
+        TxFrame[] frames = postTxReverts
+            ? [SelfVerifyFrame(), dependency, Frame(FrameMode.PostTx, target: Observer)]
+            : [dependency, SelfVerifyFrame()];
         Transaction tx = FrameTx(0, frames);
         FrameReceiptTracer tracer = new();
 
         Assert.That(Process(tx, tracer: tracer).TransactionExecuted, Is.True);
-        TxFrameReceipt receipt = tracer.FrameReceipts![scenario == 0 ? 0 : scenario == 1 ? 2 : 1];
+        TxFrameReceipt receipt = tracer.FrameReceipts![postTxReverts ? 1 : 0];
         using (Assert.EnterMultipleScope())
         {
             Assert.That(receipt.Status, Is.EqualTo(TxFrameReceipt.StatusSuccess));
@@ -114,15 +107,24 @@ public partial class FrameTxProcessorTests
     }
 
     [Test]
+    public void Execute_DependencyFrameTerminatingAtomicBatch_IsMalformed()
+    {
+        _spec.IsEip8288Enabled = true;
+        DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
+        Transaction tx = FrameTx(0, SelfVerifyFrame(), Frame(FrameMode.Default, FrameFlags.AtomicBatch, Observer), DependencyFrame());
+
+        TransactionResult result = Process(tx);
+
+        Assert.That(result.Error, Is.EqualTo(TransactionResult.ErrorType.MalformedTransaction));
+        Assert.That(result.ErrorDescription, Does.Contain(FrameTxValidation.DependencyFrameInAtomicBatch));
+    }
+
+    [Test]
     public void SimulateValidationPrefix_AcceptsLeadingDependencyDeclaration()
     {
         _spec.IsEip8288Enabled = true;
         DeploySmartSender(ApproveCode(FrameFlags.ApproveExecutionAndPayment));
-        byte[] dependencyData = new byte[Eip8288Constants.DependencyTripleLength];
-        dependencyData[31] = Eip8288Constants.LeanSphincsScheme;
-        Transaction tx = FrameTx(0,
-            new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, dependencyData),
-            SelfVerifyFrame());
+        Transaction tx = FrameTx(0, DependencyFrame(), SelfVerifyFrame());
 
         using (Assert.EnterMultipleScope())
         {
@@ -4158,6 +4160,13 @@ public partial class FrameTxProcessorTests
 
     private static TxFrame SelfVerifyFrame() =>
         new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit: 200_000, UInt256.Zero, default);
+
+    private static TxFrame DependencyFrame(int count = 1)
+    {
+        byte[] data = new byte[count * Eip8288Constants.DependencyTripleLength];
+        for (int i = 0; i < count; i++) data[i * Eip8288Constants.DependencyTripleLength + 31] = Eip8288Constants.LeanSphincsScheme;
+        return new(FrameMode.DepVerify, FrameFlags.None, null, (ulong)count * Eip8288Constants.LeanSphincsVerificationGas, UInt256.Zero, data);
+    }
 
     /// <summary>A self-verify frame whose state budget funds the <c>NONCE_MANAGER</c> slots
     /// <paramref name="freshKeyCount"/> first-use keys create at payment approval.</summary>

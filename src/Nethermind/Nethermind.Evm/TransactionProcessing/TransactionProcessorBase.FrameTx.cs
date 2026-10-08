@@ -434,8 +434,6 @@ public abstract partial class TransactionProcessorBase<TGasPolicy>
 
                     int terminal = i;
                     while (terminal < frames.Length && frames[terminal].IsAtomicBatch) terminal++;
-                    // Dependency declarations remain charged even when the batch body is skipped.
-                    if (terminal < frames.Length && frames[terminal].Mode == FrameMode.DepVerify) terminal--;
                     for (int s = i + 1; s <= terminal && s < frames.Length; s++)
                     {
                         frameReceipts[s] = new TxFrameReceipt(TxFrameReceipt.StatusSkipped, 0, 0, []);
