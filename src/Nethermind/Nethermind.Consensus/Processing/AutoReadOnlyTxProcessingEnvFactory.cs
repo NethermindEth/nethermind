@@ -22,9 +22,15 @@ public class AutoReadOnlyTxProcessingEnvFactory(ILifetimeScope parentLifetime, I
     // cache at all would re-copy the whole bytecode on every EXTCODE*/CALL* the prefix runs.
     private const int IsolatedCodeCacheCapacity = 512;
 
-    public IReadOnlyTxProcessorSource Create()
+    public IReadOnlyTxProcessorSource Create() => Create(forReadOnlyQueries: false);
+
+    /// <param name="forReadOnlyQueries">When true the envs read state through
+    /// <see cref="IWorldStateManager.CreateReadOnlyQueryWorldState"/>.</param>
+    public IReadOnlyTxProcessorSource Create(bool forReadOnlyQueries)
     {
-        IWorldStateScopeProvider worldState = worldStateManager.CreateResettableWorldState();
+        IWorldStateScopeProvider worldState = forReadOnlyQueries
+            ? worldStateManager.CreateReadOnlyQueryWorldState()
+            : worldStateManager.CreateResettableWorldState();
         // Mempool admission and the parallel BAL parent readers share these envs, so only add a recorder
         // where a diff can actually be read.
         IReleaseSpec finalSpec = specProvider.GetFinalSpec();

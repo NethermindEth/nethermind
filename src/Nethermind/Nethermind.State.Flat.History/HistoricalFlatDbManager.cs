@@ -33,10 +33,13 @@ public sealed class HistoricalFlatDbManager(
         Unavailable
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         HistoricalReadMode mode = Classify(baseBlock);
-        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherSnapshotBundle(baseBlock, usage);
+        if (mode == HistoricalReadMode.NotHistorical) return inner.GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads);
         if (mode == HistoricalReadMode.Unavailable) ThrowUnavailable(baseBlock);
 
         // A historical bundle reads values at baseBlock but exposes the current trie; executing main-chain
