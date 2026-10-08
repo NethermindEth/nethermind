@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
+using Nethermind.BeaconChain.Test.Crypto;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -160,17 +161,19 @@ public class GloasForkTransitionTests
     // onboard_builders_from_pending_deposits (specs/gloas/fork.md): a later deposit for a builder already
     // onboarded from this queue tops up its balance only, with no signature check, and leaves the queue.
     [Test]
-    public void UpgradeToGloas_tops_up_a_builder_onboarded_earlier_in_the_same_queue()
+    public void UpgradeToGloas_tops_up_a_builder_onboarded_earlier_in_the_same_queue([Values] bool customNetwork)
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        BeaconChainSpec spec = customNetwork ? SyntheticSpec() with { Forks = NetworkSigningDomainTests.CustomSigningSpec.Forks, GenesisValidatorsRoot = NetworkSigningDomainTests.CustomSigningSpec.GenesisValidatorsRoot } : SyntheticSpec();
+        pre.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
         pre.Slot = 64;
         Bls.SecretKey sk = DeriveKey(101);
         Hash256 withdrawalCredentials = BuilderWithdrawalCredentials(0xAB);
-        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(sk, withdrawalCredentials, 32 * Gwei);
+        (BlsPublicKey pubkey, BlsSignature signature) = SignDeposit(sk, withdrawalCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         Hash256 otherCredentials = BuilderWithdrawalCredentials(0xAC);
-        (BlsPublicKey otherPubkey, BlsSignature otherSignature) = SignDeposit(DeriveKey(102), otherCredentials, 32 * Gwei);
+        (BlsPublicKey otherPubkey, BlsSignature otherSignature) = SignDeposit(DeriveKey(102), otherCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         Hash256 lastCredentials = BuilderWithdrawalCredentials(0xAF);
-        (BlsPublicKey lastPubkey, BlsSignature lastSignature) = SignDeposit(DeriveKey(107), lastCredentials, 32 * Gwei);
+        (BlsPublicKey lastPubkey, BlsSignature lastSignature) = SignDeposit(DeriveKey(107), lastCredentials, 32 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         // The top-up differs from the onboarding deposit in slot epoch and credentials, so a field taken from it shows,
         // and it targets the middle of three builders, so only a lookup by pubkey credits the right one.
         pre.PendingDeposits =
@@ -181,7 +184,7 @@ public class GloasForkTransitionTests
             new PendingDeposit { Pubkey = pubkey, WithdrawalCredentials = BuilderWithdrawalCredentials(0xCD), Amount = 5 * Gwei, Signature = Signature(0xDE), Slot = 10 },
         ];
 
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(post.PendingDeposits, Is.Empty);
@@ -196,23 +199,27 @@ public class GloasForkTransitionTests
     }
 
     // is_pending_validator keeps builder deposits only behind an earlier valid same-pubkey deposit (specs/gloas/beacon-chain.md).
-    [TestCase(true, true, false, true, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_the_builder_deposit")]
-    [TestCase(true, false, false, true, true, TestName = "invalid_earlier_deposit_for_the_pubkey_does_not_block_onboarding")]
-    [TestCase(false, true, false, true, true, TestName = "valid_earlier_deposit_for_another_pubkey_does_not_block_onboarding")]
-    [TestCase(true, true, true, true, false, TestName = "valid_earlier_deposit_after_an_invalid_one_for_the_pubkey_keeps_the_builder_deposit")]
+    [TestCase(true, true, false, true, false, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_the_builder_deposit")]
+    [TestCase(true, false, false, true, true, false, TestName = "invalid_earlier_deposit_for_the_pubkey_does_not_block_onboarding")]
+    [TestCase(false, true, false, true, true, false, TestName = "valid_earlier_deposit_for_another_pubkey_does_not_block_onboarding")]
+    [TestCase(true, true, true, true, false, false, TestName = "valid_earlier_deposit_after_an_invalid_one_for_the_pubkey_keeps_the_builder_deposit")]
     // is_pending_validator runs before the builder deposit's signature check (specs/gloas/fork.md), so the invalid deposit is kept, not dropped.
-    [TestCase(true, true, false, false, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_an_invalidly_signed_builder_deposit")]
-    public void UpgradeToGloas_onboards_a_builder_deposit_unless_a_validator_deposit_is_pending_for_its_pubkey(bool samePubkey, bool validSignature, bool precededByInvalid, bool validBuilderSignature, bool expectBuilder)
+    [TestCase(true, true, false, false, false, false, TestName = "valid_earlier_deposit_for_the_pubkey_keeps_an_invalidly_signed_builder_deposit")]
+    [TestCase(true, true, false, true, false, true, TestName = "custom_network_valid_validator_deposit_prevents_builder_onboarding")]
+    [TestCase(true, false, false, true, true, true, TestName = "custom_network_invalid_validator_deposit_allows_builder_onboarding")]
+    public void UpgradeToGloas_onboards_a_builder_deposit_unless_a_validator_deposit_is_pending_for_its_pubkey(bool samePubkey, bool validSignature, bool precededByInvalid, bool validBuilderSignature, bool expectBuilder, bool customNetwork)
     {
         BeaconStateFulu pre = CreateState(validatorCount: ValidatorCount);
+        BeaconChainSpec spec = customNetwork ? SyntheticSpec() with { Forks = NetworkSigningDomainTests.CustomSigningSpec.Forks, GenesisValidatorsRoot = NetworkSigningDomainTests.CustomSigningSpec.GenesisValidatorsRoot } : SyntheticSpec();
+        pre.GenesisValidatorsRoot = spec.GenesisValidatorsRoot;
         Bls.SecretKey builderKey = DeriveKey(103);
         Bls.SecretKey validatorKey = samePubkey ? builderKey : DeriveKey(104);
         Hash256 validatorCredentials = EthWithdrawalCredentials(0x11);
-        (BlsPublicKey validatorPubkey, BlsSignature validatorSignature) = SignDeposit(validatorKey, validatorCredentials, validSignature ? 32 * Gwei : 1 * Gwei);
+        (BlsPublicKey validatorPubkey, BlsSignature validatorSignature) = SignDeposit(validatorKey, validatorCredentials, validSignature ? 32 * Gwei : 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         Hash256 builderCredentials = BuilderWithdrawalCredentials(0xAD);
-        (BlsPublicKey builderPubkey, BlsSignature builderSignature) = SignDeposit(builderKey, builderCredentials, validBuilderSignature ? 32 * Gwei : 1 * Gwei);
+        (BlsPublicKey builderPubkey, BlsSignature builderSignature) = SignDeposit(builderKey, builderCredentials, validBuilderSignature ? 32 * Gwei : 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         // Signed over 1 ETH while the deposit claims 32 ETH, so the signature is invalid.
-        (_, BlsSignature invalidSignature) = SignDeposit(validatorKey, validatorCredentials, 1 * Gwei);
+        (_, BlsSignature invalidSignature) = SignDeposit(validatorKey, validatorCredentials, 1 * Gwei, genesisForkVersion: spec.GenesisForkVersion);
         BlsSignature[] validatorSignatures = precededByInvalid ? [invalidSignature, validatorSignature] : [validatorSignature];
         pre.PendingDeposits =
         [
@@ -220,7 +227,7 @@ public class GloasForkTransitionTests
             new PendingDeposit { Pubkey = builderPubkey, WithdrawalCredentials = builderCredentials, Amount = 32 * Gwei, Signature = builderSignature, Slot = pre.Slot },
         ];
 
-        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, SyntheticSpec());
+        BeaconStateGloas post = GloasForkTransition.UpgradeToGloas(pre, spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(post.Builders!.Select(static b => b.Pubkey), Is.EqualTo(expectBuilder ? new[] { builderPubkey } : []).AsCollection);

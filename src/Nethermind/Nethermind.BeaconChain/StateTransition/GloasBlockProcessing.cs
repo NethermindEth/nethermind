@@ -43,6 +43,7 @@ public static partial class GloasBlockProcessing
     /// <summary>Spec <c>process_block</c> (Gloas), deferring the signatures to <paramref name="batch"/> or, when it is <c>null</c>, verifying each at its own step.</summary>
     internal static void ProcessBlock(BeaconStateGloas state, BeaconBlockGloas block, EpochCache cache, PubkeyCache pubkeys, INewPayloadNotifier notifier, BeaconChainSpec spec, bool verifySignatures, BlockSignatureBatch? batch)
     {
+        cache.SigningSpec = spec;
         BeaconBlockBodyGloas body = block.Body!;
         ulong parentSlot = state.LatestBlockHeader!.Slot;
 
@@ -97,6 +98,7 @@ public static partial class GloasBlockProcessing
     /// </summary>
     public static void ProcessOperations(BeaconStateGloas state, BeaconBlockBodyGloas body, ulong parentSlot, BeaconChainSpec spec, EpochCache cache, PubkeyCache pubkeys, bool verifySignatures = true, BlockSignatureBatch? batch = null)
     {
+        cache.SigningSpec = spec;
         VerifyBlockBodyOperationLimits(body);
 
         foreach (ProposerSlashing slashing in body.ProposerSlashings ?? [])
@@ -117,7 +119,7 @@ public static partial class GloasBlockProcessing
         }
         foreach (SignedBlsToExecutionChange change in body.BlsToExecutionChanges ?? [])
         {
-            ProcessBlsToExecutionChange(state, change, verifySignatures, batch);
+            ProcessBlsToExecutionChange(state, change, verifySignatures, batch, spec);
         }
         foreach (PayloadAttestation attestation in body.PayloadAttestations ?? [])
         {
@@ -222,7 +224,7 @@ public static partial class GloasBlockProcessing
     /// <exception cref="BeaconStateException">The source does not match the justified checkpoint, or a same-slot vote carries a non-zero index.</exception>
     private static partial byte GetAttestationParticipationFlagIndices(BeaconStateGloas state, AttestationData data, ulong inclusionDelay, ulong parentSlot);
     public static partial void ProcessVoluntaryExit(BeaconStateGloas state, SignedVoluntaryExit signedExit, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
-    public static partial void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null);
+    public static partial void ProcessBlsToExecutionChange(BeaconStateGloas state, SignedBlsToExecutionChange signedChange, bool verifySignature = true, BlockSignatureBatch? batch = null, BeaconChainSpec? spec = null);
     public static partial void ProcessSyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, EpochCache cache, PubkeyCache pubkeys, bool verifySignature = true, BlockSignatureBatch? batch = null);
 
     private static bool VerifySyncAggregate(BeaconStateGloas state, SyncAggregate syncAggregate, int[] committeeIndices, PubkeyCache pubkeys, BlockSignatureBatch.Deferral? deferral)
@@ -513,7 +515,7 @@ public static partial class GloasBlockProcessing
         foreach (ConsolidationRequest request in requests.Consolidations ?? [])
             ProcessConsolidationRequest(state, request, cache);
         foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
-            ProcessBuilderDepositRequest(state, request);
+            ProcessBuilderDepositRequest(state, request, cache.SigningSpec);
         foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
             ProcessBuilderExitRequest(state, request);
 
@@ -554,7 +556,7 @@ public static partial class GloasBlockProcessing
     private static partial void SwitchToCompoundingValidator(BeaconStateGloas state, int index);
 
     /// <summary>Spec <c>process_builder_deposit_request</c> (EIP-8282, new in Gloas).</summary>
-    internal static void ProcessBuilderDepositRequest(BeaconStateGloas state, BuilderDepositRequest request)
+    internal static void ProcessBuilderDepositRequest(BeaconStateGloas state, BuilderDepositRequest request, BeaconChainSpec? spec = null)
     {
         if (!GloasForkTransition.IsBuilderWithdrawalCredential(request.WithdrawalCredentials!))
             return;
@@ -562,7 +564,7 @@ public static partial class GloasBlockProcessing
         int builderIndex = Array.FindIndex(state.Builders!, b => b.Pubkey.Equals(request.Pubkey));
         if (builderIndex < 0)
         {
-            if (IsValidBuilderDepositSignature(state.GenesisValidatorsRoot!, request))
+            if (IsValidBuilderDepositSignature(spec ?? BeaconChainSpec.ForGenesisValidatorsRoot(state.GenesisValidatorsRoot!), request))
             {
                 GloasForkTransition.AddBuilderToRegistry(
                     state,
@@ -598,7 +600,7 @@ public static partial class GloasBlockProcessing
     /// <c>DOMAIN_BUILDER_DEPOSIT</c>, using the genesis fork version and zero genesis validators root.
     /// The domain is fork-agnostic but distinct from validator deposits.
     /// </summary>
-    private static bool IsValidBuilderDepositSignature(Hash256 genesisValidatorsRoot, BuilderDepositRequest request)
+    private static bool IsValidBuilderDepositSignature(BeaconChainSpec spec, BuilderDepositRequest request)
     {
         DepositMessage.Merkleize(new DepositMessage
         {
@@ -607,7 +609,7 @@ public static partial class GloasBlockProcessing
             Amount = request.Amount,
         }, out UInt256 root);
 
-        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot).GenesisForkVersion, Hash256.Zero);
+        Hash256 domain = Domains.ComputeDomain(DomainType.BuilderDeposit, spec.GenesisForkVersion, Hash256.Zero);
         Hash256 signingRoot = Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain);
 
         G1Affine pubkey = new(stackalloc long[G1Affine.Sz]);

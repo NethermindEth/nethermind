@@ -836,7 +836,7 @@ public sealed class BlockImporter : IBlockImporter
                 }
 
                 proposerState = ancestorState.Clone();
-                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot);
+                GloasSlotProcessing.ProcessSlots(proposerState, block.Slot, new EpochCache { SigningSpec = _spec });
             }
 
             refusal = CheckProposal(signedBlock, proposerState);

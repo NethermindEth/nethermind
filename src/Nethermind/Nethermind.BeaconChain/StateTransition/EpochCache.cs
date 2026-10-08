@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.StateTransition.Hashing;
 using Nethermind.BeaconChain.StateTransition.Shuffling;
 using Nethermind.BeaconChain.Types;
@@ -30,6 +31,11 @@ namespace Nethermind.BeaconChain.StateTransition;
 /// </remarks>
 public sealed class EpochCache
 {
+    internal BeaconChainSpec? SigningSpec { get; set; }
+
+    internal BeaconChainSpec ResolveSigningSpec(Hash256 genesisValidatorsRoot) =>
+        SigningSpec ?? BeaconChainSpec.ForGenesisValidatorsRoot(genesisValidatorsRoot);
+
     private (ulong Epoch, ulong Balance, Hash256 BoundaryRoot)? _totalActiveBalance;
     private readonly CommitteeCacheLru _committees = new();
     private (SyncCommittee Committee, int[] Indices)? _syncCommitteeIndices;

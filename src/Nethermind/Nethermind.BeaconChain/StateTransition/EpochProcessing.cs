@@ -154,7 +154,7 @@ public static partial class EpochProcessing
     /// <summary>Electra <c>process_pending_deposits</c> (EIP-7251): churn-limited sweep of the pending deposit queue.</summary>
     public static partial void ProcessPendingDeposits(BeaconStateFulu state, EpochCache cache);
     private static partial Dictionary<BlsPublicKey, int> IndexPubkeys(Validator[] validators);
-    private static partial void ApplyPendingDeposit(BeaconStateFulu state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex);
+    private static partial void ApplyPendingDeposit(BeaconStateFulu state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, EpochCache cache);
 
     /// <summary>Electra <c>process_pending_consolidations</c> (EIP-7251): sweep consolidations whose source is withdrawable.</summary>
     public static partial void ProcessPendingConsolidations(BeaconStateFulu state);
