@@ -1,0 +1,2212 @@
+{
+ "test_name": "debug_traceTransaction struct logger pool",
+ "description": "200 distinct light transactions (gas limit <= 65000) from blocks 25489901-25490000 across the index range, default struct logger.",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "30s",
+ "rps": 1000,
+ "vus": 512,
+ "calls": [
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfe2262029eee3bb386bff51f7dada58d3ee3ab0e75e15be20b8c70457f2b9dc6"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa679b953f6fcda720af10aefcb43b352a068a032e84a30e64bef6010f685752a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x58717486473a8fa425a4efc1ff7891287dcf072bb243e1027aa9f12afad89dad"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc4b93cc88fad5b8d850fb584463823f3f215d54f91030858f71ae0046c1075cd"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3b3724970fe46473250915286fc82abc43f9b0b9618ee64e725bea6a92d6047c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe0919ce75080d1e7a58c0ea7c831ffb9e82942f557241d1557f708b6217bfe23"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x07eb3b6ae060416e6a99cd2df9f7f4a2a983eb486b1a53b98a172db2f65ba867"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3a0ba644ce68966dae2f7dc5e91e6a3a9d51c211af26e09452f9f835531d70e1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xafde23cfac4784f76cc01f7708e0ecfbaf59b59ba56bb255dc3c165eb3b83400"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1734c7e56f50b57f7ed3e21c26ca8c8f980999606973b131aa384df8a05460cf"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb8030ea8dd2d8c013b6276522df74f040a15a1b644509e9b114ef57458777bc4"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf7d815cf68dbf1e8eea807c4d46b7ec71e787c1649d1f4dc4b32c68c2f5afe84"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb9e8a31c02b87c126755bac14ebbbfd17cd3d5783d5cef3d05a902019c8fc971"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6a2b0b434fd9106116b050443e190621c33b03a530b944af8a893e636034d855"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf590777cbd5495ed1932fe6ed7e1b89c645034cee3ff2fd231cf28ca5f196122"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x54c50bc135ac1cccd2581b9cc2caa66f8852774ece30930412ca26a774383011"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x30ddc2a105ac882744469d7790cf10164a9a001002ebb67ca39b04195b418779"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3140bd4736b172146fd7e8665a7dc1dfe9826c0d81947fc1c7e56373ae2fa1a8"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa4d11051999535a6dad2fa497d876c43be5200d192398b639b1356cdbfbed6be"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3ca53f8fc2323a8c27a8f13a54d1685548986bbc55b141f90ad5a172ef93db85"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0f3b21915a2d3b44581a68e15ec14130f2c5c99fe5f5e97b2e0d5ed1a294d7cd"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x21f97db7d26668c619181e2b9b5e7e58459b8120523c0f9f33045e7d34249b9b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa107edbcb026879af399782d198b1a8913ccdf87d54dfbb39c78f052821ae150"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x65a7292c4adf8e47afb55d7fe4c15ac784f650fd573d3f38f28f155a89f6ec81"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd09d1aa9312dc17b966e1193ec0c713457dcfe8a0858a981f13d85f4dad2c592"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xba01ad09f3f477098123f0e2e25487c8b8af680dfa7c53334f380f40b6b2ec35"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x993def07c394bc5e5402305197c88072a8c2178e9106a3382408468a87724ea2"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2f8f07180e171594adff4ae39e2a45f7786802703a74bb50b5edf9f9d77e1e02"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x91534bc2bcdd398761f57f018f6b7c4ff93dd28afbd9299f32611d94de7267ad"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0ec7465d3728447f97d9c8b48205e55fcd308af27de86c98a963615757eb7a5a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0301cf3179bbbf195e874a912e3b88d27c73d6db74d53f96225b26fdc9061878"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa855a672ff376eba22aafd95966c4c34fe1e414bc541d98db86011a4faeeab9d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb278949a9325e0ef9a152e39123f0f1b847e91e292c30721ede650762aaabc6f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9d8a5f8987b785d82e8e293f1b9eb55509be2f3b8276298f7c09096b0c13ae0f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x722308022f0a809d49e95deba9f1f41b7258d7ee9f8730c66cb8cd318aa04ac1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1309f93551e86387e379d8c1ff0cb5f8f9e38b72276461b500d050a85b3abfbe"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf28ba9301349394710352ac2409df389a60321ff0fe70bdcbf5752256dfc2f2d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6d676a6179327f5581dcc7635f40719a33628db4487d3468e5fac984cf1e0c1b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xac37384a8e6f9c06ea54c5a1febddccd3991e122059e78d8e0697f26002c85c8"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x826f150787ed52a85105e6dffb6a7ce572d9cd1baae260a330124342b2c27c9c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x42b6f3d007f72392837a994bc37b72da7aed9072f8694edae3982af64c759018"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3a5287c9065e09c47fd42ee2edf7092ba13685238c2d44e7b516f962e51e936a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xffa0f4b1c65e51429666d75a6fcc65b7a820b3480191c281273f68baba42506e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x08419997c99a8e5dba76958acacc0915572e0cf227e6175023f314a48cc4c87d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x015aa795b48f5a0e9210684b8981e1b79518485fb5837da1d78ea5d264f6057f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x74d3db43e1197a3d6ccb921ef553cbdfc09f4a72061bd97660d80ccc1c4b8d13"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfd58ccddbd64e0196c16a30ef0485e095669675971168676c44fbae27288c783"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd6ee8110c60f7dfdb1b4cd127382c7a05b9e931b5a948b3000fb5c23b3eaf486"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3238c6b08ec8ca964a70fef95dd36b14299a4dfde002d986b7dcb3755a335653"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x81a337fbfb00ba8a9b73361bf6d21e07308d29ffd4fb76a4e34f898bd0e6853d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8017efb0e106688132ed394f36677ba1c420795c1ec92d7264f205358177338b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7747fa624c4d1a34d5bc7161a1c3093c0645fb4103dcc4f6de3bf30554706162"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfb55e01e6f53888e3544d56f9565e52c83ae689912e28488abb138fe47bfa11d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2e39199e317f50d85213cc76339c0678a85773b3035dc4b7a2183a0dc771912b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x49d427948f291e00f2fa9b0798850abcb7d4288ae6c9f75a3ef07e9c921593fb"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6830758bec03e8b6377bca5b12b01fd024468247748de55fdf3db83f05d6c509"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2c095c32ff1779e9f8e4faddb021dcf3335f53ce9bdd2bd8c7e480df20ccd6b5"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0f3349487d0757b6ac1dd87af13220fb9224b70e164b83d3414c90b8a8bfd8f6"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf325dc287786a17c06f9a8e58a5a274c780881bf3db2dd585d026d1b5f6ba569"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x87f67b649d653eedc23db6ab2f6e206f67fda2ff1518944f9a2d5a0cf4a7f5a2"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4a9bc62db88c200ebd1e1f94a838f32773c29323008dd232015f8dd1b23e5988"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe7348383f46b86377b53bdf65ec746d1791de53fe6bf5e9637bb1cbfe3d6a8c7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6f846d4b8c00977fbb9b815a090c1321ea5569f429787da27156ac0be20fdbb7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x275c309b0309bc789be7a0de8dacf2220325e18481672a812a1dcf15aeb3d255"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x122733d93fac2fb991ea5859a9f2734e58aa310a74a25c9a84373d0b8cfe3f55"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x754150fa927034023118cfdd6ec27f2c044e90cac57832fbb9a9129e15bd8edf"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3261ae15089866cbb80e2dd4f7e7625cf0a94e65c4990a94d3d3271dae07b7f1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x05f82513372c0356f3d0f828cd116b69ac6aaab05615022f57042276e25735fc"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x31a60432d75fe227523e462c11f069aabd57c76632cda717dc8104199c8c16c8"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xde11e10a3f027585fd01db9b80467f01ee354f69c2849c00634c4f666fc2979f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3dd0e02a5b961b5756ea956b617d4cb118130d7629db11902bc4d3f4110fcf1c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xea0bb22be84c8d6b8501a639810837fe4becd3802c111240a616adf24b3abb44"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xdc7afe5966da30b6cc57e70ad440645accdad47be4bf96b2d7870a87f8c97652"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x59ce94b1a7f34d7e8c28439b3ad9aea5f406d01c3d120b287423dd91181161ad"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x239313cd710600f02771e8a4e254e07596451a658b77b74181c50577abda61f9"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9a322d9c29002a41c32d8cb2df1c5fe0a6b30557d25f8ca041a9abf4d388ba5d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x614b2b0456e985161b788ed5bac50a5db0294983338c54a34a185c05b7f7bf6c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x429257fa4f83c2556e6ee6eef9d36e2018c347724bf8c2a70965263ed057c5ac"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4bce0909806ba27d28417f3130fd81201c2a4e9cef5651ad2ed08973e89d3178"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x83504440fda912dd55c2add33b628baadff01acd376f6646252dd531c29fc2d3"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1db0fabd1fbf71b4beb1e87a1a7779b82ba4493647759e214adb41cc002f121c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3033eedda72466bb77761242d1e241a6b12138f6872aaffabe9a59b18ec9829d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3168b31213a6948f619d0448b87f2c7e09bb8e7748541ab9804765cbc2a9ec3c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcb4ad0bbcfa6c9a185ab60a85282eee47fa945c297937ecfd454bc102e2f7762"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2ed7a26b472cdff8019d4ce3b58863bfcd6c6e5eb03a54998e51a33eed2b3041"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4a2d83c898bd376313b2fad878de7674b0505ddd6334499dcbbb5b06baafd280"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x82ec557e0dba7b97718be2914949b370473283b99701ba0c0c49efce5b294cec"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1e28e8e6ca8bc5deb4f8765c8b0abe3030545da10e1518155590a55893ca3a73"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xdf70de3ae75bb62bf69480bb01468248fbd89434729c581cce402214db64bb4b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7f43dfab0e0834d81407600483f22eaf3b3f780a7f2892a489a1ffda34d6e615"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7937ba8085ab213f77116ddec69c1e5d9b36e95d1502d59fefc2e50d267d44b2"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x93db71af7ff01c52f6deb84b6209406b5a698317250ec2003c95d35b24090502"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6c2f57a8f6482bcf5c0a507867ed351f31c0194a379a3a64eaeefbad4ae510ec"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0220099e5755415e4b42c881bdc42f6686d8aece211408d79b411ff3cb5da50c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4e8eb79325bff82da1f92e8d3df0b276e45edbf659a24b515ff4271581f12800"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5b261aab9c3817c1147459b9874e6c825a9eec23b9073e7c56cb9492577ca75b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf991f4e846e756120a6373a51f95d3e813127245e8175e88829320fc5bd43be0"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x54a3c37aac95022bb0d13bfe1ba01bbaefb5c0b4239098853dc1b8871d74978d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6beb1f40f183a7d6e56d3405320ca0bebaafc86caf8b7814b713b91580011c2d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5cbbd86665e6c0d2d6df80a79596d98ab01be85baf137df65c8c2aed44c87d20"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1d0d095d04805f614f9b75dd400fcba7fcf0a557a26017f1981fb12ac142d72b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2850a68d8a143eeaf8575cf052dc32a7613f6846d5b01d8333fba873fc4330ad"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfe4e894802db9358d68c42168b97e841aef59f1a0cae370448937e441518c6bd"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe7b86fb7c0fdc2b563119a70e012e5fab48278adaf76d68d15fbb04e2f82b90f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcb6911aee2eea91d1d189c31367aa8f45e53f5a6d4beb8e883417f60aa97137c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4e545fc51a6504f97c910d28b0f2662479c68c853477d204dd91919df27dc55b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x517f56a20a48d180ffd69541045234408676d9d924fe40ca4d70af9c428d96d9"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe21309e22478a70896831279ca4a4569bd8ddee37f5fbd41ad2ae467ccb175a0"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x737eefbd2e713a1c6c21257a5543c26a3e99d0a03227cd726b2b7ecde788dac9"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8e78a7bb1574e4014ab42fa43a673fc0662ed5365a5ac9d305a545cf07898373"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0f83b10e655eb3b217a6a2449f3116edeea7ef2524dec6a664b8bd07fa674b12"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9859e565807add6e677109a9bd99c40d144d0369dfa6412ba625607546c2e79a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x92c080aa357673fdea2fcd05aec1d5fa3fc77d4d0fe149b69238086c39cf5518"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x372285e3d3394f83f4f6c9b57b1e7993cc51159019ad4c82a7d1babce159939c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf6d8a67a22e27ebf87e6077dd2512581c87585495b6cf7e96c79261aefd76a56"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa42cb890b46be07c17e219cc7399ee89532fde7e8210a7019d4aef5aeb2cf0fe"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8adbe4f3f593afb198b2daf09bbd396019bc985e9bd416330e3cc1b1387d9d65"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9ccb1915d9390102f11faca9f43ab1b66258615a6e25ab6c0ff4028640b2c988"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2e96e07baca0aeaba5c11bf5239dff2295d15375a904e80bf724faa8a363089d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb1abc787133c656be02bc45de02c60b9f6f53f47634d247c6eb6b2304b03d3e7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8c607813391080e85238c2571c9991a61ca82b52ceeec80add6e534524dffdef"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xefa9fa32255c462a54460b8cecf5e6c80e61e3d682b51f5903cb3b2e26440dd7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7189f49abf8d96018ac90057e9050ffbf2bc426a71fc616aa2cc90ad1ea17f59"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9e6ade3ca42ceee32433b76f353cd36d3a04f82f82555dc26a6dd799e87ee0d1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5c71d6fb83356b49c58b06c5875f5030b1f2ec73d8f5cd776109a5c28dde18d5"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x55dcc4605d4f06673058e4e4013589a4a820c52934a53c743326b0b65e122cea"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xde9da31be8573fa913e61e28a50c20babf75a0cd88ee862215d45b850631725a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcdf492638fb4f427f4f57bc86c3f7b85bd68d30981e1cc8fa841d12d12e3bf6b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0eee4f93491a856e52c528a9ae19c4fca33cdc1bbfefdfbebadba232a2d74e88"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5be9ed41c024a0954950876c9620e474a3204f72179251a20684f2d36d814954"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe9b0fc21dce03dcc83707c8e2148e87b954b6f21ba98a2ba1d4542074586fa31"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x308bfef1588223d78791bdb7df4aac0873145fca85edbca5674cf5c0a0e3e284"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x51da994b0332b32974437b49d4f9b29322af6034cc7a3c7080b39d0d274c6808"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xbd0d9ae7372b9341bde739947803321c97b9e62218fcf7955fe8aa5d35b6525f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf4b8979ba901301d7982e2f9e1cf6481fe608bfc279eb50c456a2706f28e02bc"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe0339cf090797ff74e6ce634dc804b0459bf2c3c0066e6adc7ef2462d02be22b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8449a7f28839dea94840cff2241cc70ee4f9d6ec9189350ef4fe34bed39a9787"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7ad9f320bd3aea12d2bfdb6d7cc024ab94d153847b87268ace9665e8a97dce11"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x89a178bda2fb12efb2a5ae0e0fb5d7b1dde8e271d74a36c8fdba325f78929bd1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7c535a6161439a1c3aa4e0ea971027ab717a245b00230f345bf74c331f30f8d2"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7d59e8834f5070e3d77b391de4690bfe76c0aea9fe77bd602b894f95c9b32c1a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x995fe15706ff97f67def7c726a4885a9570645f47e7c87e90f09778314c30a9d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf78060c144690fda8a11407da48de6360db123a80c0c637a12bac0da5bab03d1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7ce514e3b962e546e0aa860e3e5d044fdbb190d73f5c47fff2654149de2938f8"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x335dda606f9920d40477fd5b0a5c3b789f0c6ebaca535d7459d0defec3c50344"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf78c6efaf1b37bc3b24e5cbe02c80d168d419bb6020829727770fbb9134ae897"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7dbd4ace34a607d601815132dd9fdb92c2a09535955fc0efafe894c4df46660e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe65b4aff8c91300cfc3b4b669ce3cfa6860361786ce2b1e243f65b5995c176e4"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x78c5a1687eeb71a8711d5e21ba256bbc7e012fec2b9b9650f628b7f53163f83b"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x63cc8d297543bfd9033217f7b71edea821ff914b3f16c78dab3c9bb1369da617"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf229dfb66fe2c291aae1a50bee781b24f3f17a778074a65529df7f54d88bc2d7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xeda09ee88df2c95b49c7430b885d052adcc8bbf3a8f8bb8153a61a39a8baf24f"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x95e16d3cf2b8441a79378f61ba2238a8478958ab2d4fc8839e63b16b3578eab8"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3c67f74eb4aa7a6a552295765c63594c1ecd652e4a98d7e01309b12246d21c6d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x47d09530b189efb0e00aa747aa4831b66884955b35e5dbe89cba4804f0d904a1"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x23dd2e064804bbb261ce24abdb5130f1c382202b8e22f2b85d825ef84ec353c7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa0409f10ca4cd8824f9473edfe8f1b4082c2b045803687e5b4780d602155c9b3"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6b50d4feac4435250e998163b187f954b05f558e1fa43c16ce463624d1917df3"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x69f674108698de903b74e2d77d0c3fb1951b00158f5cc46c3b1841ef06d5c599"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7d42a4ec1cdc2ac943a8374b37593c968ee2008e9ed30d6251714073b3626c2c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2e26076082915ad386739efa657ca57cf6c896ccc4718badc25eed6e59661044"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x82a4ce38b961371e7c7d8b5cb14bc5939af2bfff659c349d3d71f9d7374afd2d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5ce6678835af74632407c9fdb67e4d35d567f97797c0e7149d6d1f89514e32e7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x16de0fa893cd4664ba3ff28675fc1a25f484b6a7ea4be8878990c19d51165c72"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf0c591614cbf2bd0ca11b276b14e6d00ffa49396f2d989c060f876c53e19a8e0"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xed2ea5552189ee450d2f266998f2c82ed3f7392a14ccc702704a5c8ebabd8f41"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x52d5180172f898de985164e8b4c73eafbc5823a02ff438a04e4df577500e0c66"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9b672caa99dd4d8532336d7e320c3360219f87d1818636a4f388f4598d036720"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf1c110d2918525c1a871e023fe279d2573263720da20b81c4d08dbb6ac9cba4c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x352892a641e3df90826a42d0d7ad4e604d0b4ddbe121242f8ac32e8fc6534c86"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5bc26608ccec37cfc4237b0ac20ecfd004d68caaf991c9d8a4094ac0948d8d99"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1e0e9a386c2a0141eba92ac4ef161a6fa68b47b6dd163741c63e486669f7fc3a"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1302ff2c37a46609bb83702f0a95a447881210bd5ed254847841643e2c31f566"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0d237ffcf6b8d670f567d8e70eb281a0f9aa49f8167e38ed467410ff8ee02fbe"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2f9e8c1156fdb4c8f99c2e3e3f6713d5982288630c82e643dcafaf50fb17c8d5"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9e50d9a6c26b213167c69ec716e353fdee31dc82f9a19ae9bd5416524b41f673"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x008eeebccd81cef224af2c5aff8effec9c741cd9cb68dc36e8c165b8a6c11652"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7135fb5edd26be422fa51af95af69eefd9b08f1700a111e0e43b23f53c97556c"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf2981fa1b5ff84030af8a1ace5c04c0e933d43fd31f6ab4f9ef6a64fced387ed"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9f9a3fc2da60f3439d799a7ad7ab03aa56e3898d96f48b4c4dade2d43c7115de"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe2d22d20df561d4b1a7139263bb384d18f097bf26e69d4834624b50904c3a2a6"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x92a51856bd3cdd4541bb6a8c3291282461811e7cdea0e51ade4e6cec7b743feb"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x68b16ceee007e55de6762165a78009015ca4106d69f72229e0d68cba3f6d7551"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x60c8d5995579e43429a00336f07d9bf72787a64b6c93b8ef524a94730e2a8327"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x84e03bc218580528a8f054bf0addaac48c13a8adb4b546651fed65ca504bb889"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8cb2861fcd1d43aa443fd493b251bd5b6c5efc501a58bfa6fdb70be5c1bebad0"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8575845185244d98fc0279e98b7a77b062c7f655277e8a90db063d5fce725d8e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x54f3c760c0c2c5b47bd36ec9b0b9164b9776c7bfa906ed7d629b7ac07c58b1cd"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc53cab879a53e1bd0016e90b351d9d07ed789ea8ba4def50eed5dd30b9217714"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2f53c5457309ae5f2c7aa90fa7a8405164c08bd58ea3b9e33859c83e37d12871"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4c88affdfb8bbc9a7e91d8ccff092580b0524e378c8ffdb71a091b033cc5ba5e"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6dcb7154b78c46d877206d30a64982422d9229e43c56ae64bf32eb680e771db7"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5a866492d9faab032df1583148e126b8557b8a7e1a137554a91082a710186c83"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4254342485d2fe418a55ced0f2362519a137ff7985f15efba9f3464d9a2aa6ac"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x86eb63dc81771ca5742abea17b33577a8c3eeee86ad270ad1ed8e34a2664bcec"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x20e2871be6be84ac0169f313f41e3016f2c918141d95f998a6c1737ccb029471"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x013812eb80a09c54d227b6ee46429aaa087b598c1e0ba28909c1095ab924bc7d"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x80d833581afb0e49d0e199b1aa73ab748d6d7ca0bd3edfdc8fc7dfbc54bec897"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa6d522dfa64ae4e5b8cabb77e163e4e7dd9bcf09383da49e6b20451b0fdb6a55"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt struct i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x111baa61b0871dfdb0e69ec1bd00c1b49b263a8f273b31a057f8a561266cc8cb"
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  }
+ ]
+}

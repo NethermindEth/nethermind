@@ -1,0 +1,2812 @@
+{
+ "test_name": "debug_traceTransaction callTracer pool",
+ "description": "200 distinct transactions from blocks 25489901-25490000 (snapshot 25490000), 10 per block at index deciles across 20 blocks, callTracer.",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "30s",
+ "rps": 1000,
+ "vus": 512,
+ "calls": [
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5e27e753ec501340e5630f1222c56992fa517be6f22e0a93368817f425e19dea",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfa9b6508dc4fcc468bf05fff9752e47fa7205ca5a21349f22e4c291e38ca0768",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x648bda4ee69754cc355b7b3f8654803361edc52b1f7960ee50f0215d57e45615",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x19ced4e7a1698717f68d3b402b7f08205ae3f2ea89b91b2a22eab530bffcef66",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe75b5246a65cfa1f7c1e334db5707e2e87ce7699fec376e012cab1ff75bf0ed9",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe0919ce75080d1e7a58c0ea7c831ffb9e82942f557241d1557f708b6217bfe23",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x07eb3b6ae060416e6a99cd2df9f7f4a2a983eb486b1a53b98a172db2f65ba867",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x687af7c2fbabd75872c1635643568339862581fcc9819451e0f843b353fd8b0f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb9ea8faf5cbcee0334bbe024ffcdd0ddffc242178d898efee6ca7444d7a721d8",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa610636de70e35b6896afed21e3d6ef17c06e502d9fd38af76e82153d0928d20",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xba505c027dcaa89b08f04149bb9fec47108187a4b0c765ab17dc9ba7feb716d3",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf51f16c71c75509c47baa68f5b4ad316ec742a9b4a580504b37cc7ef8785d4ed",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x152d5b69f8b4a0e6f9c86b39e7cfed660d5d22395f140d930f8138598b6231de",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa0df9370377e3a0dfdc3755f70a22d57cdfe8754b690a83b26dc8638bc020831",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x39e8193cfa18678c7a84a6a0f00e9ce43cc77ff98c627120f315a515d8387369",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x093f37dca9f9b1a4affe33ebeed8ab6bc1e97c6d5916bafab9e0c468cff2fa55",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x692d966f1140d57d25b88a6697bbb0ab2e4ea588d7c668058925ec16808393c1",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0de2f59784c27b65fd5753c21d131faaff26ea1c0b2158708fce96f4f215bddf",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x54e0c23879c044c1be4d93ac41f0fde0cf62dafa02483052d20b13a8f9a04f29",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc374c9c24541d521ae220428c016546a1d6173750d2c4c39961ece5824b8c38c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5a9ea386305f933212a54416d052d3627edae0aecda865d0a07d4e7990e0372b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9b562e659e7f460332d293f08a0568da8e4fcd038c8285f269822c95c04c20ae",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x191ca6cf785092f98c05186b4f099916ada5ce35eec6528391a3bbe2423a8e23",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcd7f352e65b2bb7825ccd1c81643a617b193f6810d97390823a769756dbf70f5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6ba060a29901b7e48a9f12cad2b1556b6e239a8a725873a8901cd7a1e3eaa44d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2e5e217984150a785702833fc649111219cbba672d47efaa2d9a259e819d6098",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x25373b26218e90a4fa1a662401b19619e2818fd684db2d775c41ee9a5a5788f0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfb65b08c3f02823d82c0acef088fa6ce79ed34d6dfa4e71344a6cfbd4d34c59b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcb73c5e3cd695d817d10ce53a193521f395b77d2b18360d8c2e12eb1d634256b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x37e019f90d35fa38de20a296733c78a0b13318ed6fe57a80b2d03ba56a4453b2",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf66f421fcdb545fd9a4c510ad530c6e10c5b7d965093baf9a7b6e79ca5ddd615",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8221e5c131b403e9b6359425bba71e30cebbe93b0afe86f9012825e2a1d1e118",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0ea7c1e6e01899599c686ce9c39ee755c11d05a154bf5a76ccb4d48b7883d6a5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9105c2ecd54cc46248179a165257069522e6ad87f4178fdd9d481277ca6df92a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc9325ad741b6fbf246d6eb09f268468ce89331aed9ffe5b9eb6bf10cfbcd9f38",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x404f26d2168267c51b1273aa95d87900eac345fba3a6fd5d005d5016449c34cc",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x044e54633b6c0b509d75018f1922dd12a2c8b5126782d484e0832558111bfe2e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3ad08ddbef54339ef1bb852430081588946f610d0f27722daaa0ce45414f7867",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8c33582c5419d1b0d0953d528b5ae81eb467531a60b2653c20c555ba39ca4fdb",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x594e5cba1f765f3b62f41198ae9fef19d2f6d9212cbcd39633d04bbc90484a14",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x620e73add386b24ebc2d2ca382d0cd0f8dba6f843c946986a4dc4d1a24a61208",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9ec21a66802338eb759f1a385b71641e653fe5e304cf437acbf3c928754a4b62",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1702fd905c9e640f753d36b7cc8192cb754ea9808c2bc7414bb86f400b847433",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4f20af8ea7c598c388133e19b8eb1b6580b330ed764a0a126278432e7fd897db",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf5ab7eae34e955d5ebeab2e28f5b512e02de206caaef0e41bafeafa032c0f21e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa1636e73900aaaf047c8c67a54d8f336f28613e8ea364411d3b13c37f8b9d106",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x402abe699c073b0802b0c2fbb588ecd8fc08ac556b0d152a01e83d9e38914656",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfd58ccddbd64e0196c16a30ef0485e095669675971168676c44fbae27288c783",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x27a3fb2238ed430b02fd54abf43a85f16526b7829f54311b27f7c9280dc832a1",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3b52891b252ca77059f7e970735d217071f94c69e3cb9f860031c1a093f9385b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa009be70dfda9aaa078537d0717f895815928f88af75610be036f1414349cd72",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x08cdc5d9ac752629e71cfe264663a80fa3a73f5b2f7038d6353eedec663dfe7c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x92b56c6dc9ea59610227ba4b6b2170fcea7ea15de066d56869686374eb3712db",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xcf44adb550ecaa4ae764b10a6314c30bf304e8988ffdbcacb66e012fbf257bce",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x59bd65323f5d729c696b60240e6fd861242f2da73741814f9dabbff973014721",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7e478543bb7aa6ded1e1998df75ee91400117fd062f5938d538f537a39dd8efd",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6b4faa619835c628a354496b442557dcab7348d853d9e1cf57282e802e8c90f0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4d133c197d28907dca666530e51d4fe1ea23dcd2a018ea6404d463ba80f0ab81",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3249330183ddd72b6df489178c77662baf7d321933520a55ebafe1f19f74f3ee",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1898b21206670b1cde54915ce4f848feda086a13bc811d909223e0fb682a9caf",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe893c8aa77f11a85763630d6b21532173b6803b203a00bef12339e0b92004420",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe7348383f46b86377b53bdf65ec746d1791de53fe6bf5e9637bb1cbfe3d6a8c7",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xfb917a7418d6e280cd01eece52e061df4a21ed5a06f84e59757adf0d25e46bbd",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x275c309b0309bc789be7a0de8dacf2220325e18481672a812a1dcf15aeb3d255",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2a6fde30c86c54d70736f1436d053b0cbc221672a2534cc897c80f9b3017467f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x84d200de91e3bb0943511bebf7ec2658934b161496d63f6a20f895e85a300d06",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4e0dfa4d5d35b77a8f97a3adc9278d09b7506cb753432983d708f5012c2e8841",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0fbb3b0f904003c7830316931863cf95cf139a828cc0f359d1092a66ca18dce9",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xbbc56414a89ae7719c3a11a20876fc70ba41bf47fc97ac2562be454a4d09a37e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4be054789362203806d989465afd897ee523588178ac699d9b540ad555846dc8",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3c368844b7d50fff3fa1eb89b2a6d658c2ecf020e9605bdafa709e77a1fb5730",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa6bd4476ac813a6c93129d714c32d2969cb8d7ea3ed62aa089e45fdb4688b395",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa7370dd35c75c2692b3a69a471ed31085e73a0119137b817bc1feb2f266fd282",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0e69ba54e32042c522381527ec31d0eb00197a71c7bc098bf64b5245d9ff624f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd9037936762a802c81f779cc4db2b052f4535409d1373e2923a84e4d91315c67",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0e518d0eda9d4ded691485c5cbbb665dc8b8c8c46710b06fc46668c812ddd268",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x614b2b0456e985161b788ed5bac50a5db0294983338c54a34a185c05b7f7bf6c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9d339dfabd224c10c072faccbc22e7e3b723324afc35c3df44e0454f79700c77",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x63e67b78eb147c9abd2902e31f3ab2ab5fa424e8df2939653e902b2870a11dd0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x159558654bb832a3937d214bf517fed5e33d693c8a9e3cdbf41027bfd5a9a2b0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd13b6ed3ffbd9f7c53c169be6e35c03760b28f7f0bdea006066dc1e9ac2e8cc7",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8127ff86398ee43fe4dd7b6219a0c947d05a26996525d449939a3aa78cd620f5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x154f6ebe3645fdc7b63d6028a90b5acf6b451c9c5c786df363c3370cf327958e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd08ece1161e4513a019a85e8d3f14828a27958e74659cb1aea37eff27649f8bb",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3cd1be8c4aedbb6eab90f5505478a3fe1f00293634056dfe9388114957fbf70d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0ab08572260135f807d2900a33a96b71bfe1a75b0c4ae9b230d75a5306414920",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd190e10c546433e77eb3a08f6a8bb47c8de5b18ebe01032a55b5afb9b069d624",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa3ad709c8ddd86049dd270ce350512835a8691dafa2b85cd1be075cd7f30166c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x59d219c3cc57f6455bdca170e07ce91072dfca7158bfcb75144de3a28d2bd80b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf03164b45910afd2dcc388fea533ebae7230a1352db546429fe61a768b12a409",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x24add63a9f1b24246d98016b37997ea11cffc8e4f175c3105582d698d04bc63e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x80f39c28230555ba27077a95006b869ac24bfa4676c7a0f5e8849cce0c54eff5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe022c89dbe6e8cf5d76fe2d071b7e800668a6c44939fdb305da6c5dd0ebc4e53",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xac99f8eb80185258d804a94461506df54b94814a95a4a6cb8c9c2f2fd9ff1e3f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4224986a40e39fdcd61b50bf92ec58481b8fff30ed1d0743065f1e103f972872",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe937d601015833d63fb40a7796f1d1fea78f69fac55593fa0c1a938c58690554",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x57085d163c9c6aacfc1b0fd8b4f982c2704b14bf1c22ad2d1fc4e79cffcced86",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5b261aab9c3817c1147459b9874e6c825a9eec23b9073e7c56cb9492577ca75b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe481416e10bfddf89326baa91f5548fd3ce8267f9e42d6708a16626eea612322",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x77c866b0b164af7eb2af3d9f5cbf5a150f7d60e79c8113d68c396fd3435e4c92",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x20186eb61fad9053a5294247f1fc5c5c992703afcd86a2b3a78961e367518611",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9f41c570782617fe363dd0e16b0f2cb59657ec3feba45357d6804d968b38bf75",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc8658376c897b58d791b10ecba752de09f2f675a522e3f777159e482e3fa6361",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x25c1624367bd92eb70b45e7fe6b7a482d8f667d0fc52f9c330083324b44e6436",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xabbe836bf72ac8d27f06afe7ecfb40a76f1f8d54b372883bb8188ccf4e6b111e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xefae2fe527c10112ecefd9595483974feba1a0edb005bc1d1dadbf0c8e14c18c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9deec2853eacfea6daf30fb09871e64cbe07f3f30159c3b80ffd48609d3a146f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa6651ce70a55c2fab949b59c1046372fa11ab9bddff371d086cb6386662e74cd",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3132cd5f94c39be4e9673625e57f3034062e35a241da04b1c46a71cff59dcd39",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8e78a7bb1574e4014ab42fa43a673fc0662ed5365a5ac9d305a545cf07898373",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc70b9c49820cc3d4e34c0db7f2cdf89716df25f7b00c786d7feee38f9ae283b1",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x95c596eee01bde22c668bf3f8139219fb5d06ecbd84d9c93801a9ec8cdad497d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x1ef193850fb840ba2c6039255d895bfa599a0832461192ecce190f2fad4c4766",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x26d19721b2ce20f207da706565c3348d1a9211084d24ddc3ab0e3c3b991615bc",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3fa9d773c88f34abe8c3630dd07b8f1a5a3695ba25bbb8e2babff9dc874d3998",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf016aff398e01b54aae8ffc3a74a955670bd477e81ec15e96d51413f3132b368",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa242b3cead586ca3f6124a030850148c1364e37d780c27316ec621180734c060",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd18af1f739eb514dfcc43a54d7659ae8cc20ecf1592af774a582579c792d529c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xdb4a0067a1f938072033bd2d3bad86a6f6ac2393dd758dfe585572dfaec7cf27",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xebb55e483abf2e7689c447c022c6317b44d6bee25c0cb1387e8ff296f4487945",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0df65455a401a8c88ff5b9dc5690a367a40657d6fd732f554a48b00bf06e7bc3",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa640d32c144f3b60b4767116614a72f3a02dc0270a8b5898d7c82de54bf64fc8",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe71b161c39ba2977daaea6a1efb62c01f3825fbe077840b90677afba4024ad23",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe9271b03f5defa0d7c809f106d49d91f62aa2d34c1c46f1186d9a8ea4adc342f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x99e2a78c5fe22178f3e210eed902f45483741ea214166c0f763bdd2bb0dea66a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x24e670719d4049dcf89a29f2d26322ac390d8495916a2f006ff0d3e97c69f8e0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc531cef8bceeef6ab92be5f67582771f06ba1d2e05df04009922edb63d2a89bf",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x609725148980236e06ce381ef3c930f5aec1fe3f760cf03b97c53a4439243808",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7a0b02d8afb75e4c23eef69c94f95f2dc481b81cb78cc2ce5a1b67d9c591f9ba",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i300+",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf97c78f76a7ff6d3d8ab2362d588212422c8e3c46a4f8ec4f3068e8fda727475",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0e03f798e8cacb8629f9d3d5a42714b3e912e5c0bab9a761bb9699c94b818991",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xac9d565398dd68553c281f5652711fc7a9f2f8f4b6af139ea6d73406ebc8175b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9aa6710104be05971225fd4ec8dfacb46e6f2b4901c5ec7614ae1c3a9678425a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x492f8ad5381be7d4e425a2cc653e2410815864f28a9d615e0cf0bf130ab2f8dd",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6136ae7823969ab1917ee7d2d928ca253e9cc262bd776ea4b09dc8e92d6d37e2",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc964e742873e964d88cae3ef5e3782ed82af3fb87799f412f28dab1414655c9d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3d163af763f95091f97d897feaaa6112e1e1f015923adcbeff1816dea57ce665",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xba79228a8a140f830a13ef9119c60ba07a048a68547bedf8c75254f6534d7329",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb0ebfa1f5eadd61eaaa43d4a7488beec9efa1566fccfa268d16750801793b07c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd7d5c94c6eba532cf9d683c05cf4dada811b9adceb18791e7869d394d2c84810",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x34e279d70f4a42d3a15a87ed1ab24a1b3efe3ec0036e10af30d33a7c7d880d3c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0329f9c863f4d2f47d40b8da00ebb534cf45ad61e481cedf53cbac9e33626d93",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x003a7784f28016e8f45b04a52ecc5ed6be256e06734fa108c292e66a5908ba09",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x38d8e5de0ca850506fc577d04b95a95f196b53c5914cae4cece688cbbb27d221",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2193298e283072f3288c393e79474f7e990bc1308fcbb874824bf6ac79376264",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf5b813ba3b95fb4feb7ac74028ce5ad849b2bca7d751d318eb5941b1a6e31715",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf3f89c2bfedc76cc179dc7886bf45468f87da2891377bd8310919e4ff72d9d0a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xbf84ac1733dce3f0a98268bbf7a5857fd1ac324c655b7fbe4caf653e36e381f4",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x78c5a1687eeb71a8711d5e21ba256bbc7e012fec2b9b9650f628b7f53163f83b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x64c9a89f5d01dfe175820080de99bb791747a3b1ab7452288e7759359fa8bd8f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xf0ee4564efc8e514c704d9df42e8b86fcdb6b4816bd8d7a3962e881139807b10",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6caea447a2751f536b48b0064ddc75954762d50b7f4a1f2e655334f2b233fb6b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5bee7f58faebbdcb6b26d5ef749b7ed5b37b00d6bb9d6ad431af40cd6ba011e0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xca7ad9c90de1bce17719d51fd4b7e39fe730da0f450ede5b58f406382ce6c231",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd43846cb3a7a963be90b76f03acd892c9111519fc63dc71f1cdc9eb1b0fe3205",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x3d1249b0a09c3c9c7f40235396086663b2d281122fa05a460734a037c39a9332",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xb54cd40d313d36873db419f0450b332c6abb22cfe1f77fd0fda7a7b0333ae452",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4fa2329de486c632df16fa84537b46126b05f597f42e4634cb8cd14945759b8b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa8aa72fe9be3096c7facd70c5f33d6f9999044010de8d542e4857ed540f7138a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7d42a4ec1cdc2ac943a8374b37593c968ee2008e9ed30d6251714073b3626c2c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5bfe046aa53443829a2131e2e90d94ec41cc908233c9c8e6057cfa6f74ec767d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa21548ca31d54a850a76a2e9744a34f6859f281276856f43f4f2d49c11a7e195",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xd423e64e37f30e5994dfd0b5c6a582a41255dd61af4e201ee2d166e996629813",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa46b2e9ae7ef02193228d65aaa14ec3b7f786fab5d101cb7d834c734a742058e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x397e628c713d0169105e455a5f802b0335a106c5931fba8c50a76247d230c9d5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5ae0b981ab684e7b3a3fedfb3beede2eaa902a6f8c235d4a4b6f6b6c597fe535",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe412dabda6d2454d2f445173b8274a3d9583d103c7a93ec4c080e176019561af",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5cf61a9c84572a9230e33ef6f8d0fecc39082f3da723010f02c331bae4253925",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x0540fbd0a4da219c714060edd34e7bdd5df4f696db81ed2cf0b63c07a8912f38",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x35561c05d88456a1c899b50969a089c782885e99d4a10729778cdfa2c33352df",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8c9c64da5887570daf40349dcea636203769baabe4eb42fad2c34010bbd49262",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe6e987fcbf9e6d00076873e5706b5e6785dd89538aa766aff5c6cf4910dadce1",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x8d32d13b79c5f96829dad3519275ece4bf0049bcd580e537a2a1a6c3011e8b2d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xaf2d1d9a35b349db3441d9d5b069241d158dc15489cca687f230bddcfd1881e4",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x89e27dd963c51bbe4c74229cb0bb629d15697a12edb0ea21fb10f1ce928add1e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9b5667996cc4f3f9df01eb4e74b006471079453bfb83f8922d0c181379261b49",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2cec620a4efd3435d66e5456d62bb5600de2043156a4b32ac06583546a143d0d",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x40348fc96a98a5382fb54e7ca28b26c49cc6f47fa56d24f6fa362631c0cb4038",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe7efd62bdc80ead3199b4ab056065499fded315f153ed5220fdf01ae6633a4f7",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xe5edd55c10ad307431e0798cf6ac9b0081d22bfa252cbc02bf41c51edd195149",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x226b79a521d3b44c9b35de5490edf1a07ccc736b0115e9f464e5752190cbe76e",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7831ed18e4f7b19590e57f3ffa82a99f29343c1f4e5661a65678f5a0b36e0599",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xdfa6528ef2ab6b71f064771ec69f29c0efca424e8f98f0e26ebd62209a4795ae",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x5554c5fb1c05b28163626dd6de03eb78e4437dd767097a61ca174f6a463b98cc",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x60c8d5995579e43429a00336f07d9bf72787a64b6c93b8ef524a94730e2a8327",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2cf53a6ff28a7441875eaad4a9dca3194cfba7004ca92d997db0199b272ac8ec",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa04d92058ed97b543826627a0327ceea019cfb5ea976a43eb9ffb6c6a925d377",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x628ccdad77de76a016512683c01d983a50ec2fb7b19b64a1e5b848a52db10d4b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xa2e25c47df5b3c735d31ec90c29a4384735a80e8b9ea6fb561efd347759f0732",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xba66dd9e8ace17a4d3b990b30f255e5eb463947582d4e47914160362aed9ef28",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc035969ac692c55ddf2ba8f4208bcda4eda85486e69d9dea7544d647926a791f",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i000-049",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x7432f7926db453dedb59ee41e46956767433883e02bd3b95a966664693c84b09",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xeb7d685040bc307d7e98d33c5238478e85b47b516ff32623ae5133a4a77812e8",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0xc06f656b7adc28cf77571d80dc8e230b9405a10068ac42a2e6189cb7bf3696f5",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i050-149",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9da64b428de9245b0f083847539b7a0f76521a937e0b8d5ca83f6af18792620c",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x2c7c809e27709c0d18d1ff07247f16b48157f5069c2b02f4f64078296630fc4a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x9093b94ffd532e93ae1ba0150e720528cb35ff557bf51a7f16bc22ba8b1cd49b",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x6306aabca5c7274c5c2952299a49d9fc2f0c09ab91954c188b97973722d08a1a",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4b7477b8d903245766dfc20cc5fa1d04bd7f23a806ce79074e540b550e18b824",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "dtt callTracer i150-299",
+   "method": "debug_traceTransaction",
+   "params": [
+    "0x4c640e4cdbb2d11ab7c797b0af5d0391cf53bdbfc425b2f036f849b168e825c0",
+    {
+     "tracer": "callTracer"
+    }
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  }
+ ]
+}
