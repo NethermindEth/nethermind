@@ -65,8 +65,12 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
 
     private readonly ConcurrentDictionary<Hash256, ValidationCompletion> _blockValidationTasks = new();
 
-    private readonly Dictionary<Hash256, List<QueuedInclusionList>> _queuedInclusionLists = [];
-    private readonly Lock _queuedInclusionListsLock = new();
+    /// <summary>The copies this handler handed to the processing queue that have not left it yet.</summary>
+    /// <remarks>
+    /// Replaced whole and only by the request in progress: the engine API runs one newPayload at a time, so a
+    /// request finds here what the requests before it left behind and nothing changes it meanwhile.
+    /// </remarks>
+    private QueuedCopy[] _queuedCopies = [];
 
     private ulong _lastBlockNumber;
     private ulong _lastBlockGasLimit;
@@ -761,9 +765,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             {
                 // The suggest goes on without this request, and a block it adds would otherwise sit in the tree
                 // unqueued until the CL re-sends the payload.
-                QueuedInclusionList queued = new(ilDigest);
-                TrackQueuedCopy(block.Hash!, queued);
-                _ = EnqueueOnceAddedAsync(suggest, block, queued, processingOptions, blockProcessed, workers);
+                TrackQueuedCopy(block.Hash!, ilDigest, EnqueueOnceAddedAsync(suggest, block, processingOptions, blockProcessed, workers));
                 throw;
             }
 
@@ -823,9 +825,7 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
                 // Enqueue, on the caller's thread, and hands it back only once the block is committed - after the
                 // verdict this request only needs to see. The processing loop raises its own thread's priority, so
                 // nothing is lost by not inheriting this one's. A failure to enqueue fails the request (EnqueueAsync).
-                QueuedInclusionList queued = new(ilDigest);
-                TrackQueuedCopy(block.Hash!, queued);
-                _ = Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
+                TrackQueuedCopy(block.Hash!, ilDigest, Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers)));
                 (result, validationMessage) = await blockProcessed.Task.TimeoutOn(timeoutTask, cts);
             }
             else
@@ -888,18 +888,13 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
     /// </summary>
     private Task WaitForEarlierCopiesAsync(Hash256 blockHash, in ValueHash256 ilDigest)
     {
-        bool tracked;
+        bool tracked = false;
         List<Task>? anotherList = null;
-        lock (_queuedInclusionListsLock)
+        foreach (QueuedCopy copy in _queuedCopies)
         {
-            tracked = _queuedInclusionLists.TryGetValue(blockHash, out List<QueuedInclusionList>? copies);
-            if (tracked)
-            {
-                foreach (QueuedInclusionList copy in copies!)
-                {
-                    if (copy.Digest != ilDigest) (anotherList ??= []).Add(copy.Left);
-                }
-            }
+            if (copy.BlockHash != blockHash || copy.Left.IsCompleted) continue;
+            tracked = true;
+            if (copy.InclusionListDigest != ilDigest) (anotherList ??= []).Add(copy.Left);
         }
 
         bool carriesSameList = anotherList is null && (tracked || ilDigest == default);
@@ -909,57 +904,29 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         return Task.WhenAll(anotherList);
     }
 
-    private void TrackQueuedCopy(Hash256 blockHash, QueuedInclusionList queued)
+    private void TrackQueuedCopy(Hash256 blockHash, in ValueHash256 ilDigest, Task left)
     {
-        lock (_queuedInclusionListsLock)
-        {
-            if (!_queuedInclusionLists.TryGetValue(blockHash, out List<QueuedInclusionList>? copies))
-            {
-                copies = [];
-                _queuedInclusionLists[blockHash] = copies;
-            }
-
-            copies.Add(queued);
-        }
+        QueuedCopy[] stillQueued = Array.FindAll(_queuedCopies, static copy => !copy.Left.IsCompleted);
+        _queuedCopies = [.. stillQueued, new QueuedCopy(blockHash, ilDigest, left)];
     }
 
-    private void UntrackQueuedCopy(Hash256 blockHash, QueuedInclusionList queued)
+    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
-        lock (_queuedInclusionListsLock)
-        {
-            if (_queuedInclusionLists.TryGetValue(blockHash, out List<QueuedInclusionList>? copies)
-                && copies.Remove(queued) && copies.Count == 0)
-            {
-                _queuedInclusionLists.Remove(blockHash);
-            }
-        }
-
-        queued.MarkLeft();
-    }
-
-    private async Task EnqueueOnceAddedAsync(Task<AddBlockResult> suggest, Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
-    {
-        bool added = false;
         try
         {
-            added = await suggest is AddBlockResult.Added;
+            if (await suggest is not AddBlockResult.Added) return;
         }
         catch (Exception e)
         {
             if (_logger.IsDebug) _logger.Debug($"Suggesting {block.ToString(Block.Format.FullHashAndNumber)} failed after its request timed out: {e}");
-        }
-
-        if (!added)
-        {
-            UntrackQueuedCopy(block.Hash!, queued);
             return;
         }
 
         // Off the thread that completed the suggest, for the reason the request's own enqueue gives.
-        await Task.Run(() => EnqueueAsync(block, queued, processingOptions, blockProcessed, workers));
+        await Task.Run(() => EnqueueAsync(block, processingOptions, blockProcessed, workers));
     }
 
-    private async Task EnqueueAsync(Block block, QueuedInclusionList queued, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
+    private async Task EnqueueAsync(Block block, ProcessingOptions processingOptions, ValidationCompletion blockProcessed, ParallelUnbalancedWork.WorkerGroup workers)
     {
         try
         {
@@ -976,10 +943,6 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
             // own completion, not the hash's: by now a re-sent payload may have registered a fresh one.
             if (_logger.IsDebug) _logger.Debug($"Enqueueing {block.ToString(Block.Format.FullHashAndNumber)} failed: {e}");
             blockProcessed.TrySetException(e);
-        }
-        finally
-        {
-            UntrackQueuedCopy(block.Hash!, queued);
         }
     }
 
@@ -1142,18 +1105,9 @@ public sealed class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadS
         public bool MarkBlockUncommitted() => Interlocked.Exchange(ref _state, Uncommitted) == Cached;
     }
 
-    /// <summary>The inclusion list a copy this handler queued carries, so a resend knows whether that copy's verdict is its own.</summary>
-    private sealed class QueuedInclusionList(ValueHash256 digest)
-    {
-        private readonly TaskCompletionSource _left = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public ValueHash256 Digest { get; } = digest;
-
-        /// <summary>Completes once the copy is out of the queue, or never got into it.</summary>
-        public Task Left => _left.Task;
-
-        public void MarkLeft() => _left.TrySetResult();
-    }
+    /// <summary>A copy this handler handed to the processing queue and the inclusion list it carries, so a resend knows whether that copy's verdict is its own.</summary>
+    /// <param name="Left">Completes once the copy is out of the queue, or never got into it.</param>
+    private readonly record struct QueuedCopy(Hash256 BlockHash, ValueHash256 InclusionListDigest, Task Left);
 
     // The IL digest disambiguates a resubmission of the same block with a different, per-call IL.
     /// <param name="GasUsedPerDimension">What execution recorded for this block, so a re-validation under a

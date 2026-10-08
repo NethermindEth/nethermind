@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
@@ -58,11 +59,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
     private static readonly FieldInfo? BlockValidationTasksField =
         typeof(NewPayloadHandler).GetField("_blockValidationTasks", BindingFlags.Instance | BindingFlags.NonPublic);
 
-    private static readonly FieldInfo? QueuedInclusionListsField =
-        typeof(NewPayloadHandler).GetField("_queuedInclusionLists", BindingFlags.Instance | BindingFlags.NonPublic);
-
-    private static readonly FieldInfo? QueuedInclusionListsLockField =
-        typeof(NewPayloadHandler).GetField("_queuedInclusionListsLock", BindingFlags.Instance | BindingFlags.NonPublic);
+    private static readonly FieldInfo? QueuedCopiesField =
+        typeof(NewPayloadHandler).GetField("_queuedCopies", BindingFlags.Instance | BindingFlags.NonPublic);
 
     [Test]
     public async Task Sender_recovery_uses_the_payload_worker_group([Values] bool invalidHash)
@@ -585,6 +583,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             Assert.That(waitMethod, Is.Not.Null);
             Task earlierCopyWait = (Task)waitMethod!.Invoke(handler, [block.Hash!, default(ValueHash256)])!;
             Assert.That(earlierCopyWait.IsCompleted, Is.False, "a different-list wait must remain pending until the held copy leaves");
+            Assert.That(WaitForEarlierCopies(handler, TestItem.KeccakD).IsCompleted, Is.True, "a held copy of one block must not hold back a request for another");
         }
         finally
         {
@@ -597,6 +596,47 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         await first.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(result.Data.Status, Is.EqualTo(PayloadStatus.InclusionListUnsatisfied), "the answer judges this request's own inclusion list");
+    }
+
+    [Test, MaxTime(10_000)]
+    public async Task ValidateBlockAndProcess_does_not_take_a_copy_that_has_left_the_queue_for_one_carrying_the_same_inclusion_list()
+    {
+        Block block = PostMergeBlock();
+
+        TaskCompletionSource enqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue
+            .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
+            .Returns(_ =>
+            {
+                enqueued.TrySetResult();
+                return ValueTask.CompletedTask;
+            });
+
+        using NewPayloadHandler handler = CreateHandler(
+            block,
+            suggestBlockResult: AddBlockResult.Added,
+            wasProcessed: false,
+            validateSuggestedBlock: true,
+            processingQueue: processingQueue,
+            timeoutMs: 5_000);
+
+        ExecutionPayloadV3 payload = ExecutionPayloadV3.Create(block);
+        payload.InclusionListTransactions = [Rlp.Encode(Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyB).TestObject).Bytes];
+
+        Task<ResultWrapper<PayloadStatusV1>> request = handler.HandleAsync(payload);
+        await enqueued.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
+        await request.WaitAsync(TimeSpan.FromSeconds(5));
+
+        object copy = ((Array)QueuedCopiesField!.GetValue(handler)!).GetValue(0)!;
+        await ((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).WaitAsync(TimeSpan.FromSeconds(5));
+        ValueHash256 sameList = (ValueHash256)copy.GetType().GetProperty("InclusionListDigest")!.GetValue(copy)!;
+        processingQueue.ClearReceivedCalls();
+
+        await WaitForEarlierCopies(handler, block.Hash!, sameList);
+
+        await processingQueue.Received(1).WaitUntilRemovedAsync(block.Hash!, false);
     }
 
     /// <summary>
@@ -668,7 +708,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             retryEnqueueReleased.SetResult();
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
             Assert.That((await retry.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            Assert.That(() => GetQueuedInclusionLists(handler, block.Hash!)?.Length ?? 0, Is.EqualTo(1).After(10_000, 10), "the retry's copy has left the queue and the held copy has not");
+            Assert.That(() => GetQueuedCopies(handler, block.Hash!).Length, Is.EqualTo(1).After(10_000, 10), "the retry's copy has left the queue and the held copy has not");
             Assert.That(bothCopiesWait.IsCompleted, Is.False, "a wait started while both copies were outstanding must outlast the retry's copy");
 
             resent = handler.HandleAsync(resentPayload);
@@ -880,9 +920,9 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
             processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
             Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
-            object[]? queuedCopies = GetQueuedInclusionLists(handler, block.Hash!);
+            object[] queuedCopies = GetQueuedCopies(handler, block.Hash!);
             Assert.That(queuedCopies, Has.Length.EqualTo(1), "the copy still in the queue keeps its entry");
-            object queuedCopy = queuedCopies![0];
+            object queuedCopy = queuedCopies[0];
 
             ResultWrapper<PayloadStatusV1> timedOut = await handler.HandleAsync(timedOutPayload).WaitAsync(TimeSpan.FromSeconds(10));
             Assert.That(timedOut.Data.Status, Is.EqualTo(PayloadStatus.Syncing), "the second request gives up while its suggest is still pending");
@@ -890,7 +930,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             timedOutSuggest.SetResult(AddBlockResult.Added);
             await secondEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
 
-            Assert.That(GetQueuedInclusionLists(handler, block.Hash!), Has.Member(queuedCopy), "the copy queued first must keep its entry while it is still queued");
+            Assert.That(GetQueuedCopies(handler, block.Hash!), Has.Member(queuedCopy), "the copy queued first must keep its entry while it is still queued");
         }
         finally
         {
@@ -1078,19 +1118,13 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             .GetValue(BlockValidationTasksField.GetValue(handler)!)!;
     }
 
-    private static object[]? GetQueuedInclusionLists(NewPayloadHandler handler, Hash256 blockHash)
+    private static object[] GetQueuedCopies(NewPayloadHandler handler, Hash256 blockHash)
     {
-        Assert.That(QueuedInclusionListsField, Is.Not.Null, "_queuedInclusionLists field not found - was it renamed?");
-        Assert.That(QueuedInclusionListsLockField, Is.Not.Null, "_queuedInclusionListsLock field not found - was it renamed?");
+        Assert.That(QueuedCopiesField, Is.Not.Null, "_queuedCopies field not found - was it renamed?");
 
-        using (((Lock)QueuedInclusionListsLockField!.GetValue(handler)!).EnterScope())
-        {
-            System.Collections.IList? copies = (System.Collections.IList?)((System.Collections.IDictionary)QueuedInclusionListsField!.GetValue(handler)!)[blockHash];
-            if (copies is null) return null;
-            object[] snapshot = new object[copies.Count];
-            copies.CopyTo(snapshot, 0);
-            return snapshot;
-        }
+        return [.. ((Array)QueuedCopiesField!.GetValue(handler)!).Cast<object>().Where(copy =>
+            (Hash256)copy.GetType().GetProperty("BlockHash")!.GetValue(copy)! == blockHash
+            && !((Task)copy.GetType().GetProperty("Left")!.GetValue(copy)!).IsCompleted)];
     }
 
     private static Task WaitForEarlierCopies(NewPayloadHandler handler, Hash256 blockHash, ValueHash256 inclusionListDigest = default)
