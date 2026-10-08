@@ -48,8 +48,7 @@ public class ExecutionPayloadV3 : ExecutionPayload, IExecutionPayloadFactory<Exe
     public override Result<Block> TryGetBlock(UInt256? totalDifficulty = null)
     {
         if (InclusionListRecursiveStark is { } inclusionProof
-            && (InclusionListTransactions is null || inclusionProof.BlockDepsHash is null
-                || inclusionProof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes }))
+            && (InclusionListTransactions is null || !inclusionProof.HasValidShape))
         {
             return Result<Block>.Fail("Invalid inclusion-list recursive STARK");
         }

@@ -270,11 +270,12 @@ public class Eip8288BlockProductionTests
         Block? empty = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
         Assert.That(empty, Is.Not.Null);
         Assert.That(empty!.Transactions, Is.Empty);
-        Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        Assert.That(empty.Header.RecursiveStark!.StarkProof, Is.Empty, "a block without dependencies carries an empty proof");
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         Block? restored = await chain.BlockProducer.BuildBlock();
         Assert.That(restored, Is.Not.Null);
         Assert.That(restored!.Transactions, Has.Length.EqualTo(1));
-        Assert.That(verifier.ProofCalls, Is.EqualTo(2));
+        Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
     [Test]
@@ -430,15 +431,21 @@ public class Eip8288BlockProductionTests
     {
         using CancellationTokenSource cancellation = new();
         CountingVerifier verifier = new() { OnProof = cancellation.Cancel };
-        using BasicTestBlockchain chain = await CreateChain(verifier, new LeanProofStore());
+        LeanProofStore proofs = new();
+        using BasicTestBlockchain chain = await CreateChain(verifier, proofs);
+        FrameDependency dependency = new(Eip8288Constants.LeanSphincsScheme, ValueKeccak.Compute("cancelled"), default);
+        proofs.AddVerified([dependency], [[1]], null);
+        Assert.That(chain.TxPool.SubmitTx(CreateTransaction(chain, dependency, [UInt256.Zero]), TxHandlingOptions.PersistentBroadcast),
+            Is.EqualTo(AcceptTxResult.Accepted));
         Hash256 head = chain.BlockTree.Head!.Hash!;
-        Assert.That(async () => await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock, cancellationToken: cancellation.Token),
+        Assert.That(async () => await chain.BlockProducer.BuildBlock(cancellationToken: cancellation.Token),
             Throws.InstanceOf<OperationCanceledException>());
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
         Assert.That(chain.BlockTree.Head.Hash, Is.EqualTo(head));
         verifier.OnProof = null;
-        Block? fresh = await chain.BlockProducer.BuildBlock(flags: IBlockProducer.Flags.EmptyBlock);
+        Block? fresh = await chain.BlockProducer.BuildBlock();
         Assert.That(fresh, Is.Not.Null);
+        Assert.That(fresh!.Transactions, Has.Length.EqualTo(1));
         Assert.That(verifier.ProofCalls, Is.EqualTo(1));
     }
 
@@ -457,7 +464,7 @@ public class Eip8288BlockProductionTests
         Assert.That(processed, Is.Not.Null);
         Assert.That(processed!.Transactions, Is.Empty);
         Assert.That(Eip8288Dependencies.ForBlock(processed), Is.Empty);
-        Assert.That(processed.Header.RecursiveStark!.StarkProof, Is.EqualTo(Eip8288Dependencies.ComputeBlockDepsHash(processed).ToByteArray()));
+        Assert.That(processed.Header.RecursiveStark!.StarkProof, Is.Empty);
     }
 
     [Test]

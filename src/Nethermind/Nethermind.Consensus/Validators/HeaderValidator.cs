@@ -123,7 +123,7 @@ namespace Nethermind.Consensus.Validators
                 error = BlockErrorMessages.MissingRecursiveStark;
                 return false;
             }
-            if (proof.BlockDepsHash is null || proof.StarkProof is not { Length: > 0 and <= Eip8288Constants.MaxProofBytes })
+            if (!proof.HasValidShape)
             {
                 error = BlockErrorMessages.InvalidRecursiveStark;
                 return false;

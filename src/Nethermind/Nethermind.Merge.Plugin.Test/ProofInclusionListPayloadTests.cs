@@ -70,6 +70,7 @@ public class ProofInclusionListPayloadTests
     [TestCase("missing-list")]
     [TestCase("missing-hash")]
     [TestCase("empty-proof")]
+    [TestCase("proof-for-empty-dependencies")]
     [TestCase("oversized-proof")]
     public void Invalid_sidecar_shape_is_rejected_at_each_payload_entry_point(string invalidShape)
     {
@@ -79,7 +80,12 @@ public class ProofInclusionListPayloadTests
             "empty-proof" => [],
             "oversized-proof" => new byte[Eip8288Constants.MaxProofBytes + 1],
             _ => [1]
-        }, invalidShape == "missing-hash" ? null! : Keccak.Zero);
+        }, invalidShape switch
+        {
+            "missing-hash" => null!,
+            "proof-for-empty-dependencies" => new Hash256(Eip8288Dependencies.ComputeDepsHash([])),
+            _ => Keccak.Zero
+        });
         OverridableReleaseSpec spec = new(Eip8288Prototype.Instance) { IsEip7805Enabled = true };
         PayloadAttributes attributes = new() { InclusionListTransactions = transactions, InclusionListRecursiveStark = proof };
         Assert.That(attributes.Validate(new TestSpecProvider(spec), 5, out _),

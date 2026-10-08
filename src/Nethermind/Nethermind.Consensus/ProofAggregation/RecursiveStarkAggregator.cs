@@ -17,6 +17,15 @@ public static class RecursiveStarkAggregator
     private const int MaxRecursiveChildren = 2;
     private const int DirectBatchSize = 4;
 
+    /// <summary>Runs the EIP-8288 STARK check of <paramref name="proof"/> against a dependency list.</summary>
+    /// <remarks>An empty dependency list carries an empty <c>stark_proof</c>; any other list needs a proof that
+    /// verifies against <paramref name="depsHash"/> and <see cref="Eip8288Constants.AggregatedVk"/>.</remarks>
+    public static bool VerifyStarkCheck(ILeanProofVerifier verifier, int dependencyCount, in ValueHash256 depsHash, ReadOnlySpan<byte> proof)
+        => dependencyCount == 0
+            ? proof.IsEmpty
+            : proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
+                && verifier.VerifyRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, proof);
+
     /// <summary>Measures the native aggregation-input encoding, including nested witnesses.</summary>
     public static long InputSize(AggregationInput input)
     {

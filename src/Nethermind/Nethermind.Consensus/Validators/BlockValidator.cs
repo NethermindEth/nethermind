@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Text;
 using Nethermind.Blockchain;
+using Nethermind.Consensus.ProofAggregation;
 using Nethermind.Core;
 using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
@@ -104,7 +106,7 @@ public class BlockValidator(
     /// <summary>
     /// EIP-8288 block validity: the header <c>recursive_stark</c> must be present, its
     /// <c>block_deps_hash</c> must commit to the block's transaction dependencies, and the recursive
-    /// STARK must verify against the aggregated verification key.
+    /// STARK must verify against the aggregated verification key, or be empty when there are none.
     /// </summary>
     private bool ValidateRecursiveStark(Block block, IReleaseSpec spec, ref string? error)
     {
@@ -123,13 +125,8 @@ public class BlockValidator(
             return false;
         }
 
-        if (recursiveStark.StarkProof.Length is 0 or > NativeLeanProofVerifier.MaxProofBytes)
-        {
-            error = BlockErrorMessages.InvalidRecursiveStark;
-            return false;
-        }
-
-        Hash256 computed = new(Eip8288Dependencies.ComputeBlockDepsHash(block));
+        List<FrameDependency> dependencies = Eip8288Dependencies.ForBlock(block);
+        Hash256 computed = new(Eip8288Dependencies.ComputeDepsHash(dependencies));
         if (recursiveStark.BlockDepsHash != computed)
         {
             error = BlockErrorMessages.InvalidBlockDepsHash(recursiveStark.BlockDepsHash, computed);
@@ -137,7 +134,7 @@ public class BlockValidator(
             return false;
         }
 
-        if (!_leanProofVerifier.VerifyRecursiveStark(in computed.ValueHash256, Eip8288Constants.AggregatedVk, recursiveStark.StarkProof))
+        if (!RecursiveStarkAggregator.VerifyStarkCheck(_leanProofVerifier, dependencies.Count, in computed.ValueHash256, recursiveStark.StarkProof))
         {
             error = BlockErrorMessages.InvalidRecursiveStark;
             if (_logger.IsWarn) _logger.Warn($"Invalid recursive STARK in block {block.ToString(Block.Format.FullHashAndNumber)}");

@@ -3,11 +3,13 @@
 
 #nullable enable
 
+using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
@@ -44,14 +46,43 @@ public class NativeBlockValidationTests
         Assert.That(error, Does.Contain("RecursiveStark"));
     }
 
-    private static (Block Block, BlockHeader Parent) BlockWithNativeProof(bool tamper)
+    [Test]
+    public void BlockValidator_with_native_verifier_requires_an_empty_proof_without_dependencies([Values] bool nativeEnvelope)
     {
         BlockHeader parent = Build.A.BlockHeader.TestObject;
         Block block = Build.A.Block.WithParent(parent).TestObject;
+        ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
+        // The adapter's internal 12-byte envelope for the empty set is not the EIP-8288 empty stark_proof.
+        byte[] proof = nativeEnvelope
+            ? NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput())
+            : [];
+        block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
+
+        bool result = CreateValidator().ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(result, Is.EqualTo(!nativeEnvelope), error);
+    }
+
+    private static (Block Block, BlockHeader Parent) BlockWithNativeProof(bool tamper)
+    {
+        BlockHeader parent = Build.A.BlockHeader.TestObject;
+        List<FrameDependency> dependencies = Eip8288Dependencies.Canonicalize(
+            [NativeLeanProofVerifierTests.Dependency("sphincs"), NativeLeanProofVerifierTests.Dependency("stark")]);
+        ulong gas = 0;
+        foreach (FrameDependency dependency in dependencies) gas += dependency.VerificationGas;
+        Transaction transaction = new()
+        {
+            Type = TxType.FrameTx,
+            SenderAddress = TestItem.AddressA,
+            Frames = [new TxFrame(FrameMode.DepVerify, FrameFlags.None, null, gas, UInt256.Zero, Eip8288Dependencies.Serialize(dependencies))],
+            FrameSignatures = [],
+        };
+        transaction.Hash = transaction.CalculateHash();
+        Block block = Build.A.Block.WithParent(parent).WithTransactions(transaction).TestObject;
 
         ValueHash256 depsHash = Eip8288Dependencies.ComputeBlockDepsHash(block);
-        byte[] proof = NativeLeanProofVerifier.Instance.ProveRecursiveStark(in depsHash, Eip8288Constants.AggregatedVk, new AggregationInput());
-        if (tamper) proof[0] ^= 0xFF;
+        byte[] proof = NativeLeanProofVerifierTests.MixedProof();
+        if (tamper) proof[^1] ^= 0xFF;
         block.Header.RecursiveStark = new RecursiveStark(proof, new Hash256(depsHash));
         return (block, parent);
     }

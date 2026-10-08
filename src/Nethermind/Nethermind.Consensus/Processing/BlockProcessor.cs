@@ -216,7 +216,9 @@ public partial class BlockProcessor(
             ValueHash256 depsHash = Eip8288Dependencies.ComputeDepsHash(deps);
             (ValueHash256, ValueHash256) key = (depsHash, new ValueHash256(Eip8288Constants.AggregatedVk));
             byte[] proof;
-            if (_productionProofKey == key && _productionProof is not null)
+            if (deps.Count == 0)
+                proof = [];
+            else if (_productionProofKey == key && _productionProof is not null)
                 proof = _productionProof;
             else
             {
