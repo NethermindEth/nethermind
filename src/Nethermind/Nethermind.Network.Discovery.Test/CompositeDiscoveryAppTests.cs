@@ -10,6 +10,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using Nethermind.Config;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Modules;
 using Nethermind.Logging;
@@ -512,16 +513,62 @@ public class CompositeDiscoveryAppTests
         }
     }
 
+    [Test]
+    public async Task Receive_ContinuesAfterTransientSocketError(
+        [Values(SocketError.ConnectionReset, SocketError.NetworkReset, SocketError.MessageSize)] SocketError error)
+    {
+        byte[] data = [1, 2, 3];
+
+        List<(byte[] Data, IPEndPoint Sender)> received = await ReceiveThroughPoolAsync(
+            IPEndPoint.Parse("127.0.0.2:10000"), 1, [data], listenerFault: error);
+
+        Assert.That(received[0].Data, Is.EqualTo(data));
+    }
+
+    [Test]
+    public async Task Receive_StopsWithWarningOnOtherSocketError()
+    {
+        LocalChannelFactory channelFactory = new(TestContext.CurrentContext.Test.ID, new NetworkConfig());
+        NetworkListenerState listenerState = new(IPAddress.Loopback, IPAddress.Loopback, LimboLogs.Instance);
+        TaskCompletionSource cleared = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        listenerState.Changed += (_, _) =>
+        {
+            if (listenerState.DiscoveryAddress is null) cleared.TrySetResult();
+        };
+        TestLogger logger = new() { IsTrace = false };
+        DiscoveryConnectionsPool pool = CreatePool(listenerState, new ILogger(logger));
+        try
+        {
+            pool.Bind(_ => CreateLocalSocket(channelFactory, SocketError.AccessDenied), 30303, static datagram => datagram.Dispose());
+
+            await cleared.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.That(logger.LogList, Has.Some.Contains("Discovery stopped receiving"));
+        }
+        finally
+        {
+            await pool.StopAsync();
+        }
+    }
+
+    private static IDatagramSocket CreateLocalSocket(LocalChannelFactory channelFactory, SocketError? fault)
+    {
+        IDatagramSocket socket = channelFactory.CreateDatagramSocket();
+        return fault is { } error ? new FaultInjectingDatagramSocket(socket, error) : socket;
+    }
+
     /// <summary>
     /// Sends <paramref name="datagrams"/> from <paramref name="sender"/> to a pool listening on an in-memory socket
     /// and returns the first <paramref name="expectedCount"/> datagrams the pool delivers.
     /// </summary>
     /// <param name="listenerAddress">The pool's bind address; IPv4 loopback when <c>null</c>.</param>
+    /// <param name="listenerFault">An error the listener's first receive fails with, if any.</param>
     private static async Task<List<(byte[] Data, IPEndPoint Sender)>> ReceiveThroughPoolAsync(
         IPEndPoint sender,
         int expectedCount,
         byte[][] datagrams,
-        IPAddress? listenerAddress = null)
+        IPAddress? listenerAddress = null,
+        SocketError? listenerFault = null)
     {
         LocalChannelFactory channelFactory = new(TestContext.CurrentContext.Test.ID, new NetworkConfig());
         IPAddress bindAddress = listenerAddress ?? IPAddress.Loopback;
@@ -529,7 +576,7 @@ public class CompositeDiscoveryAppTests
         Channel<(byte[] Data, IPEndPoint Sender)> received = Channel.CreateUnbounded<(byte[] Data, IPEndPoint Sender)>();
         try
         {
-            IDatagramSocket socket = pool.Bind(_ => channelFactory.CreateDatagramSocket(), 30303, datagram =>
+            IDatagramSocket socket = pool.Bind(_ => CreateLocalSocket(channelFactory, listenerFault), 30303, datagram =>
             {
                 received.Writer.TryWrite((datagram.Buffer.ToArray(), datagram.RemoteEndPoint));
                 datagram.Dispose();

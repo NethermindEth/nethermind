@@ -84,9 +84,16 @@ namespace Nethermind.Network.Discovery.Test.Discv4
                 FarAddress = _address2
             };
 
+            TaskCompletionSource received = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            _kademliaAdaptersMocks[1].OnIncomingMsg(Arg.Any<PingMsg>()).Returns(_ =>
+            {
+                received.TrySetResult();
+                return Task.CompletedTask;
+            });
+
             await _discoveryHandlers[^1].SendMsg(message);
 
-            await SleepWhileWaiting();
+            await received.Task.WaitAsync(TimeSpan.FromSeconds(5));
             await _kademliaAdaptersMocks[1].Received(1).OnIncomingMsg(Arg.Any<PingMsg>());
             Assert.That(serialized?.ReferenceCount, Is.Zero);
         }
@@ -265,7 +272,7 @@ namespace Nethermind.Network.Discovery.Test.Discv4
 
         [TestCase(-60, "has expired")]
         [TestCase(7200, "expires too far in the future")]
-        public async Task InvalidExpirationIsLoggedAtTrace(long expirationOffsetSeconds, string expectedMessage)
+        public void InvalidExpirationIsLoggedAtTraceAndForwarded(long expirationOffsetSeconds, string expectedMessage)
         {
             TestLogger logger = new() { IsDebug = false };
             (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService service) =
@@ -273,10 +280,31 @@ namespace Nethermind.Network.Discovery.Test.Discv4
             byte[] data = SerializePing(service, expirationOffsetSeconds);
 
             handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
-            await SleepWhileWaiting();
 
+            Assert.That(() => Snapshot(forwarded), Has.One.EqualTo(data).After(5000, 10));
             Assert.That(logger.LogList, Has.Some.Contains(expectedMessage));
             _ = adapter.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        [Test]
+        public void ForwardsUndecodablePacketWithDiscv4Type()
+        {
+            (IKademliaAdapter adapter, DiscoveryHandler handler, List<byte[]> forwarded, IMessageSerializationService _) = CreateHandler();
+            byte[] data = new byte[120];
+            data[97] = (byte)MsgType.Ping;
+
+            handler.Receive(PooledUdpReceiveResult.Copy(data, _address2));
+
+            Assert.That(() => Snapshot(forwarded), Has.One.EqualTo(data).After(5000, 10));
+            _ = adapter.DidNotReceive().OnIncomingMsg(Arg.Any<DiscoveryMsg>());
+        }
+
+        private static byte[][] Snapshot(List<byte[]> forwarded)
+        {
+            lock (forwarded)
+            {
+                return [.. forwarded];
+            }
         }
 
         [Test]

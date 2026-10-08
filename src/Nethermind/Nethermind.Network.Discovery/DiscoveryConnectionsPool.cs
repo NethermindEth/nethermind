@@ -143,7 +143,7 @@ internal sealed class DiscoveryConnectionsPool(
         }
         catch (SocketException e)
         {
-            if (_logger.IsTrace) _logger.Trace($"Exception when receiving discovery messages (SocketException): {e}");
+            if (_logger.IsWarn) _logger.Warn($"Discovery stopped receiving on {socket.LocalEndpoint} after a socket error. {e}");
         }
         catch (Exception e)
         {
