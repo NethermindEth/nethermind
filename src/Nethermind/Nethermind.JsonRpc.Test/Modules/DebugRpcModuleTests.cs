@@ -596,6 +596,45 @@ public partial class DebugRpcModuleTests
         }
     }
 
+    // The first three opcode logs are small and each later one carries the 64 KiB of memory MSTORE8 grows,
+    // so this cap ends the buffered trace at the fourth without depending on the exact size estimate.
+    private static readonly long BufferedTraceCap = 64.KiB;
+
+    [TestCase(false, 0L, 4)]
+    [TestCase(false, long.MaxValue, 4)]
+    [TestCase(false, 224L, 1)]
+    [TestCase(false, -1L, 0)]
+    [TestCase(true, 0L, 6)]
+    public async Task Debug_traceCall_buffered_opcode_logs_are_capped_by_config(bool streamMode, long limit, int expectedCount)
+    {
+        using Context ctx = await Context.Create(new TestSpecProvider(Osaka.Instance));
+        IJsonRpcConfig config = ctx.Blockchain.Container.Resolve<IJsonRpcConfig>();
+        Dictionary<string, object> stateOverrides = new()
+        {
+            [TestItem.AddressC.ToString()] = new { code = "0x602a61ffff5360006000f3" }
+        };
+        object call = new { to = TestItem.AddressC.ToString(), gas = "0x186a0" };
+        config.MaxBufferedTraceLogSize = 0;
+        string unlimitedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, enableMemory = true, stateOverrides });
+        config.MaxBufferedTraceLogSize = BufferedTraceCap;
+        string cappedResponse = await RpcTest.TestSerializedRequest(ctx.DebugRpcModule, "debug_traceCall",
+            call, "latest", new { streamMode, enableMemory = true, limit = JsonSerializer.SerializeToElement(limit), stateOverrides });
+
+        JToken expected = JToken.Parse(unlimitedResponse)["result"]!;
+        JArray entries = (JArray)expected["structLogs"]!;
+        Assert.That(entries, Has.Count.EqualTo(6), unlimitedResponse);
+        while (entries.Count > expectedCount)
+            entries.RemoveAt(entries.Count - 1);
+
+        JToken actual = JToken.Parse(cappedResponse);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual["error"], Is.Null, cappedResponse);
+            Assert.That(JToken.DeepEquals(actual["result"], expected), Is.True, cappedResponse);
+        }
+    }
+
     [TestCase("null", null)]
     [TestCase("1", 1)]
     [TestCase("-9223372036854775808", 0)]
