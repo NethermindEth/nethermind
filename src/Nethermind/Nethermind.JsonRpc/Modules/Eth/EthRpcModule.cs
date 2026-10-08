@@ -721,7 +721,7 @@ public partial class EthRpcModule(
         if (!returnFullTransactionObjects && _hashesOnlyBlockReader?.Find(_blockFinder, blockParameter) is { } hashesOnly)
         {
             BlockForRpc? hashesOnlyForRpc = _blockForRpcFactory.Create(hashesOnly.Block, includeFullTransactionData: false, _specProvider, skipTxs: true);
-            hashesOnlyForRpc?.Transactions = hashesOnly.TransactionHashes;
+            hashesOnlyForRpc?.Transactions = BlockTransactions.FromHashes(hashesOnly.TransactionHashes);
             return ResultWrapper<BlockForRpc?>.Success(hashesOnlyForRpc);
         }
 

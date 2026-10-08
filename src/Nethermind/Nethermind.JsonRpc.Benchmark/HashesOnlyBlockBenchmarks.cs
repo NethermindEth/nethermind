@@ -2,26 +2,34 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Text.Json;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.State.Repositories;
 
 namespace Nethermind.JsonRpc.Benchmark;
 
 /// <summary>
 /// Building the hashes-only <c>eth_getBlockByNumber</c> response for a stored block outside the head window: decoding
-/// the whole block as the block tree does, reading only what the response needs, and serving a repeat from the cache.
+/// the whole block as the block tree does, reading only what the response needs, and serving a repeat from the cache,
+/// where the cached hashes are flat (<see cref="BlockTransactions.FromHashes"/>) or one <see cref="Hash256"/> each.
 /// </summary>
 [MemoryDiagnoser]
 public class HashesOnlyBlockBenchmarks
 {
     private readonly BlockForRpcFactory _factory = new();
+    private readonly ArrayBufferWriter<byte> _buffer = new(1 << 20);
+    private Hash256[] _hashObjects = null!;
     private BlockStore _blockStore = null!;
     private HashesOnlyBlockReader _reader = null!;
     private HashesOnlyBlock _cached = null!;
@@ -35,10 +43,11 @@ public class HashesOnlyBlockBenchmarks
     {
         MemDb blockDb = new();
         _blockStore = new BlockStore(blockDb);
-        _reader = new HashesOnlyBlockReader(blockDb, new HeaderDecoder());
+        _reader = new HashesOnlyBlockReader(blockDb, new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), Build.A.BlockTree().TestObject);
         _block = BuildBlock(Transactions);
         _blockStore.Insert(_block);
         _cached = _reader.Read(_block.Number, _block.Hash!)!;
+        _hashObjects = Array.ConvertAll(_cached.TransactionHashes, static hash => new Hash256(in hash));
     }
 
     [Benchmark(Baseline = true)]
@@ -54,11 +63,35 @@ public class HashesOnlyBlockBenchmarks
     [Benchmark]
     public BlockForRpc Cached() => Create(_cached);
 
+    [Benchmark]
+    public BlockForRpc CachedHashObjects() => CreateWithHashObjects();
+
+    [Benchmark]
+    public int CachedAndSerialized() => Serialize(Create(_cached));
+
+    [Benchmark]
+    public int CachedHashObjectsAndSerialized() => Serialize(CreateWithHashObjects());
+
     private BlockForRpc Create(HashesOnlyBlock hashesOnly)
     {
         BlockForRpc block = _factory.Create(hashesOnly.Block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true);
-        block.Transactions = hashesOnly.TransactionHashes;
+        block.Transactions = BlockTransactions.FromHashes(hashesOnly.TransactionHashes);
         return block;
+    }
+
+    private BlockForRpc CreateWithHashObjects()
+    {
+        BlockForRpc block = _factory.Create(_cached.Block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true);
+        block.Transactions = _hashObjects;
+        return block;
+    }
+
+    private int Serialize(BlockForRpc block)
+    {
+        _buffer.ResetWrittenCount();
+        using Utf8JsonWriter writer = new(_buffer);
+        TypeInfoJsonSerializer.Serialize(writer, block, EthereumJsonSerializer.JsonOptions);
+        return _buffer.WrittenCount;
     }
 
     // The call data mix of RpcResultSerializationBenchmarks: half transfers, the rest 68 bytes to 8 KB.

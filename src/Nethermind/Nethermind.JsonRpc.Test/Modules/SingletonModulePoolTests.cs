@@ -25,6 +25,7 @@ using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Config;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.State;
 using Nethermind.Synchronization;
 
@@ -70,7 +71,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     Substitute.For<IHistoryConfig>(),
                     Substitute.For<IHistoryPruner>()),
                 new BlockForRpcFactory(),
-                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder()));
+                new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), blockTree));
             return Task.CompletedTask;
         }
 

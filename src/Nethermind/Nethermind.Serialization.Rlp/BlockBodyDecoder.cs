@@ -112,6 +112,8 @@ public sealed class BlockBodyDecoder(IHeaderDecoder? headerDecoder = null) : Rlp
     /// Rent exclusively owned transactions. Return them to <see cref="TxDecoder.TxObjectPool"/> at most once,
     /// after all consumers finish. Pass false for retained blocks.
     /// </param>
+    /// <remarks>The JSON-RPC <c>HashesOnlyBlockReader</c> reads the same layout without this decoder and leaves any block
+    /// it does not recognise to it; a body field added here needs adding there to keep that fast path.</remarks>
     public BlockBody DecodeUnwrapped(ref RlpReader ctx, int lastPosition, bool usePooledTransactions)
     {
         Transaction[] transactions = DecodeTransactions(ref ctx, usePooledTransactions);

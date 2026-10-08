@@ -21,6 +21,7 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Repositories;
 using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -71,7 +72,7 @@ public class BoundedModulePoolTests
                 Substitute.For<IHistoryConfig>(),
                 Substitute.For<IHistoryPruner>()),
             new BlockForRpcFactory(),
-            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder())),
+            new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), new ChainLevelInfoRepository(new MemDb()), blockTree)),
              1, 1000);
 
         return Task.CompletedTask;

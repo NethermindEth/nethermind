@@ -21,6 +21,11 @@ using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Test.Data;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State.Repositories;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -31,6 +36,7 @@ public class HashesOnlyBlockReaderTests
     private const int HeadWindow = 4;
     private const int ChainLength = 16;
     private const int HeadNumber = ChainLength - 1;
+    private const long CacheBudget = HashesOnlyBlockCache.DefaultByteBudget;
 
     public static IEnumerable<TestCaseData> StoredBlocks()
     {
@@ -54,7 +60,7 @@ public class HashesOnlyBlockReaderTests
         blockStore.Insert(block);
         Block decoded = blockStore.Get(block.Number, block.Hash!)!;
         decoded.Header.TotalDifficulty = block.TotalDifficulty;
-        HashesOnlyBlockReader reader = new(blockDb, headerDecoder, HeadWindow);
+        HashesOnlyBlockReader reader = new(blockDb, headerDecoder, Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IBlockTree>(), HeadWindow, CacheBudget);
 
         HashesOnlyBlock? hashesOnly = reader.Read(block.Number, block.Hash!);
 
@@ -70,17 +76,39 @@ public class HashesOnlyBlockReaderTests
         Block block = BlockShapes().First(static shape => shape.Name == "prague").Block;
         MemDb blockDb = new();
         new BlockStore(blockDb).Insert(block);
-        HashesOnlyBlockReader reader = new(blockDb, new HeaderDecoder(), HeadWindow);
+        HashesOnlyBlockReader reader = new(blockDb, new HeaderDecoder(), Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IBlockTree>(), HeadWindow, CacheBudget);
 
         HashesOnlyBlock hashesOnly = reader.Read(block.Number, block.Hash!)!;
 
-        Assert.That(hashesOnly.TransactionHashes, Is.EqualTo(block.Transactions.Select(static tx => tx.CalculateHash()).ToArray()),
+        Assert.That(hashesOnly.TransactionHashes, Is.EqualTo(block.Transactions.Select(static tx => tx.CalculateHash().ValueHash256).ToArray()),
             "every transaction type hashes to its canonical hash");
     }
 
     [Test]
+    public void Find_StoredBlockWithAnUnknownBodyField_IsLeftToTheBlockTree()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength, withWithdrawals: true);
+        IBlockTree blockTree = builder.TestObject;
+        IDb blockDb = builder.BlocksDb;
+        HashesOnlyBlockReader reader = new(blockDb, new HeaderDecoder(), builder.ChainLevelInfoRepository, builder.TestObject, HeadWindow, CacheBudget);
+        Block block = blockTree.FindBlock(2)!;
+        Assert.That(block.Withdrawals, Is.Not.Null, "precondition: the extra field follows the withdrawals");
+        byte[] storedKey = new byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(block.Number, block.Hash!, storedKey);
+        blockDb.Set(block.Number, block.Hash!, WithTrailingBodyField(blockDb.Get(storedKey)!));
+
+        HashesOnlyBlock? first = null;
+        Assert.DoesNotThrow(() => first = reader.Find(blockTree, new BlockParameter(2UL)), "a layout the reader does not know must not fail the request");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first, Is.Null, "the block is left to the block tree's decoder");
+            Assert.That(reader.Read(block.Number, block.Hash!), Is.Null, "nothing is read, so nothing is cached");
+        }
+    }
+
+    [Test]
     public void Read_BlockMissingFromTheStore_ReturnsNull() =>
-        Assert.That(new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), HeadWindow).Read(1, TestItem.KeccakA), Is.Null,
+        Assert.That(new HashesOnlyBlockReader(new MemDb(), new HeaderDecoder(), Substitute.For<IChainLevelInfoRepository>(), Substitute.For<IBlockTree>(), HeadWindow, CacheBudget).Read(1, TestItem.KeccakA), Is.Null,
             "a missing body is left to the block tree, which reports it");
 
     [TestCase(false, TestName = "Find_BlockBelowTheHeadWindow_ByNumber_ServesTheBlockTreeResponse")]
@@ -164,6 +192,82 @@ public class HashesOnlyBlockReaderTests
     }
 
     [Test]
+    public void Find_BlocksAcrossTheMerge_ServeTheBlockTreeTotalDifficulty()
+    {
+        // Genesis and blocks 1-4 have difficulty, block 5 is the terminal block, blocks 6-12 are post-merge.
+        Block[] blocks = new Block[13];
+        blocks[0] = Build.A.Block.Genesis.WithDifficulty(1).WithTotalDifficulty(1L).TestObject;
+        for (int i = 1; i < blocks.Length; i++)
+        {
+            blocks[i] = Build.A.Block.WithParent(blocks[i - 1]).WithDifficulty(i <= 5 ? 10UL : 0UL).TestObject;
+        }
+
+        BlockTreeBuilder builder = Build.A.BlockTree().WithBlocks(blocks);
+        IBlockTree blockTree = builder.TestObject;
+        HashesOnlyBlockReader reader = new(builder.BlocksDb, new HeaderDecoder(), builder.ChainLevelInfoRepository, builder.TestObject, HeadWindow, CacheBudget);
+        TestSpecProvider specProvider = new(London.Instance);
+        BlockForRpcFactory factory = new();
+
+        for (ulong number = 1; number < blockTree.Head!.Number - HeadWindow; number++)
+        {
+            string expected = BlockForRpcWireFormatTests.Serialize(factory.Create(blockTree.FindBlock(new BlockParameter(number))!, false, specProvider));
+            Assert.That(expected, Does.Contain("\"totalDifficulty\""), $"precondition: block {number} reports its total difficulty");
+
+            HashesOnlyBlock miss = reader.Find(blockTree, new BlockParameter(number))!;
+            HashesOnlyBlock hit = reader.Find(blockTree, new BlockParameter(number))!;
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(hit, Is.SameAs(miss), $"precondition: block {number} is served from the cache the second time");
+                Assert.That(Serialize(factory, miss, specProvider), Is.EqualTo(expected), $"block {number} read from the store");
+                Assert.That(Serialize(factory, hit, specProvider), Is.EqualTo(expected), $"block {number} served from the cache");
+            }
+        }
+    }
+
+    [TestCase(false, false, 1, TestName = "Find_CacheHit_ByNumber_ReadsOneChainLevel")]
+    [TestCase(true, false, 0, TestName = "Find_CacheHit_ByHash_ReadsNoChainLevel")]
+    [TestCase(true, true, 1, TestName = "Find_CacheHit_ByHashRequiringCanonical_ReadsOneChainLevel")]
+    public void Find_CacheHit_ReadsTheExpectedChainLevels(bool byHash, bool requireCanonical, int expectedLoads)
+    {
+        CountingChainLevels chainLevels = new(new ChainLevelInfoRepository(new MemDb()));
+        BlockTreeBuilder builder = Build.A.BlockTree().WithChainLevelInfoRepository(chainLevels)
+            .WithTransactions(new InMemoryReceiptStorage()).OfChainLength(ChainLength);
+        IBlockTree blockTree = builder.TestObject;
+        HashesOnlyBlockReader reader = new(builder.BlocksDb, new HeaderDecoder(), chainLevels, builder.TestObject, HeadWindow, CacheBudget);
+        Block block = blockTree.FindBlock(2)!;
+        BlockParameter parameter = byHash ? new BlockParameter(block.Hash!, requireCanonical) : new BlockParameter(2UL);
+        HashesOnlyBlock first = reader.Find(blockTree, parameter)!;
+        chainLevels.Loads = 0;
+
+        HashesOnlyBlock? second = reader.Find(blockTree, parameter);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(second, Is.SameAs(first), "precondition: the block is served from the cache");
+            Assert.That(chainLevels.Loads, Is.EqualTo(expectedLoads), "only resolving a number or the canonical check reads a level");
+        }
+    }
+
+    [Test]
+    public void Find_CachedBlockOfADeletedChainSlice_ReturnsNull()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().WithTransactions(new InMemoryReceiptStorage()).OfChainLength(ChainLength);
+        IBlockTree blockTree = builder.TestObject;
+        HashesOnlyBlockReader reader = new(builder.BlocksDb, new HeaderDecoder(), builder.ChainLevelInfoRepository, builder.TestObject, headWindow: 0, CacheBudget);
+        Hash256 blockHash = blockTree.FindBlock(2)!.Hash!;
+        Assert.That(reader.Find(blockTree, new BlockParameter(blockHash)), Is.Not.Null, "precondition: block 2 is cached");
+
+        blockTree.DeleteChainSlice(2);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(blockTree.FindBlock(new BlockParameter(blockHash)), Is.Null, "precondition: the block tree no longer has the block");
+            Assert.That(reader.Find(blockTree, new BlockParameter(blockHash)), Is.Null, "a deleted block must not be served from the cache");
+        }
+    }
+
+    [Test]
     public void Find_BlockOffTheMainChain_IsNotCached()
     {
         (IBlockTree blockTree, HashesOnlyBlockReader reader) = BuildChain();
@@ -187,8 +291,9 @@ public class HashesOnlyBlockReaderTests
     public async Task eth_getBlockByNumber_BlockBelowTheHeadWindow_ReturnsTheBlockTreeResponse()
     {
         using TestRpcBlockchain chain = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(static builder =>
-            builder.AddSingleton<HashesOnlyBlockReader, IDbProvider, IHeaderDecoder>(static (dbProvider, headerDecoder) =>
-                new HashesOnlyBlockReader(dbProvider.BlocksDb, headerDecoder, headWindow: 0)));
+            builder.AddSingleton<HashesOnlyBlockReader, IDbProvider, IHeaderDecoder, IChainLevelInfoRepository, IBlockTree>(
+                static (dbProvider, headerDecoder, chainLevels, blockTree) =>
+                    new HashesOnlyBlockReader(dbProvider.BlocksDb, headerDecoder, chainLevels, blockTree, headWindow: 0, CacheBudget)));
         await chain.AddBlock(
             Build.A.Transaction.WithNonce(0).WithType(TxType.Legacy).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
             Build.A.Transaction.WithNonce(0).WithType(TxType.EIP1559).WithMaxFeePerGas(20.GWei).SignedAndResolved(TestItem.PrivateKeyC).TestObject);
@@ -228,13 +333,33 @@ public class HashesOnlyBlockReaderTests
         BlockTreeBuilder builder = Build.A.BlockTree()
             .WithTransactions(new InMemoryReceiptStorage())
             .OfChainLength(ChainLength);
-        return (builder.TestObject, new HashesOnlyBlockReader(builder.BlocksDb, new HeaderDecoder(), HeadWindow), builder.BlocksDb);
+        return (builder.TestObject, new HashesOnlyBlockReader(builder.BlocksDb, new HeaderDecoder(), builder.ChainLevelInfoRepository, builder.TestObject, HeadWindow, CacheBudget), builder.BlocksDb);
     }
 
-    private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly)
+    // A later fork's body field: one more item after the withdrawals.
+    private static byte[] WithTrailingBodyField(byte[] storedBlock)
     {
-        BlockForRpc block = factory.Create(hashesOnly.Block, includeFullTransactionData: false, MainnetSpecProvider.Instance, skipTxs: true);
-        block.Transactions = hashesOnly.TransactionHashes;
+        RlpReader reader = new(storedBlock);
+        int end = reader.ReadSequenceLength() + reader.Position;
+        List<Rlp> items = [];
+        while (reader.Position < end)
+        {
+            int length = reader.PeekNextRlpLength();
+            items.Add(new Rlp(reader.Peek(length).ToArray()));
+            reader.SkipBytes(length);
+        }
+
+        items.Add(Rlp.OfEmptyList);
+        return Rlp.Encode([.. items]).Bytes;
+    }
+
+    private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly) =>
+        Serialize(factory, hashesOnly, MainnetSpecProvider.Instance);
+
+    private static string Serialize(IBlockForRpcFactory factory, HashesOnlyBlock hashesOnly, ISpecProvider specProvider)
+    {
+        BlockForRpc block = factory.Create(hashesOnly.Block, includeFullTransactionData: false, specProvider, skipTxs: true);
+        block.Transactions = BlockTransactions.FromHashes(hashesOnly.TransactionHashes);
         return BlockForRpcWireFormatTests.Serialize(block);
     }
 
@@ -293,4 +418,23 @@ public class HashesOnlyBlockReaderTests
     // Above the decoder's delayed-hash limit, so the decoder hashes it eagerly.
     private static Transaction LargeTransaction() =>
         Build.A.Transaction.WithType(TxType.EIP1559).WithChainId(BlockchainIds.Mainnet).WithData(new byte[40_000]).SignedAndResolved().TestObject;
+
+    private sealed class CountingChainLevels(IChainLevelInfoRepository inner) : IChainLevelInfoRepository
+    {
+        public int Loads { get; set; }
+
+        public ChainLevelInfo? LoadLevel(ulong number)
+        {
+            Loads++;
+            return inner.LoadLevel(number);
+        }
+
+        public void Delete(ulong number, BatchWrite? batch = null) => inner.Delete(number, batch);
+
+        public void PersistLevel(ulong number, ChainLevelInfo level, BatchWrite? batch = null) => inner.PersistLevel(number, level, batch);
+
+        public BatchWrite StartBatch() => inner.StartBatch();
+
+        public IOwnedReadOnlyList<ChainLevelInfo?> MultiLoadLevel(in ArrayPoolListRef<ulong> blockNumbers) => inner.MultiLoadLevel(in blockNumbers);
+    }
 }
