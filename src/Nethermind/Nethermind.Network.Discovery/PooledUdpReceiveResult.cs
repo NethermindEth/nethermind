@@ -4,7 +4,7 @@
 using System.Net;
 using Nethermind.Core.Collections;
 
-namespace Nethermind.Network.Discovery.Discv5;
+namespace Nethermind.Network.Discovery;
 
 internal readonly struct PooledUdpReceiveResult(IPEndPoint remoteEndPoint, ArrayPoolSpan<byte> buffer)
 {
@@ -14,6 +14,16 @@ internal readonly struct PooledUdpReceiveResult(IPEndPoint remoteEndPoint, Array
     public ReadOnlyMemory<byte> Buffer => _buffer.AsReadOnlyMemory();
 
     public IPEndPoint RemoteEndPoint { get; } = remoteEndPoint;
+
+    /// <summary>
+    /// Copies <paramref name="datagram"/> into a pooled buffer owned by the result.
+    /// </summary>
+    internal static PooledUdpReceiveResult Copy(ReadOnlySpan<byte> datagram, IPEndPoint remoteEndPoint)
+    {
+        ArrayPoolSpan<byte> buffer = new(datagram.Length);
+        datagram.CopyTo(buffer);
+        return new PooledUdpReceiveResult(remoteEndPoint, buffer);
+    }
 
     internal void Dispose()
     {
