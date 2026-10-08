@@ -1139,6 +1139,34 @@ public class Eip7928Tests(bool parallel) : VirtualMachineTestsBase
         }
     }
 
+    [Test]
+    public void Eip7928_slot_wiped_by_creation_and_rewritten_to_its_prestate_is_a_read()
+    {
+        UInt256 slot = 7;
+        byte[] childInitCode = Prepare.EvmCode.PushData(5).PushData(slot).Op(Instruction.SSTORE).Op(Instruction.STOP).Done;
+        byte[] salt = new byte[32];
+        Address createdAddress = ContractAddress.From(_callTargetAddress, salt, childInitCode);
+        InitWorldState(TestState, BuildCreateThenPopCode(Instruction.CREATE2, childInitCode, salt, UInt256.Zero));
+        TestState.CreateAccount(createdAddress, UInt256.One);
+        TestState.Set(new StorageCell(createdAddress, slot), (UInt256)5);
+        TestState.Commit(SpecProvider.GenesisSpec);
+        TestState.CommitTree(0);
+        TestState.RecalculateStateRoot();
+
+        BlockAccessListAtIndex bal = ExecuteCallTx(_callTargetAddress);
+        AccountChangesAtIndex? createdChanges = bal.GetAccountChanges(createdAddress);
+        TestState.Get(new StorageCell(createdAddress, slot), out UInt256 stored);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(createdChanges, Is.Not.Null);
+            Assert.That(createdChanges!.NonceChange, Is.Not.Null, "the creation went through, so the wipe happened");
+            Assert.That(createdChanges.StorageReads, Does.Contain(slot));
+            Assert.That(createdChanges.StorageChangeCount, Is.Zero);
+            Assert.That(stored, Is.EqualTo((UInt256)5));
+        }
+    }
+
     [TestCaseSource(nameof(SelfdestructSendToSenderTestSource))]
     public void Eip7928_selfdestruct_to_sender_coalesces_sender_changes(IReleaseSpec spec, int victimBalance)
     {
