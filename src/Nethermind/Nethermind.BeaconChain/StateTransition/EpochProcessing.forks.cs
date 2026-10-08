@@ -108,14 +108,14 @@ public static partial class EpochProcessing
     }
 
     /// <summary>Electra <c>apply_pending_deposit</c>: top up a known validator or, after proof of possession, add a new one.</summary>
-    private static partial void ApplyPendingDeposit(ForkState state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex)
+    private static partial void ApplyPendingDeposit(ForkState state, PendingDeposit deposit, Dictionary<BlsPublicKey, int> pubkeyToIndex, EpochCache cache)
     {
         if (pubkeyToIndex.TryGetValue(deposit.Pubkey, out int index))
         {
             state.IncreaseBalance(index, deposit.Amount);
         }
         // Verify the deposit signature (proof of possession) which is not checked by the deposit contract.
-        else if (DepositSignatureVerifier.IsValid(state.GenesisValidatorsRoot!, deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
+        else if (DepositSignatureVerifier.IsValid(cache.ResolveSigningSpec(state.GenesisValidatorsRoot!), deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount, deposit.Signature))
         {
             pubkeyToIndex.TryAdd(deposit.Pubkey, state.Validators!.Length);
             state.AddValidatorToRegistry(deposit.Pubkey, deposit.WithdrawalCredentials!, deposit.Amount);
@@ -357,7 +357,7 @@ public static partial class EpochProcessing
 #if !GLOAS
                 // Deposited balance will never become active. Increase balance but do not consume churn.
 #endif
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex, cache);
             }
             else if (isValidatorExited)
             {
@@ -378,7 +378,7 @@ public static partial class EpochProcessing
                 // Consume churn and apply the deposit.
 #endif
                 processedAmount += deposit.Amount;
-                ApplyPendingDeposit(state, deposit, pubkeyToIndex);
+                ApplyPendingDeposit(state, deposit, pubkeyToIndex, cache);
             }
 
 #if !GLOAS

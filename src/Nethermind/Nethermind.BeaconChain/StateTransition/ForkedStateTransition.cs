@@ -148,6 +148,7 @@ public static class ForkedStateTransition
     /// </summary>
     internal static ForkedBeaconState CrossBoundaryIfNeeded(ForkedBeaconState state, BeaconFork targetFork, BeaconChainSpec spec, EpochCache cache)
     {
+        cache.SigningSpec = spec;
         if (state is not ForkedBeaconState.OfFulu { State: var fulu } || targetFork != BeaconFork.Gloas)
             return state;
 

@@ -15,7 +15,13 @@ namespace Nethermind.BeaconChain.Test.Crypto;
 
 public class NetworkSigningDomainTests
 {
-    private static readonly string[] Networks = [nameof(BeaconChainSpec.Mainnet), nameof(BeaconChainSpec.Hoodi), nameof(BeaconChainSpec.Sepolia)];
+    internal static BeaconChainSpec CustomSigningSpec { get; } = BeaconChainSpec.Mainnet with
+    {
+        GenesisValidatorsRoot = TestItem.KeccakA,
+        Forks = [.. BeaconChainSpec.Mainnet.Forks.Select((fork, index) => new ForkScheduleEntry(index == 0 ? [0x10, 0x76, 0x19, 0x68] : index == 3 ? [0x40, 0x76, 0x19, 0x68] : fork.Version, fork.Epoch))],
+    };
+
+    private static readonly string[] Networks = [nameof(BeaconChainSpec.Mainnet), nameof(BeaconChainSpec.Hoodi), nameof(BeaconChainSpec.Sepolia), "Custom"];
 
     [TestCase(nameof(BeaconChainSpec.Mainnet), "0x00000000", "0x03000000")]
     [TestCase(nameof(BeaconChainSpec.Hoodi), "0x10000910", "0x40000910")]
@@ -45,13 +51,15 @@ public class NetworkSigningDomainTests
         Hash256 domain = Domains.ComputeDomain(DomainType.Deposit, Spec(signedFor).GenesisForkVersion, Hash256.Zero);
         BlsSignature signature = GloasTestFixtures.Sign(key, Domains.ComputeSigningRoot(new Hash256(root.ToLittleEndian()), domain));
 
-        bool valid = DepositSignatureVerifier.IsValid(Spec(checkedOn).GenesisValidatorsRoot, pubkey, credentials, amount, signature);
+        bool valid = checkedOn == "Custom"
+            ? DepositSignatureVerifier.IsValid(Spec(checkedOn), pubkey, credentials, amount, signature)
+            : DepositSignatureVerifier.IsValid(Spec(checkedOn).GenesisValidatorsRoot, pubkey, credentials, amount, signature);
 
         Assert.That(valid, Is.EqualTo(signedFor == checkedOn));
     }
 
-    [TestCaseSource(nameof(NetworkPairs))]
-    public void Bls_to_execution_change_verifies_only_on_the_network_whose_genesis_version_signed_it(string signedFor, string checkedOn)
+    [TestCaseSource(nameof(ForkNetworkPairs))]
+    public void Bls_to_execution_change_verifies_only_on_the_network_whose_genesis_version_signed_it(string signedFor, string checkedOn, bool gloas)
     {
         Bls.SecretKey key = GloasTestFixtures.DeriveKey(8);
         BlsToExecutionChange change = new() { ValidatorIndex = 0, FromBlsPubkey = new BlsPublicKey(new Bls.P1(key).Compress()), ToExecutionAddress = TestItem.AddressA };
@@ -59,11 +67,15 @@ public class NetworkSigningDomainTests
         Hash256 domain = Domains.ComputeDomain(DomainType.BlsToExecutionChange, Spec(signedFor).GenesisForkVersion, state.GenesisValidatorsRoot);
         SignedBlsToExecutionChange signed = new() { Message = change, Signature = GloasTestFixtures.Sign(key, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(change), domain)) };
 
-        Assert.That(SignatureSets.VerifyBlsToExecutionChange(state, signed), Is.EqualTo(signedFor == checkedOn));
+        BeaconChainSpec? spec = checkedOn == "Custom" ? Spec(checkedOn) : null;
+        bool valid = gloas
+            ? GloasSignatureSets.VerifyBlsToExecutionChange(new BeaconStateGloas { GenesisValidatorsRoot = state.GenesisValidatorsRoot }, signed, spec: spec)
+            : SignatureSets.VerifyBlsToExecutionChange(state, signed, spec: spec);
+        Assert.That(valid, Is.EqualTo(signedFor == checkedOn));
     }
 
-    [TestCaseSource(nameof(NetworkPairs))]
-    public void Voluntary_exit_verifies_only_on_the_network_whose_capella_version_signed_it(string signedFor, string checkedOn)
+    [TestCaseSource(nameof(ForkNetworkPairs))]
+    public void Voluntary_exit_verifies_only_on_the_network_whose_capella_version_signed_it(string signedFor, string checkedOn, bool gloas)
     {
         Bls.SecretKey key = GloasTestFixtures.DeriveKey(9);
         BlsPublicKey pubkey = new(new Bls.P1(key).Compress());
@@ -74,7 +86,11 @@ public class NetworkSigningDomainTests
         Hash256 domain = Domains.ComputeDomain(DomainType.VoluntaryExit, Spec(signedFor).CapellaForkVersion, state.GenesisValidatorsRoot);
         SignedVoluntaryExit signed = new() { Message = exit, Signature = GloasTestFixtures.Sign(key, Domains.ComputeSigningRoot(SszRoots.HashTreeRoot(exit), domain)) };
 
-        Assert.That(SignatureSets.VerifyVoluntaryExit(state, signed, pubkeys), Is.EqualTo(signedFor == checkedOn));
+        BeaconChainSpec? spec = checkedOn == "Custom" ? Spec(checkedOn) : null;
+        bool valid = gloas
+            ? GloasSignatureSets.VerifyVoluntaryExit(new BeaconStateGloas { GenesisValidatorsRoot = state.GenesisValidatorsRoot }, signed, pubkeys, spec: spec)
+            : SignatureSets.VerifyVoluntaryExit(state, signed, pubkeys, spec: spec);
+        Assert.That(valid, Is.EqualTo(signedFor == checkedOn));
     }
 
     private static System.Collections.Generic.IEnumerable<TestCaseData> NetworkPairs()
@@ -88,11 +104,16 @@ public class NetworkSigningDomainTests
         }
     }
 
+    private static System.Collections.Generic.IEnumerable<TestCaseData> ForkNetworkPairs() =>
+        from signedFor in Networks from checkedOn in Networks from gloas in new[] { false, true }
+        select new TestCaseData(signedFor, checkedOn, gloas);
+
     private static BeaconChainSpec Spec(string network) => network switch
     {
         nameof(BeaconChainSpec.Mainnet) => BeaconChainSpec.Mainnet,
         nameof(BeaconChainSpec.Hoodi) => BeaconChainSpec.Hoodi,
         nameof(BeaconChainSpec.Sepolia) => BeaconChainSpec.Sepolia,
+        "Custom" => CustomSigningSpec,
         _ => throw new ArgumentOutOfRangeException(nameof(network)),
     };
 }
