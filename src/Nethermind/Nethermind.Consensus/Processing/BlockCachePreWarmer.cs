@@ -435,19 +435,29 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     }
 
     /// <summary>Dedicated threads that read discovered storage cells side by side, so a run waits for one read, not many.</summary>
-    private sealed class DiscoveryReads
+    private sealed class DiscoveryReads : IDisposable
     {
         private const int CellsPerJob = 4;
 
         private readonly ConcurrentQueue<(ReadBatch Batch, int Start)> _jobs = new();
         private readonly SemaphoreSlim _ready = new(0);
+        private readonly int _threads;
+        private volatile bool _stopped;
 
         public DiscoveryReads(BlockCachePreWarmer owner, int threads)
         {
+            _threads = threads;
             for (int i = 0; i < threads; i++)
             {
                 new Thread(() => Run(owner)) { IsBackground = true, Name = "Prewarm discovery reads" }.Start();
             }
+        }
+
+        /// <summary>Ends the threads; each releases its env, and jobs still queued complete unread.</summary>
+        public void Dispose()
+        {
+            _stopped = true;
+            _ready.Release(_threads);
         }
 
         public void Read(BlockHeader target, StorageCell[] cells, int count, CancellationToken token)
@@ -463,10 +473,19 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         {
             // Kept for the thread's life: reads only ever go through it.
             IPrewarmerEnv? env = null;
-            while (true)
+            try
             {
-                _ready.Wait();
-                if (_jobs.TryDequeue(out (ReadBatch Batch, int Start) job)) job.Batch.ReadRange(owner, ref env, job.Start, CellsPerJob);
+                while (!_stopped)
+                {
+                    _ready.Wait();
+                    if (_jobs.TryDequeue(out (ReadBatch Batch, int Start) job)) job.Batch.ReadRange(owner, ref env, job.Start, CellsPerJob, _stopped);
+                }
+
+                while (_jobs.TryDequeue(out (ReadBatch Batch, int Start) left)) left.Batch.ReadRange(owner, ref env, left.Start, CellsPerJob, skip: true);
+            }
+            finally
+            {
+                env?.Dispose();
             }
         }
     }
@@ -476,11 +495,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private readonly ManualResetEventSlim _done = new(false);
         private int _remaining = jobs;
 
-        public void ReadRange(BlockCachePreWarmer owner, ref IPrewarmerEnv? env, int start, int length)
+        public void ReadRange(BlockCachePreWarmer owner, ref IPrewarmerEnv? env, int start, int length, bool skip)
         {
             try
             {
-                if (token.IsCancellationRequested) return;
+                if (skip || token.IsCancellationRequested) return;
                 env ??= owner._envPool.Get();
                 using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(target);
                 IWorldState worldState = scope.WorldState;
@@ -1203,6 +1222,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         _warmupQueue.Dispose();
+        _discoveryReads?.Dispose();
         (_envPool as IDisposable)?.Dispose();
     }
 
