@@ -197,7 +197,6 @@ public class BlockTransactionsViewTests
 
         Transaction signedFrame = FrameTx(SelfVerify(PrefixFrameGas));
         signedFrame.FrameSignatures = [new TxFrameSignature(1, TestItem.AddressC, new byte[] { 1 }, new byte[] { 2, 3 })];
-        signedFrame.RecentRootReferences = [new RecentRootReference(TestItem.KeccakC.ValueHash256, 5, TestItem.KeccakD.ValueHash256)];
         signedFrame.MaxFeePerBlobGas = 3;
         signedFrame.BlobVersionedHashes = [TestItem.KeccakE.BytesToArray()];
 
@@ -221,7 +220,7 @@ public class BlockTransactionsViewTests
                 .WithMaxFeePerGas(30).SignedAndResolved().TestObject),
             ("frame", FrameTx(SelfVerify(PrefixFrameGas))),
             ("frame, nonce keys", keyedFrame),
-            ("frame, signatures and root references", signedFrame),
+            ("frame, signatures", signedFrame),
         ];
     }
 }
