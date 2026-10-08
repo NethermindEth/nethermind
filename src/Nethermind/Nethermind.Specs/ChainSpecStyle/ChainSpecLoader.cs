@@ -400,7 +400,7 @@ public class ChainSpecLoader(IJsonSerializer serializer, ILogManager logManager)
         {
             Author = beneficiary,
             Hash = Keccak.Zero, // need to run the block to know the actual hash
-            Bloom = Bloom.Empty,
+            Bloom = parameters.Eip7668TransitionTimestamp <= timestamp ? Bloom.ZeroLength : Bloom.Empty,
             MixHash = mixHash,
             Nonce = nonce,
             ReceiptsRoot = Keccak.EmptyTreeHash,

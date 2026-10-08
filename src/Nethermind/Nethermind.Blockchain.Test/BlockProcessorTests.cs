@@ -34,6 +34,7 @@ using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.Container;
 using Nethermind.Core.Test.Modules;
+using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Logging;
@@ -215,6 +216,23 @@ public partial class BlockProcessorTests
             Assert.That(receipts.Select(static r => r.Bloom), Is.EqualTo(eip7668 ? receipts.Select(static _ => Bloom.ZeroLength) : logBlooms));
             Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot));
             Assert.That(logs.Select(static l => l.Address), Is.EqualTo(new[] { contract }));
+        }
+    }
+
+    /// <remarks>Processing resets the bloom of the block it executes, so genesis loads only if the processor
+    /// stamps the zero-length bloom that the declared genesis hash commits to.</remarks>
+    [Test]
+    public async Task Eip7668_Genesis_HasZeroLengthBloomAndDeclaredHash([Values] bool eip7668)
+    {
+        IReleaseSpec spec = eip7668 ? new OverridableReleaseSpec(Bogota.Instance) { IsEip7668Enabled = true } : Bogota.Instance;
+        using BasicTestBlockchain chain = await BasicTestBlockchain.Create(builder => builder
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(spec) { AllowTestChainOverride = false }));
+        BlockHeader genesis = chain.BlockTree.FindHeader(0)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(genesis.Bloom!.IsZeroLength, Is.EqualTo(eip7668));
+            Assert.That(genesis.Hash, Is.EqualTo(genesis.CalculateHash()));
         }
     }
 
