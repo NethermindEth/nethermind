@@ -1064,10 +1064,16 @@ public class GCKeeperTests
     [TestCase(40_000, 0, 48_000, TestName = "Missed slots")]
     [TestCase(-30_000, 0, 12_000, TestName = "Head ahead of the clock")]
     [TestCase(12_000, 1, 24_000, TestName = "No lead, at the slot start")]
-    public void Next_slot_start_follows_the_head(long nowSinceHeadMs, int noLead, long expectedSinceHeadMs)
+    [TestCase(12_500, 2, 12_000, TestName = "Negative lead, inside the current slot before its fire time")]
+    [TestCase(12_999, 2, 12_000, TestName = "Negative lead, just before the fire time")]
+    [TestCase(13_000, 2, 24_000, TestName = "Negative lead, at the fire time")]
+    [TestCase(13_001, 2, 24_000, TestName = "Negative lead, just after the fire time")]
+    [TestCase(36_500, 2, 36_000, TestName = "Negative lead, missed slots, before the fire time")]
+    [TestCase(40_000, 2, 48_000, TestName = "Negative lead, missed slots, after the fire time")]
+    public void Next_slot_start_follows_the_head(long nowSinceHeadMs, int leadKind, long expectedSinceHeadMs)
     {
         const long head = 1_700_000_000_000;
-        long lead = noLead == 1 ? 0 : 1_000;
+        long lead = leadKind switch { 1 => 0, 2 => -1_000, _ => 1_000 };
         Assert.That(GCKeeper.NextSlotStartMs(head, 12_000, head + nowSinceHeadMs, lead) - head, Is.EqualTo(expectedSinceHeadMs));
     }
 
@@ -1094,6 +1100,25 @@ public class GCKeeperTests
             Assert.That(rig.PendingDelays(GCKeeper.PreEntrySettings.Default.SlotExpiryMs), Is.EqualTo(1), "expiry measured from entry");
             Assert.That(Interlocked.Read(ref Metrics.NoGcRegionPreSlotEntries) - slotEntries, Is.EqualTo(1));
         }
+    }
+
+    [Test]
+    public void Negative_lead_fires_after_the_slot_start_and_an_early_block_skips_it([Values] bool earlyBlock)
+    {
+        PreEntryRig rig = new(settings: GCKeeper.PreEntrySettings.Default with { SlotLeadMs = -1_000 });
+        using GCKeeper keeper = rig.Keeper;
+        const ulong head = 1_700_000_000;
+        // Half a second into the slot after the head, its block not in yet.
+        rig.UnixMs = (long)head * 1000 + 12_500;
+        keeper.OnNewHead(head);
+        Assert.That(() => rig.PendingDelays(500), Is.EqualTo(1).After(5000, 10), "fires 1 s after this slot's start");
+
+        if (earlyBlock) keeper.OnNewHead(head + 12);
+        rig.UnixMs += 500;
+        rig.CompleteDelays(500);
+        Assert.That(() => rig.PendingDelays(12_000), Is.EqualTo(1).After(5000, 10), "re-armed for 1 s after the next slot's start");
+        Thread.Sleep(50);
+        Assert.That(rig.Queued, Has.Count.EqualTo(earlyBlock ? 0 : 1), "an early block leaves nothing to enter ahead of");
     }
 
     [TestCase("off", false, false)]
@@ -1125,7 +1150,8 @@ public class GCKeeperTests
             Assert.That(GCKeeper.PreEntrySettings.Default, Is.EqualTo(new GCKeeper.PreEntrySettings(GCKeeper.PreEntryMode.Both, 1_000, 6_000, 128_000_000)));
             Assert.That(GCKeeper.PreEntrySettings.Parse(" Slot ", "500", "4000", "64"),
                 Is.EqualTo(new GCKeeper.PreEntrySettings(GCKeeper.PreEntryMode.Slot, 500, 4_000, 64_000_000)));
-            Assert.That(GCKeeper.PreEntrySettings.Parse("x", "-1", "0", "y"), Is.EqualTo(GCKeeper.PreEntrySettings.Default));
+            Assert.That(GCKeeper.PreEntrySettings.Parse("x", "y", "0", "y"), Is.EqualTo(GCKeeper.PreEntrySettings.Default));
+            Assert.That(GCKeeper.PreEntrySettings.Parse(null, "-1000", null, null).SlotLeadMs, Is.EqualTo(-1_000), "after the slot start");
         }
     }
 

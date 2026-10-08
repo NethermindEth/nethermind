@@ -273,8 +273,12 @@ public class GCKeeper : IDisposable
             {
                 long slotMs = (long)Math.Max(1UL, _gcStrategy.SecondsPerSlot) * 1000;
                 long now = _unixTimeMs();
-                long fireAt = NextSlotStartMs(Volatile.Read(ref _headTimestamp) * 1000, slotMs, now, _settings.SlotLeadMs) - _settings.SlotLeadMs;
+                long slotStart = NextSlotStartMs(Volatile.Read(ref _headTimestamp) * 1000, slotMs, now, _settings.SlotLeadMs);
+                // A negative lead fires that long after the slot start.
+                long fireAt = slotStart - _settings.SlotLeadMs;
                 if (!await _delay((int)Math.Min(int.MaxValue, fireAt - now), _preEntryCts.Token).ConfigureAwait(ConfigureAwaitOptions.ForceYielding)) return;
+                // The slot's block (or a later one) arrived while waiting: nothing to enter ahead of; re-anchored instead.
+                if (Volatile.Read(ref _headTimestamp) * 1000 >= slotStart) continue;
                 PrepareNoGCRegion(PreEntryTrigger.Slot);
             }
         }
@@ -288,7 +292,7 @@ public class GCKeeper : IDisposable
         }
     }
 
-    /// <summary>The start of the first slot after the head whose lead has not begun at <paramref name="nowMs"/>.</summary>
+    /// <summary>The start of the first slot after the head whose fire time (start minus lead) is after <paramref name="nowMs"/>.</summary>
     /// <remarks>Slots follow the head every <paramref name="slotMs"/>, so missed slots are skipped over; a head ahead of
     /// the clock still gives the slot after it.</remarks>
     internal static long NextSlotStartMs(long headMs, long slotMs, long nowMs, long leadMs)
@@ -457,12 +461,13 @@ public class GCKeeper : IDisposable
                 "slot" => PreEntryMode.Slot,
                 _ => PreEntryMode.Both,
             },
-            int.TryParse(leadMs, out int lead) && lead >= 0 ? lead : Default.SlotLeadMs,
+            // Negative: after the slot start.
+            int.TryParse(leadMs, out int lead) ? lead : Default.SlotLeadMs,
             int.TryParse(expiryMs, out int expiry) && expiry > 0 ? expiry : Default.SlotExpiryMs,
             long.TryParse(maxAllocMb, out long mb) && mb >= 0 ? mb.MB : Default.MaxAllocatedBytes);
 
         public override string ToString() =>
-            $"mode {Mode}, slot lead {SlotLeadMs} ms, slot expiry {SlotExpiryMs} ms, takeover allocation cap {MaxAllocatedBytes / 1.MB} MB";
+            $"mode {Mode}, slot lead {SlotLeadMs} ms (negative: after the slot start), slot expiry {SlotExpiryMs} ms, takeover allocation cap {MaxAllocatedBytes / 1.MB} MB";
     }
 
     private sealed class NoGCRegion(GCKeeper keeper, bool pausedGCScheduler, bool scheduleGC, PreEntryTrigger trigger = PreEntryTrigger.None)
