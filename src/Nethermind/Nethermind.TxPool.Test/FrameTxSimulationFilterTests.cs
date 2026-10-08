@@ -218,7 +218,7 @@ public class FrameTxSimulationFilterTests
     }
 
     [Test]
-    public void Accept_WhileProcessingABlock_NeverPreemptsATxReaddedFromAReorg()
+    public void Accept_WhileProcessingABlock_NeverPreemptsATxReAddedFromAReorg()
     {
         TestReadOnlyStateProvider state = DeployedCodeSenderState();
         Transaction tx = SelfVerifyTx(TestItem.AddressA);
@@ -229,7 +229,7 @@ public class FrameTxSimulationFilterTests
         simulator.Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), Arg.Any<Func<bool>?>())
             .Returns(FrameTxSimulationResult.Accept(TestItem.AddressB));
         FrameTxSimulationFilter filter = new(simulator, LimboLogs.Instance.GetClassLogger<FrameTxSimulationFilterTests>(), headInfo);
-        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { ReaddedFromReorg = true };
+        TxFilteringState filteringState = new(tx, state, Eip8141Prototype.Instance) { ReAddedFromReorg = true };
 
         Assert.That(filter.Accept(tx, ref filteringState, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
         simulator.Received(1).Simulate(tx, Arg.Any<bool>(), Arg.Any<bool>(), Arg.Any<CancellationToken>(), null);

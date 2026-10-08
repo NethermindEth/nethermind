@@ -42,7 +42,7 @@ internal sealed class FrameTxSimulationFilter(IFrameTxPrefixSimulator? simulator
             tx,
             signaturesPreValidated: state.FrameSignaturesVerified,
             local: local,
-            preempt: local || state.ReaddedFromReorg ? null : _blockWorkInProgress);
+            preempt: local || state.ReAddedFromReorg ? null : _blockWorkInProgress);
         switch (result.Outcome)
         {
             case FrameTxSimulationOutcome.Rejected:
