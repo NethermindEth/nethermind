@@ -210,15 +210,15 @@ public static partial class EvmInstructions
         if (Eip8038.IsActive && !TGasPolicy.UpdateGas(ref gas, Eip8038Constants.WarmAccess))
             goto OutOfGas;
 
-        // Update memory cost if the destination region requires expansion.
-        if (!result.IsZero && !TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
-            goto OutOfGas;
-
-        // EIP-8279: the account enters the block access list on the transaction's first touch, metered after every charge.
-        if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
-
         if (!result.IsZero)
         {
+            // Update memory cost if the destination region requires expansion.
+            if (!TGasPolicy.UpdateMemoryCost(ref gas, in a, result, ref vm.VmState.Memory))
+                goto OutOfGas;
+
+            // EIP-8279: the account enters the block access list on the transaction's first touch, metered after every charge.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
+
             vm.WorldState.AddAccountRead(address);
 
             CodeInfo codeInfo = vm.CodeInfoRepository
@@ -238,6 +238,9 @@ public static partial class EvmInstructions
         }
         else
         {
+            // EIP-8279: as above; a zero-length copy expands no memory.
+            if (Eip8279.IsActive && !vm.TryMeterBalAddress(address)) goto OutOfGas;
+
             vm.WorldState.AddAccountRead(address);
             vm.WorldState.RecordBytecodeAccess(address);
         }
