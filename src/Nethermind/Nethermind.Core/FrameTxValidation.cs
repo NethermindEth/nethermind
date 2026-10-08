@@ -29,7 +29,7 @@ public static class FrameTxValidation
     public const string AtomicBatchFollowedByVerifyFrame = "an atomic batch frame must not be followed by a VERIFY frame";
     public const string AtomicBatchFollowedByPostTxFrame = "an atomic batch frame must not be followed by a POST_TX frame";
     public const string ApprovalScopeInAtomicBatch = "frames belonging to an atomic batch must not carry approval scope";
-    public const string PostTxExemptWrongMode = "POST_TX_EXEMPT is valid only on DEFAULT and SENDER frames";
+    public const string PostTxExemptWrongMode = "POST_TX_EXEMPT is valid only in DEFAULT and SENDER frames";
     public const string PostTxExemptSplitsAtomicBatch = "atomic batch frames must agree on POST_TX_EXEMPT";
     public const string PostTxExemptAfterNonExemptFrame = "a POST_TX_EXEMPT frame must not follow a non-exempt body frame";
     public const string FrameGasOverflow = "total frame gas must not exceed 2^64 - 1";
@@ -187,21 +187,8 @@ public static class FrameTxValidation
                 return false;
             }
 
-            if (frame.IsPostTxExempt && frame.Mode is not (FrameMode.Default or FrameMode.Sender))
+            if (!TryValidatePostTxExemption(frames, i, exemptAllowed, out error))
             {
-                error = PostTxExemptWrongMode;
-                return false;
-            }
-
-            if (i > 0 && frames[i - 1].IsAtomicBatch && frames[i - 1].IsPostTxExempt != frame.IsPostTxExempt)
-            {
-                error = PostTxExemptSplitsAtomicBatch;
-                return false;
-            }
-
-            if (frame.IsPostTxExempt && !exemptAllowed)
-            {
-                error = PostTxExemptAfterNonExemptFrame;
                 return false;
             }
 
@@ -298,6 +285,32 @@ public static class FrameTxValidation
         static bool BelongsToAtomicBatch(TxFrame[] frames, int i) =>
             (frames[i].Flags & FrameFlags.AtomicBatch) != 0
             || (i > 0 && (frames[i - 1].Flags & FrameFlags.AtomicBatch) != 0);
+    }
+
+    private static bool TryValidatePostTxExemption(TxFrame[] frames, int i, bool exemptAllowed, out string? error)
+    {
+        TxFrame frame = frames[i];
+
+        if (frame.IsPostTxExempt && frame.Mode is not (FrameMode.Default or FrameMode.Sender))
+        {
+            error = PostTxExemptWrongMode;
+            return false;
+        }
+
+        if (i > 0 && frames[i - 1].IsAtomicBatch && frames[i - 1].IsPostTxExempt != frame.IsPostTxExempt)
+        {
+            error = PostTxExemptSplitsAtomicBatch;
+            return false;
+        }
+
+        if (frame.IsPostTxExempt && !exemptAllowed)
+        {
+            error = PostTxExemptAfterNonExemptFrame;
+            return false;
+        }
+
+        error = null;
+        return true;
     }
 
     /// <summary>The gas charged for verifying a signature of the given EIP-8141 scheme.</summary>
