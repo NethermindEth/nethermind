@@ -700,8 +700,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource<AddBlockResult> resentSuggest = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource resentReachedTheWait = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int suggests = 0;
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, Arg.Any<bool>()).Returns(_ =>
+        {
+            resentReachedTheWait.TrySetResult();
+            return ValueTask.CompletedTask;
+        });
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
@@ -734,8 +740,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         try
         {
-            Task queuedBeforeTheFirstCopy = await Task.WhenAny(firstEnqueued.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
-            Assert.That(queuedBeforeTheFirstCopy, Is.Not.SameAs(firstEnqueued.Task), "the re-submission must wait for the copy the timed-out request is still to queue");
+            await resentReachedTheWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            Assert.That(WaitForEarlierCopies(handler, block.Hash!).IsCompleted, Is.False, "the re-submission must wait for the copy the timed-out request is still to queue");
         }
         finally
         {
@@ -758,9 +764,18 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
         TaskCompletionSource queuedCopyRemoved = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource firstEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
         TaskCompletionSource secondEnqueued = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource queuedCopyReachedItsRemovalWait = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> resentWaitedForExecutedCopiesOnly = new(TaskCreationOptions.RunContinuationsAsynchronously);
         int suggests = 0;
+        int removalWaits = 0;
         IBlockProcessingQueue processingQueue = Substitute.For<IBlockProcessingQueue>();
-        processingQueue.WaitUntilRemovedAsync(block.Hash!, false).Returns(_ => new ValueTask(queuedCopyRemoved.Task));
+        processingQueue.WaitUntilRemovedAsync(block.Hash!, Arg.Any<bool>()).Returns(call =>
+        {
+            bool executedOnly = call.ArgAt<bool>(1);
+            if (Interlocked.Increment(ref removalWaits) == 1) queuedCopyReachedItsRemovalWait.TrySetResult();
+            else resentWaitedForExecutedCopiesOnly.TrySetResult(executedOnly);
+            return executedOnly ? ValueTask.CompletedTask : new ValueTask(queuedCopyRemoved.Task);
+        });
         processingQueue
             .Enqueue(Arg.Any<Block>(), Arg.Any<ProcessingOptions>())
             .Returns(_ =>
@@ -794,6 +809,7 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         Task<ResultWrapper<PayloadStatusV1>> queuedRequest = handler.HandleAsync(queuedPayload);
         await firstEnqueued.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        await queuedCopyReachedItsRemovalWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
         processingQueue.BlockExecuted += Raise.EventWith(new BlockVerdictEventArgs(block.Hash!, ProcessingResult.Success));
         Assert.That((await queuedRequest.WaitAsync(TimeSpan.FromSeconds(10))).Data.Status, Is.EqualTo(PayloadStatus.Valid));
 
@@ -804,8 +820,8 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
 
         try
         {
-            Task queuedBesideTheCopy = await Task.WhenAny(secondEnqueued.Task, Task.Delay(TimeSpan.FromMilliseconds(500)));
-            Assert.That(queuedBesideTheCopy, Is.Not.SameAs(secondEnqueued.Task), "the re-submission must still wait for the queued copy carrying another list");
+            Assert.That(await resentWaitedForExecutedCopiesOnly.Task.WaitAsync(TimeSpan.FromSeconds(10)), Is.False, "the re-submission must still wait for the queued copy carrying another list");
+            Assert.That(WaitForEarlierCopies(handler, block.Hash!).IsCompleted, Is.False, "a different-list wait must remain pending until the queued copy leaves");
         }
         finally
         {
@@ -1075,6 +1091,14 @@ public class NewPayloadHandlerRaceConditionTests : BaseEngineModuleTests
             copies.CopyTo(snapshot, 0);
             return snapshot;
         }
+    }
+
+    private static Task WaitForEarlierCopies(NewPayloadHandler handler, Hash256 blockHash, ValueHash256 inclusionListDigest = default)
+    {
+        MethodInfo? waitMethod = typeof(NewPayloadHandler).GetMethod("WaitForEarlierCopiesAsync", BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.That(waitMethod, Is.Not.Null, "WaitForEarlierCopiesAsync method not found - was it renamed?");
+
+        return (Task)waitMethod!.Invoke(handler, [blockHash, inclusionListDigest])!;
     }
 
     /// <summary>The block every case here drives: post-merge, one past a parent none of them have.</summary>
