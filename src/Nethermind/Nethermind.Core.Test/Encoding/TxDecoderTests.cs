@@ -409,7 +409,25 @@ namespace Nethermind.Core.Test.Encoding
             Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
         }
 
+        [Test]
+        public void Legacy_subclass_reimplementing_encoding_is_used_to_encode()
+        {
+            IsolatedTxDecoder decoder = new();
+            decoder.RegisterDecoder(new ReimplementedLegacyTxDecoder());
+
+            Assert.That(decoder.Encode(new Transaction { Type = TxType.Legacy }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+        }
+
         private sealed class IsolatedTxDecoder : TxDecoder<Transaction>;
+
+        private sealed class ReimplementedLegacyTxDecoder : Serialization.Rlp.TxDecoders.LegacyTxDecoder, Serialization.Rlp.TxDecoders.ITxDecoder
+        {
+            void Serialization.Rlp.TxDecoders.ITxDecoder.Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors,
+                bool forSigning, bool isEip155Enabled, ulong chainId) => writer.Write(MarkerTxDecoder.Encoding);
+
+            int Serialization.Rlp.TxDecoders.ITxDecoder.GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning,
+                bool isEip155Enabled, ulong chainId) => MarkerTxDecoder.Encoding.Length;
+        }
 
         private sealed class MarkerTxDecoder(TxType txType) : Serialization.Rlp.TxDecoders.ITxDecoder
         {
