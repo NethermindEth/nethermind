@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
@@ -14,6 +16,7 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Container;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.ServiceStopper;
 using Nethermind.Core.Test.Builders;
@@ -285,6 +288,107 @@ public class TransactionChangesetIndexModuleTests
         .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0)
         .WithTransactions(transaction).WithWithdrawals().TestObject;
 
+    [Test]
+    public void BulkReplay_WhenTheUnsyncedScratchTailIsLost_ResumesFromTheDurableCheckpointToTheSameRowsAndState()
+    {
+        FlatDbConfig config = new() { Enabled = true, HistoryEnabled = true, HistoryTransactionIndexEnabled = true };
+        using MemDb code = new();
+        using SnapshotableMemColumnsDb<FlatHistoryColumns> history = new();
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(config))
+            .AddSingleton<ISpecProvider>(new TestSpecProvider(Cancun.Instance));
+        builder.RegisterInstance(history)
+            .As<IColumnsDb<FlatHistoryColumns>>()
+            .ExternallyOwned();
+        using IContainer container = builder.Build();
+        HistoryRowFormat format = HistoryRowFormat.Resolve(new HistoryAvailability(history.GetColumnDb(FlatHistoryColumns.AvailableBlocks)), config);
+        Block genesis = Build.A.Block.WithNumber(0).WithStateRoot(Keccak.EmptyTreeHash).TestObject;
+        IBlockTree tree = container.Resolve<IBlockTree>();
+        tree.SuggestBlock(genesis);
+        CrashableScratchFactory scratch = new();
+        using BulkFillSession session = new(scratch, code, TestItem.KeccakA, genesis.Header, false);
+        foreach (FlatHistoryColumns column in new[] { FlatHistoryColumns.AccountHistory, FlatHistoryColumns.StorageHistory, FlatHistoryColumns.StorageClears })
+            Assert.That(session.ImportPage((ISortedKeyValueStore)history.GetColumnDb(column), format, column, CancellationToken.None), Is.True);
+        session.VerifyAnchor(CancellationToken.None);
+        TransactionChangesetIndex index = container.Resolve<TransactionChangesetIndex>();
+
+        byte[] runtime = Prepare.EvmCode.PushData(0).Op(Instruction.SLOAD).PushData(1)
+            .Op(Instruction.ADD).PushData(0).Op(Instruction.SSTORE).Done;
+        Transaction deployment = Build.A.Transaction.WithCode(Prepare.EvmCode.ForInitOf(runtime).Done)
+            .WithValue(10).WithGasPrice(0).WithGasLimit(200000).WithNonce(0).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
+        Address contract = ContractAddress.From(TestItem.AddressA, 0);
+        Block first = Build.A.Block.WithNumber(1).WithParent(genesis).WithPostMergeFlag(true)
+            .WithBlobGasUsed(0).WithExcessBlobGas(0).WithBaseFeePerGas(0).WithWithdrawals(new Withdrawal { Address = TestItem.AddressA, AmountInGwei = 1 }).TestObject;
+        List<Block> chain = [first, NextBlock(first, deployment)];
+        for (ulong nonce = 1; nonce <= 3; nonce++)
+        {
+            chain.Add(NextBlock(chain[^1], Build.A.Transaction.WithTo(contract).WithGasPrice(0).WithGasLimit(100000)
+                .WithNonce(nonce).SignedAndResolved(TestItem.PrivateKeyA).TestObject));
+        }
+        foreach (Block block in chain) Assert.That(tree.Insert(block, BlockTreeInsertBlockOptions.SaveHeader), Is.EqualTo(AddBlockResult.Added));
+
+        int syncsBeforeReplay = scratch.Syncs;
+        BulkFillScopeProvider provider = new(session, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, provider, container.Resolve<IBlockValidationModule[]>()))
+        {
+            IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+            Replay(session, processor, index, chain[0]);
+            Replay(session, processor, index, chain[1]);
+            scratch.Persist();
+            for (int i = 2; i < chain.Count; i++) Replay(session, processor, index, chain[i]);
+        }
+        Assert.That(scratch.Syncs, Is.EqualTo(syncsBeforeReplay), "replayed blocks and their cleanup leave the scratch WAL to RocksDB; only the index is synced per block");
+        string[] indexRows = Rows(history.GetColumnDb(FlatHistoryColumns.TransactionChangesets));
+        string[] scratchRows = scratch.Rows();
+
+        scratch.Crash();
+        using BulkFillSession restarted = new(scratch, code, TestItem.KeccakA, genesis.Header, false);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(restarted.CurrentState.BlockNumber, Is.EqualTo((ulong)chain[1].Number), "the crash loses every block after the last checkpoint that reached disk");
+            Assert.That(restarted.BlockHash, Is.EqualTo(chain[1].Hash));
+            Assert.That(Enumerable.Range(2, 3).All(i => index.HasRowsOf((ulong)chain[i].Number, chain[i].Hash!)), Is.True,
+                "the index rows of the lost blocks were synced before their scratch commit");
+        }
+
+        restarted.CleanStorage(CancellationToken.None);
+        BulkFillScopeProvider restartedProvider = new(restarted, container.Resolve<ITrieNodeCache>(), container.Resolve<IResourcePool>(), config, LimboLogs.Instance);
+        using (ILifetimeScope scope = ProcessingTransactionIndexBulkFill.BuildReplayScope(container, restartedProvider, container.Resolve<IBlockValidationModule[]>()))
+        {
+            IBlockchainProcessor processor = scope.Resolve<IBlockchainProcessor>();
+            for (int i = 2; i < chain.Count; i++) Replay(restarted, processor, index, chain[i]);
+        }
+
+        restartedProvider.GetStorage(chain[^1].Header, contract, UInt256.Zero, out UInt256 calls);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(calls, Is.EqualTo(new UInt256(3)));
+            Assert.That(Rows(history.GetColumnDb(FlatHistoryColumns.TransactionChangesets)), Is.EqualTo(indexRows), "replaying a block whose rows exist rewrites the same rows");
+            Assert.That(scratch.Rows(), Is.EqualTo(scratchRows), "the replay rebuilds exactly the scratch state the crash lost");
+        }
+    }
+
+    private static void Replay(BulkFillSession session, IBlockchainProcessor processor, TransactionChangesetIndex index, Block block)
+    {
+        session.BeginBlock(block.Header);
+        using TransactionChangesetIndex.BlockCapture capture = index.StartBlock((ulong)block.Number);
+        Block isolated = block.WithReplacedHeader(block.Header.Clone());
+        try
+        {
+            Assert.That(processor.Process(isolated, ProcessingTransactionIndexBulkFill.ReplayOptions, capture.Tracer), Is.Not.Null);
+            Assert.That(capture.Commit(), Is.True);
+            index.SyncWal();
+            session.CommitBlock();
+        }
+        finally
+        {
+            isolated.DisposeAccountChanges();
+        }
+        session.CleanStorage(CancellationToken.None);
+    }
+
+    private static string[] Rows(IDb db) => db.GetAll(ordered: true).Select(static row => $"{row.Key.ToHexString()}={row.Value.ToHexString()}").ToArray();
+
     [TestCase(-1, 1)]
     [TestCase(1, 1)]
     [TestCase(4, 4)]
@@ -451,5 +555,61 @@ public class TransactionChangesetIndexModuleTests
         await container.Resolve<StartTransactionChangesetBuilder>().Execute(CancellationToken.None);
 
         stopper.Received(1).AddStoppable(builder);
+    }
+
+    /// <summary>Keeps what a sync made durable and, on a crash, reopens the scratch with only that.</summary>
+    private sealed class CrashableScratchFactory : IDbFactory
+    {
+        private IScratchImage _live;
+
+        public int Syncs => _live.Syncs;
+        public void Persist() => _live.Persist();
+        public void Crash() => _live = _live.Crash();
+        public string[] Rows() => _live.Rows();
+
+        public IDb CreateDb(DbSettings dbSettings) => throw new NotSupportedException();
+
+        public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum => (IColumnsDb<T>)(_live ??= new CrashableColumnsDb<T>());
+    }
+
+    private interface IScratchImage
+    {
+        int Syncs { get; }
+        void Persist();
+        IScratchImage Crash();
+        string[] Rows();
+    }
+
+    private sealed class CrashableColumnsDb<T> : SnapshotableMemColumnsDb<T>, IColumnsDb<T>, IScratchImage where T : struct, Enum
+    {
+        private Dictionary<T, KeyValuePair<byte[], byte[]>[]> _durable = [];
+
+        public int Syncs { get; private set; }
+
+        public void SyncWal()
+        {
+            Syncs++;
+            Persist();
+        }
+
+        public void Persist()
+        {
+            Dictionary<T, KeyValuePair<byte[], byte[]>[]> durable = [];
+            foreach (T column in ColumnKeys) durable[column] = GetColumnDb(column).GetAll().ToArray();
+            _durable = durable;
+        }
+
+        public IScratchImage Crash()
+        {
+            CrashableColumnsDb<T> restarted = new() { _durable = _durable };
+            foreach ((T column, KeyValuePair<byte[], byte[]>[] rows) in _durable)
+            {
+                IDb db = restarted.GetColumnDb(column);
+                foreach (KeyValuePair<byte[], byte[]> row in rows) db.Set(row.Key, row.Value);
+            }
+            return restarted;
+        }
+
+        public string[] Rows() => ColumnKeys.SelectMany(column => TransactionChangesetIndexModuleTests.Rows(GetColumnDb(column)).Select(row => $"{column}:{row}")).ToArray();
     }
 }

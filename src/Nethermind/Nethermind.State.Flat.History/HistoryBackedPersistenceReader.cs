@@ -58,9 +58,7 @@ internal sealed class HistoryBackedPersistenceReader : IPersistence.IPersistence
         if (_sliceScopes is not null) RequireRetainedBySlice(address);
         try
         {
-            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account)
-                ? new Account(account.Nonce, account.Balance, account.StorageRoot.ToCommitment(), account.CodeHash.ToCommitment())
-                : null;
+            return _historyReader.TryGetAccount(_block.BlockNumber, address, out AccountStruct account) ? account.ToAccount() : null;
         }
         catch (StateUnavailableException e)
         {
