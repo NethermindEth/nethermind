@@ -1823,85 +1823,102 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             ObjectPool<IPrewarmerEnv> envPool = PreWarmer._envPool;
             try
             {
-                Address? beneficiary = block.Header.GasBeneficiary;
-                if (warmSystemAccessLists || beneficiary is not null)
-                {
-                    IPrewarmerEnv env = envPool.Get();
-                    try
-                    {
-                        using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
-
-                        if (warmSystemAccessLists)
-                        {
-                            // First: block processing runs the system calls before its first transaction, so their
-                            // slots are the first state it reads. Evaluated here rather than up front: the hints read
-                            // state, and the only world state with an open scope on the speculative path is this env's own.
-                            if (WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState))
-                            {
-                                Volatile.Write(ref _systemAccessListsWarmed, true);
-                            }
-                        }
-
-                        WarmupSender(beneficiary, null, scope.WorldState);
-                    }
-                    finally
-                    {
-                        envPool.Return(env);
-                    }
-                }
+                bool warmSystem = warmSystemAccessLists || block.Header.GasBeneficiary is not null;
 
                 // BAL warmup is driven from BlockProcessor.HintBal; skip speculative warming here.
-                if (Bal is null)
+                if (Bal is not null)
                 {
-                    // One pass over the recipients and the senders recovered by now. A sender that lands later is not
-                    // lost: the transaction fan-out claims its transaction as it arrives and reads the account when it
-                    // executes it, which is the warm this pass would give it. Repeating the pass for late senders would
-                    // build a scope per worker and join a fan-out per repeat to warm accounts the fan-out warms anyway.
-                    // An empty block has no transaction fan-out, nor any sender to read.
-                    // In ranges, as WarmDiscoveredStorage does: an iteration per transaction would put one interlocked
-                    // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
-                    // contended writes to one cache line for a few nanoseconds of work each.
-                    int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
-                    int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
-                    int ranges = (count + rangeSize - 1) / rangeSize;
-                    // Withdrawal recipients are credited at block end. They follow the transaction ranges, one job
-                    // each: on a block of a few transactions block processing gets to them a fraction of a millisecond
-                    // after its start, sooner than one worker reads sixteen cold accounts in turn.
-                    int withdrawals = WarmWithdrawals ? block.Withdrawals!.Length : 0;
-                    WarmingState<(Block Block, int RangeSize, int Count, int Ranges)> baseState = new(envPool, (block, rangeSize, count, ranges), block.Header);
-                    ParallelUnbalancedWork.For(
-                        0,
-                        ranges + withdrawals,
-                        parallelOptions,
-                        baseState.InitThreadState,
-                        static (job, state) =>
-                        {
-                            (Block block, int rangeSize, int count, int ranges) = state.Payload;
-                            IWorldState worldState = state.Scope!.WorldState;
-                            if (job >= ranges)
-                            {
-                                WarmupSender(block.Withdrawals![job - ranges].Address, null, worldState);
-                                return state;
-                            }
-
-                            int end = Math.Min((job + 1) * rangeSize, count);
-                            for (int i = job * rangeSize; i < end; i++)
-                            {
-                                Transaction tx = TransactionAt(block, i);
-                                WarmupSender(tx.SenderAddress, tx.To, worldState);
-                            }
-
-                            return state;
-                        },
-                        WarmingState<(Block, int, int, int)>.FinallyAction);
-
-                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
+                    if (warmSystem) WarmSystemOnOwnScope(envPool, block);
+                    return;
                 }
+
+                // One pass over the recipients and the senders recovered by now. A sender that lands later is not
+                // lost: the transaction fan-out claims its transaction as it arrives and reads the account when it
+                // executes it, which is the warm this pass would give it. Repeating the pass for late senders would
+                // build a scope per worker and join a fan-out per repeat to warm accounts the fan-out warms anyway.
+                // An empty block has no transaction fan-out, nor any sender to read.
+                // In ranges, as WarmDiscoveredStorage does: an iteration per transaction would put one interlocked
+                // increment per transaction on the fan-out's shared index, which on a dense block is thousands of
+                // contended writes to one cache line for a few nanoseconds of work each.
+                int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
+                int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
+                int ranges = (count + rangeSize - 1) / rangeSize;
+                // Withdrawal recipients are credited at block end. They follow the transaction ranges, one job
+                // each: on a block of a few transactions block processing gets to them a fraction of a millisecond
+                // after its start, sooner than one worker reads sixteen cold accounts in turn.
+                int withdrawals = WarmWithdrawals ? block.Withdrawals!.Length : 0;
+                // The system-contract slots, which block processing reads before its first transaction, and the fee
+                // recipient are the fan-out's first job rather than a step ahead of it: on an empty block the withdrawal
+                // recipients are read a fraction of a millisecond after the system slots, so neither may wait for the other.
+                int system = warmSystem ? 1 : 0;
+                WarmingState<(AddressWarmer Warmer, Block Block, int RangeSize, int Count, int Ranges, int System)> baseState =
+                    new(envPool, (this, block, rangeSize, count, ranges, system), block.Header);
+                ParallelUnbalancedWork.For(
+                    0,
+                    system + ranges + withdrawals,
+                    parallelOptions,
+                    baseState.InitThreadState,
+                    static (job, state) =>
+                    {
+                        (AddressWarmer warmer, Block block, int rangeSize, int count, int ranges, int system) = state.Payload;
+                        IWorldState worldState = state.Scope!.WorldState;
+                        if (job < system)
+                        {
+                            warmer.WarmSystem(state.SystemAccessLists, worldState);
+                            return state;
+                        }
+
+                        job -= system;
+                        if (job >= ranges)
+                        {
+                            WarmupSender(block.Withdrawals![job - ranges].Address, null, worldState);
+                            return state;
+                        }
+
+                        int end = Math.Min((job + 1) * rangeSize, count);
+                        for (int i = job * rangeSize; i < end; i++)
+                        {
+                            Transaction tx = TransactionAt(block, i);
+                            WarmupSender(tx.SenderAddress, tx.To, worldState);
+                        }
+
+                        return state;
+                    },
+                    WarmingState<(AddressWarmer, Block, int, int, int, int)>.FinallyAction);
+
+                if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
             }
             catch (OperationCanceledException)
             {
                 // Ignore, block completed cancel
             }
+        }
+
+        private void WarmSystemOnOwnScope(ObjectPool<IPrewarmerEnv> envPool, Block block)
+        {
+            IPrewarmerEnv env = envPool.Get();
+            try
+            {
+                using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
+                WarmSystem(env.SystemAccessLists, scope.WorldState);
+            }
+            finally
+            {
+                envPool.Return(env);
+            }
+        }
+
+        /// <summary>Warms the system-contract hints and the fee recipient.</summary>
+        private void WarmSystem(ReadOnlySpan<IHasAccessList> systemAccessLists, IWorldState worldState)
+        {
+            // Evaluated here rather than up front: the hints read state, and the only world state with an open scope on
+            // the speculative path is this env's own.
+            if (warmSystemAccessLists && WarmupSystemAccessLists(systemAccessLists, worldState))
+            {
+                Volatile.Write(ref _systemAccessListsWarmed, true);
+            }
+
+            WarmupSender(Block.Header.GasBeneficiary, null, worldState);
         }
 
         /// <summary>Indexes past the block transactions address inclusion-list ones, which may be promoted into the block.</summary>
@@ -2007,6 +2024,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         private readonly IPrewarmerEnv? Env;
         public readonly TPayload Payload = payload;
         public readonly IReadOnlyTxProcessingScope? Scope;
+
+        /// <summary>The system-contract hints of this thread's env; empty before <see cref="InitThreadState"/>.</summary>
+        public ReadOnlySpan<IHasAccessList> SystemAccessLists => Env is null ? default : Env.SystemAccessLists;
 
         private WarmingState(ObjectPool<IPrewarmerEnv> envPool, TPayload payload, BlockHeader target, IPrewarmerEnv env, IReadOnlyTxProcessingScope scope) : this(envPool, payload, target)
         {

@@ -221,6 +221,56 @@ public class BlockCachePreWarmerTests
         Assert.That(preBlockCaches.StateCache.TryGetValue(recipient, out _), Is.True, "the withdrawal recipient is warmed");
     }
 
+    /// <summary>
+    /// On an empty block, block processing credits the withdrawals a fraction of a millisecond after the block-start
+    /// system calls, so warming the recipients must not wait for the system-contract hints.
+    /// </summary>
+    [Test]
+    [CancelAfter(30_000)]
+    public void PreWarmCaches_WarmsWithdrawalRecipients_WhileSystemHintsAreStillInFlight(CancellationToken testToken)
+    {
+        using ManualResetEventSlim gate = new(initialState: false);
+        using ILifetimeScope hintScope = _processingScope.BeginLifetimeScope(b => b.AddSingleton<IHasAccessList>(new GatedAccessListHint(gate)));
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerWithHints(hintScope);
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        Address recipient = PackedLoopCopy(1);
+        Block block = Build.A.Block.WithNumber(1)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(recipient).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
+        bool warmedWhileHintsParked;
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader parent = BuildParentHeader();
+        using (mainWorldState.BeginScope(parent))
+        {
+            Task warmTask = StartPrewarming(preWarmer, block, parent, Osaka.Instance);
+            try
+            {
+                warmedWhileHintsParked = SpinWait.SpinUntil(
+                    () => testToken.IsCancellationRequested || preBlockCaches.StateCache.TryGetValue(recipient, out _),
+                    TimeSpan.FromSeconds(10)) && !testToken.IsCancellationRequested;
+            }
+            finally
+            {
+                gate.Set();
+            }
+
+            warmTask.GetAwaiter().GetResult();
+        }
+
+        Assert.That(warmedWhileHintsParked, Is.True, "the withdrawal recipients are warmed beside the system hints, not after them");
+    }
+
+    private sealed class GatedAccessListHint(ManualResetEventSlim gate) : IHasAccessList
+    {
+        public AccessList? GetAccessList(Block block, IReleaseSpec spec)
+        {
+            gate.Wait(TimeSpan.FromSeconds(10));
+            return null;
+        }
+    }
+
     /// <summary>A block of a single transaction warms it by executing it, as any other block does.</summary>
     [Test]
     public async Task PreWarmCaches_SingleTransactionBlock_ExecutesItAhead()
