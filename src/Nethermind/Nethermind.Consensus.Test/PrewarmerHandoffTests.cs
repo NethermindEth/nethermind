@@ -616,10 +616,16 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         Run run = Process(block, ProductionAdapter);
 
+        int pending = footprints.PendingWakes;
+        footprints.ApplyExecuted();
+
         using (Assert.EnterMultipleScope())
         {
             Assert.That((run.Tally.Replayed, run.Tally.Rejected), Is.EqualTo((2, 1)));
-            Assert.That(footprints.PendingWakes, Is.EqualTo(wakes));
+            Assert.That(pending, Is.EqualTo(wakes));
+            // Reported all the same, with only the slot it changed.
+            Assert.That(footprints.ValueBefore(new StorageCell(Guarded, 1), 2), Is.EqualTo((UInt256)1));
+            Assert.That(footprints.ValueBefore(new StorageCell(Guarded, 0), 2), Is.Null);
         }
     }
 
@@ -630,15 +636,17 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         // writes put a transaction across the first chunk's end.
         CommittedStorageWrites committed = new();
         List<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = [];
+        // The last transaction writes more slots than a chunk holds.
+        static int Writes(int tx) => tx == 199 ? 600 : tx % 7;
         for (int tx = 0; tx < 200; tx++)
         {
             committed.Begin();
-            for (int i = 0; i < tx % 7; i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+            for (int i = 0; i < Writes(tx); i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
             reports.Add((committed.End(), tx));
         }
 
         Assert.That(reports, Has.All.Matches<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)>(report =>
-            report.Writes.Length == report.Transaction % 7
+            report.Writes.Length == Writes(report.Transaction)
             && Enumerable.Range(0, report.Writes.Length).All(i =>
                 report.Writes.Span[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction)))));
     }
@@ -1047,6 +1055,34 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             {
                 Assert.That(met, Is.True);
                 Assert.That(footprint.Matches(worldState), Is.False);
+            }
+        }
+    }
+
+    [Test]
+    public void A_run_reading_more_accounts_and_slots_than_the_buffers_hold_is_recorded()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            FootprintRecorder recorder = new(worldState);
+            // The first run grows the buffers past what is retained, so the second grows them again from the start.
+            foreach ((int accounts, int slots) in new[] { (2, 1100), (40, 70) })
+            {
+                Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+                recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+                recorder.GetNonce(TestItem.AddressA);
+                for (int i = 0; i < accounts; i++) recorder.GetBalance(TestItem.Addresses[i]);
+                for (int i = 0; i < slots; i++) recorder.Get(new StorageCell(Counter, (UInt256)i), out _);
+                recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+                TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+                recorder.Stop();
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(footprint?.Slots.Length, Is.EqualTo(slots));
+                    Assert.That(footprint?.Matches(worldState), Is.True);
+                }
             }
         }
     }
