@@ -10,9 +10,9 @@ public partial struct TreePath
     /// <summary>Adds a level to <see cref="Length"/> without writing its nibble, which stays zero.</summary>
     /// <remarks>For walks that need the depth alone; the path stays canonical, zero past and within the added level.</remarks>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AppendDepth() => Length++;
+    internal void AppendDepth() => _length++;
 
     /// <summary>Removes a level <see cref="AppendDepth"/> added.</summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void TruncateDepth() => Length--;
+    internal void TruncateDepth() => _length--;
 }
