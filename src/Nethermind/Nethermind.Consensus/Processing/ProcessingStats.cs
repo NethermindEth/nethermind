@@ -162,6 +162,24 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
+        // The slow-block JSON's "experiment" section: per-block deltas of the prewarm counters the experiment flags move.
+        private static readonly string[] ExperimentCounters =
+            ["handoff_replayed", "handoff_rejected", "handoff_missing", "discover_first_runs", "discover_first_rounds", "discover_first_cells", "discover_first_skipped", "block_start_us"];
+
+        private readonly long[] _startExperiment = new long[ExperimentCounters.Length];
+
+        private static void ReadExperimentCounters(long[] into)
+        {
+            into[0] = Blockchain.Metrics.PrewarmHandoffs;
+            into[1] = Blockchain.Metrics.PrewarmHandoffsRejected;
+            into[2] = Blockchain.Metrics.PrewarmHandoffsMissing;
+            into[3] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstRuns);
+            into[4] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstRounds);
+            into[5] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstCells);
+            into[6] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstSkipped);
+            into[7] = Volatile.Read(ref Blockchain.Metrics.PrewarmBlockStartMicros);
+        }
+
         public void CaptureStartStats()
         {
             // EVM counters — always captured (used by normal console reporting).
@@ -215,6 +233,7 @@ namespace Nethermind.Consensus.Processing
             _startStateRootTime = Evm.Metrics.MainThreadStateRootTime;
             _startBloomsTime = Evm.Metrics.MainThreadBloomsTime;
             _startReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime;
+            ReadExperimentCounters(_startExperiment);
         }
 
         public void UpdateStats(IReadOnlyList<Block> blocks, BlockHeader? baseBlock, long blockProcessingTimeInMicros)
@@ -299,6 +318,8 @@ namespace Nethermind.Consensus.Processing
                 blockData.DeltaStateRootTime = Evm.Metrics.MainThreadStateRootTime - _startStateRootTime;
                 blockData.DeltaBloomsTime = Evm.Metrics.MainThreadBloomsTime - _startBloomsTime;
                 blockData.DeltaReceiptsRootTime = Evm.Metrics.MainThreadReceiptsRootTime - _startReceiptsRootTime;
+                ReadExperimentCounters(blockData.Experiment);
+                for (int i = 0; i < blockData.Experiment.Length; i++) blockData.Experiment[i] -= _startExperiment[i];
 
                 // Snapshot per-tx timing (rents a pooled list for ThreadPool use, null when disabled).
                 // The list is disposed (returning its array to the pool) in BlockDataPolicy.Return.
@@ -787,6 +808,11 @@ namespace Nethermind.Consensus.Processing
                     writer.WriteNumber("cached_contracts_used", data.CurrentCachedContractsUsed - data.StartCachedContractsUsed);
                     writer.WriteEndObject();
 
+                    writer.WriteStartObject("experiment");
+                    writer.WriteBoolean("applied", ExperimentBlocks.Apply(block.Number));
+                    for (int i = 0; i < ExperimentCounters.Length; i++) writer.WriteNumber(ExperimentCounters[i], data.Experiment[i]);
+                    writer.WriteEndObject();
+
                     // Per-transaction timing breakdown (when enabled).
                     ArrayPoolList<long>? perTxTicks = data.PerTxTicks;
                     if (perTxTicks is not null && perTxTicks.Count > 0 && txs.Length > 0)
@@ -921,6 +947,7 @@ namespace Nethermind.Consensus.Processing
 
         protected class BlockData
         {
+            public readonly long[] Experiment = new long[ExperimentCounters.Length];
             public Block Block;
             public BlockHeader? BaseBlock;
             public long BlockCount;
