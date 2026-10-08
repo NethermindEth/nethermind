@@ -34,10 +34,12 @@ public class InitializePrecompiles(ISpecProvider specProvider, IInitConfig initC
             }
             catch (KzgSetupUnavailableException e)
             {
-                if (logger.IsError) logger.Error(e.Message);
+                if (logger.IsError)
+                    logger.Error($"Cannot start: {e.Message} Restore kzg_trusted_setup.txt from the Nethermind distribution " +
+                        "or correct Init.KzgSetupPath, check file permissions, and restart the node.");
                 processExitSource.Exit(ExitCodes.MissingPrecompile);
                 // Cancel dependent steps without the step manager logging the failure again.
-                throw new TaskCanceledException();
+                throw new OperationCanceledException(processExitSource.Token);
             }
             catch (Exception e)
             {

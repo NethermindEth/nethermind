@@ -7,7 +7,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Runtime.Loader;
 using System.Threading;
@@ -44,10 +43,9 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class EthereumStepsManagerTests
     {
         [Test]
-        public async Task Invalid_kzg_setup_exits_without_logging_exception_traces([Values] bool malformed)
+        public async Task Invalid_kzg_setup_exits_without_logging_exception_traces()
         {
             using TempPath setupPath = TempPath.GetTempFile();
-            if (malformed) File.WriteAllText(setupPath.Path, "2\nzz\nzz\n");
 
             // Isolate the process-wide setup state from other tests that already loaded it.
             AssemblyLoadContext context = new(nameof(Invalid_kzg_setup_exits_without_logging_exception_traces), isCollectible: true);
@@ -77,7 +75,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                     Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.MissingPrecompile));
                     Assert.That(exitSource.Token.IsCancellationRequested, Is.True);
                     Assert.That(container.Resolve<StepObservingCancellation>().WasExecuted, Is.True);
-                    logger.Received(1).Error(Arg.Is<string>(message => message.Contains(setupPath.Path) && message.Contains("restart")), null);
+                    logger.Received(1).Error(Arg.Is<string>(message => message.Contains(setupPath.Path) && message.Contains("Init.KzgSetupPath") && message.Contains("restart")), null);
                     logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Is<Exception?>(exception => exception != null));
                 }
             }
@@ -85,6 +83,24 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             {
                 exitSource.Exit(ExitCodes.Ok);
                 context.Unload();
+            }
+        }
+
+        [Test]
+        public async Task Failed_optional_step_does_not_log_errors_for_its_dependents()
+        {
+            TestErrorLogManager logs = new();
+            using IContainer container = CreateNethermindEnvironment(typeof(FailingOptionalStep), typeof(RequiredDependentStep));
+            using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+                .AddSingleton<ILogManager>(logs)
+                .AddSingleton<EthereumStepsManager>());
+
+            await scope.Resolve<EthereumStepsManager>().InitializeAll(CancellationToken.None);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(container.Resolve<RequiredDependentStep>().WasExecuted, Is.False);
+                Assert.That(logs.Errors, Is.Empty);
             }
         }
 
@@ -517,6 +533,25 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
 
             return builder;
+        }
+    }
+
+    public class FailingOptionalStep : IStep
+    {
+        public bool MustInitialize => false;
+
+        public Task Execute(CancellationToken cancellationToken) => throw new TestException();
+    }
+
+    [RunnerStepDependencies(typeof(FailingOptionalStep))]
+    public class RequiredDependentStep : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            return Task.CompletedTask;
         }
     }
 

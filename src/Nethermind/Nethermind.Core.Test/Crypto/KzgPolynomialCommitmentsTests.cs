@@ -44,7 +44,7 @@ public class KzgPolynomialCommitmentsTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(IsSetupUnavailable(failure!), Is.True);
-            Assert.That(failure!.Message, Does.Contain(setupPath.Path).And.Contain("Init.KzgSetupPath").And.Contain("restart"));
+            Assert.That(failure!.Message, Does.Contain(setupPath.Path));
             Assert.That(failure.InnerException, malformed ? Is.TypeOf<InvalidOperationException>() : Is.TypeOf<ArgumentException>());
             Assert.That(kzg.GetProperty(nameof(KzgPolynomialCommitments.IsInitialized))!.GetValue(null), Is.False);
         }

@@ -96,9 +96,7 @@ public static partial class KzgPolynomialCommitments
         catch (Exception e) when (e is ArgumentException or InvalidOperationException or IOException or UnauthorizedAccessException)
         {
             throw new KzgSetupUnavailableException(
-                $"Cannot start: unable to load KZG trusted setup from '{trustedSetupTextFileLocation}'. " +
-                "The file may be missing, unreadable, or invalid. Restore kzg_trusted_setup.txt from the Nethermind distribution " +
-                "or correct Init.KzgSetupPath, check file permissions, and restart the node.", e);
+                $"Unable to load KZG trusted setup from '{trustedSetupTextFileLocation}'. The file may be missing, unreadable, or invalid.", e);
         }
     }
 

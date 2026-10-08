@@ -191,7 +191,7 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
-            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
+            catch (Exception exception) when (exception is not TaskCanceledException && (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested))
             {
                 if (stepWrapper.Step.MustInitialize)
                 {
