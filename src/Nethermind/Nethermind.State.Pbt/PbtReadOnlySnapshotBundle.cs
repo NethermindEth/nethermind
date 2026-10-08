@@ -43,13 +43,65 @@ public sealed class PbtReadOnlySnapshotBundle(
     private static readonly StringLabel _readCodePersistenceNullLabel = new("code_persistence_null");
 
     private bool _isDisposed;
+    private readonly PbtSnapshotChain? _chain;
+    internal PbtReadOnlySnapshotBundle(PbtSnapshotChain chain, IPbtPersistence.IReader reader, bool recordDetailedMetrics)
+        : this(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics) => _chain = chain;
+    private int LayerCount => _chain?.Layers.Count ?? snapshots.Count;
+    private PbtSnapshot? MemoryLayer(int index) => _chain is null ? snapshots[index] : _chain.Layers[index].Memory;
+    private PersistedSnapshots.PbtRetainedSnapshot? RetainedLayer(int index) => _chain?.Layers[index].Retained;
+
+    private bool TryAccount(int index, in ValueHash256 address, out PbtAccount? account) =>
+        MemoryLayer(index) is { } memory ? memory.Content.Accounts.TryGetValue(address, out account) : RetainedLayer(index)!.TryGetAccount(address, out account);
+    private bool TryCode(int index, in ValueHash256 hash, out CodeInfo? code) =>
+        MemoryLayer(index) is { } memory ? memory.Content.Codes.TryGetValue(hash, out code) : RetainedLayer(index)!.TryGetCode(hash, out code);
+    private bool TryGroup(int index, PbtStorageNodePath path, out RefCountingMemory? payload) =>
+        MemoryLayer(index) is { } memory ? memory.Content.TryGetNodeGroup(path, out payload) : RetainedLayer(index)!.TryGetNodeGroup(path, out payload);
+    private bool TryReadSlot<TKey>(int layer, in HashedKey<TKey> key, in ValueHash256 address, int index, out EvmWord value) where TKey : struct, IPbtKey<TKey>
+    {
+        if (MemoryLayer(layer) is { } memory)
+        {
+            if (memory.Content.TryGetSlotRun(key, out PackedSlotRun? run)) { value = run!.Get(index); return true; }
+            if (memory.Content.SelfDestructedStorageAddresses.ContainsKey(address)) { value = default; return true; }
+        }
+        else
+        {
+            PersistedSnapshots.PbtRetainedSnapshot retained = RetainedLayer(layer)!;
+            if (retained.TryGetSlotRun(key.Key, out PackedSlotRun? run))
+            {
+                value = run!.Get(index);
+                SlotRun.Return(run);
+                return true;
+            }
+            if (retained.TryGetStorageClear(address, out _)) { value = default; return true; }
+        }
+        value = default;
+        return false;
+    }
+
+    private bool TryRentRun<TKey>(int index, in HashedKey<TKey> key, in ValueHash256 address, out PackedSlotRun? run) where TKey : struct, IPbtKey<TKey>
+    {
+        if (MemoryLayer(index) is { } memory)
+        {
+            if (memory.Content.TryGetSlotRun(key, out PackedSlotRun? borrowed)) { run = borrowed!.Clone(); return true; }
+            if (memory.Content.SelfDestructedStorageAddresses.ContainsKey(address)) { run = SlotRun.Empty; return true; }
+        }
+        else
+        {
+            PersistedSnapshots.PbtRetainedSnapshot retained = RetainedLayer(index)!;
+            if (retained.TryGetSlotRun(key.Key, out run)) return true;
+            if (retained.TryGetStorageClear(address, out _)) { run = SlotRun.Empty; return true; }
+        }
+        run = null;
+        return false;
+    }
+
 
     public ValueHash256 TreeRoot
     {
         get
         {
             GuardDispose();
-            return snapshots.Count > 0 ? snapshots[^1].TreeRoot : reader.CurrentRoot;
+            return LayerCount > 0 ? _chain is null ? snapshots[^1].TreeRoot : _chain.Layers[^1].TreeRoot : reader.CurrentRoot;
         }
     }
 
@@ -58,9 +110,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
+        for (int index = LayerCount - 1; index >= 0; index--)
         {
-            if (snapshots[index].Content.TryGetNodeGroup(groupKey, out RefCountingMemory? payload))
+            if (TryGroup(index, groupKey, out RefCountingMemory? payload))
             {
                 if (recordDetailedMetrics)
                 {
@@ -88,9 +140,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
+        for (int index = LayerCount - 1; index >= 0; index--)
         {
-            if (snapshots[index].Content.Accounts.TryGetValue(addressHash, out PbtAccount? account))
+            if (TryAccount(index, addressHash, out PbtAccount? account))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readAccountSnapshotLabel);
                 return account;
@@ -109,13 +161,12 @@ public sealed class PbtReadOnlySnapshotBundle(
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
         ValueHash256 addressHash = PbtStateKey.StorageAddress(runKey.Key);
-        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
+        for (int layer = LayerCount - 1; layer >= 0; layer--)
         {
-            PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            if (TryReadSlot(layer, runKey, addressHash, index, out EvmWord value))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabels[labelIndex]);
-                return run?.Get(index) ?? default;
+                return value;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -132,13 +183,12 @@ public sealed class PbtReadOnlySnapshotBundle(
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         int labelIndex = runKey.Key.Bytes[0] == Eip8297KeyDerivation.AccountZone ? 1 : 0;
-        for (int layer = snapshots.Count - 1; layer >= 0; layer--)
+        for (int layer = LayerCount - 1; layer >= 0; layer--)
         {
-            PbtSnapshotContent content = snapshots[layer].Content;
-            if (content.TryGetSlotRun(runKey, out PackedSlotRun? run) || content.SelfDestructedStorageAddresses.ContainsKey(addressHash))
+            if (TryRentRun(layer, runKey, addressHash, out PackedSlotRun? run))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readRunSnapshotLabels[labelIndex]);
-                return run?.Clone() ?? SlotRun.Empty;
+                return run!;
             }
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -151,9 +201,9 @@ public sealed class PbtReadOnlySnapshotBundle(
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
-        for (int index = snapshots.Count - 1; index >= 0; index--)
+        for (int index = LayerCount - 1; index >= 0; index--)
         {
-            if (snapshots[index].Content.Codes.TryGetValue(codeHash, out CodeInfo? code))
+            if (TryCode(index, codeHash, out CodeInfo? code))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readCodeSnapshotLabel);
                 return code;
@@ -172,6 +222,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         _isDisposed = true;
         try
         {
+            _chain?.Dispose();
             snapshots.Dispose();
         }
         finally

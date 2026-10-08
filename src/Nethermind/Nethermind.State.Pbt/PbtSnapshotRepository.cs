@@ -4,6 +4,9 @@
 using System.Threading;
 using Nethermind.Monitoring.Config;
 using Nethermind.State.Flat;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt;
 
@@ -12,20 +15,35 @@ namespace Nethermind.State.Pbt;
 /// fork siblings, and assembles backward chains for bundle construction.
 /// </summary>
 /// <remarks>
-/// Two tiers, both keyed by <see cref="PbtSnapshot.To"/>: the base layer a block committed, and the
-/// wider layer compaction merged onto the same state. They coexist rather than replace one another —
-/// a compacted layer is a shortcut across the base ones, not a substitute — so a walk aiming past it
-/// can still step through the narrow layers underneath.
+/// Memory base and compacted layers coexist with four retained tiers. Compacted edges are traversal
+/// shortcuts, not substitutes for independently available base snapshots.
 /// </remarks>
-public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
+public partial class PbtSnapshotRepository(IMetricsConfig metricsConfig) : IDisposable
 {
-    // Sizing a layer walks its every run, code entry and node group on the committing thread, so the memory gauge is
-    // opt-in. Read once, so a layer is never counted in without being counted out.
+    // Metrics are optional; operational memory accounting must remain active for byte-budget enforcement.
     private readonly bool _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
     private readonly Lock _lock = new();
     private readonly Dictionary<StateId, PbtSnapshot> _snapshots = [];
     private readonly Dictionary<StateId, PbtSnapshot> _compactedSnapshots = [];
     private StateId? _lastCommittedStateId;
+    private readonly Dictionary<(StateId To, long Depth), PbtRetainedSnapshot> _retained = [];
+    private readonly ISnapshotCatalog _catalog = NullSnapshotCatalog.Instance;
+    private readonly PbtRetainedPublicationGate _publicationGate = new();
+    private long _memoryBytes;
+    private bool _disposed;
+
+    internal PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtRetainedPublicationGate publicationGate)
+        : this(metricsConfig) => (_catalog, _publicationGate) = (catalog, publicationGate);
+
+    private readonly PbtRetainedStorageLifetime _storageLifetime = new();
+    internal PbtSnapshotRepository(IMetricsConfig metricsConfig, ISnapshotCatalog catalog, PbtRetainedPublicationGate publicationGate, PbtRetainedStorageLifetime storageLifetime)
+        : this(metricsConfig, catalog, publicationGate) => _storageLifetime = storageLifetime;
+
+    internal PbtRetainedPublicationGate PublicationGate => _publicationGate;
+    internal long InMemorySnapshotBytes { get { lock (_lock) return _memoryBytes; } }
+    internal int RetainedCount { get { lock (_lock) return _retained.Count; } }
+    private static long Bytes(PbtSnapshot snapshot) => snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
+
 
     public int Count
     {
@@ -51,11 +69,12 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
     /// <summary>Adds a sealed base layer, taking ownership of one lease. Returns false (and releases) on duplicate.</summary>
     public bool TryAdd(PbtSnapshot snapshot)
     {
-        PbtSnapshotPayloadSize payloadSize = _recordDetailedMetrics ? snapshot.PayloadSize : default;
+        PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
         lock (_lock)
         {
-            if (_snapshots.TryAdd(snapshot.To, snapshot))
+            if (!_disposed && _snapshots.TryAdd(snapshot.To, snapshot))
             {
+                _memoryBytes += payloadSize.Leaf + payloadSize.Node;
                 _lastCommittedStateId = snapshot.To;
                 Metrics.AddPbtBaseSnapshotCount(1);
                 if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(payloadSize, 1);
@@ -71,9 +90,10 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
     /// <remarks>Returns false (and releases) when that state already has one — two compactions raced.</remarks>
     public bool TryAddCompacted(PbtSnapshot snapshot)
     {
+        PbtSnapshotPayloadSize payloadSize = snapshot.PayloadSize;
         lock (_lock)
         {
-            if (_compactedSnapshots.TryAdd(snapshot.To, snapshot)) return true;
+            if (!_disposed && _compactedSnapshots.TryAdd(snapshot.To, snapshot)) { _memoryBytes += payloadSize.Leaf + payloadSize.Node; return true; }
         }
 
         snapshot.Dispose();
@@ -83,82 +103,64 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
     /// <summary>Leases the next bounded snapshot extending the persisted state, preferring compacted edges in a backward breadth-first walk.</summary>
     internal PbtSnapshot? FindSnapshotToPersist(in StateId seed, in StateId persistedState, ulong compactSize)
     {
-        if (Height(seed) <= Height(persistedState)) return null;
-
-        lock (_lock)
-        {
-            Queue<StateId> frontier = new();
-            HashSet<StateId> visited = [seed];
-            frontier.Enqueue(seed);
-            while (frontier.TryDequeue(out StateId current))
-            {
-                for (int tier = 0; tier < 2; tier++)
-                {
-                    Dictionary<StateId, PbtSnapshot> snapshots = tier == 0 ? _compactedSnapshots : _snapshots;
-                    if (!snapshots.TryGetValue(current, out PbtSnapshot? snapshot)) continue;
-                    if (snapshot.From == persistedState)
-                    {
-                        if (snapshot.To.BlockNumber - snapshot.From.BlockNumber <= compactSize && snapshot.TryLease()) return snapshot;
-                    }
-                    else if (Height(snapshot.From) > Height(persistedState) && visited.Add(snapshot.From))
-                    {
-                        frontier.Enqueue(snapshot.From);
-                    }
-                }
-            }
-        }
-
-        return null;
+        using PbtSnapshotLease? lease = FindCandidateToPersist(seed, persistedState, compactSize, static _ => true, memoryOnly: true);
+        if (lease?.Memory is not { } snapshot || !snapshot.TryLease()) return null;
+        return snapshot;
     }
 
     /// <summary>Releases orphan descendants above the successful persistence boundary while preserving leased readers.</summary>
     /// <remarks>Call before removing states at the boundary, whose siblings identify the forks to prune.</remarks>
     internal void RemoveSiblingAndDescendents(in StateId canonicalState)
     {
-        List<PbtSnapshot> removed = [];
-        lock (_lock)
+        List<StateId> abandoned = [];
+        List<PbtSnapshot> memoryCandidates = [];
+        List<(StateId To, long Depth, SnapshotTier Tier)> retained = [];
+        lock (_publicationGate.Sync)
         {
-            bool hasSibling = false;
-            foreach (StateId state in _snapshots.Keys)
-                hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
-            foreach (StateId state in _compactedSnapshots.Keys)
-                hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
-            if (!hasSibling) return;
-
-            HashSet<StateId> states = [];
-            foreach (StateId state in _snapshots.Keys)
-                if (Height(state) > Height(canonicalState)) states.Add(state);
-            foreach (StateId state in _compactedSnapshots.Keys)
-                if (Height(state) > Height(canonicalState)) states.Add(state);
-
-            List<StateId> ordered = [.. states];
-            ordered.Sort(static (left, right) => left.BlockNumber.CompareTo(right.BlockNumber));
-            HashSet<StateId> reachable = [canonicalState];
-            foreach (StateId state in ordered)
+            lock (_lock)
             {
-                if ((_snapshots.TryGetValue(state, out PbtSnapshot? snapshot) && reachable.Contains(snapshot.From))
-                    || (_compactedSnapshots.TryGetValue(state, out PbtSnapshot? compacted) && reachable.Contains(compacted.From)))
+                HashSet<StateId> states = [.. _snapshots.Keys, .. _compactedSnapshots.Keys];
+                foreach (PbtRetainedSnapshot snapshot in _retained.Values) states.Add(snapshot.To);
+                bool hasSibling = false;
+                foreach (StateId state in states) hasSibling |= state.BlockNumber == canonicalState.BlockNumber && state != canonicalState;
+                if (!hasSibling) return;
+                List<StateId> ordered = [.. states];
+                ordered.Sort(CompareStates);
+                HashSet<StateId> reachable = [canonicalState];
+                // A retained descendant cannot rely on memory below it; backward reads cannot return to memory.
+                HashSet<StateId> retainedReachable = [canonicalState];
+                foreach (StateId state in ordered)
                 {
-                    reachable.Add(state);
-                    continue;
+                    if (Height(state) <= Height(canonicalState)) continue;
+                    bool connected = _snapshots.TryGetValue(state, out PbtSnapshot? memory) && reachable.Contains(memory.From)
+                        || _compactedSnapshots.TryGetValue(state, out memory) && reachable.Contains(memory.From);
+                    bool retainedConnected = false;
+                    foreach (SnapshotTier tier in RetainedPriority)
+                    {
+                        if (!_retainedEdges.TryGetValue((state, tier), out SortedDictionary<long, PbtRetainedSnapshot>? edges)) continue;
+                        foreach (PbtRetainedSnapshot snapshot in edges.Values) retainedConnected |= retainedReachable.Contains(snapshot.From);
+                    }
+                    if (retainedConnected) retainedReachable.Add(state);
+                    if (connected || retainedConnected) reachable.Add(state);
+                    else abandoned.Add(state);
                 }
-
-                if (_snapshots.Remove(state, out snapshot))
+                foreach (StateId state in abandoned)
                 {
-                    Metrics.AddPbtBaseSnapshotCount(-1);
-                    if (_recordDetailedMetrics) Metrics.AddPbtBaseSnapshotMemory(snapshot.PayloadSize, -1);
-                    removed.Add(snapshot);
+                    if (_snapshots.TryGetValue(state, out PbtSnapshot? snapshot)) memoryCandidates.Add(snapshot);
+                    if (_compactedSnapshots.TryGetValue(state, out snapshot)) memoryCandidates.Add(snapshot);
                 }
-                if (_compactedSnapshots.Remove(state, out compacted)) removed.Add(compacted);
+                HashSet<StateId> abandonedSet = [.. abandoned];
+                foreach (((StateId to, long depth), PbtRetainedSnapshot snapshot) in _retained)
+                    if (abandonedSet.Contains(to)) retained.Add((to, depth, snapshot.Tier));
             }
+            foreach (PbtSnapshot snapshot in memoryCandidates) RemoveMemorySource(snapshot);
+            foreach ((StateId to, long depth, SnapshotTier tier) in retained) RemoveRetainedExact(to, depth, tier);
         }
-
-        foreach (PbtSnapshot snapshot in removed) snapshot.Dispose();
     }
 
     public bool HasState(in StateId stateId)
     {
-        lock (_lock) return _snapshots.ContainsKey(stateId);
+        lock (_lock) return _snapshots.ContainsKey(stateId) || HasRetainedBase(stateId);
     }
 
     /// <summary>
@@ -172,18 +174,16 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
     /// </remarks>
     public bool TryLeaseChain(in StateId head, in StateId persistedFloor, PbtSnapshotPooledList chain)
     {
-        lock (_lock)
+        StateId floor = persistedFloor;
+        using PbtSnapshotChain? leased = head == floor ? new([]) : Walk(head, MemoryPriority,
+            edge => edge.From == floor ? Step.Stop : Height(edge.From) > Height(floor) ? Step.Traverse : Step.Skip);
+        if (leased is null) return false;
+        foreach (PbtSnapshotLease edge in leased.Layers)
         {
-            long floorHeight = Height(persistedFloor);
-            StateId current = head;
-            while (current != persistedFloor)
-            {
-                if (current == StateId.PreGenesis || !TryTakeWidestEdge(current, floorHeight, chain, out current)) return false;
-            }
-
-            chain.Reverse();
-            return true;
+            if (!edge.Memory!.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
+            chain.Add(edge.Memory);
         }
+        return true;
     }
 
     /// <summary>
@@ -197,20 +197,16 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
     /// </remarks>
     public bool TryLeaseCompactionWindow(in StateId head, long minBlockNumber, PbtSnapshotPooledList chain)
     {
-        lock (_lock)
+        if (Height(head) == minBlockNumber) return true;
+        using PbtSnapshotChain? leased = Walk(head, MemoryPriority, edge =>
+            Height(edge.From) < minBlockNumber ? Step.Skip : Height(edge.From) == minBlockNumber ? Step.Stop : Step.Traverse);
+        if (leased is null) return false;
+        foreach (PbtSnapshotLease edge in leased.Layers)
         {
-            StateId current = head;
-            while (Height(current) > minBlockNumber)
-            {
-                if (!TryTakeWidestEdge(current, minBlockNumber, chain, out current)) return false;
-            }
-
-            // landing past the floor means the window does not start on a layer boundary
-            if (Height(current) != minBlockNumber) return false;
-
-            chain.Reverse();
-            return true;
+            if (!edge.Memory!.TryLease()) throw new InvalidOperationException("Held snapshot lease expired.");
+            chain.Add(edge.Memory);
         }
+        return true;
     }
 
     /// <summary>Removes and releases every layer, of either tier, at or below <paramref name="blockNumber"/> — persisted canonical layers and stale fork siblings alike.</summary>
@@ -225,6 +221,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
                 for (int i = 0; i < firstCompacted; i++) Metrics.AddPbtBaseSnapshotMemory(removed[i].PayloadSize, -1);
 
             Collect(_compactedSnapshots, removed, static (id, floor) => id.BlockNumber <= floor, blockNumber);
+            foreach (PbtSnapshot snapshot in removed) _memoryBytes -= Bytes(snapshot);
         }
 
         foreach (PbtSnapshot snapshot in removed)
@@ -244,6 +241,7 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
         lock (_lock)
         {
             Collect(_compactedSnapshots, removed, static (id, at) => id.BlockNumber == at, blockNumber);
+            foreach (PbtSnapshot snapshot in removed) _memoryBytes -= Bytes(snapshot);
         }
 
         foreach (PbtSnapshot snapshot in removed)
@@ -266,33 +264,6 @@ public class PbtSnapshotRepository(IMetricsConfig metricsConfig)
         }
 
         return removed.Count;
-    }
-
-    /// <summary>Takes the widest edge out of <paramref name="current"/> that does not overshoot the floor.</summary>
-    /// <remarks>
-    /// Widest first is the whole of the promotion: a compacted layer is preferred wherever one spans
-    /// far enough, so a wide window naturally consumes the narrower merges below it and a read walks
-    /// fewer, wider layers. No backtracking is needed — both edges lie on the same branch, and the base
-    /// layers under a compacted one are never pruned before it.
-    /// </remarks>
-    private bool TryTakeWidestEdge(in StateId current, long floorHeight, PbtSnapshotPooledList chain, out StateId next)
-    {
-        if (_compactedSnapshots.TryGetValue(current, out PbtSnapshot? wide) && Height(wide.From) >= floorHeight && wide.TryLease())
-        {
-            chain.Add(wide);
-            next = wide.From;
-            return true;
-        }
-
-        if (_snapshots.TryGetValue(current, out PbtSnapshot? narrow) && narrow.TryLease())
-        {
-            chain.Add(narrow);
-            next = narrow.From;
-            return true;
-        }
-
-        next = default;
-        return false;
     }
 
     /// <summary>The state's height as a signed number, so <see cref="StateId.PreGenesis"/> (top of the unsigned range) reinterprets to -1 and orders below block 0.</summary>

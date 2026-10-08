@@ -58,6 +58,28 @@ public class PbtMetricsTests
         Metrics.PbtTrieUpdaterTime = _originalTrieUpdaterTime;
     }
 
+    [Test]
+    public void Operational_memory_accounting_includes_both_tiers_without_detailed_metrics([Values] bool detailed)
+    {
+        using PbtSnapshotRepository repository = new(new MetricsConfig { EnableDetailedMetric = detailed });
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtSnapshotContent content = new();
+        content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[1024]);
+        PbtSnapshot first = new(StateId.PreGenesis, new StateId(0, default), default, content, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        long firstBytes = first.PayloadSize.Leaf + first.PayloadSize.Node;
+        repository.TryAdd(first);
+        PbtSnapshotContent secondContent = new();
+        secondContent.Codes[TestItem.KeccakB.ValueHash256] = new CodeInfo(new byte[512]);
+        PbtSnapshot second = new(StateId.PreGenesis, new StateId(0, default), default, secondContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        long secondBytes = second.PayloadSize.Leaf + second.PayloadSize.Node;
+        repository.TryAddCompacted(second);
+        Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(firstBytes + secondBytes));
+        repository.RemoveCompactedAt(0);
+        Assert.That(repository.InMemorySnapshotBytes, Is.EqualTo(firstBytes));
+        repository.RemoveStatesUntil(0);
+        Assert.That(repository.InMemorySnapshotBytes, Is.Zero);
+    }
+
     /// <summary>Verifies commit timers, including skipping root timing when no fold occurs.</summary>
     [Test]
     public async Task CommittingABlock_TimesTheWriteBatchAndTheFoldsThatDidWork()

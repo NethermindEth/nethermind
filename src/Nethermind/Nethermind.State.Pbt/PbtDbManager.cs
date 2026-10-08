@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Channels;
 using Nethermind.Config;
@@ -14,13 +15,13 @@ using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
 
 namespace Nethermind.State.Pbt;
 
 public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 {
-    private const int GatherRetryLimit = 16;
-    private const int MaxInFlightCompactionJobs = 32;
+    private static readonly TimeSpan GatherGiveUpDeadline = TimeSpan.FromSeconds(5);
     private static readonly TimeSpan CacheSweepInterval = TimeSpan.FromSeconds(15);
 
     private readonly IPbtTrieNodeCache _trieNodeCache;
@@ -30,12 +31,12 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
     private readonly IPbtResourcePool _resourcePool;
     private readonly PbtSnapshotCompactor _compactor;
     private readonly ILogger _logger;
-    private readonly Channel<StateId> _persistenceJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
-    private readonly Channel<StateId> _compactionJobs = Channel.CreateBounded<StateId>(MaxInFlightCompactionJobs);
-    // The trie cache matters for the next block's fold, so a retired block's staged groups are folded in as soon as
-    // possible; a block that arrives while the previous one is still being ingested stalls until it has been.
+    private readonly Channel<StateId> _persistenceJobs;
+    private readonly Channel<StateId> _compactionJobs;
     private readonly Channel<PbtTransientResource> _trieCachePopulationJobs = Channel.CreateBounded<PbtTransientResource>(1);
     private readonly Lock _admissionLock = new();
+    private readonly Lock _trieCacheWriteLock = new();
+    private readonly bool _inlineCompaction;
     private readonly CancellationToken _processExitToken;
     private readonly bool _recordDetailedMetrics;
     private int _isDisposed;
@@ -63,7 +64,23 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         ILogManager logManager,
         IMetricsConfig metricsConfig,
         IPbtTrieNodeCache trieNodeCache)
+        : this(repository, coordinator, persistence, resourcePool, compactor, processExitSource, logManager,
+            metricsConfig, trieNodeCache, NullPbtRetainedSnapshotLoader.Instance)
+    { }
+
+    internal PbtDbManager(
+        PbtSnapshotRepository repository,
+        PbtPersistenceCoordinator coordinator,
+        IPbtPersistence persistence,
+        IPbtResourcePool resourcePool,
+        PbtSnapshotCompactor compactor,
+        IProcessExitSource processExitSource,
+        ILogManager logManager,
+        IMetricsConfig metricsConfig,
+        IPbtTrieNodeCache trieNodeCache,
+        IPbtRetainedSnapshotLoader retainedLoader)
     {
+        retainedLoader.Load();
         _trieNodeCache = trieNodeCache;
         _repository = repository;
         _coordinator = coordinator;
@@ -73,6 +90,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         _logger = logManager.GetClassLogger<PbtDbManager>();
         _processExitToken = processExitSource.Token;
         _recordDetailedMetrics = metricsConfig.EnableDetailedMetric;
+        _inlineCompaction = coordinator.Configuration.InlineCompaction;
+        _persistenceJobs = Channel.CreateBounded<StateId>(coordinator.Configuration.MaxInFlightCompactJob);
+        _compactionJobs = Channel.CreateBounded<StateId>(coordinator.Configuration.MaxInFlightCompactJob);
         _stopSource = new CancellationTokenSource();
         _persistenceWorker = Task.Run(RunPersistenceWorker);
         _compactionWorker = Task.Run(RunCompactionWorker);
@@ -82,56 +102,49 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
     public PbtReadOnlySnapshotBundle? TryGatherReadOnlyBundle(in StateId stateId)
     {
-        // the pre-genesis state is empty by definition, whatever is on disk, and is never cached:
-        // there is nothing to amortise and nothing to sweep
-        if (stateId == StateId.PreGenesis) return new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
-
-        // a sweep may have released the entry between the lookup and the lease, in which case fall
-        // through and assemble; a failure here must not consume an assembly attempt, or a state that
-        // exists would report unavailable once the attempts ran out
-        if (_readOnlyBundleCache.TryGetValue(stateId, out PbtReadOnlySnapshotBundle? cached) && cached.TryLease()) return cached;
-
-        // reader first, chain second: if persistence advances in between, the chain walk to the
-        // reader's (stale) floor fails and we retry with a fresh reader; leased layers pruned
-        // after assembly stay readable through their leases
-        for (int attempt = 0; attempt < GatherRetryLimit; attempt++)
-        {
-            IPbtPersistence.IReader reader = _persistence.CreateReader();
-            PbtSnapshotPooledList chain = new(1);
-            if (_repository.TryLeaseChain(stateId, reader.CurrentState, chain))
-            {
-                ReportBundleMetrics(chain);
-
-                // ownership of the chain and the reader passes to the bundle
-                PbtReadOnlySnapshotBundle bundle = new(chain, reader, _recordDetailedMetrics);
-
-                // lease before publishing, never after: a sweep landing between the publish and the
-                // lease would release the only lease and hand back a dead bundle
-                bundle.TryLease();
-                if (!_readOnlyBundleCache.TryAdd(stateId, bundle)) bundle.Dispose();
-                return bundle;
-            }
-
-            // a broken walk leaves the partial leases on the chain: disposing it releases them
-            chain.Dispose();
-            reader.Dispose();
-        }
-
-        return null;
+        try { return GatherReadOnlyBundle(stateId); }
+        catch (StateNotRetainedException) { return null; }
     }
 
-    /// <remarks>
-    /// Only assembled chains are reported: a cache hit returns a view whose shape was already
-    /// observed when it was built.
-    /// </remarks>
-    private static void ReportBundleMetrics(PbtSnapshotPooledList chain)
+    public PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId)
     {
-        Metrics.PbtSnapshotBundleSize = chain.Count;
-
-        // PreGenesis sits at the top of the block-number range, so it subtracts as -1 would and the
-        // span of a chain reaching back to it comes out right without a special case.
-        Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(
-            chain.Count > 0 ? chain[^1].To.BlockNumber - chain[0].From.BlockNumber : 0);
+        if (stateId == StateId.PreGenesis) return new(new PbtSnapshotPooledList(0), EmptyPersistenceReader.Instance, _recordDetailedMetrics);
+        long started = 0;
+        int attempt = 0;
+        while (true)
+        {
+            if (_readOnlyBundleCache.TryGetValue(stateId, out PbtReadOnlySnapshotBundle? cached) && cached.TryLease()) return cached;
+            if (attempt == 1) started = Stopwatch.GetTimestamp();
+            if (attempt != 0)
+            {
+                if (Stopwatch.GetElapsedTime(started) > GatherGiveUpDeadline)
+                    throw new InvalidOperationException($"Timed out gathering PBT bundle for {stateId} after {attempt} retries.");
+                Thread.Sleep(Math.Min(1 << Math.Min(attempt, 30), 100));
+            }
+            IPbtPersistence.IReader reader = _persistence.CreateReader();
+            PbtSnapshotChain? chain;
+            try { chain = _repository.TryLeaseReadChain(stateId, reader.CurrentState); }
+            catch { reader.Dispose(); throw; }
+            if (chain is null)
+            {
+                reader.Dispose();
+                if (!HasStateForBlock(stateId)) throw new StateNotRetainedException($"No state available for block {stateId.BlockNumber} with state root {stateId.StateRoot}");
+                attempt++;
+                continue;
+            }
+            PbtReadOnlySnapshotBundle bundle;
+            try
+            {
+                Metrics.PbtSnapshotBundleSize = chain.Layers.Count;
+                Metrics.PbtSnapshotBundleBlockNumberDepth.Observe(chain.Layers.Count > 0
+                    ? chain.Layers[^1].To.BlockNumber - chain.Layers[0].From.BlockNumber : 0);
+                bundle = new(chain, reader, _recordDetailedMetrics);
+            }
+            catch { chain.Dispose(); reader.Dispose(); throw; }
+            bundle.TryLease();
+            if (!_readOnlyBundleCache.TryAdd(stateId, bundle)) bundle.Dispose();
+            return bundle;
+        }
     }
 
     /// <remarks>
@@ -191,7 +204,18 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 transientResource.ReleaseLease();
                 return;
             }
-            if (!EnqueueOrStall(_trieCachePopulationJobs.Writer, transientResource, "trie cache population")) transientResource.ReleaseLease();
+            if (_inlineCompaction)
+            {
+                try
+                {
+                    lock (_trieCacheWriteLock) _trieNodeCache.Add(transientResource);
+                    if (_compactor.DoCompactSnapshot(committed)) ClearReadOnlyBundleCache();
+                }
+                finally { transientResource.ReleaseLease(); }
+                EnqueueOrStall(_persistenceJobs.Writer, committed, "persistence");
+                return;
+            }
+            if (!_trieCachePopulationJobs.Writer.TryWrite(transientResource)) transientResource.ReleaseLease();
             if (_logger.IsDebug) _logger.Debug($"Admitted Pbt snapshot {snapshot.From} -> {committed}: persisted={persisted}, snapshots={_repository.Count}, compactedSnapshots={_repository.CompactedCount}, cachedBundles={_readOnlyBundleCache.Count}, managedBytes={GC.GetTotalMemory(false)}");
 
             EnqueueOrStall(_compactionJobs.Writer, committed, "compaction/persistence");
@@ -223,10 +247,26 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         || _repository.HasState(stateId)
         || _coordinator.GetCurrentPersistedStateId() == stateId;
 
+    public void DropStateNotReachableFrom(in StateId head)
+    {
+        try
+        {
+            if (_coordinator.DropStateNotReachableFrom(head)) ClearReadOnlyBundleCache();
+        }
+        catch
+        {
+            // A catalog failure can leave a partially pruned graph; future gathers must not reuse it.
+            ClearReadOnlyBundleCache();
+            throw;
+        }
+    }
+
     public void FlushCache(CancellationToken cancellationToken)
     {
-        _coordinator.FlushToPersistence(cancellationToken);
+        StateId persisted = _coordinator.FlushToPersistenceState(cancellationToken);
+        if (cancellationToken.IsCancellationRequested || persisted == StateId.PreGenesis) return;
         ClearReadOnlyBundleCache();
+        lock (_trieCacheWriteLock) _trieNodeCache.Clear();
     }
 
     private async Task RunPersistenceWorker()
@@ -240,17 +280,17 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     // only sweep once persistence has actually advanced, and only after the layers it
                     // superseded are pruned: sweeping earlier would re-cache a view assembled from
                     // layers about to go, pinning them all over again
-                    if (_coordinator.CheckPersistence(stateId)) ClearReadOnlyBundleCache();
+                    if (await _coordinator.CheckPersistenceAsync(stateId)) ClearReadOnlyBundleCache();
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (_logger.IsError) _logger.Error("Pbt persistence failed", e);
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { await _stopSource.CancelAsync(); }
+        catch { await _stopSource.CancelAsync(); throw; }
+        finally { _persistenceJobs.Writer.TryComplete(); }
     }
 
     /// <remarks>
@@ -270,7 +310,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                     // before persistence is nudged, or the boundary sweep would race this one
                     if (_compactor.DoCompactSnapshot(stateId)) ClearReadOnlyBundleCache();
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (_logger.IsError) _logger.Error("Pbt compaction failed", e);
                 }
@@ -278,9 +318,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 await _persistenceJobs.Writer.WriteAsync(stateId, _stopSource.Token);
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { await _stopSource.CancelAsync(); }
+        catch { await _stopSource.CancelAsync(); throw; }
+        finally { _compactionJobs.Writer.TryComplete(); }
     }
 
     private async Task RunTrieCachePopulator()
@@ -291,9 +331,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             {
                 try
                 {
-                    _trieNodeCache.Add(transientResource);
+                    lock (_trieCacheWriteLock) _trieNodeCache.Add(transientResource);
                 }
-                catch (Exception e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     if (_logger.IsError) _logger.Error("Pbt trie cache population failed", e);
                 }
@@ -303,9 +343,9 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
                 }
             }
         }
-        catch (OperationCanceledException)
-        {
-        }
+        catch (OperationCanceledException) { await _stopSource.CancelAsync(); }
+        catch { await _stopSource.CancelAsync(); throw; }
+        finally { _trieCachePopulationJobs.Writer.TryComplete(); }
     }
 
     /// <remarks>
@@ -338,6 +378,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
 
         try
         {
+            ClearReadOnlyBundleCache();
             _compactionJobs.Writer.TryComplete();
             // Closing admission releases a blocked producer; wait for its repository insertion before draining.
             lock (_admissionLock) { }

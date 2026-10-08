@@ -8,8 +8,11 @@ using Nethermind.State.Pbt.Migration;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.State.Flat;
+using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using NUnit.Framework;
 
@@ -18,6 +21,53 @@ namespace Nethermind.State.Pbt.Test;
 [TestFixture]
 public class PbtMigrationConfigTests
 {
+    [Test]
+    public void Snapshot_coordination_defaults_match_flat()
+    {
+        PbtConfig pbt = new();
+        FlatDbConfig flat = new();
+        string[] properties = ["EnableLongFinality", "LongFinalityMaxReorgDepth", "MaxInMemoryBaseSnapshotCount",
+            "MaxInMemorySnapshotBytes", "MaxInFlightCompactJob", "InlineCompaction", "RegenerateCompactionOffset",
+            "ArenaFileSizeBytes", "PersistedSnapshotDedicatedArenaThresholdBytes", "PersistedSnapshotArenaPageCacheBytes",
+            "PersistedSnapshotPunchHoleOnReclaim", "PersistedSnapshotMaxCompactSize", "ValidatePersistedSnapshot",
+            "PersistedSnapshotBloomBitsPerKey", "InMemorySnapshotBloomBitsPerKey"];
+        using (Assert.EnterMultipleScope())
+            foreach (string name in properties)
+                Assert.That(typeof(PbtConfig).GetProperty(name)!.GetValue(pbt),
+                    Is.EqualTo(typeof(FlatDbConfig).GetProperty(name)!.GetValue(flat)), name);
+    }
+
+    [Test]
+    public void Pbt_schedule_preserves_explicit_values_and_shared_metadata_offset()
+    {
+        using MemDb metadata = new();
+        PbtConfig pbt = new() { CompactSize = 8, CompactionOffset = 3, PersistedSnapshotMaxCompactSize = 64 };
+        ICompactionSchedule first = PbtCoreRegistration.CreateCompactionSchedule(metadata, pbt, LimboLogs.Instance);
+        ((IDb)metadata).Set(MetadataDbKeys.FlatDbCompactionOffset, Nethermind.Serialization.Rlp.Rlp.Encode(3L).Bytes);
+        ICompactionSchedule restored = PbtCoreRegistration.CreateCompactionSchedule(metadata, new PbtConfig
+        {
+            CompactSize = 8,
+            PersistedSnapshotMaxCompactSize = 64,
+        }, LimboLogs.Instance);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(first.IsCompactSizeBoundary(5), Is.True);
+            Assert.That(restored.IsCompactSizeBoundary(5), Is.True);
+            Assert.That(pbt.CompactionOffset, Is.EqualTo(3));
+            Assert.That(pbt.CompactSize, Is.EqualTo(8));
+        }
+    }
+
+    [Test]
+    public void Pbt_schedule_regeneration_updates_the_shared_metadata_key()
+    {
+        using MemDb metadata = new();
+        ((IDb)metadata).Set(MetadataDbKeys.FlatDbCompactionOffset, Nethermind.Serialization.Rlp.Rlp.Encode(long.MaxValue).Bytes);
+        PbtCoreRegistration.CreateCompactionSchedule(metadata, new PbtConfig { RegenerateCompactionOffset = true }, LimboLogs.Instance);
+        long stored = new Nethermind.Serialization.Rlp.RlpReader(((IDb)metadata).Get(MetadataDbKeys.FlatDbCompactionOffset)!).DecodeLong();
+        Assert.That(stored, Is.InRange(0L, (long)int.MaxValue - 1));
+    }
+
     private static ChainSpec Chain() => new()
     {
         Genesis = Build.A.Block.WithTimestamp(10).TestObject,
