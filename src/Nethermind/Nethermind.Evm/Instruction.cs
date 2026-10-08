@@ -173,7 +173,7 @@ public enum Instruction : byte
     TXDIFF = 0xb7,
     EVENTDATACOPY = 0xb8,
 
-    // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these take the next free values.
+    // EIP-7979, draft: the spec's placeholder 0xb0-0xb2 collides with EIP-8141, so these use provisional values until the EIP assigns them.
     CALLSUB = 0xba,
     CALLDEST = 0xbb,
     RETURNSUB = 0xbc,
