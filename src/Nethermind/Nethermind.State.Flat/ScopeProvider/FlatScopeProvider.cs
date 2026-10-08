@@ -10,6 +10,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.State.Flat.ScopeProvider;
 
+/// <param name="filterInMemorySlotReads">Read slots through the in-memory snapshots' negative filter; for read-only
+/// queries only, see <see cref="SnapshotBundle"/>.</param>
 public class FlatScopeProvider(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatDbManager flatDbManager,
@@ -18,7 +20,8 @@ public class FlatScopeProvider(
     ResourcePool.Usage usage,
     IStateHeaderProvider stateHeaderProvider,
     ILogManager logManager,
-    bool isReadOnly)
+    bool isReadOnly,
+    bool filterInMemorySlotReads = false)
     : IWorldStateScopeProvider, IDisposable
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
@@ -44,7 +47,7 @@ public class FlatScopeProvider(
         SnapshotBundle snapshotBundle;
         try
         {
-            snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage: usage);
+            snapshotBundle = flatDbManager.GatherSnapshotBundle(currentState, usage, filterInMemorySlotReads);
         }
         catch (StateUnavailableException)
         {
