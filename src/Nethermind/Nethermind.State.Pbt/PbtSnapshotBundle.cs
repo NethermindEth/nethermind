@@ -75,7 +75,7 @@ public sealed class PbtSnapshotBundle(
         foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
         {
             CodeInfo code = GetCode(awaiting.CodeHash.ValueHash256) ?? throw new InvalidDataException($"Missing PBT bytecode for {awaiting.CodeHash}.");
-            StoreAccount(addressHash, PbtAccount.From(awaiting, code));
+            StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
         }
         _accountsAwaitingCode.Clear();
         PbtPartitionBatches changes = new();
@@ -187,40 +187,40 @@ public sealed class PbtSnapshotBundle(
 
         if (account is null)
         {
-            StoreAccount(addressHash, null);
+            StoreAccount(addressHash, null, null);
             SelfDestruct(addressHash);
         }
         else if (previous is { } known && known.CodeHash == account.CodeHash.ValueHash256)
         {
-            StoreAccount(addressHash, known.WithNonceAndBalance(account));
+            StoreAccount(addressHash, known.WithNonceAndBalance(account), null);
         }
         else
         {
             CodeInfo? code = account.HasCode ? GetCode(account.CodeHash.ValueHash256) : null;
             if (account.HasCode && code is null) _accountsAwaitingCode[addressHash] = account;
-            else StoreAccount(addressHash, PbtAccount.From(account, code));
+            else StoreAccount(addressHash, PbtAccount.From(account, code), previousCodeHash is null ? code : null);
         }
     }
 
     private bool IsDelegation(in ValueHash256 codeHash) =>
         Eip7702Constants.IsDelegatedCode((GetCode(codeHash) ?? throw new InvalidDataException($"Missing PBT bytecode for {codeHash}.")).CodeSpan);
 
-    private void StoreAccount(in ValueHash256 addressHash, PbtAccount? account)
+    private void StoreAccount(in ValueHash256 addressHash, PbtAccount? account, CodeInfo? deployedCode)
     {
-        WriteAccountLeaves(addressHash, account);
+        WriteAccountLeaves(addressHash, account, deployedCode);
         WriteBuffer.Accounts[addressHash] = account;
     }
 
-    private void WriteAccountLeaves(in ValueHash256 addressHash, PbtAccount? account)
+    private void WriteAccountLeaves(in ValueHash256 addressHash, PbtAccount? account, CodeInfo? deployedCode)
     {
         bool isDelegation = account is { IsDelegation: true };
         SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.DelegationLeafKey : (byte)PbtKeyDerivation.CodeHashLeafKey), account?.CodeLeaf);
         SetPbtLeaf(PbtStateKey.Account(addressHash, isDelegation ? (byte)PbtKeyDerivation.CodeHashLeafKey : (byte)PbtKeyDerivation.DelegationLeafKey), null);
         // A zero basic-data value is stored as a deletion by the batch builder.
         SetPbtLeaf(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), account?.BasicData ?? default);
-        // Chunk leaves are keyed by code hash alone, so only code written in this block (see SetCode) stages them;
-        // code held by an older layer already has its chunks in the tree.
-        if (account is { IsDelegation: false } stem && WriteBuffer.Codes.TryGetValue(stem.CodeLeaf, out CodeInfo? code)) WriteCodeChunkLeaves(stem.CodeLeaf, code);
+        // Chunk leaves are keyed by code hash alone, so every deployment stages them: a layer can hold the bytecode
+        // without its chunks in the tree, as when the contract that first wrote it did not survive its transaction.
+        if (account is { IsDelegation: false } stem && deployedCode is not null) WriteCodeChunkLeaves(stem.CodeLeaf, deployedCode);
     }
 
     /// <summary>Sets a storage slot, reusing a precomputed <see cref="PbtStateKey.AddressKeyHash"/> so a run of slots for one address pays only the per-tree-index suffix hash.</summary>
@@ -284,7 +284,7 @@ public sealed class PbtSnapshotBundle(
         // claims the entry, so an account re-set to other code meanwhile keeps waiting for that code.
         foreach ((ValueHash256 addressHash, Account awaiting) in _accountsAwaitingCode)
             if (awaiting.CodeHash.ValueHash256 == codeHash && _accountsAwaitingCode.TryRemove(new KeyValuePair<ValueHash256, Account>(addressHash, awaiting)))
-                StoreAccount(addressHash, PbtAccount.From(awaiting, code));
+                StoreAccount(addressHash, PbtAccount.From(awaiting, code), code);
     }
 
     private void WriteCodeChunkLeaves(in ValueHash256 codeHash, CodeInfo code)

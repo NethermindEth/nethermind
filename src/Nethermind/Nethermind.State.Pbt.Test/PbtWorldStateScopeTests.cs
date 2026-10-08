@@ -224,11 +224,10 @@ public class PbtWorldStateScopeTests
             codeWriter.Set(codeHash.ValueHash256, code);
         Assert.That(scope.Bundle.GetCode(codeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(code));
 
-        if (writeAccount)
-        {
-            using IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1);
-            batch.Set(TestItem.AddressA, Build.An.Account.WithCode(code).TestObject);
-        }
+        // The balance moves the root either way, so the code is sealed into a snapshot even when no account takes it.
+        Account accountA = writeAccount ? Build.An.Account.WithBalance(1).WithCode(code).TestObject : Build.An.Account.WithBalance(1).TestObject;
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressA, accountA);
         scope.Commit(0);
 
         using (Assert.EnterMultipleScope())
@@ -237,6 +236,17 @@ public class PbtWorldStateScopeTests
             Assert.That(scope.CodeDb.GetCode(codeHash.ValueHash256).ToArray(), Is.EqualTo(code));
             Assert.That(scope.CodeDb.ContainsCode(codeHash.ValueHash256), Is.True);
         }
+
+        // The world state skips the code write on ContainsCode, so a later deployment must stage the chunk leaves
+        // itself: without an account in the first block, they never entered the tree.
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(1))
+            batch.Set(TestItem.AddressB, Build.An.Account.WithCode(code).TestObject);
+        scope.Commit(1);
+
+        List<RebuildEntry> expected = [];
+        PbtTestLeaves.AddAccount(expected, TestItem.AddressA, accountA, writeAccount ? code : null);
+        PbtTestLeaves.AddAccount(expected, TestItem.AddressB, Build.An.Account.WithCode(code).TestObject, code);
+        Assert.That(scope.RootHash.Bytes.ToArray(), Is.EqualTo(ReferenceRoot(expected.DistinctBy(entry => entry.Key).ToDictionary(entry => entry.Key, entry => entry.Leaf))));
     }
 
     [TestCase(7u, false)]
