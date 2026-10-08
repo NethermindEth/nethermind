@@ -223,7 +223,8 @@ internal sealed class BlockFootprints(Block block)
 
     private bool WerePredicted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
     {
-        ReadOnlySpan<StateEffect> effects = (uint)position < (uint)_footprints.Length && Volatile.Read(ref _footprints[position]) is { } footprint
+        TransactionFootprint?[] footprints = _footprints;
+        ReadOnlySpan<StateEffect> effects = (uint)position < (uint)footprints.Length && Volatile.Read(ref footprints[position]) is { } footprint
             ? footprint.Effects
             : default;
         int predicted = 0;
