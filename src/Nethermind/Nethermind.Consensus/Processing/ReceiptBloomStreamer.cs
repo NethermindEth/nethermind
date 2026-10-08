@@ -17,11 +17,17 @@ namespace Nethermind.Consensus.Processing;
 /// </remarks>
 internal sealed class ReceiptBloomStreamer
 {
+    // Blooms are needed only once the block's transactions end, so lagging a millisecond costs nothing, while waking the
+    // thread for every receipt would cost the block thread a wake-up each.
+    private const int SleepsBeforeParking = 20;
+
     private static readonly Lock InstanceLock = new();
     private static ReceiptBloomStreamer? _instance;
 
     private readonly ConcurrentQueue<TxReceipt> _queue = new();
-    private readonly SemaphoreSlim _ready = new(0);
+    private readonly SemaphoreSlim _wake = new(0);
+    // 1 while the thread is parked or about to park.
+    private int _parked;
 
     private ReceiptBloomStreamer()
     {
@@ -42,18 +48,37 @@ internal sealed class ReceiptBloomStreamer
     public void Add(TxReceipt receipt)
     {
         _queue.Enqueue(receipt);
-        _ready.Release();
+        // Either Park's last look at the queue sees this receipt, or this sees the flag Park set before it.
+        if (Volatile.Read(ref _parked) != 0 && Interlocked.Exchange(ref _parked, 0) != 0) _wake.Release();
     }
 
     private void Run()
     {
+        int idleRounds = 0;
         while (true)
         {
-            _ready.Wait();
-            while (_queue.TryDequeue(out TxReceipt? receipt))
+            if (_queue.TryDequeue(out TxReceipt? receipt))
             {
+                idleRounds = 0;
                 _ = receipt.Bloom;
+                continue;
+            }
+
+            if (++idleRounds <= SleepsBeforeParking) Thread.Sleep(1);
+            else
+            {
+                Park();
+                idleRounds = 0;
             }
         }
+    }
+
+    private void Park()
+    {
+        Interlocked.Exchange(ref _parked, 1);
+        if (_queue.IsEmpty) _wake.Wait();
+
+        // A spare release only makes a later Park return early.
+        Volatile.Write(ref _parked, 0);
     }
 }
