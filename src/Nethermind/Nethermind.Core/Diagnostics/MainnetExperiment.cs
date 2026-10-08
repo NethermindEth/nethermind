@@ -14,7 +14,7 @@ namespace Nethermind.Core.Diagnostics;
 public static class MainnetExperiment
 {
     /// <summary>Whether blocks rotate through the arms; off on the control image.</summary>
-    public static readonly bool RotationEnabled = false;
+    public static readonly bool RotationEnabled = true;
 
     public const int Control = 0;
     /// <summary>Cancel the mempool prewarmer's speculative session when newPayload (or getBlobs) arrives, not at enqueue.</summary>
