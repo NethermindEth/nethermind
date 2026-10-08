@@ -339,6 +339,7 @@ public class TransportMemoryPoolTests
     }
 
     [Test]
+    [NonParallelizable]
     [CancelAfter(60_000)]
     public async Task Startup_gives_kestrel_the_pool_and_large_bodies_cross_it_intact()
     {
