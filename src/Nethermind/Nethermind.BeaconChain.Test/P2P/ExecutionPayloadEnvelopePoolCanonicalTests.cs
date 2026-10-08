@@ -196,7 +196,7 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
     }
 
     [Test]
-    public void Range_whose_only_block_has_an_unknown_payload_status_is_resource_unavailable()
+    public void Range_with_no_held_resolved_payload_and_an_unknown_top_is_resource_unavailable([Values] bool includeMissingParent)
     {
         EnvelopeChain chain = new();
         (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
@@ -206,8 +206,61 @@ public class ExecutionPayloadEnvelopePoolCanonicalTests
         chain.SetHead(top, Base + 1, full: true);
         chain.Store.SetCanonicalRoot(Base + 1, sibling);
 
-        Eth2ReqRespException? thrown = Assert.Throws<Eth2ReqRespException>(() => chain.ServedRoots(Base + 1, 1));
+        Eth2ReqRespException? thrown = Assert.Throws<Eth2ReqRespException>(() => chain.ServedRoots(includeMissingParent ? Base : Base + 1, includeMissingParent ? 2UL : 1UL));
         Assert.That(thrown!.ResponseCode, Is.EqualTo(ReqRespFraming.ResponseCode.ResourceUnavailable), "an empty reply would claim the held envelope is off the chain");
+    }
+
+    [Test]
+    public void Decodes_only_consumed_envelopes_in_slot_order()
+    {
+        MemColumnsDb<BeaconChainDbColumns> db = new();
+        EnvelopeChain chain = new(db: db);
+        (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 second, Hash256 secondHash) = chain.Put(Base + 1, first, firstHash);
+        (Hash256 head, _) = chain.Put(Base + 2, second, secondHash);
+        chain.AddEnvelopes(first, second, head);
+        chain.SetHead(head, Base + 2, full: true);
+        MemDb column = (MemDb)db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
+        long before = column.ReadsCount;
+
+        IEnumerable<SignedExecutionPayloadEnvelope> range = chain.Pool.GetCanonical(Base, 3);
+        Assert.That(column.ReadsCount - before, Is.Zero);
+        using IEnumerator<SignedExecutionPayloadEnvelope> reader = range.GetEnumerator();
+        long expectedReads = 0;
+        foreach (Hash256 expected in new[] { first, second })
+        {
+            Assert.That(reader.MoveNext(), Is.True);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.Current.Message!.BeaconBlockRoot, Is.EqualTo(expected));
+                Assert.That(column.ReadsCount - before, Is.EqualTo(++expectedReads), "unconsumed envelopes are not decoded");
+            }
+        }
+    }
+
+    [Test]
+    public void Keeps_the_selected_chain_when_the_head_changes_and_envelopes_are_pruned([Values] bool prune)
+    {
+        MemColumnsDb<BeaconChainDbColumns> db = new();
+        EnvelopeChain chain = new(db: db);
+        (Hash256 first, Hash256 firstHash) = chain.Put(Base, Hash256.Zero, Hash256.Zero);
+        (Hash256 second, Hash256 secondHash) = chain.Put(Base + 1, first, firstHash);
+        (Hash256 head, _) = chain.Put(Base + 2, second, secondHash);
+        (Hash256 sibling, Hash256 siblingHash) = chain.Put(Base + 1, first, firstHash, salt: 1);
+        (Hash256 siblingHead, _) = chain.Put(Base + 2, sibling, siblingHash, salt: 1);
+        chain.AddEnvelopes(first, second, head, sibling, siblingHead);
+        chain.SetHead(head, Base + 2, full: true);
+        IEnumerable<SignedExecutionPayloadEnvelope> range = chain.Pool.GetCanonical(Base, 3);
+        chain.Store.SetCanonicalRoot(Base + 1, sibling);
+        chain.SetHead(siblingHead, Base + 2, full: true);
+
+        using IEnumerator<SignedExecutionPayloadEnvelope> reader = range.GetEnumerator();
+        Assert.That(reader.MoveNext(), Is.True);
+        Assert.That(reader.Current.Message!.BeaconBlockRoot, Is.EqualTo(first));
+        if (prune) db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes).Remove(second.Bytes);
+        List<Hash256> remaining = [];
+        while (reader.MoveNext()) remaining.Add(reader.Current.Message!.BeaconBlockRoot!);
+        Assert.That(remaining, Is.EqualTo(prune ? new[] { head } : new[] { second, head }));
     }
 
     [Test]
