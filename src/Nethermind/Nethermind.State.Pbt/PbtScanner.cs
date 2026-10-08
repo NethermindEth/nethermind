@@ -19,7 +19,6 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILogManager logManager)
 {
     private const int RangesPerWorker = 16;
-    private const int PrefixSpace = 1 << 16;
     private const int ProgressPublishInterval = 100_000;
 
     /// <summary>Sweeps each active data column with independent parallel range readers.</summary>
@@ -27,7 +26,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     {
         cancellationToken.ThrowIfCancellationRequested();
         int workerCount = config.ScanTreeConcurrency > 0 ? config.ScanTreeConcurrency : Environment.ProcessorCount;
-        int rangeCount = (int)Math.Min((long)workerCount * RangesPerWorker, PrefixSpace);
+        int rangeCount = (int)Math.Min((long)workerCount * RangesPerWorker, PbtPrefixPartitions.PrefixSpace);
         PbtScanReport report = new();
         foreach (PbtColumns column in PbtScanReport.ScannedColumns)
             await ScanColumn(column, CreateBounds(column, rangeCount), report, workerCount, cancellationToken);
@@ -163,7 +162,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             {
                 byte[] boundary = new byte[3];
                 boundary[0] = zone;
-                BinaryPrimitives.WriteUInt16BigEndian(boundary.AsSpan(1), (ushort)((long)partition * PrefixSpace / rangeCount));
+                BinaryPrimitives.WriteUInt16BigEndian(boundary.AsSpan(1), (ushort)PbtPrefixPartitions.Start(partition, rangeCount));
                 bounds.Add(boundary);
             }
         }
@@ -172,13 +171,11 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             for (int partition = 1; partition < rangeCount; partition++)
             {
                 byte[] boundary = new byte[2];
-                BinaryPrimitives.WriteUInt16BigEndian(boundary, (ushort)((long)partition * PrefixSpace / rangeCount));
+                BinaryPrimitives.WriteUInt16BigEndian(boundary, (ushort)PbtPrefixPartitions.Start(partition, rangeCount));
                 bounds.Add(boundary);
             }
         }
-        byte[] upper = new byte[5 + PbtVariableTreeKey.MaxLength];
-        Array.Fill(upper, byte.MaxValue);
-        bounds.Add(upper);
+        bounds.Add(PbtColumnSweep.PastEveryKey());
         return bounds.ToArray();
     }
 }
