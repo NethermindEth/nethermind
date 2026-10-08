@@ -120,6 +120,10 @@ public static unsafe class NativeExports
                 return FfiStatus.Ok;
             });
         }
+        catch (InvalidOperationException)
+        {
+            return (int)FfiStatus.CallbackAlreadySet;
+        }
         catch
         {
             return (int)FfiStatus.InternalError;

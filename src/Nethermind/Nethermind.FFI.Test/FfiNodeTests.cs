@@ -77,6 +77,7 @@ public class FfiNodeTests
         unsafe
         {
             node.SetTxCallback(&RecordTxEvent, 0);
+            Assert.That(() => node.SetTxCallback(&RecordTxEvent, 1), Throws.InvalidOperationException);
         }
 
         // The pool holds one tx, so the better-paying one evicts the first before being included in the block.

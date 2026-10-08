@@ -42,6 +42,8 @@ typedef enum nm_status
     NM_INVALID_BLOCK = 6,
     /* An unexpected managed exception; see nm_block_result.error where available. */
     NM_INTERNAL_ERROR = 7,
+    /* A tx callback is already set; clear it with NULL first. */
+    NM_CALLBACK_ALREADY_SET = 8,
 } nm_status;
 
 typedef struct nm_head
@@ -118,7 +120,8 @@ int nm_execute_block(nm_node* node, const uint8_t* block_rlp, size_t block_rlp_l
 void nm_free_block_result(nm_node* node, nm_block_result* result);
 
 /*
- * Sets the tx pool event callback, or clears it when callback is NULL. Requires a ready node.
+ * Sets the tx pool event callback, or clears it when callback is NULL. Requires a ready node. Only one callback can
+ * be set at a time: setting another one while it is set fails with NM_CALLBACK_ALREADY_SET.
  *
  * The callback runs synchronously on whichever thread changed the pool (network, RPC or block processing), possibly
  * concurrently, so it must be thread-safe and fast: it delays the pool operation that raised it. A call already in

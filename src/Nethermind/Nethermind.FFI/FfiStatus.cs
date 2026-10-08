@@ -14,4 +14,5 @@ public enum FfiStatus
     StateUnavailable = 5,
     InvalidBlock = 6,
     InternalError = 7,
+    CallbackAlreadySet = 8,
 }

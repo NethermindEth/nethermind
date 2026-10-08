@@ -47,7 +47,7 @@ public sealed unsafe class FfiNode(
         envSourceFactory.Create(Environment.ProcessorCount);
 
     private readonly ILogger _logger = logManager.GetClassLogger<FfiNode>();
-    private volatile TxCallback? _txCallback;
+    private TxCallback? _txCallback;
     private int _txPoolSubscribed;
 
     public BlockHeader? Head => blockTree.Head?.Header;
@@ -117,10 +117,19 @@ public sealed unsafe class FfiNode(
     /// Invoked synchronously on the thread raising the pool event, possibly concurrently. The pool is only subscribed
     /// to once a callback is first set, so a host that never sets one adds nothing to tx admission.
     /// </remarks>
+    /// <exception cref="InvalidOperationException">A callback is already set; it has to be cleared first.</exception>
     public void SetTxCallback(delegate* unmanaged[Cdecl]<nint, int, byte*, byte*, nuint, void> callback, nint userData)
     {
-        _txCallback = callback is null ? null : new TxCallback(callback, userData);
-        if (callback is null || Interlocked.Exchange(ref _txPoolSubscribed, 1) != 0) return;
+        if (callback is null)
+        {
+            Volatile.Write(ref _txCallback, null);
+            return;
+        }
+
+        if (Interlocked.CompareExchange(ref _txCallback, new TxCallback(callback, userData), null) is not null)
+            throw new InvalidOperationException("A tx callback is already set.");
+
+        if (Interlocked.Exchange(ref _txPoolSubscribed, 1) != 0) return;
 
         txPool.NewPending += OnNewPending;
         txPool.RemovedPending += OnRemovedPending;
@@ -147,7 +156,7 @@ public sealed unsafe class FfiNode(
 
     private void Notify(FfiTxEvent txEvent, Transaction tx)
     {
-        if (_txCallback is not { } callback) return;
+        if (Volatile.Read(ref _txCallback) is not { } callback) return;
 
         // Raised from inside the pool: an exception here would fail the tx admission or removal that raised it.
         try
