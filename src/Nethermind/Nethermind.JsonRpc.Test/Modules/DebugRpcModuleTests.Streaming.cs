@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.IO.Pipelines;
+using System.Linq;
 using System.Text;
 using System.Text.Json;
 using System.Threading;
@@ -52,6 +53,46 @@ public partial class DebugRpcModuleTests
             Assert.That(pipe.TotalBytes, Is.GreaterThan(4 * maxUnflushedBytes), "precondition: the response must span many flush windows");
             Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(maxUnflushedBytes),
                 "the response writer must see a flush every megabyte or so, however large each struct log is");
+        }
+    }
+
+    [Test]
+    public async Task Debug_traceBlockByNumber_WithManyMidSizedTransactions_StreamsInBoundedChunks()
+    {
+        // Scenario:
+        // 1. A block carries eight contract creations, each looping until out of gas with a stack 32 deep.
+        // 2. Each transaction has a few thousand struct logs, well under 8192, but the block output is tens of MB.
+        // 3. The response goes through the real response writer into a writer that records the bytes between flushes.
+        const int transactionCount = 8;
+        const long maxUnflushedBytes = 2 * 1024 * 1024;
+        using Context context = await Context.Create();
+        ulong nonce = context.Blockchain.ReadOnlyState.GetNonce(TestItem.AddressA);
+        Transaction[] transactions = new Transaction[transactionCount];
+        for (int i = 0; i < transactions.Length; i++)
+        {
+            transactions[i] = Build.A.Transaction
+                .WithNonce(nonce + (ulong)i)
+                .WithCode(DeepStackLoopCode.Build(stackDepth: 32, memoryStride: 32))
+                .WithGasLimit(80_000)
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+        }
+        await context.Blockchain.AddBlock(transactions);
+
+        FlushRecordingPipeWriter pipe = new(keepOutput: true);
+        await RpcTest.TestStreamedRequest(context.DebugRpcModule, pipe, "debug_traceBlockByNumber",
+            context.Blockchain.BlockTree.Head!.Number, new GethTraceOptions());
+
+        using JsonDocument document = JsonDocument.Parse(pipe.WrittenSpan.ToArray());
+        JsonElement[] traces = [.. document.RootElement.GetProperty("result").EnumerateArray()];
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(traces, Has.Length.EqualTo(transactionCount), "precondition: every transaction of the block is traced");
+            Assert.That(traces.Select(static t => t.GetProperty("result").GetProperty("structLogs").GetArrayLength()),
+                Is.All.InRange(1024, 8191), "precondition: each transaction is large but under 8192 struct logs");
+            Assert.That(pipe.TotalBytes, Is.GreaterThan(8 * maxUnflushedBytes), "precondition: the block response must span many flush windows");
+            Assert.That(pipe.MaxUnflushedBytes, Is.LessThanOrEqualTo(maxUnflushedBytes),
+                "the flush window must carry across transaction boundaries, so a block of mid-sized transactions is not held whole");
         }
     }
 

@@ -198,7 +198,50 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
     {
         const string word = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
         GethTraceOptions options = GethTraceOptions.Default with { EnableMemory = true, EnableReturnData = true };
-        (Block block, Transaction transaction) = PrepareTx(Activation, 100_000, StorageMemoryAndReturnDataCode(word));
+
+        (ArrayBufferWriter<byte> unflushed, FlushRecordingPipeWriter flushed) = TraceUnflushedAndFlushed(StorageMemoryAndReturnDataCode(word), options, threshold);
+
+        Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
+        Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+    }
+
+    [Test]
+    public void StreamedTrace_WithLargeReturnData_FlushesWithinTheReturnDataValue()
+    {
+        // Scenario:
+        // 1. The callee returns 1 MiB of zeroed memory to the caller.
+        // 2. Each caller struct log after the call carries that return data as about 2 MiB of hex.
+        // 3. With a 4 KB threshold the hex must be written and flushed in chunks, byte for byte as one string.
+        const int threshold = 4096;
+        const int returnDataSize = 1024 * 1024;
+        byte[] calleeCode = Prepare.EvmCode
+            .Return(returnDataSize, 0)
+            .Done;
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, calleeCode, Spec);
+        TestState.Commit(Spec);
+        byte[] code = Prepare.EvmCode
+            .Call(TestItem.AddressC, 3_000_000)
+            .Op(Instruction.POP)
+            .Op(Instruction.STOP)
+            .Done;
+
+        (ArrayBufferWriter<byte> unflushed, FlushRecordingPipeWriter flushed) =
+            TraceUnflushedAndFlushed(code, GethTraceOptions.Default with { EnableReturnData = true }, threshold, gasLimit: 4_000_000);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(flushed.TotalBytes, Is.GreaterThan(2L * 2 * returnDataSize), "precondition: two entries each carry the 1 MiB return data");
+            Assert.That(flushed.MaxUnflushedBytes, Is.LessThanOrEqualTo(threshold + 4096),
+                "a large return value must be flushed while its hex is written, not held as one token");
+            Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "chunking must not change a single byte of the output");
+        }
+    }
+
+    private (ArrayBufferWriter<byte> Unflushed, FlushRecordingPipeWriter Flushed) TraceUnflushedAndFlushed(
+        byte[] code, GethTraceOptions options, int threshold, ulong gasLimit = 100_000)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
 
         ArrayBufferWriter<byte> unflushed = new();
         FlushRecordingPipeWriter flushed = new(keepOutput: true);
@@ -212,9 +255,7 @@ public class GethLikeTxDirectStreamingTracerTests : GethLikeTracerTestsBase
         _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), new CompositeTxTracer(unflushedTracer, flushedTracer));
         Complete(unflushedTracer, unflushedWriter);
         Complete(flushedTracer, flushedWriter);
-
-        Assert.That(flushed.FlushCount, Is.GreaterThan(10), "precondition: the trace must be flushed many times, including within entries");
-        Assert.That(flushed.WrittenSpan.SequenceEqual(unflushed.WrittenSpan), Is.True, "flushing must not change a single byte of the output");
+        return (unflushed, flushed);
     }
 
     private void StreamTrace(byte[] code, GethTraceOptions options, PipeWriter pipe, int flushThresholdBytes)

@@ -36,6 +36,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
     private const int EvmWordSize = EvmPooledMemory.WordSize;
     private static readonly JsonEncodedText ZeroMemoryWord = JsonEncodedText.Encode("0x" + new string('0', EvmWordSize * 2));
     private const int InitialStorageMapCapacity = 8;
+    private const int ReturnDataHexChunkBytes = 1024;
 
     private readonly Utf8JsonWriter _writer;
     private readonly PipeWriter? _pipeWriter;
@@ -62,7 +63,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private byte[]? _returnDataBuffer;
     private int _returnDataByteCount;
-    private byte[]? _returnDataHexBuffer;
 
     private readonly PooledDictionary<AddressAsKey, PooledDictionary<UInt256, UInt256>> _storageByAddress = new(InitialStorageMapCapacity);
     private readonly Stack<PooledDictionary<UInt256, UInt256>> _storageMapPool = new();
@@ -92,6 +92,7 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         _pipeWriter = pipeWriter;
         _cancellationToken = cancellationToken;
         _flushThresholdBytes = flushThresholdBytes;
+        _flushedBytes = writer.BytesCommitted;
         IsTracingMemory = IsTracingFullMemory;
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -268,7 +269,6 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
         if (_stackBuffer is not null) { ArrayPool<byte>.Shared.Return(_stackBuffer); _stackBuffer = null; }
         if (_memoryBuffer is not null) { ArrayPool<byte>.Shared.Return(_memoryBuffer); _memoryBuffer = null; }
         if (_returnDataBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataBuffer); _returnDataBuffer = null; }
-        if (_returnDataHexBuffer is not null) { ArrayPool<byte>.Shared.Return(_returnDataHexBuffer); _returnDataHexBuffer = null; }
         foreach (PooledDictionary<UInt256, UInt256> map in _storageByAddress.Values) map.Dispose();
         _storageByAddress.Dispose();
 
@@ -312,21 +312,22 @@ public sealed class GethLikeTxDirectStreamingTracer : GethLikeTxTracer
 
     private void WriteReturnDataValue()
     {
-        // Encode "0x"-prefixed hex straight into a pooled scratch buffer and emit it as a raw JSON
-        // string, avoiding the intermediate string allocation on every traced opcode after a call.
-        int hexLength = _returnDataByteCount * 2;
-        int tokenLength = hexLength + 4; // quotes + "0x"
-        EnsureBuffer(ref _returnDataHexBuffer, tokenLength);
-
-        Span<byte> token = _returnDataHexBuffer.AsSpan(0, tokenLength);
-        token[0] = (byte)'"';
-        token[1] = (byte)'0';
-        token[2] = (byte)'x';
-        _returnDataBuffer.AsSpan(0, _returnDataByteCount).OutputBytesToByteHex(token.Slice(3, hexLength), extraNibble: false);
-        token[tokenLength - 1] = (byte)'"';
-
+        // Hex-encode in fixed-size string segments so a large return value is flushed as it is written instead of
+        // being materialized as one token first; hex digits are never escaped, so the bytes match a single string.
+        Span<byte> hex = stackalloc byte[Math.Min(_returnDataByteCount, ReturnDataHexChunkBytes) * 2];
         _writer.WritePropertyName("returnData"u8);
-        _writer.WriteRawValue(token, skipInputValidation: true);
+        _writer.WriteStringValueSegment("0x"u8, isFinalSegment: false);
+        ReadOnlySpan<byte> remaining = _returnDataBuffer.AsSpan(0, _returnDataByteCount);
+        while (remaining.Length > ReturnDataHexChunkBytes)
+        {
+            remaining[..ReturnDataHexChunkBytes].OutputBytesToByteHex(hex, extraNibble: false);
+            _writer.WriteStringValueSegment(hex, isFinalSegment: false);
+            remaining = remaining[ReturnDataHexChunkBytes..];
+            FlushToWireIfOverThreshold();
+        }
+        Span<byte> last = hex[..(remaining.Length * 2)];
+        remaining.OutputBytesToByteHex(last, extraNibble: false);
+        _writer.WriteStringValueSegment(last, isFinalSegment: true);
     }
 
     private void WriteStackArrayIfPresent()
