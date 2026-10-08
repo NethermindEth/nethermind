@@ -13,6 +13,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
@@ -48,14 +49,57 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     {
         if (windowSize == 0) windowSize = DefaultWindowSize;
 
+        long receivedCount = 0;
+        long committedWindows = 0;
+        Stopwatch progress = Stopwatch.StartNew();
+        ValueHash256 root;
+        using (StagingSink staging = new(target, cancellationToken))
+        {
+            root = await FoldWindows(source, staging, windowSize, _foldQuota, _foldFanOut, CommitWindow, cancellationToken);
+
+            void CommitWindow(int leaves)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                staging.Commit();
+                receivedCount += leaves;
+                committedWindows++;
+                if (progress.Elapsed >= TimeSpan.FromSeconds(10))
+                {
+                    if (_logger.IsInfo) _logger.Info($"PBT rebuild: {receivedCount} received leaves folded in {committedWindows} windows");
+                    progress.Restart();
+                }
+            }
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        target.Flush();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (expectedRoot is { } expected && root != expected)
+            throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
+        await publishAfter;
+        cancellationToken.ThrowIfCancellationRequested();
+        using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
+        batch.Commit();
+        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
+        return root;
+    }
+
+    /// <summary>Folds leaf chunks into a tree from empty, window by window, writing every group through to <paramref name="writeThrough"/>.</summary>
+    /// <remarks>Reads are served from the tree's right edge in memory (see <see cref="PbtRightmostGroupStore"/>), never from where the groups were written.</remarks>
+    /// <param name="source">Owned leaf chunks, strictly ascending across the whole stream; an out-of-order leaf is not detected and yields a wrong root.</param>
+    /// <param name="writeThrough">Receives every group the fold writes, one call at a time.</param>
+    /// <param name="windowSize">Maximum leaves per tree update.</param>
+    /// <param name="onWindowFolded">Called with the window's leaf count once its fold ends.</param>
+    /// <returns>The tree root.</returns>
+    internal static async Task<ValueHash256> FoldWindows(ChannelReader<ArrayPoolList<RebuildEntry>> source, IPbtNodeGroupSink writeThrough, int windowSize,
+        ConcurrencyController foldQuota, FoldFanOut foldFanOut, Action<int> onWindowFolded, CancellationToken cancellationToken)
+    {
+        using PbtRightmostGroupStore store = new(writeThrough);
         using PbtWriteBatchBuilder<PbtPath> accountChanges = new();
         using PbtWriteBatchBuilder<PbtPath> codeChanges = new();
         using PbtWriteBatchBuilder<PbtStoragePath> storageChanges = new();
         ValueHash256 root = default;
         int windowCount = 0;
-        long receivedCount = 0;
-        long committedWindows = 0;
-        Stopwatch progress = Stopwatch.StartNew();
 
         await foreach (ArrayPoolList<RebuildEntry> chunk in source.ReadAllAsync(cancellationToken))
         {
@@ -69,73 +113,54 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
                     else if (partition == PbtPartition.Code) codeChanges.Set((PbtPath)entry.Key, entry.Leaf);
                     else if (partition == PbtPartition.Account) accountChanges.Set((PbtPath)entry.Key, entry.Leaf);
                     else throw new InvalidDataException($"A canonical account, code or storage key is required: {entry.Key}.");
-                    receivedCount++;
-                    if (++windowCount == windowSize) CommitWindow();
+                    if (++windowCount == windowSize) FoldWindow();
                 }
             }
         }
 
-        if (windowCount != 0) CommitWindow();
-        cancellationToken.ThrowIfCancellationRequested();
-        target.Flush();
-        cancellationToken.ThrowIfCancellationRequested();
-        if (expectedRoot is { } expected && root != expected)
-            throw new InvalidDataException("Staged PBT root differs from the snapshot's claimed root.");
-        await publishAfter;
-        cancellationToken.ThrowIfCancellationRequested();
-        using IPbtPersistence.IWriteBatch batch = target.CreateWriteBatch(StateId.PreGenesis, targetState, root, WriteFlags.None);
-        batch.Commit();
-        if (_logger.IsInfo) _logger.Info($"PBT rebuild complete at {targetState}: {receivedCount} received leaves in {committedWindows} windows, tree root {root}");
+        if (windowCount != 0) FoldWindow();
         return root;
 
-        void CommitWindow()
+        void FoldWindow()
         {
             cancellationToken.ThrowIfCancellationRequested();
-            using (IPbtPersistence.IReader reader = target.CreateReader())
-            using (IPbtPersistence.IWriteBatch stagingBatch = target.CreateStagingWriteBatch(WriteFlags.DisableWAL))
             using (PbtPartitionBatches prepared = new())
             {
                 if (accountChanges.Count != 0) prepared.Account = accountChanges.Build();
                 if (codeChanges.Count != 0) prepared.Code = codeChanges.Build();
                 if (storageChanges.Count != 0) prepared.Storage = storageChanges.Build();
-                root = TrieUpdater.UpdateRoot(new WindowStore(reader, stagingBatch, cancellationToken), root, prepared, _foldQuota, _foldFanOut, null);
-                cancellationToken.ThrowIfCancellationRequested();
-                stagingBatch.Commit();
+                root = TrieUpdater.UpdateRoot(store, root, prepared, foldQuota, foldFanOut, null);
             }
+            store.ReleaseSuperseded();
             accountChanges.Reset();
             codeChanges.Reset();
             storageChanges.Reset();
+            onWindowFolded(windowCount);
             windowCount = 0;
-            committedWindows++;
-            if (progress.Elapsed >= TimeSpan.FromSeconds(10))
-            {
-                if (_logger.IsInfo) _logger.Info($"PBT rebuild: {receivedCount} received leaves folded in {committedWindows} windows");
-                progress.Restart();
-            }
         }
     }
 
-    /// <remarks>Zones fold concurrently over a snapshot reader, but the staging write batch is not thread-safe.</remarks>
-    private sealed class WindowStore(
-        IPbtPersistence.IReader reader,
-        IPbtPersistence.IWriteBatch batch,
-        CancellationToken cancellationToken) : IPbtStore, IPbtNodeGroupSink
+    /// <summary>Writes a window's groups into one staging batch, committed once the window folds.</summary>
+    /// <remarks>Not thread-safe: <see cref="PbtRightmostGroupStore"/> serializes its writes.</remarks>
+    private sealed class StagingSink(PbtRocksDbPersistence target, CancellationToken cancellationToken) : IPbtNodeGroupSink, IDisposable
     {
-        private readonly Lock _writeLock = new();
-
-        public RefCountingMemory? GetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            return reader.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());
-        }
+        private IPbtPersistence.IWriteBatch? _batch;
 
         public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            lock (_writeLock) batch.SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
+            (_batch ??= target.CreateStagingWriteBatch(WriteFlags.DisableWAL)).SetNodeGroup(groupKey.ToPath<PbtStorageNodePath>(), payload);
         }
 
-        public IPbtConcurrentWriter CreateWriter() => new PbtPassThroughWriter(this);
+        public void Commit()
+        {
+            if (_batch is null) return;
+            _batch.Commit();
+            _batch.Dispose();
+            _batch = null;
+        }
+
+        public void Dispose() => _batch?.Dispose();
     }
 
     /// <summary>Buffers leaves into pooled chunks and hands each full chunk to the rebuilder.</summary>

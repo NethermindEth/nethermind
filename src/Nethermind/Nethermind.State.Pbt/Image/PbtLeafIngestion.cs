@@ -6,6 +6,8 @@ using System.Threading.Channels;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
+using Nethermind.Core.Threading;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
@@ -94,6 +96,36 @@ internal static class PbtLeafIngestion
             sink.Complete().AsTask().GetAwaiter().GetResult();
         }
         fold.TryComplete();
+    }
+
+    /// <summary>The root of the tree over <paramref name="leaves"/>, folded window by window without storing the tree.</summary>
+    /// <remarks>The next window is read and chunked on another thread while the current one folds.</remarks>
+    /// <param name="leaves">Strictly ascending account, code and storage leaves, such as those <see cref="PbtSnapshotCodec.Write"/>
+    /// passes on; an out-of-order leaf is not detected and yields a wrong root.</param>
+    /// <param name="windowSize">Maximum leaves folded per tree update.</param>
+    /// <param name="foldConcurrency">Maximum threads, including the calling one, folding a window.</param>
+    public static ValueHash256 CalculateRoot(IEnumerable<RebuildEntry> leaves, int windowSize, int foldConcurrency, CancellationToken cancellationToken)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(windowSize);
+        using CancellationTokenSource linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        Channel<ArrayPoolList<RebuildEntry>> channel = Channel.CreateBounded<ArrayPoolList<RebuildEntry>>(windowSize / FoldChunkSize + 1);
+        Task reading = Task.Run(() =>
+        {
+            try { foreach (RebuildEntry _ in Teed(leaves, channel.Writer, linked.Token)) { } }
+            catch (Exception exception) { channel.Writer.TryComplete(exception); throw; }
+        }, CancellationToken.None);
+        try
+        {
+            return PbtRebuilder.FoldWindows(channel.Reader, NullNodeGroupSink.Instance, windowSize, new ConcurrencyController(foldConcurrency),
+                FoldFanOut.Default, static _ => { }, linked.Token).GetAwaiter().GetResult();
+        }
+        finally
+        {
+            linked.Cancel();
+            try { reading.GetAwaiter().GetResult(); }
+            catch (OperationCanceledException) when (linked.IsCancellationRequested) { }
+            finally { while (channel.Reader.TryRead(out ArrayPoolList<RebuildEntry>? chunk)) chunk.Dispose(); }
+        }
     }
 
     /// <summary>The ascending leaves of a spool of tree keys and leaf values.</summary>
@@ -204,5 +236,12 @@ internal static class PbtLeafIngestion
             Task.WaitAll(_flushers);
             _failure?.Throw();
         }
+    }
+
+    private sealed class NullNodeGroupSink : IPbtNodeGroupSink
+    {
+        public static readonly NullNodeGroupSink Instance = new();
+
+        public void SetNodeGroup(scoped in PbtTraversalPath groupKey, in ValueHash256 groupHash, RefCountingMemory? payload) { }
     }
 }
