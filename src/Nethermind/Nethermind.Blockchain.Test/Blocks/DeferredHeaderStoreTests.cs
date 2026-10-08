@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Headers;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -92,6 +93,35 @@ public class DeferredHeaderStoreTests
         _barrier.FlushDeferred();
 
         Assert.That(Reopen().Get(header.Hash!, shouldCache: false)?.Hash, Is.EqualTo(header.Hash));
+    }
+
+    /// <summary>
+    /// The deferred writer runs its queue in order, and the startup check reads a body without its header as a broken
+    /// block tree, so a suggested block's header must be written no later than its body.
+    /// </summary>
+    [Test]
+    public void Suggested_block_header_is_findable_at_once_and_written_ahead_of_its_body()
+    {
+        TestMemDb blocksDb = new();
+        BlockStore blockStore = new(blocksDb, null, _writer, persistenceBarrier: _barrier);
+        BlockTree tree = Build.A.BlockTree().WithBlockStore(blockStore).WithHeaderStore(_store).OfChainLength(1).BlockTree;
+        _writer.Pump();
+
+        Block block = Build.A.Block.WithParent(tree.Head!).TestObject;
+        tree.SuggestBlock(block);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tree.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash), "readable before any write");
+            Assert.That(Reopen().Get(block.Hash!, shouldCache: false), Is.Null, "precondition: nothing is written yet");
+        }
+
+        Assert.That(_writer.PumpOne(), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reopen().Get(block.Hash!, shouldCache: false)?.Hash, Is.EqualTo(block.Hash), "the header is the first write");
+            Assert.That(new BlockStore(blocksDb).Get(block.Number, block.Hash!), Is.Null, "the body is written after it");
+        }
     }
 
     [Test]

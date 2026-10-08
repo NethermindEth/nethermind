@@ -468,24 +468,27 @@ namespace Nethermind.Blockchain
 
             SetTotalDifficulty(header);
 
-            if (block is not null)
+            if (block is not null && block.Hash is null)
             {
-                if (block.Hash is null)
-                {
-                    throw new InvalidOperationException("An attempt to suggest block with a null hash.");
-                }
-
-                // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
-                // each store's pending overlay, and the live block's BAL is freed synchronously as before.
-                _blockStore.InsertDeferred(block);
-                _balStore.InsertFromBlockDeferred(block);
+                throw new InvalidOperationException("An attempt to suggest block with a null hash.");
             }
 
             if (!isKnown)
             {
-                // Deferred with the body: the engine API path waits for neither database write.
+                // Deferred with the body: the engine API path waits for neither database write. Queued ahead of it, as
+                // the deferred writer runs its queue in order: a crash between the two writes then leaves a header
+                // without its body, which the block tree loads as before, never a body without its header, which it
+                // takes for corruption.
                 if (block is not null) _headerStore.InsertDeferred(header);
                 else _headerStore.Insert(header);
+            }
+
+            if (block is not null)
+            {
+                // Body and BAL persistence defer off the engine API path; visibility stays synchronous via
+                // each store's pending overlay, and the live block's BAL is freed synchronously as before.
+                _blockStore.InsertDeferred(block);
+                _balStore.InsertFromBlockDeferred(block);
             }
 
             if (!isKnown || fillBeaconBlock)
