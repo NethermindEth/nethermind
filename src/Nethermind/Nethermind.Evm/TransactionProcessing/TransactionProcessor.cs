@@ -1738,7 +1738,8 @@ namespace Nethermind.Evm.TransactionProcessing
             long effectiveStateGas = TGasPolicy.GetStateGasUsed(in gas);
             if (!tx.IsSystem() && (ulong)effectiveStateGas > preRefundGas)
                 return InvalidStateGas(Logger, $"EIP-8037 halt-path invariant violated: state gas ({effectiveStateGas}) exceeds pre-refund gas ({preRefundGas}).");
-            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(preRefundGas, (ulong)effectiveStateGas, floorGas);
+            ulong blockAccountingGas = spec.IsEip7778Enabled ? preRefundGas : preRefundGas - executionRefund;
+            ulong blockGas = Eip8037BlockGasInclusionCheck.CalculateBlockExecutionGas(blockAccountingGas, (ulong)effectiveStateGas, floorGas);
 
             return RefundFailedEip8037Gas(tx, spec, opts, in gasPrice, spentGas, blockGas, effectiveStateGas, executionRefund);
         }
