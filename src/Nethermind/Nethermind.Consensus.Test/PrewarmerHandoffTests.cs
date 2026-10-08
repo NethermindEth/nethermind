@@ -513,7 +513,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         (StorageCell Cell, UInt256 Value)[] writes = writesAnother ? [(another, 0x4e4d)] : [];
         if (executed)
         {
-            footprints.QueueExecuted(0, writesAnother ? [.. writes] : null);
+            footprints.QueueExecuted(0, writes);
             footprints.ApplyExecuted();
         }
         else
@@ -622,6 +622,25 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    [Test]
+    public void The_writes_a_transaction_reported_stay_as_they_were_while_later_transactions_report_theirs()
+    {
+        // The refresh worker reads a report after block processing has moved on to collect the next ones.
+        CommittedStorageWrites committed = new();
+        List<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = [];
+        for (int tx = 0; tx < 200; tx++)
+        {
+            committed.Begin();
+            for (int i = 0; i < tx % 5; i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+            reports.Add((committed.End(), tx));
+        }
+
+        Assert.That(reports, Has.All.Matches<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)>(report =>
+            report.Writes.Length == report.Transaction % 5
+            && Enumerable.Range(0, report.Writes.Length).All(i =>
+                report.Writes.Span[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction)))));
+    }
+
     public enum Report { AsPredicted, OtherValue, Subset, Restored, GuardRestoredAndChanged, NoneWithoutFootprint, SomeWithoutFootprint }
 
     [Test]
@@ -648,11 +667,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 break;
         }
 
-        List<(StorageCell Cell, UInt256 Value)>? reported = report switch
+        (StorageCell Cell, UInt256 Value)[] reported = report switch
         {
             // Committed by the main state, so not the instance the footprint holds.
             Report.AsPredicted or Report.Subset or Report.GuardRestoredAndChanged => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
-            Report.NoneWithoutFootprint or Report.Restored => null,
+            Report.NoneWithoutFootprint or Report.Restored => [],
             _ => [(cell, 2 * 0x4e4d)]
         };
         footprints.QueueExecuted(0, reported);
@@ -667,7 +686,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         using (Assert.EnterMultipleScope())
         {
             Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.Subset or Report.SomeWithoutFootprint));
-            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(reported?[0].Value));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(reported.Length == 0 ? null : reported[0].Value));
         }
     }
 
@@ -676,7 +695,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     {
         (BlockFootprints footprints, Transaction[] txs) = Footprints(2);
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
-        footprints.QueueExecuted(0, [(cell, 2 * 0x4e4d)]);
+        footprints.QueueExecuted(0, new[] { (cell, (UInt256)(2 * 0x4e4d)) });
         footprints.ApplyExecuted();
 
         footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
@@ -691,7 +710,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         footprints.Store(2, Footprint(txs[2], reads: [(cell, 0x4e4d)]));
 
-        footprints.QueueExecuted(0, [(cell, sameValue ? (UInt256)0x4e4d : 2 * 0x4e4d)]);
+        footprints.QueueExecuted(0, new[] { (cell, sameValue ? (UInt256)0x4e4d : 2 * 0x4e4d) });
         Assert.That(footprints.TryTakeInvalidated(-1, out _), Is.False, "queued writes count once they are applied");
         footprints.ApplyExecuted();
 

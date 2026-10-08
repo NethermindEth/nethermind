@@ -53,7 +53,7 @@ internal sealed class BlockFootprints(Block block)
     private int _visit;
 
     // Written by block processing, applied by the refresh worker, so block processing never takes the lock.
-    private readonly ConcurrentQueue<(int Position, List<(StorageCell Cell, UInt256 Value)>? Writes)> _reported = new();
+    private readonly ConcurrentQueue<(int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes)> _reported = new();
     private readonly SemaphoreSlim _changed = new(0);
     private volatile bool _warmPassEnded;
     private volatile bool _waitsForBlockProcessing = true;
@@ -212,19 +212,19 @@ internal sealed class BlockFootprints(Block block)
 
     /// <summary>
     /// Queues the storage writes block processing committed when it executed the transaction at <paramref name="position"/>;
-    /// null when it wrote none.
+    /// empty when it wrote none.
     /// </summary>
     /// <remarks>
     /// Writes its footprint predicted invalidate nothing, so they wait for the refresh worker's next wake: waking a
     /// blocked worker costs block processing microseconds.
     /// </remarks>
-    public void QueueExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    public void QueueExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         _reported.Enqueue((position, writes));
         if (!WerePredicted(position, writes)) _changed.Release();
     }
 
-    private bool WerePredicted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    private bool WerePredicted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         TransactionFootprint?[] footprints = _footprints;
         TransactionFootprint? footprint = (uint)position < (uint)footprints.Length ? Volatile.Read(ref footprints[position]) : null;
@@ -235,11 +235,11 @@ internal sealed class BlockFootprints(Block block)
             if (effect.Kind == EffectKind.SetStorage) predicted++;
         }
 
-        int count = writes?.Count ?? 0;
+        int count = writes.Length;
         if (predicted != count) return false;
         if (count > MaxComparedWrites) return false;
         // A footprint writes each slot once, and a commit reports each slot once.
-        foreach ((StorageCell cell, UInt256 value) in CollectionsMarshal.AsSpan(writes))
+        foreach ((StorageCell cell, UInt256 value) in writes.Span)
         {
             if (!Writes(effects, in cell, in value)) return false;
         }
@@ -260,13 +260,13 @@ internal sealed class BlockFootprints(Block block)
     /// <summary>Puts the writes block processing reported in place of what their footprints predicted, in the order it executed them.</summary>
     public void ApplyExecuted()
     {
-        while (_reported.TryDequeue(out (int Position, List<(StorageCell Cell, UInt256 Value)>? Writes) executed))
+        while (_reported.TryDequeue(out (int Position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes) executed))
         {
             ApplyExecuted(executed.Position, executed.Writes);
         }
     }
 
-    private void ApplyExecuted(int position, List<(StorageCell Cell, UInt256 Value)>? writes)
+    private void ApplyExecuted(int position, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> writes)
     {
         if ((uint)position >= (uint)_footprints.Length) return;
         bool invalidated;
@@ -291,7 +291,7 @@ internal sealed class BlockFootprints(Block block)
             // that read one of them at another value than its seed changed it itself first (a creation clears the
             // storage), and running it again reads the same.
             TransactionFootprint? seeded = seededAt == _writesVersion ? _indexed[position].Footprint : null;
-            invalidated = Replace(position, new Indexed(footprint, null));
+            invalidated = Replace(position, new Indexed(footprint, default));
 
             ReadOnlySpan<SlotPrecondition> reads = footprint.Slots;
             bool outdated = false;
@@ -421,13 +421,13 @@ internal sealed class BlockFootprints(Block block)
     private readonly record struct Entry(int Position, int Index);
 
     // What is indexed at a position: the footprint stored there, or the writes block processing reported for it.
-    private readonly struct Indexed(TransactionFootprint? footprint, List<(StorageCell Cell, UInt256 Value)>? executed)
+    private readonly struct Indexed(TransactionFootprint? footprint, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> executed)
     {
         public TransactionFootprint? Footprint => footprint;
 
         public WrittenSlots Writes => new(footprint, executed);
 
-        public UInt256 WrittenValue(int index) => footprint is not null ? footprint.Effects[index].Value : executed![index].Value;
+        public UInt256 WrittenValue(int index) => footprint is not null ? footprint.Effects[index].Value : executed.Span[index].Value;
     }
 
     private struct Slot
@@ -514,7 +514,7 @@ internal sealed class BlockFootprints(Block block)
     }
 
     // The slots a footprint's storage effects or reported writes write, with where each write is in them.
-    private struct WrittenSlots(TransactionFootprint? footprint, List<(StorageCell Cell, UInt256 Value)>? executed)
+    private struct WrittenSlots(TransactionFootprint? footprint, ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> executed)
     {
         private int _index = -1;
 
@@ -538,8 +538,8 @@ internal sealed class BlockFootprints(Block block)
                 return false;
             }
 
-            if (executed is null || ++_index >= executed.Count) return false;
-            Current = (executed[_index].Cell, _index);
+            if (++_index >= executed.Length) return false;
+            Current = (executed.Span[_index].Cell, _index);
             return true;
         }
     }
