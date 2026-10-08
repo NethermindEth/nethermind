@@ -327,6 +327,11 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
+    /// <remarks>
+    /// Drains the workers so in-flight persistence is not lost, but does not <see cref="FlushCache"/>: that would
+    /// persist the unfinalized tail and break reorgs across the restart. The in-memory tier is re-executed from the
+    /// persisted state on the next start.
+    /// </remarks>
     public async ValueTask DisposeAsync()
     {
         if (Interlocked.Exchange(ref _isDisposed, 1) != 0) return;
@@ -334,14 +339,13 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         try
         {
             _compactionJobs.Writer.TryComplete();
-            // Closing admission releases a blocked producer; wait for its repository insertion before flushing.
+            // Closing admission releases a blocked producer; wait for its repository insertion before draining.
             lock (_admissionLock) { }
             await _compactionWorker;
             _trieCachePopulationJobs.Writer.TryComplete();
             await _trieCachePopulator;
             _persistenceJobs.Writer.TryComplete();
             await _persistenceWorker;
-            FlushCache(CancellationToken.None);
         }
         finally
         {
@@ -357,6 +361,7 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
             {
                 while (_trieCachePopulationJobs.Reader.TryRead(out PbtTransientResource? leftover)) leftover.ReleaseLease();
                 ClearReadOnlyBundleCache();
+                _repository.RemoveStatesUntil(ulong.MaxValue);
                 _stopSource.Dispose();
             }
         }

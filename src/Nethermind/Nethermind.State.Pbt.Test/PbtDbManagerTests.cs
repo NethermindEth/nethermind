@@ -416,10 +416,12 @@ public class PbtDbManagerTests
                 await manager.DisposeAsync();
             }
             await manager.DisposeAsync();
+            // Shutdown drains the queued jobs but leaves the backstop's reorg depth in memory; a cancelled producer never queued 68.
+            int expectedPersisted = cancelProducer ? 66 : 67;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(68)));
-                Assert.That(persisted.Count, Is.EqualTo(68));
+                Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(expectedPersisted)));
+                Assert.That(persisted.Count, Is.EqualTo(expectedPersisted));
                 Assert.That(repository.Count, Is.Zero);
             }
             for (int index = 0; index < persisted.Count; index++)
@@ -434,7 +436,7 @@ public class PbtDbManagerTests
     }
 
     [Test]
-    public async Task Disposal_FlushesToPersistence()
+    public async Task Disposal_DoesNotPersistTheUnfinalizedTail()
     {
         SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         Hash256 root;
@@ -447,7 +449,11 @@ public class PbtDbManagerTests
         }
         await using PbtTestContext reopened = new(db, new PbtConfig());
         using IPbtPersistence.IReader reader = reopened.Persistence.CreateReader();
-        Assert.That(reader.CurrentState, Is.EqualTo(new StateId(1, root)));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.CurrentState, Is.EqualTo(StateId.PreGenesis));
+            Assert.That(reopened.Manager.HasStateForBlock(new StateId(1, root)), Is.False);
+        }
     }
 
     public enum PersistTrigger { Check, Flush, FinalizedCheck }
