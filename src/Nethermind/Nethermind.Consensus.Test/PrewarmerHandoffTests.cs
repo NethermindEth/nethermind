@@ -773,6 +773,103 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
+    public enum RecordedChanges { NetCredit, NetDebit, AcrossRecreation, SlotWrittenTwice }
+
+    [Test]
+    public void A_compacted_footprint_replays_into_the_state_of_its_run([Values] RecordedChanges changes)
+    {
+        StorageCell cell = new(Counter, 0x4e4d);
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            (TransactionFootprint footprint, Snapshot before) = Record(worldState, recorder =>
+            {
+                switch (changes)
+                {
+                    case RecordedChanges.NetCredit:
+                        recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
+                        recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
+                        recorder.AddToBalance(ScarcePayer, 3, Spec, out _);
+                        return 3;
+                    case RecordedChanges.NetDebit:
+                        recorder.AddToBalance(ScarcePayer, 1, Spec, out _);
+                        recorder.SubtractFromBalance(ScarcePayer, 0x4e4e, Spec, out _);
+                        return 2;
+                    case RecordedChanges.AcrossRecreation:
+                        recorder.AddToBalance(TestItem.AddressC, 3, Spec, out _);
+                        recorder.DeleteAccount(TestItem.AddressC);
+                        recorder.CreateAccount(TestItem.AddressC, 0);
+                        recorder.AddToBalance(TestItem.AddressC, 2, Spec, out _);
+                        return 0;
+                    default:
+                        recorder.Set(cell, 1);
+                        recorder.Set(cell, 2);
+                        return 2;
+                }
+            }, out int compactable);
+
+            (UInt256, UInt256, bool, UInt256) State() =>
+                (worldState.GetBalance(ScarcePayer), worldState.GetBalance(TestItem.AddressC), worldState.AccountExists(TestItem.AddressC), Get(worldState, cell));
+            (UInt256, UInt256, bool, UInt256) recorded = State();
+            worldState.Restore(before);
+            footprint.Replay(worldState, Spec);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(State(), Is.EqualTo(recorded));
+                if (compactable > 0) Assert.That(footprint.Effects.Length, Is.EqualTo(1));
+            }
+        }
+
+        static UInt256 Get(IWorldState state, in StorageCell cell)
+        {
+            state.Get(in cell, out UInt256 value);
+            return value;
+        }
+    }
+
+    [Test]
+    public void A_net_balance_change_is_not_replayed_where_a_change_it_merges_could_not_be_made()
+    {
+        IWorldState worldState = ProcessingScope.Resolve<IWorldState>();
+        using (worldState.BeginScope(Parent))
+        {
+            // Nets to two wei paid, from a balance that must hold all of it first.
+            (TransactionFootprint footprint, Snapshot before) = Record(worldState, recorder =>
+            {
+                recorder.SubtractFromBalance(ScarcePayer, 0x4e4d, Spec, out _);
+                recorder.AddToBalance(ScarcePayer, 0x4e4c, Spec, out _);
+                recorder.SubtractFromBalance(ScarcePayer, 1, Spec, out _);
+                return 3;
+            }, out _);
+            worldState.Restore(before);
+            bool met = footprint.Matches(worldState);
+            worldState.SubtractFromBalance(ScarcePayer, 1, Spec, out _);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(met, Is.True);
+                Assert.That(footprint.Matches(worldState), Is.False);
+            }
+        }
+    }
+
+    /// <summary>Records <paramref name="run"/> as the footprint of a transfer from A, returning the state before it.</summary>
+    private (TransactionFootprint Footprint, Snapshot Before) Record(IWorldState worldState, Func<FootprintRecorder, int> run, out int changes)
+    {
+        Transaction tx = Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressB, 1.Wei);
+        Snapshot before = worldState.TakeSnapshot();
+        FootprintRecorder recorder = new(worldState);
+        recorder.Start(new Progress { MainThreadTxIndex = -1 }, txIndex: 0, CancellationToken.None);
+        recorder.GetNonce(TestItem.AddressA);
+        changes = run(recorder);
+        recorder.Outcome.MarkAsSuccess(TestItem.AddressB, default, [], []);
+        TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
+        recorder.Stop();
+        Assert.That(footprint, Is.Not.Null);
+        return (footprint!, before);
+    }
+
     private Block ThreeIndependentTransactions() => BuildBlock(
         Call(TestItem.PrivateKeyA, 0, Counter),
         Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressC, 1.Wei),
