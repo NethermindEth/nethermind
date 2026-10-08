@@ -14,4 +14,8 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Runner\Nethermind.Runner.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <InternalsVisibleTo Include="Nethermind.DocGen.Test" />
+  </ItemGroup>
+
 </Project>
