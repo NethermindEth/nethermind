@@ -51,8 +51,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
     private readonly int[] _partitionMask = new int[PartitionCount]; // shard count - 1
     private readonly TrieNodeLogShard[] _shards; // partition-major: account, storage
     private readonly TrieNodeLogShard[] _secondLevelShards; // same order as _shards, empty when disabled
-    private static readonly PbtColumns[] AccountColumns = [PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups];
-    private static readonly PbtColumns[] StorageColumns = [PbtColumns.StorageNodeGroups];
     private readonly SemaphoreSlim _mergeLimiter;
     // A first-level merge holds its limiter while it may wait for second-level merges, so they cannot share one.
     private readonly SemaphoreSlim _secondLevelMergeLimiter;
@@ -78,8 +76,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         // follows the partition's typical record size: storage tries are sparse, so their groups are smaller.
         ReadOnlySpan<(string Name, PbtColumns[] Columns, long Budget, int ShardCount, string ShardCountSetting, int IndexRatio)> partitions =
         [
-            (AccountPartitionName, AccountColumns, config.TrieNodeLogAccountBytes, config.TrieNodeLogAccountShardCount, nameof(IPbtConfig.TrieNodeLogAccountShardCount), 64),
-            (StoragePartitionName, StorageColumns, config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IPbtConfig.TrieNodeLogStorageShardCount), 32),
+            (AccountPartitionName, ColumnsOf(AccountPartition), config.TrieNodeLogAccountBytes, config.TrieNodeLogAccountShardCount, nameof(IPbtConfig.TrieNodeLogAccountShardCount), 64),
+            (StoragePartitionName, ColumnsOf(StoragePartition), config.TrieNodeLogStorageBytes, config.TrieNodeLogStorageShardCount, nameof(IPbtConfig.TrieNodeLogStorageShardCount), 32),
         ];
         using ArrayPoolListRef<TrieNodeLogShard> shards = new(PartitionCount);
         using ArrayPoolListRef<TrieNodeLogShard> secondLevelShards = new(PartitionCount);
@@ -179,13 +177,8 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         foreach (string directory in Directory.GetDirectories(basePath).OrderBy(static directory => directory.EndsWith(SecondLevelSuffix) ? 0 : 1))
         {
             string name = Path.GetFileName(directory);
-            PbtColumns[]? columns = name.Split('-')[0] switch
-            {
-                AccountPartitionName => AccountColumns,
-                StoragePartitionName => StorageColumns,
-                _ => null,
-            };
-            if (columns is null)
+            int partition = Array.IndexOf(PartitionNames, name.Split('-')[0]);
+            if (partition < 0)
             {
                 if (logger.IsWarn) logger.Warn($"Ignoring unrecognized trie node log directory {directory}");
                 continue;
@@ -193,7 +186,7 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
 
             if (logger.IsInfo) logger.Info($"Merging trie node log shard {name} left by the previous run");
             string versionName = name.EndsWith(SecondLevelSuffix) ? name[..^SecondLevelSuffix.Length] : name;
-            TrieNodeLogShard shard = new(name, versionName, columns, directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
+            TrieNodeLogShard shard = new(name, versionName, ColumnsOf(partition), directory, db, generationBytes: 0, indexRatio: 1, mergeLag: 0, backlogMargin: 1, mergeLimiter, secondLevel: null, logManager);
             try
             {
                 shard.Drain();
@@ -206,22 +199,33 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
         }
     }
 
-    internal static bool Covers(PbtColumns column) => column is PbtColumns.TopNodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups or PbtColumns.StorageNodeGroups;
+    internal static bool Covers(PbtColumns column) => PartitionOf(column) >= 0;
 
     /// <summary>The column label of a logged column's byte metrics: its partition.</summary>
-    internal static string ColumnLabel(PbtColumns column) => column == PbtColumns.StorageNodeGroups ? StoragePartitionName : AccountPartitionName;
+    internal static string ColumnLabel(PbtColumns column) => PartitionNames[PartitionOf(column)];
 
     private const string AccountPartitionName = "account";
     private const string StoragePartitionName = "storage";
     private const int AccountPartition = 0;
     private const int StoragePartition = 1;
     private const int PartitionCount = 2;
+    private static readonly string[] PartitionNames = [AccountPartitionName, StoragePartitionName];
+
+    /// <summary>The partition logging a column's groups, or -1 for a column the log does not cover.</summary>
+    private static int PartitionOf(PbtColumns column) => column switch
+    {
+        PbtColumns.TopNodeGroups or PbtColumns.AccountNodeGroups or PbtColumns.CodeNodeGroups => AccountPartition,
+        PbtColumns.StorageNodeGroups => StoragePartition,
+        _ => -1,
+    };
+
+    private static PbtColumns[] ColumnsOf(int partition) => [.. Enum.GetValues<PbtColumns>().Where(column => PartitionOf(column) == partition)];
 
     /// <summary>Shard of a column key: its column's partition, then bits of the key's hash.</summary>
     /// <remarks>Group keys start with the zone byte, so their leading bytes would put most groups in one shard.</remarks>
     internal int ShardIndex(PbtColumns column, ReadOnlySpan<byte> key)
     {
-        int partition = column == PbtColumns.StorageNodeGroups ? StoragePartition : AccountPartition;
+        int partition = PartitionOf(column);
         return _partitionOffset[partition] + ((int)(TrieNodeLogRecord.Hash(key) >> ShardHashShift) & _partitionMask[partition]);
     }
 

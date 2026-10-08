@@ -6,6 +6,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using FastEnumUtility;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -125,7 +126,7 @@ public class PbtRocksDbPersistenceTests
         {
             Assert.That(populatedRows, Is.EquivalentTo(new[] { Persisted(SlotRun.RunKey(Key(0))), Persisted(SlotRun.RunKey(Key(16))) }));
             Assert.That(Enumerable.Range(0, 22).Select(slot => populated.GetSlot(Key((uint)slot))), Is.EqualTo(Enumerable.Range(0, 22).Select(slot => slot <= 20 ? value : default)));
-            Assert.That(tail.Mask, Is.EqualTo(0x1F));
+            Assert.That(tail.Count, Is.EqualTo(5));
             Assert.That(populated.GetSlotRun(SlotRun.RunKey(Key(32))), Is.SameAs(SlotRun.Empty));
             Assert.That(new[] { replaced.GetSlot(Key(0)), replaced.GetSlot(Key(3)), replaced.GetSlot(Key(16)) }, Is.EqualTo(new[] { default, value, value }));
             Assert.That(Enumerable.Range(0, 22).Count(slot => !EvmWordSlot.IsZero(replaced.GetSlot(Key((uint)slot)))), Is.EqualTo(6), "the rewritten run drops its other slots");
@@ -141,9 +142,9 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtVariableTreeKey headerKey = PbtStateKey.Slot(TestItem.AddressA, 1);
-        PbtVariableTreeKey overflowKey = PbtStateKey.Slot(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
-        PbtVariableTreeKey otherAddressKey = PbtStateKey.Slot(TestItem.AddressB, otherAddressSlot);
+        PbtVariableTreeKey headerKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
+        PbtVariableTreeKey overflowKey = PbtTestLeaves.SlotKey(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
+        PbtVariableTreeKey otherAddressKey = PbtTestLeaves.SlotKey(TestItem.AddressB, otherAddressSlot);
         EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -158,8 +159,6 @@ public class PbtRocksDbPersistenceTests
         {
             Assert.That(Persisted(headerKey), Is.EqualTo(Bytes.Concat(addressHash.Bytes, [Eip8297KeyDerivation.AccountZone], headerKey.Bytes[33..])));
             Assert.That(Persisted(overflowKey), Is.EqualTo(Bytes.Concat(addressHash.Bytes, [Eip8297KeyDerivation.StorageZone], overflowKey.Bytes[33..])));
-            Assert.That(PbtStorageKeyLayout.Decode(Persisted(headerKey)), Is.EqualTo(headerKey));
-            Assert.That(PbtStorageKeyLayout.Decode(Persisted(overflowKey)), Is.EqualTo(overflowKey));
             Assert.That(db.GetColumnDb(PbtColumns.Storages).GetAllKeys(), Is.EquivalentTo(new[] { headerKey, overflowKey, otherAddressKey }.Select(key => Persisted(SlotRun.RunKey(key)))));
         }
     }
@@ -171,7 +170,7 @@ public class PbtRocksDbPersistenceTests
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtVariableTreeKey storageKey = PbtStateKey.Slot(TestItem.AddressA, 0);
+        PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 0);
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
         EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("0xabcd"));
@@ -279,7 +278,7 @@ public class PbtRocksDbPersistenceTests
         PbtResourcePool pool = new(config);
         PbtSnapshotRepository repository = new(new MetricsConfig());
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance);
-        PbtSnapshotCompactor compactor = new(pool, schedule, repository, config);
+        PbtSnapshotCompactor compactor = new(pool, schedule, repository, config, LimboLogs.Instance);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         using PbtTreeHarness tree = new();
         EipReferenceTree oracle = new();
@@ -316,7 +315,7 @@ public class PbtRocksDbPersistenceTests
                     compactor.DoCompactSnapshot(next);
                     last = next;
                 }
-                coordinator.FlushToPersistence();
+                coordinator.FlushToPersistence(CancellationToken.None);
                 Assert.That(repository.Count, Is.Zero);
                 Assert.That(coordinator.CheckPersistence(new StateId(2, TestItem.KeccakA.ValueHash256)), Is.False, "queued IDs behind persistence are harmless");
             }
@@ -386,7 +385,7 @@ public class PbtRocksDbPersistenceTests
         ValueHash256 treeRoot = TestItem.KeccakD.ValueHash256;
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
-        PbtVariableTreeKey storageKey = PbtStateKey.Slot(TestItem.AddressA, 64);
+        PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
         EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakD.Bytes);
         CodeInfo code = new(TestItem.KeccakA.Bytes.ToArray());
 

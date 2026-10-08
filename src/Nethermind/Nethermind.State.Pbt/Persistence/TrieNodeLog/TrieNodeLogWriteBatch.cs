@@ -135,10 +135,9 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
             _pendingInsertsInCurrent = 0;
         }
 
-        if (_current != generation && generation.TryAcquire()) pinned.Add(generation);
-
         if (_current != generation)
         {
+            if (generation.TryAcquire()) pinned.Add(generation);
             FlushBuffer();
             _current = generation;
             _touched.Add((generation, generation.WriteFrontier));
@@ -151,7 +150,6 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
     private long Reserve(int length)
     {
         if (_buffered + length > _buffer.Length) FlushBuffer();
-        if (length > _buffer.Length) throw new ArgumentOutOfRangeException(nameof(length), length, "Trie node log record exceeds the write buffer");
         return _current!.WriteFrontier + _buffered;
     }
 
@@ -272,7 +270,7 @@ internal sealed class TrieNodeLogWriteBatch(TrieNodeLogShard shard, ulong versio
         else
         {
             Abort();
-            shard.OnBatchAborted();
+            shard.ExitExclusive();
         }
 
         pinned.DisposeRecursive();

@@ -121,7 +121,7 @@ public class PbtScopeProviderBenchmark
         PbtRocksDbPersistence persistence = new(_pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool resourcePool = new(config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), config, LimboLogs.Instance);
-        PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config);
+        PbtSnapshotCompactor compactor = new(resourcePool, schedule, repository, config, LimboLogs.Instance);
         PbtPersistenceCoordinator coordinator = new(
             config, UnavailableStateHeaderProvider.Instance, persistence, repository, schedule,
             NullStatePersistenceBarrier.Instance, LimboLogs.Instance);

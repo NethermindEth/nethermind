@@ -45,7 +45,7 @@ internal static class PbtLeafIngestion
         {
             try
             {
-                (ulong Accounts, ulong Slots) staged = Stage(target, Teed(Reported(Phase, leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
+                (ulong Accounts, ulong Slots) staged = Stage(target, Teed(Reported(leaves(linked.Token), fraction, logManager), channel.Writer, linked.Token),
                     concurrency, logManager, linked.Token);
                 verifyStaged(staged.Accounts, staged.Slots, linked.Token);
                 return staged;
@@ -105,12 +105,12 @@ internal static class PbtLeafIngestion
 
     /// <param name="fraction">The fraction of the pass done after the given number of leaves, sampled on the reading
     /// thread since a snapshot's offset briefly moves while its reader re-reads the header section.</param>
-    private static IEnumerable<RebuildEntry> Reported(string phase, IEnumerable<RebuildEntry> leaves, Func<ulong, float> fraction, ILogManager logManager)
+    private static IEnumerable<RebuildEntry> Reported(IEnumerable<RebuildEntry> leaves, Func<ulong, float> fraction, ILogManager logManager)
     {
         ulong read = 0;
         float walked = 0;
-        using ProgressReporter progress = PbtImageProgress.Start(phase, "leaf", 0, logManager);
-        progress.Logger.SetFormat(p => PbtImageProgress.Format(phase, walked, PbtImageProgress.Counted("leaf", p)));
+        using ProgressReporter progress = PbtImageProgress.Start(Phase, "leaf", 0, logManager);
+        progress.Logger.SetFormat(p => PbtImageProgress.Format(Phase, walked, PbtImageProgress.Counted("leaf", p)));
         foreach (RebuildEntry entry in leaves)
         {
             walked = fraction(++read);

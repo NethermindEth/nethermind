@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using Nethermind.Core.Buffers;
@@ -102,38 +101,14 @@ public class PbtResourcePool : IPbtResourcePool
         Compact2048,
     }
 
-    // A stack favors recently returned, cache-resident items.
-    private class ConcurrentStackPool<T>(int maxCapacity) where T : notnull, IDisposable, IResettable
-    {
-        private readonly ConcurrentStack<T> _pool = new();
-
-        public int PooledItemCount => _pool.Count;
-
-        public bool TryGet([NotNullWhen(true)] out T? item) => _pool.TryPop(out item);
-
-        public bool Return(T item)
-        {
-            // Reset before the capacity check so an overflowed item releases its contents.
-            item.Reset();
-            if (_pool.Count >= maxCapacity)
-            {
-                item.Dispose();
-                return false;
-            }
-
-            _pool.Push(item);
-            return true;
-        }
-    }
-
     private class ResourcePoolCategory(Usage usage, int snapshotContentPoolSize, int writableBundlePoolSize)
     {
-        private readonly ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
+        private readonly ResourcePool.ConcurrentStackPool<PbtSnapshotContent> _snapshotPool = new(snapshotContentPoolSize);
         // Each writable bundle holds three partition batches and one transient resource.
-        private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtPath>> _writeBatchPool = new(writableBundlePoolSize * 2);
-        private readonly ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
+        private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtPath>> _writeBatchPool = new(writableBundlePoolSize * 2);
+        private readonly ResourcePool.ConcurrentStackPool<PbtWriteBatchBuilder<PbtStoragePath>> _storageWriteBatchPool = new(writableBundlePoolSize);
         private readonly ResourcePool.PooledResourceLabel _writeBatchLabel = new(usage.ToString(), "PbtWriteBatchBuilder");
-        private readonly ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
+        private readonly ResourcePool.ConcurrentStackPool<PbtTransientResource> _cachedResourcePool = new(writableBundlePoolSize);
         private int _lastNodeGroupCapacity = 1024;
         private readonly ResourcePool.PooledResourceLabel _cachedResourceLabel = new(usage.ToString(), nameof(PbtTransientResource));
         private readonly ResourcePool.PooledResourceLabel _snapshotLabel = new(usage.ToString(), nameof(PbtSnapshotContent));
@@ -163,7 +138,7 @@ public class PbtResourcePool : IPbtResourcePool
         }
 
         /// <summary>Pops a pooled item; on a miss the caller creates one, counted as created.</summary>
-        private bool TryRent<T>(ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, [NotNullWhen(true)] out T? item) where T : notnull, IDisposable, IResettable
+        private bool TryRent<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, [NotNullWhen(true)] out T? item) where T : class, IDisposable, IResettable
         {
             Metrics.PbtActivePooledResource.AddBy(label, 1);
             if (pool.TryGet(out item))
@@ -178,7 +153,7 @@ public class PbtResourcePool : IPbtResourcePool
         }
 
         /// <returns>Whether the pool kept <paramref name="item"/> rather than disposing it on overflow.</returns>
-        private bool Return<T>(ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, T item) where T : notnull, IDisposable, IResettable
+        private bool Return<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label, T item) where T : class, IDisposable, IResettable
         {
             Metrics.PbtActivePooledResource.AddBy(label, -1);
             bool kept = pool.Return(item);
@@ -187,7 +162,7 @@ public class PbtResourcePool : IPbtResourcePool
         }
 
         // The two write-batch pools share one label, so its count covers both.
-        private int CachedCount<T>(ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label) where T : notnull, IDisposable, IResettable =>
-            ReferenceEquals(label, _writeBatchLabel) ? _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount : pool.PooledItemCount;
+        private long CachedCount<T>(ResourcePool.ConcurrentStackPool<T> pool, ResourcePool.PooledResourceLabel label) where T : class, IDisposable, IResettable =>
+            (long)(ReferenceEquals(label, _writeBatchLabel) ? _writeBatchPool.PooledItemCount + _storageWriteBatchPool.PooledItemCount : pool.PooledItemCount);
     }
 }

@@ -54,7 +54,7 @@ public class PbtCarryForwardCachingPersistenceTests
         PackedSlotRun second = reader.GetSlotRun(Run1);
 
         Assert.That(second, Is.Not.SameAs(first));
-        Assert.That(second.Mask, Is.EqualTo(first.Mask));
+        Assert.That(Enumerable.Range(0, SlotRun.Width).Select(second.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(first.Get)));
     }
 
     [Test]

@@ -26,15 +26,15 @@ public class PbtSnapshotBundleTests
     public void First_write_to_a_run_seeds_the_whole_run_from_the_newest_layer_holding_it([Values] bool heldByLayer)
     {
         // Slots 3, 5 and 6 share one run.
-        PbtVariableTreeKey persistedKey = PbtStateKey.Slot(TestItem.AddressA, 5);
-        PbtVariableTreeKey layerKey = PbtStateKey.Slot(TestItem.AddressA, 6);
+        PbtVariableTreeKey persistedKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 5);
+        PbtVariableTreeKey layerKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 6);
         EvmWord persisted = EvmWordSlot.FromStripped(Value(1));
         EvmWord layer = EvmWordSlot.FromStripped(Value(2));
         EvmWord local = EvmWordSlot.FromStripped(Value(3));
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
-        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1)))), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
+        using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 3, local);
         EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
@@ -192,7 +192,7 @@ public class PbtSnapshotBundleTests
         {
             if (!_available.TryPop(out PbtTransientResource? resource))
             {
-                resource = new PbtTransientResource();
+                resource = new PbtTransientResource(nodeGroupCapacity: 1024);
                 _resources.Add(resource);
             }
             resource.OnRented(this, usage);
@@ -232,7 +232,7 @@ public class PbtSnapshotBundleTests
     public void Storage_mutations_use_small_header_and_wide_storage_partitions([Values(0u, 63u, 64u, 256u, uint.MaxValue)] uint slotValue)
     {
         UInt256 slot = slotValue == uint.MaxValue ? UInt256.MaxValue : new UInt256(slotValue);
-        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, slot);
+        PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
         EvmWord value = EvmWordSlot.FromStripped(Value(9));
         foreach (bool delete in new[] { false, true })
@@ -255,7 +255,7 @@ public class PbtSnapshotBundleTests
     [TestCase(true, true)]
     public void Trie_updates_leave_independently_staged_flat_entries_unchanged(bool leafExists, bool delete)
     {
-        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, 1);
+        PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 flatValue = new(Value(9));
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
         ValueHash256 root;
@@ -294,7 +294,7 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
-        PbtReadOnlySnapshotBundle readOnly = new(new(0), reader);
+        PbtReadOnlySnapshotBundle readOnly = new(new(0), reader, recordDetailedMetrics: false);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         int readsBeforeDirectRead = reader.GroupReadCount;
@@ -772,7 +772,7 @@ public class PbtSnapshotBundleTests
             using RefCountingMemory cached = Memory(shared);
             cache.Add(TestItem.KeccakA.ValueHash256, groupKey, cached);
         }
-        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
+        using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         if (newestTier == 3)
         {
             using RefCountingMemory? payload = tombstone ? null : Memory(write);
@@ -792,7 +792,7 @@ public class PbtSnapshotBundleTests
     public void Failed_group_read_during_fold_leaves_the_write_buffer_unchanged([Values] bool malformed)
     {
         TrackingMemoryProvider memoryProvider = new();
-        PbtVariableTreeKey originalLeafKey = PbtStateKey.Slot(TestItem.AddressA, 1);
+        PbtVariableTreeKey originalLeafKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         ValueHash256 originalLeafValue = new(Value(2));
         PbtNodePath originalNodePath = new([0x80], 4);
         byte[] originalNode = PbtNodeGroupEncoder.Encode(originalNodePath, [new PbtNodeRecord(PbtTestPaths.PathOf(originalNodePath, 0).ToPath<PbtStorageNodePath>(), BranchEncoding(1))], default);
@@ -899,7 +899,7 @@ public class PbtSnapshotBundleTests
                 for (uint write = 1; write <= WritesPerSlot; write++)
                 {
                     UInt256 value = write;
-                    bundle.SetSlot(TestItem.AddressA, (UInt256)(uint)slot, EvmWordSlot.FromUInt256(in value));
+                    bundle.SetSlot(TestItem.AddressA, (UInt256)(uint)slot, value.ToBigEndianWord());
                 }
             }),
             () => System.Threading.Tasks.Parallel.For(0, AccountCount, index => bundle.SetAccount(TestItem.Addresses[index], AccountOf(index))),
@@ -913,7 +913,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             for (uint slot = 0; slot < SlotRun.Width; slot++)
-                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(EvmWordSlot.FromUInt256(in lastWrite)), $"slot {slot}");
+                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(lastWrite.ToBigEndianWord()), $"slot {slot}");
             Assert.That(bundle.Fold(default), Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }

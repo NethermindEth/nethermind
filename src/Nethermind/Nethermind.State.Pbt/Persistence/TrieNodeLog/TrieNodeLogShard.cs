@@ -351,8 +351,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
         _flushSignal.Release();
     }
 
-    internal void OnBatchAborted() => Volatile.Write(ref _openBatch, 0);
-
     private void SealActive()
     {
         using Lock.Scope _ = _lock.EnterScope();
@@ -634,7 +632,7 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
     /// <summary>Sequential record reader over <c>[0, end)</c> of a generation file; stops at the first implausible header.</summary>
     private sealed class Scanner(SafeFileHandle handle, long end) : IDisposable
     {
-        private byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
+        private readonly byte[] _buffer = ArrayPool<byte>.Shared.Rent(ScanBufferSize);
         private long _bufferOffset; // file offset of _buffer[0]
         private int _buffered;
         private long _next = TrieNodeLogGeneration.FileHeaderLength; // file offset of the next record
@@ -664,12 +662,6 @@ internal sealed class TrieNodeLogShard : IAsyncDisposable
             {
                 _recordStart = (int)(_next - _bufferOffset);
                 return true;
-            }
-
-            if (length > _buffer.Length)
-            {
-                ArrayPool<byte>.Shared.Return(_buffer);
-                _buffer = ArrayPool<byte>.Shared.Rent(length);
             }
 
             _bufferOffset = _next;

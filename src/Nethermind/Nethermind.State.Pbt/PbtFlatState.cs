@@ -3,8 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Memory;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Pbt;
 
@@ -30,14 +30,11 @@ internal static class PbtFlatState
     /// <summary>The code-chunk leaves of <paramref name="code"/>, omitting all-zero chunks as the tree does.</summary>
     internal static IEnumerable<KeyValuePair<PbtPath, ValueHash256>> CodeLeaves(ValueHash256 codeHash, CodeInfo code)
     {
-        int codeLength = code.Code.Length;
-        int chunkCount = (codeLength + 30) / 31;
-        int chunksLength = chunkCount * PbtKeyDerivation.CodeChunkSize;
-        using ArrayPoolList<byte> chunks = new(chunksLength, chunksLength);
-        PbtKeyDerivation.ChunkifyCode(code.CodeSpan[..codeLength], chunks.AsSpan());
+        using RefCountingMemory chunks = PbtKeyDerivation.ChunkifyCode(code.CodeSpan);
+        int chunkCount = chunks.GetSpan().Length / PbtKeyDerivation.CodeChunkSize;
         for (int chunkId = 0; chunkId < chunkCount; chunkId++)
         {
-            ValueHash256 value = new(chunks.AsSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
+            ValueHash256 value = new(chunks.GetSpan().Slice(chunkId * PbtKeyDerivation.CodeChunkSize, PbtKeyDerivation.CodeChunkSize));
             if (value != default) yield return new(PbtStateKey.Code(codeHash, chunkId), value);
         }
     }

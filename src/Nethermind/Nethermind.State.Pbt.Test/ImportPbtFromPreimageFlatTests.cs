@@ -378,8 +378,8 @@ public class ImportPbtFromPreimageFlatTests
         logger.IsInfo.Returns(true);
         ILogManager logs = Substitute.For<ILogManager>();
         ILogger scanLogger = new(logger);
-        logs.GetClassLogger<PbtScanner>().Returns(scanLogger);
-        logger.When(log => log.Info(Arg.Is<string>(message => message.Contains("PBT scan Accounts:") && !message.Contains("(completed)"))))
+        logs.GetClassLogger<ProgressLogger>().Returns(scanLogger);
+        logger.When(log => log.Info(Arg.Is<string>(message => message.Contains("PBT scan Accounts "))))
             .Do(_ => progressLogged.Set());
         if (periodic)
             db.ViewOpened = (column, _, _) =>
@@ -389,7 +389,7 @@ public class ImportPbtFromPreimageFlatTests
             };
         PbtScanReport report = await new PbtScanner(db, new PbtConfig { ScanTreeConcurrency = 2 }, logs).Scan(CancellationToken.None);
         foreach (PbtColumns column in new[] { PbtColumns.Accounts, PbtColumns.Storages, PbtColumns.Codes, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
-            logger.Received().Info(Arg.Is<string>(message => message.Contains($"PBT scan {column}:") && message.Contains("(completed)")));
+            logger.Received().Info(Arg.Is<string>(message => message.Contains($"PBT scan {column} ")));
         Assert.That(report.Accounts.RecordCount, Is.EqualTo(1), "flat rows are counted without RLP decoding");
         if (periodic) Assert.That(progressLogged.IsSet, Is.True);
         Assert.That(db.ActiveViews, Is.Zero);

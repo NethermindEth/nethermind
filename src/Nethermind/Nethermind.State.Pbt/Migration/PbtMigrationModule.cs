@@ -13,11 +13,7 @@ using Nethermind.Init.Modules;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Image;
-using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Steps;
-using Nethermind.State.Pbt.Sync;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
 
@@ -35,9 +31,6 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
     {
         builder
             .AddPbtCore(configuration)
-            .AddSingleton<PbtStateReader>()
-            .AddSingleton<PbtWorldStateManager>()
-            .Add<PbtOverridableWorldScope>()
             .AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance)
 
             .AddSingleton<MigrationScopeProvider>()
@@ -49,13 +42,9 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<MigrationStateBoundary>()
             .Bind<IStateBoundary, MigrationStateBoundary>()
             .Bind<IFullStateFinder, MigrationStateBoundary>()
-            .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
-            .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
             .AddSingleton<IBalHealing>(NoopBalHealing.Instance)
-            .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
 
             .AddSingleton<MigrationFlatFinalizedStateProvider>()
-            .AddSingleton<PbtAnchorImport>()
             .AddSingleton<PbtMigrationBootstrap>()
             .AddSingleton<PbtMigrationImport>()
             .AddSingleton<PbtBalReplay>()
@@ -65,7 +54,6 @@ internal sealed class PbtMigrationModule(IPbtConfig configuration) : Module
             .AddSingleton<MerkleShadowFollower>()
             .Bind<IMerkleShadowFollower, MerkleShadowFollower>()
             .AddSingleton<IMigrationTelemetry, MigrationTelemetry>()
-            .RegisterSingletonJsonRpcModule<IMigrationDebugRpcModule, MigrationDebugRpcModule>()
             .AddStep(typeof(InitializePbtMigration));
 
         // Flat's persistence must not seek post-activation boundaries, whose canonical roots are PBT roots.

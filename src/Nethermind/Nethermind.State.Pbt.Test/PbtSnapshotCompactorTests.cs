@@ -22,7 +22,7 @@ public class PbtSnapshotCompactorTests
     {
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath alternateGroupKey = new([], 0);
-        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, 64);
+        PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
@@ -67,9 +67,9 @@ public class PbtSnapshotCompactorTests
     public void Compact_preserves_clear_ordering_and_whole_typed_values([Values(7u, 1000u)] uint slot, [Values] bool clearLast)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
-        PbtVariableTreeKey key = PbtStateKey.Slot(TestItem.AddressA, slot);
-        PbtVariableTreeKey otherSlot = PbtStateKey.Slot(TestItem.AddressA, slot + 1);
-        PbtVariableTreeKey otherAddress = PbtStateKey.Slot(TestItem.AddressB, slot);
+        PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
+        PbtVariableTreeKey otherSlot = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 1);
+        PbtVariableTreeKey otherAddress = PbtTestLeaves.SlotKey(TestItem.AddressB, slot);
         EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
         EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
         CodeInfo code = new(Bytes.FromHexString("6001600055"));
@@ -107,5 +107,5 @@ public class PbtSnapshotCompactorTests
         return NewCompactor().Compact(chain);
     }
 
-    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config);
+    private PbtSnapshotCompactor NewCompactor() => new(_pool, PbtCoreRegistration.CreateCompactionSchedule(new Nethermind.Db.MemDb(), Config, Nethermind.Logging.LimboLogs.Instance), new PbtSnapshotRepository(new Nethermind.Monitoring.Config.MetricsConfig()), Config, Nethermind.Logging.LimboLogs.Instance);
 }

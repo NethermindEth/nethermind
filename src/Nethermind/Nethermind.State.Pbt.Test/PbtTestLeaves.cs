@@ -36,8 +36,11 @@ internal static class PbtTestLeaves
         return encoded;
     }
 
+    public static PbtVariableTreeKey SlotKey(Address address, in UInt256 slot) =>
+        PbtStateKey.Slot(address, PbtStateKey.AddressKeyHash(address), slot);
+
     public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
-        reader.GetSlot(PbtStateKey.Slot(address, slot));
+        reader.GetSlot(SlotKey(address, slot));
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)
     {
@@ -47,7 +50,7 @@ internal static class PbtTestLeaves
     }
 
     public static void AddSlot(List<RebuildEntry> into, Address address, in UInt256 slot, in UInt256 value) =>
-        into.Add(new RebuildEntry(PbtStateKey.Slot(address, slot), value.ToValueHash()));
+        into.Add(new RebuildEntry(SlotKey(address, slot), value.ToValueHash()));
 
     /// <summary>Reads every account preimage and its slot preimages from <paramref name="source"/>.</summary>
     public static List<PbtAccountPreimages> ReadPreimages(Stream source)

@@ -36,7 +36,7 @@ internal static class PbtSnapshotBundleTestExtensions
 
     public static PbtSnapshotBundle CreateBundle(IPbtResourcePool pool, IPbtPersistence.IReader reader, IPbtTrieNodeCache cache) => new(
         new PbtSnapshotPooledList(0),
-        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader),
+        new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false),
         pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
 
     /// <summary>Folds the bundle's pending leaf changes into the tree at <paramref name="root"/> and returns the new root.</summary>

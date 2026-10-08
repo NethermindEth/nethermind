@@ -29,13 +29,7 @@ internal static class PbtStateKey
     public static PbtPath HeaderStorage(in ValueHash256 addressHash, in UInt256 slot) =>
         Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot);
 
-    public static PbtStoragePath Storage(Address address, in UInt256 slot)
-    {
-        ValueHash256 address32 = address.ToHash();
-        return Eip8297KeyDerivation.StorageKey(address32.Bytes, slot);
-    }
-
-    /// <summary><see cref="Storage(Address, in UInt256)"/> reusing a precomputed <see cref="AddressKeyHash"/>.</summary>
+    /// <summary>The non-header storage leaf key; takes the precomputed <see cref="AddressKeyHash"/>.</summary>
     public static PbtStoragePath Storage(Address address, in ValueHash256 addressHash, in UInt256 slot)
     {
         ValueHash256 address32 = address.ToHash();
@@ -46,9 +40,6 @@ internal static class PbtStateKey
     public static PbtVariableTreeKey Slot(Address address, in ValueHash256 addressHash, in UInt256 slot) => IsHeaderSlot(slot)
         ? (PbtVariableTreeKey)HeaderStorage(addressHash, slot)
         : (PbtVariableTreeKey)Storage(address, addressHash, slot);
-
-    /// <inheritdoc cref="Slot(Address, in ValueHash256, in UInt256)"/>
-    public static PbtVariableTreeKey Slot(Address address, in UInt256 slot) => Slot(address, AddressKeyHash(address), slot);
 
     internal static ValueHash256 StorageAddress<TKey>(in TKey key) where TKey : struct, IPbtKey<TKey> => new(key.Bytes.Slice(1, ValueHash256.MemorySize));
 }

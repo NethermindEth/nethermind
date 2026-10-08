@@ -289,7 +289,7 @@ public class PbtAnchorImportTests
             PbtKeyDerivation.PackBasicData(basicData.BytesAsSpan, 0, (UInt256)(index + 1), UInt256.Zero);
             leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 0), basicData));
             leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), 1), Keccak.OfAnEmptyString.ValueHash256));
-            leaves.Add(new(PbtStateKey.Slot(address, 100), ((UInt256)(index + 1)).ToValueHash()));
+            leaves.Add(new(PbtTestLeaves.SlotKey(address, 100), ((UInt256)(index + 1)).ToValueHash()));
         }
         leaves.Sort(static (left, right) => left.Key.CompareTo(right.Key));
         ValueHash256 expectedRoot = PbtRightmostGroupStore.CalculateRoot(leaves, PbtRightmostGroupStore.DefaultWindowSize, Environment.ProcessorCount, CancellationToken.None);
@@ -306,7 +306,7 @@ public class PbtAnchorImportTests
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(reader.GetAccount(PbtStateKey.AddressKeyHash(addresses[index]))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
-                Assert.That(reader.GetSlot(PbtStateKey.Slot(addresses[index], 100)),
+                Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(addresses[index], 100)),
                     Is.EqualTo(EvmWordSlot.FromStripped(((UInt256)(index + 1)).ToBigEndian())));
             }
         }
@@ -396,7 +396,7 @@ public class PbtAnchorImportTests
         PbtVariableTreeKey basic = (PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(writer), 0);
         PbtVariableTreeKey chunk = (PbtVariableTreeKey)PbtStateKey.Code(writerCodeHash, 0);
         PbtVariableTreeKey delegation = (PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(authority), 2);
-        PbtVariableTreeKey storageKey = PbtStateKey.Slot(history, UInt256.Zero);
+        PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(history, UInt256.Zero);
         switch (corruption)
         {
             case "code": Mutate(chunk, 1); break;
@@ -429,7 +429,7 @@ public class PbtAnchorImportTests
                 leaves.Add(new((PbtVariableTreeKey)PbtStateKey.Account(PbtStateKey.AddressKeyHash(surplus), 1), Keccak.OfAnEmptyString.ValueHash256));
                 break;
             case "orphan-storage-leaf":
-                leaves.Add(new(PbtStateKey.Slot(new Address("0x00000000000000000000000000000000cafebabe"), 100),
+                leaves.Add(new(PbtTestLeaves.SlotKey(new Address("0x00000000000000000000000000000000cafebabe"), 100),
                     new ValueHash256(Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000001"))));
                 break;
             // Both artifacts drop one account consistently: the image is whole, but not the anchor's state.
@@ -535,7 +535,7 @@ public class PbtAnchorImportTests
             }
             if (expected.Storage is null) continue;
             foreach ((UInt256 slot, byte[] value) in expected.Storage)
-                Assert.That(reader.GetSlot(PbtStateKey.Slot(address, slot)),
+                Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(address, slot)),
                     Is.EqualTo(EvmWordSlot.FromStripped(new UInt256(value, isBigEndian: true).ToBigEndian())), slot.ToString());
         }
 

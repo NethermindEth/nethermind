@@ -204,7 +204,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Set(in UInt256 index, in UInt256 value)
         {
-            scope.Bundle.SetSlot(address, _addressHash, index, EvmWordSlot.FromUInt256(in value));
+            scope.Bundle.SetSlot(address, _addressHash, index, value.ToBigEndianWord());
             scope._rootDirty = true;
         }
 

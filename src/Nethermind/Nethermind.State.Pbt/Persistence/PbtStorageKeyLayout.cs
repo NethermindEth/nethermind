@@ -12,7 +12,7 @@ namespace Nethermind.State.Pbt.Persistence;
 /// </summary>
 /// <remarks>
 /// The tree key is <c>[zone][addressHash][rest]</c>; the persisted form rotates its first 33 bytes. Lengths are
-/// unchanged (34 bytes for header slots, 66 for overflow slots), so a persisted key decodes back to a valid tree key.
+/// unchanged (34 bytes for header slots, 66 for overflow slots).
 /// </remarks>
 internal static class PbtStorageKeyLayout
 {
@@ -29,15 +29,6 @@ internal static class PbtStorageKeyLayout
         destination[ZoneOffset] = bytes[0];
         bytes[RestOffset..].CopyTo(destination[RestOffset..]);
         return destination[..bytes.Length];
-    }
-
-    public static PbtVariableTreeKey Decode(ReadOnlySpan<byte> persisted)
-    {
-        Span<byte> key = stackalloc byte[PbtVariableTreeKey.MaxLength];
-        key[0] = persisted[ZoneOffset];
-        persisted[..ValueHash256.MemorySize].CopyTo(key[1..]);
-        persisted[RestOffset..].CopyTo(key[RestOffset..]);
-        return new PbtVariableTreeKey(key[..persisted.Length]);
     }
 
     private sealed class PersistedOrderComparer : IComparer<PbtVariableTreeKey>

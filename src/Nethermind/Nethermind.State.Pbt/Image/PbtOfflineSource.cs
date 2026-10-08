@@ -49,9 +49,9 @@ internal static class PbtOfflineSource
         ArgumentOutOfRangeException.ThrowIfLessThan(sortBufferBytes, 1024);
         ArgumentOutOfRangeException.ThrowIfNegative(workerCount);
         cancellationToken.ThrowIfCancellationRequested();
+        anchor.Validate();
         if (!source.IsPreimageMode || source.CurrentState.BlockNumber != anchor.Header.Number ||
-            anchor.Header.StateRoot is null || source.CurrentState.StateRoot != anchor.Header.StateRoot.ValueHash256 ||
-            anchor.ActivationTimestamp is { } activation && anchor.Header.Timestamp >= activation || anchor.Header.Hash is null)
+            source.CurrentState.StateRoot != anchor.Header.StateRoot!.ValueHash256)
             throw new InvalidDataException("Offline source does not match the trusted pre-activation anchor.");
         int workers = workerCount > 0 ? workerCount : Environment.ProcessorCount;
         ILogger logger = logManager.GetClassLogger(typeof(PbtOfflineSource));
@@ -108,12 +108,11 @@ internal static class PbtOfflineSource
             IEnumerable<RebuildEntry> SnapshotLeaves()
             {
                 using (ProgressReporter progress = PbtImageProgress.Start("PBT export snapshot", "leaf", (ulong)totals.Leaves, logManager))
-                using (PbtSortedSpool.Cursor cursor = leaves.Read())
                 {
-                    while (cursor.MoveNext())
+                    foreach (RebuildEntry entry in PbtLeafIngestion.SpoolLeaves(leaves))
                     {
                         progress.Update(++leafCount);
-                        yield return new RebuildEntry(new PbtVariableTreeKey(cursor.Key), new ValueHash256(cursor.Value));
+                        yield return entry;
                     }
                 }
                 // The snapshot is the spool's only reader, so its runs need not outlive it while the preimage drain finishes.

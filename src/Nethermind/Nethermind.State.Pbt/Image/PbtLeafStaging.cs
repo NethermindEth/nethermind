@@ -72,7 +72,7 @@ internal static class PbtLeafStaging
                     case PbtKeyDerivation.DelegationLeafKey:
                         delegation = entry.Leaf;
                         continue;
-                    case < PbtKeyDerivation.HeaderStorageOffset or >= PbtKeyDerivation.HeaderStorageOffset + PbtSnapshotCodec.HeaderStorageSlots:
+                    case < PbtKeyDerivation.HeaderStorageOffset or >= PbtKeyDerivation.HeaderStorageOffset + PbtKeyDerivation.HeaderStorageSlots:
                         throw new InvalidDataException("Snapshot holds a leaf at a reserved account sub-index.");
                 }
             }

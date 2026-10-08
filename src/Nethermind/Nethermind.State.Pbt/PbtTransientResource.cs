@@ -6,7 +6,7 @@ using IResettable = Nethermind.Core.Resettables.IResettable;
 namespace Nethermind.State.Pbt;
 
 /// <summary>Per-block scratch state that is never committed into a snapshot: the node groups staged for the shared trie cache.</summary>
-public sealed class PbtTransientResource(int nodeGroupCapacity = 1024) : IDisposable, IResettable
+public sealed class PbtTransientResource(int nodeGroupCapacity) : IDisposable, IResettable
 {
     private IPbtResourcePool? _returnPool;
     private PbtResourcePool.Usage _returnUsage;

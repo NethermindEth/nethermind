@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Buffers.Binary;
-using System.Diagnostics;
 using System.Numerics;
 using System.Text;
 using Nethermind.Core;
@@ -10,6 +9,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
@@ -21,8 +21,6 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
     private const int RangesPerWorker = 16;
     private const int PrefixSpace = 1 << 16;
     private const int ProgressPublishInterval = 100_000;
-    private static readonly TimeSpan ProgressLogInterval = TimeSpan.FromSeconds(5);
-    private readonly ILogger _logger = logManager.GetClassLogger<PbtScanner>();
 
     /// <summary>Sweeps each active data column with independent parallel range readers.</summary>
     public async Task<PbtScanReport> Scan(CancellationToken cancellationToken)
@@ -47,40 +45,12 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
         int nextRange = -1, completedRanges = 0;
         long scanned = 0;
         using CancellationTokenSource workersCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        using CancellationTokenSource loggingCancellation = new();
         CancellationToken workerToken = workersCancellation.Token;
         PbtScanReport[] shards = new PbtScanReport[workerCount];
         Task[] workers = new Task[workerCount];
-        Stopwatch elapsed = Stopwatch.StartNew();
-        long previousCount = 0;
-        double previousSeconds = 0;
-
-        void LogProgress(bool completed)
-        {
-            long count = Interlocked.Read(ref scanned);
-            double seconds = elapsed.Elapsed.TotalSeconds;
-            double interval = seconds - previousSeconds;
-            double rate = interval > 0 ? (count - previousCount) / interval : 0;
-            if (_logger.IsInfo)
-                _logger.Info($"PBT scan {columnName}: {count:N0} entries, elapsed {seconds:N1}s, {rate:N0} entries/s, approximately {(double)Volatile.Read(ref completedRanges) / rangeCount:P1} of ranges{(completed ? " (completed)" : "")}.");
-            previousCount = count;
-            previousSeconds = seconds;
-        }
-
-        async Task LogPeriodically()
-        {
-            try
-            {
-                using PeriodicTimer timer = new(ProgressLogInterval);
-                while (await timer.WaitForNextTickAsync(loggingCancellation.Token)) LogProgress(false);
-            }
-            catch (OperationCanceledException) when (loggingCancellation.IsCancellationRequested) { }
-            catch
-            {
-                workersCancellation.Cancel();
-                throw;
-            }
-        }
+        string phase = $"PBT scan {columnName}";
+        using ProgressReporter progress = PbtImageProgress.Start(phase, "entries", 0, logManager);
+        progress.Logger.SetFormat(logger => PbtImageProgress.Format(phase, Volatile.Read(ref completedRanges) / (float)rangeCount, PbtImageProgress.Counted("entries", logger)));
 
         void ScanRanges(PbtScanReport shard)
         {
@@ -112,7 +82,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
                         }
                         if (++pending == ProgressPublishInterval)
                         {
-                            Interlocked.Add(ref scanned, pending);
+                            progress.Update((ulong)Interlocked.Add(ref scanned, pending));
                             pending = 0;
                         }
                     }
@@ -126,28 +96,18 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             }
             finally
             {
-                Interlocked.Add(ref scanned, pending);
+                progress.Update((ulong)Interlocked.Add(ref scanned, pending));
             }
         }
 
-        Task logging = LogPeriodically();
         for (int worker = 0; worker < workerCount; worker++)
         {
             PbtScanReport shard = shards[worker] = new();
             workers[worker] = Task.Run(() => ScanRanges(shard), CancellationToken.None);
         }
-        try
-        {
-            await Task.WhenAll(workers);
-        }
-        finally
-        {
-            await loggingCancellation.CancelAsync();
-            await logging;
-        }
+        await Task.WhenAll(workers);
         cancellationToken.ThrowIfCancellationRequested();
         foreach (PbtScanReport shard in shards) report.MergeFrom(shard);
-        LogProgress(true);
     }
 
     private static bool IsNodeGroupColumn(PbtColumns column) =>
@@ -177,12 +137,7 @@ public sealed class PbtScanner(IColumnsDb<PbtColumns> db, IPbtConfig config, ILo
             }
             stats.NodesByDepth[groupPath.BitDepth + PbtFourLevelGroupGeometry.LocalPathOf(position).Length]++;
         }
-        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
-        {
-            if (reader.DescendantBytes(slot) == 0) continue;
-            stats.GroupsWithDescendants++;
-            break;
-        }
+        if (reader.DescendantMask != 0) stats.GroupsWithDescendants++;
     }
 
     private static byte[][] CreateBounds(PbtColumns column, int rangeCount)

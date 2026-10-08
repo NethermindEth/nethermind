@@ -27,17 +27,29 @@ public static class SlotRun
     {
         int count = BitOperations.PopCount(mask);
         if (count == 0) return Empty;
-        PackedSlotRun run = count switch
-        {
-            1 => StaticPool<SlotRun1>.Rent(),
-            2 => StaticPool<SlotRun2>.Rent(),
-            <= 4 => StaticPool<SlotRun4>.Rent(),
-            <= 8 => StaticPool<SlotRun8>.Rent(),
-            _ => StaticPool<SlotRun16>.Rent(),
-        };
+        PackedSlotRun run = Rent(count);
         run.Seed(mask, valuesByIndex);
         return run;
     }
+
+    /// <summary>Rents the smallest run holding the slots set in <paramref name="mask"/>, taking their values packed by ascending slot from <paramref name="packedValues"/>.</summary>
+    internal static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<byte> packedValues)
+    {
+        int count = BitOperations.PopCount(mask);
+        if (count == 0) return Empty;
+        PackedSlotRun run = Rent(count);
+        run.SeedPacked(mask, packedValues);
+        return run;
+    }
+
+    private static PackedSlotRun Rent(int count) => count switch
+    {
+        1 => StaticPool<SlotRun1>.Rent(),
+        2 => StaticPool<SlotRun2>.Rent(),
+        <= 4 => StaticPool<SlotRun4>.Rent(),
+        <= 8 => StaticPool<SlotRun8>.Rent(),
+        _ => StaticPool<SlotRun16>.Rent(),
+    };
 
     /// <summary>Returns <paramref name="run"/> to its pool; the caller must drop every reference to it.</summary>
     public static void Return(PackedSlotRun run) => run.ReturnSelf();
@@ -47,9 +59,6 @@ public static class SlotRun
 
     /// <summary>The slot's position within its run: the low four bits of the storage key.</summary>
     public static int IndexOf<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => slotKey.Bytes[^1] & IndexMask;
-
-    /// <summary>The storage key of slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>.</summary>
-    public static TKey SlotKey<TKey>(in TKey runKey, int index) where TKey : struct, IPbtKey<TKey> => WithLastByte(runKey, (byte)(runKey.Bytes[^1] | index));
 
     /// <summary>Picks <paramref name="header"/> for header-slot runs, keyed by <see cref="PbtPath"/>, and <paramref name="storage"/> for storage-zone runs, keyed by <see cref="PbtStoragePath"/>.</summary>
     internal static T ByZone<TKey, T>(object header, object storage) where TKey : struct, IPbtKey<TKey> where T : class =>
@@ -83,8 +92,6 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     /// <summary>The number of non-zero slots.</summary>
     public int Count => BitOperations.PopCount(_mask);
 
-    /// <summary>Bit <c>i</c> set when slot <c>i</c> is non-zero.</summary>
-    public ushort Mask => _mask;
     private ReadOnlySpan<EvmWord> PackedValues => _values.AsSpan(0, Count);
 
     /// <summary>The value of slot <paramref name="index"/>, zero when absent.</summary>
@@ -101,12 +108,7 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     }
 
     /// <summary>A new run holding the same slots.</summary>
-    public PackedSlotRun Clone()
-    {
-        Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
-        Expand(valuesByIndex);
-        return SlotRun.Create(_mask, valuesByIndex);
-    }
+    public PackedSlotRun Clone() => SlotRun.CreatePacked(_mask, MemoryMarshal.AsBytes(PackedValues));
 
     /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
     public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
@@ -125,6 +127,12 @@ public abstract class PackedSlotRun(int capacity) : IResettable
         int rank = 0;
         for (int index = 0; index < SlotRun.Width; index++)
             if ((mask & (1 << index)) != 0) _values[rank++] = valuesByIndex[index];
+    }
+
+    internal void SeedPacked(ushort mask, ReadOnlySpan<byte> packedValues)
+    {
+        _mask = mask;
+        packedValues.CopyTo(MemoryMarshal.AsBytes(_values.AsSpan()));
     }
 
     private void Expand(Span<EvmWord> valuesByIndex)

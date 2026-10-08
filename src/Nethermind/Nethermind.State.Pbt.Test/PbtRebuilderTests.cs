@@ -55,7 +55,7 @@ public class PbtRebuilderTests
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             PbtTestLeaves.AddSlot(leaves, address, slot, value);
-            stagingBatch.SetSlot(PbtStateKey.Slot(address, slot), EvmWordSlot.FromStripped(value.ToBigEndian()));
+            stagingBatch.SetSlot(PbtTestLeaves.SlotKey(address, slot), EvmWordSlot.FromStripped(value.ToBigEndian()));
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA
@@ -94,7 +94,7 @@ public class PbtRebuilderTests
         }
         channel.Writer.Complete();
 
-        return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None, windowSize);
+        return await rebuilder.Rebuild(channel.Reader, targetState, CancellationToken.None, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
     }
 
     [TestCase(1, 3)]
@@ -172,7 +172,7 @@ public class PbtRebuilderTests
         StateId targetState = new(7, TestItem.KeccakA.ValueHash256);
         using CancellationTokenSource cancellation = new();
         Task<ValueHash256> rebuilding = new PbtRebuilder(target, Config, LimboLogs.Instance)
-            .Rebuild(source, targetState, cancellation.Token, windowSize);
+            .Rebuild(source, targetState, cancellation.Token, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
         using PbtNodeGroupStore expectedStore = new();
         ValueHash256 expectedRoot = default;
         ValueHash256 rebuiltRoot = default;

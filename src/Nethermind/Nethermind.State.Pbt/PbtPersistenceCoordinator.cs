@@ -88,7 +88,7 @@ public class PbtPersistenceCoordinator(
     }
 
     /// <summary>Persists everything up to the last committed head, e.g. after genesis processing or on shutdown.</summary>
-    public void FlushToPersistence(CancellationToken cancellationToken = default)
+    public void FlushToPersistence(CancellationToken cancellationToken)
     {
         lock (_persistenceLock)
         {

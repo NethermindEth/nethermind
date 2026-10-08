@@ -36,7 +36,9 @@ internal sealed class PbtAnchorImport(
 
     /// <summary>Imports the native PBT state at the anchor from a snapshot, optionally verified by preimages.</summary>
     /// <remarks>The preimages are not ingested: they only rebuild the anchor's MPT root over the staged state. Without
-    /// them nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked.</remarks>
+    /// them nothing ties the snapshot to the anchor's MPT root; only its own claimed PBT root is checked. Preimages are
+    /// verified before the fold publishes the tree, which is what marks the target valid, so a refused import stays
+    /// unpublished and a restart wipes its staging.</remarks>
     public async Task<ValueHash256> ImportSnapshot(Stream snapshot, Stream? preimages,
         PbtImageAnchor anchor, string scratchDirectory, Func<bool> isAnchorCurrent, CancellationToken cancellationToken = default)
     {
@@ -49,20 +51,10 @@ internal sealed class PbtAnchorImport(
         if (!isAnchorCurrent()) throw new InvalidOperationException("Migration anchor changed before the import.");
         // The snapshot's sections do not share one key order, so its read offset is what measures a pass.
         float snapshotLength = snapshot.Length;
-        return await ImportLeaves(anchor, scratchDirectory, token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength,
-            claimedRoot, preimages, isAnchorCurrent, importing, cancellationToken);
-    }
-
-    /// <summary>Stages the logical state of an ascending leaf stream while folding the same stream into the tree.</summary>
-    /// <remarks>Preimages are verified before the fold publishes the tree, which is what marks the target valid, so a refused
-    /// import stays unpublished and a restart wipes its staging.</remarks>
-    private async Task<ValueHash256> ImportLeaves(PbtImageAnchor anchor, string scratchDirectory,
-        Func<CancellationToken, IEnumerable<RebuildEntry>> leaves, Func<ulong, float> fraction, ValueHash256 claimedRoot, Stream? preimages,
-        Func<bool> isAnchorCurrent, Stopwatch importing, CancellationToken cancellationToken)
-    {
-        PrepareStaging(anchor, cancellationToken);
+        RecoverStaging(anchor, cancellationToken);
         (ValueHash256 root, ulong accounts, ulong slots) = await PbtLeafIngestion.Ingest(target, new PbtRebuilder(target, config, config.ImportConcurrency, logManager),
-            leaves, fraction, config.ImportConcurrency, new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, logManager, cancellationToken);
+            token => SnapshotLeaves(snapshot, token), _ => snapshot.Position / snapshotLength, config.ImportConcurrency,
+            new StateId(anchor.Header), windowSize: 16_384, claimedRoot, VerifyStaged, logManager, cancellationToken);
         Finish(anchor, root, accounts, slots, importing, cancellationToken);
         return root;
 
@@ -86,15 +78,6 @@ internal sealed class PbtAnchorImport(
         if (_logger.IsInfo) _logger.Info($"PBT migration anchor {anchor.Header.ToString(BlockHeader.Format.Short)} was imported earlier; reusing it.");
         using IPbtPersistence.IReader reader = target.CreateReader();
         return reader.CurrentRoot;
-    }
-
-    private void PrepareStaging(PbtImageAnchor anchor, CancellationToken cancellationToken)
-    {
-        RecoverStaging(anchor, cancellationToken);
-        if (target.IsValid) throw new InvalidOperationException("An unpublished populated PBT target requires recovery, not replacement.");
-        using IPbtPersistence.IReader reader = target.CreateReader();
-        if (reader.CurrentState != StateId.PreGenesis)
-            throw new InvalidOperationException("PBT anchor staging must start empty.");
     }
 
     private void Finish(PbtImageAnchor anchor, in ValueHash256 root, ulong stagedAccounts, ulong stagedSlots, Stopwatch importing, CancellationToken cancellationToken)

@@ -17,18 +17,7 @@ internal static class SlotRunCodec
     internal const int HeaderLength = 1 + sizeof(ushort);
     private const byte MaxType = 4;
 
-    public static PackedSlotRun Decode(ReadOnlySpan<byte> encoded)
-    {
-        ushort mask = ReadMask(encoded);
-        Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
-        int rank = 0;
-        for (int index = 0; index < SlotRun.Width; index++)
-            if ((mask & (1 << index)) != 0) valuesByIndex[index] = ValueAt(encoded, rank++);
-        return SlotRun.Create(mask, valuesByIndex);
-    }
-
-    private static EvmWord ValueAt(ReadOnlySpan<byte> encoded, int rank) =>
-        EvmWordSlot.FromStripped(encoded.Slice(HeaderLength + rank * ValueHash256.MemorySize, ValueHash256.MemorySize));
+    public static PackedSlotRun Decode(ReadOnlySpan<byte> encoded) => SlotRun.CreatePacked(ReadMask(encoded), encoded[HeaderLength..]);
 
     private static ushort ReadMask(ReadOnlySpan<byte> encoded)
     {

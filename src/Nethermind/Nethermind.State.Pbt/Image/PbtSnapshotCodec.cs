@@ -25,7 +25,6 @@ internal static class PbtSnapshotCodec
     private const byte SingleStorageGroup = 0x05;
     private const byte StorageGroup = 0x06;
     private const byte End = 0x07;
-    internal const int HeaderStorageSlots = 64;
     private const int GroupWidth = 256;
 
     /// <summary>Reads the claimed PBT root from the trailer, leaving the stream's position unchanged.</summary>
@@ -165,7 +164,7 @@ internal static class PbtSnapshotCodec
         for (int index = 0; index < slotCount; index++)
         {
             int slot = ReadByte(source);
-            if (slot <= previousSlot || slot >= HeaderStorageSlots)
+            if (slot <= previousSlot || slot >= PbtKeyDerivation.HeaderStorageSlots)
                 throw new InvalidDataException("Header slots must be strictly ascending and below HEADER_STORAGE_SLOTS.");
             previousSlot = slot;
             leaves.Add(AccountLeaf(addressHash, (byte)(PbtKeyDerivation.HeaderStorageOffset + slot), ReadValue(source)));
@@ -364,7 +363,7 @@ internal static class PbtSnapshotCodec
                     case PbtKeyDerivation.BasicDataLeafKey: basicData = _values[index]; break;
                     case PbtKeyDerivation.CodeHashLeafKey: codeHash = _values[index]; break;
                     case PbtKeyDerivation.DelegationLeafKey: delegation = _values[index]; break;
-                    case >= PbtKeyDerivation.HeaderStorageOffset and < PbtKeyDerivation.HeaderStorageOffset + HeaderStorageSlots: firstSlot = index; break;
+                    case >= PbtKeyDerivation.HeaderStorageOffset and < PbtKeyDerivation.HeaderStorageOffset + PbtKeyDerivation.HeaderStorageSlots: firstSlot = index; break;
                 }
             }
             if (basicData is not { } basic) throw new InvalidDataException("Account header needs a basic-data leaf.");

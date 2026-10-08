@@ -14,7 +14,7 @@ namespace Nethermind.State.Pbt.Test;
 
 public class SlotRunTests
 {
-    private static EvmWord Word(int index) => EvmWordSlot.FromUInt256((UInt256)(uint)(index + 1));
+    private static EvmWord Word(int index) => ((UInt256)(uint)(index + 1)).ToBigEndianWord();
 
     private static byte[] WordBytes(int index)
     {
@@ -55,13 +55,11 @@ public class SlotRunTests
         {
             Assert.That(run, Is.TypeOf(tier));
             Assert.That(run.Count, Is.EqualTo(count));
-            Assert.That(run.Mask, Is.EqualTo(mask));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(run.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(index => (mask & (1 << index)) == 0 ? default : Word(index))));
             Assert.That(run.Count, Is.EqualTo(count), "With must not touch its source");
             Assert.That(cleared.Count, Is.EqualTo(Math.Max(count - 1, 0)));
             Assert.That(cleared.Get(SlotRun.Width - 1), Is.EqualTo(default(EvmWord)));
             Assert.That(clone, Is.Not.SameAs(run).Or.SameAs(SlotRun.Empty));
-            Assert.That(clone.Mask, Is.EqualTo(mask));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(clone.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
         }
         SlotRun.Return(cleared);
@@ -105,14 +103,13 @@ public class SlotRunTests
     [TestCase(256u, 0, 0)]
     public void Run_key_clears_the_slot_index_nibble(uint slot, int index, byte runLastByte)
     {
-        PbtVariableTreeKey slotKey = PbtStateKey.Slot(TestItem.AddressA, slot);
+        PbtVariableTreeKey slotKey = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         PbtVariableTreeKey runKey = SlotRun.RunKey(slotKey);
         using (Assert.EnterMultipleScope())
         {
             Assert.That(SlotRun.IndexOf(slotKey), Is.EqualTo(index));
             Assert.That(runKey.Bytes[..^1].ToArray(), Is.EqualTo(slotKey.Bytes[..^1].ToArray()));
             Assert.That(runKey.Bytes[^1], Is.EqualTo(runLastByte));
-            Assert.That(SlotRun.SlotKey(runKey, index), Is.EqualTo(slotKey));
         }
     }
 }

@@ -66,7 +66,6 @@ internal static class PbtImageVerifier
         PbtImageAnchor anchor, string scratchDirectory, long bucketBytes, int bufferBytes, int workerCount, ILogManager logManager,
         CancellationToken cancellationToken = default)
     {
-        anchor.Validate();
         ILogger logger = logManager.GetClassLogger(typeof(PbtImageVerifier));
         Stopwatch verifying = Stopwatch.StartNew();
         int workers = workerCount > 0 ? workerCount : Environment.ProcessorCount;
@@ -288,7 +287,7 @@ internal static class PbtImageVerifier
                     throw new InvalidDataException($"Preimages list a slot of {job.Address} the snapshot lacks.");
                 key[32] = 1;
                 job.SlotHash.Bytes.CopyTo(key[33..]);
-                writer.Add(key, Rlp.Encode(new UInt256(EvmWordSlot.AsReadOnlySpan(in word), isBigEndian: true)).Bytes);
+                writer.Add(key, Rlp.Encode(EvmWordSlot.ToUInt256(in word)).Bytes);
             }
         }
         finally

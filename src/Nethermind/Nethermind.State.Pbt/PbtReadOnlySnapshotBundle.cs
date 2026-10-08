@@ -20,7 +20,7 @@ namespace Nethermind.State.Pbt;
 public sealed class PbtReadOnlySnapshotBundle(
     PbtSnapshotPooledList snapshots,
     IPbtPersistence.IReader reader,
-    bool recordDetailedMetrics = false) : RefCountingDisposable
+    bool recordDetailedMetrics) : RefCountingDisposable
 {
     private static readonly StringLabel _readAccountSnapshotLabel = new("account_snapshot");
     private static readonly StringLabel _readAccountPersistenceLabel = new("account_persistence");

@@ -64,7 +64,7 @@ internal sealed class PbtTestContext : IAsyncDisposable
         NodeGroupMemory = nodeGroupMemory ?? PooledRefCountingMemoryProvider.Instance;
         ResourcePool = new PbtResourcePool(Config);
         ICompactionSchedule schedule = PbtCoreRegistration.CreateCompactionSchedule(new MemDb(), Config, LimboLogs.Instance);
-        PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config);
+        PbtSnapshotCompactor compactor = new(ResourcePool, schedule, Repository, Config, LimboLogs.Instance);
         Coordinator = new PbtPersistenceCoordinator(Config, FinalizedStateProvider, Persistence, Repository, schedule, NullStatePersistenceBarrier.Instance, LimboLogs.Instance);
         _trieNodeCache = new PbtTrieNodeCache(Config);
         Manager = new PbtDbManager(Repository, Coordinator, Persistence, ResourcePool, compactor, processExitSource, LimboLogs.Instance, metricsConfig, _trieNodeCache);

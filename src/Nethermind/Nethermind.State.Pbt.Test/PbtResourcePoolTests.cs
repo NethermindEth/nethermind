@@ -248,7 +248,7 @@ public class PbtResourcePoolTests
         PbtSnapshotContent content = _pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         content.Accounts[addressHash] = Build.An.Account.TestObject.ToPbtAccount();
-        content.SetSlot(PbtStateKey.Slot(TestItem.AddressA, 1), EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1), EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
         content.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(Bytes.FromHexString("6001"));
         content.SelfDestructedStorageAddresses[addressHash] = true;
         _pool.ReturnSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing, content);

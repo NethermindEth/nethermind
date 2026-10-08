@@ -35,15 +35,9 @@ public sealed class PbtRebuilder(PbtRocksDbPersistence target, IPbtConfig config
     /// <param name="targetState">The source state identity to publish on success.</param>
     /// <param name="cancellationToken">Cancels consumption and tree updates before publication.</param>
     /// <param name="windowSize">Maximum received records per update; zero uses 2,000,000 records.</param>
-    /// <returns>The completed canonical tree root.</returns>
-    public Task<ValueHash256> Rebuild(
-        ChannelReader<ArrayPoolList<RebuildEntry>> source,
-        StateId targetState,
-        CancellationToken cancellationToken,
-        int windowSize = 0) => Rebuild(source, targetState, cancellationToken, windowSize, expectedRoot: null, publishAfter: Task.CompletedTask);
-
     /// <param name="expectedRoot">When set, a completed root that differs is refused before anything is published.</param>
     /// <param name="publishAfter">Publication waits for it, and is abandoned when it fails.</param>
+    /// <returns>The completed canonical tree root.</returns>
     internal async Task<ValueHash256> Rebuild(
         ChannelReader<ArrayPoolList<RebuildEntry>> source,
         StateId targetState,

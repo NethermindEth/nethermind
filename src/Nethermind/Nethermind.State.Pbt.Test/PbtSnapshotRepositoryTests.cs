@@ -75,7 +75,7 @@ public class PbtSnapshotRepositoryTests
     {
         PbtConfig config = new() { CompactSize = 8, CompactionOffset = offset };
         using MemDb metadata = new();
-        PbtSnapshotCompactor compactor = new(_pool, PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance), _repository, config);
+        PbtSnapshotCompactor compactor = new(_pool, PbtCoreRegistration.CreateCompactionSchedule(metadata, config, LimboLogs.Instance), _repository, config, LimboLogs.Instance);
         int firstBoundary = 8 - offset;
         for (int block = 0; block <= firstBoundary + 18; block++)
         {

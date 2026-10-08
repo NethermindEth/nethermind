@@ -20,9 +20,9 @@ public class PbtSnapshotCompactor(
     [KeyFilter(DbNames.Pbt)] ICompactionSchedule schedule,
     PbtSnapshotRepository repository,
     IPbtConfig config,
-    ILogManager? logManager = null)
+    ILogManager logManager)
 {
-    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<PbtSnapshotCompactor>();
+    private readonly ILogger _logger = logManager.GetClassLogger<PbtSnapshotCompactor>();
 
     public bool DoCompactSnapshot(in StateId stateId)
     {

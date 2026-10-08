@@ -88,7 +88,7 @@ internal static class Eip8347FixtureState
             {
                 ValueHash256 rawSlot = reader.ReadSlot();
                 UInt256 slot = new(rawSlot.Bytes, isBigEndian: true);
-                UInt256 value = new(leaves[PbtStateKey.Slot(address!, slot)].Bytes, isBigEndian: true);
+                UInt256 value = new(leaves[PbtTestLeaves.SlotKey(address!, slot)].Bytes, isBigEndian: true);
                 batch.SetStorage(address!, slot, value);
                 storage.Add(ValueKeccak.Compute(rawSlot.Bytes), Rlp.Encode(value).Bytes);
             }

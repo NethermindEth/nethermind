@@ -37,8 +37,6 @@ internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int 
 
     public bool IsCommit => Type == Commit;
 
-    public bool IsValidCommit => Type == Commit && KeyLength == 0 && ValueLength == 0 && Prev == ~Version;
-
     public static TrieNodeLogRecord CommitRecord(ulong version) => new(Commit, 0, 0, version, ~version);
 
     public void Write(Span<byte> destination)
@@ -62,7 +60,7 @@ internal readonly record struct TrieNodeLogRecord(byte Type, int KeyLength, int 
     {
         Put => KeyLength > 0 && ValueLength is >= 0 and <= MaxValueLength,
         Delete => KeyLength > 0 && ValueLength == 0,
-        Commit => IsValidCommit,
+        Commit => KeyLength == 0 && ValueLength == 0 && Prev == ~Version,
         _ => false,
     };
 

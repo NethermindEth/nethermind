@@ -7,21 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Db;
 using Nethermind.Init.Modules;
-using Nethermind.JsonRpc.Modules;
-using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
-using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.ScopeProvider;
 using Nethermind.State.Pbt.Steps;
-using Nethermind.State.Pbt.Sync;
-using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.State.Pbt;
 
@@ -37,19 +31,12 @@ public class PbtModule(IPbtConfig config) : Module
     {
         builder
             .AddPbtCore(config)
-            .AddSingleton<PbtStateReader>()
-            .AddSingleton<PbtWorldStateManager>()
-            .Add<PbtOverridableWorldScope>()
 
             .Bind<IWorldStateManager, PbtWorldStateManager>()
             .AddSingleton<PbtStateBoundary>()
             .Bind<IStateBoundary, PbtStateBoundary>()
             .Bind<IFullStateFinder, PbtStateBoundary>()
-            .AddSingleton<IPruningTrieStateAdminRpcModule, FlatWorldStateModule.PruningTrieStateAdminRpcModuleStub>()
-            .AddSingleton<ISnapTrieFactory, PbtUnsupportedSnapTrieFactory>()
-            .AddSingleton<ITreeSyncStore, PbtUnsupportedTreeSyncStore>()
-            .AddSingleton<IMigrationTelemetry>(NullMigrationTelemetry.Instance)
-            .RegisterSingletonJsonRpcModule<IMigrationDebugRpcModule, MigrationDebugRpcModule>();
+            .AddSingleton<IMigrationTelemetry>(NullMigrationTelemetry.Instance);
 
         if (config.CarryForwardCache)
             builder.AddDecorator<IPbtPersistence, PbtCarryForwardCachingPersistence>();
@@ -69,7 +56,6 @@ public class PbtModule(IPbtConfig config) : Module
                 (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
             .AddSingleton<PbtRebuilder>()
             .AddStep(typeof(ImportPbtFromPreimageFlat))
-            .AddSingleton<PbtAnchorImport>()
             .AddStep(typeof(ImportPbtSnapshot))
             .AddSingleton<PbtScanner>()
             .AddStep(typeof(ScanPbtTree));

@@ -27,8 +27,6 @@ public static class EvmWordSlot
 
     public static bool IsZero(in EvmWord word) => word == default;
 
-    public static EvmWord FromUInt256(in UInt256 value) => value.ToBigEndianWord();
-
     public static UInt256 ToUInt256(in EvmWord word)
     {
         EvmWord littleEndian = word.ByteSwap();

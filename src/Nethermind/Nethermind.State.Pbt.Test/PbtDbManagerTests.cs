@@ -303,7 +303,7 @@ public class PbtDbManagerTests
         }
         if (trigger == PersistTrigger.FinalizedCheck) harness.Finalized.FinalizedBlockNumber = 192;
         if (trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck) harness.Coordinator.CheckPersistence(PersistenceState(192));
-        else harness.Coordinator.FlushToPersistence();
+        else harness.Coordinator.FlushToPersistence(CancellationToken.None);
 
         Assert.That(writes.Count, Is.EqualTo(trigger is PersistTrigger.Check or PersistTrigger.FinalizedCheck ? 4 : 192 / width));
         for (int index = 0; index < writes.Count; index++)
@@ -341,7 +341,7 @@ public class PbtDbManagerTests
         });
         harness.Repository.TryAdd(PersistenceSnapshot(0, 1, harness.Pool));
         harness.Repository.TryAdd(PersistenceSnapshot(1, 2, harness.Pool));
-        Assert.Throws<InvalidOperationException>(() => harness.Coordinator.FlushToPersistence());
+        Assert.Throws<InvalidOperationException>(() => harness.Coordinator.FlushToPersistence(CancellationToken.None));
         using (Assert.EnterMultipleScope())
         {
             Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(0)));
@@ -349,7 +349,7 @@ public class PbtDbManagerTests
         }
         harness.Batch.Received(1).Dispose();
         failCommit = false;
-        harness.Coordinator.FlushToPersistence();
+        harness.Coordinator.FlushToPersistence(CancellationToken.None);
         Assert.That(harness.Coordinator.GetCurrentPersistedStateId(), Is.EqualTo(PersistenceState(2)));
     }
 
@@ -565,7 +565,7 @@ public class PbtDbManagerTests
         public PbtPersistenceCoordinator Coordinator { get; }
 
         public PbtDbManager CreateManager(IProcessExitSource exitSource, ILogManager logs, IPbtTrieNodeCache trieNodeCache) =>
-            new(Repository, Coordinator, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config), exitSource, logs,
+            new(Repository, Coordinator, Persistence, Pool, new PbtSnapshotCompactor(Pool, Schedule, Repository, Config, logs), exitSource, logs,
                 new MetricsConfig(), trieNodeCache);
 
         public void Dispose()

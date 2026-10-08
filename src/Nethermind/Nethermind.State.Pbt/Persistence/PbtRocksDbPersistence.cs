@@ -167,7 +167,6 @@ public class PbtRocksDbPersistence(
     internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
-        if (groupKey.BitDepth == 4) return PbtColumns.TopNodeGroups;
         PbtColumns partition = PartitionColumn(groupKey);
         int topDepth = partition == PbtColumns.AccountNodeGroups ? AccountTopDepth : StemTopDepth;
         return groupKey.BitDepth <= topDepth ? PbtColumns.TopNodeGroups : partition;
