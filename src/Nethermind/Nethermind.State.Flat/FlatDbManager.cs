@@ -277,14 +277,18 @@ public class FlatDbManager : IFlatDbManager, IAsyncDisposable
         await jobTask;
     }
 
-    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage)
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage) =>
+        GatherSnapshotBundle(baseBlock, usage, filterInMemorySlotReads: false);
+
+    public SnapshotBundle GatherSnapshotBundle(in StateId baseBlock, ResourcePool.Usage usage, bool filterInMemorySlotReads)
     {
         if (_logger.IsTrace) _logger.Trace($"Gathering {baseBlock}.");
         return new SnapshotBundle(
             GatherReadOnlySnapshotBundle(baseBlock),
             _trieNodeCache,
             _resourcePool,
-            usage: usage);
+            usage: usage,
+            filterInMemorySlotReads: filterInMemorySlotReads);
     }
 
     private static readonly StringLabel _depthInMemoryLabel = new("in_memory");
