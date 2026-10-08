@@ -197,16 +197,36 @@ public class BlockCachePreWarmerTests
         Assert.That(disposed.Count, Is.EqualTo(created.Count), "all retained envs must be disposed when the prewarmer is disposed");
     }
 
+    /// <summary>
+    /// A block of too few transactions to execute them ahead still has its system calls run first and its withdrawals
+    /// credited a fraction of a millisecond later, so its addresses are warmed.
+    /// </summary>
     [Test]
-    public async Task PreWarmCaches_TinyBlock_SkipsReactiveWarming()
+    public async Task PreWarmCaches_TinyBlock_WarmsAddressesWithoutExecutingTransactions()
     {
-        (BlockCachePreWarmer preWarmer, ConcurrentBag<IPrewarmerEnv> created, _) = CreatePreWarmer(minPoolSize: 10);
+        PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
+        (BlockCachePreWarmer preWarmer, _, _) = CreatePreWarmer(minPoolSize: 10);
+        Address recipient = PackedLoopCopy(0);
+        // The contract reads slot 0, then the slot its value names, which only executing it reads.
+        Block block = Build.A.Block.WithNumber(1)
+            .WithTransactions(Build.A.Transaction.WithNonce(0).WithTo(TestItem.AddressE).WithGasLimit(100_000)
+                .SignedAndResolved(TestItem.PrivateKeyA).TestObject)
+            .WithWithdrawals(Build.A.Withdrawal.WithRecipient(recipient).WithAmount(1).TestObject)
+            .WithGasLimit(30_000_000)
+            .TestObject;
+
         using (preWarmer)
         {
-            await RunPreWarmCaches(preWarmer, BuildTwoSenderBlock(), BuildParentHeader(), Osaka.Instance);
+            await RunPreWarmCaches(preWarmer, block, BuildParentHeader(), Osaka.Instance);
         }
 
-        Assert.That(created, Is.Empty, "tiny blocks must not rent reactive warming environments");
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(preBlockCaches.StateCache.TryGetValue(recipient, out _), Is.True, "the withdrawal recipient is warmed");
+            Assert.That(preBlockCaches.StateCache.TryGetValue(TestItem.AddressE, out _), Is.True, "the transaction's recipient is warmed");
+            Assert.That(preBlockCaches.StorageCache.TryGetValue(new StorageCell(TestItem.AddressE, 5), out _), Is.False,
+                "no transaction is executed");
+        }
     }
 
     [TestCase(false, "validation", "transactions")]

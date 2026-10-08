@@ -171,7 +171,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
         }
 
-        bool skipReactiveWarming = !ShouldPreWarm(spec) || ShouldSkipReactiveWarming(suggestedBlock, spec);
+        bool skipReactiveWarming = !ShouldPreWarm(spec);
+        // Too few transactions to warm by executing them, but the block still runs its system calls first and credits
+        // its withdrawals last, which on such a block comes a fraction of a millisecond after its start.
+        bool addressesOnly = ShouldSkipReactiveWarming(suggestedBlock, spec);
         // The marker's tx set only means anything while the entries it describes are still in the caches.
         ISet<Hash256>? speculativelyWarmed =
             TryConsumeWarmMarker(suggestedBlock.ParentHash, spec, out ISet<Hash256>? warmed) && carried ? warmed : null;
@@ -183,13 +186,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         else
         {
             _nodeStorageCache.ClearCaches();
-            // Without a handoff or a reactive pass, leave RLP caching disabled for execution.
+            // Without a handoff or a reactive pass, leave RLP caching disabled for execution: reading accounts fills
+            // nothing an address-only pass would leave in it.
             if (skipReactiveWarming) return null;
-            _nodeStorageCache.Enabled = true;
+            if (!addressesOnly) _nodeStorageCache.Enabled = true;
         }
 
         if (skipReactiveWarming) return null;
-        return WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+        return addressesOnly
+            ? WarmAddresses(suggestedBlock, parent, spec, cancellationToken)
+            : WarmCaches(suggestedBlock, parent, spec, speculativelyWarmed, cancellationToken);
+    }
+
+    private IDisposable? WarmAddresses(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken)
+    {
+        if (parent is null || _concurrencyLevel <= 1 || cancellationToken.IsCancellationRequested) return null;
+
+        PrewarmingSession session = new(cancellationToken, _logger);
+        try
+        {
+            (_, _, AddressWarmer addressWarmer) = PrepareWarm(
+                suggestedBlock, spec, speculativelyWarmed: null, recovery: null, _concurrencyLevel, session.Token, warmSystemAccessLists: true,
+                warmCalldataAddresses: false, handColdChainsToDiscovery: false);
+            session.Start(() =>
+            {
+                using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginLimitedWorkerScope(_concurrencyLevel);
+                ((IThreadPoolWorkItem)addressWarmer).Execute();
+            }, addressWarmer);
+            return session;
+        }
+        catch
+        {
+            session.Dispose();
+            throw;
+        }
     }
 
     private IDisposable? WarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, ISet<Hash256>? speculativelyWarmed, CancellationToken cancellationToken)
@@ -1658,36 +1688,25 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             try
             {
                 Address? beneficiary = block.Header.GasBeneficiary;
-                if (warmSystemAccessLists || beneficiary is not null || WarmWithdrawals)
+                if (warmSystemAccessLists || beneficiary is not null)
                 {
                     IPrewarmerEnv env = envPool.Get();
                     try
                     {
                         using IReadOnlyTxProcessingScope scope = env.BuildAtTarget(block.Header);
 
-                        WarmupSender(beneficiary, null, scope.WorldState);
-
-                        if (WarmWithdrawals)
-                        {
-                            // Withdrawal recipients are applied at block end; warming them here rather than after
-                            // every transaction keeps their account reads off the main thread on dense blocks.
-                            // Cancellation-responsive so an oversized list can't stall the end-of-block join.
-                            foreach (Withdrawal withdrawal in block.Withdrawals!)
-                            {
-                                if (parallelOptions.CancellationToken.IsCancellationRequested) break;
-                                WarmupSender(withdrawal.Address, null, scope.WorldState);
-                            }
-                        }
-
                         if (warmSystemAccessLists)
                         {
-                            // Evaluated here rather than up front: the hints read state, and the only world state with an
-                            // open scope on the speculative path is this env's own.
+                            // First: block processing runs the system calls before its first transaction, so their
+                            // slots are the first state it reads. Evaluated here rather than up front: the hints read
+                            // state, and the only world state with an open scope on the speculative path is this env's own.
                             if (WarmupSystemAccessLists(env.SystemAccessLists, scope.WorldState))
                             {
                                 Volatile.Write(ref _systemAccessListsWarmed, true);
                             }
                         }
+
+                        WarmupSender(beneficiary, null, scope.WorldState);
                     }
                     finally
                     {
@@ -1709,18 +1728,29 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // contended writes to one cache line for a few nanoseconds of work each.
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
-                    WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
+                    int ranges = (count + rangeSize - 1) / rangeSize;
+                    // Withdrawal recipients are credited at block end. They follow the transaction ranges, one job
+                    // each: on a block of a few transactions block processing gets to them a fraction of a millisecond
+                    // after its start, sooner than one worker reads sixteen cold accounts in turn.
+                    int withdrawals = WarmWithdrawals ? block.Withdrawals!.Length : 0;
+                    WarmingState<(Block Block, int RangeSize, int Count, int Ranges)> baseState = new(envPool, (block, rangeSize, count, ranges), block.Header);
                     ParallelUnbalancedWork.For(
                         0,
-                        (count + rangeSize - 1) / rangeSize,
+                        ranges + withdrawals,
                         parallelOptions,
                         baseState.InitThreadState,
-                        static (range, state) =>
+                        static (job, state) =>
                         {
-                            (Block block, int rangeSize, int count) = state.Payload;
+                            (Block block, int rangeSize, int count, int ranges) = state.Payload;
                             IWorldState worldState = state.Scope!.WorldState;
-                            int end = Math.Min((range + 1) * rangeSize, count);
-                            for (int i = range * rangeSize; i < end; i++)
+                            if (job >= ranges)
+                            {
+                                WarmupSender(block.Withdrawals![job - ranges].Address, null, worldState);
+                                return state;
+                            }
+
+                            int end = Math.Min((job + 1) * rangeSize, count);
+                            for (int i = job * rangeSize; i < end; i++)
                             {
                                 Transaction tx = TransactionAt(block, i);
                                 WarmupSender(tx.SenderAddress, tx.To, worldState);
@@ -1728,7 +1758,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
                             return state;
                         },
-                        WarmingState<(Block, int, int)>.FinallyAction);
+                        WarmingState<(Block, int, int, int)>.FinallyAction);
 
                     if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
                 }
