@@ -625,18 +625,19 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     [Test]
     public void The_writes_a_transaction_reported_stay_as_they_were_while_later_transactions_report_theirs()
     {
-        // The refresh worker reads a report after block processing has moved on to collect the next ones.
+        // The refresh worker reads a report after block processing has moved on to collect the next ones; counts of 0 to 6
+        // writes put a transaction across the first chunk's end.
         CommittedStorageWrites committed = new();
         List<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = [];
         for (int tx = 0; tx < 200; tx++)
         {
             committed.Begin();
-            for (int i = 0; i < tx % 5; i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+            for (int i = 0; i < tx % 7; i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
             reports.Add((committed.End(), tx));
         }
 
         Assert.That(reports, Has.All.Matches<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)>(report =>
-            report.Writes.Length == report.Transaction % 5
+            report.Writes.Length == report.Transaction % 7
             && Enumerable.Range(0, report.Writes.Length).All(i =>
                 report.Writes.Span[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction)))));
     }
