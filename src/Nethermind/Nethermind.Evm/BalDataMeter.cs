@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Evm;
 
@@ -42,8 +43,9 @@ public sealed class BalDataMeter
         _staticFloor = staticFloor;
         _floorLimit = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap);
         BalDataBytes = 0;
-        _meteredAddresses.Clear();
-        _meteredStorageKeys.Clear();
+        // Trimmed after a large transaction so later resets do not keep walking its buckets.
+        _meteredAddresses.ClearAndTrim();
+        _meteredStorageKeys.ClearAndTrim();
         return this;
     }
 
