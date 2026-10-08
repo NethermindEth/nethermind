@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Diagnostics;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -647,6 +648,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 Block block = blockRef.Block;
                 if (isTrace) TraceProcessing(block);
 
+                NewPayloadTrace.Stamp(NewPayloadTrace.Dequeued);
                 _stats.Start();
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), CancellationToken, out string? error);
 
@@ -757,7 +759,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _branchBuilder.PrepareBlocksToProcess(suggestedBlock, options, processingBranch, token);
 
         _stopwatch.Restart();
+        NewPayloadTrace.Stamp(NewPayloadTrace.BranchStart);
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, token, out error);
+        NewPayloadTrace.Stamp(NewPayloadTrace.BranchEnd);
         _stopwatch.Stop();
         if (processedBlocks is null)
         {
