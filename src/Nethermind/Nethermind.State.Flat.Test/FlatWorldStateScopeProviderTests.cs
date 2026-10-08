@@ -49,7 +49,7 @@ public class FlatWorldStateScopeProviderTests
         using TestContext context = new(blockTree);
         IWorldStateManager manager = context.WorldStateManager;
         context.FlatDbManager.HasStateForBlock(Arg.Any<StateId>()).Returns(_ => stateAvailable);
-        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>()).Returns(_ =>
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>()).Returns(_ =>
         {
             if (!stateAvailable) throw CreateStateUnavailableException();
             return CreateSnapshotBundle(context.ResourcePool);
@@ -99,9 +99,32 @@ public class FlatWorldStateScopeProviderTests
 
         using (Assert.EnterMultipleScope())
         {
-            context.FlatDbManager.Received().GatherSnapshotBundle(new StateId(parent), Arg.Any<ResourcePool.Usage>());
-            context.FlatDbManager.DidNotReceive().GatherSnapshotBundle(new StateId(target), Arg.Any<ResourcePool.Usage>());
+            context.FlatDbManager.Received().GatherSnapshotBundle(new StateId(parent), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>());
+            context.FlatDbManager.DidNotReceive().GatherSnapshotBundle(new StateId(target), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>());
         }
+    }
+
+    [TestCase(ScopeProviderKind.Global, false, TestName = "GatherSnapshotBundle_ForMainBlockProcessing_DoesNotFilterSlotReads")]
+    [TestCase(ScopeProviderKind.Resettable, false, TestName = "GatherSnapshotBundle_ForResettableWorldState_DoesNotFilterSlotReads")]
+    [TestCase(ScopeProviderKind.ReadOnlyQuery, true, TestName = "GatherSnapshotBundle_ForReadOnlyQueryWorldState_FiltersSlotReads")]
+    public void GatherSnapshotBundle_FiltersSlotReadsOnlyForReadOnlyQueries(ScopeProviderKind kind, bool expectedFilter)
+    {
+        BlockHeader parent = Build.A.BlockHeader.WithNumber(1).WithStateRoot(TestItem.KeccakA).TestObject;
+        using TestContext context = new();
+        IWorldStateManager manager = context.WorldStateManager;
+        IWorldStateScopeProvider provider = kind switch
+        {
+            ScopeProviderKind.Global => manager.GlobalWorldState,
+            ScopeProviderKind.Resettable => manager.CreateResettableWorldState(),
+            _ => manager.CreateReadOnlyQueryWorldState(),
+        };
+
+        Assert.That(provider.TryBeginScope(parent, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True,
+            "precondition: the stubbed manager serves every base block");
+        scope!.Dispose();
+
+        context.FlatDbManager.Received(1).GatherSnapshotBundle(new StateId(parent), Arg.Any<ResourcePool.Usage>(), expectedFilter);
+        context.FlatDbManager.DidNotReceive().GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), !expectedFilter);
     }
 
     [Test]
@@ -116,7 +139,7 @@ public class FlatWorldStateScopeProviderTests
         persistenceReader.When(reader => reader.Dispose()).Do(_ => readerDisposed = true);
 
         using TestContext context = new(blockTree);
-        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+        context.FlatDbManager.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
             .Returns(_ => CreateSnapshotBundle(context.ResourcePool, persistenceReader));
 
         Assert.That(context.WorldStateManager.GlobalWorldState.TryBeginScopeAtTarget(target, new LocalMetrics(), out IWorldStateScopeProvider.IScope? scope), Is.True);
@@ -213,7 +236,7 @@ public class FlatWorldStateScopeProviderTests
                                 transientResource.ReleaseLease();
                             });
 
-                        flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>())
+                        flatDiff.GatherSnapshotBundle(Arg.Any<StateId>(), Arg.Any<ResourcePool.Usage>(), Arg.Any<bool>())
                             .Returns(_ => CreateSnapshotBundle(Container.Resolve<ResourcePool>()));
                         flatDiff.GatherReadOnlySnapshotBundle(Arg.Any<StateId>())
                             .Returns(_ => new ReadOnlySnapshotBundle(new SnapshotPooledList(0), Substitute.For<IPersistence.IPersistenceReader>(), false, PersistedSnapshotStack.Empty()));
@@ -2077,5 +2100,12 @@ public class FlatWorldStateScopeProviderTests
         public IPersistence.IFlatIterator CreateAccountIterator(in ValueHash256 startKey, in ValueHash256 endKey) => throw new NotSupportedException();
         public IPersistence.IFlatIterator CreateStorageIterator(in ValueHash256 accountKey, in ValueHash256 startSlotKey, in ValueHash256 endSlotKey) => throw new NotSupportedException();
         public bool IsPreimageMode => false;
+    }
+
+    public enum ScopeProviderKind
+    {
+        Global,
+        Resettable,
+        ReadOnlyQuery,
     }
 }
