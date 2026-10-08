@@ -175,6 +175,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
     {
         Volatile.Write(ref _footprints, null);
+        ExperimentBlocks.Enter(suggestedBlock.Number);
         // Join ahead of the gate: the session's spec comes from a synthetic next-block header, so it can enable warming
         // for a spec this block disables (a fork boundary), and no pass may run into execution.
         if (_preBlockCaches is null)
@@ -242,7 +243,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // A block access list already enumerates the block's reads; discovery adds nothing.
             List<(int Index, Transaction Tx)>? discoveryCandidates = addressWarmer.HasBal
                 ? null
-                : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed, _discoveryGasThreshold, _discoveryCandidateCap);
+                : ExperimentBlocks.Apply(suggestedBlock.Number)
+                    ? SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed, _discoveryGasThreshold, _discoveryCandidateCap)
+                    : SelectDiscoveryCandidates(suggestedBlock, speculativelyWarmed);
             blockState.UpFrontDiscovery = discoveryCandidates;
             session.Start(() =>
             {
@@ -255,7 +258,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         _ => DiscoverAndWarmStorageSafely(discoveryCandidates, suggestedBlock, spec, recovery, token));
                 try
                 {
-                    BlockWarming.Begin();
+                    bool holdsEarlyApply = ExperimentBlocks.Apply(suggestedBlock.Number);
+                    if (holdsEarlyApply) BlockWarming.Begin();
                     try
                     {
                         PreWarmCachesParallel(blockState, suggestedBlock, parallelOptions, addressWarmer,
@@ -263,7 +267,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     }
                     finally
                     {
-                        BlockWarming.End();
+                        if (holdsEarlyApply) BlockWarming.End();
                     }
 
                     if (footprints is not null)
@@ -560,6 +564,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         if (cancellationToken.IsCancellationRequested) return;
 
+        int discoveredCellBudget = ExperimentBlocks.Apply(block.Number) ? _discoveredCellBudget : MaxDiscoveredCells;
         using PooledSet<StorageCell> allDiscoveredCells = [];
         using PooledSet<StorageCell> roundCells = [];
         Lock roundCellsLock = new();
@@ -599,7 +604,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 continue;
             }
 
-            int cellBudget = _discoveredCellBudget - allDiscoveredCells.Count;
+            int cellBudget = discoveredCellBudget - allDiscoveredCells.Count;
             if (sharedCells is not null) cellBudget = Math.Min(cellBudget, Volatile.Read(ref sharedCells.Value));
             if (cellBudget <= 0) return;
             // A shared budget is charged as cells are captured, so concurrent discoveries can't overrun it together.
@@ -634,7 +639,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 allDiscoveredCells.UnionWith(roundCells);
                 if (!WarmDiscoveredStorage(block.Header, roundCells, cancellationToken)) return;
                 // An exhausted shared budget ends discovery at the next round's budget check.
-                if (allDiscoveredCells.Count >= _discoveredCellBudget) return;
+                if (allDiscoveredCells.Count >= discoveredCellBudget) return;
             }
             else if (awaiting == 0 && (deferred.Count == 0 || productive == admitted.Count))
             {
@@ -1002,7 +1007,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // A block access list already enumerates the block's reads, so discovery adds nothing; a block without one,
             // such as a block being produced, is warmed by executing its transactions and hands off like any other.
             HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
-            DiscoversFirst = _discoverFirst && handColdChainsToDiscovery && bal is null && _preBlockCaches is not null,
+            DiscoversFirst = _discoverFirst && ExperimentBlocks.Apply(block.Number) && handColdChainsToDiscovery && bal is null && _preBlockCaches is not null,
+            Tuned = ExperimentBlocks.Apply(block.Number),
             Token = token
         };
         // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
@@ -1585,7 +1591,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             // collects the slots behind placeholders and reads them side by side instead.
             bool watched = blockState.HandsColdChainsToDiscovery;
             if (blockState.DiscoversFirst && !blockState.IsDiscoveredUpFront(txIndex)) blockState.PreWarmer.DiscoverFirst(tx, txIndex, blockState, cancellationToken);
-            if (watched) ColdReadWatch.Arm(blockState.PreWarmer._coldReadsBeforeDiscovery, blockState, txIndex, tx);
+            if (watched) ColdReadWatch.Arm(blockState.Tuned ? blockState.PreWarmer._coldReadsBeforeDiscovery : ColdReadsBeforeDiscovery, blockState, txIndex, tx);
 
             TransactionResult result;
             try
@@ -2183,7 +2189,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         /// <summary>Whether the block may hand one more transaction to discovery.</summary>
-        public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= PreWarmer._discoveryCandidateCap;
+        public bool TryClaimDiscoveryHandOff() => Interlocked.Increment(ref _handOffClaims) <= (Tuned ? PreWarmer._discoveryCandidateCap : MaxDiscoveryCandidates);
+
+        /// <summary>Whether the configured discovery limits apply to this block, rather than the defaults.</summary>
+        public bool Tuned { get; init; } = true;
 
         /// <summary>Whether each warm run first finds and reads the storage it misses; set before any warm starts.</summary>
         public bool DiscoversFirst { get; init; }
@@ -2204,7 +2213,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
 
         /// <summary>The cells the block's hand-offs may still discover between them.</summary>
-        public StrongBox<int> HandOffCells => LazyInitializer.EnsureInitialized(ref _handOffCells, () => new StrongBox<int>(PreWarmer._discoveredCellBudget));
+        public StrongBox<int> HandOffCells => LazyInitializer.EnsureInitialized(ref _handOffCells, () => new StrongBox<int>(Tuned ? PreWarmer._discoveredCellBudget : MaxDiscoveredCells));
 
         /// <summary>Waits for every hand-off; one that faults is rethrown only after the rest are joined.</summary>
         public void JoinDiscoveryHandOffs()

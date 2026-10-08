@@ -77,6 +77,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "Compute each receipt's bloom on a helper thread as its transaction ends, instead of all of them after the block's last transaction.", DefaultValue = "false", HiddenFromDocs = true)]
     bool StreamReceiptBlooms { get; set; }
 
+    [ConfigItem(Description = "The blocks the experiment flags apply to: 0 all, 1 even block numbers only, 2 odd ones only.", DefaultValue = "0", HiddenFromDocs = true)]
+    int ExperimentParity { get; set; }
+
     [ConfigItem(Description = "Declared gas above which a transaction's storage reads are discovered before the block's warm pass reaches it.", DefaultValue = "10000000", HiddenFromDocs = true)]
     ulong PreWarmDiscoveryGasThreshold { get; set; }
 

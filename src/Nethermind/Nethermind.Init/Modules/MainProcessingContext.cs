@@ -38,6 +38,7 @@ public class MainProcessingContext : IMainProcessingContext, BlockProcessor.Bloc
         worldState = new WorldStateMetricsScopeProvider(worldState, static time => Blockchain.Metrics.StateMerkleizationTime = time);
 
         Consensus.Processing.BlockProcessor.StreamsReceiptBlooms = rootLifetimeScope.Resolve<IBlocksConfig>().StreamReceiptBlooms;
+        ExperimentBlocks.Parity = rootLifetimeScope.Resolve<IBlocksConfig>().ExperimentParity;
 
         ILifetimeScope innerScope = rootLifetimeScope.BeginLifetimeScope((builder) =>
         {

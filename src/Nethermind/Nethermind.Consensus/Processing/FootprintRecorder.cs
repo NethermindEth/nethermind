@@ -361,7 +361,7 @@ internal sealed class FootprintRecorder(IWorldState state, bool balanceCeilings 
 
     public override void NoteBalanceBelow(Address address, in UInt256 bound)
     {
-        if (!_active || !balanceCeilings) return;
+        if (!_active || !balanceCeilings || !ExperimentBlocks.ApplyToCurrent) return;
         // The balance just read only fell short of the bound. Translate it to the transaction's starting balance, net
         // of what the run itself paid or received, so a change made by an earlier transaction that keeps it short is met.
         ref AccountPrecondition account = ref Account(address);

@@ -189,7 +189,7 @@ public partial class BlockProcessor(
         }
         CommitState(spec);
 
-        _bloomsStreamed = StreamsReceiptBlooms && !spec.IsEip7668Enabled && block.BlockAccessList is null;
+        _bloomsStreamed = StreamsReceiptBlooms && ExperimentBlocks.Apply(block.Number) && !spec.IsEip7668Enabled && block.BlockAccessList is null;
         if (_bloomsStreamed) ReceiptsTracer.ReceiptCompleted = ReceiptBloomStreamer.Instance.Add;
         TxReceipt[] receipts;
         try
