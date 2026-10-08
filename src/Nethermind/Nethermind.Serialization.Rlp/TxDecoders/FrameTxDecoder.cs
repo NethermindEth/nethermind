@@ -47,13 +47,13 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
                 return;
             }
 
-            base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
             // EIP-7594: as for type-3, a blob-carrying transaction's mempool form is the sidecar wrapper.
             if (transaction is { CarriesBlobs: true }) ThrowMissingSidecar();
             return;
         }
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
     }
 
     [DoesNotReturn, StackTraceHidden]
@@ -79,7 +79,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         int txSequenceStart = decoderContext.Position;
         ReadOnlySpan<byte> transactionSequence = decoderContext.Peek(rlpLength);
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext,
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext,
             (rlpBehaviors | RlpBehaviors.ExcludeHashes) & ~RlpBehaviors.InMempoolForm);
 
         if (transaction is not null)
@@ -98,11 +98,11 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         }
     }
 
-    /// <inheritdoc/>
+    /// <inheritdoc cref="ITxPayloadDecoder.DecodeTrailing"/>
     /// <remarks>A frame transaction carries no envelope signature and no element after its blob versioned hashes.
     /// An overlong declared payload length leaves the end-of-payload checkpoint past the end of the buffer; that is
     /// reported as a truncation rather than as a trailing element.</remarks>
-    protected override void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    private static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
         if (decoderContext.Position >= decoderContext.Length)
         {
@@ -112,7 +112,7 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         ThrowTrailingElement();
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
+    private static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
         RlpBehaviors rlpBehaviors)
     {
         // EIP8141-DEVIATION: the spec allows chain_id < 2^256; decoded as u64, the codebase-wide ChainId width.
@@ -261,6 +261,15 @@ public sealed class FrameTxDecoder(Func<Transaction>? transactionFactory = null)
         + TxFrameSignatureDecoder.Instance.GetArrayLength(transaction.FrameSignatures, elideCanonicalSignatureBytes: forSigning)
         + Rlp.LengthOfSequence(GetFeesContentLength(transaction))
         + GetVersionedHashesLength(transaction.BlobVersionedHashes);
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        static void ITxPayloadDecoder.DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors) =>
+            FrameTxDecoder.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
+
+        static void ITxPayloadDecoder.DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            FrameTxDecoder.DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
+    }
 
     [DoesNotReturn, StackTraceHidden]
     private static void ThrowTrailingElement() => throw new RlpException("frame transaction must not carry a trailing element");

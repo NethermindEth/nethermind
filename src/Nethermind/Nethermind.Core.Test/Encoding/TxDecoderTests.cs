@@ -399,14 +399,23 @@ namespace Nethermind.Core.Test.Encoding
         }
 
         [Test]
-        public void Decoder_registered_over_built_in_type_is_used_to_encode(
+        public void Decoder_registered_over_built_in_type_is_used_to_encode_and_decode(
             [Values(TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob, TxType.SetCode, TxType.FrameTx)] TxType txType)
         {
-            // A plugin replacing a standard type's decoder must own its wire form, not the built-in encoder.
+            // A plugin replacing a standard type's decoder must own its wire form, not the built-in codec.
             IsolatedTxDecoder decoder = new();
             decoder.RegisterDecoder(new MarkerTxDecoder(txType));
+            // An empty list decodes as no transaction, so a legacy sequence needs an item.
+            byte[] encoded = txType == TxType.Legacy ? [0xc1, 0x80] : [(byte)txType, Rlp.EmptyListByte];
 
             Assert.That(decoder.Encode(new Transaction { Type = txType }).Bytes, Is.EqualTo(MarkerTxDecoder.Encoding));
+            Assert.That(Decode, Throws.TypeOf<NotSupportedException>());
+
+            void Decode()
+            {
+                RlpReader reader = new(encoded);
+                decoder.Decode(ref reader, RlpBehaviors.SkipTypedWrapping);
+            }
         }
 
         [Test]

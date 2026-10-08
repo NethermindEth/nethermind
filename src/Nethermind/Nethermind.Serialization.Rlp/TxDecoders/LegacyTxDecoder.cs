@@ -13,6 +13,19 @@ namespace Nethermind.Serialization.Rlp.TxDecoders;
 public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null, bool allowEmptySignature = false)
     : BaseTxDecoder(TxType.Legacy, transactionFactory)
 {
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        if (allowEmptySignature)
+        {
+            DecodeTransaction<EmptySignatureAllowedPayload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        }
+        else
+        {
+            DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+        }
+    }
+
     private static bool IncludeSigChainIdHack(bool isEip155Enabled, ulong chainId) => isEip155Enabled && chainId != 0;
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
@@ -61,8 +74,29 @@ public sealed class LegacyTxDecoder(Func<Transaction>? transactionFactory = null
         return contentLength;
     }
 
-    protected override Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
+    private static void DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, bool allowEmptySignature)
+    {
+        ulong v = DecodeSignatureItems(ref decoderContext, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
+        transaction.Signature = allowEmptySignature && v == 0 && rBytes.IsEmpty && sBytes.IsEmpty
             ? null
-            : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? fallbackSignature;
+            : SignatureBuilder.FromBytes(v, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+    }
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors) =>
+            DecodeLegacyFields(transaction, ref decoderContext, hasMaxFeePerGas: false);
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeSignature(transaction, ref decoderContext, rlpBehaviors, allowEmptySignature: false);
+    }
+
+    private readonly struct EmptySignatureAllowedPayload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors) =>
+            DecodeLegacyFields(transaction, ref decoderContext, hasMaxFeePerGas: false);
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeSignature(transaction, ref decoderContext, rlpBehaviors, allowEmptySignature: true);
+    }
 }

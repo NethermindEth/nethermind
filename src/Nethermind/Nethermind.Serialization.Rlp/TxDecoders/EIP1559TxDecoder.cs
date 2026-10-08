@@ -8,12 +8,14 @@ using Nethermind.Serialization.Rlp.Eip2930;
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
 public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? transactionFactory = null)
-    : BaseAccessListTxDecoder(txType, transactionFactory)
+    : BaseTxDecoder(txType, transactionFactory)
 {
-    protected override void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext)
+    /// <summary>Decodes the <c>[chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list]</c> fields.</summary>
+    protected static void DecodeEip1559Fields(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
     {
-        base.DecodeGasPrice(transaction, ref decoderContext);
-        transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+        transaction.ChainId = decoderContext.DecodeULong();
+        DecodeLegacyFields(transaction, ref decoderContext, hasMaxFeePerGas: true);
+        transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
     }
 
     /// <summary>The length of the <c>[chain_id, nonce, max_priority_fee_per_gas, max_fee_per_gas, gas_limit, to, value, data, access_list]</c> fields.</summary>
@@ -41,6 +43,10 @@ public abstract class BaseEIP1559TxDecoder(TxType txType, Func<Transaction>? tra
 public sealed class EIP1559TxDecoder(Func<Transaction>? transactionFactory = null)
     : BaseEIP1559TxDecoder(TxType.EIP1559, transactionFactory)
 {
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
@@ -63,4 +69,13 @@ public sealed class EIP1559TxDecoder(Func<Transaction>? transactionFactory = nul
 
     private static int GetContentLength(Transaction transaction, bool forSigning) =>
         GetEip1559FieldsLength(transaction) + GetTypedSignatureLength(transaction.Signature, forSigning);
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors) =>
+            DecodeEip1559Fields(transaction, ref decoderContext, rlpBehaviors);
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
+    }
 }

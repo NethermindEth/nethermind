@@ -7,20 +7,12 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp.TxDecoders;
 
-public abstract class BaseAccessListTxDecoder(TxType txType, Func<Transaction>? transactionFactory = null)
-    : BaseTxDecoder(txType, transactionFactory)
+public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = null) : BaseTxDecoder(TxType.AccessList, transactionFactory)
 {
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
-        RlpBehaviors rlpBehaviors)
-    {
-        transaction.ChainId = decoderContext.DecodeULong();
-        base.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
-        transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
-    }
-}
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
 
-public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = null) : BaseAccessListTxDecoder(TxType.AccessList, transactionFactory)
-{
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
         EncodeTransaction(transaction, ref writer, rlpBehaviors, forSigning);
@@ -48,4 +40,17 @@ public sealed class AccessListTxDecoder(Func<Transaction>? transactionFactory = 
         + GetLegacyFieldsLength(transaction)
         + AccessListDecoder.Instance.GetLength(transaction.AccessList, RlpBehaviors.None)
         + GetTypedSignatureLength(transaction.Signature, forSigning);
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        {
+            transaction.ChainId = decoderContext.DecodeULong();
+            DecodeLegacyFields(transaction, ref decoderContext, hasMaxFeePerGas: false);
+            transaction.AccessList = AccessListDecoder.Instance.Decode(ref decoderContext, rlpBehaviors);
+        }
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
+    }
 }

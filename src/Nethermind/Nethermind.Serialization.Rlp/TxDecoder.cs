@@ -179,8 +179,36 @@ public class TxDecoder<T> : RlpDecoder<T> where T : Transaction, new()
 
         Transaction? decodedTransaction = transaction;
         if (decodedTransaction is null && (rlpBehaviors & RlpBehaviors.SkipPooledTransactions) != 0)
-            decodedTransaction = new T();
-        GetDecoder(txType).Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+            // new T() in shared generic code creates through reflection.
+            decodedTransaction = typeof(T) == typeof(Transaction) ? new Transaction() : new T();
+
+        ITxDecoder decoder = GetDecoder(txType);
+
+        // The built-in decoders are sealed, so calling them through their own type lets the call be bound and inlined.
+        switch (txType)
+        {
+            case TxType.EIP1559 when decoder is EIP1559TxDecoder eip1559:
+                eip1559.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case TxType.Legacy when decoder is LegacyTxDecoder legacy:
+                legacy.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case TxType.Blob when decoder is BlobTxDecoder blob:
+                blob.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case TxType.SetCode when decoder is SetCodeTxDecoder setCode:
+                setCode.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case TxType.AccessList when decoder is AccessListTxDecoder accessList:
+                accessList.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            case TxType.FrameTx when decoder is FrameTxDecoder frame:
+                frame.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+            default:
+                decoder.Decode(ref decodedTransaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
+                break;
+        }
         transaction = (T?)decodedTransaction;
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)

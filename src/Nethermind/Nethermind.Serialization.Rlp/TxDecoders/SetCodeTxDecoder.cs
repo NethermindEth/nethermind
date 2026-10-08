@@ -16,12 +16,9 @@ public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = nul
 
     private static readonly AuthorizationTupleDecoder AuthTupleDecoder = AuthorizationTupleDecoder.Instance;
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
-        RlpBehaviors rlpBehaviors)
-    {
-        base.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
-        transaction.AuthorizationList = decoderContext.DecodeNonNullArray(AuthTupleDecoder, limit: AuthorizationListLimit);
-    }
+    public override void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence,
+        ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors);
 
     public override void Encode<TWriter>(Transaction transaction, ref TWriter writer, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0) =>
@@ -48,4 +45,16 @@ public sealed class SetCodeTxDecoder(Func<Transaction>? transactionFactory = nul
         GetEip1559FieldsLength(transaction)
         + (transaction.AuthorizationList is null ? 1 : Rlp.LengthOfSequence(AuthTupleDecoder.GetContentLength(transaction.AuthorizationList, RlpBehaviors.None)))
         + GetTypedSignatureLength(transaction.Signature, forSigning);
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        {
+            DecodeEip1559Fields(transaction, ref decoderContext, rlpBehaviors);
+            transaction.AuthorizationList = decoderContext.DecodeNonNullArray(AuthTupleDecoder, limit: AuthorizationListLimit);
+        }
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
+    }
 }

@@ -26,7 +26,7 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
             transactionSequence = decoderContext.Peek(rlpLength);
         }
 
-        base.Decode(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors | RlpBehaviors.ExcludeHashes);
+        DecodeTransaction<Payload>(ref transaction, txSequenceStart, transactionSequence, ref decoderContext, rlpBehaviors | RlpBehaviors.ExcludeHashes);
 
         if (transaction is not null)
         {
@@ -96,14 +96,6 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
         return GetTypedTransactionLength(Rlp.LengthOfSequence(contentLength), rlpBehaviors);
     }
 
-    protected override void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd,
-        RlpBehaviors rlpBehaviors)
-    {
-        base.DecodePayload(transaction, ref decoderContext, payloadEnd, rlpBehaviors);
-        transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
-        transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
-    }
-
     private static void DecodeShardBlobNetworkWrapper(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors, int networkWrapperCheck) =>
         transaction.NetworkWrapper = ShardBlobNetworkWrapperRlp.Decode(ref decoderContext, networkWrapperCheck, rlpBehaviors);
 
@@ -159,5 +151,18 @@ public sealed class BlobTxDecoder(Func<Transaction>? transactionFactory = null)
                 ?? throw new RlpException($"{nameof(Transaction.BlobVersionedHashes)} contains a null versioned hash.");
             writer.Encode(hash);
         }
+    }
+
+    private readonly struct Payload : ITxPayloadDecoder
+    {
+        public static void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+        {
+            DecodeEip1559Fields(transaction, ref decoderContext, rlpBehaviors);
+            transaction.MaxFeePerBlobGas = decoderContext.DecodeUInt256();
+            transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays(BlobVersionedHashesCountLimit, innerSize: Hash256.Size);
+        }
+
+        public static void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors) =>
+            DecodeTypedSignature(transaction, ref decoderContext, rlpBehaviors);
     }
 }

@@ -19,7 +19,11 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
     public TxType Type => txType;
 
-    public virtual void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public abstract void Decode(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+
+    /// <summary>Decodes a transaction sequence whose fields and trailing items <typeparamref name="TPayload"/> decodes.</summary>
+    protected void DecodeTransaction<TPayload>(ref Transaction? transaction, int txSequenceStart, ReadOnlySpan<byte> transactionSequence, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+        where TPayload : struct, ITxPayloadDecoder
     {
         transaction ??= _createTransaction();
         transaction.Type = txType;
@@ -29,12 +33,12 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
         // ReadSequenceLength does not check the declared length against the bytes on hand, so the payload
         // extent is the envelope this transaction was handed, not what its own header claims.
-        DecodePayload(transaction, ref decoderContext,
+        TPayload.DecodePayload(transaction, ref decoderContext,
             Math.Min(lastCheck, txSequenceStart + transactionSequence.Length), rlpBehaviors);
 
         if (decoderContext.Position < lastCheck)
         {
-            DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
+            TPayload.DecodeTrailing(transaction, ref decoderContext, rlpBehaviors);
         }
 
         if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
@@ -45,18 +49,6 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
         {
             CalculateHash(transaction, txSequenceStart, transactionSequence, ref decoderContext);
-        }
-    }
-
-    protected virtual void DecodeTrailing(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
-    {
-        try
-        {
-            transaction.Signature = DecodeSignature(transaction, ref decoderContext, rlpBehaviors);
-        }
-        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
-        {
-            throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
         }
     }
 
@@ -89,17 +81,19 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
 
     public abstract int GetLength(Transaction transaction, RlpBehaviors rlpBehaviors, bool forSigning = false, bool isEip155Enabled = false, ulong chainId = 0);
 
-    /// <summary>Decodes the payload fields, up to <paramref name="payloadEnd"/>.</summary>
-    /// <remarks>The reader can span a whole message, so a decoder sizing an allocation from the bytes on hand
-    /// must bound it by <paramref name="payloadEnd"/> and not by the reader's length.</remarks>
-    protected virtual void DecodePayload(Transaction transaction, ref RlpReader decoderContext, int payloadEnd, RlpBehaviors rlpBehaviors)
+    /// <summary>Decodes the <c>[nonce, gas_price, gas_limit, to, value, data]</c> fields, with <c>max_fee_per_gas</c>
+    /// after the gas price when <paramref name="hasMaxFeePerGas"/> is set.</summary>
+    protected static void DecodeLegacyFields(Transaction transaction, ref RlpReader decoderContext, bool hasMaxFeePerGas)
     {
         LiteRlpReader rlp = new(decoderContext.Data);
         decoderContext.Position = DecodeNonce(rlp, decoderContext.Position, out ulong nonce);
         transaction.Nonce = nonce;
 
-        // The gas price is a virtual extension point, so the cursor goes back to the reader here.
-        DecodeGasPrice(transaction, ref decoderContext);
+        transaction.GasPrice = decoderContext.DecodeUInt256();
+        if (hasMaxFeePerGas)
+        {
+            transaction.DecodedMaxFeePerGas = decoderContext.DecodeUInt256();
+        }
 
         int position = decoderContext.Position;
         rlp.DecodeULong(ref position, out ulong gasLimit);
@@ -133,21 +127,32 @@ public abstract class BaseTxDecoder(TxType txType, Func<Transaction>? transactio
         return RlpHelpers.ThrowNonceTooWide(noncePosition);
     }
 
-    protected virtual void DecodeGasPrice(Transaction transaction, ref RlpReader decoderContext) => transaction.GasPrice = decoderContext.DecodeUInt256();
-
-    protected Signature? DecodeSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    /// <summary>Reads the trailing <c>[v, r, s]</c> items.</summary>
+    /// <exception cref="RlpException">The items are truncated.</exception>
+    protected static ulong DecodeSignatureItems(ref RlpReader decoderContext, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes)
     {
-        LiteRlpReader rlp = new(decoderContext.Data);
-        int position = decoderContext.Position;
-        rlp.DecodeULong(ref position, out ulong v);
-        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> rBytes);
-        position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out ReadOnlySpan<byte> sBytes);
-        decoderContext.Position = position;
-        return DecodeSignature(v, rBytes, sBytes, transaction.Signature, rlpBehaviors);
+        try
+        {
+            LiteRlpReader rlp = new(decoderContext.Data);
+            int position = decoderContext.Position;
+            rlp.DecodeULong(ref position, out ulong v);
+            position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out rBytes);
+            position = RlpHelpers.DecodeByteArraySpanUpTo32(rlp.Data, position, out sBytes);
+            decoderContext.Position = position;
+            return v;
+        }
+        catch (Exception e) when (e is IndexOutOfRangeException or ArgumentOutOfRangeException)
+        {
+            throw new RlpException("RLP data is truncated: transaction signature is incomplete.", e);
+        }
     }
 
-    protected virtual Signature? DecodeSignature(ulong v, ReadOnlySpan<byte> rBytes, ReadOnlySpan<byte> sBytes, Signature? fallbackSignature = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None) =>
-        SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? fallbackSignature;
+    /// <summary>Decodes the trailing <c>[y_parity, r, s]</c> of a typed transaction, keeping its current signature when they hold none.</summary>
+    protected static void DecodeTypedSignature(Transaction transaction, ref RlpReader decoderContext, RlpBehaviors rlpBehaviors)
+    {
+        ulong v = DecodeSignatureItems(ref decoderContext, out ReadOnlySpan<byte> rBytes, out ReadOnlySpan<byte> sBytes);
+        transaction.Signature = SignatureBuilder.FromBytes(v + Signature.VOffset, rBytes, sBytes, rlpBehaviors) ?? transaction.Signature;
+    }
 
     /// <summary>Writes the EIP-2718 prefix of a typed transaction whose encoding after the type byte is <paramref name="bodyLength"/> long.</summary>
     protected static void StartTypedTransaction<TWriter>(ref TWriter writer, TxType txType, int bodyLength, RlpBehaviors rlpBehaviors)
