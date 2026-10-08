@@ -447,32 +447,39 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
         return IsViableLeaf(bestNode, currentSlot, justifiedCheckpoint, finalizedCheckpoint) ? bestNode.Root : justifiedRoot;
     }
 
-    /// <summary>The spec's <c>get_filtered_block_tree</c>: which nodes, by index, are in the viable block tree.</summary>
+    /// <summary>The spec's <c>filter_node_tree</c>: viability by block index and payload status.</summary>
     /// <remarks>
-    /// specs/phase0/fork-choice.md <c>filter_block_tree</c>: a node with children is kept when any child is kept, and a
-    /// leaf when <see cref="NodeIsViableForHead"/>. An invalid node and its subtree are absent (specs/bellatrix/optimistic-sync.md),
-    /// so a valid node whose children are all invalid is judged as a leaf. Nodes outside the justified subtree are never read.
+    /// specs/gloas/fork-choice.md, EIP-7732: EMPTY and verified FULL nodes are filtered separately, so one status
+    /// can remain a viable leaf while the other's descendants are filtered out. Invalid subtrees are absent.
+    /// Pre-Gloas blocks retain their single path through the payload they carried.
     /// </remarks>
-    internal bool[] FilterBlockTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
+    internal bool[,] FilterNodeTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, IReadOnlySet<Hash256> payloads)
     {
-        bool[] kept = new bool[Nodes.Count];
+        bool[,] kept = new bool[Nodes.Count, 3];
         for (int nodeIndex = Nodes.Count - 1; nodeIndex >= 0; nodeIndex--)
         {
             ProtoNode node = Nodes[nodeIndex];
             if (node.ExecutionStatus == ExecutionStatus.Invalid) continue;
 
-            bool hasChildren = false;
-            bool anyChildKept = false;
-            foreach (int child in node.Children)
+            bool? viableLeaf = null;
+            for (ForkChoicePayloadStatus status = ForkChoicePayloadStatus.Empty; status <= ForkChoicePayloadStatus.Full; status++)
             {
-                if (Nodes[child].ExecutionStatus == ExecutionStatus.Invalid) continue;
-                hasChildren = true;
-                anyChildKept |= kept[child];
+                if (node.IsGloas ? status == ForkChoicePayloadStatus.Full && !payloads.Contains(node.Root) : status == ForkChoicePayloadStatus.Empty)
+                    continue;
+
+                bool hasChildren = false;
+                bool anyChildKept = false;
+                foreach (int child in node.Children)
+                {
+                    if (Nodes[child].ExecutionStatus == ExecutionStatus.Invalid || Nodes[child].ParentPayloadStatus != status) continue;
+                    hasChildren = true;
+                    anyChildKept |= kept[child, (int)ForkChoicePayloadStatus.Pending];
+                }
+
+                kept[nodeIndex, (int)status] = hasChildren ? anyChildKept : (viableLeaf ??= NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint));
             }
-
-            kept[nodeIndex] = hasChildren ? anyChildKept : NodeIsViableForHead(node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+            kept[nodeIndex, (int)ForkChoicePayloadStatus.Pending] = kept[nodeIndex, (int)ForkChoicePayloadStatus.Empty] || kept[nodeIndex, (int)ForkChoicePayloadStatus.Full];
         }
-
         return kept;
     }
 
@@ -600,8 +607,8 @@ public sealed class ProtoArray(ulong slotsPerEpoch, ulong proposerScoreBoostPerc
     private bool NodeLeadsToViableHead(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
         IsViableLeaf(node.BestDescendant is int bestDescendantIndex ? Nodes[bestDescendantIndex] : node, currentSlot, justifiedCheckpoint, finalizedCheckpoint);
 
-    /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_block_tree</c> as a leaf.</summary>
-    /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; see <see cref="FilterBlockTree"/>.</remarks>
+    /// <summary>Indicates if <paramref name="node"/> is kept by <c>filter_node_tree</c> as a leaf.</summary>
+    /// <remarks>A node with a child that is not invalid is kept only through a kept child, never on its own checkpoints; specs/phase0/fork-choice.md <c>filter_node_tree</c>.</remarks>
     private bool IsViableLeaf(ProtoNode node, ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint)
     {
         foreach (int child in node.Children)

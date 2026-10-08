@@ -43,7 +43,7 @@ public class ConfigSpecEndpointTests
         Dictionary<string, JsonElement> data = served.EnumerateObject().ToDictionary(p => p.Name, p => p.Value);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
         Assert.That(pinned.Keys.Except(data.Keys), Is.Empty, "keys of the pinned files that are not served");
-        Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
+        Assert.That(data.Keys.Except(pinned.Keys).Except(ServedBeyondPinnedFiles).Except(["BLOB_SCHEDULE", "GAS_LIMIT_SCHEDULE", "SLOT_DURATION_SCHEDULE"]).Except(PinnedSpecConstants.All.Select(c => c.Name)), Is.Empty, "served keys that no pinned file has");
         Assert.That(pinned.Where(entry => data.TryGetValue(entry.Key, out JsonElement actual) && (actual.ValueKind != JsonValueKind.String || actual.GetString() != entry.Value))
             .Select(entry => $"{entry.Key}={(data.TryGetValue(entry.Key, out JsonElement actual) ? actual.ToString() : "missing")} (pinned {entry.Value})"), Is.Empty);
 
@@ -52,6 +52,8 @@ public class ConfigSpecEndpointTests
         Assert.That(data["BLOB_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
             Is.EqualTo(schedule.Select(m => (m.Groups["epoch"].Value, m.Groups["blobs"].Value))));
         Assert.That(data["GAS_LIMIT_SCHEDULE"].GetArrayLength(), Is.Zero);
+        Assert.That(data["SLOT_DURATION_SCHEDULE"].EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("SLOT_DURATION_MS").GetString())),
+            Is.EqualTo(new[] { ("0", "12000") }));
     }
 
     private const string ArrayConstant = "PARTICIPATION_FLAG_WEIGHTS";
@@ -181,9 +183,15 @@ public class ConfigSpecEndpointTests
     }
 
     [Test]
-    public async Task Every_network_serves_the_blob_schedule_of_its_own_spec_and_every_pinned_key([Values("hoodi", "sepolia")] string network)
+    public async Task Every_network_serves_the_schedules_of_its_own_spec_and_every_pinned_key([Values("hoodi", "sepolia", "gnosis", "chiado")] string network)
     {
-        BeaconChainSpec spec = network == "hoodi" ? BeaconChainSpec.Hoodi : BeaconChainSpec.Sepolia;
+        BeaconChainSpec spec = network switch
+        {
+            "hoodi" => BeaconChainSpec.Hoodi,
+            "gnosis" => BeaconChainSpec.Gnosis,
+            "chiado" => BeaconChainSpec.Chiado,
+            _ => BeaconChainSpec.Sepolia,
+        };
         JsonElement served = await ServedSpecAsync(spec);
 
         using IDisposable assertionScope = Assert.EnterMultipleScope();
@@ -191,5 +199,7 @@ public class ConfigSpecEndpointTests
         Assert.That(ConstantMismatches(served), Is.Empty);
         Assert.That(served.GetProperty("BLOB_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("MAX_BLOBS_PER_BLOCK").GetString())),
             Is.EqualTo(spec.BlobSchedule.Select(e => (e.Epoch.ToString(), e.MaxBlobsPerBlock.ToString()))));
+        Assert.That(served.GetProperty("SLOT_DURATION_SCHEDULE").EnumerateArray().Select(e => (e.GetProperty("EPOCH").GetString(), e.GetProperty("SLOT_DURATION_MS").GetString())),
+            Is.EqualTo(new[] { ("0", (spec.SecondsPerSlot * 1000).ToString()) }));
     }
 }

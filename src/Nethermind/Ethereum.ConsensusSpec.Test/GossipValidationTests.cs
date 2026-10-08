@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Buffers.Binary;
 using System.IO;
 using Ethereum.Ssz.Test;
 using Nethermind.BeaconChain.ForkChoice;
@@ -16,6 +17,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Logging;
+using Snappier;
 using YamlDotNet.RepresentationModel;
 
 namespace Ethereum.ConsensusSpec.Test;
@@ -128,7 +130,6 @@ public class GossipValidationTests
             // PTC membership and the signature need the state, so those votes are raised for fork choice to verify.
             [GossipTopics.PayloadAttestationMessage] =
             [
-                ("payload attestation's slot is pre-gloas", RouterVerdict.Rejected(GossipDropReason.InvalidField)),
                 ("already seen payload attestation from this validator", RouterVerdict.Ignored(GossipDropReason.Duplicate)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.StaleSlot)),
                 ("payload attestation is not for the current slot", RouterVerdict.Ignored(GossipDropReason.FutureSlot)),
@@ -226,6 +227,47 @@ public class GossipValidationTests
     public void Message_time_is_its_own_or_the_vector_time_plus_its_offset(string yaml, long expectedTimeMs) =>
         Assert.That(VectorMeta.Parse(new StringReader($"topic: beacon_block\n{yaml}")).Messages.Single().TimeMs, Is.EqualTo(expectedTimeMs));
 
+    [TestCase("gloas", "gossip_payload_attestation_message__valid")]
+    [TestCase("gloas", "gossip_beacon_block__ignore_future_slot")]
+    public void Message_unix_time_is_independent_of_genesis(string fork, string name)
+    {
+        GossipValidationCase source = TestedCases().Single(c => c.Fork == fork && Path.GetFileName(c.CasePath) == name);
+        RunWithShiftedGenesis(source, static c => Run(c));
+    }
+
+    internal static void RunWithShiftedGenesis(GossipValidationCase source, Action<GossipValidationCase> run)
+    {
+        const ulong genesisShiftSeconds = 1606824023;
+        DirectoryInfo casePath = Directory.CreateTempSubdirectory("gossip-genesis-case");
+        try
+        {
+            foreach (string path in Directory.GetFiles(source.CasePath))
+                File.Copy(path, Path.Combine(casePath.FullName, Path.GetFileName(path)));
+
+            string statePath = Path.Combine(casePath.FullName, "state.ssz_snappy");
+            byte[] state = SszConsensusTestLoader.ReadSszSnappy(statePath);
+            BinaryPrimitives.WriteUInt64LittleEndian(state, BinaryPrimitives.ReadUInt64LittleEndian(state) + genesisShiftSeconds);
+            File.WriteAllBytes(statePath, Snappy.CompressToArray(state));
+
+            string metaPath = Path.Combine(casePath.FullName, "meta.yaml");
+            YamlStream meta = [];
+            using (StreamReader reader = File.OpenText(metaPath)) meta.Load(reader);
+            YamlMappingNode root = (YamlMappingNode)meta.Documents[0].RootNode;
+            foreach (YamlMappingNode message in ((YamlSequenceNode)root.Children[new YamlScalarNode("messages")]).Children.Cast<YamlMappingNode>())
+            {
+                YamlScalarNode time = (YamlScalarNode)message.Children[new YamlScalarNode("current_time_ms")];
+                time.Value = (long.Parse(time.Value!) + (long)genesisShiftSeconds * 1000).ToString();
+            }
+            using (StreamWriter writer = File.CreateText(metaPath)) meta.Save(writer, assignAnchors: false);
+
+            run(source with { CasePath = casePath.FullName });
+        }
+        finally
+        {
+            casePath.Delete(recursive: true);
+        }
+    }
+
     [Test]
     public void Finalized_checkpoint_override_is_read() =>
         Assert.That(VectorMeta.Parse(new StringReader("topic: beacon_block\nfinalized_checkpoint: {epoch: 7, root: '0x00'}\nmessages:\n- {message: m, expected: valid}")).FinalizedEpoch, Is.EqualTo(7UL));
@@ -272,7 +314,6 @@ public class GossipValidationTests
         bool gloas = testCase.Fork == "gloas";
         (ulong genesisTime, ulong anchorFinalizedEpoch) = ReadAnchorState(Path.Combine(testCase.CasePath, "state.ssz_snappy"), gloas);
         BeaconChainSpec spec = WithGenesisTime(VectorSpec(testCase.CasePath, gloas), genesisTime);
-        long slotMs = (long)spec.SecondsPerSlot * 1000;
         DateTime genesis = DateTimeOffset.FromUnixTimeSeconds((long)spec.GenesisTime).UtcDateTime;
         ManualTimestamper timestamper = new(genesis);
         BeaconChainStatusHolder status = new(spec, timestamper)
@@ -318,7 +359,7 @@ public class GossipValidationTests
             int raisedBefore = raised;
             markVerified = null;
 
-            timestamper.UtcNow = genesis.AddMilliseconds(message.TimeMs);
+            timestamper.UtcNow = DateTimeOffset.FromUnixTimeMilliseconds(message.TimeMs).UtcDateTime;
             MessageValidity validity = router.Handle(meta.Topic, gloas, File.ReadAllBytes(Path.Combine(testCase.CasePath, message.Name + ".ssz_snappy")));
             GossipDropReason[] drops = [.. DropReasons.Where((reason, index) => router.GetDropCount(reason) != dropsBefore[index])];
 
@@ -328,7 +369,7 @@ public class GossipValidationTests
                 ([GossipDropReason drop], 0, MessageValidity.Rejected) => RouterVerdict.Rejected(drop),
                 ([GossipDropReason drop], 0, MessageValidity.Ignored) => RouterVerdict.Ignored(drop),
                 ([], 1, MessageValidity.Ignored) => RouterVerdict.Raised,
-                ([], 0, MessageValidity.Ignored) => ReleasedAtNextSlot(message.TimeMs) ? RouterVerdict.Deferred : null,
+                ([], 0, MessageValidity.Ignored) => ReleasedAtNextSlot() ? RouterVerdict.Deferred : null,
                 _ => null,
             };
 
@@ -373,10 +414,10 @@ public class GossipValidationTests
             throw new NotImplementedInDriverException($"GossipRouter does not reject: {string.Join("; ", uncheckedRejects)}");
 
         // A held message must be raised once the next slot starts, which tells a deferral from a drop that counted nothing.
-        bool ReleasedAtNextSlot(long timeMs)
+        bool ReleasedAtNextSlot()
         {
             int before = raised;
-            timestamper.UtcNow = genesis.AddMilliseconds((timeMs / slotMs + 1) * slotMs);
+            timestamper.UtcNow = DateTimeOffset.FromUnixTimeMilliseconds(clock.SlotStartMilliseconds(clock.CurrentSlot + 1)).UtcDateTime;
             router.ReleaseDueMessages();
             return raised == before + 1;
         }

@@ -64,6 +64,7 @@ public class BeaconChainStoreEnvelopeTests
     [Test]
     public void Prune_removes_only_envelopes_below_the_retention_window_and_the_finalized_block([Values] bool finalityLags)
     {
+        Assert.That(BeaconChainStore.MinEpochsForBlockRequests, Is.EqualTo(14299ul));
         MemColumnsDb<BeaconChainDbColumns> db = new();
         MemDb column = (MemDb)db.GetColumnDb(BeaconChainDbColumns.ExecutionPayloadEnvelopes);
         BeaconChainStore store = new(db, Sepolia);

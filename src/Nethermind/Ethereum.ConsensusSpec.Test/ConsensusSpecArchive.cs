@@ -15,7 +15,7 @@ public enum ConsensusPreset
 
 public static class ConsensusSpecArchive
 {
-    public const string Version = "v1.7.0-beta.2";
+    public const string Version = "v1.7.0-beta.3";
 
     // Controls full-suite enumeration; required operation cases run regardless.
     public static bool MainnetEnabled { get; } =

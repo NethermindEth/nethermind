@@ -287,6 +287,31 @@ public class ForkChoiceRunnerGloasHeadTests
     }
 
     [Test]
+    public void Payload_status_leaves_are_filtered_independently([Values] bool payloadVerified)
+    {
+        GloasForkChoiceHarness harness = new();
+        GloasForkChoiceHarness.Block first = harness.First;
+        harness.TickTo(2 * Presets.SlotsPerEpoch + 2);
+        BeaconStateGloas justified = first.PostState.Clone();
+        justified.CurrentJustifiedCheckpoint = new Checkpoint { Epoch = ForkCrossingChain.ForkEpoch, Root = first.Root };
+        harness.Runner.OnBlock(first.Signed, justified);
+        if (payloadVerified)
+            harness.Runner.OnExecutionPayloadVerified(first.Root);
+        GloasForkChoiceHarness.Block stale = harness.Child(first, first.Slot + 1, full: false, 0xE1);
+        harness.Import(stale);
+        harness.CommitteeVotes(stale, 2 * Presets.SlotsPerEpoch + 1, index: 0);
+        harness.TickTo(3 * Presets.SlotsPerEpoch);
+
+        ForkChoiceNode expected = new(first.Root, payloadVerified ? ForkChoicePayloadStatus.Full : ForkChoicePayloadStatus.Empty);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Runner.JustifiedCheckpoint, Is.EqualTo(new CheckpointRef(ForkCrossingChain.ForkEpoch, first.Root)), "fixture bug");
+            Assert.That(harness.Runner.GetHeadNode(), Is.EqualTo(expected));
+            Assert.That(harness.Runner.GetViableHeadNodes(), Is.EqualTo(payloadVerified ? new[] { expected } : Array.Empty<ForkChoiceNode>()));
+        }
+    }
+
+    [Test]
     public void The_last_pre_gloas_slot_keeps_the_fulu_proposer_boost()
     {
         UnsignedChain chain = UnsignedChain.Create();

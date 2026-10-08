@@ -355,20 +355,23 @@ public class BeaconDiscoveryTests
         Assert.That(candidate.Enr, Is.EqualTo(record.ToString()));
     }
 
-    // next_fork_version tracks the next hard fork (or stays at the current one), while next_fork_epoch also
-    // rotates on EIP-7892 BPO forks from Fulu onward, mirroring Lighthouse's enr_fork_id.
     [TestCase(364031ul, "0x05000000", 364032ul)] // deneb: next hard fork is electra
     [TestCase(364032ul, "0x06000000", 411392ul)] // electra: next is fulu; BPO schedule not yet in effect
     [TestCase(411392ul, "0x06000000", 412672ul)] // fulu: next digest change is BPO1, version stays fulu
     [TestCase(412672ul, "0x06000000", 419072ul)] // BPO1: next digest change is BPO2
     [TestCase(419072ul, "0x06000000", ulong.MaxValue)] // beyond BPO2 nothing is scheduled
-    public void Computes_mainnet_enr_fork_id(ulong epoch, string expectedNextVersion, ulong expectedNextEpoch)
+    [TestCase(272640ul, "0x90000075", 274176ul, true)]
+    [TestCase(274176ul, "0x90000075", 275712ul, true)]
+    [TestCase(275712ul, "0x90000076", 353024ul, true)]
+    [TestCase(353024ul, "0x90000076", ulong.MaxValue, true)]
+    public void Computes_enr_fork_id(ulong epoch, string expectedNextVersion, ulong expectedNextEpoch, bool sepolia = false)
     {
-        EnrForkId forkId = EnrForkId.Compute(BeaconChainSpec.Mainnet, epoch);
+        BeaconChainSpec spec = sepolia ? BeaconChainSpec.Sepolia : BeaconChainSpec.Mainnet;
+        EnrForkId forkId = EnrForkId.Compute(spec, epoch);
 
         Assert.That(EnrForkId.TryDecode(forkId.Encode(), out EnrForkId? decoded), Is.True);
         using IDisposable assertionScope = Assert.EnterMultipleScope();
-        Assert.That(forkId.ForkDigest, Is.EqualTo(ForkDigest.Compute(BeaconChainSpec.Mainnet, epoch)));
+        Assert.That(forkId.ForkDigest, Is.EqualTo(ForkDigest.Compute(spec, epoch)));
         Assert.That(forkId.NextForkVersion, Is.EqualTo(Bytes.FromHexString(expectedNextVersion)));
         Assert.That(forkId.NextForkEpoch, Is.EqualTo(expectedNextEpoch));
         Assert.That(decoded, Is.EqualTo(forkId));
