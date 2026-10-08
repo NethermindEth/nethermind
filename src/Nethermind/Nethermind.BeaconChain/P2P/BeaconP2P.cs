@@ -111,6 +111,10 @@ public sealed class BeaconP2P : IAsyncDisposable
             .AddSingleton(new GoodbyeProtocol { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new Eth2PingProtocol(metadataSource) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new MetaDataProtocolV3(metadataSource) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientBootstrapProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientUpdatesByRangeProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientFinalityUpdateProtocol(spec) { RequestViolationSink = ReportRequestViolation })
+            .AddSingleton(new LightClientOptimisticUpdateProtocol(spec) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new BeaconBlocksByRangeProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new BeaconBlocksByRootProtocolV2(spec, store) { RequestViolationSink = ReportRequestViolation })
             .AddSingleton(new DataColumnSidecarsByRangeProtocol(spec, dataColumnSidecarPool, store, clock) { RequestViolationSink = ReportRequestViolation })
@@ -124,6 +128,10 @@ public sealed class BeaconP2P : IAsyncDisposable
                 .AddProtocol<GoodbyeProtocol>()
                 .AddProtocol<Eth2PingProtocol>()
                 .AddProtocol<MetaDataProtocolV3>()
+                .AddProtocol<LightClientBootstrapProtocol>()
+                .AddProtocol<LightClientUpdatesByRangeProtocol>()
+                .AddProtocol<LightClientFinalityUpdateProtocol>()
+                .AddProtocol<LightClientOptimisticUpdateProtocol>()
                 .AddProtocol<BeaconBlocksByRangeProtocolV2>()
                 .AddProtocol<BeaconBlocksByRootProtocolV2>()
                 .AddProtocol<DataColumnSidecarsByRangeProtocol>()
@@ -505,6 +513,30 @@ public sealed class BeaconP2P : IAsyncDisposable
     {
         using CancellationTokenSource cts = Timeout(session, token, RequestTimeout + TimeSpan.FromSeconds(roots.Length));
         return await ExchangeAsync<BeaconBlocksByRootProtocolV2, Hash256[], IReadOnlyList<ForkedSignedBeaconBlock>>(session, () => TrackedCopy(timing, roots), cts, token, timing);
+    }
+
+    public async Task<LightClientBootstrap> RequestLightClientBootstrapAsync(ISession session, Hash256 root, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientBootstrapProtocol, Hash256, LightClientBootstrap>(session, () => Tracked(timing, root), cts, token, timing);
+    }
+
+    public async Task<LightClientUpdate> RequestLightClientUpdateAsync(ISession session, ulong period, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientUpdatesByRangeProtocol, ulong, LightClientUpdate>(session, () => period, cts, token, timing);
+    }
+
+    public async Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientFinalityUpdateProtocol, ulong, LightClientFinalityUpdate>(session, () => 0UL, cts, token, timing);
+    }
+
+    public async Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(ISession session, CancellationToken token, RequestTiming? timing = null)
+    {
+        using CancellationTokenSource cts = Timeout(session, token);
+        return await ExchangeAsync<LightClientOptimisticUpdateProtocol, ulong, LightClientOptimisticUpdate>(session, () => 0UL, cts, token, timing);
     }
 
     public async Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ISession session, ulong startSlot, ulong count, ulong[] columns, CancellationToken token, RequestTiming? timing = null)

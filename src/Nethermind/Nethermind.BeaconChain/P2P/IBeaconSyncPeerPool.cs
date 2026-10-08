@@ -42,6 +42,18 @@ public interface IBeaconSyncPeer
     /// <summary>Each block has the SSZ shape of the fork its slot belongs to.</summary>
     Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
 
+    Task<LightClientBootstrap> RequestLightClientBootstrapAsync(Hash256 root, CancellationToken token) =>
+        Task.FromException<LightClientBootstrap>(new NotSupportedException("Peer does not support light-client bootstrap requests."));
+
+    Task<LightClientUpdate> RequestLightClientUpdateAsync(ulong period, CancellationToken token) =>
+        Task.FromException<LightClientUpdate>(new NotSupportedException("Peer does not support light-client update requests."));
+
+    Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(CancellationToken token) =>
+        Task.FromException<LightClientFinalityUpdate>(new NotSupportedException("Peer does not support light-client finality requests."));
+
+    Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(CancellationToken token) =>
+        Task.FromException<LightClientOptimisticUpdate>(new NotSupportedException("Peer does not support light-client optimistic requests."));
+
     /// <summary>Fulu-shaped sidecars; the window must lie wholly before the Gloas fork.</summary>
     Task<IReadOnlyList<DataColumnSidecar>> RequestDataColumnSidecarsByRangeAsync(ulong startSlot, ulong count, ulong[] columns, CancellationToken token);
 
