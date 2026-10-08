@@ -19,7 +19,7 @@ namespace Nethermind.BeaconChain.StateTransition;
 
 /// <summary>Gloas block and payload processing (EIP-7732).</summary>
 /// <remarks>
-/// Follows ethereum/consensus-specs <c>v1.7.0-beta.2</c>, <c>specs/gloas/beacon-chain.md</c> and
+/// Follows ethereum/consensus-specs <c>v1.7.0-beta.3</c>, <c>specs/gloas/beacon-chain.md</c> and
 /// <c>specs/gloas/fork-choice.md</c> at the same tag.
 /// <para/>
 /// Withdrawals run after the parent payload and before the current bid, because bid processing
@@ -475,8 +475,8 @@ public static partial class GloasBlockProcessing
         && (requests.BuilderExits?.Length ?? 0) == 0;
 
     /// <summary>
-    /// Spec <c>apply_parent_execution_payload</c>: applies the parent's execution requests at the
-    /// child's slot, settles the parent's builder payment, and advances the chain's execution tip.
+    /// Settles the parent's builder payment, applies its execution requests at the child's slot,
+    /// and advances the chain's execution tip.
     /// </summary>
     /// <remarks>
     /// <see cref="GloasEpochProcessing.ProcessBuilderPendingPayments"/> rotates the payment window at epoch boundaries:
@@ -486,17 +486,6 @@ public static partial class GloasBlockProcessing
     private static void ApplyParentExecutionPayload(BeaconStateGloas state, ExecutionRequestsGloas requests, ulong parentSlot, ExecutionPayloadBid parentBid, EpochCache cache)
     {
         VerifyExecutionRequestsLimits(requests);
-
-        foreach (DepositRequest request in requests.Deposits ?? [])
-            ProcessDepositRequest(state, request);
-        foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
-            ProcessWithdrawalRequest(state, request, cache);
-        foreach (ConsolidationRequest request in requests.Consolidations ?? [])
-            ProcessConsolidationRequest(state, request, cache);
-        foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
-            ProcessBuilderDepositRequest(state, request);
-        foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
-            ProcessBuilderExitRequest(state, request);
 
         ulong parentEpoch = BeaconStateAccessors.ComputeEpochAtSlot(parentSlot);
         if (parentEpoch == state.GetCurrentEpoch())
@@ -516,6 +505,17 @@ public static partial class GloasBlockProcessing
                 BuilderIndex = parentBid.BuilderIndex,
             }];
         }
+
+        foreach (DepositRequest request in requests.Deposits ?? [])
+            ProcessDepositRequest(state, request);
+        foreach (WithdrawalRequest request in requests.Withdrawals ?? [])
+            ProcessWithdrawalRequest(state, request, cache);
+        foreach (ConsolidationRequest request in requests.Consolidations ?? [])
+            ProcessConsolidationRequest(state, request, cache);
+        foreach (BuilderDepositRequest request in requests.BuilderDeposits ?? [])
+            ProcessBuilderDepositRequest(state, request);
+        foreach (BuilderExitRequest request in requests.BuilderExits ?? [])
+            ProcessBuilderExitRequest(state, request);
 
         state.ExecutionPayloadAvailability![(int)(parentSlot % Presets.SlotsPerHistoricalRoot)] = true;
         state.LatestBlockHash = parentBid.BlockHash;
@@ -746,14 +746,19 @@ public static partial class GloasBlockProcessing
                 break;
 
             Builder builder = builders[RequireRegistryIndex(builderIndex, builders.Length, "Builder")];
-            if (builder.WithdrawableEpoch <= epoch && builder.Balance > 0)
+            ulong balance = builder.Balance;
+            ulong validatorIndex = ToBuilderWithdrawalIndex(builderIndex);
+            foreach (Withdrawal withdrawal in accumulated.AsSpan())
+                if (withdrawal.ValidatorIndex == validatorIndex)
+                    balance -= Math.Min(balance, withdrawal.Amount);
+            if (builder.WithdrawableEpoch <= epoch && balance > 0)
             {
                 accumulated.Add(new Withdrawal
                 {
                     Index = withdrawalIndex++,
-                    ValidatorIndex = ToBuilderWithdrawalIndex(builderIndex),
+                    ValidatorIndex = validatorIndex,
                     Address = builder.ExecutionAddress!,
-                    Amount = builder.Balance,
+                    Amount = balance,
                 });
             }
             builderIndex = (builderIndex + 1) % (ulong)builders.Length;

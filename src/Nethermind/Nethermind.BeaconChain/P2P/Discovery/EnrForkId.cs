@@ -10,10 +10,8 @@ namespace Nethermind.BeaconChain.P2P.Discovery;
 
 /// <summary>The <c>ENRForkID</c> SSZ container advertised in the <c>eth2</c> ENR entry (phase0 p2p spec).</summary>
 /// <remarks>
-/// Mirrors Lighthouse's <c>enr_fork_id</c> including EIP-7892: <see cref="NextForkEpoch"/> is the next epoch at
-/// which the fork digest changes — a scheduled hard fork or, from Fulu onward, also a blob-parameter-only (BPO)
-/// fork — while <see cref="NextForkVersion"/> only tracks hard forks (BPO forks do not bump the version) and
-/// falls back to the current version when no hard fork is scheduled.
+/// <see cref="NextForkEpoch"/> includes EIP-7892 BPO forks; <see cref="NextForkVersion"/> is the version
+/// in effect at that epoch, or the current version when no fork is scheduled.
 /// </remarks>
 public sealed class EnrForkId : IEquatable<EnrForkId>
 {
@@ -65,17 +63,9 @@ public sealed class EnrForkId : IEquatable<EnrForkId>
     /// <summary>Computes the <c>ENRForkID</c> to advertise at the given epoch.</summary>
     public static EnrForkId Compute(BeaconChainSpec spec, ulong epoch)
     {
-        byte[] nextForkVersion = spec.VersionForEpoch(epoch);
-        foreach (ForkScheduleEntry fork in spec.Forks)
-        {
-            if (fork.Epoch > epoch)
-            {
-                nextForkVersion = fork.Version;
-                break;
-            }
-        }
-
-        return new EnrForkId(Spec.ForkDigest.Compute(spec, epoch), nextForkVersion, NextDigestEpoch(spec, epoch));
+        ulong nextEpoch = NextDigestEpoch(spec, epoch);
+        byte[] nextForkVersion = spec.VersionForEpoch(nextEpoch == Presets.FarFutureEpoch ? epoch : nextEpoch);
+        return new EnrForkId(Spec.ForkDigest.Compute(spec, epoch), nextForkVersion, nextEpoch);
     }
 
     /// <summary>

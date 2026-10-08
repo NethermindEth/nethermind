@@ -74,6 +74,14 @@ public class DataColumnSidecarNetworkingTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(GossipValidationCase testCase) =>
         ConsensusSpecTestSummary.RunAndRecord(Suite, testCase.Fork, testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    [Test]
+    public void Message_unix_time_is_independent_of_genesis()
+    {
+        GossipValidationCase source = TestedCases().Single(c => c.Fork == "gloas" && Path.GetFileName(c.CasePath) == "gossip_data_column_sidecar__valid");
+        GossipValidationTests.RunWithShiftedGenesis(source, static c => Run(c));
+    }
+
     [Test]
     public void Every_fork_has_vectors_in_the_archive() =>
         Assert.That(TestedCases().Select(static c => c.Fork).Distinct(), Is.EquivalentTo(Forks));
@@ -179,7 +187,7 @@ public class DataColumnSidecarNetworkingTests
             long[] dropsBefore = [.. DropReasons.Select(router.GetDropCount)];
             int raisedBefore = raised;
 
-            timestamper.UtcNow = genesis.AddMilliseconds(message.TimeMs);
+            timestamper.UtcNow = DateTimeOffset.FromUnixTimeMilliseconds(message.TimeMs).UtcDateTime;
             ulong subnetId = message.SubnetId ?? throw new InvalidDataException($"{label}: no subnet_id");
             MessageValidity validity = router.Handle(subnetId, gloas, File.ReadAllBytes(Path.Combine(testCase.CasePath, message.Name + ".ssz_snappy")));
             ColumnGossipDropReason[] drops = [.. DropReasons.Where((reason, index) => router.GetDropCount(reason) != dropsBefore[index])];

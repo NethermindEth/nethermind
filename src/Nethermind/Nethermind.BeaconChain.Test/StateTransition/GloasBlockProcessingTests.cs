@@ -283,6 +283,59 @@ public class GloasBlockProcessingTests
     }
 
     [Test]
+    public void Parent_payment_prevents_a_builder_exit([Values(1ul, 2ul, 3ul)] ulong epoch, [Values(0ul, 1ul)] ulong payment)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out _);
+        Builder builder = state.Builders![0];
+        ulong parentSlot = Presets.SlotsPerEpoch;
+        state.Slot = epoch * Presets.SlotsPerEpoch + 1;
+        state.LatestBlockHeader!.Slot = parentSlot;
+        ExecutionRequestsGloas requests = new()
+        {
+            BuilderExits = [new BuilderExitRequest { Pubkey = builder.Pubkey, SourceAddress = builder.ExecutionAddress }],
+        };
+        ExecutionPayloadBid parent = state.LatestExecutionPayloadBid!;
+        parent.BlockHash = Hash(0x88);
+        parent.BuilderIndex = 0;
+        parent.Value = payment;
+        parent.FeeRecipient = builder.ExecutionAddress;
+        parent.ExecutionRequestsRoot = SszRoots.HashTreeRoot(requests);
+        if (epoch <= 2)
+            state.BuilderPendingPayments![(int)(epoch == 1 ? Presets.SlotsPerEpoch : 0)].Withdrawal = new BuilderPendingWithdrawal
+            {
+                BuilderIndex = 0,
+                Amount = payment,
+                FeeRecipient = builder.ExecutionAddress,
+            };
+        BeaconBlockGloas block = MinimalBlock(state, SelfBuildBid(state, parent.BlockHash, Hash(0x99))).Message!;
+        block.Body!.ParentExecutionRequests = requests;
+
+        GloasBlockProcessing.ProcessParentExecutionPayload(state, block, new EpochCache());
+
+        Assert.That(state.Builders[0].WithdrawableEpoch,
+            Is.EqualTo(payment == 0 ? epoch + Presets.MinBuilderWithdrawabilityDelay : Presets.FarFutureEpoch));
+    }
+
+    [Test]
+    public void Builder_sweep_deducts_payments_already_in_the_payload([Values(0ul, 1ul, 40ul)] ulong paymentGwei)
+    {
+        BeaconStateGloas state = CreateGloasState(out _, out ulong balance);
+        Builder builder = state.Builders![0];
+        builder.WithdrawableEpoch = state.GetCurrentEpoch();
+        state.LatestBlockHash = state.LatestExecutionPayloadBid!.BlockHash;
+        state.BuilderPendingWithdrawals = paymentGwei == 0 ? [] :
+            [new BuilderPendingWithdrawal { BuilderIndex = 0, Amount = paymentGwei * Gwei, FeeRecipient = builder.ExecutionAddress }];
+
+        GloasBlockProcessing.ProcessWithdrawals(state);
+
+        using IDisposable scope = Assert.EnterMultipleScope();
+        Assert.That(state.PayloadExpectedWithdrawals!.Where(w => w.ValidatorIndex == Presets.BuilderIndexFlag)
+            .Aggregate(0ul, (total, withdrawal) => total + withdrawal.Amount), Is.EqualTo(balance));
+        Assert.That(state.Builders[0].Balance, Is.Zero);
+        Assert.That(state.BuilderPendingWithdrawals, Is.Empty);
+    }
+
+    [Test]
     public void ProcessWithdrawals_pays_a_fully_withdrawable_validator_computed_entirely_from_state()
     {
         BeaconStateGloas state = CreateGloasState(out _, out _);

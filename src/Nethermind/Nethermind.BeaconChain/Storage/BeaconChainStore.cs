@@ -80,8 +80,10 @@ public partial class BeaconChainStore(IColumnsDb<BeaconChainDbColumns> db, Beaco
     /// <summary>The block is stored and the list is the full set of stored children.</summary>
     private const byte ChildrenComplete = 1;
 
-    /// <summary><c>compute_min_epochs_for_block_requests()</c> (phase0/p2p-interface.md), the epochs ExecutionPayloadEnvelopesByRange/ByRoot must serve (gloas/p2p-interface.md).</summary>
-    internal static readonly ulong MinEpochsForBlockRequests = BeaconPresetSelection.IsGnosis ? 33024 : Presets.MinValidatorWithdrawabilityDelay + Presets.ChurnLimitQuotient / 2;
+    /// <summary>The envelope retention window from Gloas <c>compute_min_epochs_for_block_requests</c> (EIP-8061).</summary>
+    internal const ulong MinEpochsForBlockRequests = Presets.MinValidatorWithdrawabilityDelay
+        + (3 * Presets.ChurnLimitQuotientGloas * Presets.ConsolidationChurnLimitQuotient
+            / (2 * Presets.ConsolidationChurnLimitQuotient + 3 * Presets.ChurnLimitQuotientGloas)) / 2;
 
     internal const ulong EnvelopePruneBatchSlots = 1024;
 

@@ -173,9 +173,9 @@ public sealed class ProtoArrayForkChoice
     /// <summary>The index of <paramref name="blockRoot"/> in <see cref="Nodes"/>, or <c>null</c> when the block is unknown.</summary>
     internal int? IndexOf(Hash256 blockRoot) => _protoArray.Indices.TryGetValue(blockRoot, out int index) ? index : null;
 
-    /// <inheritdoc cref="ProtoArray.FilterBlockTree"/>
-    internal bool[] FilterBlockTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint) =>
-        _protoArray.FilterBlockTree(currentSlot, justifiedCheckpoint, finalizedCheckpoint);
+    /// <inheritdoc cref="ProtoArray.FilterNodeTree"/>
+    internal bool[,] FilterNodeTree(ulong currentSlot, CheckpointRef justifiedCheckpoint, CheckpointRef finalizedCheckpoint, IReadOnlySet<Hash256> payloads) =>
+        _protoArray.FilterNodeTree(currentSlot, justifiedCheckpoint, finalizedCheckpoint, payloads);
 
     public ulong? GetWeight(Hash256 blockRoot) =>
         _protoArray.Indices.TryGetValue(blockRoot, out int index) ? _protoArray.Nodes[index].Weight : null;

@@ -942,7 +942,7 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public bool? VerifyEnvelopeSignature(SignedExecutionPayloadEnvelope envelope) => _envelopes.VerifySignature(envelope);
 
-    /// <summary>Advances fork-choice time to the node's clock when the block reached the importer, before <c>on_block</c>, whose proposer boost and <c>record_block_timeliness</c> read <c>store.time</c>.</summary>
+    /// <summary>Advances fork-choice time to the node's clock when the block reached the importer, before <c>on_block</c>, whose proposer boost and <c>record_block_timeliness</c> read <c>store.time_ms</c>.</summary>
     /// <remarks>
     /// fork-choice.md on_block: transition latency does not count as lateness; an early receipt uses its slot start after the clock reaches it.
     /// </remarks>
@@ -950,10 +950,10 @@ public sealed class BlockImporter : IBlockImporter
     {
         long slotStartMs = _clock.SlotStartMilliseconds(blockSlot);
         long tickMs = receivedMs < slotStartMs ? Math.Min(_clock.UnixMilliseconds, slotStartMs) : receivedMs;
-        ulong time = _runner.GenesisTime + (ulong)Math.Max(0L, tickMs - _clock.SlotStartMilliseconds(0)) / 1000;
-        if (time > _runner.Time)
+        ulong timeMilliseconds = _runner.GenesisTime * 1000 + (ulong)Math.Max(0L, tickMs - _clock.SlotStartMilliseconds(0));
+        if (timeMilliseconds > _runner.TimeMilliseconds)
         {
-            _runner.OnTick(time);
+            _runner.OnTickMilliseconds(timeMilliseconds);
         }
     }
 
@@ -970,10 +970,10 @@ public sealed class BlockImporter : IBlockImporter
     /// <inheritdoc/>
     public void OnSlotTick(ulong slot)
     {
-        ulong time = _runner.GenesisTime + slot * _spec.SecondsPerSlot;
-        if (time > _runner.Time)
+        ulong timeMilliseconds = (_runner.GenesisTime + slot * _spec.SecondsPerSlot) * 1000;
+        if (timeMilliseconds > _runner.TimeMilliseconds)
         {
-            _runner.OnTick(time);
+            _runner.OnTickMilliseconds(timeMilliseconds);
         }
     }
 

@@ -24,7 +24,7 @@ public class GloasForkChoiceTests
 
     private static readonly IReadOnlyDictionary<ConsensusPreset, string[]> HandlersByPreset = new Dictionary<ConsensusPreset, string[]>
     {
-        [ConsensusPreset.Minimal] = [.. MainnetHandlers, "deposit_with_reorg", "reorg", "should_apply_proposer_boost", "withholding"],
+        [ConsensusPreset.Minimal] = [.. MainnetHandlers, "deposit_with_reorg", "filter_node_tree_variants", "reorg", "should_apply_proposer_boost", "withholding"],
         [ConsensusPreset.Mainnet] = MainnetHandlers,
     };
 

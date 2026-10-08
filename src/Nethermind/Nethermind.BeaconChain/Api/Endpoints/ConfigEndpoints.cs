@@ -48,7 +48,7 @@ internal static class ConfigEndpoints
     }
 
     /// <remarks>
-    /// Every key of the consensus-specs v1.7.0-beta.2 mainnet <c>config.yaml</c> and of the presets of phase0 to gloas, as the beacon-APIs
+    /// Every key of the consensus-specs v1.7.0-beta.3 mainnet <c>config.yaml</c> and of the presets of phase0 to gloas, as the beacon-APIs
     /// <c>getSpec</c> asks for: numbers as decimal strings, <c>0x</c> values as hex, schedules as arrays. The mainnet
     /// values come from <see cref="SpecValues.Mainnet"/> and the network's own replace them, and the constants of the specs'
     /// Constants tables come from <see cref="SpecConstants.All"/>. <c>SECONDS_PER_SLOT</c>, which that config
@@ -91,6 +91,10 @@ internal static class ConfigEndpoints
             .Select(entry => new Dictionary<string, string> { ["EPOCH"] = entry.Epoch.ToString(), ["MAX_BLOBS_PER_BLOCK"] = entry.MaxBlobsPerBlock.ToString() })
             .ToArray();
         data["GAS_LIMIT_SCHEDULE"] = Array.Empty<string>();
+        data["SLOT_DURATION_SCHEDULE"] = new[]
+        {
+            new Dictionary<string, string> { ["EPOCH"] = "0", ["SLOT_DURATION_MS"] = (spec.SecondsPerSlot * 1000).ToString() },
+        };
 
         return BeaconApiJson.WriteDataAsync(c, data, c.RequestAborted);
     }

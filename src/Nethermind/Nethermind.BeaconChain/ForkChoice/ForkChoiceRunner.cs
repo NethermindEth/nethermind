@@ -220,7 +220,7 @@ public sealed class ForkChoiceRunner
         _gloasStateProvider = gloasStateProvider;
         _pubkeys = pubkeys;
         GenesisTime = anchor.GenesisTime;
-        Time = GenesisTime + spec.SecondsPerSlot * anchor.StateSlot;
+        TimeMilliseconds = (GenesisTime + spec.SecondsPerSlot * anchor.StateSlot) * 1000;
 
         CheckpointRef anchorCheckpoint = new(anchor.Epoch, anchor.Root);
         _bootstrapCheckpoint = anchorCheckpoint;
@@ -288,8 +288,9 @@ public sealed class ForkChoiceRunner
             IsGloas: true);
     }
 
-    /// <summary>The wall-clock time in seconds (the spec store's <c>time</c>).</summary>
-    public ulong Time { get; private set; }
+    /// <summary>The wall-clock time in seconds, discarding the millisecond remainder.</summary>
+    public ulong Time => TimeMilliseconds / 1000;
+    internal ulong TimeMilliseconds { get; private set; }
     public ulong GenesisTime { get; }
     public ulong CurrentSlot => _store.CurrentSlot;
     public CheckpointRef JustifiedCheckpoint => _store.JustifiedCheckpoint;
@@ -425,13 +426,15 @@ public sealed class ForkChoiceRunner
     /// crossed, then applies attestations queued for slots that are now in the past.
     /// </summary>
     /// <exception cref="ForkChoiceException">Time moved backwards.</exception>
-    public void OnTick(ulong time)
-    {
-        if (time < Time)
-            throw new ForkChoiceException($"Cannot move the store time backwards from {Time} to {time}");
+    public void OnTick(ulong time) => OnTickMilliseconds(time * 1000);
 
-        Time = time;
-        _store.OnTick((time - GenesisTime) / _spec.SecondsPerSlot);
+    internal void OnTickMilliseconds(ulong timeMilliseconds)
+    {
+        if (timeMilliseconds < TimeMilliseconds)
+            throw new ForkChoiceException($"Cannot move the store time backwards from {TimeMilliseconds} to {timeMilliseconds} milliseconds");
+
+        TimeMilliseconds = timeMilliseconds;
+        _store.OnTick((timeMilliseconds - GenesisTime * 1000) / (_spec.SecondsPerSlot * 1000));
         DequeueAttestations();
         PruneVoteStates();
         ApplyDeferredBodyVotes();
@@ -754,8 +757,7 @@ public sealed class ForkChoiceRunner
         // Proposer boost for the first block of the slot arriving before get_attestation_due_ms, which Gloas moves earlier
         // (specs/phase0/fork-choice.md and specs/gloas/fork-choice.md record_block_timeliness).
         ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
-        ulong secondsSinceGenesis = Time - GenesisTime;
-        ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
+        ulong timeIntoSlotMs = (TimeMilliseconds - GenesisTime * 1000) % slotDurationMs;
         ulong attestationDueMs = (IsGloasSlot(slot) ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) * slotDurationMs / Presets.BasisPoints;
         ulong ptcDueMs = GloasTiming.PayloadAttestationDueBps * slotDurationMs / Presets.BasisPoints;
         bool isCurrentSlot = slot == _store.CurrentSlot;
@@ -1247,7 +1249,7 @@ public sealed class ForkChoiceRunner
     {
         GetHeadNode();
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
-        bool[] filtered = _protoArray.FilterBlockTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint);
+        bool[,] filtered = _protoArray.FilterNodeTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _payloads);
         int justified = _protoArray.IndexOf(_store.JustifiedCheckpoint.Root)
             ?? throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} is unknown to fork choice");
         Stack<(int Index, ForkChoicePayloadStatus Status)> pending = new();
@@ -1256,21 +1258,23 @@ public sealed class ForkChoiceRunner
         while (pending.TryPop(out (int Index, ForkChoicePayloadStatus Status) current))
         {
             ProtoNode node = nodes[current.Index];
+            if (!filtered[current.Index, (int)current.Status]) continue;
             if (current.Status == ForkChoicePayloadStatus.Pending)
             {
-                pending.Push((current.Index, ForkChoicePayloadStatus.Empty));
-                if (_payloads.Contains(node.Root))
+                if (node.IsGloas)
+                    pending.Push((current.Index, ForkChoicePayloadStatus.Empty));
+                if (!node.IsGloas || _payloads.Contains(node.Root))
                     pending.Push((current.Index, ForkChoicePayloadStatus.Full));
                 continue;
             }
             bool hasChildren = false;
             foreach (int child in node.Children)
             {
-                if (!filtered[child] || nodes[child].ParentPayloadStatus != current.Status) continue;
+                if (!filtered[child, (int)ForkChoicePayloadStatus.Pending] || nodes[child].ParentPayloadStatus != current.Status) continue;
                 pending.Push((child, ForkChoicePayloadStatus.Pending));
                 hasChildren = true;
             }
-            if (!hasChildren) leaves.Add(new ForkChoiceNode(node.Root, current.Status));
+            if (!hasChildren) leaves.Add(new ForkChoiceNode(node.Root, node.IsGloas ? current.Status : ForkChoicePayloadStatus.Empty));
         }
         return leaves;
     }
@@ -1278,22 +1282,24 @@ public sealed class ForkChoiceRunner
     private ForkChoiceNode FindGloasHead(JustifiedBalances balances)
     {
         IReadOnlyList<ProtoNode> nodes = _protoArray.Nodes;
-        bool[] filtered = _protoArray.FilterBlockTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint);
+        bool[,] filtered = _protoArray.FilterNodeTree(_store.CurrentSlot, _store.JustifiedCheckpoint, _store.FinalizedCheckpoint, _payloads);
         GloasWeights weights = new(this, balances);
         int index = _protoArray.IndexOf(_store.JustifiedCheckpoint.Root)
             ?? throw new ForkChoiceException($"Justified block {_store.JustifiedCheckpoint.Root} is unknown to fork choice");
+        if (!filtered[index, (int)ForkChoicePayloadStatus.Pending])
+            return new ForkChoiceNode(nodes[index].Root, ForkChoicePayloadStatus.Empty);
 
         while (true)
         {
             ProtoNode node = nodes[index];
-            ForkChoicePayloadStatus status = ChoosePayloadNode(node, index, weights);
+            ForkChoicePayloadStatus status = ChoosePayloadNode(node, index, weights, filtered);
 
             int? best = null;
             ulong bestWeight = 0;
             foreach (int child in node.Children)
             {
                 ProtoNode childNode = nodes[child];
-                if (!filtered[child] || childNode.ParentPayloadStatus != status)
+                if (!filtered[child, (int)ForkChoicePayloadStatus.Pending] || childNode.ParentPayloadStatus != status)
                     continue;
 
                 // Children are PENDING nodes of distinct roots, so (weight, root) decides and the payload tiebreaker never does.
@@ -1311,14 +1317,15 @@ public sealed class ForkChoiceRunner
         }
     }
 
-    private ForkChoicePayloadStatus ChoosePayloadNode(ProtoNode node, int index, GloasWeights weights)
+    private ForkChoicePayloadStatus ChoosePayloadNode(ProtoNode node, int index, GloasWeights weights, bool[,] filtered)
     {
         // Gloas children of a pre-Gloas block build on the payload it carried (ProtoArray.GetParentPayloadStatus).
         if (!node.IsGloas)
             return ForkChoicePayloadStatus.Full;
-        // specs/gloas/fork-choice.md get_node_children: the FULL node exists only once is_payload_verified.
-        if (!_payloads.Contains(node.Root))
+        if (!filtered[index, (int)ForkChoicePayloadStatus.Full])
             return ForkChoicePayloadStatus.Empty;
+        if (!filtered[index, (int)ForkChoicePayloadStatus.Empty])
+            return ForkChoicePayloadStatus.Full;
 
         ulong empty = weights.Of(index, ForkChoicePayloadStatus.Empty);
         ulong full = weights.Of(index, ForkChoicePayloadStatus.Full);
@@ -1643,9 +1650,7 @@ public sealed class ForkChoiceRunner
     private bool IsProposingOnTime()
     {
         ulong slotDurationMs = _spec.SecondsPerSlot * 1000;
-        ulong secondsSinceGenesis = Time - GenesisTime;
-        // The spec's seconds_to_milliseconds saturates at UINT64_MAX.
-        ulong timeIntoSlotMs = (secondsSinceGenesis > ulong.MaxValue / 1000 ? ulong.MaxValue : secondsSinceGenesis * 1000) % slotDurationMs;
+        ulong timeIntoSlotMs = (TimeMilliseconds - GenesisTime * 1000) % slotDurationMs;
         return timeIntoSlotMs <= GloasTiming.ProposerReorgCutoffBps * slotDurationMs / Presets.BasisPoints;
     }
 
