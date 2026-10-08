@@ -46,6 +46,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.Trie;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 using Newtonsoft.Json.Linq;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -3314,11 +3315,11 @@ public partial class EthRpcModuleTests
 
         private Context() { }
 
-        public static async Task<Context> CreateWithLondonEnabled()
+        public static async Task<Context> CreateWithLondonEnabled(IWallet? wallet = null)
         {
             OverridableReleaseSpec releaseSpec = new(London.Instance) { Eip1559TransitionBlock = 1 };
             TestSpecProvider specProvider = new(releaseSpec);
-            return await Create(specProvider);
+            return await Create(specProvider, wallet: wallet);
         }
 
         public static async Task<Context> CreateWithCancunEnabled()
@@ -3359,7 +3360,8 @@ public partial class EthRpcModuleTests
             IBlockchainBridge? blockchainBridge = null,
             Action<ContainerBuilder>? configurer = null,
             bool? useFlatDb = null,
-            int estimateErrorMargin = 0)
+            int estimateErrorMargin = 0,
+            IWallet? wallet = null)
         {
             Action<ContainerBuilder> wrappedConfigurer = builder =>
             {
@@ -3376,6 +3378,11 @@ public partial class EthRpcModuleTests
             if (useFlatDb is not null)
             {
                 testBlockchainBuilder.WithFlatDb(useFlatDb.Value);
+            }
+
+            if (wallet is not null)
+            {
+                testBlockchainBuilder.WithWallet(wallet);
             }
 
             return Task.FromResult(new Context
