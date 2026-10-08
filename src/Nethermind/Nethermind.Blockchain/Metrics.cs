@@ -90,6 +90,30 @@ public static class Metrics
     public static long PrewarmDiscoverFirstSkipped;
 
     [CounterMetric]
+    [Description("Processed blocks with an even number")]
+    public static long EvenBlocksProcessed;
+
+    [CounterMetric]
+    [Description("Microseconds spent processing blocks with an even number")]
+    public static long EvenBlocksProcessingMicros;
+
+    [CounterMetric]
+    [Description("Microseconds of state hashing in blocks with an even number")]
+    public static long EvenBlocksStateHashMicros;
+
+    [CounterMetric]
+    [Description("Processed blocks with an odd number")]
+    public static long OddBlocksProcessed;
+
+    [CounterMetric]
+    [Description("Microseconds spent processing blocks with an odd number")]
+    public static long OddBlocksProcessingMicros;
+
+    [CounterMetric]
+    [Description("Microseconds of state hashing in blocks with an odd number")]
+    public static long OddBlocksStateHashMicros;
+
+    [CounterMetric]
     [Description("Blocks whose processing prepared the pre-block caches")]
     public static long PrewarmBlockStarts;
 

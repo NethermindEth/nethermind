@@ -357,6 +357,21 @@ namespace Nethermind.Consensus.Processing
             double mgasPerSec = timeSec > 0 ? mgas / timeSec : 0;
             Metrics.BlockMGasPerSec.Observe(mgasPerSec);
             Metrics.BlockProcessingTimeMicros.Observe(data.ProcessingMicroseconds);
+            // Split by block-number parity, so a node with an experiment flag on even blocks and one with it on odd
+            // blocks can be compared over the same blocks.
+            long stateHashMicros = data.DeltaStateHashTime / (TimeSpan.TicksPerMillisecond / 1000);
+            if ((blockNumber & 1) == 0)
+            {
+                Metrics.EvenBlocksProcessed++;
+                Metrics.EvenBlocksProcessingMicros += data.ProcessingMicroseconds;
+                Metrics.EvenBlocksStateHashMicros += stateHashMicros;
+            }
+            else
+            {
+                Metrics.OddBlocksProcessed++;
+                Metrics.OddBlocksProcessingMicros += data.ProcessingMicroseconds;
+                Metrics.OddBlocksStateHashMicros += stateHashMicros;
+            }
 
             // Log slow blocks in JSON format for cross-client performance analysis
             // Only log when slow block threshold is enabled (>= 0)
