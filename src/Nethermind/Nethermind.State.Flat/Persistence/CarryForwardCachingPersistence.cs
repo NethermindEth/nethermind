@@ -32,6 +32,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
     private int _disposed;
 
     private readonly Lock _lock = new();
+    private static long _probeBatches, _probeSetAccount, _probeEvicted, _probeClearAll, _probeHits, _probeMisses, _probeSetStorage;
     private StateId _basis;
     private long _generation;
 
@@ -184,8 +185,10 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             _generation++;
             _basis = to;
 
+            _probeBatches++;
             if (clearAll)
             {
+                _probeClearAll++;
                 ClearAllNoLock();
                 return;
             }
@@ -194,7 +197,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
             {
                 foreach (Address address in writtenAccounts)
                 {
-                    if (_accounts.TryRemove(address, out _)) _accountCount--;
+                    if (_accounts.TryRemove(address, out _)) { _accountCount--; _probeEvicted++; }
                 }
                 Metrics.PublishCarryForwardAccountCount(_accountCount);
             }
@@ -255,6 +258,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 // Checked again after the lookup: the cache can hold an entry filled after this reader's generation ended.
                 if (parent.IsCurrent(generation))
                 {
+                    Interlocked.Increment(ref _probeHits);
                     if (_recordDetailedMetrics) Metrics.IncrementCarryForwardAccountHits();
                     return cached;
                 }
@@ -262,6 +266,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
                 current = false;
             }
 
+            if (current) Interlocked.Increment(ref _probeMisses);
             if (current && _recordDetailedMetrics) Metrics.IncrementCarryForwardAccountMisses();
             Account? account = inner.GetAccount(address);
             if (current) parent.TryCacheAccount(address, account, generation);
@@ -333,12 +338,14 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
 
         public void SetAccount(Address addr, Account? account)
         {
+            Interlocked.Increment(ref _probeSetAccount);
             if (!_clearAll) TrackWrite(_writtenAccounts ??= parent.RentWrittenAccounts(), addr);
             inner.SetAccount(addr, account);
         }
 
         public void SetStorage(Address addr, in UInt256 slot, in UInt256? value)
         {
+            Interlocked.Increment(ref _probeSetStorage);
             if (!_clearAll) TrackWrite(_writtenSlots ??= parent.RentWrittenSlots(), (addr, slot));
             inner.SetStorage(addr, slot, value);
         }
@@ -390,6 +397,7 @@ public sealed class CarryForwardCachingPersistence : IPersistence, IAsyncDisposa
         {
             inner.Dispose();
             parent.OnCommitted(to, _writtenAccounts, _writtenSlots, _clearAll);
+            Console.WriteLine($"D12PROBE block={to.BlockNumber} batches={Volatile.Read(ref _probeBatches)} setAccount={Volatile.Read(ref _probeSetAccount)} setStorage={Volatile.Read(ref _probeSetStorage)} evicted={Volatile.Read(ref _probeEvicted)} clearAll={Volatile.Read(ref _probeClearAll)} hits={Volatile.Read(ref _probeHits)} misses={Volatile.Read(ref _probeMisses)} cached={parent._accountCount}");
             parent.ReturnWrittenSets(_writtenAccounts, _writtenSlots);
             _writtenAccounts = null;
             _writtenSlots = null;
