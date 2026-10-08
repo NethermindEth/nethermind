@@ -58,7 +58,7 @@ public class PbtMigrationConfigTests
 
     [Test]
     public void Rejects_invalid_configuration([Values(
-        "fake", "import", "scan", "fake-root-snapshot", "flat-disabled",
+        "fake", "import", "scan", "flat-disabled",
         "no-bal", "late-bal", "genesis-bal", "genesis-deletion", "no-deletion", "late-deletion", "mixed", "preimages-alone", "no-anchor", "negative-anchor", "overlap", "whitespace")] string invalid)
     {
         PbtConfig config = Config();
@@ -69,7 +69,6 @@ public class PbtMigrationConfigTests
             case "fake": config.FakeMatchingStateRoot = true; break;
             case "import": config.ImportFromPreimageFlat = true; break;
             case "scan": config.ScanTree = true; break;
-            case "fake-root-snapshot": WithFakeRootSnapshotImport(config); break;
             case "flat-disabled": flat.Enabled = false; break;
             case "no-bal": chain.Parameters.Eip7928TransitionTimestamp = null; break;
             case "late-bal": chain.Parameters.Eip7928TransitionTimestamp = 100; break;
@@ -85,16 +84,6 @@ public class PbtMigrationConfigTests
             case "whitespace": config.MigrationSnapshotPath = " "; config.MigrationAnchor = 25; config.MigrationGenesisBootstrap = false; break;
         }
         Assert.Throws<InvalidConfigurationException>(() => PbtMigrationConfigValidator.Validate(config, flat, chain, "target"));
-    }
-
-    private static PbtConfig WithFakeRootSnapshotImport(PbtConfig config)
-    {
-        config.ImportMigrationSnapshotWithFakeRoots = true;
-        config.MigrationGenesisBootstrap = false;
-        config.MigrationAnchor = 25;
-        config.MigrationSnapshotPath = "source/snapshot.pbt";
-        config.MigrationPreimagesPath = "source/preimages.bin";
-        return config;
     }
 
     private static IEnumerable<TestCaseData> PluginModules()

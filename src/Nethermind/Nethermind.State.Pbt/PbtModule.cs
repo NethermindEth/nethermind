@@ -54,18 +54,12 @@ public class PbtModule(IPbtConfig config) : Module
         if (config.CarryForwardCache)
             builder.AddDecorator<IPbtPersistence, PbtCarryForwardCachingPersistence>();
 
-        // The imported snapshot is keyed by the anchor's Patricia root, so its children only validate with faked roots.
-        if (config.FakeMatchingStateRoot || config.ImportMigrationSnapshotWithFakeRoots)
+        if (config.FakeMatchingStateRoot)
             builder.AddSingleton<IPbtChildHeaderSource, PbtBlockTreeChildHeaderSource>();
         else
             builder.AddSingleton<IPbtChildHeaderSource>(NullPbtChildHeaderSource.Instance);
 
-        if (config.ImportMigrationSnapshotWithFakeRoots)
-            builder
-                .AddSingleton<PbtAnchorImport>()
-                .AddStep(typeof(ImportMigrationSnapshotWithFakeRoots));
-
-        // Registered unconditionally so `nethermind import-pbt` and `nethermind scan-pbt` can always find them.
+        // Registered unconditionally so `nethermind import-pbt`, `nethermind import-pbt-snapshot` and `nethermind scan-pbt` can always find them.
         // Carrying [StepCommand] keeps them out of a normal node start; they run only when selected below or by name.
         builder
             // PBT does not load the flat database module.
@@ -75,6 +69,8 @@ public class PbtModule(IPbtConfig config) : Module
                 (flatDb, logManager) => new PreimageRocksdbPersistence(flatDb, logManager, FlatLayout.PreimageFlat))
             .AddSingleton<PbtRebuilder>()
             .AddStep(typeof(ImportPbtFromPreimageFlat))
+            .AddSingleton<PbtAnchorImport>()
+            .AddStep(typeof(ImportPbtSnapshot))
             .AddSingleton<PbtScanner>()
             .AddStep(typeof(ScanPbtTree));
 

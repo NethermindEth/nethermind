@@ -21,8 +21,8 @@ internal static class PbtMigrationConfigValidator
         ValidateExport(config, flatConfig, chainSpec, targetPath);
         if (!IsScheduledMigration(chainSpec)) return;
 
-        if (config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree || config.ImportMigrationSnapshotWithFakeRoots)
-            Fail("A scheduled binaryTrieTime migration cannot be combined with fake-root, offline import, scan or fake-root snapshot import modes.");
+        if (config.FakeMatchingStateRoot || config.ImportFromPreimageFlat || config.ScanTree)
+            Fail("A scheduled binaryTrieTime migration cannot be combined with fake-root, offline import or scan modes.");
         if (!flatConfig.Enabled)
             Fail("A scheduled binaryTrieTime migration requires FlatDb.Enabled.");
         if (flatConfig.HistoryEnabled)

@@ -15,6 +15,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Test.IO;
@@ -317,7 +318,7 @@ public class PbtAnchorImportTests
     // An export anchor ahead of the persisted state is only reachable once the node syncs.
     [TestCase(typeof(ExportPbtImage), new[] { typeof(InitializeNetwork), typeof(StartMonitoring) }, new Type[0])]
     [TestCase(typeof(InitializePbtMigration), new[] { typeof(LoadGenesisBlock), typeof(StartMonitoring) }, new[] { typeof(InitializeNetwork) })]
-    [TestCase(typeof(ImportMigrationSnapshotWithFakeRoots), new[] { typeof(LoadGenesisBlock), typeof(StartMonitoring) }, new[] { typeof(ReviewBlockTree), typeof(InitializeNetwork) })]
+    [TestCase(typeof(ImportPbtSnapshot), new[] { typeof(InitializeBlockTree), typeof(StartMonitoring) }, new Type[0])]
     public void Step_declares_its_runner_dependencies(Type step, Type[] dependencies, Type[] dependents)
     {
         RunnerStepDependenciesAttribute attribute = (RunnerStepDependenciesAttribute)Attribute.GetCustomAttribute(step, typeof(RunnerStepDependenciesAttribute))!;
@@ -336,7 +337,7 @@ public class PbtAnchorImportTests
         PbtConfig config = new()
         {
             Enabled = true,
-            ImportMigrationSnapshotWithFakeRoots = true,
+            FakeMatchingStateRoot = true,
             MigrationAnchor = 0,
             MigrationSnapshotPath = Eip8347FixtureState.ArtifactPath("anchor", "snapshot.pbt"),
             MigrationPreimagesPath = withPreimages ? Eip8347FixtureState.ArtifactPath("anchor", "preimages.bin") : null,
@@ -352,10 +353,10 @@ public class PbtAnchorImportTests
         blockTree.SuggestBlock(genesis);
         blockTree.TryUpdateMainChain(genesis.Header, wereProcessed: true, forceUpdateHeadBlock: true, preloadedBlocks: [genesis]);
 
-        ImportMigrationSnapshotWithFakeRoots step = container.Resolve<ImportMigrationSnapshotWithFakeRoots>();
+        ImportPbtSnapshot step = container.Resolve<ImportPbtSnapshot>();
         await step.Execute(CancellationToken.None);
-        // A restart with the same snapshot reuses the import.
-        await step.Execute(CancellationToken.None);
+        // Even the same snapshot is refused once the database holds state.
+        Assert.ThrowsAsync<InvalidConfigurationException>(() => step.Execute(CancellationToken.None));
 
         using IPbtPersistence.IReader reader = container.Resolve<IPbtPersistence>().CreateReader();
         using (Assert.EnterMultipleScope())
