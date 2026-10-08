@@ -83,11 +83,9 @@ public class PreBlockCaches
     internal int StorageBypassCount => _storageBypass.Count;
 
     /// <summary>
-    /// The main processing scope, which populators push trie warm-up hints into.
+    /// The main processing scope, registered for its lifetime as the target of trie warm-up hints
+    /// (<see cref="IWorldStateScopeProvider.IScope.HintWarmAccount"/>); may disappear at any time.
     /// </summary>
-    /// <remarks>
-    /// Registration and removal must hold the lock on this cache instance.
-    /// </remarks>
     public IWorldStateScopeProvider.IScope? MainScope
     {
         get => _mainScope;
