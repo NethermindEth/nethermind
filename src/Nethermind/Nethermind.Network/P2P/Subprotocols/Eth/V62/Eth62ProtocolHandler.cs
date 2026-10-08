@@ -258,6 +258,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes);
             if (reservation is null)
             {
+                // Locally discarded responses cannot be judged for usefulness. As with scheduler rejection,
+                // resetting both sampling windows avoids false penalties but also discards unrelated evidence.
                 if (pooledResponse)
                     IgnorePooledTransactionResponse();
                 ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);

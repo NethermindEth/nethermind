@@ -450,10 +450,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 for (int i = 1; i < InboundTransactionBudget.GlobalLimit / InboundTransactionBudget.PeerLimit; i++)
                     new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(otherPeers);
             }
+            using InboundTransactionBudget.Reservation? excess = budget.TryReserve(1);
+            using InboundTransactionBudget.Reservation? anotherPeer = new InboundTransactionBudget(scheduler).TryReserve(1);
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(budget.TryReserve(1, out bool sharedLimitExceeded), Is.Null);
-                Assert.That(sharedLimitExceeded, Is.False);
+                Assert.That(excess, Is.Null);
+                Assert.That(anotherPeer is null, Is.EqualTo(sharedBudgetFull));
             }
             reservation.Dispose();
             reservation.Dispose();
@@ -527,10 +529,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             {
                 int peer = worker % peers;
                 InboundTransactionBudget budget = budgets[peer];
-                using InboundTransactionBudget.Reservation? rejected = budget.TryReserve(InboundTransactionBudget.MinimumCharge, out bool sharedLimitExceeded);
+                using InboundTransactionBudget.Reservation? rejected = budget.TryReserve(InboundTransactionBudget.MinimumCharge);
                 Assert.That(start.SignalAndWait(TimeSpan.FromSeconds(30)), Is.True);
                 Assert.That(rejected, Is.Null);
-                Assert.That(sharedLimitExceeded, Is.True);
 
                 for (int i = 0; i < 2000; i++)
                 {
@@ -554,18 +555,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             }, CancellationToken.None, TaskCreationOptions.LongRunning, TaskScheduler.Default)));
 
             held.Dispose();
+            foreach (InboundTransactionBudget budget in budgets)
+            {
+                using InboundTransactionBudget.Reservation? reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit);
+                Assert.That(reservation, Is.Not.Null);
+                using InboundTransactionBudget.Reservation? peerExcess = budget.TryReserve(1);
+                Assert.That(peerExcess, Is.Null);
+            }
             using CompositeDisposable recovered = [];
             foreach (InboundTransactionBudget budget in budgets)
             {
                 InboundTransactionBudget.Reservation? reservation = budget.TryReserve(InboundTransactionBudget.PeerLimit);
                 Assert.That(reservation, Is.Not.Null);
                 reservation!.AddTo(recovered);
-                using InboundTransactionBudget.Reservation? peerExcess = budget.TryReserve(1, out bool sharedLimitExceeded);
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(peerExcess, Is.Null);
-                    Assert.That(sharedLimitExceeded, Is.False);
-                }
             }
             using InboundTransactionBudget.Reservation? excess = new InboundTransactionBudget(scheduler).TryReserve(1);
             Assert.That(excess, Is.Null);
@@ -582,8 +584,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                     new InboundTransactionBudget(scheduler).TryReserve(InboundTransactionBudget.PeerLimit)!.AddTo(reservations);
                 for (int i = 0; i < 100; i++)
                 {
-                    Assert.That(rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit, out bool sharedLimitExceeded), Is.Null);
-                    Assert.That(sharedLimitExceeded, Is.True);
+                    Assert.That(rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit), Is.Null);
                 }
             }
             using InboundTransactionBudget.Reservation? available = rejectedPeer.TryReserve(InboundTransactionBudget.PeerLimit);

@@ -26,19 +26,15 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
     private readonly SharedBudget _shared = SharedBudgets.GetValue(scheduler, static _ => new());
     private int _used;
 
-    internal Reservation? TryReserve(int bytes) => TryReserve(bytes, out _);
-
-    internal Reservation? TryReserve(int bytes, out bool sharedLimitExceeded)
+    internal Reservation? TryReserve(int bytes)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
         int charge = Math.Max(bytes, MinimumCharge);
-        sharedLimitExceeded = false;
         // Reject peers at their own limit before contending on the shared counter.
         if (!TryCharge(ref _used, charge, PeerLimit)) return null;
         if (!TryCharge(ref _shared.Used, charge, GlobalLimit))
         {
             Interlocked.Add(ref _used, -charge);
-            sharedLimitExceeded = true;
             return null;
         }
 
