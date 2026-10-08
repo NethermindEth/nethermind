@@ -12,14 +12,14 @@ namespace Nethermind.Evm;
 /// </summary>
 /// <remarks>
 /// Every byte is counted before the matching block access list insertion, so an operation that cannot pay for its
-/// bytes aborts first. The count is never rewound when a frame reverts, and only a storage slot restored to its
-/// pre-transaction value gives its value bytes back, so it is an upper bound except for the give-backs that are not
-/// journaled (see <see cref="TryMeterStorageValue"/>). Instances are reused across
-/// transactions through <see cref="Reset"/>; not thread safe.
+/// bytes aborts first. The count is an upper bound: nothing is ever given back, and neither the count nor the sets of
+/// metered accounts and slots is rewound when a frame reverts, since the block access list keeps what a reverted frame
+/// touched. Instances are reused across transactions through <see cref="Reset"/>; not thread safe.
 /// </remarks>
 public sealed class BalDataMeter
 {
-    private HashSet<StorageCell>? _meteredStorageValues;
+    private readonly HashSet<AddressAsKey> _meteredAddresses = new(AddressAsKey.EqualityComparer);
+    private readonly HashSet<StorageCell> _meteredStorageKeys = new(StorageCell.EqualityComparer);
     private ulong _staticFloor;
     private ulong _floorLimit;
 
@@ -42,7 +42,8 @@ public sealed class BalDataMeter
         _staticFloor = staticFloor;
         _floorLimit = Math.Min(gasLimit, Eip7825Constants.DefaultTxGasLimitCap);
         BalDataBytes = 0;
-        _meteredStorageValues?.Clear();
+        _meteredAddresses.Clear();
+        _meteredStorageKeys.Clear();
         return this;
     }
 
@@ -56,37 +57,29 @@ public sealed class BalDataMeter
         return true;
     }
 
-    /// <summary>
-    /// Keeps a slot's post-value bytes counted exactly while an SSTORE leaves it off its pre-transaction value.
-    /// </summary>
-    /// <param name="cell">The slot being written.</param>
-    /// <param name="differsFromOriginal">Whether the value being written differs from the slot's pre-transaction value.</param>
-    /// <returns><see langword="false"/> when counting the value bytes runs out of gas.</returns>
+    /// <summary>Meters an account's address bytes on the transaction's first access to it.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
     /// <remarks>
-    /// The block access list records one post value per changed slot and drops a slot restored to its original value
-    /// to a read, so the value bytes are counted once on the first write away from the original and given back by a
-    /// write that restores it. Tracking which slots are counted, rather than inferring it from the current value, keeps
-    /// a slot dirtied in a reverted frame counted until a committed write restores it.
-    /// Like the execution-specs reference, the set is not journaled: a give-back made in a frame that later reverts, or
-    /// by an SSTORE that then runs out of gas on its own charge, stays given back even though the slot remains changed.
+    /// First access is tracked per transaction, not by the frame's warm set: the block access list keeps an account
+    /// touched by a frame that later reverts, and an account pre-warmed by the access list, the transaction itself or
+    /// as a precompile still enters it when first touched.
     /// </remarks>
-    public bool TryMeterStorageValue(in StorageCell cell, bool differsFromOriginal)
+    public bool TryMeterAddress(Address address)
     {
-        if (differsFromOriginal)
-        {
-            HashSet<StorageCell> metered = _meteredStorageValues ??= new(StorageCell.EqualityComparer);
-            if (!metered.Add(cell)) return true;
-            if (!TryMeter(Eip8279Constants.StorageValueBytes))
-            {
-                metered.Remove(cell);
-                return false;
-            }
-        }
-        else if (_meteredStorageValues?.Remove(cell) == true)
-        {
-            BalDataBytes -= Eip8279Constants.StorageValueBytes;
-        }
+        if (!_meteredAddresses.Add(address)) return true;
+        if (TryMeter(Eip8279Constants.AddressBytes)) return true;
+        _meteredAddresses.Remove(address);
+        return false;
+    }
 
-        return true;
+    /// <summary>Meters a storage slot's key bytes on the transaction's first access to it.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    /// <remarks>Tracked per transaction like <see cref="TryMeterAddress"/>.</remarks>
+    public bool TryMeterStorageKey(in StorageCell cell)
+    {
+        if (!_meteredStorageKeys.Add(cell)) return true;
+        if (TryMeter(Eip8279Constants.StorageKeyBytes)) return true;
+        _meteredStorageKeys.Remove(cell);
+        return false;
     }
 }
