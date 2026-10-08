@@ -23,18 +23,25 @@ public static class LightClientWireCodec
         static data =>
         {
             GloasLightClientBootstrap.Decode(data, out GloasLightClientBootstrap value);
-            return new LightClientBootstrap { Header = FromGloas(value.Header), CurrentSyncCommittee = value.CurrentSyncCommittee,
-                CurrentSyncCommitteeBranch = value.CurrentSyncCommitteeBranch };
+            return new LightClientBootstrap
+            {
+                Header = FromGloas(value.Header),
+                CurrentSyncCommittee = value.CurrentSyncCommittee,
+                CurrentSyncCommitteeBranch = value.CurrentSyncCommitteeBranch
+            };
         },
         static value => value.Header, EncodeBootstrap);
 
     public static byte[] EncodeUpdate(LightClientUpdate value, BeaconChainSpec spec) =>
         IsGloas(value.AttestedHeader, spec) ? GloasLightClientUpdate.Encode(new GloasLightClientUpdate
         {
-            AttestedHeader = ToGloas(value.AttestedHeader!), NextSyncCommittee = value.NextSyncCommittee,
+            AttestedHeader = ToGloas(value.AttestedHeader!),
+            NextSyncCommittee = value.NextSyncCommittee,
             NextSyncCommitteeBranch = value.NextSyncCommitteeBranch,
-            FinalizedHeader = ToGloas(value.FinalizedHeader!), FinalityBranch = value.FinalityBranch,
-            SyncAggregate = value.SyncAggregate, SignatureSlot = value.SignatureSlot,
+            FinalizedHeader = ToGloas(value.FinalizedHeader!),
+            FinalityBranch = value.FinalityBranch,
+            SyncAggregate = value.SyncAggregate,
+            SignatureSlot = value.SignatureSlot,
         }) : LightClientUpdate.Encode(value);
 
     public static LightClientUpdate DecodeUpdate(ReadOnlySpan<byte> bytes, BeaconChainSpec spec) => Decode(
@@ -43,17 +50,27 @@ public static class LightClientWireCodec
         static data =>
         {
             GloasLightClientUpdate.Decode(data, out GloasLightClientUpdate value);
-            return new LightClientUpdate { AttestedHeader = FromGloas(value.AttestedHeader), NextSyncCommittee = value.NextSyncCommittee,
-                NextSyncCommitteeBranch = value.NextSyncCommitteeBranch, FinalizedHeader = FromGloas(value.FinalizedHeader),
-                FinalityBranch = value.FinalityBranch, SyncAggregate = value.SyncAggregate, SignatureSlot = value.SignatureSlot };
+            return new LightClientUpdate
+            {
+                AttestedHeader = FromGloas(value.AttestedHeader),
+                NextSyncCommittee = value.NextSyncCommittee,
+                NextSyncCommitteeBranch = value.NextSyncCommitteeBranch,
+                FinalizedHeader = FromGloas(value.FinalizedHeader),
+                FinalityBranch = value.FinalityBranch,
+                SyncAggregate = value.SyncAggregate,
+                SignatureSlot = value.SignatureSlot
+            };
         },
         static value => value.AttestedHeader, EncodeUpdate);
 
     public static byte[] EncodeFinality(LightClientFinalityUpdate value, BeaconChainSpec spec) =>
         IsGloas(value.AttestedHeader, spec) ? GloasLightClientFinalityUpdate.Encode(new GloasLightClientFinalityUpdate
         {
-            AttestedHeader = ToGloas(value.AttestedHeader!), FinalizedHeader = ToGloas(value.FinalizedHeader!),
-            FinalityBranch = value.FinalityBranch, SyncAggregate = value.SyncAggregate, SignatureSlot = value.SignatureSlot,
+            AttestedHeader = ToGloas(value.AttestedHeader!),
+            FinalizedHeader = ToGloas(value.FinalizedHeader!),
+            FinalityBranch = value.FinalityBranch,
+            SyncAggregate = value.SyncAggregate,
+            SignatureSlot = value.SignatureSlot,
         }) : LightClientFinalityUpdate.Encode(value);
 
     public static LightClientFinalityUpdate DecodeFinality(ReadOnlySpan<byte> bytes, BeaconChainSpec spec) => Decode(
@@ -62,15 +79,22 @@ public static class LightClientWireCodec
         static data =>
         {
             GloasLightClientFinalityUpdate.Decode(data, out GloasLightClientFinalityUpdate value);
-            return new LightClientFinalityUpdate { AttestedHeader = FromGloas(value.AttestedHeader), FinalizedHeader = FromGloas(value.FinalizedHeader),
-                FinalityBranch = value.FinalityBranch, SyncAggregate = value.SyncAggregate, SignatureSlot = value.SignatureSlot };
+            return new LightClientFinalityUpdate
+            {
+                AttestedHeader = FromGloas(value.AttestedHeader),
+                FinalizedHeader = FromGloas(value.FinalizedHeader),
+                FinalityBranch = value.FinalityBranch,
+                SyncAggregate = value.SyncAggregate,
+                SignatureSlot = value.SignatureSlot
+            };
         },
         static value => value.AttestedHeader, EncodeFinality);
 
     public static byte[] EncodeOptimistic(LightClientOptimisticUpdate value, BeaconChainSpec spec) =>
         IsGloas(value.AttestedHeader, spec) ? GloasLightClientOptimisticUpdate.Encode(new GloasLightClientOptimisticUpdate
         {
-            AttestedHeader = ToGloas(value.AttestedHeader!), SyncAggregate = value.SyncAggregate,
+            AttestedHeader = ToGloas(value.AttestedHeader!),
+            SyncAggregate = value.SyncAggregate,
             SignatureSlot = value.SignatureSlot,
         }) : LightClientOptimisticUpdate.Encode(value);
 
@@ -80,8 +104,12 @@ public static class LightClientWireCodec
         static data =>
         {
             GloasLightClientOptimisticUpdate.Decode(data, out GloasLightClientOptimisticUpdate value);
-            return new LightClientOptimisticUpdate { AttestedHeader = FromGloas(value.AttestedHeader),
-                SyncAggregate = value.SyncAggregate, SignatureSlot = value.SignatureSlot };
+            return new LightClientOptimisticUpdate
+            {
+                AttestedHeader = FromGloas(value.AttestedHeader),
+                SyncAggregate = value.SyncAggregate,
+                SignatureSlot = value.SignatureSlot
+            };
         },
         static value => value.AttestedHeader, EncodeOptimistic);
 
@@ -127,14 +155,17 @@ public static class LightClientWireCodec
 
     private static GloasLightClientHeader ToGloas(LightClientHeader header) => new()
     {
-        Beacon = header.Beacon, ExecutionBlockHash = header.ExecutionBlockHash,
+        Beacon = header.Beacon,
+        ExecutionBlockHash = header.ExecutionBlockHash,
         ExecutionBranch = header.ExecutionBranch,
     };
 
     private static LightClientHeader? FromGloas(GloasLightClientHeader? header) => header is null ? null : new()
     {
-        Beacon = header.Beacon, ExecutionBlockHash = header.ExecutionBlockHash,
-        ExecutionBranch = header.ExecutionBranch, IsGloas = true,
+        Beacon = header.Beacon,
+        ExecutionBlockHash = header.ExecutionBlockHash,
+        ExecutionBranch = header.ExecutionBranch,
+        IsGloas = true,
     };
 
 }

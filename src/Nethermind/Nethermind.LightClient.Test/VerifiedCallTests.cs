@@ -7,7 +7,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using NUnit.Framework;
 
 namespace Nethermind.LightClient.Test;
 
@@ -165,8 +164,13 @@ public class VerifiedCallTests
             BlockHeader header = new(Keccak.Compute("parent"), Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
                 head.Number, 30_000_000, 1_790_000_000, [])
             {
-                Hash = head.BlockHash, StateRoot = WrongHeaderRoot ? Keccak.Compute("wrong state") : head.StateRoot, BaseFeePerGas = 1,
-                MixHash = Keccak.Compute("random"), BlobGasUsed = 0, ExcessBlobGas = 0, IsPostMerge = true
+                Hash = head.BlockHash,
+                StateRoot = WrongHeaderRoot ? Keccak.Compute("wrong state") : head.StateRoot,
+                BaseFeePerGas = 1,
+                MixHash = Keccak.Compute("random"),
+                BlobGasUsed = 0,
+                ExcessBlobGas = 0,
+                IsPostMerge = true
             };
             return Task.FromResult(header);
         }

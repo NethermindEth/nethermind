@@ -61,7 +61,8 @@ public class ConsensusTests
         LightClientUpdate signed = Update(2, 3, 4, 1, participants: participants);
         LightClientOptimisticUpdate update = new()
         {
-            AttestedHeader = signed.AttestedHeader, SyncAggregate = signed.SyncAggregate,
+            AttestedHeader = signed.AttestedHeader,
+            SyncAggregate = signed.SyncAggregate,
             SignatureSlot = signed.SignatureSlot,
         };
 
@@ -81,7 +82,8 @@ public class ConsensusTests
         LightClientUpdate signed = Update(2, 10, 11, 1);
         store.Process(new LightClientOptimisticUpdate
         {
-            AttestedHeader = signed.AttestedHeader, SyncAggregate = signed.SyncAggregate,
+            AttestedHeader = signed.AttestedHeader,
+            SyncAggregate = signed.SyncAggregate,
             SignatureSlot = signed.SignatureSlot,
         }, 11);
         Assert.That(store.OptimisticHeader.Beacon!.Slot, Is.EqualTo(10));
@@ -248,8 +250,11 @@ public class ConsensusTests
         LightClientUpdate update = Update(4, 5, 6, 1);
         store.Process(new LightClientFinalityUpdate
         {
-            AttestedHeader = update.AttestedHeader, FinalizedHeader = update.FinalizedHeader,
-            FinalityBranch = update.FinalityBranch, SyncAggregate = update.SyncAggregate, SignatureSlot = update.SignatureSlot,
+            AttestedHeader = update.AttestedHeader,
+            FinalizedHeader = update.FinalizedHeader,
+            FinalityBranch = update.FinalityBranch,
+            SyncAggregate = update.SyncAggregate,
+            SignatureSlot = update.SignatureSlot,
         }, 6);
 
         using IDisposable scope = Assert.EnterMultipleScope();
@@ -416,8 +421,11 @@ public class ConsensusTests
         attested.Beacon!.StateRoot = tree[1];
         LightClientUpdate update = new()
         {
-            FinalizedHeader = finalized, AttestedHeader = attested, SignatureSlot = signatureSlot,
-            FinalityBranch = Branch(tree, 169), NextSyncCommittee = next,
+            FinalizedHeader = finalized,
+            AttestedHeader = attested,
+            SignatureSlot = signatureSlot,
+            FinalityBranch = Branch(tree, 169),
+            NextSyncCommittee = next,
             NextSyncCommitteeBranch = nextKey.HasValue ? Branch(tree, 87) : Enumerable.Repeat(Hash256.Zero, 6).ToArray(),
         };
         Sign(update, key, participants, Spec);
@@ -455,15 +463,23 @@ public class ConsensusTests
     {
         ExecutionPayloadHeader execution = new()
         {
-            ParentHash = Hash256.Zero, FeeRecipient = Address.Zero, StateRoot = Hash(0x21), ReceiptsRoot = Hash256.Zero,
-            LogsBloom = new Bloom(), PrevRandao = Hash256.Zero, ExtraData = [], BlockHash = Hash(0x22),
-            TransactionsRoot = Hash256.Zero, WithdrawalsRoot = Hash256.Zero,
+            ParentHash = Hash256.Zero,
+            FeeRecipient = Address.Zero,
+            StateRoot = Hash(0x21),
+            ReceiptsRoot = Hash256.Zero,
+            LogsBloom = new Bloom(),
+            PrevRandao = Hash256.Zero,
+            ExtraData = [],
+            BlockHash = Hash(0x22),
+            TransactionsRoot = Hash256.Zero,
+            WithdrawalsRoot = Hash256.Zero,
         };
         Hash256[] tree = Tree(new Dictionary<int, Hash256> { [25] = SszRoots.HashTreeRoot(execution) });
         return new LightClientHeader
         {
             Beacon = new BeaconBlockHeader { Slot = slot, ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = tree[1] },
-            Execution = execution, ExecutionBranch = Branch(tree, 25),
+            Execution = execution,
+            ExecutionBranch = Branch(tree, 25),
         };
     }
 
@@ -485,8 +501,11 @@ public class ConsensusTests
         attested.Beacon!.StateRoot = tree[1];
         LightClientUpdate update = new()
         {
-            FinalizedHeader = finalized, AttestedHeader = attested, SignatureSlot = signatureSlot,
-            FinalityBranch = Branch(tree, 735), NextSyncCommittee = new SyncCommittee { Pubkeys = new BlsPublicKey[512] },
+            FinalizedHeader = finalized,
+            AttestedHeader = attested,
+            SignatureSlot = signatureSlot,
+            FinalityBranch = Branch(tree, 735),
+            NextSyncCommittee = new SyncCommittee { Pubkeys = new BlsPublicKey[512] },
             NextSyncCommitteeBranch = Enumerable.Repeat(Hash256.Zero, 11).ToArray(),
         };
         Sign(update, key, 342, spec);
@@ -503,7 +522,9 @@ public class ConsensusTests
         return new()
         {
             Beacon = new BeaconBlockHeader { Slot = slot, ParentRoot = Hash256.Zero, StateRoot = Hash256.Zero, BodyRoot = tree[1] },
-            ExecutionBlockHash = executionHash, ExecutionBranch = branch, IsGloas = true,
+            ExecutionBlockHash = executionHash,
+            ExecutionBranch = branch,
+            IsGloas = true,
         };
     }
 

@@ -133,8 +133,11 @@ internal sealed class LightClientStore
             ? CloneHeader(target) : snapshot.OptimisticHeader;
         Volatile.Write(ref _snapshot, snapshot with
         {
-            SyncHeader = CloneHeader(target), OptimisticHeader = optimistic,
-            CurrentCommittee = currentCommittee, NextCommittee = nextCommittee, BestUpdate = null,
+            SyncHeader = CloneHeader(target),
+            OptimisticHeader = optimistic,
+            CurrentCommittee = currentCommittee,
+            NextCommittee = nextCommittee,
+            BestUpdate = null,
             PreviousMaxParticipants = targetPeriod == storePeriod + 1 ? snapshot.CurrentMaxParticipants : snapshot.PreviousMaxParticipants,
             CurrentMaxParticipants = targetPeriod == storePeriod + 1 ? 0 : snapshot.CurrentMaxParticipants,
         });
@@ -198,9 +201,13 @@ internal sealed class LightClientStore
 
         LightClientUpdate candidate = CloneUpdate(new LightClientUpdate
         {
-            AttestedHeader = attested, FinalizedHeader = finalized, FinalityBranch = finalityBranch,
-            NextSyncCommittee = next, NextSyncCommitteeBranch = nextBranch,
-            SyncAggregate = aggregate, SignatureSlot = signatureSlot,
+            AttestedHeader = attested,
+            FinalizedHeader = finalized,
+            FinalityBranch = finalityBranch,
+            NextSyncCommittee = next,
+            NextSyncCommitteeBranch = nextBranch,
+            SyncAggregate = aggregate,
+            SignatureSlot = signatureSlot,
         });
         LightClientUpdate? best = snapshot.BestUpdate is null || Better(candidate, snapshot.BestUpdate) ? candidate : snapshot.BestUpdate;
 
@@ -213,7 +220,9 @@ internal sealed class LightClientStore
         {
             Volatile.Write(ref _snapshot, snapshot with
             {
-                OptimisticHeader = optimistic, BestUpdate = best, CurrentMaxParticipants = currentMax,
+                OptimisticHeader = optimistic,
+                BestUpdate = best,
+                CurrentMaxParticipants = currentMax,
             });
             return;
         }
@@ -234,8 +243,12 @@ internal sealed class LightClientStore
         LightClientHeader syncHeader = header.Beacon!.Slot > snapshot.SyncHeader.Beacon!.Slot ? header : snapshot.SyncHeader;
         Volatile.Write(ref _snapshot, snapshot with
         {
-            Header = header, SyncHeader = syncHeader, OptimisticHeader = optimistic.Beacon!.Slot < header.Beacon!.Slot ? header : optimistic,
-            CurrentCommittee = currentCommittee, NextCommittee = nextCommittee, BestUpdate = null,
+            Header = header,
+            SyncHeader = syncHeader,
+            OptimisticHeader = optimistic.Beacon!.Slot < header.Beacon!.Slot ? header : optimistic,
+            CurrentCommittee = currentCommittee,
+            NextCommittee = nextCommittee,
+            BestUpdate = null,
             PreviousMaxParticipants = finalizedPeriod == storePeriod + 1 ? currentMax : snapshot.PreviousMaxParticipants,
             CurrentMaxParticipants = finalizedPeriod == storePeriod + 1 ? 0 : currentMax,
         });
@@ -363,14 +376,17 @@ internal sealed class LightClientStore
         }
         GloasLightClientHeader value = new()
         {
-            Beacon = header.Beacon, ExecutionBlockHash = header.ExecutionBlockHash,
+            Beacon = header.Beacon,
+            ExecutionBlockHash = header.ExecutionBlockHash,
             ExecutionBranch = header.ExecutionBranch,
         };
         GloasLightClientHeader.Decode(GloasLightClientHeader.Encode(value), out GloasLightClientHeader copyGloas);
         return new()
         {
-            Beacon = copyGloas.Beacon, ExecutionBlockHash = copyGloas.ExecutionBlockHash,
-            ExecutionBranch = copyGloas.ExecutionBranch, IsGloas = true,
+            Beacon = copyGloas.Beacon,
+            ExecutionBlockHash = copyGloas.ExecutionBlockHash,
+            ExecutionBranch = copyGloas.ExecutionBranch,
+            IsGloas = true,
         };
     }
 
@@ -381,7 +397,8 @@ internal sealed class LightClientStore
         FinalityBranch = CloneBranch(update.FinalityBranch),
         NextSyncCommittee = update.NextSyncCommittee is null ? null : Clone(update.NextSyncCommittee),
         NextSyncCommitteeBranch = CloneBranch(update.NextSyncCommitteeBranch),
-        SyncAggregate = Clone(update.SyncAggregate!), SignatureSlot = update.SignatureSlot,
+        SyncAggregate = Clone(update.SyncAggregate!),
+        SignatureSlot = update.SignatureSlot,
     };
 
     private static Hash256[]? CloneBranch(Hash256[]? branch)

@@ -6,7 +6,6 @@ using Nethermind.BeaconChain.P2P;
 using Nethermind.BeaconChain.StateTransition;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.LightClient.Consensus;
 
 namespace Nethermind.LightClient.Test;

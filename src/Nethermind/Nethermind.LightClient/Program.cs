@@ -10,7 +10,6 @@ using Nethermind.LightClient.Consensus;
 using Nethermind.Logging.Microsoft;
 using Nethermind.Logging.NLog;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Logging;
 using NLog.Config;
 using NLog.Targets;
 

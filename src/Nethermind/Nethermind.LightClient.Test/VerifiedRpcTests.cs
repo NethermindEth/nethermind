@@ -1,14 +1,9 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Generic;
 using System.Net;
-using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -18,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
-using NUnit.Framework;
 using static Nethermind.LightClient.Test.ExecutionProofFixtures;
 
 namespace Nethermind.LightClient.Test;
@@ -221,14 +215,20 @@ public class VerifiedRpcTests
         using PrivateKey key = new("0x0000000000000000000000000000000000000000000000000000000000000001");
         Transaction transaction = new()
         {
-            Nonce = 2, GasLimit = 50_000, GasPrice = 2, To = AccountAddress, Value = 3,
+            Nonce = 2,
+            GasLimit = 50_000,
+            GasPrice = 2,
+            To = AccountAddress,
+            Value = 3,
         };
         new EthereumEcdsa(1).Sign(key, transaction, isEip155Enabled: true);
         transaction.Hash = transaction.CalculateHash();
         Hash256 topic = Keccak.Compute("verified topic");
         TxReceipt receipt = new()
         {
-            TxType = transaction.Type, StatusCode = 1, GasUsedTotal = 21_375,
+            TxType = transaction.Type,
+            StatusCode = 1,
+            GasUsedTotal = 21_375,
             Logs = [new LogEntry(AccountAddress, [0xab, 0xcd], [topic])],
         };
         provider.Transactions = [transaction];
@@ -243,7 +243,9 @@ public class VerifiedRpcTests
         JsonElement rpcReceipt = (JsonElement)await provider.Rpc.InvokeAsync("eth_getBlockReceipts", Parameters("finalized"), CancellationToken.None);
         JsonElement logs = (JsonElement)await provider.Rpc.InvokeAsync("eth_getLogs", Parameters(new
         {
-            blockHash = BlockHash.ToString(), address = AccountAddress.ToString(), topics = new[] { topic.ToString() }
+            blockHash = BlockHash.ToString(),
+            address = AccountAddress.ToString(),
+            topics = new[] { topic.ToString() }
         }), CancellationToken.None);
 
         using (Assert.EnterMultipleScope())
@@ -480,7 +482,10 @@ public class VerifiedRpcTests
                 ? _code.ToHexString(withZeroX: true)
                 : new
                 {
-                    balance = "0xffff", nonce = "0xffff", codeHash = BlockHash.ToString(), storageHash = BlockHash.ToString(),
+                    balance = "0xffff",
+                    nonce = "0xffff",
+                    codeHash = BlockHash.ToString(),
+                    storageHash = BlockHash.ToString(),
                     accountProof = OmitProof ? Array.Empty<string>() : new[] { accountLeaf.ToHexString(withZeroX: true) },
                     storageProof = new[] { new { key = WrongStorageKey ? "0x2" : "0x1", value = "0xffff", proof = storageLeaf.Length == 0 ? Array.Empty<string>() : new[] { storageLeaf.ToHexString(withZeroX: true) } } }
                 };
