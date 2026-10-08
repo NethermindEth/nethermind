@@ -108,6 +108,7 @@ internal sealed class PooledTransactionRequests : IDisposable
     }
 
     /// <summary>A claimed snapshot, owned exclusively by the response handler.</summary>
+    /// <remarks>Dispose exactly once after a successful claim; copies share the same rental.</remarks>
     internal readonly struct Request(ArrayPool<ValueHash256> pool, ValueHash256[] hashes, int count) : IDisposable
     {
         internal ReadOnlySpan<ValueHash256> Hashes => hashes.AsSpan(0, count);

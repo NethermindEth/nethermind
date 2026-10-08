@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, pooledResponse: true))
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage, pooledResponse: true))
                             return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg);

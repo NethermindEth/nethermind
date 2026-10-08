@@ -54,6 +54,6 @@ public class PooledTransactionRequestsConstructionBenchmarks
     [Benchmark]
     public void CreateAndDisposeTracker()
     {
-        using PooledTransactionRequests requests = new(2048);
+        using (new PooledTransactionRequests(2048)) { }
     }
 }

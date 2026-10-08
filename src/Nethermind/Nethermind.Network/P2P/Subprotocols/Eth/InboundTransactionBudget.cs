@@ -33,7 +33,7 @@ internal sealed class InboundTransactionBudget(IBackgroundTaskScheduler schedule
         ArgumentOutOfRangeException.ThrowIfNegative(bytes);
         int charge = Math.Max(bytes, MinimumCharge);
         sharedLimitExceeded = false;
-        // A peer at its own limit must not erase flood evidence, even if the shared budget is also full.
+        // Reject peers at their own limit before contending on the shared counter.
         if (!TryCharge(ref _used, charge, PeerLimit)) return null;
         if (!TryCharge(ref _shared.Used, charge, GlobalLimit))
         {

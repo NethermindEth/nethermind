@@ -101,7 +101,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                             ReportIn($"Uncorrelated {nameof(PooledTransactionsMessage)} response ignored", size);
                             return true;
                         }
-                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, pooledResponse: true))
+                        if (!TryDeserializeTransactions(message, out PooledTransactionsMessage pooledTxMsg, static txMessage => txMessage.EthMessage, pooledResponse: true))
                             return true;
                         ReportIn(pooledTxMsg, size);
                         HandlePooledTransactions(pooledTxMsg.EthMessage);

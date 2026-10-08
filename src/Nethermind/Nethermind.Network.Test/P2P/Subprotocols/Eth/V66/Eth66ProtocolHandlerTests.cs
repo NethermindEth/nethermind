@@ -288,9 +288,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
             _transactionPool.DidNotReceive().SubmitTx(Arg.Any<Transaction>(), Arg.Any<TxHandlingOptions>());
         }
 
+        public enum BudgetMessageKind { Broadcast, CorrelatedPooled, UncorrelatedPooled }
+
         [Test]
-        public async Task Full_transaction_budget_preserves_unrelated_flood_statistics([Values] bool peerLimit, [Values] bool pooledResponse)
+        public async Task Budget_rejection_excludes_correlated_responses_from_flood_sampling(
+            [Values] bool peerLimit, [Values] BudgetMessageKind messageKind, [Values] bool malformed)
         {
+            bool pooledResponse = messageKind != BudgetMessageKind.Broadcast;
             RecordingBackgroundTaskScheduler scheduler = new() { Defer = true };
             _handler.Dispose();
             _handler = CreateHandler(scheduler);
@@ -315,19 +319,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 int scheduled = scheduler.ScheduledFulfillFuncs.Count;
                 using P2PMessage response = pooledResponse
                     ? new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(
-                        requestId, new PooledTransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty))
+                        messageKind == BudgetMessageKind.UncorrelatedPooled ? requestId ^ 1 : requestId,
+                        new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx }))
                     : new TransactionsMessage(IOwnedReadOnlyList<Transaction>.Empty);
                 using DisposableByteBuffer packet = (pooledResponse
                     ? _svc.ZeroSerialize((Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage)response)
                     : _svc.ZeroSerialize((TransactionsMessage)response)).AsDisposable();
-                packet.EnsureWritable(1);
-                packet.WriteByte(0);
+                if (malformed)
+                {
+                    packet.EnsureWritable(1);
+                    packet.WriteByte(0);
+                }
                 packet.ReadByte();
 
                 Assert.That(() => _handler.HandleMessage(new ZeroPacket(packet) { PacketType = (byte)response.PacketType }), Throws.Nothing);
                 using (Assert.EnterMultipleScope())
                 {
-                    Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(!peerLimit && pooledResponse ? 0 : 1));
+                    Assert.That(_handler.RequestedPooledTransactionHashes, Is.EqualTo(messageKind == BudgetMessageKind.CorrelatedPooled ? 0 : 1));
                     Assert.That(scheduler.ScheduledFulfillFuncs, Has.Count.EqualTo(scheduled));
                     _session.DidNotReceive().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
                 }

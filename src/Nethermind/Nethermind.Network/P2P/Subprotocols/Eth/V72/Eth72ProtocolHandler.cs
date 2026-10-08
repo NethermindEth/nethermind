@@ -190,7 +190,7 @@ public class Eth72ProtocolHandler(
                     }
 
                     using PooledTransactionRequests.Request snapshot = requestedHashes;
-                    if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions, pooledResponse: true))
+                    if (!TryDeserializeTransactions(message, out PooledTransactionsMessage66 pooledTransactions, static txMessage => txMessage.EthMessage, pooledResponse: true))
                         return true;
                     ReportIn(pooledTransactions, size);
                     if (!MatchesPooledTransactionRequest(pooledTransactions.EthMessage.Transactions.AsSpan(), snapshot.Hashes))

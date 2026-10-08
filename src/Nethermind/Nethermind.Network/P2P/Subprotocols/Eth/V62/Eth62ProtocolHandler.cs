@@ -156,7 +156,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     {
                         if (IsTransactionGossipAllowed())
                         {
-                            if (!TryDeserializeTransactions(message, out TransactionsMessage txMsg))
+                            if (!TryDeserializeTransactions(message, out TransactionsMessage txMsg, static txMessage => txMessage))
                                 return true;
                             ReportIn(txMsg, size);
                             Handle(txMsg);
@@ -251,14 +251,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             NotifyProtocolInitialized(eventArgs);
         }
 
-        private protected bool TryDeserializeTransactions<T>(ZeroPacket packet, [NotNullWhen(true)] out T? message, bool pooledResponse = false)
+        private protected bool TryDeserializeTransactions<T>(ZeroPacket packet, [NotNullWhen(true)] out T? message, Func<T, TransactionsMessage> getTransactions, bool pooledResponse = false)
             where T : P2PMessage
         {
             message = null;
-            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes, out bool sharedLimitExceeded);
+            InboundTransactionBudget.Reservation? reservation = _transactionBudget.TryReserve(packet.Content.ReadableBytes);
             if (reservation is null)
             {
-                if (pooledResponse && sharedLimitExceeded)
+                if (pooledResponse)
                     IgnorePooledTransactionResponse();
                 ReportIn("Transaction message ignored, inbound byte budget exhausted", packet.Content.ReadableBytes);
                 return false;
@@ -267,9 +267,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             try
             {
                 message = Deserialize<T>(packet.Content);
-                TransactionsMessage transactions = message is TransactionsMessage direct
-                    ? direct
-                    : ((V66.Messages.PooledTransactionsMessage)(P2PMessage)message).EthMessage;
+                TransactionsMessage transactions = getTransactions(message);
                 reservation.Attach(transactions.Transactions);
                 transactions.Transactions = reservation;
                 reservation = null;
