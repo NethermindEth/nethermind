@@ -11,6 +11,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 /// <summary>Installs prefix replay only in explicitly compatible RPC processing environments.</summary>
 public sealed class TransactionTraceModule(IEnumerable<IBlockValidationModule> validationModules) : Module
 {

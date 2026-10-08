@@ -17,6 +17,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 internal sealed class GethLikeBlockMuxTracer : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     internal const string TracerName = "muxTracer";

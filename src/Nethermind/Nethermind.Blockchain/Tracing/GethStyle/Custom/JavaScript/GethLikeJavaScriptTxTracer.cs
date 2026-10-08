@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Reflection;
-using System.Text.Json;
 using System.Threading;
 using FastEnumUtility;
 using Microsoft.ClearScript;

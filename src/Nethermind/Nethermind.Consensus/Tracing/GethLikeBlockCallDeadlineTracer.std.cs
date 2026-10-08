@@ -13,6 +13,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 internal sealed class GethLikeBlockCallDeadlineTracer : IBlockTracer<GethLikeTxTrace>, IDisposable
 {
     private readonly GethTraceDeadline _deadline;

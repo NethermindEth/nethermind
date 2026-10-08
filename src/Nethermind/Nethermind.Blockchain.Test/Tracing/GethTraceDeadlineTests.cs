@@ -45,9 +45,12 @@ public class GethTraceDeadlineTests
         Assert.That(() => GoTraceDuration.Parse(text), Throws.TypeOf<FormatException>().With.Message.EqualTo(expected));
 
     [Test]
-    public void Trace_options_defer_duration_validation_and_preserve_record_clones()
+    public void Trace_options_defer_duration_validation_and_preserve_record_clones([Values] bool withoutMetadata)
     {
-        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"timeout\":\"bad\",\"tracer\":\"callTracer\"}", EthereumJsonSerializer.JsonOptions)!;
+        Utf8JsonReader reader = new("{\"timeout\":\"bad\",\"tracer\":\"callTracer\"}"u8);
+        reader.Read();
+        GethTraceOptions options = new GethTraceOptionsConverter().Read(ref reader, typeof(GethTraceOptions),
+            withoutMetadata ? new JsonSerializerOptions(EthereumJsonSerializer.JsonOptions) { TypeInfoResolver = null } : EthereumJsonSerializer.JsonOptions);
         GethTraceOptions clone = options with { DisableStack = true };
         Assert.That(clone.Tracer, Is.EqualTo("callTracer"));
         Assert.That(() => clone.Timeout, Throws.TypeOf<FormatException>().With.Message.EqualTo("time: invalid duration \"bad\""));

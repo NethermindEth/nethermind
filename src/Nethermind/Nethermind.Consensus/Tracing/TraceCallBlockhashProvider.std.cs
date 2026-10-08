@@ -13,6 +13,7 @@ using Nethermind.Evm;
 
 namespace Nethermind.Consensus.Tracing;
 
+#pragma warning disable NETH003 // Build variant: excluded from the zkEVM build, which does no tracing
 internal sealed class TraceCallBlockhashProvider(
     IBlockhashProvider inner,
     IBlockTree blockTree,
