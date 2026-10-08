@@ -86,6 +86,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     private bool _discoverFirst;
     private int _discoveryReadThreads;
     private DiscoveryReads? _discoveryReads;
+    private bool _deferSpeculativeJoin;
+    // 1 while a stopped session was left running; the next JoinWriters waits for it.
+    private int _deferredJoinPending;
+    // Orders the mempool session's additions to the warmed set against a block taking it over.
+    private readonly Lock _warmedLock = new();
     private readonly Lock _discoveryReadsLock = new();
 
     private static readonly IComparer<StorageCell> _cellAddressComparer =
@@ -133,6 +138,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _coldReadsBeforeDiscovery = Math.Max(1, blocksConfig.PreWarmColdReadsBeforeDiscovery);
         _discoveredCellBudget = Math.Max(0, blocksConfig.PreWarmMaxDiscoveredCells);
         _discoverFirst = blocksConfig.PreWarmDiscoverFirst;
+        _deferSpeculativeJoin = blocksConfig.PreWarmDeferSpeculativeJoin;
         _discoveryReadThreads = Math.Max(1, blocksConfig.PreWarmDiscoveryReadThreads);
         if (_discoverFirst)
         {
@@ -169,7 +175,39 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _nodeStorageCache = nodeStorageCache;
         _warmupQueue = new WarmupQueue(this);
         // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
+        if (_preBlockCaches is not null)
+        {
+            _preBlockCaches.ConsumerScopeOpened += OnConsumerScopeOpened;
+            _preBlockCaches.JoinWriters = JoinDeferredSpeculative;
+        }
+    }
+
+    private void JoinDeferredSpeculative()
+    {
+        if (Volatile.Read(ref _deferredJoinPending) != 0) CancelAndJoinSpeculative();
+    }
+
+    private void OnConsumerScopeOpened()
+    {
+        long started = Stopwatch.GetTimestamp();
+        Interlocked.Increment(ref Blockchain.Metrics.PrewarmConsumerOpens);
+        lock (_speculativeLock)
+        {
+            // While the caches hold the state the session warmed, whatever it still writes is a value the block reads
+            // anyway; JoinWriters stops it before the caches are cleared or written back.
+            if (_deferSpeculativeJoin && ExperimentBlocks.ApplyToCurrent && _preBlockCaches.ValidFor is not null && _speculativeCts is not null)
+            {
+                _speculativeCts.Cancel();
+                Volatile.Write(ref _deferredJoinPending, 1);
+                Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeJoinsDeferred);
+            }
+            else
+            {
+                CancelAndJoinSpeculativeLocked();
+            }
+        }
+
+        Interlocked.Add(ref Blockchain.Metrics.PrewarmConsumerOpenMicros, (long)Stopwatch.GetElapsedTime(started).TotalMicroseconds);
     }
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
@@ -188,7 +226,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         long started = Stopwatch.GetTimestamp();
         lock (_speculativeLock)
         {
-            CancelAndJoinSpeculativeLocked();
+            // A session left running when the state opened is still writing the parent state's values; anything else waits.
+            if (_deferSpeculativeJoin && ExperimentBlocks.Apply(suggestedBlock.Number) && parent?.StateRoot is { } parentRoot && _preBlockCaches.ValidFor == parentRoot
+                && _speculativeCts is not null)
+            {
+                _speculativeCts.Cancel();
+                Volatile.Write(ref _deferredJoinPending, 1);
+            }
+            else
+            {
+                CancelAndJoinSpeculativeLocked();
+            }
             // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
             // further, but the caches describe the state they were filled from, which need not be this block's parent.
             carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
@@ -1083,16 +1131,22 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                             // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
                             if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
                         }
-                        foreach (Transaction tx in delta.Transactions)
+                        // A block may take the set over once the session is stopped, even before the session ends.
+                        lock (_warmedLock)
                         {
-                            if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                            if (token.IsCancellationRequested) break;
+                            foreach (Transaction tx in delta.Transactions)
+                            {
+                                if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                            }
+
+                            // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
+                            if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
+                            Volatile.Write(ref _warmMarker, marker);
                         }
 
                         Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativePasses);
                         Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeTxs, delta.Transactions.Length);
-                        // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
-                        if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
-                        Volatile.Write(ref _warmMarker, marker);
                     }
                 }
 
@@ -1145,7 +1199,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private void CancelAndJoinSpeculativeLocked()
     {
-        if (_speculativeCts is null) return;
+        if (_speculativeCts is null)
+        {
+            Volatile.Write(ref _deferredJoinPending, 0);
+            return;
+        }
 
         long joinStarted = Stopwatch.GetTimestamp();
         _speculativeCts.Cancel();
@@ -1160,6 +1218,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _speculativeCts.Dispose();
         _speculativeCts = null;
         _speculativeTask = Task.CompletedTask;
+        // Cleared only once joined, so a JoinWriters that finds it clear has nothing left to wait for.
+        Volatile.Write(ref _deferredJoinPending, 0);
         Interlocked.Increment(ref Blockchain.Metrics.PrewarmSpeculativeJoins);
         Interlocked.Add(ref Blockchain.Metrics.PrewarmSpeculativeJoinMicros, (long)Stopwatch.GetElapsedTime(joinStarted).TotalMicroseconds);
     }
@@ -1168,7 +1228,9 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     private bool TryConsumeWarmMarker(Hash256? parentHash, IReleaseSpec spec, out ISet<Hash256>? warmedTxHashes)
     {
-        WarmMarker? marker = Interlocked.Exchange(ref _warmMarker, null);
+        WarmMarker? marker;
+        // The session is stopped by now, so after this nothing adds to the set the block reads.
+        using (_warmedLock.EnterScope()) marker = Interlocked.Exchange(ref _warmMarker, null);
         // ReferenceEquals on the per-fork spec singleton: a mismatch only disables the handoff, never a correctness issue.
         if (marker is not null && parentHash is not null && marker.ParentHash == parentHash && ReferenceEquals(marker.Spec, spec))
         {
@@ -1224,7 +1286,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     public void Dispose()
     {
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= CancelAndJoinSpeculative;
+        if (_preBlockCaches is not null)
+        {
+            _preBlockCaches.ConsumerScopeOpened -= OnConsumerScopeOpened;
+            _preBlockCaches.JoinWriters = null;
+        }
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         _warmupQueue.Dispose();

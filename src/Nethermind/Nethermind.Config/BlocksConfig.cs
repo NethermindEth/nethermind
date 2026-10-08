@@ -77,6 +77,8 @@ namespace Nethermind.Config
 
         public bool StreamReceiptBlooms { get; set; }
 
+        public bool PreWarmDeferSpeculativeJoin { get; set; }
+
         public int ExperimentParity { get; set; }
 
         public ulong PreWarmDiscoveryGasThreshold { get; set; } = 10_000_000;

@@ -1159,6 +1159,43 @@ public class BlockCachePreWarmerTests
     }
 
     [Test]
+    public void ConsumerScope_Opening_LeavesAStoppedSessionRunning_UntilTheCachesAreCleared()
+    {
+        using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false, deferSpeculativeJoin: true);
+        PreBlockCaches caches = _processingScope.Resolve<PreBlockCaches>();
+        IWorldState mainWorldState = _processingScope.Resolve<IWorldState>();
+        BlockHeader head = BuildParentHeader();
+        using CancellationTokenSource cancellation = new();
+        using ManualResetEventSlim inPass = new(false);
+        // Not disposed: the fallback below may still set it after the test ends.
+        ManualResetEventSlim release = new(false);
+        // Should the open wait after all, the pass is released anyway, so the test fails instead of hanging.
+        _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ => release.Set());
+        // A pass that does not see the stop until released, like one that is mid-warm when the block arrives.
+        Task session = preWarmer.StartSpeculativePreWarm(head, Osaka.Instance, generation: 1, _ =>
+        {
+            inPass.Set();
+            release.Wait();
+            return null;
+        }, idlePassDelayMs: 5, cancellation.Token);
+        Assert.That(inPass.Wait(DiscoveryTimeout), Is.True, "precondition: the session must be in a pass");
+
+        using (mainWorldState.BeginScope(head))
+        {
+            Assert.That(session.IsCompleted, Is.False, "opening the parent state the session warmed must not wait for it");
+
+            Task clear = Task.Run(() => caches.EnsureNotStaleFor(Keccak.Zero));
+            Assert.That(clear.Wait(PendingProbe), Is.False, "clearing the caches must wait for the session");
+            release.Set();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(clear.Wait(DiscoveryTimeout), Is.True, "the clear goes ahead once the session ends");
+                Assert.That(session.IsCompleted, Is.True);
+            }
+        }
+    }
+
+    [Test]
     public async Task StartSpeculativePreWarm_CancellationInterruptsIdleDelay()
     {
         using BlockCachePreWarmer preWarmer = CreatePreWarmerFromConfig(parallelExecution: false, parallelExecutionBatchRead: false);
@@ -2610,7 +2647,8 @@ public class BlockCachePreWarmerTests
     private BlockCachePreWarmer CreatePreWarmerFromConfig(
         bool parallelExecution,
         bool parallelExecutionBatchRead,
-        ILogManager? logManager = null)
+        ILogManager? logManager = null,
+        bool deferSpeculativeJoin = false)
     {
         PrewarmerEnvFactory envFactory = _processingScope.Resolve<PrewarmerEnvFactory>();
         PreBlockCaches preBlockCaches = _processingScope.Resolve<PreBlockCaches>();
@@ -2621,7 +2659,8 @@ public class BlockCachePreWarmerTests
             PreWarming = PreWarmMode.Block,
             PreWarmStateConcurrency = 2,
             ParallelExecution = parallelExecution,
-            ParallelExecutionBatchRead = parallelExecutionBatchRead
+            ParallelExecutionBatchRead = parallelExecutionBatchRead,
+            PreWarmDeferSpeculativeJoin = deferSpeculativeJoin
         };
 
         return new BlockCachePreWarmer(envFactory, config, nodeStorageCache, preBlockCaches, logManager ?? LimboLogs.Instance);

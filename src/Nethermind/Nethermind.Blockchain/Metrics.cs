@@ -126,6 +126,18 @@ public static class Metrics
     public static long PrewarmBlockStartsUncarried;
 
     [CounterMetric]
+    [Description("Times the block's state opened while a mempool pre-warm session might run")]
+    public static long PrewarmConsumerOpens;
+
+    [CounterMetric]
+    [Description("Microseconds the block thread spent stopping the mempool pre-warm session as the block's state opened")]
+    public static long PrewarmConsumerOpenMicros;
+
+    [CounterMetric]
+    [Description("Mempool pre-warm sessions stopped without waiting as the block's state opened, and waited for later")]
+    public static long PrewarmSpeculativeJoinsDeferred;
+
+    [CounterMetric]
     [Description("Times a block stopped and joined the mempool pre-warm session")]
     public static long PrewarmSpeculativeJoins;
 

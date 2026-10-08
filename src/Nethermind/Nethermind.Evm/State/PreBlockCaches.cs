@@ -122,6 +122,9 @@ public class PreBlockCaches
     /// it: it holds because only the main processing scope is decorated, leaving the RPC, tracing and simulate world
     /// states out. A second consumer inside that scope would clear the caches mid-block and race the write-back.
     /// </remarks>
+    /// <summary>Waits for any writer left running when the consumer opened; called before the caches are cleared or written back.</summary>
+    public Action? JoinWriters { get; set; }
+
     public void BeginConsumerScope()
     {
         Interlocked.Increment(ref _consumerScopes);
@@ -213,6 +216,8 @@ public class PreBlockCaches
     /// <returns><see langword="true"/> when the caches were kept; <see langword="false"/> when they were cleared.</returns>
     public bool PrepareFor(Hash256? stateRoot, ILogger logger = default)
     {
+        // A clear must not race a writer still filling the caches for the state they hold.
+        if (stateRoot is null || _validFor != stateRoot) JoinWriters?.Invoke();
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
@@ -240,6 +245,7 @@ public class PreBlockCaches
     /// <param name="logger">Reports when caches for another state root have to be cleared.</param>
     public void EnsureNotStaleFor(Hash256? stateRoot, ILogger logger = default)
     {
+        if (stateRoot is null || _validFor != stateRoot) JoinWriters?.Invoke();
         JoinPendingWriteBack();
         lock (_reconcileLock)
         {
@@ -302,6 +308,8 @@ public class PreBlockCaches
         Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot,
         ILogger logger)
     {
+        // A writer still running from before the block would overwrite the block's values with its base state's.
+        JoinWriters?.Invoke();
         lock (_joinLock)
         {
             // The previous block's write-back is what moves the caches to this one's base state, so join before asking.

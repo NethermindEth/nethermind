@@ -80,6 +80,7 @@ public class BranchProcessor(
         }
         else
         {
+            ExperimentBlocks.Enter(suggestedBlock.Number);
             worldStateCloser = BeginTargetScope(suggestedBlock);
         }
 
