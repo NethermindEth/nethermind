@@ -6,12 +6,35 @@ using System.IO;
 using Nethermind.Core.Extensions;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupKeyTests
 {
+    [TestCase("", 0, 0x30)]
+    [TestCase("00", 4, 0x30)]
+    [TestCase("01", 8, 0x31)]
+    [TestCase("f0", 4, 0x32)]
+    [TestCase("ff", 8, 0x32)]
+    [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000", 524, 0x32)]
+    public void Retained_keys_preserve_root_depth_and_partition(string pathHex, int depth, byte family)
+    {
+        PbtStorageNodePath path = new(Bytes.FromHexString(pathHex), depth);
+        byte[] key = PbtRetainedKey.Group(path);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(key[0], Is.EqualTo(family));
+            Assert.That(PbtRetainedKey.DecodeGroup(key), Is.EqualTo(path));
+            Assert.That(key.Length, Is.LessThanOrEqualTo(255));
+        }
+    }
+
+    [Test]
+    public void Retained_keys_reject_invalid_group_depth_partition_and_padding([Values("3000040100", "31000000", "3000050000", "300114000000000000000000000000000000000000000000000000000000000000000000000000", "3000000000")] string key) =>
+        Assert.Throws<InvalidDataException>(() => PbtRetainedKey.ValidateDescriptor(Bytes.FromHexString(key)));
+
     [TestCase("00", 4, "0001")]
     [TestCase("f0", 4, "f001")]
     [TestCase("ff0000000000000000000000000000000000000000000000000000000000000000", 260, "ff000000000000000000000000000000000000000000000000000000000000000001")]

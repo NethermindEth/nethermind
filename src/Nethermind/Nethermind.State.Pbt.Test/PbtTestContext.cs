@@ -79,10 +79,15 @@ internal sealed class PbtTestContext : IAsyncDisposable
     public PbtWorldStateScope BeginScope(BlockHeader? parent) => (PbtWorldStateScope)CreateScopeProvider().BeginScope(parent, new LocalMetrics());
 
     /// <summary>Builds the production container: the test Nethermind module and the PBT module.</summary>
-    internal static IContainer BuildProductionContainer(PbtConfig config) => new ContainerBuilder()
-        .AddModule(new TestNethermindModule(config))
-        .AddModule(new PbtModule(config))
-        .Build();
+    internal static IContainer BuildProductionContainer(PbtConfig config, Action<ContainerBuilder>? configure = null, params IConfig[] additionalConfigs)
+    {
+        IConfig[] configs = [config, .. additionalConfigs];
+        ContainerBuilder builder = new ContainerBuilder()
+            .AddModule(new TestNethermindModule(configs))
+            .AddModule(new PbtModule(config));
+        configure?.Invoke(builder);
+        return builder.Build();
+    }
 
     /// <summary>
     /// The contract code deployed by <see cref="RunReferenceBlocks"/>: more than 128 + 256 chunks (11904 bytes), so the

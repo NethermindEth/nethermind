@@ -45,5 +45,5 @@ public class PbtWorldStateManager(
 
     public void FlushCache(CancellationToken cancellationToken) => manager.FlushCache(cancellationToken);
 
-    public void DropStateNotReachableFrom(BlockHeader head) { }
+    public void DropStateNotReachableFrom(BlockHeader head) => manager.DropStateNotReachableFrom(new Flat.StateId(head));
 }

@@ -18,4 +18,7 @@ public interface IPbtTrieNodeCache
 
     /// <summary>Folds a retired block's staged groups into the shared cache.</summary>
     void Add(PbtTransientResource transientResource);
+
+    /// <summary>Releases cache-owned groups while preserving caller-owned leases.</summary>
+    void Clear() { }
 }

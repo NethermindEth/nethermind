@@ -16,8 +16,8 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
 {
     public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
     {
-        using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
-        if (bundle?.GetAccount(address)?.ToAccount() is { } accountClass)
+        using PbtReadOnlySnapshotBundle bundle = GatherForRead(baseBlock);
+        if (bundle.GetAccount(address)?.ToAccount() is { } accountClass)
         {
             account = accountClass.ToStruct();
             return true;
@@ -29,13 +29,7 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
 
     public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
-        using PbtReadOnlySnapshotBundle? bundle = manager.TryGatherReadOnlyBundle(new StateId(baseBlock));
-        if (bundle is null)
-        {
-            value = default;
-            return;
-        }
-
+        using PbtReadOnlySnapshotBundle bundle = GatherForRead(baseBlock);
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
         EvmWord word = PbtStateKey.IsHeaderSlot(index)
             ? GetSlot(bundle, PbtStateKey.HeaderStorage(addressHash, index))
@@ -54,4 +48,18 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
         throw new NotSupportedException("Trie visiting is not supported by the pbt state backend");
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => manager.HasStateForBlock(new StateId(baseBlock));
+
+    private PbtReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    {
+        try
+        {
+            StateId stateId = new(baseBlock);
+            return manager.TryGatherReadOnlyBundle(stateId)
+                ?? throw new StateNotRetainedException($"No state available for block {stateId.BlockNumber} with state root {stateId.StateRoot}");
+        }
+        catch (StateUnavailableException e)
+        {
+            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, baseBlock?.StateRoot ?? Keccak.EmptyTreeHash, e);
+        }
+    }
 }

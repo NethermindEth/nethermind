@@ -8,6 +8,18 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using FastEnumUtility;
+using Autofac;
+using System.Threading.Tasks;
+using Nethermind.Api;
+using Nethermind.Core.Specs;
+using Nethermind.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.State;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
+using Nethermind.Specs.Forks;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -754,5 +766,259 @@ public class PbtRocksDbPersistenceTests
         public IColumnDbSnapshot<PbtColumns> CreateSnapshot() => inner.CreateSnapshot();
         public void Flush(bool onlyWal = false) => inner.Flush(onlyWal);
         public void Dispose() => inner.Dispose();
+    }
+}
+
+[TestFixture]
+public class PbtProtocolStorageClearTests
+{
+    public enum History { InitDestroy, InitRevert, LaterTransactionDestroy, Create2Recreate, RevertedParent }
+    private static Address Sender => TestItem.PrivateKeyA.Address;
+    private static Address Factory => TestItem.AddressC;
+    private static readonly UInt256 InitialBalance = 1000.Ether;
+
+    [Test]
+    public async Task Protocol_storage_clear_survives_retention_and_base_reopen(
+        [Values] History history, [Values] bool retained)
+    {
+        using TempPath directory = TempPath.GetTempDirectory();
+        using SnapshotableMemColumnsDb<PbtColumns> baseDb = new("protocol-pbt");
+        using MemDb catalog = new();
+        using MemDb codeDb = new();
+        byte[] writes = Prepare.EvmCode.PushData(0xAB).PushData(5).Op(Instruction.SSTORE)
+            .PushData(0x1234).PushData(1000).Op(Instruction.SSTORE).Done;
+        byte[] destroy = Prepare.EvmCode.SELFDESTRUCT(Sender).Done;
+        byte[] childInit = [.. writes, .. Prepare.EvmCode.ForInitOf(destroy).Done];
+        byte[] salt = new UInt256(123).ToBigEndian();
+        Address contract = history is History.Create2Recreate or History.RevertedParent
+            ? ContractAddress.From(Factory, salt, childInit) : ContractAddress.From(Sender, 0);
+        byte[] create = Prepare.EvmCode.Create2(childInit, salt, 0).Done;
+        byte[] call = Prepare.EvmCode.Call(contract, 200000).Done;
+        int stop = create.Length + 5 + call.Length + 1;
+        byte[] factoryCode = history == History.RevertedParent
+            ? [.. create, .. call, .. Prepare.EvmCode.Revert(0, 0).Done]
+            : [.. create, (byte)Instruction.CALLDATASIZE, (byte)Instruction.PUSH2, (byte)(stop >> 8), (byte)stop,
+                (byte)Instruction.JUMPI, .. call, (byte)Instruction.STOP, (byte)Instruction.JUMPDEST, (byte)Instruction.STOP];
+        PbtConfig config = new()
+        {
+            Enabled = true, InlineCompaction = true, CompactSize = 2, CompactionOffset = 0,
+            MinReorgDepth = 128, MaxInMemoryBaseSnapshotCount = int.MaxValue,
+            ArenaFileSizeBytes = 1048576, PersistedSnapshotDedicatedArenaThresholdBytes = 1048576,
+            PersistedSnapshotArenaPageCacheBytes = 0, ValidatePersistedSnapshot = true,
+        };
+        IContainer Open() => PbtTestContext.BuildProductionContainer(config, builder =>
+        {
+            builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance));
+            builder.RegisterInstance(baseDb).As<IColumnsDb<PbtColumns>>().ExternallyOwned();
+            builder.RegisterInstance(catalog).Keyed<IDb>(PbtSnapshotCatalog.DatabaseKey).ExternallyOwned();
+            builder.RegisterInstance(codeDb).Keyed<IDb>(DbNames.Code).ExternallyOwned();
+        }, new InitConfig { BaseDbPath = directory.Path });
+        Hash256 finalRoot;
+        BlockHeader head;
+        ulong expectedNonce = history is History.Create2Recreate or History.LaterTransactionDestroy ? 2ul : 1ul;
+        bool hasFactory = history is History.Create2Recreate or History.RevertedParent;
+        bool survives = history is History.LaterTransactionDestroy or History.Create2Recreate;
+        await using (IContainer container = Open())
+        {
+            IWorldStateManager manager = container.Resolve<IWorldStateManager>();
+            using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
+                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            IWorldState state = processing.Resolve<IWorldState>();
+            ITransactionProcessor processor = processing.Resolve<ITransactionProcessor>();
+            using (state.BeginScope(IWorldState.PreGenesis))
+            {
+                state.CreateAccount(Sender, InitialBalance);
+                if (hasFactory)
+                {
+                    state.CreateAccount(Factory, 0, 1);
+                    state.InsertCode(Factory, factoryCode, Prague.Instance);
+                }
+                state.Commit(Prague.Instance);
+                state.CommitTree(0);
+                head = Header(0, state.StateRoot);
+            }
+            manager.FlushCache(CancellationToken.None);
+            for (ulong block = 1; block <= 2; block++)
+            {
+                using (state.BeginScope(head))
+                {
+                    BlockHeader execution = Header(block, head.StateRoot!);
+                    if (block == 1)
+                    {
+                        if (hasFactory) Execute(processor, execution, Factory, [], 0, history != History.RevertedParent, 2, true, history == History.RevertedParent);
+                        else
+                        {
+                            byte[] init = history switch
+                            {
+                                History.InitDestroy => [.. writes, .. destroy],
+                                History.InitRevert => [.. writes, .. Prepare.EvmCode.Revert(0, 0).Done],
+                                _ => [.. writes, .. Prepare.EvmCode.ForInitOf(destroy).Done],
+                            };
+                            Execute(processor, execution, null, init, 0, history != History.InitRevert, 2,
+                                history == History.InitDestroy, history == History.InitRevert);
+                            if (history == History.LaterTransactionDestroy) Execute(processor, execution, contract, [], 1, true, 0, true, false);
+                        }
+                    }
+                    else if (history == History.Create2Recreate) Execute(processor, execution, Factory, [1], 1, true, 2, false, false);
+                    AssertFinalEntries(state, contract, survives && (history != History.Create2Recreate || block == 2));
+                    if (block == 2)
+                    {
+                        using (Assert.EnterMultipleScope())
+                        {
+                            Assert.That(state.GetNonce(Sender), Is.EqualTo(expectedNonce));
+                            Assert.That(state.GetBalance(Sender), Is.EqualTo(InitialBalance));
+                            if (hasFactory) Assert.That(state.GetNonce(Factory), Is.EqualTo(history == History.Create2Recreate ? 3ul : 1ul));
+                            if (survives)
+                            {
+                                Assert.That(state.GetNonce(contract), Is.EqualTo(1ul));
+                                Assert.That(state.GetCode(contract).ToArray(), Is.EqualTo(destroy));
+                            }
+                        }
+                    }
+                    state.Commit(Prague.Instance);
+                    state.CommitTree(block);
+                    head = Header(block, state.StateRoot);
+                }
+                if (retained)
+                {
+                    PbtSnapshotRepository repository = container.Resolve<PbtSnapshotRepository>();
+                    Assert.That(repository.TryLeaseMemoryState(new StateId(head), SnapshotTier.InMemoryBase, out PbtSnapshot? snapshot), Is.True);
+                    using (snapshot)
+                    {
+                        Assert.That(container.Resolve<IPbtRetainedSnapshotLoader>().ConvertAndRegister(snapshot!), Is.True);
+                        repository.RemoveMemorySource(snapshot!);
+                    }
+                    if (repository.TryLeaseMemoryState(new StateId(head), SnapshotTier.InMemoryCompacted, out PbtSnapshot? compacted))
+                        using (compacted) repository.RemoveMemorySource(compacted!);
+                }
+            }
+            finalRoot = head.StateRoot!;
+            if (retained)
+                Assert.That(((PbtRetainedSnapshotCompactor)container.Resolve<IPbtRetainedSnapshotCompactor>()).DoCompactCompactSized(new StateId(head)), Is.True);
+            else manager.FlushCache(CancellationToken.None);
+        }
+        if (survives) Assert.That(codeDb[ValueKeccak.Compute(destroy).Bytes], Is.EqualTo(destroy));
+        (Hash256 cleanRoot, string[] expectedRecords) = await ExpectedRoot(history, expectedNonce, factoryCode, destroy, contract, survives);
+        if (!retained && history == History.Create2Recreate)
+        {
+            string[] actualRecords = Canonical(baseDb);
+            TestContext.Out.WriteLine($"factoryCodeHash={ValueKeccak.Compute(factoryCode)} childCodeHash={ValueKeccak.Compute(destroy)}");
+            TestContext.Out.WriteLine("ACTUAL ONLY: " + string.Join("\n", actualRecords.Except(expectedRecords)));
+            TestContext.Out.WriteLine("EXPECTED ONLY: " + string.Join("\n", expectedRecords.Except(actualRecords)));
+        }
+        Assert.That(finalRoot, Is.EqualTo(cleanRoot), "root is rebuilt from the expected surviving state, not transient execution snapshots");
+        await using (IContainer reopened = Open())
+        {
+            IWorldStateManager manager = reopened.Resolve<IWorldStateManager>();
+            using ILifetimeScope processing = reopened.BeginLifetimeScope(builder =>
+                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            IWorldState state = processing.Resolve<IWorldState>();
+            using (state.BeginScope(head)) AssertFinalEntries(state, contract, survives);
+            manager.FlushCache(CancellationToken.None);
+            using IPbtPersistence.IReader reader = reopened.Resolve<IPbtPersistence>().CreateReader();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reader.CurrentState, Is.EqualTo(new StateId(head)));
+                Assert.That(reader.CurrentRoot, Is.EqualTo(cleanRoot.ValueHash256));
+                Assert.That(reopened.Resolve<PbtSnapshotRepository>().GetLastCommittedStateId(), Is.Null, "restart flush works without a new commit");
+            }
+        }
+        await using (IContainer final = Open())
+        {
+            IWorldStateManager manager = final.Resolve<IWorldStateManager>();
+            using ILifetimeScope processing = final.BeginLifetimeScope(builder =>
+                builder.AddSingleton<IWorldStateScopeProvider>(manager.GlobalWorldState));
+            using (processing.Resolve<IWorldState>().BeginScope(head)) AssertFinalEntries(processing.Resolve<IWorldState>(), contract, survives);
+        }
+    }
+
+    private static BlockHeader Header(ulong number, Hash256 root) => Build.A.BlockHeader
+        .WithNumber(number).WithStateRoot(root).WithGasLimit(8000000).WithBaseFee(0).WithBeneficiary(Sender).TestObject;
+
+    private static void Execute(ITransactionProcessor processor, BlockHeader header, Address? to, byte[] code, ulong nonce,
+        bool success, int stores, bool destroyed, bool reverted)
+    {
+        Transaction transaction = Build.A.Transaction.WithData(code).To(to).WithNonce(nonce)
+            .WithValue(0).WithGasLimit(1000000).WithGasPrice(0).WithSenderAddress(Sender).TestObject;
+        using ProtocolTracer tracer = new();
+        TransactionResult result = processor.Execute(transaction, header, tracer);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result.TransactionExecuted, Is.True, result.ToString());
+            Assert.That(tracer.Success, Is.EqualTo(success), tracer.Error);
+            Assert.That(tracer.Stores, Is.EqualTo(stores), tracer.Error);
+            Assert.That(tracer.Destroyed, Is.EqualTo(destroyed), tracer.Error);
+            Assert.That(tracer.Reverted, Is.EqualTo(reverted), tracer.Error);
+        }
+    }
+
+    private sealed class ProtocolTracer : TxTracer
+    {
+        internal bool? Success { get; private set; }
+        internal string? Error { get; private set; }
+        internal int Stores { get; private set; }
+        internal bool Destroyed { get; private set; }
+        internal bool Reverted { get; private set; }
+        internal ProtocolTracer() { IsTracingReceipt = true; IsTracingInstructions = true; }
+        public override void MarkAsSuccess(Address recipient, in GasConsumed gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => Success = true;
+        public override void MarkAsFailed(Address recipient, in GasConsumed gasSpent, byte[] output, string? error, Hash256? stateRoot = null) { Success = false; Error = error; }
+        public override void StartOperation(int pc, Instruction opcode, ulong gas, in ExecutionEnvironment env)
+        {
+            if (opcode == Instruction.SSTORE) Stores++;
+            if (opcode == Instruction.SELFDESTRUCT) Destroyed = true;
+            if (opcode == Instruction.REVERT) Reverted = true;
+        }
+    }
+
+    private static void AssertFinalEntries(IWorldState state, Address contract, bool survives)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(state.AccountExists(contract), Is.EqualTo(survives));
+            Assert.That(state.Get(new StorageCell(contract, 5)), Is.EqualTo(survives ? (UInt256)0xAB : UInt256.Zero));
+            Assert.That(state.Get(new StorageCell(contract, 1000)), Is.EqualTo(survives ? (UInt256)0x1234 : UInt256.Zero));
+        }
+    }
+
+    private static async Task<(Hash256, string[])> ExpectedRoot(History history, ulong senderNonce, byte[] factoryCode,
+        byte[] contractCode, Address contract, bool survives)
+    {
+        await using IContainer container = PbtTestContext.BuildProductionContainer(
+            new PbtConfig { Enabled = true, EnableLongFinality = false },
+            builder => builder.AddSingleton<ISpecProvider>(new TestSpecProvider(Prague.Instance)));
+        using ILifetimeScope processing = container.BeginLifetimeScope(builder =>
+            builder.AddSingleton<IWorldStateScopeProvider>(container.Resolve<IWorldStateManager>().GlobalWorldState));
+        IWorldState state = processing.Resolve<IWorldState>();
+        using (state.BeginScope(IWorldState.PreGenesis))
+        {
+            state.CreateAccount(Sender, InitialBalance, senderNonce);
+            if (history is History.Create2Recreate or History.RevertedParent)
+            {
+                state.CreateAccount(Factory, 0, history == History.Create2Recreate ? 3ul : 1ul);
+                state.InsertCode(Factory, factoryCode, Prague.Instance);
+            }
+            if (survives)
+            {
+                state.CreateAccount(contract, 0, 1);
+                state.InsertCode(contract, contractCode, Prague.Instance);
+                state.Set(new StorageCell(contract, 5), (UInt256)0xAB);
+                state.Set(new StorageCell(contract, 1000), (UInt256)0x1234);
+            }
+            state.Commit(Prague.Instance);
+            state.CommitTree(2);
+            container.Resolve<IWorldStateManager>().FlushCache(CancellationToken.None);
+            return (state.StateRoot, Canonical(container.Resolve<IColumnsDb<PbtColumns>>()));
+        }
+    }
+
+    private static string[] Canonical(IColumnsDb<PbtColumns> db)
+    {
+        List<PbtPhysicalPayload> payloads = [];
+        foreach (PbtColumns column in new[] { PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups })
+            foreach (KeyValuePair<byte[], byte[]> entry in db.GetColumnDb(column).GetAll())
+                payloads.Add(new(PbtNodeGroupKey.Decode(entry.Key), entry.Value));
+        if (db.GetColumnDb(PbtColumns.Metadata)["rootNodeGroup"u8] is byte[] root) payloads.Add(new(default, root));
+        using PbtNodeGroupStore store = PbtNodeGroupStore.FromPhysicalPayloads(payloads);
+        return store.CanonicalRecords();
     }
 }

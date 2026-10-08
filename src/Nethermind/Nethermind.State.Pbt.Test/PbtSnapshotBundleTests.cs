@@ -7,6 +7,7 @@ using System.IO;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -15,6 +16,8 @@ using Nethermind.Pbt;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.PersistedSnapshots;
+using Nethermind.Monitoring.Config;
 using NUnit.Framework;
 using static Nethermind.State.Pbt.Test.PbtStoreTestExtensions;
 
@@ -22,6 +25,52 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtSnapshotBundleTests
 {
+    [Test]
+    public void Mixed_retained_and_memory_bundle_survives_pruning_and_honors_clears([Values] bool clear, [Values] bool rewrite)
+    {
+        using PbtRetainedTestStore store = new();
+        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        PbtResourcePool pool = new(new PbtConfig());
+        ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        PbtSnapshotContent retainedContent = new();
+        retainedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
+        retainedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
+        PbtPath key = PbtStateKey.HeaderStorage(address, 5);
+        retainedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped([7])));
+        PbtNodePath root = new([], 0);
+        retainedContent.SetNodeGroup(root, null);
+        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256, retainedContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtRetainedSnapshot retained = store.Build(source);
+        repository.TryAddRetained(retained);
+        PbtSnapshotContent memoryContent = new();
+        if (clear) memoryContent.ClearStorage(address);
+        if (rewrite) memoryContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped([9])));
+        memoryContent.Accounts[address] = null;
+        PbtSnapshot memory = new(new StateId(0, default), new StateId(1, default), TestItem.KeccakB.ValueHash256, memoryContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
+        repository.TryAdd(memory);
+        Reader reader = new(default, null);
+        PbtSnapshotChain chain = repository.TryLeaseReadChain(new StateId(1, default), StateId.PreGenesis)!;
+        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false);
+        Assert.That(bundle.TryLease(), Is.True);
+        repository.RemoveMemoryState(new StateId(1, default));
+        repository.RemoveRetainedExact(retained.To, 1, SnapshotTier.PersistedBase);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
+            Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Null);
+            Assert.That(bundle.GetCode(TestItem.KeccakA.ValueHash256)!.CodeSpan.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            Assert.That(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)), Is.EqualTo(EvmWordSlot.FromStripped(rewrite ? [9] : clear ? [] : [7])));
+            Assert.That(bundle.GetNodeGroup(root.ToPath<PbtStorageNodePath>()), Is.Null);
+            Assert.That(reader.GroupReadCount, Is.Zero, "retained tombstone stops fallback");
+            Assert.That(repository.HasState(memory.To), Is.False);
+        }
+        PackedSlotRun run = bundle.RentRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), address);
+        try { Assert.That(run.Get(SlotRun.IndexOf(key)), Is.EqualTo(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)))); }
+        finally { SlotRun.Return(run); }
+        bundle.Dispose();
+        Assert.That(reader.DisposeCount, Is.Zero, "independent bundle reference still owns the reader");
+    }
+
     [Test]
     public void First_write_to_a_run_seeds_the_whole_run_from_the_newest_layer_holding_it([Values] bool heldByLayer)
     {
@@ -294,7 +343,7 @@ public class PbtSnapshotBundleTests
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.EqualTo(admitted ? 1 : 0), "an admitted source allocation stays leased by the cache");
             Assert.That(cache.MemorySize, Is.LessThanOrEqualTo(budget));
         }
-        PbtReadOnlySnapshotBundle readOnly = new(new(0), reader, recordDetailedMetrics: false);
+        PbtReadOnlySnapshotBundle readOnly = new(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false);
         using PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, new PbtSnapshotContent()), readOnly, pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         Assert.That(bundle.TreeRoot, Is.Not.EqualTo(readOnly.TreeRoot));
         int readsBeforeDirectRead = reader.GroupReadCount;
@@ -1234,7 +1283,8 @@ public class PbtSnapshotBundleTests
             GroupPayload.CopyTo(memory.GetSpan());
             return memory;
         }
-        public void Dispose() { }
+        public int DisposeCount { get; private set; }
+        public void Dispose() => DisposeCount++;
     }
 
     private sealed class CountingStore(PbtSnapshotBundle bundle) : IPbtStore, IPbtNodeGroupSink

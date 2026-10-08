@@ -583,24 +583,41 @@ public partial class EthRpcModuleTests
 
     // HasStateForBlock passes but the read finds the node gone: state this node does not hold (a still-syncing flat
     // node, #13603) is -32002, while a genuinely missing trie node keeps the Geth-parity -32000.
-    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block")]
-    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node")]
-    public async Task Eth_get_storage_at_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage)
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block", true)]
+    [TestCase(true, ErrorCodes.ResourceUnavailable, "No state available for block", false)]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "missing trie node", true)]
+    [TestCase(false, ErrorCodes.ResourceNotFound, "State for block", false)]
+    public async Task Eth_state_read_missing_trie_node_maps_by_cause(bool stateNotRetained, int expectedCode, string expectedMessage, bool storage)
     {
+        MissingStateReader? faultReader = null;
         using Context ctx = await Context.Create(configurer: builder =>
-            builder.AddDecorator<IStateReader>((_, inner) => new MissingStorageStateReader(inner, stateNotRetained)));
+            builder.AddDecorator<IStateReader>((_, inner) => faultReader = new MissingStateReader(inner, stateNotRetained, storage)));
+        _ = ctx.Test;
+        faultReader!.FailReads = true;
 
-        string serialized = await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1");
+        string serialized = storage
+            ? await ctx.Test.TestEthRpc("eth_getStorageAt", TestItem.AddressA.Bytes.ToHexString(true), "0x1")
+            : await ctx.Test.TestEthRpc("eth_getBalance", TestItem.AddressA.Bytes.ToHexString(true), "latest");
 
-        Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
-        Assert.That(serialized, Does.Contain(expectedMessage));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(serialized, Does.Contain($"\"code\":{expectedCode}"));
+            Assert.That(serialized, Does.Contain(expectedMessage));
+        }
     }
 
-    private sealed class MissingStorageStateReader(IStateReader inner, bool stateNotRetained) : IStateReader
+    private sealed class MissingStateReader(IStateReader inner, bool stateNotRetained, bool storage) : IStateReader
     {
-        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) => inner.TryGetAccount(baseBlock, address, out account);
-        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value) =>
-            throw new MissingTrieNodeException($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash,
+        public bool FailReads { get; set; }
+        public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account) =>
+            !FailReads || storage ? inner.TryGetAccount(baseBlock, address, out account) : throw Missing(baseBlock);
+        public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
+        {
+            if (FailReads) throw Missing(baseBlock);
+            inner.GetStorage(baseBlock, address, index, out value);
+        }
+        private MissingTrieNodeException Missing(BlockHeader? baseBlock) =>
+            new($"State for block {baseBlock?.Number} is unavailable", null, TreePath.Empty, Keccak.EmptyTreeHash,
                 stateNotRetained ? new StateNotRetainedException($"No state available for block {baseBlock?.Number}") : null);
         public byte[]? GetCode(Hash256 codeHash) => inner.GetCode(codeHash);
         public byte[]? GetCode(in ValueHash256 codeHash) => inner.GetCode(in codeHash);

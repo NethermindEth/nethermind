@@ -21,9 +21,9 @@ public interface IPbtDbManager : IPbtCommitTarget
     PbtReadOnlySnapshotBundle? TryGatherReadOnlyBundle(in StateId stateId);
 
     /// <inheritdoc cref="TryGatherReadOnlyBundle"/>
-    /// <exception cref="InvalidOperationException">The state is not available.</exception>
+    /// <exception cref="StateNotRetainedException">The state is not available.</exception>
     PbtReadOnlySnapshotBundle GatherReadOnlyBundle(in StateId stateId) =>
-        TryGatherReadOnlyBundle(stateId) ?? throw new InvalidOperationException($"State {stateId} is not available");
+        TryGatherReadOnlyBundle(stateId) ?? throw new StateNotRetainedException($"State {stateId} is not available");
 
     /// <summary>Assembles a writable bundle able to serve reads at <paramref name="stateId"/>, or null when that state is not available.</summary>
     /// <param name="usage">
@@ -34,11 +34,14 @@ public interface IPbtDbManager : IPbtCommitTarget
     PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage);
 
     /// <inheritdoc cref="TryGatherBundle"/>
-    /// <exception cref="InvalidOperationException">The state is not available.</exception>
+    /// <exception cref="StateNotRetainedException">The state is not available.</exception>
     PbtSnapshotBundle GatherBundle(in StateId stateId, PbtResourcePool.Usage usage) =>
-        TryGatherBundle(stateId, usage) ?? throw new InvalidOperationException($"State {stateId} is not available");
+        TryGatherBundle(stateId, usage) ?? throw new StateNotRetainedException($"State {stateId} is not available");
 
     bool HasStateForBlock(in StateId stateId);
+
+    /// <summary>Prunes snapshots outside the head's ancestry without rewinding the durable base.</summary>
+    void DropStateNotReachableFrom(in StateId head) => throw new NotSupportedException("Head rewind is not supported by this PBT manager.");
 
     /// <summary>Synchronously persists everything up to the committed head, e.g. after genesis processing.</summary>
     void FlushCache(CancellationToken cancellationToken);

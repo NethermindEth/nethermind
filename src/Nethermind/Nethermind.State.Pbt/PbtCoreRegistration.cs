@@ -4,6 +4,11 @@
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
+using Nethermind.Config;
+using Nethermind.Monitoring.Config;
+using Nethermind.State.Flat.PersistedSnapshots.Storage;
+using Nethermind.State.Flat.PersistedSnapshots;
+using Nethermind.State.Pbt.PersistedSnapshots;
 using Nethermind.Core.Memory;
 using Nethermind.Db;
 using Nethermind.Db.Rocks.Config;
@@ -37,11 +42,20 @@ internal static class PbtCoreRegistration
             .AddSingleton<IPbtResourcePool, PbtResourcePool>()
             .AddSingleton<IRefCountingMemoryProvider>(PbtNodeGroupMemory.CreateProvider(config))
             .AddSingleton<IPbtTrieNodeCache, PbtTrieNodeCache>()
-            .AddSingleton<PbtSnapshotRepository>()
+            .AddPbtRetained(config)
+            .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
+                ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
+                ctx.Resolve<PbtRetainedPublicationGate>(), ctx.Resolve<PbtRetainedStorageLifetime>()))
             .AddSingleton<PbtSnapshotCompactor>()
             .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
-            .AddSingleton<PbtPersistenceCoordinator>()
-            .AddSingleton<IPbtDbManager, PbtDbManager>()
+            .AddSingleton<PbtPersistenceCoordinator>(ctx => new PbtPersistenceCoordinator(
+                config, ctx.Resolve<IStateHeaderProvider>(), ctx.Resolve<IPbtPersistence>(), ctx.Resolve<PbtSnapshotRepository>(),
+                ctx.ResolveKeyed<ICompactionSchedule>(DbNames.Pbt), ctx.Resolve<IStatePersistenceBarrier>(), ctx.Resolve<ILogManager>(),
+                ctx.Resolve<IPbtRetainedSnapshotLoader>(), ctx.Resolve<IPbtRetainedSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>().Token))
+            .AddSingleton<IPbtDbManager>(ctx => new PbtDbManager(
+                ctx.Resolve<PbtSnapshotRepository>(), ctx.Resolve<PbtPersistenceCoordinator>(), ctx.Resolve<IPbtPersistence>(),
+                ctx.Resolve<IPbtResourcePool>(), ctx.Resolve<PbtSnapshotCompactor>(), ctx.Resolve<IProcessExitSource>(),
+                ctx.Resolve<ILogManager>(), ctx.Resolve<IMetricsConfig>(), ctx.Resolve<IPbtTrieNodeCache>(), ctx.Resolve<IPbtRetainedSnapshotLoader>()))
             .AddSingleton<PbtStateReader>()
             .AddSingleton<PbtWorldStateManager>()
             .Add<PbtOverridableWorldScope>()
@@ -51,8 +65,38 @@ internal static class PbtCoreRegistration
             .AddSingleton<PbtAnchorImport>()
             .RegisterSingletonJsonRpcModule<IMigrationDebugRpcModule, MigrationDebugRpcModule>();
 
+    private static ContainerBuilder AddPbtRetained(this ContainerBuilder builder, IPbtConfig config)
+    {
+        builder.AddSingleton<PbtRetainedPublicationGate>();
+        if (!config.EnableLongFinality)
+            return builder
+                .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, _ => NullSnapshotCatalog.Instance)
+                .AddSingleton<PbtRetainedStorageLifetime>(_ => new())
+                .AddSingleton<IPbtRetainedSnapshotLoader>(NullPbtRetainedSnapshotLoader.Instance)
+                .AddSingleton<IPbtRetainedSnapshotCompactor>(NullPbtRetainedSnapshotCompactor.Instance);
+
+        return builder
+            .AddKeyedSingleton<IDb>(PbtSnapshotCatalog.DatabaseKey, ctx => ctx.Resolve<IDbFactory>().CreateDb(new DbSettings(
+                PbtSnapshotCatalog.DatabaseKey, Path.Combine(DbNames.Pbt, "retained-snapshots-v1", "catalog"))))
+            .AddKeyedSingleton<ISnapshotCatalog>(DbNames.Pbt, ctx => new PbtSnapshotCatalog(ctx.ResolveKeyed<IDb>(PbtSnapshotCatalog.DatabaseKey)))
+            .AddKeyedSingleton<IArenaManager>(DbNames.Pbt, ctx => new ArenaManager(
+                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "retained-snapshots-v1", "arena"),
+                new FlatDbConfig
+                {
+                    ArenaFileSizeBytes = config.ArenaFileSizeBytes,
+                    PersistedSnapshotDedicatedArenaThresholdBytes = config.PersistedSnapshotDedicatedArenaThresholdBytes,
+                    PersistedSnapshotArenaPageCacheBytes = config.PersistedSnapshotArenaPageCacheBytes,
+                    PersistedSnapshotPunchHoleOnReclaim = config.PersistedSnapshotPunchHoleOnReclaim,
+                }, ctx.Resolve<ILogManager>()))
+            .AddKeyedSingleton<BlobArenaManager>(DbNames.Pbt, ctx => new BlobArenaManager(
+                Path.Combine(ctx.Resolve<IInitConfig>().BaseDbPath, DbNames.Pbt, "retained-snapshots-v1", "blob"), config.ArenaFileSizeBytes))
+            .AddSingleton<PbtRetainedStorageLifetime>(ctx => new(ctx.ResolveKeyed<IArenaManager>(DbNames.Pbt), ctx.ResolveKeyed<BlobArenaManager>(DbNames.Pbt)))
+            .AddSingleton<IPbtRetainedSnapshotLoader, PbtRetainedSnapshotLoader>()
+            .AddSingleton<IPbtRetainedSnapshotCompactor, PbtRetainedSnapshotCompactor>();
+    }
+
     /// <summary>Builds the flat compaction schedule over the PBT compaction settings.</summary>
     /// <remarks>The offset is stored under flat's metadata key, so a node running both backends compacts both on the same boundaries.</remarks>
     public static ICompactionSchedule CreateCompactionSchedule(IDb metadataDb, IPbtConfig config, ILogManager logManager) =>
-        new CompactionSchedule(metadataDb, new FlatDbConfig { CompactSize = (ulong)config.CompactSize, CompactionOffset = config.CompactionOffset }, logManager);
+        new CompactionSchedule(metadataDb, new FlatDbConfig { CompactSize = (ulong)config.CompactSize, CompactionOffset = config.CompactionOffset, RegenerateCompactionOffset = config.RegenerateCompactionOffset, PersistedSnapshotMaxCompactSize = config.PersistedSnapshotMaxCompactSize }, logManager);
 }

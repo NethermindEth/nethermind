@@ -83,7 +83,7 @@ public class MigrationBalFollowerTests
     {
         using Harness harness = new();
         await harness.Publish();
-        Assert.Throws<InvalidOperationException>(() => harness.Replay.Apply(harness.Blocks["a1"].Header, harness.Blocks["a2"].Header, harness.Bal("a2")));
+        Assert.Throws<StateNotRetainedException>(() => harness.Replay.Apply(harness.Blocks["a1"].Header, harness.Blocks["a2"].Header, harness.Bal("a2")));
         AssertAbsent(harness, "a2");
         for (int attempt = 0; attempt < 2; attempt++) harness.Replay.Apply(harness.Blocks["anchor"].Header, harness.Blocks["a1"].Header, harness.Bal("a1"));
         AssertState(harness, "a1");

@@ -34,15 +34,17 @@ public class PbtSnapshotCompactor(
         long floor = checked((long)stateId.BlockNumber - (long)width);
         if (!repository.TryLeaseCompactionWindow(stateId, floor, chain)) return false;
         if (_logger.IsDebug) _logger.Debug($"Compacting Pbt snapshots {chain[0].From} -> {stateId}: chainCount={chain.Count}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
-        PbtSnapshot compacted = Compact(chain);
+        PbtSnapshot compacted = Compact(chain, PbtResourcePool.CompactUsage((int)width));
         bool added = repository.TryAddCompacted(compacted);
         if (_logger.IsDebug) _logger.Debug($"Completed Pbt compaction up to {stateId}: added={added}, snapshots={repository.Count}, compactedSnapshots={repository.CompactedCount}, managedBytes={GC.GetTotalMemory(false)}");
         return added;
     }
 
-    public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst)
+    public PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst) =>
+        Compact(chainOldestFirst, PbtResourcePool.CompactUsage(chainOldestFirst.Count));
+
+    private PbtSnapshot Compact(IReadOnlyList<PbtSnapshot> chainOldestFirst, PbtResourcePool.Usage usage)
     {
-        PbtResourcePool.Usage usage = PbtResourcePool.CompactUsage(chainOldestFirst.Count);
         PbtSnapshotContent merged = resourcePool.GetSnapshotContent(usage);
         try
         {

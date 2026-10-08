@@ -29,6 +29,21 @@ public class PbtConfig : IPbtConfig
     public long CompactionOffset { get; set; } = -1;
     public int MinReorgDepth { get; set; } = 128;
     public int MaxReorgDepth { get; set; } = 256;
+    public bool EnableLongFinality { get; set; } = true;
+    public ulong LongFinalityMaxReorgDepth { get; set; } = 90000;
+    public int MaxInMemoryBaseSnapshotCount { get; set; } = 160;
+    public ulong MaxInMemorySnapshotBytes { get; set; } = 0;
+    public int MaxInFlightCompactJob { get; set; } = 32;
+    public bool InlineCompaction { get; set; } = false;
+    public bool RegenerateCompactionOffset { get; set; } = false;
+    public long ArenaFileSizeBytes { get; set; } = 1L.GiB;
+    public long PersistedSnapshotDedicatedArenaThresholdBytes { get; set; } = 1L.GiB;
+    public long PersistedSnapshotArenaPageCacheBytes { get; set; } = 4L.GiB;
+    public bool PersistedSnapshotPunchHoleOnReclaim { get; set; } = true;
+    public ulong PersistedSnapshotMaxCompactSize { get; set; } = 1048576;
+    public bool ValidatePersistedSnapshot { get; set; } = false;
+    public double PersistedSnapshotBloomBitsPerKey { get; set; } = 14.0;
+    public double InMemorySnapshotBloomBitsPerKey { get; set; } = 14.0;
     public bool ImportFromPreimageFlat { get; set; }
     public int FoldConcurrency { get; set; }
     public int FoldMinOperationsPerWorker { get; set; } = FoldFanOut.DefaultMinOperationsPerWorker;
