@@ -55,6 +55,8 @@ public sealed class ForkChoiceRunner
     private readonly PubkeyCache _pubkeys;
     private readonly ForkChoiceStore _store;
     private readonly ProtoArrayForkChoice _protoArray;
+    internal FastConfirmation FastConfirmation { get; }
+    private ulong? _fastConfirmationSlot;
     private readonly CheckpointRef _bootstrapCheckpoint;
     private readonly HashSet<ulong> _equivocatingIndices = [];
     private readonly List<QueuedAttestation> _queuedAttestations = [];
@@ -203,8 +205,7 @@ public sealed class ForkChoiceRunner
         IGloasBlockStateProvider gloasStateProvider,
         ILogManager? logManager = null)
         : this(spec, stateProvider, pubkeys, gloasStateProvider, GloasAnchor(spec, anchorState, anchorBlock), logManager)
-    {
-    }
+        => _parentBlockHashes[_bootstrapCheckpoint.Root] = anchorBlock.Body!.SignedExecutionPayloadBid!.Message!.ParentBlockHash!;
 
     private ForkChoiceRunner(
         BeaconChainSpec spec,
@@ -235,6 +236,11 @@ public sealed class ForkChoiceRunner
             executionBlockHash: anchor.ExecutionBlockHash,
             slotsPerEpoch: spec.SlotsPerEpoch,
             isGloas: anchor.IsGloas);
+
+        FastConfirmation = new FastConfirmation(spec, _store, _protoArray, _equivocatingIndices,
+            checkpoint => GetCheckpointState(checkpoint), GetBlockState,
+            (head, epoch) => GetBlockSlot(head) / spec.SlotsPerEpoch >= epoch
+                ? GetBlockState(head) : ComputeCheckpointState(new CheckpointRef(epoch, head)));
 
         _blockProposers[anchor.Root] = new BlockProposer(anchor.BlockSlot, anchor.ProposerIndex);
         if (anchor.IsGloas)
@@ -295,6 +301,56 @@ public sealed class ForkChoiceRunner
     public ulong CurrentSlot => _store.CurrentSlot;
     public CheckpointRef JustifiedCheckpoint => _store.JustifiedCheckpoint;
     public CheckpointRef FinalizedCheckpoint => _store.FinalizedCheckpoint;
+    internal Hash256 ConfirmedRoot => GetConfirmedRoot(GetHead());
+
+    internal Hash256 GetConfirmedRoot(Hash256 head)
+    {
+        Hash256 root = FastConfirmation.ConfirmedRoot;
+        return _protoArray.ContainsBlock(root) && _protoArray.IsDescendant(FinalizedCheckpoint.Root, root) && _protoArray.IsDescendant(root, head)
+            && _protoArray.GetBlockExecutionStatus(root) == ExecutionStatus.Valid ? root : FinalizedCheckpoint.Root;
+    }
+
+    /// <summary>Observes a live slot before its attestation deadline, after past-slot votes have been applied.</summary>
+    internal void OnFastConfirmation(ulong actualTimeMilliseconds)
+    {
+        ulong genesisMilliseconds = GenesisTime * 1000;
+        ulong slotMilliseconds = _spec.SecondsPerSlot * 1000;
+        if (actualTimeMilliseconds < genesisMilliseconds)
+            return;
+        ulong observedSlot = (actualTimeMilliseconds - genesisMilliseconds) / slotMilliseconds;
+        if (observedSlot > CurrentSlot)
+        {
+            FastConfirmation.Reset();
+            _fastConfirmationSlot = CurrentSlot;
+            return;
+        }
+        if (observedSlot < CurrentSlot)
+            return;
+        if (_fastConfirmationSlot == CurrentSlot)
+            return;
+
+        ulong deadline = slotMilliseconds * (CurrentSlot / _spec.SlotsPerEpoch >= _spec.GloasForkEpoch
+            ? GloasTiming.AttestationDueBpsGloas : GloasTiming.AttestationDueBps) / 10_000;
+        if ((actualTimeMilliseconds - genesisMilliseconds) % slotMilliseconds >= deadline)
+        {
+            FastConfirmation.Reset();
+            _fastConfirmationSlot = CurrentSlot;
+            return;
+        }
+        if (_fastConfirmationSlot is not ulong previous || previous + 1 != CurrentSlot)
+            FastConfirmation.Reset();
+
+        _fastConfirmationSlot = CurrentSlot;
+        try
+        {
+            FastConfirmation.OnSlot(GetHead());
+        }
+        catch (Exception exception) when (exception is ForkChoiceException or BeaconStateException)
+        {
+            FastConfirmation.Reset();
+            if (_logger.IsDebug) _logger.Debug($"Fast confirmation reset at slot {CurrentSlot}: {exception.Message}");
+        }
+    }
     public Hash256 ProposerBoostRoot => _store.ProposerBoostRoot;
     public bool ContainsBlock(Hash256 blockRoot) => _protoArray.ContainsBlock(blockRoot);
     /// <inheritdoc cref="ProtoArrayForkChoice.GetBlockSlot"/>

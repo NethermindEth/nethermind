@@ -20,6 +20,14 @@ public class ForkChoiceTests
     [TestCaseSource(nameof(MainnetCases))]
     public void Vector_mainnet(ForkChoiceCase testCase) => Execute(testCase);
 
+    [TestCaseSource(nameof(FastConfirmationCases))]
+    public void Fast_confirmation_vector(ForkChoiceCase testCase) =>
+        ConsensusSpecTestSummary.RunAndRecord("fast_confirmation", "fulu", testCase.Preset, testCase.VectorName, () => Run(testCase));
+
+    private static IEnumerable<TestCaseData> FastConfirmationCases() =>
+        FuluDriverSupport.RelativeCases(ConsensusPreset.Minimal, ["fulu"], "fast_confirmation", "steps.yaml",
+            static (p, fork, path, name) => new ForkChoiceCase(p.ToString(), path, name));
+
     private static readonly IReadOnlyDictionary<ConsensusPreset, string[]> HandlersByPreset = new Dictionary<ConsensusPreset, string[]>
     {
         [ConsensusPreset.Minimal] = ["deposit_with_reorg", "ex_ante", "get_head", "get_proposer_head", "on_block", "reorg", "withholding"],
@@ -121,6 +129,7 @@ public class ForkChoiceTests
     private static void Run(ForkChoiceCase testCase)
     {
         FuluDriverSupport.RequireCompiledPreset(testCase.Preset);
+        ForkChoiceStepDriver.RequireSupportedFastConfirmationCase(testCase.CasePath);
 
         ForkChoiceStepDriver.Run(testCase.CasePath);
     }

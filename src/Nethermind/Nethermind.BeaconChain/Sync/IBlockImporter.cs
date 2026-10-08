@@ -65,12 +65,13 @@ public enum BlockImportResult
 
 /// <summary>The current fork-choice head and checkpoints mapped to execution block hashes for <c>forkchoiceUpdated</c>.</summary>
 /// <param name="HeadExecutionHash"><c>null</c> only for a pre-merge head, which cannot occur on Fulu-era mainnet.</param>
+/// <param name="SafeExecutionHash">The confirmed execution hash with FCR enabled, otherwise the justified checkpoint's execution hash.</param>
 /// <param name="HeadPayloadFull">Whether <c>get_head</c> resolved the head <c>PAYLOAD_STATUS_FULL</c>.</param>
 public sealed record HeadView(
     Hash256 HeadRoot,
     ulong HeadSlot,
     Hash256? HeadExecutionHash,
-    Hash256? JustifiedExecutionHash,
+    Hash256? SafeExecutionHash,
     Hash256? FinalizedExecutionHash,
     CheckpointRef Justified,
     CheckpointRef Finalized,

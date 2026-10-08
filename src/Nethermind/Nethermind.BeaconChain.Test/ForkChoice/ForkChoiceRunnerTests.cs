@@ -33,6 +33,44 @@ public class ForkChoiceRunnerTests
 
     private const ulong DoctoredJustifiedEpoch = 2;
 
+    [Test]
+    public void Fast_confirmation_observes_a_slot_only_once()
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        TickToSlot(runner, 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, 1, 1);
+        ImportWithBodyReplay(runner, block);
+        runner.OnFastConfirmation(runner.TimeMilliseconds);
+        runner.OnFastConfirmation(runner.TimeMilliseconds + 1);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(runner.FastConfirmation.PreviousSlotHead, Is.EqualTo(chain.AnchorRoot));
+        Assert.That(runner.FastConfirmation.CurrentSlotHead, Is.EqualTo(block.Root));
+    }
+
+    public enum ConfirmationTiming { MissedSlot, Late, NextSlot }
+
+    [Test]
+    public void Fast_confirmation_resets_after_a_missed_or_late_slot([Values] ConfirmationTiming timing)
+    {
+        (UnsignedChain chain, ForkChoiceRunner runner) = CreateRunner();
+        TickToSlot(runner, 1);
+        UnsignedChain.ChainBlock block = chain.Extend(chain.AnchorRoot, 1, 1);
+        ImportWithBodyReplay(runner, block);
+        runner.OnFastConfirmation(runner.TimeMilliseconds);
+        bool missed = timing == ConfirmationTiming.MissedSlot;
+        TickToSlot(runner, missed ? 3UL : 2UL);
+        ulong deadline = chain.Spec.SecondsPerSlot * 1000 * GloasTiming.AttestationDueBps / Presets.BasisPoints;
+        ulong delay = timing == ConfirmationTiming.NextSlot ? chain.Spec.SecondsPerSlot * 1000 : missed ? 0 : deadline;
+        runner.OnFastConfirmation(runner.TimeMilliseconds + delay);
+        runner.OnFastConfirmation(runner.TimeMilliseconds);
+
+        using IDisposable assertions = Assert.EnterMultipleScope();
+        Assert.That(runner.FastConfirmation.PreviousSlotHead, Is.EqualTo(chain.AnchorRoot));
+        Assert.That(runner.FastConfirmation.CurrentSlotHead, Is.EqualTo(missed ? block.Root : chain.AnchorRoot));
+        Assert.That(runner.ConfirmedRoot, Is.EqualTo(runner.FinalizedCheckpoint.Root));
+    }
+
     [TestCase(0ul, 0ul, true, TestName = "same_epoch_is_ok")]
     [TestCase(64ul, 0ul, true, TestName = "exactly_the_max_gap_is_ok")]
     [TestCase(96ul, 0ul, false, TestName = "one_epoch_past_the_max_gap_is_not_ok")]

@@ -10,6 +10,9 @@ public interface IBeaconChainConfig : IConfig
     [ConfigItem(Description = "Whether to enable the embedded beacon chain consensus driver. Supports Mainnet, Sepolia, Hoodi, Gnosis and Chiado, selected by the execution layer's configured network, without an external consensus client.", DefaultValue = "false")]
     bool Enabled { get; set; }
 
+    [ConfigItem(Description = "Use the Fast Confirmation Rule for the execution layer's safe block tag. Assumes slot synchrony and at most 25% Byzantine stake; falls back to finalized when confirmation conditions fail. When disabled, safe follows the justified checkpoint. Does not change finalized.", DefaultValue = "false")]
+    bool EnableFastConfirmation { get; set; }
+
     [ConfigItem(Description = "The beacon API URL to checkpoint-sync the finalized beacon state and block from. When unset, defaults to a provider for the network selected via the execution layer's chain id.", DefaultValue = "null")]
     string? CheckpointSyncUrl { get; set; }
 
