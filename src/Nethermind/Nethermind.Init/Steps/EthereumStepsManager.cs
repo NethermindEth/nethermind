@@ -67,7 +67,11 @@ namespace Nethermind.Init.Steps
                 } while (allRequiredSteps.Any(s => !s.IsCompleted));
             }
 
-            if (!HasTarget) return;
+            if (!HasTarget)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                return;
+            }
 
             // A command's exit code is the target's outcome, so anything short of it completing has to surface
             // as an exception for Program to map. Review every task first, not just the ones the loop happened
@@ -187,7 +191,7 @@ namespace Nethermind.Init.Steps
 
                 if (_logger.IsDebug) _logger.Debug($"Step {stepWrapper.StepInfo.StepType.Name,-24} executed in {Stopwatch.GetElapsedTime(startTime).TotalMilliseconds:N0}ms");
             }
-            catch (Exception exception) when (exception is not TaskCanceledException)
+            catch (Exception exception) when (exception is not OperationCanceledException || !cancellationToken.IsCancellationRequested)
             {
                 if (stepWrapper.Step.MustInitialize)
                 {

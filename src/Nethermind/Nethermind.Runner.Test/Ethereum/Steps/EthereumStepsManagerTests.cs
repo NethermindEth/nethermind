@@ -61,7 +61,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                 logger.IsError.Returns(true);
                 IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
                 consensusPlugin.ApiType.Returns(typeof(NethermindApi));
-                using IContainer container = CreateCommonBuilder(new StepInfo(stepType))
+                using IContainer container = CreateCommonBuilder(new StepInfo(typeof(StepObservingCancellation)), new StepInfo(stepType))
                     .AddSingleton(consensusPlugin)
                     .AddSingleton<ISpecProvider>(MainnetSpecProvider.Instance)
                     .AddSingleton<IInitConfig>(new InitConfig { KzgSetupPath = setupPath.Path })
@@ -69,12 +69,14 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
                     .AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(logger)))
                     .Build();
 
-                await container.Resolve<EthereumStepsManager>().InitializeAll(exitSource.Token);
+                await Assert.ThatAsync(() => container.Resolve<EthereumStepsManager>().InitializeAll(exitSource.Token),
+                    Throws.InstanceOf<OperationCanceledException>());
 
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(exitSource.ExitCode, Is.EqualTo(ExitCodes.MissingPrecompile));
                     Assert.That(exitSource.Token.IsCancellationRequested, Is.True);
+                    Assert.That(container.Resolve<StepObservingCancellation>().WasExecuted, Is.True);
                     logger.Received(1).Error(Arg.Is<string>(message => message.Contains(setupPath.Path) && message.Contains("restart")), null);
                     logger.DidNotReceive().Error(Arg.Any<string>(), Arg.Is<Exception?>(exception => exception != null));
                 }
@@ -515,6 +517,20 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
 
             return builder;
+        }
+    }
+
+    public class StepObservingCancellation : IStep, IRecordingStep
+    {
+        public bool WasExecuted { get; private set; }
+
+        public async Task Execute(CancellationToken cancellationToken)
+        {
+            WasExecuted = true;
+            TaskCompletionSource cancelled = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            using CancellationTokenRegistration registration = cancellationToken.Register(() => cancelled.TrySetResult());
+            await cancelled.Task;
+            cancellationToken.ThrowIfCancellationRequested();
         }
     }
 
