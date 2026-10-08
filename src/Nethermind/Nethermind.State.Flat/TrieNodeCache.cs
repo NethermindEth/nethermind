@@ -249,6 +249,9 @@ public sealed class TrieNodeCache : ITrieNodeCache
 
         public void Reset()
         {
+            // Every write counts, so a cache no trie node was loaded into (most read-only calls) has nothing to clear.
+            if (_count == 0) return;
+
             if (_count / UtilRatio > ShardCount * _shardSize)
             {
                 int newTarget = (int)(_count / UtilRatio);

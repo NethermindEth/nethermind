@@ -96,7 +96,7 @@ public record TransientResource(TransientResource.Size size) : IDisposable, IRes
             BloomFilter oldFilter = Interlocked.Exchange(ref PrewarmedAddresses, newFilter);
             oldFilter.Dispose();
         }
-        else
+        else if (PrewarmedAddresses.Count != 0)
         {
             PrewarmedAddresses.Clear();
         }

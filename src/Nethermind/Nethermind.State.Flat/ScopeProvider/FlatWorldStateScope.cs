@@ -24,6 +24,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     private readonly IFlatCommitTarget _commitTarget;
     private readonly IFlatDbConfig _configuration;
     private readonly ITrieWarmer _warmer;
+    private readonly bool _warmsTries;
     private readonly Lazy<WarmReadPool>? _warmReadPool;
     private readonly ILogManager _logManager;
     private readonly bool _isReadOnly;
@@ -90,6 +91,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
         _warmReadPool = warmReadPool;
         _logManager = logManager;
         _warmer = trieCacheWarmer;
+        _warmsTries = trieCacheWarmer.IsActive;
 
         _warmer.OnEnterScope();
         _isReadOnly = isReadOnly;
@@ -407,6 +409,10 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public int HintSequenceId => _hintSequenceId; // Called by FlatStorageTree
 
+    // Without an active warmer a hint could only pin the bundle, mark the dedupe bloom and build a storage tree for a
+    // push that is rejected anyway; read-only scopes run on the no-op warmer.
+    internal bool WarmsTries => _warmsTries;
+
     private PatriciaTree CreateWarmupStateTree()
     {
         PatriciaTree tree = new(new StateTrieStoreWarmerAdapter(_snapshotBundle), _logManager)
@@ -450,14 +456,14 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
 
     public void HintWarmAccount(Address address)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (!_warmsTries || IsDisposed || _pausePrewarmer) return;
         if (_snapshotBundle.ShouldQueuePrewarm(address))
             QueueStateTrieWarmup(address, _hintSequenceId);
     }
 
     public void HintWarmSlot(Address address, in UInt256 index)
     {
-        if (IsDisposed || _pausePrewarmer) return;
+        if (!_warmsTries || IsDisposed || _pausePrewarmer) return;
         if (!_snapshotBundle.ShouldQueuePrewarm(address, index)) return;
 
         FlatStorageTree? tree = GetOrCreateHintWarmStorageTree(address);
