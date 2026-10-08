@@ -1,0 +1,2412 @@
+{
+ "test_name": "eth_getBlockByNumber pool (recent window, hashes)",
+ "description": "200 distinct blocks from the ~7400 blocks just below the snapshot head (25482600-25490000); fullTx false.",
+ "clients": [
+  "nethermind"
+ ],
+ "duration": "30s",
+ "rps": 4000,
+ "vus": 512,
+ "calls": [
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184da57",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dd74",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed8e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ddcf",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dd7d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184edbc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ee6d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eb99",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184de56",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184df4a",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dacd",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d892",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184db02",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d5a4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d99d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184db03",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d6bc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e029",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e98e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e05c",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dcdc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ece0",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e677",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d79d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e6bc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d65d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184da58",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e600",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d588",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eb01",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eba2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea63",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e619",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d62b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea00",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e907",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec34",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e33c",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea5b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dcd3",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec0e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dff7",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184daf4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d5e2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184efce",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e5a1",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184efaa",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef34",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ded0",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e701",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec7b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dee7",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e4e4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dc4d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e628",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184da1e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea80",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dbf0",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184deb6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d61d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e78e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e366",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e3d8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea89",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef12",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef96",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dba1",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e824",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e7bb",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e940",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184deff",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e8fc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dfff",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dc91",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ee4a",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184de09",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dc1f",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef63",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d8b9",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d7d3",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184f156",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184df3b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e423",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d654",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184f18e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ecf5",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec20",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e781",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ea6e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e050",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed7c",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e8d2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef37",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ee54",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e04f",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184edda",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eb1e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e278",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d700",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dc18",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eea2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eb66",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ddd4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ddaf",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef6d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dac6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184db09",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dfa8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e970",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e24d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d817",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eeae",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dcd4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dab3",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d674",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184db45",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e15d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d6f7",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184db41",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e3b5",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e61a",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e903",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184f10f",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed6d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d69b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e584",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e5ef",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed82",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e198",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d698",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d919",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dfd3",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e87b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e7e8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184f07d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e7d8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e0d4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed81",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d62c",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e808",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184efc1",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d6d2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e5ec",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e1ce",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef03",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed10",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eccd",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d827",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e1d2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef70",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e031",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184de91",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ef94",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184de98",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e7d0",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184def2",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec3b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e790",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dd70",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ed7d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184df8f",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e398",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e64b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e3de",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184da2e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dabc",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d9c1",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e53c",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e30b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec29",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ee97",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ddc7",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eb05",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e4ef",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e307",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ecd4",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e3f6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d5f6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184d764",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184f199",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e651",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e7d9",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e2a8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eaa8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e4f9",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e2b6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e42f",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eba6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dd3b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e810",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184da5e",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e249",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e526",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184e40d",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eec6",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184df51",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184edd8",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184ec1b",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184dc82",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  },
+  {
+   "name": "gbn hashes window",
+   "method": "eth_getBlockByNumber",
+   "params": [
+    "0x184eff9",
+    false
+   ],
+   "weight": 1,
+   "thresholds": [
+    "p(99)<600000"
+   ]
+  }
+ ]
+}
