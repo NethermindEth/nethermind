@@ -197,7 +197,7 @@ public class PbtAnchorPublicationTests
             case "anchor-changed": harness.IsAnchorCurrent = () => false; break;
         }
 
-        Assert.ThrowsAsync(Is.TypeOf(expected), () => harness.Publish(cancellation.Token));
+        Assert.ThrowsAsync(Is.InstanceOf(expected), () => harness.Publish(cancellation.Token));
 
         AssertUnpublished(harness);
         harness.Reopen();
@@ -214,7 +214,7 @@ public class PbtAnchorPublicationTests
         {
             if (duringStaging || harness.Target.GetColumnDb(PbtColumns.Metadata).Get("validState"u8) is not null) cancellation.Cancel();
         };
-        Assert.ThrowsAsync<OperationCanceledException>(() => harness.Publish(cancellation.Token));
+        Assert.That(() => harness.Publish(cancellation.Token), Throws.InstanceOf<OperationCanceledException>());
         harness.Target.OnSync = () => { };
         if (duringStaging)
         {
