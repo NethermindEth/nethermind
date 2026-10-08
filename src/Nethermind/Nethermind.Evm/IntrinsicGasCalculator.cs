@@ -150,7 +150,7 @@ public static class IntrinsicGasCalculator
     /// authorizations, which runs outside the EVM's out-of-gas handling, never meters at runtime.
     /// </remarks>
     internal static ulong CalculateAuthorizationBalBytes(Transaction transaction, IReleaseSpec spec) =>
-        spec.IsEip8279Enabled && transaction.AuthorizationList is { Length: int authorizationsCount }
+        SpecFlags.Eip8279(spec) && transaction.AuthorizationList is { Length: int authorizationsCount }
             ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
             : 0;
 
