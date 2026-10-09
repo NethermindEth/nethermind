@@ -334,7 +334,7 @@ namespace Nethermind.Core.Caching
 
             const int preInit = 48 /* Slots */ + 80 /* Dictionary */ + 64;
             long postInit = 72 /* Three array headers */
-                + (long)MemorySizes.FindNextPrime(currentItemsCount) * (12 + Unsafe.SizeOf<TKey>())
+                + (long)MemorySizes.FindNextPrime(currentItemsCount) * (sizeof(int) + MemorySizes.Align(12 + Unsafe.SizeOf<TKey>()))
                 + (long)currentItemsCount * LruSlots<LruCacheItem>.EntrySize;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
         }

@@ -404,6 +404,17 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
+        public void Memory_estimate_includes_dictionary_buckets_and_reference_key_padding()
+        {
+            // Three occupied slots use an estimated five dictionary entries, including their buckets.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(LruCache<int, int>.CalculateMemorySize(0, 3), Is.EqualTo(416));
+                Assert.That(LruCache<string, int>.CalculateMemorySize(0, 3), Is.EqualTo(480));
+            }
+        }
+
+        [Test]
         public void Matches_reference_lru_after_growth_removal_and_clear(
             [Values(1, 3, 32)] int capacity,
             [Values(0, 1, 4)] int startCapacity,
