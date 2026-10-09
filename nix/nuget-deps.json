@@ -261,28 +261,28 @@
   },
   {
     "pname": "Microsoft.CodeAnalysis.Analyzers",
-    "version": "5.9.0",
-    "hash": "sha256-Oh/37B3mV4HUfJxgdC9xY6TpzpwJxwHNggLe2aINSZU="
+    "version": "5.6.0",
+    "hash": "sha256-LrNc8k+P71XB8Wfb0RCDd35Vw/V0xR6l1KcSYZmtEz8="
   },
   {
     "pname": "Microsoft.CodeAnalysis.Common",
-    "version": "5.9.0",
-    "hash": "sha256-d+/UcVwkyM1rNvm5KYCi9ahuSntTZI1PHKO3mjkzpCk="
+    "version": "5.6.0",
+    "hash": "sha256-Q+34cKCUHLMUdigLSuCunqcpAzagynq7O6LJ09EPu6g="
   },
   {
     "pname": "Microsoft.CodeAnalysis.CSharp",
-    "version": "5.9.0",
-    "hash": "sha256-dgLD26oSImjzsmxswN0C65Ik3qlELtJ69cP+VtZDmT8="
+    "version": "5.6.0",
+    "hash": "sha256-nrzGZk9oLuCEvhDT+IS+XBVOuHVrwL8RGj0rZFP4SRo="
   },
   {
     "pname": "Microsoft.CodeAnalysis.CSharp.Workspaces",
-    "version": "5.9.0",
-    "hash": "sha256-9WizfN0kN3GU/yDlF5aNrof5rcAwj1kkpjvFmi/Iba8="
+    "version": "5.6.0",
+    "hash": "sha256-4N+AQwgGfxVh5O45UE8fMOlI7n+oW8rjSnk4Z2XNuuw="
   },
   {
     "pname": "Microsoft.CodeAnalysis.Workspaces.Common",
-    "version": "5.9.0",
-    "hash": "sha256-+H8ST1fRd7NMoxaOEr8XgQUASM/ehOoOnjIH38HVkh4="
+    "version": "5.6.0",
+    "hash": "sha256-Kxxsk4a0wO3L85E48we9YUMtIWzdf4d2g/c3u6SBcqE="
   },
   {
     "pname": "Microsoft.EntityFrameworkCore",
