@@ -1165,7 +1165,9 @@ public partial class EngineModuleTests
         ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
         if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
 
-        Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        // A suggest that is not held completes at once, and a verdict in hand beats a budget that also ran out, so
+        // a block processed before the request looks can still be answered VALID.
+        Assert.That(response.Data.Status, suggestPending ? Is.EqualTo(PayloadStatus.Syncing) : Is.AnyOf(PayloadStatus.Syncing, PayloadStatus.Valid));
 
         using CancellationTokenSource cts = new(GateTimeout);
         while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
