@@ -108,26 +108,36 @@ public class JsonRpcIpcRunnerTests
     }
 
     [Test]
-    public async Task HandleIpcConnection_EngineEnabled_ProcessesPipelinedRequestsInOrder()
+    public async Task HandleIpcConnection_EngineEnabled_ProcessesPipelinedRequestsInOrder([Values] bool ipcOverride)
     {
-        // 1. JsonRpc.EnabledModules includes Engine, so IPC serves engine methods, and IPC concurrency is above 1.
+        // 1. IPC serves Engine through either the global module list or its own override, with concurrency above 1.
         // 2. The client pipelines a slow request (newPayload), then a fast one (forkchoiceUpdated).
-        // 3. The slow request is held until the fast one has been sent, giving a second worker every chance to start it.
+        // 3. Hold the slow request while a second worker has a bounded opportunity to answer the fast one.
         // 4. The fast request must start only after the slow one has answered.
-        TaskCompletionSource fastSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        PipelinedRequestRecorder recorder = new(slowGate: fastSent.Task);
+        TaskCompletionSource releaseSlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        PipelinedRequestRecorder recorder = new(slowGate: releaseSlow.Task);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
-        await using (IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, [ModuleType.Engine, ModuleType.Eth], cts.Token))
+        string[] enabledModules = ipcOverride ? [ModuleType.Eth] : [ModuleType.Engine, ModuleType.Eth];
+        string[]? ipcModules = ipcOverride ? [ModuleType.Engine, ModuleType.Eth] : null;
+        await using (IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, enabledModules, cts.Token, ipcModules))
         {
             try
             {
                 await connection.SendAsync("slow"u8.ToArray(), cts.Token);
                 await connection.SendAsync("fast"u8.ToArray(), cts.Token);
+                try
+                {
+                    await recorder.FastAnswered.WaitAsync(TimeSpan.FromSeconds(1), cts.Token);
+                }
+                catch (TimeoutException)
+                {
+                    // With one worker, the fast request cannot answer until the slow request is released.
+                }
             }
             finally
             {
-                fastSent.TrySetResult();
+                releaseSlow.TrySetResult();
             }
 
             await Task.WhenAll(recorder.SlowAnswered, recorder.FastAnswered).WaitAsync(cts.Token);
@@ -138,16 +148,18 @@ public class JsonRpcIpcRunnerTests
     }
 
     [Test]
-    public async Task HandleIpcConnection_EngineDisabled_AnswersAFastRequestBehindASlowOne()
+    public async Task HandleIpcConnection_EngineDisabled_AnswersAFastRequestBehindASlowOne([Values] bool ipcOverride)
     {
-        // 1. JsonRpc.EnabledModules does not include Engine, and IPC concurrency is above 1.
+        // 1. IPC excludes Engine through either the global module list or its own override, with concurrency above 1.
         // 2. The client pipelines a slow request, then a fast one; the slow one is held until the fast one has answered.
         // 3. Processing one request at a time would never answer the fast request, so the bounded wait fails.
         TaskCompletionSource releaseSlow = new(TaskCreationOptions.RunContinuationsAsynchronously);
         PipelinedRequestRecorder recorder = new(slowGate: releaseSlow.Task);
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(10));
 
-        await using IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, [ModuleType.Eth], cts.Token);
+        string[] enabledModules = ipcOverride ? [ModuleType.Engine, ModuleType.Eth] : [ModuleType.Eth];
+        string[]? ipcModules = ipcOverride ? [ModuleType.Eth] : null;
+        await using IpcConnection connection = await IpcConnection.OpenAsync(recorder.Processor, enabledModules, cts.Token, ipcModules);
         try
         {
             await connection.SendAsync("slow"u8.ToArray(), cts.Token);
@@ -182,10 +194,10 @@ public class JsonRpcIpcRunnerTests
             _serving = serving;
         }
 
-        public static async Task<IpcConnection> OpenAsync(IJsonRpcProcessor processor, string[] enabledModules, CancellationToken token)
+        public static async Task<IpcConnection> OpenAsync(IJsonRpcProcessor processor, string[] enabledModules, CancellationToken token, string[]? ipcModules = null)
         {
             IConfigProvider configProvider = Substitute.For<IConfigProvider>();
-            configProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig { EnabledModules = enabledModules });
+            configProvider.GetConfig<IJsonRpcConfig>().Returns(new JsonRpcConfig { EnabledModules = enabledModules, IpcEnabledModules = ipcModules });
             JsonRpcIpcRunner runner = new(
                 processor,
                 configProvider,
