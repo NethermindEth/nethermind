@@ -1486,8 +1486,9 @@ public partial class VirtualMachine<TGasPolicy>(
 
     /// <summary>Zeroes ecRecover's output unless the recovered account's code is empty or an EIP-7702 delegation.</summary>
     /// <remarks>Runs after <see cref="IPrecompile.Run"/> so the result cache never holds a code-dependent answer, and
-    /// charges the access cost before reading the account so running out of gas leaves it cold and out of the BAL.</remarks>
-    /// <returns><c>false</c> when the access cost exceeds the frame's remaining gas.</returns>
+    /// charges the access cost and meters the EIP-8279 address bytes before reading the account so running out of gas
+    /// leaves it cold and out of the BAL.</remarks>
+    /// <returns><c>false</c> when the frame cannot pay the access cost or the floor cannot take the address bytes.</returns>
     private bool TryRestrictEcRecoverOutput(VmState<TGasPolicy> state, IReleaseSpec spec, ref byte[] output)
     {
         if (output.Length == 0)
@@ -1497,7 +1498,8 @@ public partial class VirtualMachine<TGasPolicy>(
         }
 
         Address recovered = new(output.AsSpan(output.Length - Address.Size));
-        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered))
+        if (!TGasPolicy.TryConsumeAccountAccessGas(ref state.Gas, spec, in state.AccessTracker, IsTracingAccess, recovered)
+            || (spec.IsEip8279Enabled && !TryMeterBalAddress(recovered)))
         {
             return false;
         }

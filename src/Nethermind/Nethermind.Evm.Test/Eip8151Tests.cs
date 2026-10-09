@@ -483,7 +483,7 @@ public class Eip8151Tests : VirtualMachineTestsBase
 
     private static UInt256 AsWord(Address address) => new(address.Bytes, isBigEndian: true);
 
-    private static byte[] CreateInput(PrivateKey key)
+    internal static byte[] CreateInput(PrivateKey key)
     {
         ValueHash256 message = ValueKeccak.Compute("EIP-8151"u8);
         Signature signature = new Ecdsa().Sign(key, in message);
