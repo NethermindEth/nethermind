@@ -32,8 +32,10 @@ public class GCKeeper : IDisposable
     private bool _disposed;
     private int _pendingEntries;
     private TaskCompletionSource? _entriesDrained;
-    // Region entries this keeper made; each moves GC.CollectionCount without collecting anything.
-    private long _ownEntries;
+    // Region entries this keeper started and finished, whatever their result; each entry moves GC.CollectionCount
+    // without collecting anything (see EndProcessingWindow).
+    private long _ownEntriesStarted;
+    private long _ownEntriesDone;
     private readonly Gen0BudgetTracker _budget = new();
     private readonly BlockAllocationTracker _blockAllocation = new();
     // Held across a payload's region entry, and across the re-commit's entry and end, so the two never overlap.
@@ -214,39 +216,62 @@ public class GCKeeper : IDisposable
     {
         // Counted here rather than when queued: the runtime can still decline, and the payload can end before the entry runs.
         Interlocked.Increment(ref Metrics.NoGcRegionEntries);
-        Interlocked.Increment(ref _ownEntries);
         if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
     }
 
     /// <summary>The throwaway region of <see cref="RecommitAfterDecommit"/> was entered.</summary>
     /// <remarks>
     /// Not a payload's entry, so <see cref="Metrics.NoGcRegionEntries"/> leaves it out. It moves GC.CollectionCount as
-    /// any entry does, so it counts as an own entry, which keeps a payload in processing from taking it for a runtime
-    /// collection. It hands the heaps the region's budget as any entry does, and its end does not restore gen0's, so
-    /// the guard's estimate follows it.
+    /// any entry does, so <see cref="TryStartRuntimeRegion"/> counts it as an own entry, which keeps a payload in
+    /// processing from taking it for a runtime collection. It hands the heaps the region's budget as any entry does,
+    /// and its end does not restore gen0's, so the guard's estimate follows it.
     /// </remarks>
     private void OnRecommitEntered()
     {
         Interlocked.Increment(ref Metrics.NoGcRegionRecommits);
-        Interlocked.Increment(ref _ownEntries);
         if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
     }
 
-    /// <summary>Collections the runtime has counted, this keeper's region entries among them, and the bytes allocated, where a payload starts or ends.</summary>
-    private readonly record struct ProcessingSample(int Collections, long OwnEntries, long Allocated);
+    private bool TryStartRuntimeRegion()
+    {
+        Interlocked.Increment(ref _ownEntriesStarted);
+        try
+        {
+            return _runtime.TryStart(_defaultSize, _lohSize);
+        }
+        finally
+        {
+            Interlocked.Increment(ref _ownEntriesDone);
+        }
+    }
 
-    // Reads without a lock: an entry finishing between the first two can shift the comparison by one, which is rare.
-    private ProcessingSample SampleProcessing() => new(_runtime.CollectionCount, Interlocked.Read(ref _ownEntries), _runtime.AllocatedBytes);
+    /// <summary>Where a payload starts or ends: the keeper's entries finished, the collections the runtime has counted (those entries among them), the keeper's entries started, and the bytes allocated.</summary>
+    private readonly record struct ProcessingSample(long OwnEntriesDone, int Collections, long OwnEntriesStarted, long Allocated);
+
+    // Read in this order, see EndProcessingWindow.
+    private ProcessingSample SampleProcessing()
+    {
+        long done = Interlocked.Read(ref _ownEntriesDone);
+        int collections = _runtime.CollectionCount;
+        long started = Interlocked.Read(ref _ownEntriesStarted);
+        return new(done, collections, started, _runtime.AllocatedBytes);
+    }
 
     /// <summary>
     /// Records what was allocated between the payload's start and the end of its lease for the guard, and counts the
     /// payload if the runtime collected in that time, other than by entering a region.
     /// </summary>
+    /// <remarks>
+    /// An own entry that moved the collection count between the two samples' reads of it started before the end
+    /// sample read the started count, and finished after the start sample read the done count, so at most
+    /// end.OwnEntriesStarted - start.OwnEntriesDone of the collections counted are own entries. This never reports a
+    /// false collection; an own entry overlapping an edge of the window can hide a runtime collection in it (rare).
+    /// </remarks>
     private void EndProcessingWindow(in ProcessingSample start, bool guard, bool skippedByGuard)
     {
         ProcessingSample end = SampleProcessing();
         if (guard) _blockAllocation.Record(end.Allocated - start.Allocated);
-        if (end.Collections - start.Collections <= end.OwnEntries - start.OwnEntries) return;
+        if (end.Collections - start.Collections <= end.OwnEntriesStarted - start.OwnEntriesDone) return;
         Interlocked.Increment(ref Metrics.NewPayloadsWithCollection);
         if (skippedByGuard) Interlocked.Increment(ref Metrics.NoGcRegionGuardMisses);
     }
@@ -468,7 +493,7 @@ public class GCKeeper : IDisposable
                 // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
                 lock (keeper._runtimeLock)
                 {
-                    started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                    started = keeper.TryStartRuntimeRegion();
                     if (started) keeper.OnRegionEntered();
                 }
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
@@ -602,7 +627,7 @@ public class GCKeeper : IDisposable
 
         try
         {
-            if (_runtime.TryStart(_defaultSize, _lohSize))
+            if (TryStartRuntimeRegion())
             {
                 OnRecommitEntered();
                 if (_runtime.IsActive) _runtime.End();

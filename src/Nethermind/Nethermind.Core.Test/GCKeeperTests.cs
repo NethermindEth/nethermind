@@ -930,6 +930,36 @@ public class GCKeeperTests
         }
     }
 
+    // An entry moves the collection count before the keeper sees it return. A payload whose window ends meanwhile must
+    // not take it for a collection, nor for a guard miss, while a runtime collection alongside it still counts.
+    [Test]
+    public void Entry_in_flight_when_a_skipped_payload_ends_is_not_a_collection([Values] bool runtimeCollects)
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        long withCollection = Interlocked.Read(ref Metrics.NewPayloadsWithCollection);
+        long misses = Interlocked.Read(ref Metrics.NoGcRegionGuardMisses);
+
+        IDisposable skipped = keeper.TryStartNoGCRegion();
+        runtime.AllocatedBytes = 950 * Mb;
+        using IDisposable entering = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(1), "the first payload skipped the region with 1000 MB left, the second enters with 50 MB");
+        runtime.AfterStart = () =>
+        {
+            if (runtimeCollects) runtime.RunGC();
+            skipped.Dispose();
+        };
+        queued[0].Execute();
+
+        int expected = runtimeCollects ? 1 : 0;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Interlocked.Read(ref Metrics.NewPayloadsWithCollection) - withCollection, Is.EqualTo(expected));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionGuardMisses) - misses, Is.EqualTo(expected));
+        }
+    }
+
     // A payload can start while the previous one is still inside its region: newPayload answers before its block
     // is committed and keeps the region for that commit. The region has to cover both and end when the last one
     // leaves, otherwise the newcomer runs with collections resumed under it.
@@ -1081,6 +1111,8 @@ public class GCKeeperTests
         }
         public Exception? EndFailure { get; init; }
         public Action? BeforeStart { get; set; }
+        /// <summary>Runs inside the entry, after it has moved the count and before it returns.</summary>
+        public Action? AfterStart { get; set; }
         public Action? BeforeEnd { get; init; }
         public bool Refuse { get; init; }
         public bool Throw { get; init; }
@@ -1095,6 +1127,7 @@ public class GCKeeperTests
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
             // An entry moves the count and leaves the index (gc.cpp, update_collection_counts_for_no_gc).
             if (!Refuse) CollectionCount++;
+            AfterStart?.Invoke();
             return IsActive = !Refuse;
         }
         public void End()
