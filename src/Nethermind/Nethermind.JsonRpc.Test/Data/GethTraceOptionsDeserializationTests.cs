@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json;
+using System.Text.Json.Serialization.Metadata;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Serialization.Json;
 using NUnit.Framework;
@@ -21,8 +23,19 @@ public class GethTraceOptionsDeserializationTests
         GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>($$"""{"timeout":"{{timeout}}","tracer":"noopTracer"}""", serializerOptions)!;
 
         Assert.That(options.Tracer, Is.EqualTo("noopTracer"));
-        if (seconds is null) Assert.Throws<FormatException>(() => _ = options.Timeout);
+        if (seconds is null) Assert.Catch<FormatException>(() => _ = options.Timeout);
         else Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(seconds.Value)));
+    }
+
+    [Test]
+    public void Deferred_duration_bound_does_not_echo_oversized_input()
+    {
+        string timeout = new('x', 10_000);
+        GethTraceOptions options = new() { TimeoutText = timeout };
+
+        FormatException exception = Assert.Catch<FormatException>(() => _ = options.Timeout)!;
+
+        Assert.That(exception.Message, Does.Not.Contain(timeout));
     }
 
     [Test]
@@ -45,6 +58,36 @@ public class GethTraceOptionsDeserializationTests
         Assert.That(
             JsonSerializer.Serialize(actual, EthereumJsonSerializer.JsonRpcRequestOptions),
             Is.EqualTo(JsonSerializer.Serialize(expected, EthereumJsonSerializer.JsonRpcRequestOptions)));
+    }
+
+    [Test]
+    public void ByNumber_options_use_the_supplied_metadata_resolver()
+    {
+        RecordingResolver resolver = new(EthereumJsonSerializer.JsonRpcRequestOptions.TypeInfoResolver!);
+        JsonSerializerOptions serializerOptions = new(EthereumJsonSerializer.JsonRpcRequestOptions)
+        {
+            TypeInfoResolver = resolver
+        };
+        serializerOptions.Converters.Insert(0, new GethTraceOptionsConverter());
+
+        GethTraceOptions options = JsonSerializer.Deserialize<GethTraceOptions>("{\"timeout\":\"5s\"}", serializerOptions)!;
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(options.Timeout, Is.EqualTo(TimeSpan.FromSeconds(5)));
+            Assert.That(resolver.RequestedTypes, Does.Contain("WireOptions"));
+        }
+    }
+
+    private sealed class RecordingResolver(IJsonTypeInfoResolver inner) : IJsonTypeInfoResolver
+    {
+        internal HashSet<string> RequestedTypes { get; } = [];
+
+        public JsonTypeInfo? GetTypeInfo(Type type, JsonSerializerOptions options)
+        {
+            RequestedTypes.Add(type.Name);
+            return inner.GetTypeInfo(type, options);
+        }
     }
 
     // The node reads RPC parameters through source-generated metadata, which assigns every init-only member;
