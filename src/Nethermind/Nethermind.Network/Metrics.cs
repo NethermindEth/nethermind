@@ -123,5 +123,9 @@ namespace Nethermind.Network
         [CounterMetric]
         [Description("Number of incoming transactions skipped before RLP decoding for exceeding the configured size limit.")]
         public static long OversizedTransactionsSkipped;
+
+        [CounterMetric]
+        [Description("Number of announced transactions not requested because their eth/73 announced nonce is below the sender's head-state nonce.")]
+        public static long StaleNonceAnnouncementsSkipped;
     }
 }

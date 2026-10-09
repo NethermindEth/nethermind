@@ -2939,6 +2939,10 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(in ValueHash256 hash) => _hashCache.Get(in hash);
 
+        // Lock-free: racing a head change reads the old or new cached nonce, as LowNonceFilter could.
+        public bool IsNonceStale(Address sender, ulong nonce) =>
+            _accountCache.TryGetCached(sender, out AccountStruct account) && account.Nonce > nonce;
+
         public void ForgetRejectedBlobTransaction(Hash256 hash) => _hashCache.DeleteFromCurrentBlock(hash);
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
@@ -3038,6 +3042,10 @@ namespace Nethermind.TxPool
                         }
                     }
                 );
+
+            /// <summary>Reads <paramref name="address"/> from the cache only, without falling back to state.</summary>
+            public bool TryGetCached(Address address, out AccountStruct account) =>
+                _caches[GetCacheIndex(address)].TryGet(new AddressAsKey(address), out account);
 
             private static int GetCacheIndex(Address address) => address.Bytes[^1] & 0xf;
 

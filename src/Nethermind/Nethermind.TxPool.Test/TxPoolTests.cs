@@ -1634,6 +1634,31 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
+        public void is_nonce_stale_answers_from_cached_sender_accounts_only()
+        {
+            _txPool = CreatePool();
+            Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+            EnsureSenderBalance(tx);
+            EnsureSenderBalance(TestItem.AddressB, 1.Ether);
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            _stateProvider.IncrementNonce(TestItem.AddressA);
+            _stateProvider.IncrementNonce(TestItem.AddressB);
+
+            // An uncached sender is unknown rather than read from state.
+            Assert.That(_txPool.IsNonceStale(TestItem.AddressA, 0), Is.False);
+
+            // Filtering the transaction caches its sender's account.
+            Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.OldNonce));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.IsNonceStale(TestItem.AddressA, 1), Is.True);
+                Assert.That(_txPool.IsNonceStale(TestItem.AddressA, 2), Is.False);
+                Assert.That(_txPool.IsNonceStale(TestItem.AddressA, 3), Is.False);
+                Assert.That(_txPool.IsNonceStale(TestItem.AddressB, 0), Is.False);
+            }
+        }
+
+        [Test]
         public void get_next_pending_nonce()
         {
             _txPool = CreatePool();

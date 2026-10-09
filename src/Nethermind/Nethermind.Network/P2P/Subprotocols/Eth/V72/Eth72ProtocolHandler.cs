@@ -291,6 +291,9 @@ public class Eth72ProtocolHandler(
     protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
         Deserialize<NewPooledTransactionHashesMessage72>(content);
 
+    /// <summary>Whether the transaction at <paramref name="index"/> of a received announcement is not worth fetching.</summary>
+    protected virtual bool ShouldSkipAnnouncedTransaction(NewPooledTransactionHashesMessage72 message, int index, TxType txType) => false;
+
     /// <summary>Called when the transaction at <paramref name="index"/> of a received announcement is requested from this peer.</summary>
     protected virtual void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
     {
@@ -449,7 +452,7 @@ public class Eth72ProtocolHandler(
                 continue;
             }
 
-            if (txSize > MaxAnnouncedSize(txType))
+            if (txSize > MaxAnnouncedSize(txType) || ShouldSkipAnnouncedTransaction(msg, i, txType))
             {
                 continue;
             }
