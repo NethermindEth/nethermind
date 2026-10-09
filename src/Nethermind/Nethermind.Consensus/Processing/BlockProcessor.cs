@@ -185,12 +185,6 @@ public partial class BlockProcessor(
         CommitState(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, token);
-        // EIP-8116: done once here because the receipts tracer, the parallel combiner and BAL validation each
-        // write the running total, which the tracer's Restore and the parallel/BAL totals rely on during execution.
-        if (spec.IsEip8116Enabled)
-        {
-            receipts.SetEip8116GasUsed();
-        }
 
         // Signal that transactions are done — subscribers can cancel background work (e.g. prewarmer)
         // to free the thread pool for blooms, receipts root, state root parallel work below
@@ -210,6 +204,12 @@ public partial class BlockProcessor(
     protected TxReceipt[] FinalizeBlock<TComputesCommitments>(Block block, IBlockTracer blockTracer, IReleaseSpec spec, TxReceipt[] receipts)
         where TComputesCommitments : struct, IFlag
     {
+        // EIP-8116: execution relies on running totals, so convert to per-transaction gas once before the receipts root.
+        if (spec.IsEip8116Enabled)
+        {
+            receipts.SetEip8116GasUsed();
+        }
+
         BlockHeader header = block.Header;
 
         using ParallelUnbalancedWork.WorkerScope workerScope = ParallelUnbalancedWork.BeginWorkerScope(Environment.ProcessorCount);
