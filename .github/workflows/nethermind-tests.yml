@@ -293,7 +293,6 @@ jobs:
 
       - name: Fetch submodules
         if: ${{ contains(fromJSON(env.FIXTURE_PROJECTS), matrix.project) }}
-        id: submodules
         background: true
         uses: ./.github/actions/fetch-submodules
         with:
@@ -391,7 +390,6 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Fetch submodules
-        id: submodules
         background: true
         uses: ./.github/actions/fetch-submodules
         with:
