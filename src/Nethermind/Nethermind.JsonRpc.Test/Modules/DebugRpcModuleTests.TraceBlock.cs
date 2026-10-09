@@ -103,7 +103,7 @@ public partial class DebugRpcModuleTests
     public async Task Debug_traceBlockByNumber_rejects_oversized_timeout_tokens_before_lookup(string kind)
     {
         using Context context = await Context.Create();
-        string timeout = kind == "valid" ? string.Concat(Enumerable.Repeat("1s", 33)) : new string('x', 65);
+        string timeout = kind == "valid" ? new string('0', 64) + "1s" : new string('x', 65);
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
             context.Blockchain.BlockTree.Head!.Number + 1, new { tracer = NativeNoopTracer.NoopTracer, timeout });
 
