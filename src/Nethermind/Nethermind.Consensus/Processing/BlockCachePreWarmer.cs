@@ -1675,8 +1675,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 {
                     if (cancellationToken.IsCancellationRequested) return addresses;
                     ReadOnlySpan<byte> word = data.Slice(offset, 32);
-                    if (!IsAddressWord(word) || !(seen ??= new PooledSet<ValueHash256>(64)).Add(new ValueHash256(word))) continue;
-                    (addresses ??= new ArrayPoolList<Address>(64)).Add(new Address(word[12..]));
+                    if (!IsAddressWord(word) || !(seen ??= [with(64)]).Add(new ValueHash256(word))) continue;
+                    (addresses ??= [with(64)]).Add(new Address(word[12..]));
                     if (addresses.Count == MaxCalldataAddressesPerBlock) return addresses;
                 }
             }

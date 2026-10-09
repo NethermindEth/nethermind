@@ -1006,7 +1006,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             if (_dictionary.Count > capacity)
             {
                 // These arrays will be discarded; clearing their entries first only adds writes.
-                _dictionary = new OptimizedDictionary<SlotKey, StorageChangeTrace>(capacity);
+                _dictionary = [with(capacity)];
             }
             else
             {

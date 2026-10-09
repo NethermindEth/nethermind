@@ -100,8 +100,8 @@ public class OptimizedCollectionsTests
     private static void RunDictionary<TKey>(Func<int, TKey> key, IEqualityComparer<TKey>? comparer, int seed) where TKey : notnull, IEquatable<TKey>
     {
         Random random = new(seed);
-        Dictionary<TKey, int> expected = new(comparer);
-        OptimizedDictionary<TKey, int> actual = new(comparer);
+        Dictionary<TKey, int> expected = [with(comparer)];
+        OptimizedDictionary<TKey, int> actual = [with(comparer)];
         for (int step = 0; step < Steps; step++)
         {
             TKey k = key(random.Next(KeyRange));
@@ -177,8 +177,8 @@ public class OptimizedCollectionsTests
     private static void RunHashSet<T>(Func<int, T> item, IEqualityComparer<T>? comparer, int seed) where T : notnull, IEquatable<T>
     {
         Random random = new(seed);
-        HashSet<T> expected = new(comparer);
-        OptimizedHashSet<T> actual = new(comparer);
+        HashSet<T> expected = [with(comparer)];
+        OptimizedHashSet<T> actual = [with(comparer)];
         for (int step = 0; step < Steps; step++)
         {
             T value = item(random.Next(KeyRange));

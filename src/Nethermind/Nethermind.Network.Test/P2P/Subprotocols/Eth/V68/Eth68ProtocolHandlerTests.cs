@@ -1075,7 +1075,7 @@ public class Eth68ProtocolHandlerTests
         HandleZeroMessage(announcement, Eth68MessageCode.NewPooledTransactionHashes);
         _session.DidNotReceive().DeliverMessage(Arg.Any<GetPooledTransactionsMessage>());
 
-        ArrayPoolList<Transaction> transactions = new(2);
+        ArrayPoolList<Transaction> transactions = [with(2)];
         using PooledTransactionsMessage response = new(1111, new(transactions));
         if (correlated)
         {
