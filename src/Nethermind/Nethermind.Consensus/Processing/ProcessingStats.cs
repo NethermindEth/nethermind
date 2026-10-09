@@ -180,6 +180,8 @@ namespace Nethermind.Consensus.Processing
             into[7] = Volatile.Read(ref Blockchain.Metrics.PrewarmBlockStartMicros);
         }
 
+        private const long TrimmedBlockMicros = 250_000;
+
         public void CaptureStartStats()
         {
             // EVM counters — always captured (used by normal console reporting).
@@ -392,6 +394,22 @@ namespace Nethermind.Consensus.Processing
                 Metrics.OddBlocksProcessed++;
                 Metrics.OddBlocksProcessingMicros += data.ProcessingMicroseconds;
                 Metrics.OddBlocksStateHashMicros += stateHashMicros;
+            }
+
+            // The same split without blocks a stall pushed past TrimmedBlockMicros: one of those dominates a mean of a few
+            // hundred blocks.
+            if (data.ProcessingMicroseconds <= TrimmedBlockMicros)
+            {
+                if ((blockNumber & 1) == 0)
+                {
+                    Metrics.EvenBlocksProcessedTrimmed++;
+                    Metrics.EvenBlocksProcessingMicrosTrimmed += data.ProcessingMicroseconds;
+                }
+                else
+                {
+                    Metrics.OddBlocksProcessedTrimmed++;
+                    Metrics.OddBlocksProcessingMicrosTrimmed += data.ProcessingMicroseconds;
+                }
             }
 
             // Log slow blocks in JSON format for cross-client performance analysis

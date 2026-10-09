@@ -114,6 +114,22 @@ public static class Metrics
     public static long OddBlocksStateHashMicros;
 
     [CounterMetric]
+    [Description("Processed blocks with an even number that took at most 250 ms")]
+    public static long EvenBlocksProcessedTrimmed;
+
+    [CounterMetric]
+    [Description("Microseconds spent processing blocks with an even number that took at most 250 ms")]
+    public static long EvenBlocksProcessingMicrosTrimmed;
+
+    [CounterMetric]
+    [Description("Processed blocks with an odd number that took at most 250 ms")]
+    public static long OddBlocksProcessedTrimmed;
+
+    [CounterMetric]
+    [Description("Microseconds spent processing blocks with an odd number that took at most 250 ms")]
+    public static long OddBlocksProcessingMicrosTrimmed;
+
+    [CounterMetric]
     [Description("Blocks whose processing prepared the pre-block caches")]
     public static long PrewarmBlockStarts;
 
