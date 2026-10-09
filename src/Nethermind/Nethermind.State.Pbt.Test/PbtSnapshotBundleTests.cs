@@ -1036,7 +1036,7 @@ public class PbtSnapshotBundleTests
             : [(3, 1), (3, 3), (5, 2), (6, 4), (64, 5), (70, 6), (70, 0), (1000, 7)];
         (uint Slot, uint Value)[] expected = [(3, 3), (5, 2), (6, 4), (64, 5), (70, 0), (1000, 7)];
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
-        SlotWrite[] slotWrites = Array.ConvertAll(writes, write => new SlotWrite(write.Slot, (UInt256)write.Value));
+        (UInt256 Slot, UInt256 Value)[] slotWrites = Array.ConvertAll(writes, write => ((UInt256)write.Slot, (UInt256)write.Value));
         bundle.SetSlots(TestItem.AddressA, PbtStateKey.AddressKeyHash(TestItem.AddressA), slotWrites);
 
         Dictionary<string, byte[]> model = [];

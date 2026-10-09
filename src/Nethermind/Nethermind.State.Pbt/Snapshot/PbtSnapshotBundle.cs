@@ -247,22 +247,22 @@ public sealed class PbtSnapshotBundle(
     /// Writes are applied in order, so a later write of a slot wins. Adjacent writes into one slot run rewrite that
     /// run once, so writes sorted by slot rewrite each run they touch once.
     /// </remarks>
-    internal void SetSlots(Address address, in ValueHash256 addressHash, ReadOnlySpan<SlotWrite> writes)
+    internal void SetSlots(Address address, in ValueHash256 addressHash, ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
     {
         for (int start = 0, end; start < writes.Length; start = end)
         {
             for (end = start + 1; end < writes.Length && SlotRun.InSameRun(writes[start].Slot, writes[end].Slot); end++) { }
-            ReadOnlySpan<SlotWrite> runWrites = writes[start..end];
+            ReadOnlySpan<(UInt256 Slot, UInt256 Value)> runWrites = writes[start..end];
             if (Eip8297KeyDerivation.IsHeaderSlot(runWrites[0].Slot))
             {
                 PbtPath key = default;
-                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = Eip8297KeyDerivation.HeaderStorageKey(addressHash, write.Slot), SlotLeaf(write.Value));
+                foreach ((UInt256 Slot, UInt256 Value) write in runWrites) SetPbtLeaf(key = Eip8297KeyDerivation.HeaderStorageKey(addressHash, write.Slot), SlotLeaf(write.Value));
                 SetRunSlots(key, addressHash, runWrites);
             }
             else
             {
                 PbtStoragePath key = default;
-                foreach (SlotWrite write in runWrites) SetPbtLeaf(key = PbtStateKey.Storage(address, addressHash, write.Slot), SlotLeaf(write.Value));
+                foreach ((UInt256 Slot, UInt256 Value) write in runWrites) SetPbtLeaf(key = PbtStateKey.Storage(address, addressHash, write.Slot), SlotLeaf(write.Value));
                 SetRunSlots(key, addressHash, runWrites);
             }
         }
@@ -271,7 +271,7 @@ public sealed class PbtSnapshotBundle(
     private static ValueHash256? SlotLeaf(in UInt256 value) => value.IsZero ? null : value.ToValueHash();
 
     /// <summary>Applies <paramref name="runWrites"/>, all into the run of <paramref name="slotKey"/>, with one rewrite of that run.</summary>
-    private void SetRunSlots<TKey>(in TKey slotKey, in ValueHash256 addressHash, ReadOnlySpan<SlotWrite> runWrites) where TKey : struct, IPbtKey<TKey>
+    private void SetRunSlots<TKey>(in TKey slotKey, in ValueHash256 addressHash, ReadOnlySpan<(UInt256 Slot, UInt256 Value)> runWrites) where TKey : struct, IPbtKey<TKey>
     {
         HashedKey<TKey> runKey = SlotRun.RunKey(slotKey);
         PbtSnapshotContent writeBuffer = WriteBuffer;

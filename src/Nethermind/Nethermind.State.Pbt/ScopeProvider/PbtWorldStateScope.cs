@@ -394,11 +394,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         // One batch serves one contract on one thread, so the address hash is derived once for the whole run of slots.
         private readonly ValueHash256 _addressHash = PbtStateKey.AddressKeyHash(address);
         // Applied together, so each slot run the writes touch is rewritten once for all of its adjacent writes.
-        private readonly ArrayPoolList<SlotWrite> _writes = new(estimatedEntries);
+        private readonly ArrayPoolList<(UInt256 Slot, UInt256 Value)> _writes = new(estimatedEntries);
 
         public void Set(in UInt256 index, in UInt256 value)
         {
-            _writes.Add(new SlotWrite(index, value));
+            _writes.Add((index, value));
             scope._rootDirty = true;
         }
 
