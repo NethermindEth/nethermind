@@ -88,7 +88,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         }
         else
         {
-            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
         }
         await pipe.Writer.CompleteAsync();
@@ -168,7 +168,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         Pipe pipe = new();
         try
         {
-            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, cancellation.Token));
             await pipe.Writer.CompleteAsync();
             ReadResult read = await pipe.Reader.ReadAsync();
@@ -206,7 +206,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         PipeWriter writer = PipeWriter.Create(stream);
         try
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
                 await JsonRpcResponseWriter.WriteAsync(writer, response, EthereumJsonSerializer.JsonOptions, transport.Token));
             await writer.CompleteAsync();
             string envelope = Encoding.UTF8.GetString(stream.ToArray());
@@ -237,7 +237,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         PipeWriter writer = PipeWriter.Create(stream);
         try
         {
-            Assert.ThrowsAsync<OperationCanceledException>(async () =>
+            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
                 await result.WriteToAsync(writer, CancellationToken.None));
         }
         finally
@@ -247,14 +247,14 @@ public class JsonRpcResponseWriterStreamingIdTests
     }
 
     [Test]
-    public void Transport_write_failure_is_not_mapped_to_an_rpc_error()
+    public async Task Transport_write_failure_is_not_mapped_to_an_rpc_error()
     {
         using JsonRpcSuccessResponse response = new()
         {
             Result = new InvalidTransactionResult(2),
             Streaming = CreateStreamingContext()
         };
-        Assert.ThrowsAsync<IOException>(async () =>
+        await Assert.ThrowsAsync<IOException>(async () =>
             await JsonRpcResponseWriter.WriteAsync(new FailingPipeWriter(), response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
     }
 
@@ -275,7 +275,7 @@ public class JsonRpcResponseWriterStreamingIdTests
         if (prefixBytes <= 16384)
             await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None);
         else
-            Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
+            await Assert.ThrowsAsync<InsufficientBalanceException>(async () =>
                 await JsonRpcResponseWriter.WriteAsync(pipe.Writer, response, EthereumJsonSerializer.JsonOptions, CancellationToken.None));
         await pipe.Writer.CompleteAsync();
         ReadResult read = await pipe.Reader.ReadAsync();
