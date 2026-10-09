@@ -25,7 +25,8 @@ namespace Nethermind.JsonRpc;
 public static class JsonRpcResponseWriter
 {
     private const int MaterializedLogsStreamingThreshold = 128;
-    private static readonly ConditionalWeakTable<JsonSerializerOptions, MaterializedLogsMetadata> _materializedLogsTypeInfo = [];
+    private static readonly Lazy<JsonTypeInfo<JsonRpcSuccessResponse>?> _materializedLogsTypeInfo =
+        new(static () => new MaterializedLogsMetadata(EthereumJsonSerializer.JsonOptions).TypeInfo);
     private static readonly byte[] BatchStart = [(byte)'['];
     private static readonly byte[] BatchSeparator = [(byte)','];
     private static readonly byte[] BatchEnd = [(byte)']'];
@@ -68,10 +69,9 @@ public static class JsonRpcResponseWriter
         {
             if (TryGetMaterializedLogs(response, out ArrayPoolList<FilterLog>? logs) &&
                 writer.CanGetUnflushedBytes && writer is not RewindableStreamPipeWriter &&
-                ReferenceEquals(options, EthereumJsonSerializer.JsonOptions) && options.ReferenceHandler is null)
+                ReferenceEquals(options, EthereumJsonSerializer.JsonOptions))
             {
-                JsonTypeInfo<JsonRpcSuccessResponse>? typeInfo = _materializedLogsTypeInfo.GetValue(options,
-                    static options => new(options)).TypeInfo;
+                JsonTypeInfo<JsonRpcSuccessResponse>? typeInfo = _materializedLogsTypeInfo.Value;
                 if (typeInfo is not null)
                 {
                     return WriteMaterializedLogsAsync(writer, response, logs, typeInfo, cancellationToken);
@@ -154,7 +154,7 @@ public static class JsonRpcResponseWriter
         private static async ValueTask<FlushResult> ValidateAsync(ValueTask<FlushResult> flush) => Validate(await flush);
 
         private static FlushResult Validate(FlushResult result) => result.IsCompleted && !result.IsCanceled
-            ? throw new IOException("The transport stopped reading the JSON-RPC response.")
+            ? throw new OperationCanceledException("The transport stopped reading the JSON-RPC response.")
             : result;
     }
 

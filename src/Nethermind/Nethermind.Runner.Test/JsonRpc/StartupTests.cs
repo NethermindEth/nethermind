@@ -28,7 +28,10 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Memory;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Facade.Filters;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Exceptions;
@@ -632,6 +635,38 @@ public class StartupTests
     }
 
     [Test]
+    public async Task HttpJsonRpcResponseSink_MaterializedLogsDisconnectIsCancellation([Values] bool asynchronous)
+    {
+        HttpJsonRpcResponseSinkFixture fixture = CreateHttpJsonRpcResponseSink(enableLocalStats: true);
+        using MemoryStream responseBody = fixture.ResponseBody;
+        PipeWriter inner = PipeWriter.Create(responseBody, new StreamPipeWriterOptions(leaveOpen: true));
+        CompletedReaderPipeWriter writer = new(inner, asynchronous);
+        IHttpResponseBodyFeature responseFeature = Substitute.For<IHttpResponseBodyFeature>();
+        responseFeature.Stream.Returns(responseBody);
+        responseFeature.Writer.Returns(writer);
+        fixture.Context.Features.Set(responseFeature);
+        ArrayPoolList<FilterLog> logs = new(512);
+        for (int i = 0; i < 512; i++)
+        {
+            logs.Add(new FilterLog(i, 123, 456, TestItem.KeccakA, 0, TestItem.KeccakB,
+                TestItem.AddressA, new byte[64], [TestItem.KeccakC]));
+        }
+        using JsonRpcSuccessResponse response = new() { Id = new JsonRpcId(42), Result = logs };
+        try
+        {
+            await Assert.ThrowsAsync<OperationCanceledException>(async () =>
+                await fixture.Sink.WriteSingleAsync(response, new RpcReport("eth_getLogs", 0, true), CancellationToken.None));
+            fixture.LocalStats.Received().ReportCall(Arg.Is<RpcReport>(report => !report.Success), Arg.Any<long>(), Arg.Any<long?>());
+            Assert.That(writer.FlushCount, Is.EqualTo(1));
+        }
+        finally
+        {
+            fixture.Sink.Abort(abortTransport: false);
+            await inner.CompleteAsync();
+        }
+    }
+
+    [Test]
     public async Task HttpJsonRpcResponseSink_SerializesHexBytesResult()
     {
         byte[] bytes = GC.AllocateUninitializedArray<byte>(32 * 1024);
@@ -1054,6 +1089,29 @@ public class StartupTests
 
     private sealed class DeferredProbeBlobStreamableResult(Func<PipeWriter, CancellationToken, ValueTask> write)
         : ProbeBlobStreamableResult(write), IDeferredExecutionResult;
+
+    private sealed class CompletedReaderPipeWriter(PipeWriter inner, bool asynchronous) : PipeWriter
+    {
+        public int FlushCount { get; private set; }
+        public override bool CanGetUnflushedBytes => inner.CanGetUnflushedBytes;
+        public override long UnflushedBytes => inner.UnflushedBytes;
+        public override Memory<byte> GetMemory(int sizeHint = 0) => inner.GetMemory(sizeHint);
+        public override Span<byte> GetSpan(int sizeHint = 0) => inner.GetSpan(sizeHint);
+        public override void Advance(int bytes) => inner.Advance(bytes);
+        public override void Complete(Exception? exception = null) => inner.Complete(exception);
+        public override void CancelPendingFlush() => inner.CancelPendingFlush();
+        public override ValueTask<FlushResult> FlushAsync(CancellationToken cancellationToken = default)
+        {
+            FlushCount++;
+            return asynchronous ? CompleteAsyncFlush() : new(new FlushResult(false, true));
+        }
+
+        private static async ValueTask<FlushResult> CompleteAsyncFlush()
+        {
+            await Task.Yield();
+            return new FlushResult(false, true);
+        }
+    }
 
     private sealed class FlushingStreamableResult(Action? onFlushed = null) : IStreamableResult
     {
