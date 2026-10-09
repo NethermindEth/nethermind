@@ -3,48 +3,98 @@ name: Run Frame Transaction Measurements
 on:
   workflow_dispatch:
     inputs:
-      harness:
-        description: Which measurement harness to run
+      suite:
+        description: >-
+          Suite to run, one per dispatch. cost: idle reject cost, unpaid burn, retry law, pool retention, shape guard, peer flood (~10 min).
+          producer / import: block-building / block-import delay at fixed gas/s (~25 / ~25 min).
+          import-tails: import with 60 s windows (~100 min, agree a slot first). honest: honest txs lost to the budget (~10 min).
         required: true
         type: choice
         options:
-          - both
-          - verify
-          - mempool
-          - flood
-          - producer-retry
-          - prefix-retry
-        default: both
+          - cost
+          - producer
+          - import
+          - import-tails
+          - honest
+        default: cost
       groth16_artifacts_version:
-        description: >-
-          NethermindEth/frame-verify-gas release tag (vMAJOR.MINOR.PATCH) to download the Groth16 sweep artifacts
-          from. Required for both, mempool and flood; ignored by the other harnesses. Drafts and prereleases are
-          refused.
+        description: frame-verify-gas release tag for the Groth16 artifacts, e.g. v2.0.0. Needed by cost only.
         required: false
         type: string
         default: ''
       raise_verify_gas_const:
-        description: >-
-          Patch Eip8141Constants.MaxVerifyGas to this value before building, so the 500k sweep points can run.
-          Empty means a stock build, on which they self-ignore. Use 500000 for the complete sweep. The patch
-          and its diff are recorded in PROVENANCE.txt beside the results.
+        description: Build with MaxVerifyGas raised to this value, e.g. 500000, so ceilings above 300k run. Empty is a stock build.
         required: false
         type: string
         default: ''
+      machine_type:
+        description: >-
+          GCE machine type of the runner created for this run, or reproducible-benchmarks for the shared bare-metal
+          runner. Runs only compare on the same type.
+        required: false
+        type: string
+        default: c2-standard-8
 
-# Deliberate: no github.ref in the group, so all dispatches share one runner slot; don't "fix" to the repo default.
-concurrency:
-  group: ${{ github.workflow }}
-  cancel-in-progress: false
+# No concurrency group: every run measures on a VM of its own, and a group would let a newer dispatch replace a
+# pending one. Runs on the shared bare-metal runner queue for it instead. Never re-dispatch after a cancel.
 
 permissions:
   contents: read
 
 jobs:
+  # A dedicated on-demand VM per run: the shared benchmark runners queue for hours and hold several machine
+  # types. STANDARD provisioning, so a spot reclaim cannot cut a run short.
+  create_runner:
+    name: Create the measurement runner
+    if: inputs.machine_type != 'reproducible-benchmarks'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    outputs:
+      runner_label: ${{ steps.label.outputs.value }}
+    steps:
+      - name: Derive runner label
+        id: label
+        run: echo "value=frame-tx-measurements-${GITHUB_RUN_ID}" >> "$GITHUB_OUTPUT"
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Create a runner
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: create
+          runner_label: ${{ steps.label.outputs.value }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          machine_type: ${{ inputs.machine_type }}
+          local_ssd_count: 1
+          provisioning_model: STANDARD
+          # Suite timeout plus boot, checkout and build.
+          max_run_duration: ${{ fromJSON('{"cost":"50m","producer":"70m","import":"70m","import-tails":"160m","honest":"50m"}')[inputs.suite] }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
   measure:
     name: Measure the frame-transaction validation prefix
-    runs-on: [self-hosted, reproducible-benchmarks]
-    timeout-minutes: 120
+    needs: [create_runner]
+    # The bare-metal runner skips creation, so run on a created VM or on that runner, never after a failed create.
+    if: ${{ !cancelled() && (needs.create_runner.result == 'success' || needs.create_runner.result == 'skipped') }}
+    runs-on: ${{ inputs.machine_type == 'reproducible-benchmarks' && 'reproducible-benchmarks' || needs.create_runner.outputs.runner_label }}
+    # Suite budget plus build and setup; see the campaign SPEC.
+    timeout-minutes: ${{ fromJSON('{"cost":30,"producer":50,"import":50,"import-tails":140,"honest":30}')[inputs.suite] }}
     steps:
       # Must run before checkout, or a checkout/setup failure skips the wipe while the always() steps below still fire.
       - name: Resolve the output directory
@@ -53,11 +103,72 @@ jobs:
           rm -rf "${RUNNER_TEMP}/frame-tx-measurements"
           mkdir -p "${RUNNER_TEMP}/frame-tx-measurements"
 
+      - name: Capture runner hardware profile
+        shell: bash
+        run: |
+          {
+            echo "captured_at_utc=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "runner=${RUNNER_NAME}"
+            echo "machine=$(hostname)"
+            echo "kernel=$(uname -sr)"
+            echo
+            echo '## cpu'
+            lscpu 2>&1 || true
+            echo
+            echo '## process affinity'
+            taskset -pc "$$" 2>&1 || true
+            echo
+            echo '## memory'
+            free -h 2>&1 || true
+            echo
+            echo '## block devices'
+            lsblk -d -o NAME,MODEL,SIZE,ROTA,TRAN 2>&1 || true
+            echo
+            echo '## relevant mounts'
+            for path in "${RUNNER_TEMP}" /mnt/sda; do
+              if [[ -e "${path}" ]]; then
+                findmnt -T "${path}" || true
+              fi
+            done
+            echo
+            echo '## cpu frequency'
+            if command -v cpupower >/dev/null; then
+              cpupower frequency-info 2>&1 || true
+            else
+              echo 'cpupower unavailable'
+            fi
+            echo
+            # The harness is pinned to CPU 0, so its governor, boost and SMT sibling decide what one core means.
+            echo '## cpu 0'
+            for file in cpu0/cpufreq/scaling_governor cpu0/cpufreq/scaling_cur_freq cpu0/topology/thread_siblings_list cpufreq/boost; do
+              path="/sys/devices/system/cpu/${file}"
+              if [[ -r "${path}" ]]; then
+                echo "${file}=$(cat "${path}" 2>/dev/null)"
+              fi
+            done
+            echo
+            echo '## cgroup limits'
+            for file in cpu.max cpuset.cpus.effective memory.max io.max; do
+              path="/sys/fs/cgroup/${file}"
+              if [[ -r "${path}" ]]; then
+                printf '%s=' "${file}"
+                tr '\n' ' ' < "${path}"
+                echo
+              fi
+            done
+            echo
+            echo '## host load'
+            uptime 2>&1 || true
+            echo
+            echo '## process counts (name only; no command-line arguments)'
+            { ps -eo comm= | sort | uniq -c | sort -nr | head -n 20; } 2>&1 || true
+          } > "${OUTPUT_DIR}/HARDWARE_PROFILE.txt"
+
       - name: Check out repository
         uses: actions/checkout@v6
 
       - name: Fetch the Groth16 sweep artifacts
-        if: inputs.harness == 'both' || inputs.harness == 'mempool' || inputs.harness == 'flood'
+        if: inputs.suite == 'cost'
         env:
           GH_TOKEN: ${{ github.token }}
           REQUESTED_VERSION: ${{ inputs.groth16_artifacts_version }}
@@ -70,8 +181,9 @@ jobs:
         id: measure
         working-directory: src/Nethermind
         env:
-          HARNESS: ${{ inputs.harness }}
+          SUITE: ${{ inputs.suite }}
           RAISE_VERIFY_GAS: ${{ inputs.raise_verify_gas_const }}
+          MACHINE_TYPE: ${{ inputs.machine_type }}
         run: |
           set -uo pipefail
 
@@ -79,17 +191,14 @@ jobs:
           unset FRAME_FLOOD_ALLOW_MULTICORE
 
           projects=()
-          case "${HARNESS}" in
-            both)           projects=(Nethermind.TxPool.Test Nethermind.Blockchain.Test) ;;
-            verify)         projects=(Nethermind.Evm.Test) ;;
-            mempool)        projects=(Nethermind.TxPool.Test) ;;
-            flood|producer-retry) projects=(Nethermind.Blockchain.Test) ;;
-            prefix-retry)   projects=(Nethermind.TxPool.Test) ;;
-            *)              echo "::error::no build mapping for harness '${HARNESS}'"; exit 1 ;;
+          case "${SUITE}" in
+            cost)                   projects=(Nethermind.Evm.Test Nethermind.TxPool.Test Nethermind.Blockchain.Test Nethermind.Network.Test) ;;
+            producer|import|import-tails|honest) projects=(Nethermind.Blockchain.Test) ;;
+            *)                      echo "::error::no build mapping for suite '${SUITE}'"; exit 1 ;;
           esac
 
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]] && ! command -v taskset >/dev/null; then
-            echo "::error::taskset is not available, so FrameTxFloodMeasurement cannot be confined to one CPU and its figures would describe an uncontended node."
+          if [[ "${SUITE}" != "cost" ]] && ! command -v taskset >/dev/null; then
+            echo "::error::taskset is not available, so the ${SUITE} suite cannot be confined to one CPU and its figures would describe an uncontended node."
             exit 1
           fi
           # Safe to patch: this constant only gates the mempool's prefix simulator, never block validity.
@@ -98,10 +207,17 @@ jobs:
           {
             echo "ref=${GITHUB_REF_NAME}"
             echo "sha=${GITHUB_SHA}"
+            echo "suite=${SUITE}"
+            echo "runner=${RUNNER_NAME}"
+            echo "machine_type=${MACHINE_TYPE}"
+            echo "cpu_model=$(lscpu | sed -n 's/^Model name: *//p')"
+            echo "run_id=${GITHUB_RUN_ID}"
+            echo "run_attempt=${GITHUB_RUN_ATTEMPT}"
           } > "${OUTPUT_DIR}/PROVENANCE.txt"
           if [[ -n "${GROTH16_ARTIFACTS_VERSION:-}" ]]; then
             {
               echo "groth16_artifacts=NethermindEth/frame-verify-gas@${GROTH16_ARTIFACTS_VERSION} sha256sums_sha256=${GROTH16_ARTIFACTS_SHA256SUMS_DIGEST}"
+              echo "soispoke_commit=${GROTH16_SOISPOKE_COMMIT}"
               cat "${GROTH16_ARTIFACTS_SHA256SUMS}"
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
@@ -111,8 +227,8 @@ jobs:
               echo "::error::raise_verify_gas_const '${RAISE_VERIFY_GAS}' is not a plain integer of 6 to 9 digits."
               exit 1
             fi
-            if (( RAISE_VERIFY_GAS < 500000 )); then
-              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 500000."
+            if (( RAISE_VERIFY_GAS < 400000 )); then
+              echo "::error::raise_verify_gas_const ${RAISE_VERIFY_GAS} unlocks no sweep point: both harnesses skip a ceiling strictly greater than the constant, and the smallest declared point above stock 300000 is 400000."
               exit 1
             fi
             if [[ ! -f "${CONST_FILE}" ]]; then
@@ -134,53 +250,58 @@ jobs:
           else
             {
               echo "eip8141_max_verify_gas=300000 (stock, unpatched)"
-              echo "# The 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=500000 to measure them."
+              echo "# The 400k and 500k sweep points self-ignore on this build. Re-dispatch with raise_verify_gas_const=400000 or 500000 to measure them."
             } >> "${OUTPUT_DIR}/PROVENANCE.txt"
           fi
+
+          {
+            echo
+            echo '## dotnet'
+            dotnet --info 2>&1 || true
+          } >> "${OUTPUT_DIR}/HARDWARE_PROFILE.txt"
 
           for project in "${projects[@]}"; do
             dotnet build "${project}/${project}.csproj" -c release || exit 1
           done
 
           ran=0
+          # run_harness PROJECT LABEL FILTER PIN [REQUIRED_MARKER ...]
           run_harness() {
-            local project=$1 fixture=$2 rc=0
-            shift 2
+            local project=$1 label=$2 filter=$3 pin=$4 rc=0
+            shift 4
             local -a required=("$@")
             ran=$((ran + 1))
-            if [[ -z "$(find "${project}" -name "${fixture}.cs" -print -quit)" ]]; then
-              echo "::error::${fixture} is not present on ${GITHUB_REF_NAME}. Dispatch this workflow against a ref that carries the harness."
-              return 1
-            fi
-            echo "::group::${fixture}"
+            echo "::group::${label}"
 
             # Microsoft.Testing.Platform swallows console writers; harnesses report to a file instead.
-            local results="${OUTPUT_DIR}/${fixture}-results.txt"
+            local results="${OUTPUT_DIR}/${label}-results.txt"
             export FRAME_MEMPOOL_DOS_OUT="${results}"
             export FRAME_RETRY_OUT="${results}"
             export FRAME_FLOOD_OUT="${results}"
+            export FRAME_POOL_RETENTION_OUT="${results}"
+            export FRAME_PEER_FLOOD_OUT="${results}"
 
             dotnet build-server shutdown || true
 
             local -a cmd=(
               dotnet test --project "${project}/${project}.csproj" -c release --no-build --no-restore
-              --no-ansi --output Detailed -- --filter "FullyQualifiedName~${fixture}"
+              --no-ansi --output Detailed -- --filter "${filter}"
             )
-            if [[ "${fixture}" == "FrameTxFloodMeasurement" ]]; then
+            if [[ "${pin}" == "pin" ]]; then
               cmd=(taskset -c 0 "${cmd[@]}")
             fi
 
-            "${cmd[@]}" 2>&1 | tee "${OUTPUT_DIR}/${fixture}.log" || rc=$?
+            "${cmd[@]}" 2>&1 | tee "${OUTPUT_DIR}/${label}.log" || rc=$?
 
             if ! grep -q '^RESULT ' "${results}" 2>/dev/null; then
-              echo "::error::${fixture} produced no RESULT lines. Check that its inputs are present on the runner."
+              echo "::error::${label} produced no RESULT lines. Check that its inputs are present on the runner."
               rc=1
             fi
 
             local marker
             for marker in ${required[@]+"${required[@]}"}; do
               if ! grep -qF -- "${marker}" "${results}" 2>/dev/null; then
-                echo "::error::${fixture} reported no '${marker}' rows, though this run was configured to produce them. Check that its inputs are present on the runner."
+                echo "::error::${label} reported no '${marker}' rows, though this run was configured to produce them."
                 rc=1
               fi
             done
@@ -189,34 +310,67 @@ jobs:
             return "${rc}"
           }
 
-          # Named so a self-ignored case fails loudly instead of quietly shrinking the sweep.
-          mempool_markers=('shape=groth16-' 'shape=groth16-soispoke' 'case=signature_reject')
-          flood_markers=('case=flood_delay' 'shape=groth16-' 'shape=groth16-soispoke' 'shape=signature-stuffed')
-          if (( RAISE_VERIFY_GAS >= 500000 )); then
-            mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
-            flood_markers+=('shape=groth16-500k')
-          fi
-
+          # Named so a self-ignored case fails loudly instead of quietly shrinking the suite.
+          compiled_max_verify_gas=${RAISE_VERIFY_GAS:-300000}
           status=0
-          if [[ "${HARNESS}" == "verify" ]]; then
-            run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement || status=1
-          fi
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "mempool" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "${mempool_markers[@]}" || status=1
-          fi
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "flood" ]]; then
-            run_harness Nethermind.Blockchain.Test FrameTxFloodMeasurement "${flood_markers[@]}" || status=1
-          fi
-          if [[ "${HARNESS}" == "both" || "${HARNESS}" == "producer-retry" ]]; then
-            producer_retry_markers=('case=k_retry_sweep')
-            run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "${producer_retry_markers[@]}" || status=1
-          fi
-          if [[ "${HARNESS}" == "prefix-retry" ]]; then
-            run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement || status=1
-          fi
+          case "${SUITE}" in
+            cost)
+              mempool_markers=('shape=groth16-250k' 'shape=groth16-300k' 'shape=groth16-soispoke-v2' 'case=signature_reject')
+              (( compiled_max_verify_gas >= 400000 )) && mempool_markers+=('verify_gas=400000' 'shape=groth16-400k')
+              (( compiled_max_verify_gas >= 500000 )) && mempool_markers+=('verify_gas=500000' 'shape=groth16-500k')
+              run_harness Nethermind.TxPool.Test FrameTxMempoolDosMeasurement "FullyQualifiedName~FrameTxMempoolDosMeasurement" nopin "${mempool_markers[@]}" || status=1
+              run_harness Nethermind.Blockchain.Test FrameTxProducerRetryMeasurement "FullyQualifiedName~FrameTxProducerRetryMeasurement" nopin 'case=k_retry_sweep' || status=1
+              run_harness Nethermind.Blockchain.Test FrameTxShapeGuard "TestCategory=frame-tx-cost" nopin || status=1
+              run_harness Nethermind.Evm.Test FrameTxVerifyDosMeasurement "FullyQualifiedName~FrameTxVerifyDosMeasurement" nopin 'case=burn_per_attempt' || status=1
+              run_harness Nethermind.TxPool.Test FrameTxPoolRetentionMeasurement "FullyQualifiedName~FrameTxPoolRetentionMeasurement" nopin 'case=retention_with_deadline' || status=1
+              run_harness Nethermind.Network.Test FrameTxPeerFloodMeasurement "FullyQualifiedName~FrameTxPeerFloodMeasurement" nopin 'case=peer_flood' || status=1
+              ;;
+            producer|import|import-tails|honest)
+              row_case="${SUITE//-/_}_level"
+              run_harness Nethermind.Blockchain.Test "FrameTx-${SUITE}" "TestCategory=frame-tx-${SUITE}" pin "case=${row_case}" || status=1
+              results="${OUTPUT_DIR}/FrameTx-${SUITE}-results.txt"
+              # Every cell the build can reach must have produced one row per level. EVM shapes self-ignore above
+              # the compiled constant; signature stuffing is refused before the cap and runs on every build.
+              paths=('')
+              case "${SUITE}" in
+                producer)            ceilings=(100000 235800 250000 300000 400000 500000); shapes=(keccak-wide signature-stuffed); levels=8 ;;
+                import|import-tails) ceilings=(235800 250000 300000 400000); shapes=(keccak-wide signature-stuffed); paths=(direct protected); levels=4 ;;
+                honest)              ceilings=(235800 300000); shapes=(keccak-wide); levels=5 ;;
+              esac
+              for shape in "${shapes[@]}"; do
+                for ceiling in "${ceilings[@]}"; do
+                  if [[ "${shape}" != signature-stuffed ]] && (( ceiling > compiled_max_verify_gas )); then
+                    continue
+                  fi
+                  for path in "${paths[@]}"; do
+                    cell="shape=${shape} ceiling=${ceiling}${path:+ gossip_path=${path}}"
+                    cell_rows=$(grep -E "^RESULT case=${row_case} shape=${shape} ceiling=${ceiling} " "${results}" 2>/dev/null \
+                      | grep -F -- "${path:+ gossip_path=${path} }" || true)
+                    n=$(grep -c '^RESULT' <<< "${cell_rows}" || true)
+                    if [[ "${n}" != "${levels}" ]]; then
+                      echo "::error::the ${SUITE} suite has ${n} of ${levels} level rows for ${cell}; inspect its log."
+                      status=1
+                    elif grep -Eq "[[:space:]]valid=no([[:space:]]|$)" <<< "${cell_rows}"; then
+                      echo "::warning::${cell} has valid=no rows: its bracketing baselines' medians drifted."
+                    fi
+                  done
+                done
+              done
+              # The producer model's validation cell: sig-stuffed only, so it runs on every build.
+              if [[ "${SUITE}" == producer ]]; then
+                for ceiling in 100000 300000; do
+                  n=$(grep -cE "^RESULT case=producer_long_level shape=signature-stuffed ceiling=${ceiling} " "${results}" 2>/dev/null || true)
+                  if [[ "${n}" != "3" ]]; then
+                    echo "::error::the producer validation cell at ceiling ${ceiling} has ${n} of 3 level rows; inspect its log."
+                    status=1
+                  fi
+                done
+              fi
+              ;;
+          esac
 
           if [[ "${ran}" -eq 0 ]]; then
-            echo "::error::harness '${HARNESS}' ran no fixture. It has a build mapping but no dispatch block."
+            echo "::error::suite '${SUITE}' ran no fixture. It has a build mapping but no dispatch block."
             status=1
           fi
 
@@ -258,3 +412,46 @@ jobs:
           path: ${{ env.OUTPUT_DIR }}/
           if-no-files-found: warn
           retention-days: 30
+
+  destroy_runner:
+    name: Destroy the measurement runner
+    needs: [create_runner, measure]
+    # A failed create still needs teardown: creation may have got part way before giving up.
+    if: always() && needs.create_runner.result != 'skipped'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate Admin App
+        id: gh-admin-app
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.ADMIN_APP_ID }}
+          private-key: ${{ secrets.ADMIN_APP_PRIVATE_KEY }}
+          repositories: "nethermind"
+
+      - name: Destroy runner
+        id: destroy
+        uses: ./.github/actions/gcp-runner
+        with:
+          action: destroy
+          runner_label: ${{ needs.create_runner.outputs.runner_label }}
+          github_token: ${{ steps.gh-admin-app.outputs.token }}
+          expect_instance: ${{ needs.create_runner.result == 'success' }}
+          zones: ${{ vars.GCP_ZONES }}
+          project_id: ${{ vars.GCP_PROJECT_ID }}
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          spawner_service_account: ${{ vars.GCP_SPAWNER_SERVICE_ACCOUNT }}
+          runner_service_account: ${{ vars.GCP_RUNNER_SERVICE_ACCOUNT }}
+
+      - name: Report teardown
+        if: always()
+        env:
+          TERMINATED_BY: ${{ steps.destroy.outputs.terminated_by }}
+          PREEMPTED: ${{ steps.destroy.outputs.preempted }}
+        run: echo "terminated_by=${TERMINATED_BY} preempted=${PREEMPTED}"

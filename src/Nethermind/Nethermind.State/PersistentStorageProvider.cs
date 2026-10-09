@@ -192,28 +192,44 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
 
         // Journal originals (OriginalIdx != -1) only exist above a transaction snapshot, so with none on the
         // stack the captured original is the answer.
-        if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0)
+        if (_transactionChangesSnapshots.Count != 0 && _intraBlockCache.Count != 0
+            && TryGetJournalledTransactionStartValue(in storageCell, _transactionChangesSnapshots.Peek(), out value))
         {
-            ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
-            if (!Unsafe.IsNullRef(ref head))
-            {
-                int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
-                if (head.CurrentIdx <= currentSnapshot)
-                {
-                    // Untouched this transaction — the current value is the tx original.
-                    value = head.Value;
-                    return;
-                }
+            return;
+        }
 
-                // Written this tx — OriginalIdx points at the tx-start value (-1 = block-level original).
-                if (head.OriginalIdx != -1)
-                {
-                    value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
-                    return;
-                }
+        value = _lastCapturedOriginal;
+    }
+
+    /// <summary>Reads a slot's value at the start of the current transaction from the block's journal.</summary>
+    /// <remarks>
+    /// A head the transaction has not written still holds that value. One it has written points at it through
+    /// <c>OriginalIdx</c>, where -1 means nothing in the block wrote the slot before, so the journal has no answer.
+    /// </remarks>
+    /// <param name="storageCell">Storage location.</param>
+    /// <param name="currentSnapshot">The journal position the current transaction started at.</param>
+    /// <param name="value">The value at the start of the transaction, when the journal holds it.</param>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool TryGetJournalledTransactionStartValue(in StorageCell storageCell, int currentSnapshot, out UInt256 value)
+    {
+        ref HeadChange head = ref _intraBlockCache.GetValueRefOrNullRef(storageCell);
+        if (!Unsafe.IsNullRef(ref head))
+        {
+            if (head.CurrentIdx <= currentSnapshot)
+            {
+                value = head.Value;
+                return true;
+            }
+
+            if (head.OriginalIdx != -1)
+            {
+                value = CollectionsMarshal.AsSpan(_changes)[head.OriginalIdx].Value;
+                return true;
             }
         }
-        value = _lastCapturedOriginal;
+
+        value = default;
+        return false;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
@@ -650,6 +666,49 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
     internal void GetPureRead(in StorageCell storageCell, out UInt256 value) =>
         GetOrCreateStorage(storageCell.Address).LoadFromTreeStorage(in storageCell, out value);
 
+    /// <summary>Reads the value a slot held at the start of the current transaction when its contract's storage was cleared in it.</summary>
+    /// <returns><see langword="false"/> when the contract's storage was not cleared in the current transaction.</returns>
+    internal bool TryGetBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        if (_storageClearJournal.Count == 0)
+        {
+            value = default;
+            return false;
+        }
+
+        int currentSnapshot = _transactionChangesSnapshots.TryPeek(out int s) ? s : Resettable.EmptyPosition;
+        foreach (StorageClearChange clear in _storageClearJournal)
+        {
+            if (clear.Address != storageCell.Address || clear.ChangeIndex <= currentSnapshot)
+            {
+                continue;
+            }
+
+            if (TryGetJournalledTransactionStartValue(in storageCell, currentSnapshot, out value))
+            {
+                return true;
+            }
+
+            if (clear.BlockChange.PreviousEntries is { } entries && entries.TryGetValue(storageCell.Index, out StorageChangeTrace trace))
+            {
+                value = trace.After;
+            }
+            else if (clear.BlockChange.MissingAreDefault)
+            {
+                value = default;
+            }
+            else
+            {
+                GetPureRead(in storageCell, out value);
+            }
+
+            return true;
+        }
+
+        value = default;
+        return false;
+    }
+
     /// <summary>
     /// Reads skip the registry/change journal that writes use: repeat reads are served by
     /// <see cref="PerContractState.BlockChange"/>, which is inherently revert-safe (reads have
@@ -806,7 +865,7 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         _toUpdateRoots[address] = true;
         if (contractState.TakeAccountWarmHint()) currentScope.HintWarmAccount(address);
         int journalIndex = _storageClearJournal.Count;
-        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared));
+        _storageClearJournal.Add(new StorageClearChange(address, blockChange, originalValues, rootUpdate, wasCleared, _changes.Count));
         PushStorageClear(journalIndex);
     }
 
@@ -882,7 +941,8 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
         DefaultableDictionary.ClearSnapshot BlockChange,
         List<KeyValuePair<StorageCell, UInt256>>? OriginalValues,
         bool? RootUpdate,
-        bool WasCleared);
+        bool WasCleared,
+        int ChangeIndex);
 
     /// <summary>A slot index as a map key.</summary>
     /// <remarks>
@@ -1044,8 +1104,6 @@ internal sealed partial class PersistentStorageProvider(StateProvider stateProvi
             => ref _dictionary.GetValueRefOrNullRef(storageCellIndex);
 
         public OptimizedDictionary<SlotKey, StorageChangeTrace>.Enumerator GetEnumerator() => _dictionary.GetEnumerator();
-
-        public OptimizedDictionary<SlotKey, StorageChangeTrace>.KeyCollection Keys => _dictionary.Keys;
 
         public void UnmarkClear()
         {
