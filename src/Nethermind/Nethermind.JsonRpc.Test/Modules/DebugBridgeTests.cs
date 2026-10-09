@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Evm.State;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Init;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
