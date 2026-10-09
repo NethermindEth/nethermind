@@ -480,19 +480,15 @@ public sealed class SparseBlobPoolPeerRegistry : ISparseBlobPoolPeerRegistry, ID
         {
             lock (_accountingLock)
             {
-                if (!_transactions.TryGetValue(hash.ValueHash256, out state))
+                if (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
+                    && usage.Announcements >= MaxAnnouncementsPerPeer
+                    && !_transactions.TryGetValue(hash.ValueHash256, out state))
                 {
-                    // New announcements must not churn existing work or allocate state after admission is exhausted.
-                    if (Volatile.Read(ref _trackedTransactionCount) >= MaxTrackedTransactions
-                        || (_peerUsage.TryGetValue(peer.Id, out PeerUsage? usage)
-                            && usage.Announcements >= MaxAnnouncementsPerPeer))
-                    {
-                        return false;
-                    }
-
-                    state = GetOrAdd(hash, out added);
+                    return false;
                 }
             }
+
+            state ??= GetOrAdd(hash, out added);
         }
 
         bool accepted = false;

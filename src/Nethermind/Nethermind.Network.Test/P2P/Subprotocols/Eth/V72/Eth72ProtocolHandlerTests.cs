@@ -148,19 +148,19 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void registry_should_reject_new_announcements_before_allocating_or_evicting([Values(1, 16)] int peerCount)
+    public void registry_should_reject_over_quota_announcements_before_allocating_or_evicting()
     {
         ManualTimerFactory timers = new();
         ManualTimestamper clock = new();
         using SparseBlobPoolPeerRegistry registry = new(
             NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
             LimboLogs.Instance, TimeSpan.Zero, timerFactory: timers, timestamper: clock);
-        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, peerCount);
+        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, 1);
 
-        int capacity = Math.Min(16384, peerCount * 2048);
+        const int capacity = 2048;
         for (int i = 0; i < capacity; i++)
         {
-            Assert.That(registry.RecordAnnouncement(peers[i % peerCount], HashFromInt(i), BlobCellMask.Full), Is.True);
+            Assert.That(registry.RecordAnnouncement(peers[0], HashFromInt(i), BlobCellMask.Full), Is.True);
         }
 
         Hash256[] rejectedHashes = Enumerable.Range(capacity, 1024).Select(HashFromInt).ToArray();
@@ -187,7 +187,7 @@ public class Eth72ProtocolHandlerTests
     }
 
     [Test]
-    public void registry_should_bound_concurrent_announcement_admission()
+    public void registry_should_bound_concurrent_announcement_tracking()
     {
         using SparseBlobPoolPeerRegistry registry = new(
             NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
@@ -202,7 +202,33 @@ public class Eth72ProtocolHandlerTests
             }
         });
 
-        Assert.That(accepted, Is.EqualTo(16384));
+        int retained = Enumerable.Range(0, 65536).Count(i => registry.GetFullProviderAnnouncementCount(HashFromInt(i)) != 0);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(accepted, Is.GreaterThan(16384));
+            Assert.That(retained, Is.InRange(1, 16384));
+        }
+    }
+
+    [Test]
+    public void registry_should_admit_a_new_peer_when_global_tracking_is_full()
+    {
+        using SparseBlobPoolPeerRegistry registry = new(
+            NullTxPool.Instance, _blobCustodyTracker, RunImmediatelyScheduler.Instance,
+            LimboLogs.Instance, TimeSpan.Zero, timerFactory: new ManualTimerFactory());
+        TestSparseBlobPeer[] peers = CreateSparseBlobPeers(registry, 9);
+        for (int i = 0; i < 16384; i++)
+        {
+            Assert.That(registry.RecordAnnouncement(peers[i / 2048], HashFromInt(i), BlobCellMask.Full), Is.True);
+        }
+
+        Hash256 newHash = HashFromInt(16384);
+        Assert.That(registry.RecordAnnouncement(peers[8], newHash, BlobCellMask.Full), Is.True);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(registry.GetFullProviderAnnouncementCount(newHash), Is.EqualTo(1));
+            Assert.That(registry.GetFullProviderAnnouncementCount(HashFromInt(0)), Is.Zero);
+        }
     }
 
     private static TestSparseBlobPeer[] CreateSparseBlobPeers(SparseBlobPoolPeerRegistry registry, int count)
