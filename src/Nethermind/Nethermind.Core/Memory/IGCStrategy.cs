@@ -16,11 +16,13 @@ public interface IGCStrategy
     /// <summary>Returns whether no-GC-region entry is currently permitted.</summary>
     /// <remarks>
     /// Also gates the post-payload collection and the decommit count: a payload disallowed here schedules neither,
-    /// whether or not <see cref="EnterNoGCRegion"/> is set.
+    /// whatever <see cref="NoGCRegionMode"/> says.
     /// </remarks>
     bool CanStartNoGCRegion();
-    /// <summary>Gets whether a permitted payload enters the no-GC region; when not, it runs without one and still schedules the post-payload collection.</summary>
-    bool EnterNoGCRegion { get; }
+    /// <summary>Gets when a permitted payload enters a region of its own; one that does not still schedules the post-payload collection.</summary>
+    NoGcRegionMode NoGCRegionMode { get; }
+    /// <summary>Gets the gen0 allocation budget, in bytes, that has to be left for <see cref="NoGcRegionMode.Guard"/> to skip the region.</summary>
+    long NoGCRegionGuardBytes { get; }
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();
 }
@@ -35,6 +37,16 @@ public enum GcLevel
     Gen1 = 1,
     [Description("Enables garbage collection of generation 2.")]
     Gen2 = 2
+}
+
+public enum NoGcRegionMode
+{
+    [Description("Enters the no-GC region on every `engine_newPayload`.")]
+    Always,
+    [Description("Enters the no-GC region only when the estimated gen0 allocation budget left is below the guard.")]
+    Guard,
+    [Description("Never enters the no-GC region.")]
+    Never
 }
 
 public enum GcCompaction

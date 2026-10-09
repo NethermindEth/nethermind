@@ -9,6 +9,18 @@ namespace Nethermind.Core.Memory;
 public static class Metrics
 {
     [CounterMetric]
-    [Description("Number of engine_newPayload calls processed without a no-GC region during which the runtime ran a garbage collection.")]
+    [Description("Number of engine_newPayload calls that entered a no-GC region of their own.")]
+    public static long NoGcRegionEntries;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls processed without a no-GC region, by the guard or with the region set to Never.")]
+    public static long NoGcRegionSkips;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls the guard let run without a no-GC region during which the runtime still ran a garbage collection.")]
+    public static long NoGcRegionGuardMisses;
+
+    [CounterMetric]
+    [Description("Number of engine_newPayload calls during whose processing the runtime ran a garbage collection, region entries not counted.")]
     public static long NewPayloadsWithCollection;
 }

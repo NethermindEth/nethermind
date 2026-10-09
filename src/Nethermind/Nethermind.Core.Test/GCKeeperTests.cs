@@ -117,7 +117,6 @@ public class GCKeeperTests
         List<IThreadPoolWorkItem> queued = [];
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
         using IDisposable lease = keeper.TryStartNoGCRegion();
@@ -174,7 +173,6 @@ public class GCKeeperTests
         RegionRuntime runtime = new() { EndFailure = failure };
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(true);
         List<IThreadPoolWorkItem> queued = [];
         using GCKeeper keeper = new(strategy, new OneLoggerLogManager(new ILogger(logger)), runtime, queued.Add);
         using (keeper.TryStartNoGCRegion()) queued[0].Execute();
@@ -214,11 +212,11 @@ public class GCKeeperTests
     }
 
     [Test]
-    public async Task Decommit_interval_preserves_sentinels([Values(-1, 0, 50)] int interval, [Values] bool enterRegion)
+    public async Task Decommit_interval_preserves_sentinels([Values(-1, 0, 50)] int interval, [Values] NoGcRegionMode mode)
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(enterRegion);
+        strategy.NoGCRegionMode.Returns(mode);
         strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
         strategy.CollectionsPerDecommit.Returns(interval);
         RegionRuntime runtime = new();
@@ -331,7 +329,6 @@ public class GCKeeperTests
         RegionRuntime runtime = new() { Refuse = refuse };
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
         using IDisposable lease = keeper.TryStartNoGCRegion();
@@ -360,60 +357,209 @@ public class GCKeeperTests
         Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
     }
 
-    // Entering the region is a stop-the-world on the payload's path that collects nothing, so by default a payload
-    // runs without one; the collection after it is what keeps gen0 fresh for the next payload, and that stays.
-    [Test]
-    public async Task Payload_enters_the_region_only_when_the_strategy_asks_and_is_collected_after_either_way([Values] bool enterRegion)
+    private const long Mb = 1_000_000;
+
+    /// <param name="level">NoGC keeps post-block collections, which run on their own, out of tests that read the estimate.</param>
+    private static IGCStrategy ModeStrategy(NoGcRegionMode mode, long guardBytes = 256 * Mb, GcLevel level = GcLevel.NoGC, int collectionsPerDecommit = -1)
     {
-        List<IThreadPoolWorkItem> queued = [];
-        TaskCompletionSource collected = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        RegionRuntime runtime = new() { BeforeCollect = () => collected.TrySetResult() };
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(enterRegion);
-        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
-        strategy.CollectionsPerDecommit.Returns(-1);
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        strategy.NoGCRegionMode.Returns(mode);
+        strategy.NoGCRegionGuardBytes.Returns(guardBytes);
+        strategy.GetForcedGCParams().Returns((level, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(collectionsPerDecommit);
+        return strategy;
+    }
 
-        IDisposable lease = keeper.TryStartNoGCRegion();
-        if (enterRegion) queued[0].Execute();
-        using (Assert.EnterMultipleScope())
+    /// <summary>A runtime with a gen0 budget of <paramref name="budgetMb"/> whose last collection had nothing allocated before it.</summary>
+    private static RegionRuntime BudgetRuntime(long budgetMb)
+    {
+        RegionRuntime runtime = new() { Gen0Budget = budgetMb * Mb };
+        runtime.RunGC();
+        return runtime;
+    }
+
+    // The entry is a stop-the-world on the payload's path that collects nothing; whether or not it is made, the
+    // collection after the payload is what leaves gen0's budget fresh for the next one, so it runs in every mode.
+    [Test]
+    public async Task Post_block_collection_and_decommit_run_in_every_mode([Values] NoGcRegionMode mode, [Values] bool covered)
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        runtime.AllocatedBytes = covered ? 0 : 950 * Mb;
+        List<IThreadPoolWorkItem> queued = [];
+        IGCStrategy strategy = ModeStrategy(mode, guardBytes: 100 * Mb, level: GcLevel.Gen1, collectionsPerDecommit: 2);
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        long entries = Interlocked.Read(ref Metrics.NoGcRegionEntries);
+        long skips = Interlocked.Read(ref Metrics.NoGcRegionSkips);
+
+        bool enters = mode == NoGcRegionMode.Always || (mode == NoGcRegionMode.Guard && !covered);
+        using (IDisposable lease = keeper.TryStartNoGCRegion())
         {
-            Assert.That(queued, Has.Count.EqualTo(enterRegion ? 1 : 0));
-            Assert.That(runtime.IsActive, Is.EqualTo(enterRegion));
-            Assert.That(runtime.Collections, Is.Empty, "nothing is collected while the payload is processed");
+            if (enters) queued[0].Execute();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(queued, Has.Count.EqualTo(enters ? 1 : 0));
+                Assert.That(runtime.IsActive, Is.EqualTo(enters));
+                Assert.That(runtime.Collections, Is.Empty, "nothing is collected while the payload is processed");
+                Assert.That(Interlocked.Read(ref Metrics.NoGcRegionEntries) - entries, Is.EqualTo(enters ? 1 : 0));
+                Assert.That(Interlocked.Read(ref Metrics.NoGcRegionSkips) - skips, Is.EqualTo(enters ? 0 : 1));
+            }
         }
 
-        lease.Dispose();
-        await collected.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.That(() => runtime.Collections.Count, Is.EqualTo(1).After(5000, 10), "the post-block collection runs");
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(runtime.Starts, Is.EqualTo(enterRegion ? 1 : 0));
-            Assert.That(runtime.Ends, Is.EqualTo(enterRegion ? 1 : 0));
+            Assert.That(runtime.Collections[0], Is.EqualTo((GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No)));
             Assert.That(runtime.IsActive, Is.False);
-            Assert.That(runtime.Collections, Is.EqualTo(new[] { (GcLevel.Gen1, GCCollectionMode.Forced, GcCompaction.No) }));
+            Assert.That(runtime.Ends, Is.EqualTo(enters ? 1 : 0));
+        }
+
+        // Payloads without a region still count towards the decommit, which comes on schedule.
+        CountPayload(keeper, strategy);
+        await keeper.ScheduleGCInternal(throttle: false);
+        Assert.That(runtime.Collections[^1], Is.EqualTo((GcLevel.Gen2, GCCollectionMode.Aggressive, GcCompaction.Full)));
+    }
+
+    // Budget 1000 MB, guard 100 MB: the block is covered while at least 100 MB are left.
+    [TestCase(0, false)]
+    [TestCase(850, false)]
+    [TestCase(900, false, TestName = "Exactly the guard left")]
+    [TestCase(901, true)]
+    [TestCase(1_200, true, TestName = "Budget overrun")]
+    public void Guard_enters_only_when_the_budget_left_is_below_its_threshold(long allocatedMb, bool enters)
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        keeper.TryStartNoGCRegion().Dispose();
+        Assert.That(queued, Is.Empty);
+
+        runtime.AllocatedBytes = allocatedMb * Mb;
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(enters ? 1 : 0));
+    }
+
+    [Test]
+    public void Guard_enters_when_the_budget_is_unknown([Values] bool unknown)
+    {
+        RegionRuntime runtime = BudgetRuntime(unknown ? -1 : 1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(unknown ? 1 : 0), "an unknown budget never covers the block");
+    }
+
+    [Test]
+    public void Gen0_budget_estimate_follows_collections_and_regions()
+    {
+        GCKeeper.Gen0BudgetTracker tracker = new();
+        long region = GCKeeper.Gen0BudgetTracker.RegionSohBudget;
+        using (Assert.EnterMultipleScope())
+        {
+            // Before any collection is seen, everything allocated since start counts.
+            Assert.That(tracker.EstimateLeft(100 * Mb, 0, 1_000 * Mb), Is.EqualTo(900 * Mb));
+            Assert.That(tracker.EstimateLeft(300 * Mb, 0, 1_000 * Mb), Is.EqualTo(700 * Mb));
+            Assert.That(tracker.EstimateLeft(300 * Mb, 0, 0), Is.EqualTo(GCKeeper.Gen0BudgetTracker.Unknown));
+            // A collection seen late is assumed right after the previous sample: what came after that counts.
+            Assert.That(tracker.EstimateLeft(500 * Mb, 1, 1_000 * Mb), Is.EqualTo(800 * Mb));
+            // The keeper's own collection: its start is known.
+            tracker.OnCollected(600 * Mb, 610 * Mb, 2);
+            Assert.That(tracker.EstimateLeft(700 * Mb, 2, 1_000 * Mb), Is.EqualTo(900 * Mb));
+            // From a region's entry, the region's budget less what came since is what is left, whatever the runtime's.
+            tracker.OnRegionEntered(800 * Mb, 2);
+            Assert.That(tracker.EstimateLeft(900 * Mb, 2, 4_000 * Mb), Is.EqualTo(region - 100 * Mb));
+            Assert.That(tracker.EstimateLeft(900 * Mb, 2, 300 * Mb), Is.EqualTo(region - 100 * Mb));
+            // Until the next collection is seen.
+            Assert.That(tracker.EstimateLeft(950 * Mb, 3, 4_000 * Mb), Is.EqualTo(3_950 * Mb));
         }
     }
 
     [Test]
-    public void Payload_without_region_counts_a_collection_that_ran_while_it_was_processed([Values] bool collectedInside, [Values] bool enterRegion)
+    public async Task Guard_counts_from_the_start_of_the_keepers_own_collection()
     {
+        RegionRuntime runtime = BudgetRuntime(1_000);
         List<IThreadPoolWorkItem> queued = [];
-        RegionRuntime runtime = new() { CollectionCount = 7 };
-        IGCStrategy strategy = Substitute.For<IGCStrategy>();
-        strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(enterRegion);
+        IGCStrategy strategy = ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb);
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+        keeper.TryStartNoGCRegion().Dispose();
+
+        // The post-block collection, with 950 MB allocated before it.
+        runtime.AllocatedBytes = 950 * Mb;
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        await keeper.ScheduleGCInternal(throttle: false);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
-        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add);
-        long before = Metrics.NewPayloadsWithCollection;
 
-        IDisposable lease = keeper.TryStartNoGCRegion();
-        if (collectedInside) runtime.CollectionCount++;
-        lease.Dispose();
-        lease.Dispose();
+        // 50 MB since the collection: 950 MB left.
+        runtime.AllocatedBytes = 1_000 * Mb;
+        keeper.TryStartNoGCRegion().Dispose();
+        Assert.That(queued, Is.Empty);
 
-        // With a region, a collection inside it means the runtime left the region; only payloads without one count.
-        Assert.That(Metrics.NewPayloadsWithCollection - before, Is.EqualTo(collectedInside && !enterRegion ? 1 : 0));
+        // 920 MB since: 80 MB left.
+        runtime.AllocatedBytes = 1_870 * Mb;
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void Guard_follows_runtime_collections_and_its_own_regions()
+    {
+        RegionRuntime runtime = BudgetRuntime(4_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        keeper.TryStartNoGCRegion().Dispose();
+
+        // A collection the runtime ran on its own, seen at the next payload.
+        runtime.RunGC();
+        runtime.AllocatedBytes = 10 * Mb;
+        keeper.TryStartNoGCRegion().Dispose();
+        Assert.That(queued, Is.Empty, "3990 MB left");
+
+        // 40 MB left: the guard enters, and from then on the region's budget is what is left.
+        runtime.AllocatedBytes = 3_960 * Mb;
+        using (keeper.TryStartNoGCRegion())
+        {
+            Assert.That(queued, Has.Count.EqualTo(1));
+            queued[0].Execute();
+        }
+        runtime.AllocatedBytes += GCKeeper.Gen0BudgetTracker.RegionSohBudget - 200 * Mb;
+        keeper.TryStartNoGCRegion().Dispose();
+        Assert.That(queued, Has.Count.EqualTo(1), "the region's 200 MB left");
+        runtime.AllocatedBytes += 150 * Mb;
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        Assert.That(queued, Has.Count.EqualTo(2), "the region's 50 MB left");
+    }
+
+    [Test]
+    public void Collections_during_processing_are_counted_without_own_entries([Values] NoGcRegionMode mode)
+    {
+        RegionRuntime runtime = BudgetRuntime(1_000);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(mode, guardBytes: 100 * Mb), NullLogManager.Instance, runtime, queued.Add);
+        long withCollection = Interlocked.Read(ref Metrics.NewPayloadsWithCollection);
+        long misses = Interlocked.Read(ref Metrics.NoGcRegionGuardMisses);
+
+        // A block with its region entered (always), or covered by the budget (guard), and nothing collected.
+        IDisposable quiet = keeper.TryStartNoGCRegion();
+        if (queued.Count > 0) queued[^1].Execute();
+        quiet.Dispose();
+        quiet.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Interlocked.Read(ref Metrics.NewPayloadsWithCollection) - withCollection, Is.Zero, "a region entry is not a collection");
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionGuardMisses) - misses, Is.Zero);
+        }
+
+        // A block during which the runtime collects.
+        IDisposable busy = keeper.TryStartNoGCRegion();
+        if (queued.Count > 1) queued[^1].Execute();
+        runtime.RunGC();
+        busy.Dispose();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Interlocked.Read(ref Metrics.NewPayloadsWithCollection) - withCollection, Is.EqualTo(1));
+            Assert.That(Interlocked.Read(ref Metrics.NoGcRegionGuardMisses) - misses, Is.EqualTo(mode == NoGcRegionMode.Guard ? 1 : 0),
+                "only a payload the guard let run without a region is a miss");
+        }
     }
 
     // A payload can start while the previous one is still inside its region: newPayload answers before its block
@@ -527,7 +673,6 @@ public class GCKeeperTests
     {
         IGCStrategy strategy = Substitute.For<IGCStrategy>();
         strategy.CanStartNoGCRegion().Returns(true);
-        strategy.EnterNoGCRegion.Returns(true);
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
         return new GCKeeper(strategy, NullLogManager.Instance, runtime, queue);
     }
@@ -541,7 +686,18 @@ public class GCKeeperTests
         {
             BeforeCollect?.Invoke();
             Collections.Add((generation, mode, compacting));
+            if (CollectionSucceeds) RunGC();
             return CollectionSucceeds;
+        }
+        public int CollectionCount { get; private set; }
+        public long AllocatedBytes { get; set; }
+        public long Gen0Budget { get; set; } = -1;
+        public long LastGcIndex { get; private set; }
+        /// <summary>A collection the runtime runs: moves the count and the index.</summary>
+        public void RunGC()
+        {
+            CollectionCount++;
+            LastGcIndex++;
         }
         public Exception? EndFailure { get; init; }
         public Action? BeforeStart { get; init; }
@@ -551,12 +707,13 @@ public class GCKeeperTests
         public int Starts { get; private set; }
         public int Ends { get; private set; }
         public bool IsActive { get; private set; }
-        public int CollectionCount { get; set; }
         public bool TryStart(long totalSize, long lohSize)
         {
             BeforeStart?.Invoke();
             Starts++;
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
+            // An entry moves the count and leaves the index (gc.cpp, update_collection_counts_for_no_gc).
+            if (!Refuse) CollectionCount++;
             return IsActive = !Refuse;
         }
         public void End()

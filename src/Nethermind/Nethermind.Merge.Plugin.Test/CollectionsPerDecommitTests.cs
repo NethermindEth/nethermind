@@ -25,28 +25,27 @@ public class CollectionsPerDecommitTests
         }
     }
 
-    [TestCase(null, false)]
-    [TestCase("true", true)]
-    [TestCase("false", false)]
-    public void No_gc_region_on_new_payload_is_off_unless_configured(string? value, bool expected)
+    [TestCase(null, null, NoGcRegionMode.Guard, 256_000_000L)]
+    [TestCase("Always", "64", NoGcRegionMode.Always, 64_000_000L)]
+    [TestCase("Never", "0", NoGcRegionMode.Never, 0L)]
+    [TestCase("Guard", "-5", NoGcRegionMode.Guard, 0L)]
+    public void No_gc_region_mode_defaults_to_guard_and_binds(string? mode, string? guardMb, NoGcRegionMode expectedMode, long expectedGuardBytes)
     {
         ConfigProvider configProvider = new();
-        if (value is not null)
-        {
-            configProvider.AddSource(new ArgsConfigSource(new Dictionary<string, string>
-            {
-                { "Merge.EnterNoGcRegionOnNewPayload", value }
-            }));
-        }
+        Dictionary<string, string> args = [];
+        if (mode is not null) args["Merge.NoGcRegionOnNewPayload"] = mode;
+        if (guardMb is not null) args["Merge.NoGcRegionGuardMb"] = guardMb;
+        configProvider.AddSource(new ArgsConfigSource(args));
 
         IMergeConfig mergeConfig = configProvider.GetConfig<IMergeConfig>();
         NoSyncGcRegionStrategy strategy = new(Substitute.For<ISyncModeSelector>(), mergeConfig);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(mergeConfig.EnterNoGcRegionOnNewPayload, Is.EqualTo(expected));
-            Assert.That(strategy.EnterNoGCRegion, Is.EqualTo(expected));
-            Assert.That(NoGCStrategy.Instance.EnterNoGCRegion, Is.False);
+            Assert.That(mergeConfig.NoGcRegionOnNewPayload, Is.EqualTo(expectedMode));
+            Assert.That(strategy.NoGCRegionMode, Is.EqualTo(expectedMode));
+            Assert.That(strategy.NoGCRegionGuardBytes, Is.EqualTo(expectedGuardBytes));
+            Assert.That(NoGCStrategy.Instance.NoGCRegionMode, Is.EqualTo(NoGcRegionMode.Never));
         }
     }
 
