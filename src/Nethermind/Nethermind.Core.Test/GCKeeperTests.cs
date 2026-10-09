@@ -314,6 +314,115 @@ public class GCKeeperTests
         }
     }
 
+    [Test]
+    public async Task Decommit_recommits_the_region_budget_off_the_payload_path([Values] bool decommit)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(decommit ? 0 : -1);
+        RegionRuntime runtime = new();
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, static _ => { }, static (_, _) => Task.FromResult(true));
+
+        await keeper.ScheduleGCInternal(throttle: false);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Collections, Has.Count.EqualTo(1));
+            Assert.That(runtime.Operations, Is.EqualTo(decommit ? new[] { "collect", "start", "end" } : new[] { "collect" }));
+            Assert.That(runtime.IsActive, Is.False);
+        }
+    }
+
+    public enum RecommitSkip { Cancelled, Shutdown, RegionHeld, Disallowed }
+
+    [Test]
+    public async Task Recommit_is_skipped_when_called_off_or_not_needed([Values] RecommitSkip reason)
+    {
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(0);
+        GCKeeper? keeper = null;
+        IDisposable? held = null;
+        RegionRuntime runtime = new()
+        {
+            BeforeCollect = () =>
+            {
+                switch (reason)
+                {
+                    case RecommitSkip.Cancelled: keeper!.CancelPendingGC(); break;
+                    case RecommitSkip.Shutdown: keeper!.Dispose(); break;
+                    case RecommitSkip.RegionHeld: held = keeper!.TryStartNoGCRegion(); break;
+                    case RecommitSkip.Disallowed: strategy.CanStartNoGCRegion().Returns(false); break;
+                }
+            }
+        };
+        List<IThreadPoolWorkItem> queued = [];
+        using (keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true)))
+        {
+            await keeper.ScheduleGCInternal(throttle: false);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(runtime.Collections, Has.Count.EqualTo(1), "the decommit itself is claimed before the payload arrives");
+                Assert.That(runtime.Starts, Is.Zero);
+            }
+
+            strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            held?.Dispose();
+        }
+    }
+
+    [Test]
+    public async Task Payload_entry_waits_for_a_running_recommit()
+    {
+        using ManualResetEventSlim recommitting = new(false);
+        using ManualResetEventSlim proceed = new(false);
+        int starts = 0;
+        RegionRuntime runtime = new()
+        {
+            BeforeStart = () =>
+            {
+                if (Interlocked.Increment(ref starts) != 1) return;
+                recommitting.Set();
+                proceed.Wait();
+            }
+        };
+        IGCStrategy strategy = Substitute.For<IGCStrategy>();
+        strategy.CanStartNoGCRegion().Returns(true);
+        strategy.GetForcedGCParams().Returns((GcLevel.Gen1, GcCompaction.No));
+        strategy.CollectionsPerDecommit.Returns(0);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(strategy, NullLogManager.Instance, runtime, queued.Add, static (_, _) => Task.FromResult(true));
+
+        Task collection = Task.Run(() => keeper.ScheduleGCInternal(throttle: false));
+        Task worker = Task.CompletedTask;
+        IDisposable? lease = null;
+        try
+        {
+            Assert.That(recommitting.Wait(TimeSpan.FromSeconds(5)), Is.True);
+            strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
+            lease = keeper.TryStartNoGCRegion();
+            Assert.That(queued, Has.Count.EqualTo(1), "the re-commit holds no slot, so the payload is admitted");
+            worker = Task.Run(queued[0].Execute);
+            await Task.Delay(100);
+            Assert.That(worker.IsCompleted, Is.False, "the entry waits for the throwaway region to end");
+        }
+        finally
+        {
+            proceed.Set();
+            await Task.WhenAll(collection, worker).WaitAsync(TimeSpan.FromSeconds(5));
+        }
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(runtime.Operations, Is.EqualTo(new[] { "collect", "start", "end", "start" }));
+            Assert.That(runtime.IsActive, Is.True, "the payload's region is not ended by the re-commit");
+        }
+        lease!.Dispose();
+    }
+
     private static void CountPayload(GCKeeper keeper, IGCStrategy strategy)
     {
         strategy.GetForcedGCParams().Returns((GcLevel.NoGC, GcCompaction.No));
@@ -474,12 +583,14 @@ public class GCKeeperTests
     private sealed class RegionRuntime : IGcRegionRuntime
     {
         public List<(GcLevel, GCCollectionMode, GcCompaction)> Collections { get; } = [];
+        public List<string> Operations { get; } = [];
         public bool CollectionSucceeds { get; set; } = true;
         public Action? BeforeCollect { get; init; }
         public bool Collect(GcLevel generation, GCCollectionMode mode, GcCompaction compacting)
         {
             BeforeCollect?.Invoke();
             Collections.Add((generation, mode, compacting));
+            Operations.Add("collect");
             return CollectionSucceeds;
         }
         public Exception? EndFailure { get; init; }
@@ -494,6 +605,7 @@ public class GCKeeperTests
         {
             BeforeStart?.Invoke();
             Starts++;
+            Operations.Add("start");
             if (Throw) throw new InvalidOperationException("Another no-GC region is active.");
             return IsActive = !Refuse;
         }
@@ -501,6 +613,7 @@ public class GCKeeperTests
         {
             BeforeEnd?.Invoke();
             Ends++;
+            Operations.Add("end");
             IsActive = false;
             if (EndFailure is not null) throw EndFailure;
         }
