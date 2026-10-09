@@ -125,7 +125,7 @@ public class McpRemoteModeTests
 
         using HttpClient untrusting = new();
         using HttpRequestMessage request = McpHttp.Post(node.Endpoint, McpHttp.InitializeBody());
-        Assert.CatchAsync<HttpRequestException>(async () =>
+        await Assert.CatchAsync<HttpRequestException>(async () =>
         {
             using HttpResponseMessage response = await untrusting.SendAsync(request);
         },
@@ -263,7 +263,7 @@ public class McpRemoteModeTests
         }, withAuth: true, start: false);
 
         Nethermind.Core.Exceptions.InvalidConfigurationException exception =
-            Assert.ThrowsAsync<Nethermind.Core.Exceptions.InvalidConfigurationException>(() => node.Host.StartAsync(CancellationToken.None))!;
+            (await Assert.ThrowsAsync<Nethermind.Core.Exceptions.InvalidConfigurationException>(() => node.Host.StartAsync(CancellationToken.None)))!;
         using (Assert.EnterMultipleScope())
         {
             Assert.That(exception.Message, Does.Contain("TlsCertificatePath"));

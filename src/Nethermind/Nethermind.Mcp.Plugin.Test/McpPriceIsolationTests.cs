@@ -163,7 +163,7 @@ public class McpPriceIsolationTests
         {
             Assert.That(await Task.Run(() => started.Wait(TimeSpan.FromSeconds(3))), Is.True);
             await cancellation.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(async () => await work);
+            await Assert.CatchAsync<OperationCanceledException>(async () => await work);
             Assert.That(SpinWait.SpinUntil(() => provider.ActiveEthLeases == 1, TimeSpan.FromSeconds(1)), Is.True,
                 "the body releases its module while the detached worker retains its own");
             CallToolResult blocked = await executor.ExecuteAsync("blocked", nameof(IEthRpcModule.eth_call),

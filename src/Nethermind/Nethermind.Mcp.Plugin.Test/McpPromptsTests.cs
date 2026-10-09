@@ -90,7 +90,7 @@ public class McpPromptsTests
         await using McpTestNode node = await McpTestNode.Create();
         await using McpClient client = await node.CreateClient();
 
-        McpException exception = Assert.CatchAsync<McpException>(async () => await client.GetPromptAsync(name, new Dictionary<string, object?> { [argument] = value }))!;
+        McpException exception = (await Assert.CatchAsync<McpException>(async () => await client.GetPromptAsync(name, new Dictionary<string, object?> { [argument] = value })))!;
         Assert.That(exception.Message, Does.Contain(argument));
     }
 

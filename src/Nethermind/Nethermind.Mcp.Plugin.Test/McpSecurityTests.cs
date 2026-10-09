@@ -228,7 +228,7 @@ public class McpSecurityTests
     {
         await using McpTestNode node = await McpTestNode.Create(withAuth: true);
 
-        Assert.CatchAsync(async () =>
+        await Assert.CatchAsync(async () =>
         {
             await using McpClient client = await node.CreateClient();
             await client.ListToolsAsync();

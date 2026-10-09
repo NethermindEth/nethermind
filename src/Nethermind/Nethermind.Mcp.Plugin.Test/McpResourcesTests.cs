@@ -33,8 +33,8 @@ public class McpResourcesTests
             builder.AddSingleton<ILogManager>(new OneLoggerLogManager(new ILogger(errors))));
         await using McpClient client = await node.CreateClient();
 
-        McpException? error = Assert.CatchAsync<McpException>(() => client.ReadResourceAsync("nethermind://node/status").AsTask());
-        Assert.CatchAsync<McpException>(() => client.GetPromptAsync("no_such_prompt").AsTask());
+        McpException? error = await Assert.CatchAsync<McpException>(() => client.ReadResourceAsync("nethermind://node/status").AsTask());
+        await Assert.CatchAsync<McpException>(() => client.GetPromptAsync("no_such_prompt").AsTask());
 
         using (Assert.EnterMultipleScope())
         {

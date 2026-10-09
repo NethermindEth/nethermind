@@ -257,13 +257,13 @@ public class McpNodeToolsTests
     }
 
     [Test]
-    public void Local_body_client_cancellation_propagates()
+    public async Task Local_body_client_cancellation_propagates()
     {
         McpToolExecutor executor = _node.Chain.Container.Resolve<McpToolExecutor>();
         using CancellationTokenSource cts = new();
         cts.Cancel();
 
-        Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(),
+        await Assert.ThrowsAsync(Is.InstanceOf<OperationCanceledException>(),
             () => executor.ExecuteLocalAsync("test", _ => Task.FromResult(executor.Success(1)), cts.Token));
     }
 

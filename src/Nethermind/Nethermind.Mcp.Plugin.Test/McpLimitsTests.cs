@@ -442,7 +442,7 @@ public class McpLimitsTests
         {
             await blocking.Entered.WaitAsync(WaitLimit);
             await cts.CancelAsync();
-            Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
+            await Assert.CatchAsync<OperationCanceledException>(async () => await cancelled);
         }
         finally
         {
@@ -482,7 +482,7 @@ public class McpLimitsTests
         McpContractTools tools = node.Chain.Container.Resolve<McpContractTools>();
         const string name = "a.b.eth";
 
-        Assert.CatchAsync<OperationCanceledException>(async () =>
+        await Assert.CatchAsync<OperationCanceledException>(async () =>
             await tools.ResolveEns(name, cancellationToken: cancellation.Token));
 
         using (Assert.EnterMultipleScope())

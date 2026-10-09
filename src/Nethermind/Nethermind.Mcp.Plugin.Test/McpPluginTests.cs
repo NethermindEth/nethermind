@@ -135,7 +135,7 @@ public class McpPluginTests
     {
         await using McpTestNode node = await McpTestNode.Create(configure, start: false);
 
-        Assert.ThrowsAsync<InvalidConfigurationException>(() => node.Chain.Container.Resolve<StartMcpServer>().Execute(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidConfigurationException>(() => node.Chain.Container.Resolve<StartMcpServer>().Execute(CancellationToken.None));
         Assert.That(node.Host.Endpoint, Is.Null, "nothing may listen after a failed start");
     }
 
@@ -149,7 +149,7 @@ public class McpPluginTests
             int port = ((IPEndPoint)squatter.LocalEndpoint).Port;
             await using McpTestNode node = await McpTestNode.Create(c => c.Port = port, start: false);
 
-            InvalidOperationException exception = Assert.ThrowsAsync<InvalidOperationException>(() => node.Host.StartAsync(CancellationToken.None))!;
+            InvalidOperationException exception = (await Assert.ThrowsAsync<InvalidOperationException>(() => node.Host.StartAsync(CancellationToken.None)))!;
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(exception.Message, Does.Contain(port.ToString()), "the error must name the port");
@@ -169,7 +169,7 @@ public class McpPluginTests
         using CancellationTokenSource cts = new();
         await cts.CancelAsync();
 
-        Assert.CatchAsync<OperationCanceledException>(() => node.Host.StartAsync(cts.Token));
+        await Assert.CatchAsync<OperationCanceledException>(() => node.Host.StartAsync(cts.Token));
         Assert.That(node.Host.Endpoint, Is.Null);
     }
 
@@ -178,7 +178,7 @@ public class McpPluginTests
     {
         await using McpTestNode node = await McpTestNode.Create();
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => node.Host.StartAsync(CancellationToken.None));
+        await Assert.ThrowsAsync<InvalidOperationException>(() => node.Host.StartAsync(CancellationToken.None));
         Assert.That(node.Host.Endpoint, Is.Not.Null, "the running listener must survive the rejected second start");
     }
 
@@ -196,7 +196,7 @@ public class McpPluginTests
         {
             Assert.That(host.Endpoint, Is.Null);
             Assert.That(() => BindAndRelease(port), Throws.Nothing, "the port must be free after dispose");
-            Assert.ThrowsAsync<ObjectDisposedException>(() => host.StartAsync(CancellationToken.None));
+            await Assert.ThrowsAsync<ObjectDisposedException>(() => host.StartAsync(CancellationToken.None));
         }
     }
 
