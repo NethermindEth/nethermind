@@ -164,18 +164,25 @@ public class PbtDbManager : IPbtDbManager, IAsyncDisposable
         }
     }
 
-    public PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage)
+    public PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage)
     {
-        if (TryGatherReadOnlyBundle(stateId) is not { } readOnlyBundle) return null;
-
+        PbtReadOnlySnapshotBundle? readOnlyBundle = null;
         try
         {
+            readOnlyBundle = TryGatherReadOnlyBundle(baseStateId);
+            if (readOnlyBundle is null)
+            {
+                localSnapshots.Dispose();
+                return null;
+            }
+
             // ownership of the shared bundle's lease passes to the writable one
-            return new PbtSnapshotBundle(new PbtSnapshotPooledList(1), readOnlyBundle, _resourcePool, usage, _trieNodeCache);
+            return new PbtSnapshotBundle(localSnapshots, readOnlyBundle, _resourcePool, usage, _trieNodeCache);
         }
         catch
         {
-            readOnlyBundle.Dispose();
+            readOnlyBundle?.Dispose();
+            localSnapshots.Dispose();
             throw;
         }
     }

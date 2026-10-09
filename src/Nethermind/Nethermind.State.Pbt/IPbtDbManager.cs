@@ -31,9 +31,15 @@ public interface IPbtDbManager : IPbtCommitTarget
     /// rather than inferred: an override scope gathers a writable bundle that is still not main block
     /// processing, so there is nothing about the bundle itself to infer it from.
     /// </param>
-    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage);
+    PbtSnapshotBundle? TryGatherBundle(in StateId stateId, PbtResourcePool.Usage usage) => TryGatherBundle(stateId, new PbtSnapshotPooledList(1), usage);
 
-    /// <inheritdoc cref="TryGatherBundle"/>
+    /// <summary>Assembles a writable bundle able to serve reads at the newest of <paramref name="localSnapshots"/>, or null when <paramref name="baseStateId"/> is not available.</summary>
+    /// <param name="baseStateId">The state the oldest of <paramref name="localSnapshots"/> builds on.</param>
+    /// <param name="localSnapshots">Leased snapshots kept outside this manager, oldest first; taken over on every path.</param>
+    /// <param name="usage">Pool category for the bundle's write buffer and the layers it seals.</param>
+    PbtSnapshotBundle? TryGatherBundle(in StateId baseStateId, PbtSnapshotPooledList localSnapshots, PbtResourcePool.Usage usage);
+
+    /// <inheritdoc cref="TryGatherBundle(in StateId, PbtResourcePool.Usage)"/>
     /// <exception cref="StateNotRetainedException">The state is not available.</exception>
     PbtSnapshotBundle GatherBundle(in StateId stateId, PbtResourcePool.Usage usage) =>
         TryGatherBundle(stateId, usage) ?? throw new StateNotRetainedException($"State {stateId} is not available");

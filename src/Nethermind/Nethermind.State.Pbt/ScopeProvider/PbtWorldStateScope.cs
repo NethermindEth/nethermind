@@ -16,16 +16,12 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
-    private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
-    private const long AverageNodeGroupBytes = 1024;
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
@@ -34,13 +30,9 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
-    private readonly bool _isReadOnly;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
-    private readonly Lock _hintBalLock = new();
-    private Task? _hintBalTask;
-    private CancellationTokenSource? _hintBalCancellation;
-    private Task? _nodeGroupPrefetchTask;
-    private CancellationTokenSource? _nodeGroupPrefetchCancellation;
+    private readonly BackgroundTask _hintBal;
+    private readonly BackgroundTask _nodeGroupPrefetch;
 
     private StateId _currentStateId;
     private Hash256 _rootHash;
@@ -59,11 +51,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         IPbtCommitTarget commitTarget,
         IPbtChildHeaderSource childHeaders,
         IRefCountingMemoryProvider nodeGroupMemory,
-        bool isReadOnly,
         IPbtConfig config,
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<PbtWorldStateScope>();
+        _hintBal = new BackgroundTask(_logger, "HintBal prefetch");
+        _nodeGroupPrefetch = new BackgroundTask(_logger, "node group prefetch");
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
         _nodeGroupMemory = nodeGroupMemory;
@@ -72,7 +65,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         Bundle = bundle;
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
-        _isReadOnly = isReadOnly;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, Bundle);
@@ -80,7 +72,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     private void LogLifecycle(string stage) =>
-        _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, readOnly={_isReadOnly}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
+        _logger.Debug($"PBT scope {_scopeId} {stage}: state={_currentStateId}, pendingMutations={Bundle.PendingMutationCount}, managedBytes={GC.GetTotalMemory(false)}");
 
     internal PbtSnapshotBundle Bundle { get; }
     public Hash256 RootHash => _rootHash;
@@ -112,16 +104,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// </remarks>
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
-        StopHintBal();
+        _hintBal.Stop();
         if (bal.AccountChanges.Count == 0) return Task.CompletedTask;
-        StartNodeGroupPrefetch(bal);
-
-        lock (_hintBalLock)
-        {
-            CancellationTokenSource cancellation = new();
-            _hintBalCancellation = cancellation;
-            return _hintBalTask = Task.Run(() => PrefetchBal(bal, sink, cancellation.Token), cancellation.Token);
-        }
+        _nodeGroupPrefetch.Start(cancellation => PbtNodeGroupPrefetch.Prefetch(Bundle, bal, cancellation));
+        return _hintBal.Start(cancellation => PrefetchBal(bal, sink, cancellation));
     }
 
     private void PrefetchBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken cancellation) =>
@@ -135,8 +121,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             Account? account = accountChanges.HasStateChanges ? bundle.GetAndPromoteAccount(address) : bundle.GetAccount(address);
             if (state.sink?.StillNeeded(address, out _) == true) state.sink.OnAccountRead(address, account);
             // ApplyBal writes no slot of a missing account that the block leaves missing.
-            bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
-            if (account is null && !changesAccount) return state;
+            if (account is null && !accountChanges.HasBalanceNonceOrCodeChanges) return state;
 
             ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
             IWorldStateScopeProvider.IAsyncBalReaderSink? slotSink = account is null ? null : state.sink;
@@ -173,187 +158,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         return true;
     }
 
-    /// <summary>Cancels the running <see cref="HintBal"/> prefetch and waits for it to finish.</summary>
-    private void StopHintBal()
-    {
-        if (Volatile.Read(ref _hintBalTask) is null) return;
-        lock (_hintBalLock)
-        {
-            _hintBalCancellation?.Cancel();
-            try
-            {
-                _hintBalTask?.GetAwaiter().GetResult();
-            }
-            catch (OperationCanceledException) { }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error("PBT HintBal prefetch faulted", ex);
-            }
-            _hintBalCancellation?.Dispose();
-            _hintBalCancellation = null;
-            Volatile.Write(ref _hintBalTask, null);
-        }
-    }
-
     public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.ApplyConcurrently(this, bal);
-
-    /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
-    /// <remarks>
-    /// Each storage leaf then also prefetches the groups below its first storage group, as deep as its estimated remaining group levels.
-    /// A group the fold has already read is skipped.
-    /// The bundle keeps the persisted groups read for the fold; <see cref="UpdateRootHash"/> stops the reads before it returns.
-    /// </remarks>
-    private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
-    {
-        StopNodeGroupPrefetch();
-        if (bal.AccountChanges.Count == 0) return;
-
-        CancellationTokenSource cancellation = new();
-        _nodeGroupPrefetchCancellation = cancellation;
-        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token), cancellation.Token);
-    }
-
-    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
-    {
-        if (cancellation.IsCancellationRequested) return;
-        PbtStorageNodePath[] groups = [.. NodeGroupPrefetchPaths(bal)];
-        long[] descendantBytes = new long[groups.Length * PbtFourLevelGroupGeometry.BoundarySlots];
-        RefCountingMemory?[] snapshots = new RefCountingMemory?[groups.Length];
-        RefCountingMemory?[] persisted = [];
-        try
-        {
-            List<PbtStorageNodePath> misses = [];
-            List<int> missingIndexes = [];
-            for (int index = 0; index < groups.Length; index++)
-            {
-                if (cancellation.IsCancellationRequested) return;
-                if (!bundle.ShouldPrefetchNodeGroup(groups[index])) continue;
-                if (!bundle.TryGetSnapshotNodeGroup(groups[index], out snapshots[index]))
-                {
-                    misses.Add(groups[index]);
-                    missingIndexes.Add(index);
-                }
-            }
-            PbtStorageNodePath[] missingPaths = [.. misses];
-            if (cancellation.IsCancellationRequested) return;
-            persisted = new RefCountingMemory?[missingPaths.Length];
-            ParallelUnbalancedWork.For(0, missingPaths.Length, (bundle, missingPaths, persisted, cancellation), static (index, state) =>
-            {
-                if (!state.cancellation.IsCancellationRequested) state.persisted[index] = state.bundle.GetPersistedNodeGroup(state.missingPaths[index]);
-                return state;
-            });
-            if (cancellation.IsCancellationRequested) return;
-
-            for (int index = 0; index < groups.Length; index++)
-                if (groups[index].BitDepth == StorageGroupDepth)
-                    PbtSnapshotBundle.StorageDescendantBytes(snapshots[index], descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
-            for (int index = 0; index < missingPaths.Length; index++)
-                if (missingPaths[index].BitDepth == StorageGroupDepth)
-                    PbtSnapshotBundle.StorageDescendantBytes(persisted[index], descendantBytes.AsSpan(missingIndexes[index] * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
-        }
-        finally
-        {
-            foreach (RefCountingMemory? payload in snapshots) ((IDisposable?)payload)?.Dispose();
-            foreach (RefCountingMemory? payload in persisted) ((IDisposable?)payload)?.Dispose();
-        }
-        if (cancellation.IsCancellationRequested) return;
-
-        foreach (PbtStorageNodePath path in DeeperStorageNodeGroupPaths(bal, groups, descendantBytes))
-        {
-            if (cancellation.IsCancellationRequested) return;
-            if (!bundle.ShouldPrefetchNodeGroup(path)) continue;
-            if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) ((IDisposable?)bundle.GetPersistedNodeGroup(path))?.Dispose();
-            ((IDisposable?)snapshot)?.Dispose();
-        }
-    }
-
-    /// <summary>The distinct groups below the first storage groups along the storage leaves <paramref name="bal"/> writes.</summary>
-    /// <remarks>
-    /// A leaf's boundary slot in its first storage group holds about <c>descendantBytes / 1 KiB</c> groups,
-    /// so its remaining depth is about <c>log16</c> of that many group levels.
-    /// </remarks>
-    private static HashSet<PbtStorageNodePath> DeeperStorageNodeGroupPaths(ReadOnlyBlockAccessList bal, PbtStorageNodePath[] groups, long[] descendantBytes)
-    {
-        Dictionary<PbtStorageNodePath, int> groupIndexes = [];
-        for (int index = 0; index < groups.Length; index++) groupIndexes[groups[index]] = index;
-
-        HashSet<PbtStorageNodePath> paths = [];
-        Span<byte> pathBytes = stackalloc byte[PbtStoragePath.KeyLength];
-        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
-        {
-            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(accountChanges.Address);
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                if (slotChanges.Changes.Length == 0 || PbtStateKey.IsHeaderSlot(slotChanges.Key)) continue;
-                PbtStoragePath storagePath = PbtStateKey.Storage(accountChanges.Address, addressHash, slotChanges.Key);
-                int groupIndex = groupIndexes[new PbtStorageNodePath(storagePath.Bytes[..(StorageGroupDepth / 8)], StorageGroupDepth)];
-                int slot = storagePath.Bytes[StorageGroupDepth / 8] >> 4;
-                long subtreeBytes = descendantBytes[groupIndex * PbtFourLevelGroupGeometry.BoundarySlots + slot];
-                int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
-                for (int level = 1; level <= levels; level++)
-                {
-                    int depth = StorageGroupDepth + level * PbtFourLevelGroupGeometry.LevelsPerGroup;
-                    Span<byte> path = pathBytes[..((depth + 7) / 8)];
-                    storagePath.Bytes[..path.Length].CopyTo(path);
-                    if (depth % 8 != 0) path[^1] &= 0xF0;
-                    paths.Add(new PbtStorageNodePath(path, depth));
-                }
-            }
-        }
-        return paths;
-    }
-
-    /// <summary>The distinct paths of the first groups below the top node groups that the leaves <paramref name="bal"/> writes lie under.</summary>
-    /// <remarks>Code leaves are left out: they are content addressed, so a deployment rarely finds their groups stored.</remarks>
-    internal static HashSet<PbtStorageNodePath> NodeGroupPrefetchPaths(ReadOnlyBlockAccessList bal)
-    {
-        HashSet<PbtStorageNodePath> paths = [];
-        Span<byte> pathBytes = stackalloc byte[StorageGroupDepth / 8];
-        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
-        {
-            bool writesAccountZone = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
-            bool writesStorageZone = false;
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                if (slotChanges.Changes.Length == 0) continue;
-                if (PbtStateKey.IsHeaderSlot(slotChanges.Key)) writesAccountZone = true;
-                else writesStorageZone = true;
-            }
-            if (!writesAccountZone && !writesStorageZone) continue;
-
-            PbtStateKey.AddressKeyHash(accountChanges.Address).Bytes.CopyTo(pathBytes[1..]);
-            if (writesAccountZone)
-            {
-                pathBytes[0] = Eip8297KeyDerivation.AccountZone;
-                paths.Add(new PbtStorageNodePath(pathBytes[..(AccountGroupDepth / 8)], AccountGroupDepth));
-            }
-            if (writesStorageZone)
-            {
-                pathBytes[0] = Eip8297KeyDerivation.StorageZone;
-                paths.Add(new PbtStorageNodePath(pathBytes, StorageGroupDepth));
-            }
-        }
-        return paths;
-    }
-
-    /// <summary>Cancels the running node group prefetch and waits for it to finish.</summary>
-    private void StopNodeGroupPrefetch()
-    {
-        if (_nodeGroupPrefetchTask is null) return;
-        _nodeGroupPrefetchCancellation!.Cancel();
-        try
-        {
-            _nodeGroupPrefetchTask.GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException) { }
-        catch (Exception ex)
-        {
-            if (_logger.IsError) _logger.Error("PBT node group prefetch faulted", ex);
-        }
-        _nodeGroupPrefetchCancellation.Dispose();
-        _nodeGroupPrefetchCancellation = null;
-        _nodeGroupPrefetchTask = null;
-    }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
@@ -398,7 +203,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
         finally
         {
-            StopNodeGroupPrefetch();
+            _nodeGroupPrefetch.Stop();
         }
     }
 
@@ -408,19 +213,14 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         long commitStart = Stopwatch.GetTimestamp();
         try
         {
-            StopHintBal();
+            _hintBal.Stop();
             UpdateRootHash();
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
             {
                 long addSnapshotStart = Stopwatch.GetTimestamp();
                 PbtSnapshot snapshot = Bundle.CollectSnapshot(_currentStateId, newStateId, _treeRoot, out PbtTransientResource transientResource);
-                if (_isReadOnly)
-                {
-                    snapshot.Dispose();
-                    transientResource.ReleaseLease();
-                }
-                else _commitTarget.AddSnapshot(snapshot, transientResource);
+                _commitTarget.AddSnapshot(snapshot, transientResource);
                 Metrics.PbtAddSnapshotTime.Observe(Stopwatch.GetTimestamp() - addSnapshotStart);
                 _currentStateId = newStateId;
             }
@@ -442,8 +242,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (_logger.IsDebug) LogLifecycle("close begin");
         try
         {
-            StopHintBal();
-            StopNodeGroupPrefetch();
+            _hintBal.Stop();
+            _nodeGroupPrefetch.Stop();
             Bundle.Dispose();
         }
         finally
@@ -460,7 +260,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public void Set(Address key, Account? account)
         {
             // Removing an account clears its storage.
-            if (account is null) scope.StopHintBal();
+            if (account is null) scope._hintBal.Stop();
             scope.Bundle.SetAccount(key, account);
             scope._rootDirty = true;
         }
@@ -487,7 +287,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public void Clear()
         {
             ApplyWrites();
-            scope.StopHintBal();
+            scope._hintBal.Stop();
             scope.Bundle.SelfDestruct(_addressHash);
             scope._rootDirty = true;
         }
@@ -502,6 +302,48 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             scope.Bundle.SetSlots(address, _addressHash, _writes.AsSpan());
             _writes.Clear();
+        }
+    }
+
+    /// <summary>A background task that can be cancelled and waited for from any thread.</summary>
+    private sealed class BackgroundTask(ILogger logger, string name)
+    {
+        private readonly Lock _lock = new();
+        private Task? _task;
+        private CancellationTokenSource? _cancellation;
+
+        /// <summary>Stops the running task, then runs <paramref name="work"/> in the background.</summary>
+        public Task Start(Action<CancellationToken> work)
+        {
+            Stop();
+            lock (_lock)
+            {
+                CancellationTokenSource cancellation = new();
+                _cancellation = cancellation;
+                return _task = Task.Run(() => work(cancellation.Token), cancellation.Token);
+            }
+        }
+
+        /// <summary>Cancels the running task and waits for it to finish.</summary>
+        public void Stop()
+        {
+            if (Volatile.Read(ref _task) is null) return;
+            lock (_lock)
+            {
+                _cancellation?.Cancel();
+                try
+                {
+                    _task?.GetAwaiter().GetResult();
+                }
+                catch (OperationCanceledException) { }
+                catch (Exception ex)
+                {
+                    if (logger.IsError) logger.Error($"PBT {name} faulted", ex);
+                }
+                _cancellation?.Dispose();
+                _cancellation = null;
+                Volatile.Write(ref _task, null);
+            }
         }
     }
 }

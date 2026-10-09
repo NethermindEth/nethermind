@@ -25,6 +25,7 @@ public class PbtScopeProvider(
 {
     private readonly TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb _codeDb = new(codeDb, isPersistent: !isReadOnly);
     private readonly PbtResourcePool.Usage _usage = isReadOnly ? PbtResourcePool.Usage.ReadOnlyProcessingEnv : PbtResourcePool.Usage.MainBlockProcessing;
+    private readonly IPbtCommitTarget _commitTarget = isReadOnly ? DiscardingCommitTarget.Instance : manager;
 
     public bool HasRoot(BlockHeader? baseBlock) => manager.HasStateForBlock(new StateId(baseBlock));
 
@@ -43,8 +44,20 @@ public class PbtScopeProvider(
             return false;
         }
 
-        scope = new PbtWorldStateScope(stateId, baseBlock, bundle, _codeDb, manager, childHeaders, nodeGroupMemory, isReadOnly, config, logManager);
+        scope = new PbtWorldStateScope(stateId, baseBlock, bundle, _codeDb, _commitTarget, childHeaders, nodeGroupMemory, config, logManager);
         Metrics.PbtBeginScopeTime.Observe(Stopwatch.GetTimestamp() - start);
         return true;
+    }
+
+    /// <summary>Drops the snapshots a read-only scope commits; the scope's own bundle still serves them.</summary>
+    private sealed class DiscardingCommitTarget : IPbtCommitTarget
+    {
+        public static readonly DiscardingCommitTarget Instance = new();
+
+        public void AddSnapshot(PbtSnapshot snapshot, PbtTransientResource transientResource)
+        {
+            snapshot.Dispose();
+            transientResource.ReleaseLease();
+        }
     }
 }

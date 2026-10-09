@@ -47,7 +47,7 @@ internal sealed class PbtBalReplay(
         StateId stateId = new(parent);
         return new PbtWorldStateScope(stateId, parent, manager.GatherBundle(stateId, PbtResourcePool.Usage.ReadOnlyProcessingEnv),
             new TrieStoreScopeProvider.KeyValueWithBatchingBackedCodeDb(codeDb, isPersistent: true), manager,
-            NullPbtChildHeaderSource.Instance, nodeGroupMemory, isReadOnly: false,
+            NullPbtChildHeaderSource.Instance, nodeGroupMemory,
             config, logManager);
     }
 

@@ -30,15 +30,9 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
     public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
     {
         using PbtReadOnlySnapshotBundle bundle = GatherForRead(baseBlock);
-        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
-        EvmWord word = PbtStateKey.IsHeaderSlot(index)
-            ? GetSlot(bundle, PbtStateKey.HeaderStorage(addressHash, index))
-            : GetSlot(bundle, PbtStateKey.Storage(address, addressHash, index));
+        EvmWord word = bundle.GetSlot(address, index);
         value = EvmWordSlot.ToUInt256(in word);
     }
-
-    private static EvmWord GetSlot<TKey>(PbtReadOnlySnapshotBundle bundle, in TKey slotKey) where TKey : struct, IPbtKey<TKey> =>
-        bundle.GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
 
     public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : codeDb[codeHash.Bytes];
 
@@ -49,12 +43,15 @@ public class PbtStateReader([KeyFilter(DbNames.Code)] IDb codeDb, IPbtDbManager 
 
     public bool HasStateForBlock(BlockHeader? baseBlock) => manager.HasStateForBlock(new StateId(baseBlock));
 
-    private PbtReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock)
+    private PbtReadOnlySnapshotBundle GatherForRead(BlockHeader? baseBlock) => GatherForRead(baseBlock, stateId => manager.TryGatherReadOnlyBundle(stateId));
+
+    /// <summary>Gathers the bundle a read at <paramref name="baseBlock"/> needs, reporting state that is not available as a missing trie node.</summary>
+    internal static TBundle GatherForRead<TBundle>(BlockHeader? baseBlock, Func<StateId, TBundle?> tryGather) where TBundle : class
     {
         try
         {
             StateId stateId = new(baseBlock);
-            return manager.TryGatherReadOnlyBundle(stateId)
+            return tryGather(stateId)
                 ?? throw new StateNotRetainedException($"No state available for block {stateId.BlockNumber} with state root {stateId.StateRoot}");
         }
         catch (StateUnavailableException e)

@@ -11,6 +11,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Persistence;
 
@@ -169,6 +170,17 @@ public sealed class PbtReadOnlySnapshotBundle(
         if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, result is null ? _readAccountPersistenceNullLabel : _readAccountPersistenceLabel);
         return result;
     }
+
+    /// <summary>Reads storage slot <paramref name="slot"/> of <paramref name="address"/>.</summary>
+    public EvmWord GetSlot(Address address, in UInt256 slot)
+    {
+        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+        return PbtStateKey.IsHeaderSlot(slot)
+            ? GetSlot(PbtStateKey.HeaderStorage(addressHash, slot))
+            : GetSlot(PbtStateKey.Storage(address, addressHash, slot));
+    }
+
+    private EvmWord GetSlot<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
 
     /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
     internal EvmWord GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>

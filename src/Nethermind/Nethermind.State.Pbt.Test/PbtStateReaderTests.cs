@@ -11,6 +11,7 @@ using Nethermind.Pbt;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Memory;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.State;
@@ -29,11 +30,13 @@ public class PbtStateReaderTests
     public void UnavailableReadsPreserveTheTypedCause(
         [Values] bool storage,
         [Values] bool nullHeader,
-        [Values("missing", "unavailable", "notRetained")] string failure)
+        [Values("missing", "unavailable", "notRetained")] string failure,
+        [Values] bool overridable)
     {
         IPbtDbManager manager = Substitute.For<IPbtDbManager>();
         using MemDb codeDb = new();
-        PbtStateReader reader = new(codeDb, manager);
+        using PbtOverridableWorldScope overridableScope = new(codeDb, manager, PooledRefCountingMemoryProvider.Instance, new PbtConfig(), UnavailableStateHeaderProvider.Instance, LimboLogs.Instance);
+        IStateReader reader = overridable ? overridableScope.GlobalStateReader : new PbtStateReader(codeDb, manager);
         BlockHeader? header = nullHeader ? null : Build.A.BlockHeader.WithNumber(9).WithStateRoot(TestItem.KeccakA).TestObject;
         StateId stateId = new(header);
         StateUnavailableException? cause = failure switch
@@ -43,6 +46,7 @@ public class PbtStateReaderTests
             _ => null
         };
         manager.TryGatherReadOnlyBundle(stateId).Returns(_ => cause is null ? null : throw cause);
+        manager.TryGatherBundle(stateId, Arg.Any<PbtSnapshotPooledList>(), Arg.Any<PbtResourcePool.Usage>()).Returns(_ => cause is null ? null : throw cause);
 
         MissingTrieNodeException? exception = Assert.Throws<MissingTrieNodeException>(() => Read(reader, header, storage));
 
@@ -132,7 +136,7 @@ public class PbtStateReaderTests
         Assert.That(Assert.Throws<InvalidOperationException>(() => Read(reader, header, storage)), Is.SameAs(cause));
     }
 
-    private static void Read(PbtStateReader reader, BlockHeader? header, bool storage)
+    private static void Read(IStateReader reader, BlockHeader? header, bool storage)
     {
         if (storage) reader.GetStorage(header, TestItem.AddressA, UInt256.One, out _);
         else reader.TryGetAccount(header, TestItem.AddressA, out _);

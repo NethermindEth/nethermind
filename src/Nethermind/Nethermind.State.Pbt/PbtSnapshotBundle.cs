@@ -157,16 +157,6 @@ public sealed class PbtSnapshotBundle(
         _prefetchedNodeGroups.Clear();
     }
 
-    internal static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
-    {
-        if (payload is null) return;
-
-        ReadOnlySpan<byte> bytes = payload.GetSpan();
-        ushort mask = PbtNodeGroupCodec.ReadDescendantMask(bytes);
-        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
-            if ((mask & (1 << slot)) != 0) descendantBytes[slot] = PbtNodeGroupCodec.ReadDescendantBytes(bytes, mask, slot);
-    }
-
     public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
 
     /// <summary>Reads an account, promoting one found past the write buffer and the hint memo into the write buffer.</summary>

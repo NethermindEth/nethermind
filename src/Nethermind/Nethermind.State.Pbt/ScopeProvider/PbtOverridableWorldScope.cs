@@ -27,29 +27,23 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     private readonly IReadOnlyDb _codeDbOverlay;
     private readonly ILogManager _logManager;
     private readonly IPbtDbManager _manager;
-    private readonly IPbtResourcePool _resourcePool;
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtConfig _config;
-    private readonly IPbtTrieNodeCache _trieNodeCache;
     private readonly KnownHeadersScopeProvider _worldState;
     private bool _isDisposed;
 
     public PbtOverridableWorldScope(
         [KeyFilter(DbNames.Code)] IDb codeDb,
         IPbtDbManager manager,
-        IPbtResourcePool resourcePool,
         IRefCountingMemoryProvider nodeGroupMemory,
         IPbtConfig config,
         IStateHeaderProvider stateHeaderProvider,
-        IPbtTrieNodeCache trieNodeCache,
         ILogManager logManager)
     {
         _logManager = logManager;
         _config = config;
         _manager = manager;
-        _resourcePool = resourcePool;
         _nodeGroupMemory = nodeGroupMemory;
-        _trieNodeCache = trieNodeCache;
         _codeDbOverlay = new ReadOnlyDb(codeDb, createInMemWriteStore: true);
         GlobalStateReader = new OverridableStateReader(this);
         _worldState = new KnownHeadersScopeProvider(stateHeaderProvider, headerProvider => new OverridableScopeProvider(this, headerProvider));
@@ -93,7 +87,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         return _snapshots.ContainsKey(stateId) || _manager.HasStateForBlock(stateId);
     }
 
-    private PbtSnapshotBundle GatherBundle(in StateId stateId)
+    private PbtSnapshotBundle? TryGatherBundle(in StateId stateId)
     {
         PbtSnapshotPooledList localChain = new(1);
         StateId current = stateId;
@@ -105,19 +99,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         }
 
         localChain.Reverse();
-
-        PbtReadOnlySnapshotBundle? readOnlyBundle = null;
-        try
-        {
-            readOnlyBundle = _manager.GatherReadOnlyBundle(current);
-            return new PbtSnapshotBundle(localChain, readOnlyBundle, _resourcePool, PbtResourcePool.Usage.ReadOnlyProcessingEnv, _trieNodeCache);
-        }
-        catch
-        {
-            readOnlyBundle?.Dispose();
-            localChain.Dispose();
-            throw;
-        }
+        return _manager.TryGatherBundle(current, localChain, PbtResourcePool.Usage.ReadOnlyProcessingEnv);
     }
 
     private class OverridableScopeProvider(PbtOverridableWorldScope outer, IStateHeaderProvider stateHeaderProvider) : IWorldStateScopeProvider
@@ -133,16 +115,16 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
         public bool TryBeginScope(BlockHeader? baseBlock, LocalMetrics metrics, [NotNullWhen(true)] out IWorldStateScopeProvider.IScope? scope)
         {
-            if (!HasRoot(baseBlock))
+            StateId stateId = new(baseBlock);
+            if (outer.TryGatherBundle(stateId) is not { } bundle)
             {
                 scope = null;
                 return false;
             }
 
-            StateId stateId = new(baseBlock);
             scope = new PbtWorldStateScope(
-                stateId, baseBlock, outer.GatherBundle(stateId), _codeDb, outer, NullPbtChildHeaderSource.Instance,
-                outer._nodeGroupMemory, isReadOnly: false, outer._config, outer._logManager);
+                stateId, baseBlock, bundle, _codeDb, outer, NullPbtChildHeaderSource.Instance,
+                outer._nodeGroupMemory, outer._config, outer._logManager);
             return true;
         }
     }
@@ -151,7 +133,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
     {
         public bool TryGetAccount(BlockHeader? baseBlock, Address address, out AccountStruct account)
         {
-            using PbtSnapshotBundle bundle = outer.GatherBundle(new StateId(baseBlock));
+            using PbtSnapshotBundle bundle = GatherForRead(baseBlock);
             if (bundle.GetAccount(address) is { } accountClass)
             {
                 account = accountClass.ToStruct();
@@ -164,7 +146,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
 
         public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
-            using PbtSnapshotBundle bundle = outer.GatherBundle(new StateId(baseBlock));
+            using PbtSnapshotBundle bundle = GatherForRead(baseBlock);
             EvmWord word = bundle.GetSlot(address, index);
             value = EvmWordSlot.ToUInt256(in word);
         }
@@ -177,5 +159,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
             throw new NotSupportedException("Trie visiting is not supported by the pbt state backend");
 
         public bool HasStateForBlock(BlockHeader? baseBlock) => outer.HasStateForBlock(baseBlock);
+
+        private PbtSnapshotBundle GatherForRead(BlockHeader? baseBlock) => PbtStateReader.GatherForRead(baseBlock, stateId => outer.TryGatherBundle(stateId));
     }
 }
