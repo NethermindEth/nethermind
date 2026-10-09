@@ -37,6 +37,6 @@ public static class Metrics
     public static long NoGcRegionGuardGen0BudgetBytes { get; set; }
 
     [GaugeMetric]
-    [Description("Most bytes allocated during one engine_newPayload over the last 300-600 payloads, as the no-GC region guard uses it (at least 64 MB).")]
+    [Description("Most bytes allocated during one engine_newPayload over the last 300-600 payloads, as the no-GC region guard uses it.")]
     public static long NoGcRegionGuardBlockAllocationBytes { get; set; }
 }

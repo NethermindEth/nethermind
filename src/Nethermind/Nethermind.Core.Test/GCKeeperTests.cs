@@ -500,7 +500,7 @@ public class GCKeeperTests
             Assert.That(queued, Has.Count.EqualTo(unknown ? 1 : 0), "an unknown budget never covers the block");
             Assert.That(Metrics.NoGcRegionGuardBudgetLeftBytes, Is.EqualTo(unknown ? 0 : 1_000 * Mb));
             Assert.That(Metrics.NoGcRegionGuardGen0BudgetBytes, Is.EqualTo(unknown ? 0 : 1_000 * Mb));
-            Assert.That(Metrics.NoGcRegionGuardThresholdBytes, Is.EqualTo(automatic ? (unknown ? 128 : 750) * Mb : 100 * Mb));
+            Assert.That(Metrics.NoGcRegionGuardThresholdBytes, Is.EqualTo(automatic ? (unknown ? 256 : 750) * Mb : 100 * Mb));
         }
     }
 
@@ -532,17 +532,20 @@ public class GCKeeperTests
     private static (long Left, long StartBudget) Estimate(GCKeeper.Gen0BudgetTracker tracker, long allocated, long gcIndex, long budget) =>
         (tracker.EstimateLeft(allocated, gcIndex, budget, out long startBudget), startBudget);
 
-    // T = max(3/4 x B0, 2 x A), A at least 1/8 of the region's 512 MB small-object budget; a fixed guard replaces it.
-    [TestCase(0, 1_000, 64, 750, TestName = "{m}(three quarters of the budget)")]
+    // T = max(3/4 x B0, 2 x A, 256 MB), the floor half of the region's 512 MB small-object budget; a fixed guard replaces it.
+    [TestCase(0, 1_000, 100, 750, TestName = "{m}(three quarters of the budget)")]
     [TestCase(0, 1_000, 400, 800, TestName = "{m}(twice the block allocation)")]
-    [TestCase(0, 168, 64, 128, TestName = "{m}(floor, 8 heaps)")]
-    [TestCase(0, 0, 64, 128, TestName = "{m}(floor, unknown budget)")]
+    [TestCase(0, 300, 150, 300, TestName = "{m}(twice a block above 128 MB, over the floor)")]
+    [TestCase(0, 168, 54, 256, TestName = "{m}(floor, 8 heaps)")]
+    [TestCase(0, 336, 120, 256, TestName = "{m}(floor, 16 heaps)")]
+    [TestCase(0, 0, 0, 256, TestName = "{m}(floor, unknown budget)")]
     [TestCase(300, 1_000, 400, 300, TestName = "{m}(fixed)")]
+    [TestCase(100, 168, 0, 100, TestName = "{m}(fixed below the floor)")]
     public void Guard_threshold(long fixedMb, long budgetMb, long blockMb, long expectedMb)
     {
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(GCKeeper.BlockAllocationTracker.Floor, Is.EqualTo(64 * Mb));
+            Assert.That(GCKeeper.GuardFloor, Is.EqualTo(GCKeeper.Gen0BudgetTracker.RegionSohBudget / 2).And.EqualTo(256 * Mb));
             Assert.That(GCKeeper.GuardThreshold(fixedMb * Mb, budgetMb * Mb, blockMb * Mb), Is.EqualTo(expectedMb * Mb));
         }
     }
@@ -551,15 +554,14 @@ public class GCKeeperTests
     public void Block_allocation_maximum_leaves_out_the_warm_up_and_drops_out_after_two_buckets()
     {
         GCKeeper.BlockAllocationTracker tracker = new();
-        long floor = GCKeeper.BlockAllocationTracker.Floor;
         const int bucket = GCKeeper.BlockAllocationTracker.BucketPayloads;
         Assert.That((bucket, GCKeeper.BlockAllocationTracker.WarmUpPayloads), Is.EqualTo((300, 20)));
 
-        Assert.That(tracker.Maximum, Is.EqualTo(floor), "nothing recorded");
+        Assert.That(tracker.Maximum, Is.Zero, "nothing recorded");
         for (int i = 0; i < GCKeeper.BlockAllocationTracker.WarmUpPayloads; i++) tracker.Record(1_000 * Mb);
-        Assert.That(tracker.Maximum, Is.EqualTo(floor), "the warm-up is left out");
+        Assert.That(tracker.Maximum, Is.Zero, "the warm-up is left out");
         tracker.Record(10 * Mb);
-        Assert.That(tracker.Maximum, Is.EqualTo(floor), "less than the floor");
+        Assert.That(tracker.Maximum, Is.EqualTo(10 * Mb), "no floor of its own");
 
         // The first bucket holds 300 MB, the second 70 MB.
         tracker.Record(300 * Mb);
@@ -570,7 +572,7 @@ public class GCKeeperTests
         tracker.Record(70 * Mb);
         Assert.That(tracker.Maximum, Is.EqualTo(70 * Mb), "the first bucket drops out");
         for (int i = 0; i < bucket; i++) tracker.Record(0);
-        Assert.That(tracker.Maximum, Is.EqualTo(floor), "the second bucket drops out");
+        Assert.That(tracker.Maximum, Is.Zero, "the second bucket drops out");
     }
 
     // A payload's window runs from the guard's decision to the end of its lease. Past the warm-up, what it allocates
@@ -591,7 +593,7 @@ public class GCKeeperTests
         runtime.RunGC();
         using (keeper.TryStartNoGCRegion())
         {
-            AssertGuardGauges(threshold: 750 * Mb, left: 550 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 64 * Mb, "the warm-up is left out");
+            AssertGuardGauges(threshold: 750 * Mb, left: 550 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 0, "the warm-up is left out");
             runtime.AllocatedBytes += 100 * Mb;
             // Whatever happens between the decision and the end of the lease is in the payload's window.
             keeper.TryStartNoGCRegion().Dispose();
@@ -618,6 +620,24 @@ public class GCKeeperTests
         }
     }
 
+    // At idle ~17 MB are allocated between blocks; gen0's budget is 20 MiB per heap on a 32 MB L3.
+    [TestCase(168, true, TestName = "{m}(8 heaps)")]
+    [TestCase(252, true, TestName = "{m}(12 heaps)")]
+    [TestCase(336, false, TestName = "{m}(16 heaps)")]
+    public void Guard_enters_at_idle_while_the_budget_left_is_below_the_floor(long budgetMb, bool enters)
+    {
+        RegionRuntime runtime = BudgetRuntime(budgetMb);
+        List<IThreadPoolWorkItem> queued = [];
+        using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard), NullLogManager.Instance, runtime, queued.Add);
+        runtime.AllocatedBytes = 17 * Mb;
+        using IDisposable lease = keeper.TryStartNoGCRegion();
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(queued, Has.Count.EqualTo(enters ? 1 : 0));
+            Assert.That(Metrics.NoGcRegionGuardThresholdBytes, Is.EqualTo(256 * Mb));
+        }
+    }
+
     [Test]
     public void Guard_fixed_threshold_overrides_the_rule()
     {
@@ -626,7 +646,7 @@ public class GCKeeperTests
         using GCKeeper keeper = new(ModeStrategy(NoGcRegionMode.Guard, guardBytes: 300 * Mb), NullLogManager.Instance, runtime, queued.Add);
         runtime.AllocatedBytes = 650 * Mb;
         keeper.TryStartNoGCRegion().Dispose();
-        AssertGuardGauges(threshold: 300 * Mb, left: 350 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 64 * Mb, "the rule would ask for 750 MB");
+        AssertGuardGauges(threshold: 300 * Mb, left: 350 * Mb, gen0Budget: 1_000 * Mb, blockAllocation: 0, "the rule would ask for 750 MB");
         Assert.That(queued, Is.Empty);
 
         runtime.AllocatedBytes = 750 * Mb;
