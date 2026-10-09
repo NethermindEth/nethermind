@@ -800,6 +800,7 @@ public class PbtSnapshotBundleTests
     [TestCase(3, true)]
     public void Node_group_newest_full_replacement_or_tombstone_stops_fallback(int newestTier, bool tombstone)
     {
+        TrackingMemoryProvider memoryProvider = new();
         PbtNodePath groupKey = new([], 0);
         PbtStorageNodePath wideGroupKey = new([], 0);
         byte[] persisted = PbtNodeGroupEncoder.Encode(groupKey, [new PbtNodeRecord(groupKey.ToPath<PbtStorageNodePath>(), BranchEncoding(1)),
@@ -810,30 +811,87 @@ public class PbtSnapshotBundleTests
         Reader reader = new(new PbtVariableTreeKey([0]), null) { GroupPayload = persisted };
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotPooledList sharedSnapshots = newestTier >= 1
-            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared))
+            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, persisted, memoryProvider), Content(wideGroupKey, newestTier == 1 && tombstone ? null : shared, memoryProvider))
             : new(0);
         PbtSnapshotPooledList localSnapshots = newestTier >= 2
-            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local))
+            ? PbtSnapshotBundleTestExtensions.Chain(pool, Content(groupKey, shared, memoryProvider), Content(wideGroupKey, newestTier == 2 && tombstone ? null : local, memoryProvider))
             : new(0);
         using PbtTrieNodeCache cache = new(new PbtConfig());
         if (newestTier >= 2)
         {
-            using RefCountingMemory cached = Memory(shared);
+            using RefCountingMemory cached = Memory(shared, memoryProvider);
             cache.Add(TestItem.KeccakA.ValueHash256, groupKey, cached);
         }
         using PbtSnapshotBundle bundle = new(localSnapshots, new PbtReadOnlySnapshotBundle(sharedSnapshots, reader, recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, cache);
         if (newestTier == 3)
         {
-            using RefCountingMemory? payload = tombstone ? null : Memory(write);
+            using RefCountingMemory? payload = tombstone ? null : Memory(write, memoryProvider);
             bundle.SetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256, payload);
         }
 
-        using RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256);
-        byte[]? expected = tombstone ? null : newestTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
+        bool snapshotFound = bundle.TryGetSnapshotNodeGroup(wideGroupKey, out RefCountingMemory? snapshotPayload);
+        using (snapshotPayload)
         using (Assert.EnterMultipleScope())
         {
+            Assert.That(snapshotFound, Is.EqualTo(newestTier > 0));
+            byte[]? expectedSnapshot = tombstone ? null : newestTier switch { 0 => null, 1 => shared, 2 => local, _ => write };
+            Assert.That(snapshotPayload?.Memory.ToArray(), Is.EqualTo(expectedSnapshot));
+            Assert.That(reader.GroupReadCount, Is.Zero);
+        }
+
+        using (RefCountingMemory? actual = bundle.GetNodeGroup(wideGroupKey, TestItem.KeccakA.ValueHash256))
+        using (Assert.EnterMultipleScope())
+        {
+            byte[]? expected = tombstone ? null : newestTier switch { 0 => persisted, 1 => shared, 2 => local, _ => write };
             Assert.That(actual?.Memory.ToArray(), Is.EqualTo(expected));
             Assert.That(reader.GroupReadCount, Is.EqualTo(newestTier == 0 ? 1 : 0));
+        }
+        bundle.Dispose();
+        cache.Dispose();
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
+    }
+
+    [Test]
+    public void Snapshot_group_resolution_honors_retained_and_newer_memory_entries([Values] bool tombstone, [Values] bool newerMemory)
+    {
+        using PbtRetainedTestStore store = new();
+        using PbtSnapshotRepository repository = new(new MetricsConfig());
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtStorageNodePath path = new([], 0);
+        byte[] retainedEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(1))], default);
+        byte[] memoryEncoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(path, BranchEncoding(2))], default);
+        using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256,
+            Content(path, !newerMemory && tombstone ? null : retainedEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing);
+        using PbtRetainedSnapshot retained = store.Build(source);
+        repository.TryAddRetained(retained);
+        StateId head = retained.To;
+        if (newerMemory)
+        {
+            head = new StateId(1, default);
+            repository.TryAdd(new PbtSnapshot(retained.To, head, TestItem.KeccakB.ValueHash256,
+                Content(path, tombstone ? null : memoryEncoding), pool, PbtResourcePool.Usage.MainBlockProcessing));
+        }
+        Reader reader = new(default, null) { GroupPayload = retainedEncoding };
+        PbtSnapshotChain chain = repository.TryLeaseReadChain(head, StateId.PreGenesis)!;
+        using PbtReadOnlySnapshotBundle bundle = new(chain, reader, false);
+        bool found = bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? payload);
+        using (payload)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(found, Is.True);
+                Assert.That(payload?.Memory.ToArray(), Is.EqualTo(tombstone ? null : newerMemory ? memoryEncoding : retainedEncoding));
+                Assert.That(reader.GroupReadCount, Is.Zero);
+            }
+        }
+        PbtStorageNodePath missing = new([0], 8);
+        bool missingFound = bundle.TryGetSnapshotNodeGroup(missing, out RefCountingMemory? missingPayload);
+        using (missingPayload)
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(missingFound, Is.False);
+            Assert.That(missingPayload, Is.Null);
+            Assert.That(reader.GroupReadCount, Is.Zero);
         }
     }
 
@@ -1231,11 +1289,11 @@ public class PbtSnapshotBundleTests
         if (!codeFirst && hasCode) bundle.SetCode(account!.CodeHash.ValueHash256, code!);
     }
 
-    private static PbtSnapshotContent Content<TPath>(TPath groupKey, byte[]? encoding)
+    private static PbtSnapshotContent Content<TPath>(TPath groupKey, byte[]? encoding, IRefCountingMemoryProvider? memoryProvider = null)
         where TPath : struct, IPbtNodePath<TPath>
     {
         PbtSnapshotContent content = new();
-        using RefCountingMemory? payload = encoding is null ? null : Memory(encoding);
+        using RefCountingMemory? payload = encoding is null ? null : Memory(encoding, memoryProvider);
         content.SetNodeGroup(groupKey, payload);
         return content;
     }

@@ -105,6 +105,16 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
     }
 
+    /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
+    internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)
+    {
+        GuardDispose();
+        for (int index = LayerCount - 1; index >= 0; index--)
+            if (TryGroup(index, groupKey, out payload)) return true;
+        payload = null;
+        return false;
+    }
+
     /// <summary>Returns a caller-owned group lease, or null when no layer has an entry.</summary>
     internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey)
     {
@@ -123,7 +133,13 @@ public sealed class PbtReadOnlySnapshotBundle(
                 return payload;
             }
         }
-        sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        return GetPersistedNodeGroup(groupKey);
+    }
+
+    internal RefCountingMemory? GetPersistedNodeGroup(PbtStorageNodePath groupKey)
+    {
+        GuardDispose();
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         RefCountingMemory? result = reader.GetNodeGroup(groupKey);
         if (recordDetailedMetrics)
         {
@@ -132,6 +148,27 @@ public sealed class PbtReadOnlySnapshotBundle(
             if (result is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], result.GetSpan().Length);
         }
         return result;
+    }
+
+    internal RefCountingMemory?[] GetPersistedNodeGroups(PbtStorageNodePath[] groupKeys)
+    {
+        GuardDispose();
+        if (groupKeys.Length == 0) return [];
+        long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
+        RefCountingMemory?[] payloads = reader.GetNodeGroups(groupKeys);
+        if (recordDetailedMetrics)
+        {
+            // Batch time is amortized per group so the histogram still counts reads without multiplying elapsed time.
+            long elapsed = (Stopwatch.GetTimestamp() - sw) / groupKeys.Length;
+            for (int index = 0; index < groupKeys.Length; index++)
+            {
+                int partition = (int)PbtPartitions.PartitionOfPath(groupKeys[index]);
+                RefCountingMemory? payload = payloads[index];
+                Metrics.PbtReadOnlySnapshotBundleTimes.Observe(elapsed, (payload is null ? _readNodeGroupPersistenceNullLabels : _readNodeGroupPersistenceLabels)[partition]);
+                if (payload is not null) Metrics.PbtReadOnlySnapshotBundleNodeGroupBytes.AddBy(_readNodeGroupPersistenceSizeKeys[partition], payload.GetSpan().Length);
+            }
+        }
+        return payloads;
     }
 
     public PbtAccount? GetAccount(Address address) => GetAccount(PbtStateKey.AddressKeyHash(address));

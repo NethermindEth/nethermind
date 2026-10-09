@@ -179,6 +179,7 @@ public sealed class PbtCarryForwardCachingPersistence : IPbtPersistence
         public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => inner.TryGetCodeLeaf(key, out value);
         public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => inner.EnumerateAccounts();
         public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroup(groupKey);
+        public RefCountingMemory?[] GetNodeGroups<TPath>(TPath[] groupKeys) where TPath : struct, IPbtNodePath<TPath> => inner.GetNodeGroups(groupKeys);
         public void Dispose() => inner.Dispose();
     }
 

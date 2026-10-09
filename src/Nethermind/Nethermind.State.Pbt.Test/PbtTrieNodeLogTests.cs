@@ -148,6 +148,71 @@ public class PbtTrieNodeLogTests
     }
 
     [Test]
+    public void MultiGet_preserves_order_and_uses_captured_log_values_and_tombstones_before_batched_misses()
+    {
+        byte[] persistedOnlyKey = GroupKey(Bytes.FromHexString("0x40"), 4);
+        byte[] missingKey = GroupKey(Bytes.FromHexString("0x50"), 4);
+        byte[] persistedTopValue = Value(11);
+        byte[] persistedColdValue = Value(12);
+        byte[] persistedOnlyValue = Value(13);
+        _db.GetColumnDb(PbtColumns.TopNodeGroups).Set(TopKey, persistedTopValue);
+        _db.GetColumnDb(PbtColumns.TopNodeGroups).Set(ColdKey, persistedColdValue);
+        _db.GetColumnDb(PbtColumns.TopNodeGroups).Set(persistedOnlyKey, persistedOnlyValue);
+        Write((TopKey, Value1), (ColdKey, null));
+
+        TrackingBatchStore topColumn = new(keys =>
+        {
+            byte[]?[] values = new byte[]?[keys.Length];
+            for (int index = 0; index < keys.Length; index++)
+                if (keys[index].AsSpan().SequenceEqual(persistedOnlyKey)) values[index] = persistedOnlyValue;
+            return values;
+        });
+        using IColumnDbSnapshot<PbtColumns> realSnapshot = _db.CreateSnapshot();
+        IColumnDbSnapshot<PbtColumns> snapshot = Substitute.For<IColumnDbSnapshot<PbtColumns>>();
+        snapshot.GetColumn(Arg.Any<PbtColumns>()).Returns(call => call.Arg<PbtColumns>() == PbtColumns.Metadata
+            ? realSnapshot.GetColumn(PbtColumns.Metadata)
+            : topColumn);
+        using ITrieNodeLog.IView view = _log.OpenView(HookedDb(() => snapshot));
+
+        Write((TopKey, Value2), (ColdKey, Value3));
+        byte[][] keys = [TopKey, ColdKey, missingKey, persistedOnlyKey, TopKey, ColdKey];
+        byte[]?[] values = view.GetColumn(PbtColumns.TopNodeGroups).MultiGet(keys, ReadFlags.HintCacheMiss);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(values, Is.EqualTo(new byte[]?[] { Value1, null, null, persistedOnlyValue, Value1, null }));
+            Assert.That(topColumn.MultiGetCalls, Is.EqualTo(1));
+            Assert.That(topColumn.LastKeys, Is.EqualTo(new byte[][] { missingKey, persistedOnlyKey }));
+            Assert.That(topColumn.LastFlags, Is.EqualTo(ReadFlags.HintCacheMiss));
+            Assert.That(topColumn.GetCalls, Is.Zero);
+        }
+    }
+
+    [Test]
+    public void MultiGet_does_not_call_the_snapshot_column_when_all_keys_are_log_hits_or_empty()
+    {
+        WriteTop(Value1);
+        TrackingBatchStore topColumn = new(_ => []);
+        using IColumnDbSnapshot<PbtColumns> realSnapshot = _db.CreateSnapshot();
+        IColumnDbSnapshot<PbtColumns> snapshot = Substitute.For<IColumnDbSnapshot<PbtColumns>>();
+        snapshot.GetColumn(Arg.Any<PbtColumns>()).Returns(call => call.Arg<PbtColumns>() == PbtColumns.Metadata
+            ? realSnapshot.GetColumn(PbtColumns.Metadata)
+            : topColumn);
+        using ITrieNodeLog.IView view = _log.OpenView(HookedDb(() => snapshot));
+
+        byte[]?[] hits = view.GetColumn(PbtColumns.TopNodeGroups).MultiGet([TopKey, TopKey]);
+        byte[]?[] empty = view.GetColumn(PbtColumns.TopNodeGroups).MultiGet([]);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(hits, Is.EqualTo(new byte[]?[] { Value1, Value1 }));
+            Assert.That(empty, Is.Empty);
+            Assert.That(topColumn.MultiGetCalls, Is.Zero);
+            Assert.That(topColumn.GetCalls, Is.Zero);
+        }
+    }
+
+    [Test]
     public void Readers_see_the_version_of_their_snapshot_across_overwrites_and_merges()
     {
         using ITrieNodeLog.IView before = _log.OpenView(_db);
@@ -379,6 +444,8 @@ public class PbtTrieNodeLogTests
         }
 
         using ITrieNodeLog.IView beforeAccount = _log.OpenView(_db);
+        Assert.That(beforeAccount.GetColumn(PbtColumns.TopNodeGroups).MultiGet([ColdKey, TopKey, ColdKey]),
+            Is.EqualTo(new byte[]?[] { Value1, Value(2), Value1 }));
         Write((AccountKey, Value2), (TopKey, Value(3)));
         WriteTop(Value(4)); // seals first-level generation 2, whose copy fills the second level's generation
         Assert.That(() => Raw(TopKey), Is.EqualTo(Value(4)).After(5000, 20));
@@ -694,6 +761,28 @@ public class PbtTrieNodeLogTests
     [TestCase(16, 8192)]
     public void Index_capacity_is_the_budget_over_the_ratio_in_slots(int ratio, int slots) =>
         Assert.That(TrieNodeLogGeneration.CapacityFor(1024 * 1024, ratio), Is.EqualTo(slots));
+
+    private sealed class TrackingBatchStore(Func<byte[][], byte[]?[]> multiGet) : IReadOnlyKeyValueStore
+    {
+        public int MultiGetCalls { get; private set; }
+        public int GetCalls { get; private set; }
+        public byte[][]? LastKeys { get; private set; }
+        public ReadFlags LastFlags { get; private set; }
+
+        public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            GetCalls++;
+            return null;
+        }
+
+        public byte[]?[] MultiGet(byte[][] keys, ReadFlags flags = ReadFlags.None)
+        {
+            MultiGetCalls++;
+            LastKeys = keys;
+            LastFlags = flags;
+            return multiGet(keys);
+        }
+    }
 
     /// <summary>The test database with its snapshots supplied by <paramref name="snapshot"/>.</summary>
     private IColumnsDb<PbtColumns> HookedDb(Func<IColumnDbSnapshot<PbtColumns>> snapshot)

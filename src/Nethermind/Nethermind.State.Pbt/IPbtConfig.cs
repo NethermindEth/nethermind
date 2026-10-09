@@ -76,6 +76,10 @@ public interface IPbtConfig : IConfig
     [ConfigItem(Description = "Report the known child header's state root instead of the computed PBT root. Diagnostic use only: this bypasses independent state-root verification against the header while still computing and retaining the PBT root.", DefaultValue = "false")]
     bool FakeMatchingStateRoot { get; set; }
 
+    /// <summary>Whether first-level node-group prefetch uses MultiGet instead of parallel single reads. Defaults to true.</summary>
+    [ConfigItem(Description = "Use MultiGet for first-level ApplyBal node-group prefetch. False retains parallel single reads; deeper storage prefetch always uses parallel single reads.", DefaultValue = "true")]
+    bool NodeGroupPrefetchMultiGet { get; set; }
+
     /// <summary>Maximum estimated retained account trie-cache memory in bytes; zero disables this partition.</summary>
     [ConfigItem(Description = "Memory budget for cached account PBT trie node groups, in bytes. Zero disables this cache partition.", DefaultValue = "134217728")]
     ulong AccountTrieNodeCacheSizeBudget { get; set; }

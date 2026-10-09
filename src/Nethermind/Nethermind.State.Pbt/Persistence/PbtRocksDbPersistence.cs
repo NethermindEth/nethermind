@@ -282,6 +282,43 @@ public class PbtRocksDbPersistence(
             return RefCountingMemory.OwningRocksDb(owned);
         }
 
+        public RefCountingMemory?[] GetNodeGroups<TPath>(TPath[] groupKeys) where TPath : struct, IPbtNodePath<TPath>
+        {
+            if (groupKeys.Length == 0) return [];
+            Dictionary<PbtColumns, List<int>> partitions = [];
+            for (int index = 0; index < groupKeys.Length; index++)
+            {
+                PbtColumns column = NodeGroupColumn(groupKeys[index]);
+                if (!partitions.TryGetValue(column, out List<int>? indices)) partitions[column] = indices = [];
+                indices.Add(index);
+            }
+
+            RefCountingMemory?[] payloads = new RefCountingMemory?[groupKeys.Length];
+            Span<byte> key = stackalloc byte[PbtNodeGroupKey.MaxLength];
+            try
+            {
+                foreach ((PbtColumns column, List<int> indices) in partitions)
+                {
+                    byte[][] keys = new byte[indices.Count][];
+                    for (int index = 0; index < indices.Count; index++)
+                        keys[index] = NodeGroupStorageKey(column, groupKeys[indices[index]], key).ToArray();
+                    byte[]?[] values = GetNodeGroupColumn(column).MultiGet(keys);
+                    for (int index = 0; index < indices.Count; index++)
+                    {
+                        if (values[index] is not { Length: > 0 } value) continue;
+                        PbtNodeGroupCodec.DebugValidateNodes(groupKeys[indices[index]], value);
+                        payloads[indices[index]] = RefCountingMemory.Wrapping(value);
+                    }
+                }
+                return payloads;
+            }
+            catch
+            {
+                foreach (RefCountingMemory? payload in payloads) ((IDisposable?)payload)?.Dispose();
+                throw;
+            }
+        }
+
         private IReadOnlyKeyValueStore GetNodeGroupColumn(PbtColumns column) => column switch
         {
             PbtColumns.Metadata => _metadata,

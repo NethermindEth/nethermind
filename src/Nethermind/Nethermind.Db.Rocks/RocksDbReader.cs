@@ -78,6 +78,13 @@ public class RocksDbReader(DbOnTheRocks mainDb,
         return _mainDb.Get(key, _columnFamily, readOptions);
     }
 
+    /// <inheritdoc/>
+    public byte[]?[] MultiGet(byte[][] keys, ReadFlags flags = ReadFlags.None)
+    {
+        ReadOptions readOptions = (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options;
+        return _mainDb.MultiGet(keys, _columnFamily, readOptions);
+    }
+
     public int Get(scoped ReadOnlySpan<byte> key, Span<byte> output, ReadFlags flags = ReadFlags.None)
     {
         ReadOptions readOptions = ((flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _options);

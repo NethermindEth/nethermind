@@ -471,15 +471,27 @@ public class PbtWorldStateScopeTests
         Assert.That(PbtWorldStateScope.NodeGroupPrefetchPaths(bal), Is.EquivalentTo(expected));
     }
 
-    [TestCase(-1L, 0, false, TestName = "missing storage group")]
-    [TestCase(0L, 0, false)]
-    [TestCase(1024L, 0, false)]
-    [TestCase(1025L, 1, false)]
-    [TestCase(16 * 1024L, 1, false)]
-    [TestCase(16 * 1024 + 1L, 2, false)]
-    [TestCase(1024 * 1024L, 3, false)]
-    [TestCase(1024 * 1024L, 0, true, TestName = "cancelled")]
-    public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(long descendantBytes, int levels, bool cancelled)
+    [Test]
+    public void NodeGroupPrefetch_skips_empty_or_fully_snapshot_backed_lists([Values] bool multiGet, [Values] bool snapshotBacked)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
+                .WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        if (snapshotBacked)
+            foreach (PbtStorageNodePath path in PbtWorldStateScope.NodeGroupPrefetchPaths(bal)) bundle.SetNodeGroup(path, default, null);
+        else bal = Build.A.BlockAccessList.TestObject;
+
+        PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None, multiGet);
+
+        Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name is nameof(IPbtPersistence.IReader.GetNodeGroups) or nameof(IPbtPersistence.IReader.GetNodeGroup)), Is.Empty);
+    }
+
+    [Test]
+    public void NodeGroupPrefetch_reads_storage_groups_as_deep_as_the_slot_subtree_size_suggests(
+        [Values(-1L, 0L, 1024L, 1025L, 16 * 1024L, 16 * 1024 + 1L, 1024 * 1024L)] long descendantBytes,
+        [Values] bool cancelled, [Values] bool multiGet, [Values] bool snapshotBacked)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
@@ -494,9 +506,11 @@ public class PbtWorldStateScopeTests
         PbtStorageNodePath storageGroup = new(storagePath.Bytes[..33], 264);
         TrackingMemoryProvider memory = new();
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
-        reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call =>
+        reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call => ReadPayload(call.Arg<PbtStorageNodePath>()));
+        reader.GetNodeGroups(Arg.Any<PbtStorageNodePath[]>()).Returns(call => call.Arg<PbtStorageNodePath[]>().Select(ReadPayload).ToArray());
+
+        RefCountingMemory? ReadPayload(PbtStorageNodePath path)
         {
-            PbtStorageNodePath path = call.Arg<PbtStorageNodePath>();
             if (descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup)) return null;
             long[] sizes = new long[PbtFourLevelGroupGeometry.BoundarySlots];
             Array.Fill(sizes, descendantBytes);
@@ -505,12 +519,21 @@ public class PbtWorldStateScopeTests
             RefCountingMemory payload = memory.Rent(encoding.Length);
             encoding.CopyTo(payload.GetSpan());
             return payload;
-        });
+        }
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        PbtStorageNodePath deeperSnapshot = new(storagePath.Bytes[..34], 272);
+        if (snapshotBacked)
+        {
+            using RefCountingMemory? payload = ReadPayload(storageGroup);
+            bundle.SetNodeGroup(storageGroup, default, payload);
+            using RefCountingMemory? deeperPayload = ReadPayload(deeperSnapshot);
+            bundle.SetNodeGroup(deeperSnapshot, default, deeperPayload);
+        }
 
-        PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, new CancellationToken(cancelled));
+        PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, new CancellationToken(cancelled), multiGet);
 
         HashSet<PbtStorageNodePath> expected = cancelled ? [] : PbtWorldStateScope.NodeGroupPrefetchPaths(bal);
+        int levels = cancelled ? 0 : descendantBytes switch { <= 1024 => 0, <= 16 * 1024 => 1, <= 256 * 1024 => 2, _ => 3 };
         foreach (UInt256 slot in new UInt256[] { 1000, 1001, 2000 })
         {
             PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
@@ -521,13 +544,238 @@ public class PbtWorldStateScopeTests
                 expected.Add(new PbtStorageNodePath(path, depth));
             }
         }
+        if (snapshotBacked)
+        {
+            expected.Remove(storageGroup);
+            expected.Remove(deeperSnapshot);
+        }
+        PbtStorageNodePath[] singles = reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroup))
+            .Select(call => (PbtStorageNodePath)call.GetArguments()[0]!).ToArray();
+        PbtStorageNodePath[][] batches = reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroups))
+            .Select(call => (PbtStorageNodePath[])call.GetArguments()[0]!).ToArray();
+        bundle.Dispose();
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroup))
-                .Select(call => (PbtStorageNodePath)call.GetArguments()[0]!), Is.EquivalentTo(expected));
+            Assert.That(singles.Concat(batches.SelectMany(paths => paths)), Is.EquivalentTo(expected));
+            Assert.That(batches, Has.Length.EqualTo(multiGet && !cancelled ? 1 : 0));
+            Assert.That(batches.SelectMany(paths => paths).All(path => path.BitDepth is 32 or 264), Is.True);
+            Assert.That(!multiGet || singles.All(path => path.BitDepth > 264), Is.True);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
         }
     }
+
+    [Test]
+    public void NodeGroupPrefetch_skips_deeper_snapshot_tombstones([Values] bool multiGet)
+    {
+        ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
+        TrackingMemoryProvider memory = new();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        using (PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader))
+        {
+            foreach (PbtStorageNodePath path in PbtWorldStateScope.NodeGroupPrefetchPaths(bal))
+            {
+                using RefCountingMemory payload = LifecyclePrefetchPayload(memory, path, 1025);
+                bundle.SetNodeGroup(path, default, payload);
+            }
+            foreach (ReadOnlyAccountChanges changes in bal.AccountChanges)
+            {
+                PbtStoragePath key = PbtStateKey.Storage(changes.Address, PbtStateKey.AddressKeyHash(changes.Address), 1000);
+                byte[] path = key.Bytes[..34].ToArray();
+                path[^1] &= 0xF0;
+                bundle.SetNodeGroup(new PbtStorageNodePath(path, 268), default, null);
+            }
+
+            PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None, multiGet);
+
+            reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+            reader.DidNotReceive().GetNodeGroups(Arg.Any<PbtStorageNodePath[]>());
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+    }
+
+    [Test]
+    public async Task NodeGroupPrefetch_waits_for_batch_before_deeper_reads_and_releases_cancelled_results([Values] bool cancel)
+    {
+        ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
+        PbtStorageNodePath[] firstPaths = [.. PbtWorldStateScope.NodeGroupPrefetchPaths(bal)];
+        TrackingMemoryProvider memory = new();
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        using CancellationTokenSource cancellation = new();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.GetNodeGroups(Arg.Any<PbtStorageNodePath[]>()).Returns(call =>
+        {
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("batch was not released");
+            return call.Arg<PbtStorageNodePath[]>().Select(path => (RefCountingMemory?)LifecyclePrefetchPayload(memory, path, 1025)).ToArray();
+        });
+        reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call => LifecyclePrefetchPayload(memory, call.Arg<PbtStorageNodePath>(), 0));
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        Task prefetch = Task.Run(() => PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, cancellation.Token));
+        try
+        {
+            Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True, "first-level batch did not start");
+            reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+            Assert.That(prefetch.IsCompleted, Is.False);
+            if (cancel) cancellation.Cancel();
+        }
+        finally
+        {
+            release.Set();
+            await prefetch.WaitAsync(TimeSpan.FromSeconds(10));
+        }
+        PbtStorageNodePath[] singles = LifecycleSingleReads(reader);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroups))
+                .SelectMany(call => (PbtStorageNodePath[])call.GetArguments()[0]!), Is.EquivalentTo(firstPaths));
+            Assert.That(singles.All(path => path.BitDepth == 268), Is.True, "first-level groups must not be reread");
+            Assert.That(singles, cancel ? Is.Empty : Has.Length.EqualTo(firstPaths.Length));
+            Assert.That(memory.RentCount, Is.EqualTo(cancel ? firstPaths.Length : firstPaths.Length * 2));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+        }
+    }
+
+    [Test]
+    public void NodeGroupPrefetch_releases_first_level_results_when_a_parallel_single_read_fails()
+    {
+        ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
+        TrackingMemoryProvider memory = new();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        int reads = 0;
+        reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call =>
+        {
+            if (Interlocked.Increment(ref reads) == 2) throw new System.IO.IOException("single prefetch read failed");
+            return LifecyclePrefetchPayload(memory, call.Arg<PbtStorageNodePath>(), 1025);
+        });
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+        using Nethermind.Core.Threading.ParallelUnbalancedWork.WorkerScope workers = Nethermind.Core.Threading.ParallelUnbalancedWork.BeginWorkerScope(1);
+
+        Exception? error = Assert.Catch(() => PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None, multiGet: false));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(error!.ToString(), Does.Contain("single prefetch read failed"));
+            Assert.That(memory.RentCount, Is.EqualTo(1));
+            Assert.That(LifecycleSingleReads(reader).All(path => path.BitDepth == 264), Is.True);
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+        }
+        reader.DidNotReceive().GetNodeGroups(Arg.Any<PbtStorageNodePath[]>());
+    }
+
+    [Test]
+    public void NodeGroupPrefetch_releases_snapshot_lease_when_the_persistence_batch_fails()
+    {
+        ReadOnlyBlockAccessList bal = LifecyclePrefetchBal();
+        PbtStorageNodePath[] paths = [.. PbtWorldStateScope.NodeGroupPrefetchPaths(bal)];
+        TrackingMemoryProvider memory = new();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.GetNodeGroups(Arg.Any<PbtStorageNodePath[]>()).Returns(_ => throw new System.IO.IOException("batch prefetch read failed"));
+        PbtResourcePool pool = new(new PbtConfig());
+        PbtSnapshotContent content = pool.GetSnapshotContent(PbtResourcePool.Usage.MainBlockProcessing);
+        using (RefCountingMemory payload = LifecyclePrefetchPayload(memory, paths[0], 1025)) content.SetNodeGroup(paths[0], payload);
+        using (PbtSnapshotBundle bundle = new(PbtSnapshotBundleTestExtensions.Chain(pool, content),
+            new PbtReadOnlySnapshotBundle(new PbtSnapshotPooledList(0), reader, recordDetailedMetrics: false),
+            pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance))
+        {
+            Assert.That(() => PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None),
+                Throws.TypeOf<System.IO.IOException>().With.Message.EqualTo("batch prefetch read failed"));
+            reader.Received(1).GetNodeGroups(Arg.Is<PbtStorageNodePath[]>(keys => keys.Length == 1 && keys[0].Equals(paths[1])));
+            reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+        }
+        Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "only the snapshot's reference may remain after the failed prefetch");
+    }
+
+    [Test]
+    public async Task ApplyBal_uses_configured_first_level_strategy_and_preserves_root()
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
+                .WithNonceChanges(new NonceChange(1, 2)).WithStorageChanges(1000, new StorageChange(1, 7u)).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithBalanceChanges(new BalanceChange(1, 200)).TestObject).TestObject;
+        Hash256? expectedRoot = null;
+        foreach (bool multiGet in new[] { true, false })
+        {
+            PbtConfig config = new() { Enabled = true, NativeNodeGroupMemory = false };
+            Assert.That(config.NodeGroupPrefetchMultiGet, Is.True);
+            if (!multiGet) config.NodeGroupPrefetchMultiGet = false;
+            using ManualResetEventSlim entered = new();
+            using ManualResetEventSlim release = new();
+            BlockHeader parent = Build.A.BlockHeader.WithNumber(0).WithStateRoot(Keccak.Zero).TestObject;
+            IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+            reader.CurrentState.Returns(new StateId(parent));
+            reader.GetSlotRun(Arg.Any<PbtStoragePath>()).Returns(SlotRun.Empty);
+            reader.GetSlotRun(Arg.Any<PbtPath>()).Returns(SlotRun.Empty);
+            reader.GetNodeGroups(Arg.Any<PbtStorageNodePath[]>()).Returns(call =>
+            {
+                entered.Set();
+                if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("scope batch was not released");
+                return new RefCountingMemory?[call.Arg<PbtStorageNodePath[]>().Length];
+            });
+            reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call =>
+            {
+                if (call.Arg<PbtStorageNodePath>().BitDepth is 32 or 264)
+                {
+                    entered.Set();
+                    if (!release.Wait(TimeSpan.FromSeconds(10))) throw new TimeoutException("scope single read was not released");
+                }
+                return null;
+            });
+            IPbtPersistence persistence = Substitute.For<IPbtPersistence>();
+            persistence.CreateReader().Returns(reader);
+            await using IContainer container = PbtTestContext.BuildProductionContainer(config,
+                builder => builder.RegisterInstance(persistence).As<IPbtPersistence>());
+            PbtWorldStateManager manager = container.Resolve<PbtWorldStateManager>();
+            using IWorldStateScopeProvider.IScope scope = manager.GlobalWorldState.BeginScope(parent, new LocalMetrics());
+            scope.ApplyBal(bal);
+            try
+            {
+                Assert.That(entered.Wait(TimeSpan.FromSeconds(10)), Is.True, "ApplyBal did not start node-group prefetch");
+                if (multiGet)
+                {
+                    reader.Received(1).GetNodeGroups(Arg.Any<PbtStorageNodePath[]>());
+                    reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtStorageNodePath>());
+                }
+                else
+                {
+                    reader.DidNotReceive().GetNodeGroups(Arg.Any<PbtStorageNodePath[]>());
+                    Assert.That(LifecycleSingleReads(reader), Is.Not.Empty);
+                }
+            }
+            finally
+            {
+                release.Set();
+            }
+            scope.UpdateRootHash();
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(scope.Get(TestItem.AddressA)!.Balance, Is.EqualTo((UInt256)100));
+                Assert.That(scope.Get(TestItem.AddressA)!.Nonce, Is.EqualTo(2UL));
+                Assert.That(scope.CreateStorageTree(TestItem.AddressA).Get(1000), Is.EqualTo((UInt256)7));
+                if (expectedRoot is not null) Assert.That(scope.RootHash, Is.EqualTo(expectedRoot));
+            }
+            expectedRoot = scope.RootHash;
+        }
+    }
+
+    private static ReadOnlyBlockAccessList LifecyclePrefetchBal() => Build.A.BlockAccessList.WithAccountChanges(
+        Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject,
+        Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
+
+    private static RefCountingMemory LifecyclePrefetchPayload(TrackingMemoryProvider memory, PbtStorageNodePath path, long descendantBytes)
+    {
+        long[] sizes = new long[PbtFourLevelGroupGeometry.BoundarySlots];
+        Array.Fill(sizes, descendantBytes);
+        byte[] branch = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+        byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), branch)], sizes);
+        RefCountingMemory payload = memory.Rent(encoding.Length);
+        encoding.CopyTo(payload.GetSpan());
+        return payload;
+    }
+
+    private static PbtStorageNodePath[] LifecycleSingleReads(IPbtPersistence.IReader reader) => reader.ReceivedCalls()
+        .Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroup))
+        .Select(call => (PbtStorageNodePath)call.GetArguments()[0]!).ToArray();
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
     {

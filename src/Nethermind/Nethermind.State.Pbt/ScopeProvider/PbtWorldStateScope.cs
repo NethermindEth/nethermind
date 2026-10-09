@@ -35,6 +35,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
+    private readonly bool _nodeGroupPrefetchMultiGet;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
     private readonly Lock _hintBalLock = new();
     private Task? _hintBalTask;
@@ -73,6 +74,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
         _isReadOnly = isReadOnly;
+        _nodeGroupPrefetchMultiGet = config.NodeGroupPrefetchMultiGet;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, Bundle);
@@ -183,28 +185,72 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         CancellationTokenSource cancellation = new();
         _nodeGroupPrefetchCancellation = cancellation;
-        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token), cancellation.Token);
+        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token, _nodeGroupPrefetchMultiGet), cancellation.Token);
     }
 
-    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
+    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation, bool multiGet = true)
     {
+        if (cancellation.IsCancellationRequested) return;
         PbtStorageNodePath[] groups = [.. NodeGroupPrefetchPaths(bal)];
         long[] descendantBytes = new long[groups.Length * PbtFourLevelGroupGeometry.BoundarySlots];
-        ParallelUnbalancedWork.For(0, groups.Length, (bundle, groups, descendantBytes, cancellation), static (index, state) =>
+        RefCountingMemory?[] snapshots = new RefCountingMemory?[groups.Length];
+        RefCountingMemory?[] persisted = [];
+        try
         {
-            if (state.cancellation.IsCancellationRequested) return state;
-            Span<long> slotBytes = state.groups[index].BitDepth == StorageGroupDepth
-                ? state.descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots)
-                : [];
-            state.bundle.PrefetchNodeGroup(state.groups[index], slotBytes);
-            return state;
-        });
+            List<PbtStorageNodePath> misses = [];
+            List<int> missingIndexes = [];
+            for (int index = 0; index < groups.Length; index++)
+            {
+                if (cancellation.IsCancellationRequested) return;
+                if (!bundle.TryGetSnapshotNodeGroup(groups[index], out snapshots[index]))
+                {
+                    misses.Add(groups[index]);
+                    missingIndexes.Add(index);
+                }
+            }
+            PbtStorageNodePath[] missingPaths = [.. misses];
+            if (cancellation.IsCancellationRequested) return;
+            if (multiGet)
+            {
+                if (missingPaths.Length > 0) persisted = bundle.GetPersistedNodeGroups(missingPaths);
+            }
+            else
+            {
+                persisted = new RefCountingMemory?[missingPaths.Length];
+                ParallelUnbalancedWork.For(0, missingPaths.Length, (bundle, missingPaths, persisted, cancellation), static (index, state) =>
+                {
+                    if (!state.cancellation.IsCancellationRequested) state.persisted[index] = state.bundle.GetPersistedNodeGroup(state.missingPaths[index]);
+                    return state;
+                });
+            }
+            if (cancellation.IsCancellationRequested) return;
+
+            for (int index = 0; index < groups.Length; index++)
+                if (groups[index].BitDepth == StorageGroupDepth)
+                    PbtSnapshotBundle.StorageDescendantBytes(snapshots[index], descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
+            for (int index = 0; index < missingPaths.Length; index++)
+                if (missingPaths[index].BitDepth == StorageGroupDepth)
+                    PbtSnapshotBundle.StorageDescendantBytes(persisted[index], descendantBytes.AsSpan(missingIndexes[index] * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
+        }
+        finally
+        {
+            foreach (RefCountingMemory? payload in snapshots) ((IDisposable?)payload)?.Dispose();
+            foreach (RefCountingMemory? payload in persisted) ((IDisposable?)payload)?.Dispose();
+        }
         if (cancellation.IsCancellationRequested) return;
 
-        PbtStorageNodePath[] paths = [.. DeeperStorageNodeGroupPaths(bal, groups, descendantBytes)];
+        List<PbtStorageNodePath> deeperMisses = [];
+        foreach (PbtStorageNodePath path in DeeperStorageNodeGroupPaths(bal, groups, descendantBytes))
+        {
+            if (cancellation.IsCancellationRequested) return;
+            if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) deeperMisses.Add(path);
+            ((IDisposable?)snapshot)?.Dispose();
+        }
+        PbtStorageNodePath[] paths = [.. deeperMisses];
         ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, cancellation), static (index, state) =>
         {
-            if (!state.cancellation.IsCancellationRequested) state.bundle.PrefetchNodeGroup(state.paths[index], []);
+            if (state.cancellation.IsCancellationRequested) return state;
+            using RefCountingMemory? payload = state.bundle.GetPersistedNodeGroup(state.paths[index]);
             return state;
         });
     }

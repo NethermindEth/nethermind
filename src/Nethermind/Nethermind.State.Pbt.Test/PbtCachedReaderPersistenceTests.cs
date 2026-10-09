@@ -206,6 +206,44 @@ public class PbtCachedReaderPersistenceTests
         ctx.Batch.Received(1).SetNodeGroup(groupKey, null);
     }
 
+    [Test]
+    public async Task Reader_ForwardsNodeGroupBatchWithoutSplittingAndPreservesOwnedResults()
+    {
+        Context ctx = new();
+        PbtNodePath groupKey = new([], 0);
+        using RefCountingMemory payload = RefCountingMemory.Wrapping([1, 2, 3]);
+        RefCountingMemory?[] expected = [payload, null, payload];
+        ctx.Reader.GetNodeGroups(Arg.Any<PbtNodePath[]>()).Returns(_ =>
+        {
+            payload.AcquireLease();
+            payload.AcquireLease();
+            return expected;
+        });
+
+        await using PbtCachedReaderPersistence persistence = ctx.Build();
+        using IPbtPersistence.IReader reader = persistence.CreateReader();
+        PbtNodePath[] keys = [groupKey, groupKey, groupKey];
+        RefCountingMemory?[] actual = reader.GetNodeGroups(keys);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.SameAs(expected));
+                Assert.That(actual[1], Is.Null);
+                Assert.That(actual[0], Is.SameAs(payload));
+                Assert.That(actual[2], Is.SameAs(payload));
+                Assert.That(actual[0]!.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+                Assert.That(actual[2]!.GetSpan().ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
+            }
+            ctx.Reader.Received(1).GetNodeGroups(keys);
+            ctx.Reader.DidNotReceive().GetNodeGroup(Arg.Any<PbtNodePath>());
+        }
+        finally
+        {
+            foreach (RefCountingMemory? lease in actual) ((IDisposable?)lease)?.Dispose();
+        }
+    }
+
     private sealed class Context
     {
         public IPbtPersistence Inner { get; } = Substitute.For<IPbtPersistence>();

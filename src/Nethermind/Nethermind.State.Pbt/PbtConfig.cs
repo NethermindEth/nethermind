@@ -21,6 +21,7 @@ public class PbtConfig : IPbtConfig
     public long MigrationVerifyBucketBytes { get; set; } = 4L.GiB;
     public int ImportConcurrency { get; set; } = 1;
     public bool FakeMatchingStateRoot { get; set; }
+    public bool NodeGroupPrefetchMultiGet { get; set; } = true;
     public ulong AccountTrieNodeCacheSizeBudget { get; set; } = 128UL.MiB;
     public ulong CodeTrieNodeCacheSizeBudget { get; set; } = 32UL.MiB;
     public ulong StorageTrieNodeCacheSizeBudget { get; set; } = 224UL.MiB;

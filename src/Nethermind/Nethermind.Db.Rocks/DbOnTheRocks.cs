@@ -993,6 +993,30 @@ public partial class DbOnTheRocks : IDb, ITunableDb, IReadOnlyNativeKeyValueStor
         }
     }
 
+    internal byte[]?[] MultiGet(byte[][] keys, IColumnFamilyHandle? columnFamily, ReadOptions readOptions)
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+        if (keys.Length == 0) return [];
+        IColumnFamilyHandle[]? columnFamilies = null;
+        if (columnFamily is not null)
+        {
+            columnFamilies = new IColumnFamilyHandle[keys.Length];
+            Array.Fill(columnFamilies, columnFamily);
+        }
+        try
+        {
+            KeyValuePair<byte[], byte[]?>[] entries = _db.MultiGet(keys, columnFamilies, readOptions);
+            byte[]?[] values = new byte[]?[entries.Length];
+            for (int index = 0; index < entries.Length; index++) values[index] = entries[index].Value;
+            return values;
+        }
+        catch (RocksDbException e)
+        {
+            HandleFatalDbError(e);
+            throw;
+        }
+    }
+
     internal Span<byte> GetSpanWithColumnFamily(scoped ReadOnlySpan<byte> key, IColumnFamilyHandle? cf, ReadOptions readOptions)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
