@@ -3,8 +3,9 @@
 
 //! Usage: nethermind-ffi-example <ffi_dir> <config> [Category.Name=value...]
 //!
-//! Starts the node, prints the head, node status and tx pool events, then executes each hex-encoded block RLP read from stdin,
-//! one per line. Stops the node on end of input. Mirrors ../example/main.c.
+//! Starts the node, prints the head, reads from its state, prints its header, the chain config, node status and tx pool
+//! events, then executes each hex-encoded block RLP read from stdin, one per line. Stops the node on end of input. Mirrors
+//! ../example/main.c.
 
 use std::ffi::{CString, c_char, c_int, c_void};
 use std::io::{self, BufRead};
@@ -20,6 +21,25 @@ mod sys {
     #[repr(C)]
     pub struct NmNode {
         _private: [u8; 0],
+    }
+
+    #[repr(C)]
+    pub struct NmState {
+        _private: [u8; 0],
+    }
+
+    #[repr(C)]
+    pub struct NmBuf {
+        pub data: *mut u8,
+        pub len: usize,
+    }
+
+    #[repr(C)]
+    #[derive(Default)]
+    pub struct NmAccount {
+        pub nonce: u64,
+        pub balance: [u8; 32],
+        pub code_hash: [u8; 32],
     }
 
     #[repr(C)]
@@ -72,6 +92,39 @@ mod sys {
         ) -> *mut NmNode;
         pub fn nm_wait_ready(node: *mut NmNode, timeout_ms: i32) -> c_int;
         pub fn nm_get_head(node: *mut NmNode, head: *mut NmHead) -> c_int;
+        pub fn nm_get_header(
+            node: *mut NmNode,
+            block_hash: *const u8,
+            header_rlp: *mut NmBuf,
+        ) -> c_int;
+        pub fn nm_get_chain_config(node: *mut NmNode, genesis_json: *mut NmBuf) -> c_int;
+        pub fn nm_get_code(node: *mut NmNode, code_hash: *const u8, code: *mut NmBuf) -> c_int;
+        pub fn nm_state_open(
+            node: *mut NmNode,
+            block_hash: *const u8,
+            state: *mut *mut NmState,
+        ) -> c_int;
+        pub fn nm_state_close(node: *mut NmNode, state: *mut NmState);
+        pub fn nm_state_get_account(
+            node: *mut NmNode,
+            state: *mut NmState,
+            address: *const u8,
+            account: *mut NmAccount,
+        ) -> c_int;
+        pub fn nm_state_get_storage(
+            node: *mut NmNode,
+            state: *mut NmState,
+            address: *const u8,
+            slot: *const u8,
+            value: *mut u8,
+        ) -> c_int;
+        pub fn nm_state_get_block_hash(
+            node: *mut NmNode,
+            state: *mut NmState,
+            number: u64,
+            hash: *mut u8,
+        ) -> c_int;
+        pub fn nm_free_buf(node: *mut NmNode, buf: *mut NmBuf);
         pub fn nm_execute_block(
             node: *mut NmNode,
             block_rlp: *const u8,
@@ -152,6 +205,45 @@ impl Node {
         }
     }
 
+    /// Reads the header RLP of the block with the given hash, or of the head when `None`.
+    fn header(&self, block_hash: Option<&[u8; 32]>) -> Result<Vec<u8>, c_int> {
+        self.read_buf(|buf| unsafe {
+            sys::nm_get_header(self.0, block_hash.map_or(ptr::null(), |h| h.as_ptr()), buf)
+        })
+    }
+
+    /// Reads the chain config as a Geth-style genesis.json.
+    fn chain_config(&self) -> Result<Vec<u8>, c_int> {
+        self.read_buf(|buf| unsafe { sys::nm_get_chain_config(self.0, buf) })
+    }
+
+    fn code(&self, code_hash: &[u8; 32]) -> Result<Vec<u8>, c_int> {
+        self.read_buf(|buf| unsafe { sys::nm_get_code(self.0, code_hash.as_ptr(), buf) })
+    }
+
+    /// Opens a view of the state after the block with the given hash.
+    fn state(&self, block_hash: &[u8; 32]) -> Result<State<'_>, c_int> {
+        let mut state = ptr::null_mut();
+        match unsafe { sys::nm_state_open(self.0, block_hash.as_ptr(), &mut state) } {
+            sys::NM_OK => Ok(State { node: self, state }),
+            status => Err(status),
+        }
+    }
+
+    fn read_buf(&self, read: impl FnOnce(*mut sys::NmBuf) -> c_int) -> Result<Vec<u8>, c_int> {
+        let mut buf = sys::NmBuf {
+            data: ptr::null_mut(),
+            len: 0,
+        };
+        let status = read(&mut buf);
+        let bytes = unsafe { copy(buf.data, buf.len) };
+        unsafe { sys::nm_free_buf(self.0, &mut buf) };
+        match status {
+            sys::NM_OK => Ok(bytes),
+            status => Err(status),
+        }
+    }
+
     fn execute_block(&self, block_rlp: &[u8]) -> BlockExecution {
         let mut result = sys::NmBlockResult {
             gas_used: 0,
@@ -202,6 +294,90 @@ impl Node {
             sys::nm_stop(self.0, 0);
             sys::nm_join(self.0)
         }
+    }
+}
+
+/// A view of the state after a block, closed on drop.
+struct State<'a> {
+    node: &'a Node,
+    state: *mut sys::NmState,
+}
+
+impl State<'_> {
+    fn account(&self, address: &[u8; 20]) -> Result<sys::NmAccount, c_int> {
+        let mut account = sys::NmAccount::default();
+        match unsafe {
+            sys::nm_state_get_account(self.node.0, self.state, address.as_ptr(), &mut account)
+        } {
+            sys::NM_OK => Ok(account),
+            status => Err(status),
+        }
+    }
+
+    fn storage(&self, address: &[u8; 20], slot: &[u8; 32]) -> Result<[u8; 32], c_int> {
+        let mut value = [0; 32];
+        match unsafe {
+            sys::nm_state_get_storage(
+                self.node.0,
+                self.state,
+                address.as_ptr(),
+                slot.as_ptr(),
+                value.as_mut_ptr(),
+            )
+        } {
+            sys::NM_OK => Ok(value),
+            status => Err(status),
+        }
+    }
+
+    fn block_hash(&self, number: u64) -> Result<[u8; 32], c_int> {
+        let mut hash = [0; 32];
+        match unsafe {
+            sys::nm_state_get_block_hash(self.node.0, self.state, number, hash.as_mut_ptr())
+        } {
+            sys::NM_OK => Ok(hash),
+            status => Err(status),
+        }
+    }
+}
+
+impl Drop for State<'_> {
+    fn drop(&mut self) {
+        unsafe { sys::nm_state_close(self.node.0, self.state) };
+    }
+}
+
+/// Reads the head's block hash, the zero address' account, its first storage slot and its code from the head state.
+fn print_state(node: &Node, head: &sys::NmHead) {
+    let state = match node.state(&head.hash) {
+        Ok(state) => state,
+        Err(status) => {
+            println!("state open: {status}");
+            return;
+        }
+    };
+
+    match state.block_hash(head.number) {
+        Ok(hash) => println!("state block hash: {}", hex(&hash)),
+        Err(status) => println!("state block hash: {status}"),
+    }
+
+    let address = [0; 20];
+    match state.account(&address) {
+        Ok(account) => {
+            println!("state account: nonce {}", account.nonce);
+            println!("  balance: {}", hex(&account.balance));
+            match node.code(&account.code_hash) {
+                Ok(code) => println!("  code: {} bytes", code.len()),
+                Err(status) => println!("  code: {status}"),
+            }
+        }
+        Err(status) => println!("state account: {status}"),
+    }
+
+    match state.storage(&address, &[0; 32]) {
+        Ok(value) => println!("state storage: {}", hex(&value)),
+        Err(status) => println!("state storage: {status}"),
     }
 }
 
@@ -273,8 +449,19 @@ fn main() -> ExitCode {
                 println!("head number: {}", head.number);
                 println!("head hash: {}", hex(&head.hash));
                 println!("head state root: {}", hex(&head.state_root));
+                print_state(&node, &head);
             }
             Err(status) => println!("head: {status}"),
+        }
+
+        match node.header(None) {
+            Ok(header) => println!("head header: {} bytes", header.len()),
+            Err(status) => println!("head header: {status}"),
+        }
+
+        match node.chain_config() {
+            Ok(config) => println!("chain config: {}", String::from_utf8_lossy(&config)),
+            Err(status) => println!("chain config: {status}"),
         }
 
         println!(

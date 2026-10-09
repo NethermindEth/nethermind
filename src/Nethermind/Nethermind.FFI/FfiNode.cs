@@ -13,14 +13,18 @@ using Nethermind.Consensus.Receipts;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Specs;
 using Nethermind.Facade.Eth;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.State.OverridableEnv;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Trie;
 using Nethermind.TxPool;
 using TxEventArgs = Nethermind.TxPool.TxEventArgs;
 
@@ -37,6 +41,8 @@ public sealed unsafe class FfiNode(
     ITxPool txPool,
     IEthSyncingInfo ethSyncingInfo,
     ISyncModeSelector syncModeSelector,
+    IBlockhashCache blockhashCache,
+    ChainSpec chainSpec,
     ILogManager logManager) : IDisposable
 {
     // NoValidation keeps the block processor's own validator out; the processed block is validated explicitly below.
@@ -62,6 +68,38 @@ public sealed unsafe class FfiNode(
     private int _syncState = SyncStateUnknown;
 
     public BlockHeader? Head => blockTree.Head?.Header;
+
+    public BlockHeader? FindHeader(Hash256 blockHash) => blockTree.FindHeader(blockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
+
+    /// <summary>The chain spec as a Geth-style genesis.json; see <see cref="GethGenesisWriter"/>.</summary>
+    public byte[] GetChainConfig() => GethGenesisWriter.Write(chainSpec, blockTree.Genesis!);
+
+    /// <summary>Finds the header whose post-state the state reads below are served from.</summary>
+    public FfiStatus OpenState(Hash256 blockHash, out BlockHeader? header)
+    {
+        header = FindHeader(blockHash);
+        return header is null ? FfiStatus.NotFound
+            : stateReader.HasStateForBlock(header) ? FfiStatus.Ok
+            : FfiStatus.StateUnavailable;
+    }
+
+    /// <exception cref="MissingTrieNodeException">The state of <paramref name="header"/> is no longer available.</exception>
+    public bool TryGetAccount(BlockHeader header, Address address, out AccountStruct account) =>
+        stateReader.TryGetAccount(header, address, out account);
+
+    /// <inheritdoc cref="TryGetAccount"/>
+    public UInt256 GetStorage(BlockHeader header, Address address, in UInt256 index)
+    {
+        stateReader.GetStorage(header, address, index, out UInt256 value);
+        return value;
+    }
+
+    public byte[]? GetCode(in ValueHash256 codeHash) => stateReader.GetCode(codeHash);
+
+    /// <summary>The hash of the ancestor of <paramref name="header"/> (or itself) with the given number, as BLOCKHASH sees it.</summary>
+    /// <returns><c>null</c> when <paramref name="number"/> is above <paramref name="header"/> or more than 256 blocks below it.</returns>
+    public Hash256? GetBlockHash(BlockHeader header, ulong number) =>
+        number > header.Number ? null : blockhashCache.GetHash(header, header.Number - number);
 
     /// <summary>Opens a child scope of the started runner's container that provides the <see cref="FfiNode"/>.</summary>
     public static ILifetimeScope CreateScope(ILifetimeScope runnerScope) => runnerScope.BeginLifetimeScope(static builder => builder

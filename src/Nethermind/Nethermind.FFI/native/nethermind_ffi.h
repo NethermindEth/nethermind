@@ -44,6 +44,8 @@ typedef enum nm_status
     NM_INTERNAL_ERROR = 7,
     /* A tx callback is already set; clear it with NULL first. */
     NM_CALLBACK_ALREADY_SET = 8,
+    /* The requested block, account or code does not exist. */
+    NM_NOT_FOUND = 9,
 } nm_status;
 
 typedef struct nm_head
@@ -67,6 +69,21 @@ typedef struct nm_block_result
     uint8_t* error;
     size_t error_len;
 } nm_block_result;
+
+/* Bytes owned by the caller; release with nm_free_buf. */
+typedef struct nm_buf
+{
+    uint8_t* data;
+    size_t len;
+} nm_buf;
+
+typedef struct nm_account
+{
+    uint64_t nonce;
+    /* Big-endian. */
+    uint8_t balance[32];
+    uint8_t code_hash[32];
+} nm_account;
 
 typedef enum nm_tx_event
 {
@@ -114,6 +131,9 @@ typedef void (*nm_node_callback)(void* user_data, const nm_node_status* status);
 
 typedef struct nm_node nm_node;
 
+/* A view of the state after a block; see nm_state_open. */
+typedef struct nm_state nm_state;
+
 /*
  * Starts the node in the background and returns immediately; use nm_wait_ready before other calls.
  *
@@ -131,6 +151,54 @@ int nm_wait_ready(nm_node* node, int32_t timeout_ms);
 
 /* Reads the current canonical head. */
 int nm_get_head(nm_node* node, nm_head* head);
+
+/*
+ * Reads a block header as RLP into header_rlp. Always release it with nm_free_buf, whatever the status.
+ *
+ * block_hash: 32 bytes, or NULL for the canonical head (NM_NOT_READY while there is none).
+ * Returns NM_NOT_FOUND for an unknown hash.
+ */
+int nm_get_header(nm_node* node, const uint8_t* block_hash, nm_buf* header_rlp);
+
+/*
+ * Writes the chain configuration as an EIP-7949 Geth-style genesis.json (config plus genesis header, without alloc) into
+ * genesis_json; alloy-genesis parses it into a Genesis, from which reth builds its ChainSpec. Always release it with
+ * nm_free_buf, whatever the status.
+ */
+int nm_get_chain_config(nm_node* node, nm_buf* genesis_json);
+
+/*
+ * Reads contract code by its 32-byte hash into code; the empty code hash yields empty code and an unknown hash
+ * NM_NOT_FOUND. Always release it with nm_free_buf, whatever the status.
+ */
+int nm_get_code(nm_node* node, const uint8_t* code_hash, nm_buf* code);
+
+/*
+ * Opens a view of the state after the block with the given 32-byte hash, for reads through the nm_state_* functions.
+ * The view does not pin the state: once it is pruned, reads fail with NM_STATE_UNAVAILABLE. A view can be used from any
+ * thread, concurrently. Close it with nm_state_close, before nm_join.
+ *
+ * Returns NM_NOT_FOUND for an unknown block and NM_STATE_UNAVAILABLE when its state is not available (pruned or not
+ * synced).
+ */
+int nm_state_open(nm_node* node, const uint8_t* block_hash, nm_state** state);
+
+void nm_state_close(nm_node* node, nm_state* state);
+
+/* Reads the account at the 20-byte address; NM_NOT_FOUND when it does not exist. */
+int nm_state_get_account(nm_node* node, nm_state* state, const uint8_t* address, nm_account* account);
+
+/* Reads the storage slot (32 bytes, big-endian) of the 20-byte address into value, zero for a missing account or slot. */
+int nm_state_get_storage(nm_node* node, nm_state* state, const uint8_t* address, const uint8_t* slot, uint8_t* value);
+
+/*
+ * Reads the 32-byte hash of the block with the given number that is the opened block or one of its ancestors, as the
+ * BLOCKHASH opcode of a child block sees it. Returns NM_NOT_FOUND when number is above the opened block or more than
+ * 256 blocks below it.
+ */
+int nm_state_get_block_hash(nm_node* node, nm_state* state, uint64_t number, uint8_t* hash);
+
+void nm_free_buf(nm_node* node, nm_buf* buf);
 
 /*
  * Validates and executes a block on top of its parent's state without persisting anything.

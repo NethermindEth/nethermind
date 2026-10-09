@@ -7,18 +7,24 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 
 namespace Nethermind.FFI;
 
 /// <summary>Entry points resolved by the native shim through <c>hdt_get_function_pointer</c>.</summary>
 /// <remarks>
 /// Each export catches everything: an exception escaping an <see cref="UnmanagedCallersOnlyAttribute"/> method
-/// terminates the process. Layouts of <see cref="NmHead"/> and <see cref="NmBlockResult"/> must match
+/// terminates the process. Layouts of the <c>Nm*</c> structs must match
 /// <c>native/nethermind_ffi.h</c>.
 /// </remarks>
 public static unsafe class NativeExports
 {
+    private static readonly HeaderDecoder HeaderDecoder = new();
+
     /// <param name="config">UTF-8 config name or path.</param>
     /// <param name="overrides">UTF-8 <c>Category.Name=value</c> entries.</param>
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
@@ -68,6 +74,158 @@ public static unsafe class NativeExports
                 head->Number = header.Number;
                 CopyHash(header.Hash, head->Hash);
                 CopyHash(header.StateRoot, head->StateRoot);
+                return FfiStatus.Ok;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    /// <param name="blockHash">32 bytes, or null for the head.</param>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetHeader(byte* blockHash, NmBuffer* headerRlp)
+    {
+        *headerRlp = default;
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                BlockHeader? header = blockHash is null ? node.Head : node.FindHeader(ReadHash(blockHash));
+                if (header is null) return blockHash is null ? FfiStatus.NotReady : FfiStatus.NotFound;
+
+                headerRlp->Data = Allocate(HeaderDecoder.Encode(header).Bytes, out headerRlp->Length);
+                return FfiStatus.Ok;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetChainConfig(NmBuffer* genesisJson)
+    {
+        *genesisJson = default;
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                genesisJson->Data = Allocate(node.GetChainConfig(), out genesisJson->Length);
+                return FfiStatus.Ok;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetCode(byte* codeHash, NmBuffer* code)
+    {
+        *code = default;
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                if (node.GetCode(new ValueHash256(new ReadOnlySpan<byte>(codeHash, Hash256.Size))) is not { } bytes) return FfiStatus.NotFound;
+
+                code->Data = Allocate(bytes, out code->Length);
+                return FfiStatus.Ok;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    /// <param name="state">Receives a handle to the block's header, released by <see cref="CloseState"/>.</param>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int OpenState(byte* blockHash, nint* state)
+    {
+        *state = 0;
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                FfiStatus status = node.OpenState(ReadHash(blockHash), out BlockHeader? header);
+                if (status is FfiStatus.Ok) *state = GCHandle.ToIntPtr(GCHandle.Alloc(header));
+                return status;
+            });
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static void CloseState(nint state)
+    {
+        if (state != 0) GCHandle.FromIntPtr(state).Free();
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetAccount(nint state, byte* address, NmAccount* account)
+    {
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                if (!node.TryGetAccount(StateHeader(state), ReadAddress(address), out AccountStruct value)) return FfiStatus.NotFound;
+
+                account->Nonce = value.Nonce;
+                value.Balance.ToBigEndian(new Span<byte>(account->Balance, 32));
+                value.CodeHash.Bytes.CopyTo(new Span<byte>(account->CodeHash, Hash256.Size));
+                return FfiStatus.Ok;
+            });
+        }
+        catch (MissingTrieNodeException)
+        {
+            return (int)FfiStatus.StateUnavailable;
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetStorage(nint state, byte* address, byte* slot, byte* value)
+    {
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                UInt256 index = new(new ReadOnlySpan<byte>(slot, 32), isBigEndian: true);
+                node.GetStorage(StateHeader(state), ReadAddress(address), index).ToBigEndian(new Span<byte>(value, 32));
+                return FfiStatus.Ok;
+            });
+        }
+        catch (MissingTrieNodeException)
+        {
+            return (int)FfiStatus.StateUnavailable;
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetBlockHash(nint state, ulong number, byte* hash)
+    {
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                if (node.GetBlockHash(StateHeader(state), number) is not { } blockHash) return FfiStatus.NotFound;
+
+                CopyHash(blockHash, hash);
                 return FfiStatus.Ok;
             });
         }
@@ -182,6 +340,12 @@ public static unsafe class NativeExports
     internal static void CopyHash(Hash256? hash, byte* destination) =>
         (hash ?? Hash256.Zero).Bytes.CopyTo(new Span<byte>(destination, Hash256.Size));
 
+    private static Hash256 ReadHash(byte* hash) => new(new ReadOnlySpan<byte>(hash, Hash256.Size));
+
+    private static Address ReadAddress(byte* address) => new(new ReadOnlySpan<byte>(address, Address.Size));
+
+    private static BlockHeader StateHeader(nint state) => (BlockHeader)GCHandle.FromIntPtr(state).Target!;
+
     private static void SetError(NmBlockResult* result, string? error)
     {
         NativeMemory.Free(result->Error);
@@ -216,6 +380,21 @@ public unsafe struct NmBlockResult
     public nuint ReceiptsLength;
     public byte* Error;
     public nuint ErrorLength;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct NmBuffer
+{
+    public byte* Data;
+    public nuint Length;
+}
+
+[StructLayout(LayoutKind.Sequential)]
+public unsafe struct NmAccount
+{
+    public ulong Nonce;
+    public fixed byte Balance[32];
+    public fixed byte CodeHash[32];
 }
 
 [StructLayout(LayoutKind.Sequential)]

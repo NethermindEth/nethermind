@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -16,8 +17,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Facade.Eth;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -65,6 +70,77 @@ public class FfiNodeTests
         Assert.That(receipts, Has.Length.EqualTo(head.Transactions.Length));
         Assert.That(ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, chain.SpecProvider.GetSpec(head.Header), head.ReceiptsRoot),
             Is.EqualTo(head.ReceiptsRoot));
+    }
+
+    [Test]
+    public async Task State_reads_serve_headers_accounts_storage_code_and_block_hashes()
+    {
+        using BasicTestBlockchain chain = await CreateChain(static _ => { });
+        Block transferBlock = await chain.AddBlock(Transfer(chain, TestItem.PrivateKeyA, gasPrice: 10));
+        Block head = await chain.AddBlock();
+        using ILifetimeScope scope = FfiNode.CreateScope(chain.Container);
+        FfiNode node = scope.Resolve<FfiNode>();
+
+        Assert.That(node.OpenState(TestItem.KeccakA, out _), Is.EqualTo(FfiStatus.NotFound));
+        Assert.That(node.OpenState(transferBlock.ParentHash!, out BlockHeader? parent), Is.EqualTo(FfiStatus.Ok));
+        Assert.That(node.OpenState(head.Hash!, out BlockHeader? header), Is.EqualTo(FfiStatus.Ok));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(node.FindHeader(transferBlock.Hash!), Is.EqualTo(transferBlock.Header));
+            Assert.That(node.FindHeader(TestItem.KeccakA), Is.Null);
+
+            node.TryGetAccount(parent!, TestItem.AddressA, out AccountStruct senderBefore);
+            Assert.That(node.TryGetAccount(header!, TestItem.AddressA, out AccountStruct sender), Is.True);
+            Assert.That(sender.Nonce, Is.EqualTo(senderBefore.Nonce + 1));
+            Assert.That(node.TryGetAccount(header!, TestItem.GetRandomAddress(), out _), Is.False);
+
+            // The test genesis gives AddressA code and one storage slot.
+            Assert.That(node.GetStorage(header!, TestItem.AddressA, UInt256.One), Is.EqualTo((UInt256)0xabcdef));
+            Assert.That(node.GetStorage(header!, TestItem.AddressA, 2), Is.EqualTo(UInt256.Zero));
+            Assert.That(node.GetCode(sender.CodeHash), Is.EqualTo(Bytes.FromHexString("0xabcd")));
+            Assert.That(node.GetCode(Keccak.OfAnEmptyString.ValueHash256), Is.Empty);
+            Assert.That(node.GetCode(TestItem.KeccakA.ValueHash256), Is.Null);
+
+            Assert.That(node.GetBlockHash(header!, head.Number), Is.EqualTo(head.Hash));
+            Assert.That(node.GetBlockHash(header!, transferBlock.Number), Is.EqualTo(transferBlock.Hash));
+            Assert.That(node.GetBlockHash(header!, head.Number + 1), Is.Null);
+        }
+    }
+
+    [TestCase("foundation.json")]
+    [TestCase("sepolia.json")]
+    [TestCase("hoodi.json")]
+    public void Chain_config_round_trips_through_the_geth_genesis_loader(string chainSpecFile)
+    {
+        ChainSpec expected = new ChainSpecFileLoader(new EthereumJsonSerializer(), LimboLogs.Instance)
+            .LoadEmbeddedOrFromFile(Path.Combine(TestContext.CurrentContext.TestDirectory, "chainspec", chainSpecFile));
+        BlockHeader genesis = expected.Genesis!.Header;
+
+        ChainSpec actual = new GethGenesisLoader(new EthereumJsonSerializer()).Load(new MemoryStream(GethGenesisWriter.Write(expected, genesis)));
+
+        BlockHeader actualGenesis = actual.Genesis!.Header;
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(actual.ChainId, Is.EqualTo(expected.ChainId));
+            Assert.That(Forks(actual), Is.EqualTo(Forks(expected)));
+            Assert.That(actual.TerminalTotalDifficulty, Is.EqualTo(expected.TerminalTotalDifficulty));
+            Assert.That(actual.Parameters.DepositContractAddress, Is.EqualTo(expected.Parameters.DepositContractAddress));
+            Assert.That(actual.Parameters.BlobSchedule, Is.EqualTo(expected.Parameters.BlobSchedule));
+            Assert.That((actualGenesis.Nonce, actualGenesis.Timestamp, actualGenesis.GasLimit, actualGenesis.Difficulty, actualGenesis.MixHash, actualGenesis.Beneficiary, actualGenesis.BaseFeePerGas),
+                Is.EqualTo((genesis.Nonce, genesis.Timestamp, genesis.GasLimit, genesis.Difficulty, genesis.MixHash, genesis.Beneficiary, genesis.BaseFeePerGas)));
+            Assert.That(actualGenesis.ExtraData, Is.EqualTo(genesis.ExtraData));
+        }
+
+        // Constantinople is left out: Parity-style chain specs leave it unset when it activated together with Petersburg.
+        static ulong?[] Forks(ChainSpec chainSpec) =>
+        [
+            chainSpec.HomesteadBlockNumber, chainSpec.DaoForkBlockNumber, chainSpec.TangerineWhistleBlockNumber, chainSpec.SpuriousDragonBlockNumber,
+            chainSpec.ByzantiumBlockNumber, chainSpec.ConstantinopleFixBlockNumber, chainSpec.IstanbulBlockNumber, chainSpec.MuirGlacierNumber,
+            chainSpec.BerlinBlockNumber, chainSpec.LondonBlockNumber, chainSpec.ArrowGlacierBlockNumber, chainSpec.GrayGlacierBlockNumber,
+            chainSpec.MergeForkIdBlockNumber, chainSpec.ShanghaiTimestamp, chainSpec.CancunTimestamp, chainSpec.PragueTimestamp,
+            chainSpec.OsakaTimestamp, chainSpec.AmsterdamTimestamp,
+        ];
     }
 
     private static readonly ConcurrentQueue<(FfiTxEvent Event, Hash256 Hash, byte[] Tx)> TxEvents = new();

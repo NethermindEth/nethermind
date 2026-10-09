@@ -15,4 +15,5 @@ public enum FfiStatus
     InvalidBlock = 6,
     InternalError = 7,
     CallbackAlreadySet = 8,
+    NotFound = 9,
 }

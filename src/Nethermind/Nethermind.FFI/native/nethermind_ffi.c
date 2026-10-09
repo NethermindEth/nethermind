@@ -17,6 +17,14 @@
 typedef int (*start_fn)(const char*, const char* const*, int32_t);
 typedef int (*wait_ready_fn)(int32_t);
 typedef int (*get_head_fn)(nm_head*);
+typedef int (*get_header_fn)(const uint8_t*, nm_buf*);
+typedef int (*get_chain_config_fn)(nm_buf*);
+typedef int (*get_code_fn)(const uint8_t*, nm_buf*);
+typedef int (*open_state_fn)(const uint8_t*, nm_state**);
+typedef void (*close_state_fn)(nm_state*);
+typedef int (*get_account_fn)(nm_state*, const uint8_t*, nm_account*);
+typedef int (*get_storage_fn)(nm_state*, const uint8_t*, const uint8_t*, uint8_t*);
+typedef int (*get_block_hash_fn)(nm_state*, uint64_t, uint8_t*);
 typedef int (*execute_block_fn)(const uint8_t*, size_t, nm_block_result*);
 typedef void (*free_fn)(void*);
 typedef int (*set_tx_callback_fn)(nm_tx_callback, void*);
@@ -31,6 +39,14 @@ struct nm_node
 
     wait_ready_fn wait_ready;
     get_head_fn get_head;
+    get_header_fn get_header;
+    get_chain_config_fn get_chain_config;
+    get_code_fn get_code;
+    open_state_fn open_state;
+    close_state_fn close_state;
+    get_account_fn get_account;
+    get_storage_fn get_storage;
+    get_block_hash_fn get_block_hash;
     execute_block_fn execute_block;
     free_fn free;
     set_tx_callback_fn set_tx_callback;
@@ -122,6 +138,14 @@ nm_node* nm_start(const char* ffi_dir, const char* config, int override_count, c
     if (resolve(get_function_pointer, "Start", (void**)&start, err, err_len) != 0
         || resolve(get_function_pointer, "WaitReady", (void**)&node->wait_ready, err, err_len) != 0
         || resolve(get_function_pointer, "GetHead", (void**)&node->get_head, err, err_len) != 0
+        || resolve(get_function_pointer, "GetHeader", (void**)&node->get_header, err, err_len) != 0
+        || resolve(get_function_pointer, "GetChainConfig", (void**)&node->get_chain_config, err, err_len) != 0
+        || resolve(get_function_pointer, "GetCode", (void**)&node->get_code, err, err_len) != 0
+        || resolve(get_function_pointer, "OpenState", (void**)&node->open_state, err, err_len) != 0
+        || resolve(get_function_pointer, "CloseState", (void**)&node->close_state, err, err_len) != 0
+        || resolve(get_function_pointer, "GetAccount", (void**)&node->get_account, err, err_len) != 0
+        || resolve(get_function_pointer, "GetStorage", (void**)&node->get_storage, err, err_len) != 0
+        || resolve(get_function_pointer, "GetBlockHash", (void**)&node->get_block_hash, err, err_len) != 0
         || resolve(get_function_pointer, "ExecuteBlock", (void**)&node->execute_block, err, err_len) != 0
         || resolve(get_function_pointer, "Free", (void**)&node->free, err, err_len) != 0
         || resolve(get_function_pointer, "SetTxCallback", (void**)&node->set_tx_callback, err, err_len) != 0
@@ -155,6 +179,52 @@ int nm_wait_ready(nm_node* node, int32_t timeout_ms)
 int nm_get_head(nm_node* node, nm_head* head)
 {
     return node->get_head(head);
+}
+
+int nm_get_header(nm_node* node, const uint8_t* block_hash, nm_buf* header_rlp)
+{
+    return node->get_header(block_hash, header_rlp);
+}
+
+int nm_get_chain_config(nm_node* node, nm_buf* genesis_json)
+{
+    return node->get_chain_config(genesis_json);
+}
+
+int nm_get_code(nm_node* node, const uint8_t* code_hash, nm_buf* code)
+{
+    return node->get_code(code_hash, code);
+}
+
+int nm_state_open(nm_node* node, const uint8_t* block_hash, nm_state** state)
+{
+    return node->open_state(block_hash, state);
+}
+
+void nm_state_close(nm_node* node, nm_state* state)
+{
+    node->close_state(state);
+}
+
+int nm_state_get_account(nm_node* node, nm_state* state, const uint8_t* address, nm_account* account)
+{
+    return node->get_account(state, address, account);
+}
+
+int nm_state_get_storage(nm_node* node, nm_state* state, const uint8_t* address, const uint8_t* slot, uint8_t* value)
+{
+    return node->get_storage(state, address, slot, value);
+}
+
+int nm_state_get_block_hash(nm_node* node, nm_state* state, uint64_t number, uint8_t* hash)
+{
+    return node->get_block_hash(state, number, hash);
+}
+
+void nm_free_buf(nm_node* node, nm_buf* buf)
+{
+    node->free(buf->data);
+    memset(buf, 0, sizeof *buf);
 }
 
 int nm_execute_block(nm_node* node, const uint8_t* block_rlp, size_t block_rlp_len, nm_block_result* result)

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 // Usage: example <ffi_dir> <config> [Category.Name=value...]
-// Starts the node, prints the head, node status and tx pool events, then executes each hex-encoded block RLP read from stdin, one
-// per line. Stops the node on end of input.
+// Starts the node, prints the head, reads from its state, prints its header, the chain config, node status and tx pool events,
+// then executes each hex-encoded block RLP read from stdin, one per line. Stops the node on end of input.
 
 #include "../nethermind_ffi.h"
 
@@ -45,6 +45,42 @@ static void on_node(void* user_data, const nm_node_status* status)
     pthread_mutex_unlock(&print_lock);
 }
 
+// Reads the head's block hash, the zero address' account, its first storage slot and its code from the head state.
+static void print_state(nm_node* node, const nm_head* head)
+{
+    nm_state* state = NULL;
+    int status = nm_state_open(node, head->hash, &state);
+    printf("state open: %d\n", status);
+    if (status != NM_OK) return;
+
+    uint8_t hash[32];
+    status = nm_state_get_block_hash(node, state, head->number, hash);
+    printf("state block hash: %d ", status);
+    print_hex("", hash, sizeof hash);
+
+    static const uint8_t address[20] = { 0 };
+    nm_account account;
+    status = nm_state_get_account(node, state, address, &account);
+    printf("state account: %d\n", status);
+    if (status == NM_OK)
+    {
+        printf("  nonce: %llu\n", (unsigned long long)account.nonce);
+        print_hex("  balance: ", account.balance, sizeof account.balance);
+        nm_buf code = { 0 };
+        status = nm_get_code(node, account.code_hash, &code);
+        printf("  code: %d %zu bytes\n", status, code.len);
+        nm_free_buf(node, &code);
+    }
+
+    static const uint8_t slot[32] = { 0 };
+    uint8_t value[32];
+    status = nm_state_get_storage(node, state, address, slot, value);
+    printf("state storage: %d ", status);
+    print_hex("", value, sizeof value);
+
+    nm_state_close(node, state);
+}
+
 static size_t parse_hex(char* line, uint8_t* out)
 {
     char* hex = strncmp(line, "0x", 2) == 0 ? line + 2 : line;
@@ -81,7 +117,17 @@ int main(int argc, char** argv)
             printf("head number: %llu\n", (unsigned long long)head.number);
             print_hex("head hash: ", head.hash, sizeof head.hash);
             print_hex("head state root: ", head.state_root, sizeof head.state_root);
+            print_state(node, &head);
         }
+
+        nm_buf buf = { 0 };
+        status = nm_get_header(node, NULL, &buf);
+        printf("head header: %d %zu bytes\n", status, buf.len);
+        nm_free_buf(node, &buf);
+
+        status = nm_get_chain_config(node, &buf);
+        printf("chain config: %d %.*s\n", status, (int)buf.len, (const char*)buf.data);
+        nm_free_buf(node, &buf);
 
         printf("set node callback: %d\n", nm_set_node_callback(node, on_node, NULL));
         printf("set tx callback: %d\n", nm_set_tx_callback(node, on_tx, NULL));
