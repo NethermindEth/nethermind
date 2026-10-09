@@ -169,18 +169,31 @@ public static partial class EvmInstructions
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker,
                 vm.IsTracingAccess, codeSource)) goto OutOfGas;
 
+        // EIP-8279: the account enters the block access list on the transaction's first touch.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(codeSource)) goto OutOfGas;
+
         CodeInfo codeInfo = vm.CodeInfoRepository.GetCachedCodeInfo(codeSource, followDelegation: false, vmSpec: spec, delegationAddress: out Address? delegated);
 
-        if (TSpec.UseHotAndColdStorage &&
-            delegated is not null &&
-            !TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
-            goto OutOfGas;
+        if (TSpec.UseHotAndColdStorage && delegated is not null)
+        {
+            if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, vm.Spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, delegated))
+                goto OutOfGas;
+
+            // EIP-8279: the delegation target enters the block access list on the transaction's first touch.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(delegated)) goto OutOfGas;
+        }
 
         bool chargesNewAccount = ChargesNewAccount<TSpec>(state, target, hasValueTransfer);
 
         bool newAccountOutOfGas = chargesNewAccount && !TGasPolicy.TryConsumeNewAccountCreation<TEip8037>(ref gas);
 
         if (newAccountOutOfGas) goto OutOfGas;
+
+        // EIP-8279: a CALL moving value to another account puts the caller's and the recipient's post balances in the
+        // block access list, metered even if the call then fails on depth or balance.
+        if (TSpec.IsEip8279Enabled && TOpCall.ExecutionType == ExecutionType.CALL && hasValueTransfer && target != env.ExecutingAccount
+            && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))
+            goto OutOfGas;
 
         // EIP-7702: load delegated code after cold-access charge above.
         if (delegated is not null)

@@ -985,7 +985,7 @@ public class RlpxHostIntegrationTests
 
         public IChannel CreateClient() => new TcpSocketChannel();
 
-        public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+        public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
     }
 
     private abstract class ClientChannelFactory : IChannelFactory
@@ -997,7 +997,7 @@ public class RlpxHostIntegrationTests
 
         public abstract IChannel CreateClient();
 
-        public IChannel CreateDatagramChannel() => new SocketDatagramChannel();
+        public IDatagramSocket CreateDatagramSocket() => throw new NotSupportedException();
     }
 
     private sealed class PendingClientChannelFactory : ClientChannelFactory
