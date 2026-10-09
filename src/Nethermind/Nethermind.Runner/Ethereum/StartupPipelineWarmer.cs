@@ -273,6 +273,8 @@ internal static class StartupPipelineWarmer
         if (token is not null) client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", token);
         // Consensus clients check the chain id on connect, which creates the Eth module and its block subscribers.
         await PostAsync(client, serializer, address, "eth_chainId", [], cancellationToken);
+        // A devnet genesis can be scheduled ahead of the wall clock; both warm blocks must still follow it.
+        timestamp = Math.Max(timestamp, genesisHeader.Timestamp + 2);
         // The pool validates against the head's fork, so move the head off the source genesis before submitting typed transactions.
         Block head = await BuildBlockAsync(container, genesisHeader, timestamp - 1, 0, cancellationToken);
         await SendPayloadAsync(client, serializer, address, head, container.Resolve<ISpecProvider>().GetSpec(head.Header), cancellationToken);
