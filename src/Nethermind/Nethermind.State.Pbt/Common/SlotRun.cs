@@ -126,12 +126,12 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     }
 
     /// <summary>A new run with <paramref name="writes"/>, all into slots of this run, applied in order (zero clears a slot); this run is untouched.</summary>
-    internal PackedSlotRun With(ReadOnlySpan<SlotWrite> writes)
+    internal PackedSlotRun With(ReadOnlySpan<(UInt256 Slot, UInt256 Value)> writes)
     {
         Span<UInt256> valuesByIndex = stackalloc UInt256[SlotRun.Width];
         Expand(valuesByIndex);
         int mask = _mask;
-        foreach (SlotWrite write in writes)
+        foreach ((UInt256 Slot, UInt256 Value) write in writes)
         {
             int index = SlotRun.IndexOf(write.Slot);
             valuesByIndex[index] = write.Value;
@@ -223,6 +223,3 @@ internal sealed class SlotRun16() : PackedSlotRun(16)
 {
     internal override void ReturnSelf() => StaticPool<SlotRun16>.Return(this);
 }
-
-/// <summary>A write of <paramref name="Value"/> into storage slot <paramref name="Slot"/>; a zero value clears the slot.</summary>
-internal readonly record struct SlotWrite(UInt256 Slot, UInt256 Value);
