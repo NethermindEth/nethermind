@@ -11,7 +11,8 @@ namespace Nethermind.State.Pbt;
 
 /// <summary>
 /// Finds the header of the block a scope is about to fold, so the scope can report the state root
-/// that header claims rather than the EIP-8297 root it computed.
+/// that header claims rather than the EIP-8297 root it computed. Used for the fake root of
+/// <see cref="IPbtConfig.FakeMatchingStateRoot"/>.
 /// </summary>
 /// <remarks>
 /// PBT is not the consensus tree: a chain's headers commit to a Patricia root, and a block whose
