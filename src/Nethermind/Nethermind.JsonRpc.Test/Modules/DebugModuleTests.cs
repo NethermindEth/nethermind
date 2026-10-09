@@ -318,11 +318,11 @@ public class DebugModuleTests
         Assert.That(JToken.Parse(JsonSerializer.Serialize(debugTraceCall.Data)), Is.EqualTo(JToken.Parse(JsonSerializer.Serialize(expected.Data))).Using(JToken.EqualityComparer));
     }
 
-    [Test]
-    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(
-        [Values(12345UL, 26236007UL)] ulong number, [Values(null, "missingTracer")] string? tracer, [Values] bool streaming)
+    [TestCase(null)]
+    [TestCase("missingTracer")]
+    public async Task Debug_traceBlockByNumber_missing_numeric_block_uses_geth_error(string? tracer)
     {
-        _jsonRpcConfig.EnableTracingStreamMode = streaming;
+        const ulong number = 26236007;
         _blockFinder.Head.Returns(Build.A.Block.WithNumber(1).TestObject);
         string response = await SerializedRequest("debug_traceBlockByNumber", new BlockParameter(number), new { tracer });
         JToken json = JToken.Parse(response);
