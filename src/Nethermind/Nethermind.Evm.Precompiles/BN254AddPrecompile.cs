@@ -49,15 +49,15 @@ public partial class BN254AddPrecompile : IPrecompile<BN254AddPrecompile>
         }
 
         byte[] output = new byte[OutputLength];
-        bool result = input.Length == InputLength ?
+        string? error = input.Length == InputLength ?
             Add(input, output) :
             RunPaddedInput(input, output);
 
-        return result ? output : Errors.Failed;
+        return error is null ? output : error;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static bool RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
+    private static string? RunPaddedInput(ReadOnlySpan<byte> input, byte[] output)
     {
         // Input is too short - pad with zeros up to the expected length.
         Span<byte> padded = stackalloc byte[InputLength];

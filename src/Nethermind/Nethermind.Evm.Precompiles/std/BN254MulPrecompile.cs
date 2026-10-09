@@ -9,5 +9,5 @@ namespace Nethermind.Evm.Precompiles;
 public partial class BN254MulPrecompile
 {
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static bool Mul(ReadOnlySpan<byte> input, byte[] output) => BN254.Mul(output, input);
+    private static string? Mul(ReadOnlySpan<byte> input, byte[] output) => BN254.Mul(output, input);
 }

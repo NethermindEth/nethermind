@@ -26,15 +26,16 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
 
         public TestCase(string input, string output, bool status, IReleaseSpec? spec = null) : this(
             Convert.FromHexString(input), Convert.FromHexString(output),
-            Name: input, Gas: null, ExpectedError: status ? null : "<error>"
+            Name: input, Gas: null, ExpectedError: status ? null : AnyError
         ) => Spec = spec ?? DefaultSpec;
 
         public TestCase(byte[] Input, byte[]? Expected, bool status, IReleaseSpec? spec = null) : this(
             Input, Expected,
-            Name: Convert.ToHexString(Input), Gas: null, ExpectedError: status ? null : "<error>"
+            Name: Convert.ToHexString(Input), Gas: null, ExpectedError: status ? null : AnyError
         ) => Spec = spec ?? DefaultSpec;
     }
     private const string TestFilesDirectory = "PrecompileVectors";
+    private const string AnyError = "<error>";
 
     private static readonly IReleaseSpec DefaultSpec = Prague.Instance;
     protected static readonly TPrecompile Instance = TPrecompile.Instance;
@@ -80,6 +81,9 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
     protected void RunTest(string input, string output, bool status, IReleaseSpec? spec = null) =>
         RunTest(new TestCase(Convert.FromHexString(input), Convert.FromHexString(output), status, spec));
 
+    protected void RunFailureTest(string input, string expectedError) =>
+        RunTest(new TestCase(Convert.FromHexString(input), null, input, null, expectedError));
+
     private static void RunTestCore(TestCase testCase, string? reason = null)
     {
         ulong gas = Instance.BaseGasCost(testCase.Spec) + Instance.DataGasCost(testCase.Input, testCase.Spec);
@@ -89,6 +93,8 @@ public abstract class PrecompileTests<TPrecompile, TTests> : IPrecompileTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(result.IsSuccess, Is.EqualTo(testCase.ExpectedError is null), reason);
+            if (testCase.ExpectedError is not (null or AnyError))
+                Assert.That(result.Error, Is.EqualTo(testCase.ExpectedError), reason);
             Assert.That(result.Data, Is.EqualTo(testCase.Expected ?? []), reason);
 
             if (testCase.Gas is not null)

@@ -54,4 +54,11 @@ public class BN254MulPrecompileTests : PrecompileTests<BN254MulPrecompile, BN254
         TestName = "oversized input clamped to 96 when trailing zeros trimmed"
     )]
     public void NormalizedInput_SameOutput(string input, string? trailing = null) => RunEffectiveInputTest(input, trailing);
+
+    // The reasons go-ethereum gives for these inputs.
+    // (1, 3) * 2
+    [TestCase("000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000030000000000000000000000000000000000000000000000000000000000000002", "point is not on curve")]
+    // y is the field modulus + 2
+    [TestCase("000000000000000000000000000000000000000000000000000000000000000130644e72e131a029b85045b68181585d97816a916871ca8d3c208c16d87cfd490000000000000000000000000000000000000000000000000000000000000002", "invalid fp.Element encoding")]
+    public void Rejects_input_with_the_go_ethereum_reason(string input, string error) => RunFailureTest(input, error);
 }

@@ -266,16 +266,34 @@ public class GasEstimatorTests
     [Test]
     public void Estimate_execution_failure_at_the_highest_gas_limit_is_rejected_at_the_funded_gas_limit()
     {
-        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.PrecompileFailure);
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.Other);
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithData(CallData).WithGasLimit(RequestedGas).WithGasPrice(10).WithValue(10).TestObject;
 
         GasEstimation estimation = Estimate(processor, tx, CreateStateProvider(5_000_010, isContract: true));
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(estimation.Error, Is.EqualTo(EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()));
+            Assert.That(estimation.Error, Is.EqualTo(EvmExceptionType.Other.GetEvmExceptionDescription()));
             Assert.That(estimation.RejectedGasLimit, Is.EqualTo(500_000ul), "the requested gas capped by the (5000010 - 10) / 10 the balance funds");
             Assert.That(processor.GasLimits, Is.EqualTo(new[] { 500_000ul }), "the probe already ran at the funded gas limit");
+        }
+    }
+
+    [Test]
+    public void Estimate_precompile_failure_at_the_highest_gas_limit_is_not_reported_as_out_of_gas()
+    {
+        // The VM halts a precompile that rejects its input as out of gas, with the precompile's error as the description.
+        const string precompileError = "invalid input length";
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failureDescription: precompileError);
+        Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithData(CallData).WithGasLimit(RequestedGas).WithGasPrice(0).TestObject;
+
+        GasEstimation estimation = Estimate(processor, tx, CreateStateProvider(UInt256.Zero, isContract: true));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(estimation.Error, Is.EqualTo(precompileError));
+            Assert.That(estimation.RejectedGasLimit, Is.Null, "the precompile's reason is the standard text, not named at a gas limit");
+            Assert.That(processor.GasLimits, Is.EqualTo(new[] { RequestedGas }), "no search after the probe");
         }
     }
 
@@ -283,7 +301,7 @@ public class GasEstimatorTests
     public void Estimate_execution_failure_above_the_per_transaction_cap_is_named_at_the_requested_gas()
     {
         const ulong requestedGas = 30_000_000;
-        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.PrecompileFailure);
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.Other);
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithData(CallData).WithGasLimit(requestedGas).WithGasPrice(0).TestObject;
 
         GasEstimation estimation = Estimate(processor, tx, CreateStateProvider(UInt256.Zero, isContract: true), spec: Osaka.Instance, blockGasLimit: requestedGas);
@@ -298,14 +316,14 @@ public class GasEstimatorTests
     [Test]
     public void Estimate_execution_failure_with_a_request_below_the_intrinsic_cost_reports_the_processor_error()
     {
-        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.PrecompileFailure);
+        ScriptedTransactionProcessor processor = new(gasUsed: 30_000, peakGas: 30_000, requiredGasLimit: ulong.MaxValue, failure: EvmExceptionType.Other);
         Transaction tx = Build.A.Transaction.WithTo(TestItem.AddressB).WithData(CallData).WithGasLimit(1_000).WithGasPrice(0).TestObject;
 
         GasEstimation estimation = Estimate(processor, tx, CreateStateProvider(UInt256.Zero, isContract: true), blockGasLimit: RequestedGas);
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(estimation.Error, Is.EqualTo(nameof(EvmExceptionType.PrecompileFailure)), "the processor's own description of the failure");
+            Assert.That(estimation.Error, Is.EqualTo(nameof(EvmExceptionType.Other)), "the processor's own description of the failure");
             Assert.That(estimation.RejectedGasLimit, Is.Null, "not named with a gas limit");
         }
     }
@@ -405,7 +423,8 @@ public class GasEstimatorTests
         EvmExceptionType failure = EvmExceptionType.OutOfGas,
         byte[]? output = null,
         TransactionResult? rejection = null,
-        bool reportsFrameFailure = true) : ITransactionProcessor
+        bool reportsFrameFailure = true,
+        string? failureDescription = null) : ITransactionProcessor
     {
         public List<ulong> GasLimits { get; } = [];
 
@@ -428,7 +447,7 @@ public class GasEstimatorTests
                     txTracer.ReportActionError(failure);
 
                 txTracer.MarkAsFailed(transaction.To ?? Address.Zero, new GasConsumed(transaction.GasLimit, transaction.GasLimit), output ?? [], failure.ToString());
-                return TransactionResult.EvmException(failure);
+                return TransactionResult.EvmException(failure, failureDescription);
             }
 
             if (txTracer.IsTracingActions)
