@@ -77,12 +77,12 @@ public class ReleaseSpecTests
 
     /// <summary>Bools the sweeps cannot pin, so <see cref="EveryForkFlag"/> skips them.</summary>
     /// <remarks><c>ValidateReceipts</c> is fork-gated (<c>ValidateReceiptsTransition</c>, Byzantium on a geth
-    /// genesis), but it is an <see cref="IReceiptSpec"/> default that <see cref="ReleaseSpecDecorator"/> never
-    /// overrides, so a decorator reports it on whatever it wraps. Since the decorator sweep switches the flag
-    /// under test on, it would pass on that default instead of failing — a green proving nothing, which is the
-    /// failure class these sweeps exist to catch. Excluded by name rather than by matching a naming convention,
-    /// so a flag arriving under any name — <c>IsRip7212Enabled</c>, or whatever the next one is called — is
-    /// swept unless listed here.</remarks>
+    /// genesis), but its <see cref="IReceiptSpec"/> default is on, so a decorator that stopped forwarding it
+    /// would still report it on. Since the decorator sweep switches the flag under test on, it would pass on
+    /// that default instead of failing — a green proving nothing, which is the failure class these sweeps exist
+    /// to catch; <see cref="Forwarding_spec_implements_every_member_itself"/> pins its forwarding instead.
+    /// Excluded by name rather than by matching a naming convention, so a flag arriving under any name —
+    /// <c>IsRip7212Enabled</c>, or whatever the next one is called — is swept unless listed here.</remarks>
     private static readonly FrozenSet<string> UnpinnableFlags = new[] { nameof(IReceiptSpec.ValidateReceipts) }.ToFrozenSet();
 
     /// <summary>Flags the concrete spec derives rather than stores, mapped to the flag that drives them.</summary>
@@ -141,6 +141,36 @@ public class ReleaseSpecTests
 
         Assert.That(flag.GetValue(enabled), Is.True, $"{flag.Name} could not be switched on, so the sweep proves nothing");
         Assert.That(flag.GetValue(new MinimalExternalDecorator(enabled)), Is.True, $"{flag.Name} is not forwarded");
+    }
+
+    /// <summary>Interface defaults computed from the forwarder's own members, so inheriting them is correct.</summary>
+    /// <remarks>Forwarding one of these instead would detach it from an override: a decorator switching
+    /// <c>IsEip7928Enabled</c> on would still report <c>BlockLevelAccessListsEnabled</c> off.</remarks>
+    private static readonly FrozenSet<string> DerivedDefaults = new[]
+    {
+        $"get_{nameof(IReleaseSpec.BlockLevelAccessListsEnabled)}",
+        nameof(IReleaseSpec.IsPrecompile)
+    }.ToFrozenSet();
+
+    private static IEnumerable<TestCaseData> Forwarders() =>
+        new[] { typeof(ReleaseSpecDecorator), typeof(OverridableReleaseSpec), typeof(OverridableEip1559Spec) }
+            .Select(t => new TestCaseData(t).SetArgDisplayNames(t.Name));
+
+    /// <summary>A spec that wraps another implements every member itself rather than inheriting an
+    /// interface default.</summary>
+    /// <remarks>An inherited default answers for the wrapper whatever the wrapped spec holds. The sweeps
+    /// above catch that only for fork flags whose default differs from the value they switch on; this
+    /// covers every member, so a default added to the interface cannot quietly go unforwarded.</remarks>
+    [TestCaseSource(nameof(Forwarders))]
+    public void Forwarding_spec_implements_every_member_itself(Type forwarder)
+    {
+        string[] inherited = forwarder.GetInterfaces()
+            .SelectMany(i => forwarder.GetInterfaceMap(i).TargetMethods.Where(m => m.DeclaringType == i))
+            .Select(m => m.Name)
+            .Where(name => !DerivedDefaults.Contains(name))
+            .ToArray();
+
+        Assert.That(inherited, Is.Empty, $"{forwarder.Name} answers these from the interface default instead of the spec it wraps");
     }
 
     private sealed class MinimalExternalSpec : ReleaseSpec;
