@@ -32,6 +32,7 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
     ILifetimeScope rootLifetimeScope,
     IReadOnlyBlockTree baseBlockTree,
     IBlockStore baseBlockStore,
+    IHeaderStore baseHeaderStore,
     IDbProvider dbProvider,
     ISpecProvider specProvider,
     IReadOnlyList<IBlockValidationModule> validationModules,
@@ -42,8 +43,8 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         IOverridableEnv overridableEnv = overridableEnvFactory.Create();
 
-        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb, (IHeaderDecoder)Rlp.GetDecoderOrThrow<BlockHeader>());
-        SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
+        // Over the node's own store, as bodies are: it reads headers still queued for a deferred write.
+        SimulateDictionaryHeaderStore tmpHeaderStore = new(baseHeaderStore);
         SimulateDictionaryBlockStore tmpBlockStore = new(baseBlockStore);
         ChainLevelInfoRepository tmpChainLevelInfoRepository = new(editableDbProvider.BlockInfosDb);
 

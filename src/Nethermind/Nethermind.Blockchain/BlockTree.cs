@@ -442,6 +442,13 @@ namespace Nethermind.Blockchain
                 // below the head that Suggest callers work near, while below-cutoff payloads arrive through Insert.
                 if (block is not null)
                 {
+                    // The header too: a crash can lose a block's deferred header after its chain level is written.
+                    // Queued ahead of the body, as below.
+                    if (_headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null)
+                    {
+                        _headerStore.InsertDeferred(header);
+                    }
+
                     if (!_blockStore.HasBlock(header.Number, header.Hash))
                     {
                         _blockStore.InsertDeferred(block);

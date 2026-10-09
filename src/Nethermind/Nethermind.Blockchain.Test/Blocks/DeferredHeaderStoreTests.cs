@@ -92,7 +92,12 @@ public class DeferredHeaderStoreTests
 
         _barrier.FlushDeferred();
 
-        Assert.That(Reopen().Get(header.Hash!, shouldCache: false)?.Hash, Is.EqualTo(header.Hash));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Reopen().Get(header.Hash!, shouldCache: false)?.Hash, Is.EqualTo(header.Hash));
+            Assert.That(_headerDb.FlushCount, Is.GreaterThan(0), "headers WAL was fsynced before state persist");
+            Assert.That(_blockNumberDb.FlushCount, Is.GreaterThan(0), "block numbers WAL was fsynced before state persist");
+        }
     }
 
     /// <summary>
@@ -126,10 +131,12 @@ public class DeferredHeaderStoreTests
 
     /// <summary>
     /// The chain level that makes a block known is written at once, so a crash can lose a block's queued header while the
-    /// block stays known; suggesting the block again must write the header.
+    /// block stays known; suggesting the block again must write the header. With a durable sibling at the same height the
+    /// restarted tree's best suggested header reaches that height, and the block takes the already-known path.
     /// </summary>
-    [Test]
-    public async Task Resuggested_known_block_writes_the_header_a_crash_lost()
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task Resuggested_known_block_writes_the_header_a_crash_lost(bool durableSibling)
     {
         TestMemDb blocksDb = new(), headersDb = new(), blockNumbersDb = new(), blockInfosDb = new(), metadataDb = new();
         BlockTreeBuilder Builder(DeferredBlockDataWriter writer, StatePersistenceBarrier barrier) => Build.A.BlockTree()
@@ -141,6 +148,12 @@ public class DeferredHeaderStoreTests
         DeferredBlockDataWriter first = DeferredWriteTestHelpers.ManualWriter(firstBarrier);
         BlockTree tree = Builder(first, firstBarrier).OfChainLength(1).BlockTree;
         first.Pump();
+        if (durableSibling)
+        {
+            tree.SuggestBlock(Build.A.Block.WithParent(tree.Head!).WithExtraData([1]).TestObject);
+            first.Pump();
+        }
+
         Block block = Build.A.Block.WithParent(tree.Head!).TestObject;
         tree.SuggestBlock(block);
         // A crash: the writer is abandoned with the header and body still queued; the chain level is already written.
@@ -151,12 +164,14 @@ public class DeferredHeaderStoreTests
         try
         {
             BlockTree restarted = Builder(second, secondBarrier).BlockTree;
-            restarted.SuggestBlock(block);
+            if (durableSibling) Assert.That(restarted.BestSuggestedHeader?.Number, Is.EqualTo(block.Number), "precondition: the block is at or below the best suggested header");
+            Assert.That(restarted.SuggestBlock(block), Is.EqualTo(durableSibling ? AddBlockResult.AlreadyKnown : AddBlockResult.Added));
+            Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash), "findable before the write");
             second.Pump();
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash));
+                Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash), "findable after the write");
                 Assert.That(new HeaderStore(headersDb, blockNumbersDb).Get(block.Hash!, shouldCache: false)?.Hash, Is.EqualTo(block.Hash),
                     "the header is written again");
             }
