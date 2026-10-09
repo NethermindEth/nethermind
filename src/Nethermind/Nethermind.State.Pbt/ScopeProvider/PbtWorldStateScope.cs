@@ -16,12 +16,17 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
+    private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const long AverageNodeGroupBytes = 1024;
+
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
@@ -31,8 +36,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
-    private readonly BackgroundTask _hintBal;
-    private readonly BackgroundTask _nodeGroupPrefetch;
+    private readonly BackgroundTask _balPrefetch;
 
     private StateId _currentStateId;
     private Hash256 _rootHash;
@@ -55,8 +59,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         ILogManager logManager)
     {
         _logger = logManager.GetClassLogger<PbtWorldStateScope>();
-        _hintBal = new BackgroundTask(_logger, "HintBal prefetch");
-        _nodeGroupPrefetch = new BackgroundTask(_logger, "node group prefetch");
+        _balPrefetch = new BackgroundTask(_logger, "HintBal prefetch");
         _foldQuota = new ConcurrencyController(config.FoldConcurrency > 0 ? config.FoldConcurrency : Environment.ProcessorCount);
         _foldFanOut = new(config.FoldMinOperationsPerWorker, config.FoldLargeSubtreeBytes, config.FoldLargeSubtreeMinOperationsPerWorker);
         _nodeGroupMemory = nodeGroupMemory;
@@ -93,42 +96,57 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>
     /// Starts buffering the accounts and slot runs <paramref name="bal"/> writes, so <see cref="ApplyBal"/> finds them in the write buffer,
-    /// and starts the node group prefetch for the fold of those writes.
+    /// and then prefetching the node groups the fold of those writes walks into.
     /// </summary>
     /// <remarks>
     /// The buffered values are the ones visible when read, and a buffered value never replaces a write, so the prefetch
     /// may run alongside writes. Clearing storage could still race the prefetch of a run of the cleared account, so
-    /// clearing, like committing and disposing, stops the prefetch first.
+    /// clearing, like committing and disposing, stops the buffering first.
     /// With a <paramref name="sink"/>, every account and slot the list names, read-only ones included, is also read and forwarded to it.
     /// The returned task does not cover the node group prefetch, which <see cref="UpdateRootHash"/> stops.
     /// </remarks>
     public Task HintBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink = null)
     {
-        _hintBal.Stop();
+        _balPrefetch.Stop();
         if (bal.AccountChanges.Count == 0) return Task.CompletedTask;
-        _nodeGroupPrefetch.Start(cancellation => PbtNodeGroupPrefetch.Prefetch(Bundle, bal, cancellation));
-        return _hintBal.Start(cancellation => PrefetchBal(bal, sink, cancellation));
+        NodeGroupHint?[] hints = new NodeGroupHint?[bal.AccountChanges.Count];
+        return _balPrefetch.Start(
+            (reads, cancellation) => PrefetchBal(Bundle, bal, sink, hints, reads, cancellation),
+            cancellation => PrefetchNodeGroups(Bundle, hints, cancellation));
     }
 
-    private void PrefetchBal(ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken cancellation) =>
-        ParallelUnbalancedWork.For(0, bal.AccountChanges.Count, (scope: this, bal, sink, cancellation), static (index, state) =>
+    /// <summary>
+    /// Buffers the accounts and slot runs <paramref name="bal"/> writes and collects into <paramref name="hints"/>
+    /// what the fold of those writes walks into.
+    /// </summary>
+    /// <remarks>Once <paramref name="reads"/> is cancelled, the remaining accounts are only collected, as the node group prefetch outlives the buffering.</remarks>
+    internal static void PrefetchBal(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink,
+        NodeGroupHint?[] hints, CancellationToken reads, CancellationToken cancellation) =>
+        ParallelUnbalancedWork.For(0, bal.AccountChanges.Count, (bundle, bal, sink, hints, reads, cancellation), static (index, state) =>
         {
             ReadOnlyAccountChanges accountChanges = state.bal.AccountChanges.AsSpan()[index];
             if (state.cancellation.IsCancellationRequested || (!accountChanges.HasStateChanges && state.sink is null)) return state;
 
-            PbtSnapshotBundle bundle = state.scope.Bundle;
+            PbtSnapshotBundle bundle = state.bundle;
             Address address = accountChanges.Address;
-            Account? account = accountChanges.HasStateChanges ? bundle.GetAndPromoteAccount(address) : bundle.GetAccount(address);
-            if (state.sink?.StillNeeded(address, out _) == true) state.sink.OnAccountRead(address, account);
-            // ApplyBal writes no slot of a missing account that the block leaves missing.
-            if (account is null && !accountChanges.HasBalanceNonceOrCodeChanges) return state;
+            Account? account = null;
+            if (!state.reads.IsCancellationRequested)
+            {
+                account = accountChanges.HasStateChanges ? bundle.GetAndPromoteAccount(address) : bundle.GetAccount(address);
+                if (state.sink?.StillNeeded(address, out _) == true) state.sink.OnAccountRead(address, account);
+                // ApplyBal writes no slot of a missing account that the block leaves missing.
+                if (account is null && !accountChanges.HasBalanceNonceOrCodeChanges) return state;
+            }
 
             ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
+            NodeGroupHint? hint = accountChanges.HasStateChanges ? state.hints[index] = new(address, addressHash, accountChanges.HasBalanceNonceOrCodeChanges) : null;
             IWorldStateScopeProvider.IAsyncBalReaderSink? slotSink = account is null ? null : state.sink;
             UInt256? bufferedSlot = null;
             foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
             {
-                if (slotChanges.Changes.Length == 0 || state.cancellation.IsCancellationRequested) continue;
+                if (slotChanges.Changes.Length == 0) continue;
+                hint!.AddSlot(slotChanges.Key);
+                if (state.reads.IsCancellationRequested) continue;
                 if (ReadSlotToSink(bundle, slotSink, address, addressHash, slotChanges.Key))
                 {
                     bufferedSlot = slotChanges.Key;
@@ -141,11 +159,72 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             }
             foreach (UInt256 slot in accountChanges.StorageReads)
             {
-                if (state.cancellation.IsCancellationRequested) break;
+                if (state.reads.IsCancellationRequested) break;
                 ReadSlotToSink(bundle, slotSink, address, addressHash, slot);
             }
             return state;
         });
+
+    /// <summary>Reads the node groups the fold of the writes collected in <paramref name="hints"/> walks into, so the bundle keeps the persisted ones for the fold.</summary>
+    /// <remarks>
+    /// Per account, reads the first group below the top node groups of each zone it writes, then the groups below each written stem,
+    /// as deep as the stem's estimated remaining group levels: a boundary slot of the first storage group holds about
+    /// <c>descendantBytes / 1 KiB</c> groups, so its remaining depth is about <c>log16</c> of that many group levels.
+    /// Code leaves are left out: they are content addressed, so a deployment rarely finds their groups stored.
+    /// </remarks>
+    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, NodeGroupHint?[] hints, CancellationToken cancellation) =>
+        ParallelUnbalancedWork.For(0, hints.Length, (bundle, hints, cancellation), static (index, state) =>
+        {
+            if (state.hints[index] is not { } hint || state.cancellation.IsCancellationRequested) return state;
+
+            Span<byte> pathBytes = stackalloc byte[StorageGroupDepth / 8];
+            hint.AddressHash.Bytes.CopyTo(pathBytes[1..]);
+            if (hint.WritesAccountZone)
+            {
+                pathBytes[0] = Eip8297KeyDerivation.AccountZone;
+                ((IDisposable?)ReadNodeGroup(state.bundle, new PbtStorageNodePath(pathBytes[..(AccountGroupDepth / 8)], AccountGroupDepth)))?.Dispose();
+            }
+            if (hint.StemKeys.Count == 0) return state;
+
+            pathBytes[0] = Eip8297KeyDerivation.StorageZone;
+            Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
+            using (RefCountingMemory? storageGroup = ReadNodeGroup(state.bundle, new PbtStorageNodePath(pathBytes, StorageGroupDepth)))
+                StorageDescendantBytes(storageGroup, descendantBytes);
+
+            HashSet<PbtStorageNodePath> deeperGroups = [];
+            Span<byte> deeperPathBytes = stackalloc byte[PbtStoragePath.KeyLength];
+            foreach (PbtStoragePath stemKey in hint.StemKeys)
+            {
+                long subtreeBytes = descendantBytes[stemKey.Bytes[StorageGroupDepth / 8] >> 4];
+                int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
+                for (int level = 1; level <= levels; level++)
+                {
+                    if (state.cancellation.IsCancellationRequested) return state;
+                    int depth = StorageGroupDepth + level * PbtFourLevelGroupGeometry.LevelsPerGroup;
+                    Span<byte> path = deeperPathBytes[..((depth + 7) / 8)];
+                    stemKey.Bytes[..path.Length].CopyTo(path);
+                    if (depth % 8 != 0) path[^1] &= 0xF0;
+                    PbtStorageNodePath group = new(path, depth);
+                    if (deeperGroups.Add(group)) ((IDisposable?)ReadNodeGroup(state.bundle, group))?.Dispose();
+                }
+            }
+            return state;
+        });
+
+    /// <summary>Reads a group from the snapshots, or else from persistence.</summary>
+    /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
+    private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
+        bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot : bundle.GetPersistedNodeGroup(path);
+
+    private static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
+    {
+        if (payload is null) return;
+
+        ReadOnlySpan<byte> bytes = payload.GetSpan();
+        ushort mask = PbtNodeGroupCodec.ReadDescendantMask(bytes);
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+            if ((mask & (1 << slot)) != 0) descendantBytes[slot] = PbtNodeGroupCodec.ReadDescendantBytes(bytes, mask, slot);
+    }
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>
     /// <returns>Whether the slot was read.</returns>
@@ -203,7 +282,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
         finally
         {
-            _nodeGroupPrefetch.Stop();
+            _balPrefetch.Stop();
         }
     }
 
@@ -213,7 +292,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         long commitStart = Stopwatch.GetTimestamp();
         try
         {
-            _hintBal.Stop();
+            _balPrefetch.StopFirstPhase();
             UpdateRootHash();
             StateId newStateId = new(blockNumber, _rootHash);
             if (newStateId != _currentStateId)
@@ -242,8 +321,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         if (_logger.IsDebug) LogLifecycle("close begin");
         try
         {
-            _hintBal.Stop();
-            _nodeGroupPrefetch.Stop();
+            _balPrefetch.Stop();
             Bundle.Dispose();
         }
         finally
@@ -260,7 +338,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public void Set(Address key, Account? account)
         {
             // Removing an account clears its storage.
-            if (account is null) scope._hintBal.Stop();
+            if (account is null) scope._balPrefetch.StopFirstPhase();
             scope.Bundle.SetAccount(key, account);
             scope._rootDirty = true;
         }
@@ -287,7 +365,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         public void Clear()
         {
             ApplyWrites();
-            scope._hintBal.Stop();
+            scope._balPrefetch.StopFirstPhase();
             scope.Bundle.SelfDestruct(_addressHash);
             scope._rootDirty = true;
         }
@@ -305,22 +383,88 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
     }
 
-    /// <summary>A background task that can be cancelled and waited for from any thread.</summary>
+    /// <summary>What the fold of one account's writes walks into: whether it writes the account zone, and one key per storage-zone stem it writes.</summary>
+    internal sealed class NodeGroupHint(Address address, in ValueHash256 addressHash, bool writesAccountZone)
+    {
+        private UInt256? _lastStemSlot;
+
+        public ValueHash256 AddressHash { get; } = addressHash;
+        public bool WritesAccountZone { get; private set; } = writesAccountZone;
+
+        /// <summary>The key of the first written slot of each stem; the slots of one stem share <c>slot &gt;&gt; 8</c> and so every group above their leaves.</summary>
+        public List<PbtStoragePath> StemKeys { get; } = [];
+
+        /// <summary>Records a written slot; slots must be added in ascending order.</summary>
+        public void AddSlot(in UInt256 slot)
+        {
+            if (PbtStateKey.IsHeaderSlot(slot))
+            {
+                WritesAccountZone = true;
+                return;
+            }
+            if (_lastStemSlot is { } last && last >> 8 == slot >> 8) return;
+            StemKeys.Add(PbtStateKey.Storage(address, AddressHash, slot));
+            _lastStemSlot = slot;
+        }
+    }
+
+    /// <summary>A two-phase background task that can be cancelled and waited for from any thread, as a whole or up to the end of its first phase.</summary>
     private sealed class BackgroundTask(ILogger logger, string name)
     {
         private readonly Lock _lock = new();
         private Task? _task;
+        private Task? _firstPhase;
         private CancellationTokenSource? _cancellation;
+        private CancellationTokenSource? _firstPhaseCancellation;
 
-        /// <summary>Stops the running task, then runs <paramref name="work"/> in the background.</summary>
-        public Task Start(Action<CancellationToken> work)
+        /// <summary>Stops the running task, then runs <paramref name="firstPhase"/> and then <paramref name="secondPhase"/> in the background.</summary>
+        /// <param name="firstPhase">Takes the token <see cref="StopFirstPhase"/> cancels, then the token <see cref="Stop"/> cancels.</param>
+        /// <returns>A task that completes with the first phase.</returns>
+        public Task Start(Action<CancellationToken, CancellationToken> firstPhase, Action<CancellationToken> secondPhase)
         {
             Stop();
             lock (_lock)
             {
                 CancellationTokenSource cancellation = new();
+                CancellationTokenSource firstPhaseCancellation = new();
+                TaskCompletionSource firstPhaseCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
                 _cancellation = cancellation;
-                return _task = Task.Run(() => work(cancellation.Token), cancellation.Token);
+                _firstPhaseCancellation = firstPhaseCancellation;
+                _firstPhase = firstPhaseCompletion.Task;
+                // Not cancellable before it starts, so the first phase always completes.
+                _task = Task.Run(() =>
+                {
+                    try
+                    {
+                        firstPhase(firstPhaseCancellation.Token, cancellation.Token);
+                        firstPhaseCompletion.SetResult();
+                    }
+                    catch (Exception ex)
+                    {
+                        firstPhaseCompletion.SetException(ex);
+                        throw;
+                    }
+                    secondPhase(cancellation.Token);
+                });
+                return _firstPhase;
+            }
+        }
+
+        /// <summary>Cancels the first phase and waits for it to finish, leaving the second phase running.</summary>
+        public void StopFirstPhase()
+        {
+            if (Volatile.Read(ref _task) is null) return;
+            lock (_lock)
+            {
+                _firstPhaseCancellation?.Cancel();
+                try
+                {
+                    _firstPhase?.GetAwaiter().GetResult();
+                }
+                catch (Exception)
+                {
+                    // Stop logs the fault.
+                }
             }
         }
 
@@ -330,6 +474,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             if (Volatile.Read(ref _task) is null) return;
             lock (_lock)
             {
+                _firstPhaseCancellation?.Cancel();
                 _cancellation?.Cancel();
                 try
                 {
@@ -340,8 +485,11 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 {
                     if (logger.IsError) logger.Error($"PBT {name} faulted", ex);
                 }
+                _firstPhaseCancellation?.Dispose();
+                _firstPhaseCancellation = null;
                 _cancellation?.Dispose();
                 _cancellation = null;
+                _firstPhase = null;
                 Volatile.Write(ref _task, null);
             }
         }
