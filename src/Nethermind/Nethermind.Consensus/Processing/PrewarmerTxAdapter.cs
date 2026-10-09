@@ -38,11 +38,16 @@ public class PrewarmerTxAdapter(
         if (!prewarmerState.IsPrewarmer)
         {
             preWarmer.OnBeforeTxExecution();
-            if (preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint)
-                && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
+            _diagTxs++;
+            (int Replayed, int Rejected, int Missing) before = Tally;
+            bool eligible = preWarmer.TryFindFootprint(transaction, _blockExecutionContext.Header, out TransactionFootprint? footprint);
+            if (!eligible) _diagIneligible++;
+            if (eligible && TryReplay(footprint, transaction, txTracer, out TransactionResult result))
             {
                 return result;
             }
+
+            if (eligible && Tally == before) _diagOther++;
 
             // What the transaction writes goes to the block's footprints, so those that read it are refreshed on those values.
             if (prewarmerState.CommittedWrites is { } committed && preWarmer.TakesExecutedWrites) return ExecuteReportingWrites(transaction, txTracer, committed);
@@ -65,8 +70,26 @@ public class PrewarmerTxAdapter(
         }
     }
 
+    private long _diagTxs, _diagIneligible, _diagOther;
+    private (int Replayed, int Rejected, int Missing) _diagTally;
+    private (long Failures, long Refreshes, long Stored, long Skipped, long Failed, long Cancelled, long TakenOver) _diagRefresh;
+
+    private void LogDiag()
+    {
+        if (_diagTxs == 0) return;
+        (long, long, long, long, long, long, long) now = (Blockchain.Metrics.PrewarmHandoffFailures, Blockchain.Metrics.PrewarmRefreshes,
+            Blockchain.Metrics.PrewarmRefreshesStored, Blockchain.Metrics.PrewarmRefreshesSkipped, Blockchain.Metrics.PrewarmRefreshesFailed,
+            Blockchain.Metrics.PrewarmRefreshesCancelled, Blockchain.Metrics.PrewarmRefreshesTakenOver);
+        (int Replayed, int Rejected, int Missing) t = Tally;
+        if (_logger.IsInfo) _logger.Info($"HandoffDiag block={_blockExecutionContext.Header?.Number} txs={_diagTxs} replayed={t.Replayed - _diagTally.Replayed} rejected={t.Rejected - _diagTally.Rejected} missing={t.Missing - _diagTally.Missing} ineligible={_diagIneligible} other={_diagOther} failures={now.Item1 - _diagRefresh.Failures} refreshes={now.Item2 - _diagRefresh.Refreshes} stored={now.Item3 - _diagRefresh.Stored} skipped={now.Item4 - _diagRefresh.Skipped} rfailed={now.Item5 - _diagRefresh.Failed} cancelled={now.Item6 - _diagRefresh.Cancelled} takenover={now.Item7 - _diagRefresh.TakenOver}");
+        _diagTally = t;
+        _diagRefresh = now;
+        _diagTxs = _diagIneligible = _diagOther = 0;
+    }
+
     public void SetBlockExecutionContext(in BlockExecutionContext blockExecutionContext)
     {
+        LogDiag();
         _blockExecutionContext = blockExecutionContext;
         baseAdapter.SetBlockExecutionContext(in blockExecutionContext);
     }
