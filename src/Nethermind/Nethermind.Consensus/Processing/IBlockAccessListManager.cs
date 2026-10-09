@@ -57,11 +57,7 @@ public interface IBlockAccessListManager
     void ValidateBlockAccessList(Block block, uint index, bool validateStorageReads = true);
     void StoreBeaconRoot(Block block, IReleaseSpec spec);
     void ApplyBlockhashStateChanges(BlockHeader header, IReleaseSpec spec);
-    bool InstallPredeploys(IReleaseSpec spec, IReleaseSpec parentSpec);
-
-    /// <summary>Resolves the release spec in effect for the parent of <paramref name="header"/>.</summary>
-    /// <exception cref="System.InvalidOperationException">The parent header cannot be found.</exception>
-    IReleaseSpec GetParentSpec(BlockHeader header);
+    void InstallPredeploys(IReleaseSpec spec);
     void ApplyZeroNonceStorageAccountsTransition(BlockHeader header, IReleaseSpec spec);
     void ProcessWithdrawals(Block block, IReleaseSpec spec);
     void ProcessExecutionRequests(Block block, TxReceipt[] txReceipts, IReleaseSpec spec);
