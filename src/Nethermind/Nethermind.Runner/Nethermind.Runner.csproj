@@ -75,6 +75,7 @@
     <ProjectReference Include="..\Nethermind.OpcodeTracing.Plugin\Nethermind.OpcodeTracing.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Optimism\Nethermind.Optimism.csproj" />
     <ProjectReference Include="..\Nethermind.Taiko\Nethermind.Taiko.csproj" />
+    <ProjectReference Include="..\Nethermind.SendPolicy.Plugin\Nethermind.SendPolicy.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
     <ProjectReference Include="..\Nethermind.Shutter\Nethermind.Shutter.csproj" />
     <ProjectReference Include="..\Nethermind.Sockets\Nethermind.Sockets.csproj" />

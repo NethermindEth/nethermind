@@ -71,6 +71,21 @@ public static class FrameTxTestFrames
         return entries;
     }
 
+    /// <summary>New entries with the same content, as a node holds after decoding a gossiped transaction.</summary>
+    /// <remarks>An entry caches its recovered signer, so transactions sharing entries pay for each recovery only
+    /// once; a measurement that charges recovery per transaction must give each one its own.</remarks>
+    public static TxFrameSignature[] Fresh(TxFrameSignature[] entries)
+    {
+        TxFrameSignature[] copies = new TxFrameSignature[entries.Length];
+        for (int i = 0; i < entries.Length; i++)
+        {
+            TxFrameSignature entry = entries[i];
+            copies[i] = new TxFrameSignature(entry.Scheme, entry.Signer, entry.Msg, entry.Signature);
+        }
+
+        return copies;
+    }
+
     public static TxFrame SelfVerify(ulong gasLimit = 1_000) =>
         new(FrameMode.Verify, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
@@ -102,6 +117,25 @@ public static class FrameTxTestFrames
         new(FrameMode.Default, FrameFlags.ApproveExecutionAndPayment, target: null, gasLimit, UInt256.Zero, default);
 
     public static TxFrame Expiry(ulong gasLimit = 30_000) => ExpiryAt(deadline: 0, gasLimit);
+
+    /// <summary>An EIP-8272 <c>recent_root_verify</c> frame carrying <paramref name="tuples"/> as packed 72-byte data.</summary>
+    public static TxFrame RecentRootVerify(ulong gasLimit, params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples) =>
+        new(FrameMode.Verify, FrameFlags.None, Eip8272Constants.RecentRootAddress, gasLimit, UInt256.Zero, RecentRootTuples(tuples));
+
+    public static byte[] RecentRootTuples(params (ValueHash256 SourceId, ulong Slot, ValueHash256 Root)[] tuples)
+    {
+        const int tupleBytes = Eip8272Constants.RecentRootTupleLength;
+        byte[] data = new byte[tuples.Length * tupleBytes];
+        for (int i = 0; i < tuples.Length; i++)
+        {
+            Span<byte> tuple = data.AsSpan(i * tupleBytes, tupleBytes);
+            tuples[i].SourceId.Bytes.CopyTo(tuple);
+            BinaryPrimitives.WriteUInt64BigEndian(tuple.Slice(32, sizeof(ulong)), tuples[i].Slot);
+            tuples[i].Root.Bytes.CopyTo(tuple.Slice(40));
+        }
+
+        return data;
+    }
 
     public static TxFrame ExpiryAt(ulong deadline, ulong gasLimit = 30_000)
     {
