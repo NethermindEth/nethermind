@@ -98,7 +98,6 @@ mod sys {
             header_rlp: *mut NmBuf,
         ) -> c_int;
         pub fn nm_get_chain_config(node: *mut NmNode, genesis_json: *mut NmBuf) -> c_int;
-        pub fn nm_get_code(node: *mut NmNode, code_hash: *const u8, code: *mut NmBuf) -> c_int;
         pub fn nm_state_open(
             node: *mut NmNode,
             block_hash: *const u8,
@@ -117,6 +116,12 @@ mod sys {
             address: *const u8,
             slot: *const u8,
             value: *mut u8,
+        ) -> c_int;
+        pub fn nm_state_get_code(
+            node: *mut NmNode,
+            state: *mut NmState,
+            code_hash: *const u8,
+            code: *mut NmBuf,
         ) -> c_int;
         pub fn nm_state_get_block_hash(
             node: *mut NmNode,
@@ -215,10 +220,6 @@ impl Node {
     /// Reads the chain config as a Geth-style genesis.json.
     fn chain_config(&self) -> Result<Vec<u8>, c_int> {
         self.read_buf(|buf| unsafe { sys::nm_get_chain_config(self.0, buf) })
-    }
-
-    fn code(&self, code_hash: &[u8; 32]) -> Result<Vec<u8>, c_int> {
-        self.read_buf(|buf| unsafe { sys::nm_get_code(self.0, code_hash.as_ptr(), buf) })
     }
 
     /// Opens a view of the state after the block with the given hash.
@@ -330,6 +331,12 @@ impl State<'_> {
         }
     }
 
+    fn code(&self, code_hash: &[u8; 32]) -> Result<Vec<u8>, c_int> {
+        self.node.read_buf(|buf| unsafe {
+            sys::nm_state_get_code(self.node.0, self.state, code_hash.as_ptr(), buf)
+        })
+    }
+
     fn block_hash(&self, number: u64) -> Result<[u8; 32], c_int> {
         let mut hash = [0; 32];
         match unsafe {
@@ -367,7 +374,7 @@ fn print_state(node: &Node, head: &sys::NmHead) {
         Ok(account) => {
             println!("state account: nonce {}", account.nonce);
             println!("  balance: {}", hex(&account.balance));
-            match node.code(&account.code_hash) {
+            match state.code(&account.code_hash) {
                 Ok(code) => println!("  code: {} bytes", code.len()),
                 Err(status) => println!("  code: {status}"),
             }

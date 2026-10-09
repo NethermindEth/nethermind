@@ -67,7 +67,7 @@ static void print_state(nm_node* node, const nm_head* head)
         printf("  nonce: %llu\n", (unsigned long long)account.nonce);
         print_hex("  balance: ", account.balance, sizeof account.balance);
         nm_buf code = { 0 };
-        status = nm_get_code(node, account.code_hash, &code);
+        status = nm_state_get_code(node, state, account.code_hash, &code);
         printf("  code: %d %zu bytes\n", status, code.len);
         nm_free_buf(node, &code);
     }

@@ -168,12 +168,6 @@ int nm_get_header(nm_node* node, const uint8_t* block_hash, nm_buf* header_rlp);
 int nm_get_chain_config(nm_node* node, nm_buf* genesis_json);
 
 /*
- * Reads contract code by its 32-byte hash into code; the empty code hash yields empty code and an unknown hash
- * NM_NOT_FOUND. Always release it with nm_free_buf, whatever the status.
- */
-int nm_get_code(nm_node* node, const uint8_t* code_hash, nm_buf* code);
-
-/*
  * Opens a view of the state after the block with the given 32-byte hash, for reads through the nm_state_* functions.
  * The view does not pin the state: once it is pruned, reads fail with NM_STATE_UNAVAILABLE. A view can be used from any
  * thread, concurrently. Close it with nm_state_close, before nm_join.
@@ -190,6 +184,12 @@ int nm_state_get_account(nm_node* node, nm_state* state, const uint8_t* address,
 
 /* Reads the storage slot (32 bytes, big-endian) of the 20-byte address into value, zero for a missing account or slot. */
 int nm_state_get_storage(nm_node* node, nm_state* state, const uint8_t* address, const uint8_t* slot, uint8_t* value);
+
+/*
+ * Reads contract code by its 32-byte hash into code; the empty code hash yields empty code and an unknown hash
+ * NM_NOT_FOUND. Always release it with nm_free_buf, whatever the status.
+ */
+int nm_state_get_code(nm_node* node, nm_state* state, const uint8_t* code_hash, nm_buf* code);
 
 /*
  * Reads the 32-byte hash of the block with the given number that is the opened block or one of its ancestors, as the

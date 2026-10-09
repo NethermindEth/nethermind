@@ -19,7 +19,7 @@ typedef int (*wait_ready_fn)(int32_t);
 typedef int (*get_head_fn)(nm_head*);
 typedef int (*get_header_fn)(const uint8_t*, nm_buf*);
 typedef int (*get_chain_config_fn)(nm_buf*);
-typedef int (*get_code_fn)(const uint8_t*, nm_buf*);
+typedef int (*get_code_fn)(nm_state*, const uint8_t*, nm_buf*);
 typedef int (*open_state_fn)(const uint8_t*, nm_state**);
 typedef void (*close_state_fn)(nm_state*);
 typedef int (*get_account_fn)(nm_state*, const uint8_t*, nm_account*);
@@ -191,11 +191,6 @@ int nm_get_chain_config(nm_node* node, nm_buf* genesis_json)
     return node->get_chain_config(genesis_json);
 }
 
-int nm_get_code(nm_node* node, const uint8_t* code_hash, nm_buf* code)
-{
-    return node->get_code(code_hash, code);
-}
-
 int nm_state_open(nm_node* node, const uint8_t* block_hash, nm_state** state)
 {
     return node->open_state(block_hash, state);
@@ -214,6 +209,11 @@ int nm_state_get_account(nm_node* node, nm_state* state, const uint8_t* address,
 int nm_state_get_storage(nm_node* node, nm_state* state, const uint8_t* address, const uint8_t* slot, uint8_t* value)
 {
     return node->get_storage(state, address, slot, value);
+}
+
+int nm_state_get_code(nm_node* node, nm_state* state, const uint8_t* code_hash, nm_buf* code)
+{
+    return node->get_code(state, code_hash, code);
 }
 
 int nm_state_get_block_hash(nm_node* node, nm_state* state, uint64_t number, uint8_t* hash)

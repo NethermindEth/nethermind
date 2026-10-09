@@ -123,26 +123,6 @@ public static unsafe class NativeExports
         }
     }
 
-    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
-    public static int GetCode(byte* codeHash, NmBuffer* code)
-    {
-        *code = default;
-        try
-        {
-            return (int)FfiHost.Use(node =>
-            {
-                if (node.GetCode(new ValueHash256(new ReadOnlySpan<byte>(codeHash, Hash256.Size))) is not { } bytes) return FfiStatus.NotFound;
-
-                code->Data = Allocate(bytes, out code->Length);
-                return FfiStatus.Ok;
-            });
-        }
-        catch
-        {
-            return (int)FfiStatus.InternalError;
-        }
-    }
-
     /// <param name="state">Receives a handle to the block's header, released by <see cref="CloseState"/>.</param>
     [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
     public static int OpenState(byte* blockHash, nint* state)
@@ -209,6 +189,27 @@ public static unsafe class NativeExports
         catch (MissingTrieNodeException)
         {
             return (int)FfiStatus.StateUnavailable;
+        }
+        catch
+        {
+            return (int)FfiStatus.InternalError;
+        }
+    }
+
+    /// <param name="state">Unused while code is read by hash alone; taken so that code is read through the state view like the other state reads.</param>
+    [UnmanagedCallersOnly(CallConvs = [typeof(CallConvCdecl)])]
+    public static int GetCode(nint state, byte* codeHash, NmBuffer* code)
+    {
+        *code = default;
+        try
+        {
+            return (int)FfiHost.Use(node =>
+            {
+                if (node.GetCode(new ValueHash256(new ReadOnlySpan<byte>(codeHash, Hash256.Size))) is not { } bytes) return FfiStatus.NotFound;
+
+                code->Data = Allocate(bytes, out code->Length);
+                return FfiStatus.Ok;
+            });
         }
         catch
         {
