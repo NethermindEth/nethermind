@@ -31,6 +31,8 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     internal ValueHash256 TreeRoot { get; }
     internal SnapshotTier Tier { get; }
     internal SnapshotLocation Location { get; }
+    /// <summary>The block span from <see cref="From"/> to <see cref="To"/>; with <see cref="To"/>, the snapshot's catalog key.</summary>
+    internal long Depth => unchecked((long)(To.BlockNumber - From.BlockNumber));
     internal long Size => _reservation.Size;
     internal RefCountedBloomFilter BloomRef => _bloom;
     internal ArenaReservation Reservation => _reservation;
@@ -59,7 +61,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
             if (!entry.Tier.IsPersisted() || reservation.Size != entry.Location.Size || reservation.Offset != entry.Location.Offset)
                 throw new InvalidDataException("Invalid retained PBT catalog entry.");
             ArenaByteReader reader = reservation.CreateReader();
-            PbtRetainedTableValidation.Validate(reader);
+            SortedTableValidator.Validate(reader);
             (PbtRetainedMetadata metadata, SortedSet<ushort> owners) = ValidateEntities(reader);
             if (metadata.From != From || metadata.To != To) throw new InvalidDataException("Retained PBT catalog/table identity mismatch.");
             TreeRoot = metadata.TreeRoot;
@@ -127,6 +129,14 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         return _reservation.BeginWholeReadSession(adviseDontNeedOnDispose);
     }
     internal PbtRetainedScanner Scan() => new(this);
+
+    /// <summary>The bloom hash of every entity this snapshot holds.</summary>
+    internal IEnumerable<ulong> EntityBloomHashes()
+    {
+        using PbtRetainedScanner scanner = Scan();
+        while (scanner.MoveNext())
+            if (PbtRetainedKey.IsEntity(scanner.Key)) yield return PbtRetainedKey.BloomHash(scanner.Key);
+    }
 
     internal bool TryGetAccount(in ValueHash256 addressHash, out PbtAccount? account)
     {
@@ -208,7 +218,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         ObjectDisposedException.ThrowIf(Volatile.Read(ref _released) != 0, this);
         ArenaByteReader reader = _reservation.CreateReader();
         byte[] value = ReadValue(reader, bound);
-        int length = DescriptorLength(key, value, out uint chunks);
+        int length = PbtRetainedFormat.PayloadLength(key, value, out uint chunks);
         if (length < 0) return null;
         if (chunks == 0) return value[1..];
         byte[] payload = GC.AllocateUninitializedArray<byte>(length);
@@ -219,10 +229,10 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
             if (!SortedTableReader.TrySeek<ArenaByteReader, NoOpPin>(reader, new(0, reader.Length), chunkKey, out Bound referenceBound)
                 || referenceBound.Length != NodeRef.Size)
                 throw new InvalidDataException("Missing retained PBT payload chunk.");
-            PbtRetainedTableValidation.Read(reader, referenceBound.Offset, referenceBytes);
+            SortedTableValidator.Read(reader, referenceBound.Offset, referenceBytes);
             NodeRef reference = NodeRef.Read(referenceBytes);
-            int offset = checked((int)((long)i * PbtRetainedSnapshotBuilder.ChunkSize));
-            ReadChunk(reference, payload.AsSpan(offset, Math.Min(PbtRetainedSnapshotBuilder.ChunkSize, length - offset)));
+            int offset = checked((int)((long)i * PbtRetainedFormat.ChunkSize));
+            ReadChunk(reference, payload.AsSpan(offset, Math.Min(PbtRetainedFormat.ChunkSize, length - offset)));
         }
         return payload;
     }
@@ -234,7 +244,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         {
             cancellationToken.ThrowIfCancellationRequested();
             ReadOnlySpan<byte> key = scanner.Key;
-            if (key[0] is 0 or PbtRetainedKey.Ownership || IsChunk(key)) continue;
+            if (!PbtRetainedKey.IsEntity(key)) continue;
             byte[]? bytes = scanner.ReadPayload();
             switch (key[0])
             {
@@ -274,73 +284,11 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
 
     private static PackedSlotRun DecodeRun(ReadOnlySpan<byte> bytes) => bytes.IsEmpty ? SlotRun.Empty : SlotRunCodec.Decode(bytes);
 
-    internal static bool IsChunk(ReadOnlySpan<byte> key)
-    {
-        if (key.Length < 2) return false;
-        int descriptorLength = key[0] switch
-        {
-            PbtRetainedKey.Address when key.Length >= 34 => key[33] switch
-            {
-                PbtRetainedKey.Clear or PbtRetainedKey.Account => 35,
-                PbtRetainedKey.HeaderRun => 36,
-                PbtRetainedKey.StorageRun => 68,
-                _ => 0,
-            },
-            PbtRetainedKey.Code => 34,
-            PbtRetainedKey.AccountGroup or PbtRetainedKey.CodeGroup or PbtRetainedKey.StorageGroup when key.Length >= 3 => 4 + (BinaryPrimitives.ReadUInt16BigEndian(key[1..]) + 7) / 8,
-            _ => 0,
-        };
-        return descriptorLength > 0 && key.Length == descriptorLength + 4 && key[descriptorLength - 1] == 1;
-    }
-
-    private static int DescriptorLength(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, out uint chunks)
-    {
-        chunks = 0;
-        if (value.IsEmpty) throw new InvalidDataException("Empty retained PBT descriptor.");
-        bool nullable = key[0] is PbtRetainedKey.AccountGroup or PbtRetainedKey.CodeGroup or PbtRetainedKey.StorageGroup
-            || key[0] == PbtRetainedKey.Address && key[33] == PbtRetainedKey.Account;
-        switch (value[0])
-        {
-            case 0 when nullable && value.Length == 1: return -1;
-            case 1:
-                int inline = value.Length - 1;
-                ValidateLength(key, inline);
-                if (key[0] == PbtRetainedKey.Address && key[33] == PbtRetainedKey.Clear && value[1] > 1)
-                    throw new InvalidDataException("Invalid retained PBT clear value.");
-                return inline;
-            case 2 when value.Length == 9:
-                uint length = BinaryPrimitives.ReadUInt32LittleEndian(value[1..]);
-                chunks = BinaryPrimitives.ReadUInt32LittleEndian(value[5..]);
-                if (length <= PbtRetainedSnapshotBuilder.InlineLimit || length > int.MaxValue
-                    || chunks != ((ulong)length + PbtRetainedSnapshotBuilder.ChunkSize - 1) / PbtRetainedSnapshotBuilder.ChunkSize)
-                    throw new InvalidDataException("Invalid retained PBT chunk descriptor.");
-                ValidateLength(key, (int)length);
-                return (int)length;
-            default: throw new InvalidDataException("Invalid retained PBT descriptor marker.");
-        }
-    }
-
-    private static void ValidateLength(ReadOnlySpan<byte> key, int length)
-    {
-        bool valid = key[0] switch
-        {
-            PbtRetainedKey.Address => key[33] switch
-            {
-                PbtRetainedKey.Clear => length == 1,
-                PbtRetainedKey.Account => length is 32 or 55 or 64,
-                _ => length == 0 || length is >= 35 and <= 515 && (length - 3) % 32 == 0,
-            },
-            PbtRetainedKey.Code => true,
-            _ => length is > 0 and <= PbtNodeGroupCodec.MaxPayloadLength,
-        };
-        if (!valid) throw new InvalidDataException("Invalid retained PBT entity payload length.");
-    }
-
     private static byte[] ReadValue(scoped in ArenaByteReader reader, Bound bound)
     {
         if (bound.Length is < 0 or > 255) throw new InvalidDataException("Invalid retained PBT table value length.");
         byte[] value = new byte[(int)bound.Length];
-        PbtRetainedTableValidation.Read(reader, bound.Offset, value);
+        SortedTableValidator.Read(reader, bound.Offset, value);
         return value;
     }
 
@@ -348,15 +296,13 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
     {
         if (bound.Length is < 0 or > 255) throw new InvalidDataException("Invalid retained PBT table value length.");
         Span<byte> value = buffer[..(int)bound.Length];
-        PbtRetainedTableValidation.Read(reader, bound.Offset, value);
+        SortedTableValidator.Read(reader, bound.Offset, value);
         return value;
     }
 
     private static (PbtRetainedMetadata, SortedSet<ushort>) ValidateEntities(scoped in ArenaByteReader reader)
     {
-        StateId from = default, to = default;
-        ValueHash256 root = default;
-        int metadataMask = 0;
+        PbtRetainedFormat.MetadataReader metadata = default;
         SortedSet<ushort> referenced = [], owners = [];
         byte[]? active = null;
         uint expected = 0, count = 0;
@@ -376,23 +322,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
                 expected++;
                 continue;
             }
-            if (key[0] == 0)
-            {
-                if (key.Length != 2 || key[1] is < 1 or > 4 || (metadataMask & (1 << key[1])) != 0) throw new InvalidDataException("Invalid retained PBT metadata key.");
-                metadataMask |= 1 << key[1];
-                switch (key[1])
-                {
-                    case 1:
-                        if (!value.SequenceEqual("PBTDIFF\x01\x00"u8)) throw new InvalidDataException("Unsupported retained PBT entity format.");
-                        break;
-                    case 2: from = ReadState(value); break;
-                    case 3: to = ReadState(value); break;
-                    case 4:
-                        if (value.Length != 32) throw new InvalidDataException("Invalid retained PBT tree root.");
-                        root = new(value);
-                        break;
-                }
-            }
+            if (key[0] == PbtRetainedKey.Metadata) metadata.Read(key, value);
             else if (key[0] == PbtRetainedKey.Ownership)
             {
                 if (key.Length != 3 || (value.Length != 1 || value[0] != 1)) throw new InvalidDataException("Invalid retained PBT blob ownership record.");
@@ -401,19 +331,13 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
             else
             {
                 PbtRetainedKey.ValidateDescriptor(key);
-                DescriptorLength(key, value, out count);
+                PbtRetainedFormat.PayloadLength(key, value, out count);
                 active = count == 0 ? null : key.ToArray();
                 expected = 0;
             }
         }
-        if (metadataMask != 30 || expected != count || !owners.SetEquals(referenced)) throw new InvalidDataException("Incomplete retained PBT metadata or blob ownership.");
-        return (new(from, to, root), owners);
-    }
-
-    private static StateId ReadState(ReadOnlySpan<byte> value)
-    {
-        if (value.Length != 40) throw new InvalidDataException("Invalid retained PBT StateId.");
-        return new(BinaryPrimitives.ReadUInt64LittleEndian(value), new ValueHash256(value[8..]));
+        if (!metadata.IsComplete || expected != count || !owners.SetEquals(referenced)) throw new InvalidDataException("Incomplete retained PBT metadata or blob ownership.");
+        return (metadata.Metadata, owners);
     }
 
     private void ValidateBlobChunks(scoped in ArenaByteReader reader)
@@ -424,17 +348,20 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
         while (scanner.MoveNext(reader))
         {
             ReadOnlySpan<byte> key = scanner.CurrentKey;
-            if (key[0] is 0 or PbtRetainedKey.Ownership) continue;
+            if (key[0] is PbtRetainedKey.Metadata or PbtRetainedKey.Ownership) continue;
             ReadOnlySpan<byte> value = ReadValueInto(reader, scanner.CurrentValue, valueBuffer);
             if (remaining > 0)
             {
                 NodeRef reference = NodeRef.Read(value);
-                int expected = Math.Min(remaining, PbtRetainedSnapshotBuilder.ChunkSize);
+                int expected = Math.Min(remaining, PbtRetainedFormat.ChunkSize);
                 ChunkBounds(reference, expected);
                 remaining -= expected;
             }
-            else DescriptorLength(key, value, out uint chunks);
-            if (remaining == 0 && !IsChunk(key) && value[0] == 2) remaining = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(value[1..]));
+            else
+            {
+                int length = PbtRetainedFormat.PayloadLength(key, value, out uint chunks);
+                if (chunks != 0) remaining = length;
+            }
         }
     }
 
@@ -466,7 +393,7 @@ internal sealed class PbtRetainedSnapshot : SmallRefCountingDisposable
             if (length <= 55) throw new InvalidDataException("Noncanonical retained PBT RLP length.");
         }
         else throw new InvalidDataException("Retained PBT blob must be a bounded RLP string.");
-        if (length != expectedLength || length > PbtRetainedSnapshotBuilder.ChunkSize || (long)reference.RlpDataOffset + headerSize + length > file.Frontier)
+        if (length != expectedLength || length > PbtRetainedFormat.ChunkSize || (long)reference.RlpDataOffset + headerSize + length > file.Frontier)
             throw new InvalidDataException("Retained PBT blob length mismatch.");
         return (long)reference.RlpDataOffset + headerSize;
     }
@@ -509,7 +436,7 @@ internal sealed class PbtRetainedScanner : IDisposable
     {
         byte[] bytes = new byte[checked((int)Value.Length)];
         ArenaByteReader reader = _snapshot.Reservation.CreateReader();
-        PbtRetainedTableValidation.Read(reader, Value.Offset, bytes);
+        SortedTableValidator.Read(reader, Value.Offset, bytes);
         return bytes;
     }
     internal byte[]? ReadPayload() => _snapshot.ReadPayload(Key, Value);

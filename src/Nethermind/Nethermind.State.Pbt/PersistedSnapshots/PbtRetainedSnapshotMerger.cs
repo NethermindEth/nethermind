@@ -36,7 +36,7 @@ internal static class PbtRetainedSnapshotMerger
                 scanners[index] = new(oldestFirst[index]);
                 active[index] = NextEntity(scanners[index]!);
             }
-            PbtRetainedSnapshotBuilder.WriteMetadata(ref table, metadata);
+            PbtRetainedFormat.WriteMetadata(ref table, metadata);
             Span<byte> entity = stackalloc byte[255];
             Span<byte> value = stackalloc byte[255];
             Span<byte> address = stackalloc byte[32];
@@ -80,13 +80,13 @@ internal static class PbtRetainedSnapshotMerger
                     bool selected = emit && index == winner;
                     if (selected) CopyRecord(ref table, scanner, value, owners, isChunk: false);
                     bool more = scanner.MoveNext();
-                    while (more && PbtRetainedSnapshot.IsChunk(scanner.Key))
+                    while (more && PbtRetainedKey.IsChunk(scanner.Key))
                     {
                         cancellationToken.ThrowIfCancellationRequested();
                         if (selected) CopyRecord(ref table, scanner, value, owners, isChunk: true);
                         more = scanner.MoveNext();
                     }
-                    active[index] = more && IsEntity(scanner.Key);
+                    active[index] = more && PbtRetainedKey.IsEntity(scanner.Key);
                 }
             }
             foreach (ushort id in owners)
@@ -111,12 +111,9 @@ internal static class PbtRetainedSnapshotMerger
     private static bool NextEntity(MergeCursor scanner)
     {
         while (scanner.MoveNext())
-            if (IsEntity(scanner.Key)) return true;
+            if (PbtRetainedKey.IsEntity(scanner.Key)) return true;
         return false;
     }
-
-    private static bool IsEntity(ReadOnlySpan<byte> key) => key[0] is not 0 and not PbtRetainedKey.Ownership
-        && !PbtRetainedSnapshot.IsChunk(key);
 
     private static void CopyRecord<TWriter>(ref SortedTableBuilder<TWriter> table, MergeCursor scanner,
         scoped Span<byte> buffer, SortedSet<ushort> owners, bool isChunk)

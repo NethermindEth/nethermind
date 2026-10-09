@@ -18,7 +18,7 @@ internal static class PbtRetainedSnapshotValidation
         long count = 0;
         using (PbtRetainedScanner scanner = retained.Scan())
             while (scanner.MoveNext())
-                if (scanner.Key[0] != 0 && scanner.Key[0] != PbtRetainedKey.Ownership && !PbtRetainedSnapshot.IsChunk(scanner.Key)) count++;
+                if (PbtRetainedKey.IsEntity(scanner.Key)) count++;
         if (count != (long)content.Accounts.Count + content.HeaderStorages.Count + content.Storages.Count
             + content.Codes.Count + content.SelfDestructedStorageAddresses.Count + content.AccountNodeGroups.Count
             + content.CodeNodeGroups.Count + content.StorageNodeGroups.Count) throw Mismatch();

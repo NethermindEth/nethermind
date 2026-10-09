@@ -11,7 +11,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
 using Nethermind.State.Pbt.Common;
-using Nethermind.State.Pbt.Persistence;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
 namespace Nethermind.State.Pbt;
@@ -84,10 +83,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     internal void SetNodeGroup<TPath>(TPath groupKey, RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
         if (payload is not null) PbtNodeGroupCodec.DebugValidateNodes(groupKey, payload.GetSpan());
-        switch (PbtRocksDbPersistence.PartitionColumn(groupKey))
+        switch (PbtPartitions.PartitionOfPath(groupKey))
         {
-            case PbtColumns.StorageNodeGroups: SetNodeGroup(StorageNodeGroups, groupKey.ToPath<PbtStorageNodePath>(), payload); break;
-            case PbtColumns.CodeNodeGroups: SetNodeGroup(CodeNodeGroups, groupKey.ToPath<PbtNodePath>(), payload); break;
+            case PbtPartition.Storage: SetNodeGroup(StorageNodeGroups, groupKey.ToPath<PbtStorageNodePath>(), payload); break;
+            case PbtPartition.Code: SetNodeGroup(CodeNodeGroups, groupKey.ToPath<PbtNodePath>(), payload); break;
             default: SetNodeGroup(AccountNodeGroups, groupKey.ToPath<PbtNodePath>(), payload); break;
         }
     }
@@ -104,10 +103,10 @@ public sealed class PbtSnapshotContent : IDisposable, IResettable
     /// <summary>Returns a caller-owned group lease or a null tombstone; false means this layer has no entry.</summary>
     internal bool TryGetNodeGroup<TPath>(TPath groupKey, out RefCountingMemory? payload) where TPath : struct, IPbtNodePath<TPath>
     {
-        bool found = PbtRocksDbPersistence.PartitionColumn(groupKey) switch
+        bool found = PbtPartitions.PartitionOfPath(groupKey) switch
         {
-            PbtColumns.StorageNodeGroups => StorageNodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload),
-            PbtColumns.CodeNodeGroups => CodeNodeGroups.TryGetValue(groupKey.ToPath<PbtNodePath>(), out payload),
+            PbtPartition.Storage => StorageNodeGroups.TryGetValue(groupKey.ToPath<PbtStorageNodePath>(), out payload),
+            PbtPartition.Code => CodeNodeGroups.TryGetValue(groupKey.ToPath<PbtNodePath>(), out payload),
             _ => AccountNodeGroups.TryGetValue(groupKey.ToPath<PbtNodePath>(), out payload),
         };
         payload?.AcquireLease();

@@ -17,15 +17,14 @@ using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
-    private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
-    private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const int AccountGroupDepth = PbtNodeGroupLayout.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const int StorageGroupDepth = PbtNodeGroupLayout.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private const long AverageNodeGroupBytes = 1024;
     private const int SlotChunkLength = 64;
 

@@ -37,10 +37,6 @@ public class PbtRocksDbPersistence(
     /// omission can serve a group whose size no longer matches the one its ancestors recorded.
     /// </remarks>
     private const int SchemaEpoch = 23;
-    /// <summary>Account groups keyed at or above this depth are top groups: the last level before the 16^8 dense band.</summary>
-    internal const int AccountTopDepth = 28;
-    /// <summary>Code and storage groups keyed at or above this depth are top groups: every group keyed shorter than zone and address hash.</summary>
-    internal const int StemTopDepth = 260;
     private const byte ValidState = 1;
 
     private readonly IColumnsDb<PbtColumns> _db = EnsureSchema(db, config.ImportFromPreimageFlat || PbtMigrationConfigValidator.HasSource(config));
@@ -168,9 +164,7 @@ public class PbtRocksDbPersistence(
     internal static PbtColumns NodeGroupColumn<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
     {
         if (groupKey.BitDepth == 0) return PbtColumns.Metadata;
-        PbtColumns partition = PartitionColumn(groupKey);
-        int topDepth = partition == PbtColumns.AccountNodeGroups ? AccountTopDepth : StemTopDepth;
-        return groupKey.BitDepth <= topDepth ? PbtColumns.TopNodeGroups : partition;
+        return PbtNodeGroupLayout.IsTopGroup(groupKey) ? PbtColumns.TopNodeGroups : PartitionColumn(groupKey);
     }
 
     /// <summary>The partition column of a group keyed below the shared depth-four groups, ignoring the top split.</summary>

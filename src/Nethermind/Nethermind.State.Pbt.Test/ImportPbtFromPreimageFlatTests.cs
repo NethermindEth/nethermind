@@ -292,11 +292,11 @@ public class ImportPbtFromPreimageFlatTests
             (8, 0, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
             (8, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
             (8, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
-            (PbtRocksDbPersistence.AccountTopDepth, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
-            (PbtRocksDbPersistence.AccountTopDepth + 4, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
-            (PbtRocksDbPersistence.StemTopDepth, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
-            (PbtRocksDbPersistence.StemTopDepth + 4, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
-            (PbtRocksDbPersistence.StemTopDepth, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
+            (PbtNodeGroupLayout.AccountTopDepth, 0x80, PbtColumns.TopNodeGroups, PbtColumns.AccountNodeGroups),
+            (PbtNodeGroupLayout.AccountTopDepth + 4, 0x80, PbtColumns.AccountNodeGroups, PbtColumns.AccountNodeGroups),
+            (PbtNodeGroupLayout.StemTopDepth, 1, PbtColumns.TopNodeGroups, PbtColumns.CodeNodeGroups),
+            (PbtNodeGroupLayout.StemTopDepth + 4, 1, PbtColumns.CodeNodeGroups, PbtColumns.CodeNodeGroups),
+            (PbtNodeGroupLayout.StemTopDepth, 0xFF, PbtColumns.TopNodeGroups, PbtColumns.StorageNodeGroups),
             (PbtFourLevelGroupGeometry.MaxGroupDepth, 0xFF, PbtColumns.StorageNodeGroups, PbtColumns.StorageNodeGroups),
         ];
         foreach ((int depth, byte prefix, PbtColumns column, PbtColumns partition) in groups)

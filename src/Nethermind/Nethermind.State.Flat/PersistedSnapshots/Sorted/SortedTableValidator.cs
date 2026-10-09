@@ -3,13 +3,15 @@
 
 using System.Buffers.Binary;
 using Nethermind.State.Flat.Io;
-using Nethermind.State.Flat.PersistedSnapshots.Sorted;
 using Nethermind.State.Flat.PersistedSnapshots.Storage;
 
-namespace Nethermind.State.Pbt.PersistedSnapshots;
+namespace Nethermind.State.Flat.PersistedSnapshots.Sorted;
 
-internal static class PbtRetainedTableValidation
+/// <summary>Checks a <see cref="SortedTable"/>'s framing end to end, for tables read from untrusted storage.</summary>
+internal static class SortedTableValidator
 {
+    /// <summary>Throws <see cref="InvalidDataException"/> unless the whole table is well framed: every block header, restart and
+    /// index entry is consistent, keys strictly ascend across blocks, and each data block sits at its aligned offset.</summary>
     internal static void Validate(scoped in ArenaByteReader reader)
     {
         Bound table = new(0, reader.Length);
@@ -104,10 +106,11 @@ internal static class PbtRetainedTableValidation
         restartIndex++;
     }
 
+    /// <summary>Reads exactly <paramref name="destination"/>'s length at <paramref name="offset"/>, or throws <see cref="InvalidDataException"/>.</summary>
     internal static void Read(scoped in ArenaByteReader reader, long offset, scoped Span<byte> destination)
     {
         if (offset < 0 || offset > reader.Length || destination.Length > reader.Length - offset || !reader.TryRead(offset, destination)) throw Corrupt();
     }
 
-    private static InvalidDataException Corrupt() => new("Invalid retained PBT sorted-table framing.");
+    private static InvalidDataException Corrupt() => new("Invalid sorted-table framing.");
 }

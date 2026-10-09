@@ -62,9 +62,11 @@ public readonly record struct PbtAccount(ValueHash256 BasicData, ValueHash256 Co
         CodeLeaf.Bytes[..(EncodedLength - LeafLength)].CopyTo(destination[LeafLength..]);
     }
 
+    public static bool IsValidEncodedLength(int length) => length is LeafLength or LeafLength + DelegationLength or 2 * LeafLength;
+
     public static PbtAccount Decode(ReadOnlySpan<byte> encoded)
     {
-        if (encoded.Length is not (LeafLength or LeafLength + DelegationLength or 2 * LeafLength) || !PbtKeyDerivation.IsCanonicalBasicData(encoded))
+        if (!IsValidEncodedLength(encoded.Length) || !PbtKeyDerivation.IsCanonicalBasicData(encoded))
             throw new InvalidDataException("Invalid PBT account encoding.");
         ValueHash256 basicData = new(encoded[..LeafLength]);
         if (encoded.Length == LeafLength) return new(basicData, Keccak.OfAnEmptyString.ValueHash256, false);

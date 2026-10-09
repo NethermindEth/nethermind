@@ -312,7 +312,7 @@ public class PbtSnapshotCompactorTests
             while (scanner.MoveNext())
             {
                 ReadOnlySpan<byte> key = scanner.Key;
-                if (key[0] is 0 or PbtRetainedKey.Ownership || PbtRetainedSnapshot.IsChunk(key)) continue;
+                if (!PbtRetainedKey.IsEntity(key)) continue;
                 Assert.That(merged.BloomRef.Filter.MightContain(PbtRetainedKey.BloomHash(key)), Is.True);
             }
         }
@@ -826,7 +826,7 @@ public class PbtSnapshotCompactorTests
                             Assert.That(ReferenceEquals(retained!.BloomRef, widest!.BloomRef), Is.EqualTo(enabled || pass == 0));
                             using PbtRetainedScanner scanner = retained.Scan();
                             while (scanner.MoveNext())
-                                if (scanner.Key[0] is not 0 and not PbtRetainedKey.Ownership && !PbtRetainedSnapshot.IsChunk(scanner.Key))
+                                if (PbtRetainedKey.IsEntity(scanner.Key))
                                     Assert.That(retained.BloomRef.Filter.MightContain(PbtRetainedKey.BloomHash(scanner.Key)), Is.True);
                         }
                     }

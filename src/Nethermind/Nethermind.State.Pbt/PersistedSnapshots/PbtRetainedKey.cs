@@ -5,12 +5,12 @@ using System.Buffers.Binary;
 using System.IO.Hashing;
 using Nethermind.Core.Crypto;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 
 internal static class PbtRetainedKey
 {
+    internal const byte Metadata = 0;
     internal const byte Address = 0x10;
     internal const byte Code = 0x20;
     internal const byte AccountGroup = 0x30;
@@ -21,6 +21,10 @@ internal static class PbtRetainedKey
     internal const byte Account = 1;
     internal const byte HeaderRun = 2;
     internal const byte StorageRun = 3;
+
+    // The last byte of an entity's descriptor key, and of that key within its chunk keys.
+    private const byte DescriptorFlag = 0;
+    private const byte ChunkFlag = 1;
 
     internal static ulong BloomHash(ReadOnlySpan<byte> descriptor) => XxHash64.HashToUInt64(descriptor);
 
@@ -58,13 +62,8 @@ internal static class PbtRetainedKey
 
     internal static byte[] Group<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath>
     {
-        byte family = PbtRocksDbPersistence.PartitionColumn(path) switch
-        {
-            PbtColumns.CodeNodeGroups => CodeGroup,
-            PbtColumns.StorageNodeGroups => StorageGroup,
-            _ => AccountGroup,
-        };
-        byte[] key = new byte[4 + (path.BitDepth + 7) / 8];
+        byte family = GroupFamily(path);
+        byte[] key = new byte[GroupKeyLength(path.BitDepth)];
         key[0] = family;
         BinaryPrimitives.WriteUInt16BigEndian(key.AsSpan(1), checked((ushort)path.BitDepth));
         PbtNodePathOperations.CopyTo(path, key.AsSpan(3));
@@ -76,7 +75,7 @@ internal static class PbtRetainedKey
     {
         byte[] key = new byte[descriptor.Length + 4];
         descriptor.CopyTo(key);
-        key[descriptor.Length - 1] = 1;
+        key[descriptor.Length - 1] = ChunkFlag;
         BinaryPrimitives.WriteUInt32BigEndian(key.AsSpan(descriptor.Length), index);
         return key;
     }
@@ -88,9 +87,33 @@ internal static class PbtRetainedKey
         return key;
     }
 
+    /// <summary>Whether <paramref name="key"/> is an entity's descriptor key, as opposed to a metadata, ownership or chunk record.</summary>
+    internal static bool IsEntity(ReadOnlySpan<byte> key) => key[0] is not Metadata and not Ownership && !IsChunk(key);
+
+    internal static bool IsChunk(ReadOnlySpan<byte> key)
+    {
+        if (key.Length < 2) return false;
+        int descriptorLength = key[0] switch
+        {
+            Address when key.Length >= 34 => key[33] switch
+            {
+                Clear or Account => 35,
+                HeaderRun => 36,
+                StorageRun => 68,
+                _ => 0,
+            },
+            Code => 34,
+            AccountGroup or CodeGroup or StorageGroup when key.Length >= 3 => GroupKeyLength(BinaryPrimitives.ReadUInt16BigEndian(key[1..])),
+            _ => 0,
+        };
+        return descriptorLength > 0 && key.Length == descriptorLength + sizeof(uint) && key[descriptorLength - 1] == ChunkFlag;
+    }
+
+    private static int GroupKeyLength(int bitDepth) => 3 + PbtBitPrefix.ByteCount(bitDepth) + 1;
+
     internal static void ValidateDescriptor(ReadOnlySpan<byte> key)
     {
-        if (key.Length < 2 || key[^1] != 0) throw new InvalidDataException("Invalid retained PBT descriptor key.");
+        if (key.Length < 2 || key[^1] != DescriptorFlag) throw new InvalidDataException("Invalid retained PBT descriptor key.");
         switch (key[0])
         {
             case Address:
@@ -105,24 +128,26 @@ internal static class PbtRetainedKey
             case Code when key.Length == 34: return;
             case AccountGroup or CodeGroup or StorageGroup:
                 PbtStorageNodePath path = DecodeGroup(key);
-                byte family = PbtRocksDbPersistence.PartitionColumn(path) switch
-                {
-                    PbtColumns.CodeNodeGroups => CodeGroup,
-                    PbtColumns.StorageNodeGroups => StorageGroup,
-                    _ => AccountGroup,
-                };
-                if (family != key[0]) throw new InvalidDataException("Retained PBT group partition mismatch.");
+                if (GroupFamily(path) != key[0]) throw new InvalidDataException("Retained PBT group partition mismatch.");
                 return;
             default: throw new InvalidDataException("Unknown retained PBT entity family.");
         }
     }
+
+    private static byte GroupFamily<TPath>(in TPath path) where TPath : struct, IPbtNodePath<TPath> =>
+        PbtPartitions.PartitionOfPath(path) switch
+        {
+            PbtPartition.Code => CodeGroup,
+            PbtPartition.Storage => StorageGroup,
+            _ => AccountGroup,
+        };
 
     internal static PbtStorageNodePath DecodeGroup(ReadOnlySpan<byte> key)
     {
         if (key.Length < 4) throw new InvalidDataException("Invalid retained PBT group key.");
         int depth = BinaryPrimitives.ReadUInt16BigEndian(key[1..]);
         int maxDepth = key[0] == StorageGroup ? PbtStorageNodePath.MaxBitDepth : PbtNodePath.MaxBitDepth;
-        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != 4 + PbtBitPrefix.ByteCount(depth))
+        if (!PbtFourLevelGroupGeometry.IsGroupDepth(depth) || depth > maxDepth || key.Length != GroupKeyLength(depth))
             throw new InvalidDataException("Invalid retained PBT group depth.");
         ReadOnlySpan<byte> path = key.Slice(3, key.Length - 4);
         if (!PbtNodeCodec.IsCanonicalPath(path, depth, maxDepth)) throw new InvalidDataException("Invalid retained PBT group padding.");

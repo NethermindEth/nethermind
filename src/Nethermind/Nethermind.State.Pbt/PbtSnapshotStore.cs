@@ -9,7 +9,6 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt;
 
@@ -22,7 +21,7 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
 {
     private static readonly PbtNodeGroupReadLabel[] _foundLabels = ReadLabels("found");
     private static readonly PbtNodeGroupReadLabel[] _nullLabels = ReadLabels("null");
-    private static readonly PbtColumns[] _partitionColumns = [PbtColumns.AccountNodeGroups, PbtColumns.CodeNodeGroups, PbtColumns.StorageNodeGroups];
+    private static readonly PbtPartition[] _partitions = [PbtPartition.Account, PbtPartition.Code, PbtPartition.Storage];
 
     // Detailed observers stay no-ops unless Metrics.EnableDetailedMetric, so the timestamps are skipped with them.
     private readonly bool _recordReadTimes = Metrics.PbtTrieUpdaterNodeGroupReadTimes is not NoopMetricObserver;
@@ -48,7 +47,7 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
     private static int ReadLabelIndex(PbtStorageNodePath groupKey)
     {
         int partition = (int)PbtPartitions.PartitionOfPath(groupKey);
-        return PbtRocksDbPersistence.NodeGroupColumn(groupKey) is PbtColumns.TopNodeGroups or PbtColumns.Metadata ? partition + 3 : partition;
+        return PbtNodeGroupLayout.IsTopGroup(groupKey) ? partition + 3 : partition;
     }
 
     public IPbtConcurrentWriter CreateWriter() => new ConcurrentWriter(this);
@@ -59,12 +58,12 @@ internal sealed class PbtSnapshotStore(PbtSnapshotBundle bundle) : IPbtStore, ID
     {
         try
         {
-            ParallelUnbalancedWork.For(0, _partitionColumns.Length, (handedOff: _handedOff, bundle, columns: _partitionColumns), static (index, state) =>
+            ParallelUnbalancedWork.For(0, _partitions.Length, (handedOff: _handedOff, bundle, partitions: _partitions), static (index, state) =>
             {
-                PbtColumns column = state.columns[index];
+                PbtPartition partition = state.partitions[index];
                 foreach (ArrayPoolList<BufferedNodeGroup> buffer in state.handedOff)
                     foreach (BufferedNodeGroup group in buffer)
-                        if (PbtRocksDbPersistence.PartitionColumn(group.Path) == column) state.bundle.SetNodeGroup(group.Path, group.Hash, group.Payload);
+                        if (PbtPartitions.PartitionOfPath(group.Path) == partition) state.bundle.SetNodeGroup(group.Path, group.Hash, group.Payload);
                 return state;
             });
         }

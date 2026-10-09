@@ -14,6 +14,7 @@ namespace Nethermind.State.Pbt.PersistedSnapshots;
 
 internal sealed class PbtRetainedSnapshotLoader(
     PbtSnapshotRepository repository,
+    PbtRetainedPublicationGate publicationGate,
     PbtRetainedStorageLifetime lifetime,
     [KeyFilter(DbNames.Pbt)] IArenaManager arena,
     [KeyFilter(DbNames.Pbt)] BlobArenaManager blobs,
@@ -66,7 +67,7 @@ internal sealed class PbtRetainedSnapshotLoader(
                 reservations.Add(reservation);
                 using RefCountedBloomFilter bloom = RefCountedBloomFilter.AlwaysTrue();
                 using PbtRetainedSnapshot snapshot = new(entry, reservation, blobs, memory, bloom);
-                lock (repository.PublicationGate.Sync)
+                lock (publicationGate.Sync)
                 {
                     if (!repository.TryAddRetained(snapshot))
                         throw new InvalidDataException($"Duplicate retained PBT catalog identity {entry.To}.");
@@ -108,7 +109,7 @@ internal sealed class PbtRetainedSnapshotLoader(
             blobWriter.Fsync();
             using PbtRetainedSnapshot retained = new(new(snapshot.From, snapshot.To, location, SnapshotTier.PersistedBase), reservation, blobs, memory, bloom);
             if (config.ValidatePersistedSnapshot) PbtRetainedSnapshotValidation.Validate(snapshot, retained);
-            lock (repository.PublicationGate.Sync)
+            lock (publicationGate.Sync)
             {
                 if (!repository.ContainsMemorySource(snapshot)) return false;
                 return Publish(retained, duplicateSuccess: true);
@@ -120,7 +121,7 @@ internal sealed class PbtRetainedSnapshotLoader(
     {
         ObjectDisposedException.ThrowIf(_disposed != 0, this);
         if (sources.Length < 2) return false;
-        lock (repository.PublicationGate.Sync)
+        lock (publicationGate.Sync)
         {
             if (snapshot.From != sources[0].From || snapshot.To != sources[^1].To || snapshot.TreeRoot != sources[^1].TreeRoot)
                 throw new InvalidDataException("Retained PBT compaction output identity mismatch.");
@@ -137,7 +138,7 @@ internal sealed class PbtRetainedSnapshotLoader(
 
     private bool Publish(PbtRetainedSnapshot snapshot, bool duplicateSuccess)
     {
-        long depth = Depth(snapshot.From, snapshot.To);
+        long depth = snapshot.Depth;
         if (repository.TryLeaseRetainedCatalogKey(snapshot.To, depth, out PbtRetainedSnapshot? existing))
         {
             using (existing)
@@ -192,22 +193,15 @@ internal sealed class PbtRetainedSnapshotLoader(
     private RefCountedBloomFilter RebuildBloom(PbtRetainedSnapshot snapshot)
     {
         if (config.PersistedSnapshotBloomBitsPerKey <= 0) return RefCountedBloomFilter.AlwaysTrue();
-        long count = 0;
-        using (PbtRetainedScanner scanner = snapshot.Scan())
-            while (scanner.MoveNext())
-                if (IsEntity(scanner.Key)) count++;
+        long count = snapshot.EntityBloomHashes().LongCount();
         RefCountedBloomFilter result = new(new BloomFilter(Math.Max(1, count), config.PersistedSnapshotBloomBitsPerKey));
         try
         {
-            using PbtRetainedScanner scanner = snapshot.Scan();
-            while (scanner.MoveNext())
-                if (IsEntity(scanner.Key)) result.Filter.AddUnsynchronized(PbtRetainedKey.BloomHash(scanner.Key));
+            foreach (ulong hash in snapshot.EntityBloomHashes()) result.Filter.AddUnsynchronized(hash);
             return result;
         }
         catch { result.Dispose(); throw; }
     }
-
-    private static bool IsEntity(ReadOnlySpan<byte> key) => key[0] != 0 && key[0] != PbtRetainedKey.Ownership && !PbtRetainedSnapshot.IsChunk(key);
 
     private static long Depth(in StateId from, in StateId to) => unchecked((long)(to.BlockNumber - from.BlockNumber));
 

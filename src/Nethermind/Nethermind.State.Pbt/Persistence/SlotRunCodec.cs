@@ -18,6 +18,11 @@ internal static class SlotRunCodec
     internal const int HeaderLength = 1 + sizeof(ushort);
     private const byte MaxType = 4;
 
+    /// <summary>Whether <paramref name="length"/> is the length of an encoded run holding at least one slot.</summary>
+    public static bool IsValidEncodedLength(int length) =>
+        length is >= HeaderLength + ValueHash256.MemorySize and <= HeaderLength + SlotRun.Width * ValueHash256.MemorySize
+        && (length - HeaderLength) % ValueHash256.MemorySize == 0;
+
     public static PackedSlotRun Decode(ReadOnlySpan<byte> encoded) => SlotRun.CreatePacked(ReadMask(encoded), encoded[HeaderLength..]);
 
     private static ushort ReadMask(ReadOnlySpan<byte> encoded)

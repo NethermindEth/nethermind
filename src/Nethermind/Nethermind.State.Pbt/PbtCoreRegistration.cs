@@ -45,7 +45,7 @@ internal static class PbtCoreRegistration
             .AddPbtRetained(config)
             .AddSingleton<PbtSnapshotRepository>(ctx => new PbtSnapshotRepository(
                 ctx.Resolve<IMetricsConfig>(), ctx.ResolveKeyed<ISnapshotCatalog>(DbNames.Pbt),
-                ctx.Resolve<PbtRetainedPublicationGate>(), ctx.Resolve<PbtRetainedStorageLifetime>()))
+                ctx.Resolve<PbtRetainedPublicationGate>()))
             .AddSingleton<PbtSnapshotCompactor>()
             .AddKeyedSingleton<ICompactionSchedule>(DbNames.Pbt, ctx => CreateCompactionSchedule(ctx.ResolveKeyed<IDb>(DbNames.Metadata), config, ctx.Resolve<ILogManager>()))
             .AddSingleton<PbtPersistenceCoordinator>(ctx => new PbtPersistenceCoordinator(

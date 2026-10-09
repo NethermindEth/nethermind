@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Binary;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Memory;
@@ -20,8 +19,6 @@ internal readonly record struct PbtRetainedMetadata(StateId From, StateId To, Va
 
 internal static class PbtRetainedSnapshotBuilder
 {
-    internal const int ChunkSize = 65536;
-    internal const int InlineLimit = 254;
     private readonly record struct Entry(byte[] Key, object? Value);
 
     internal static long EstimateSize(PbtSnapshot snapshot)
@@ -32,7 +29,7 @@ internal static class PbtRetainedSnapshotBuilder
         // Each inline record has at most 255 value bytes and 72 key bytes. Account for block/restart
         // overhead and ownership/chunk records conservatively rather than under-mapping the arena.
         long bytes = snapshot.PayloadSize.Leaf + snapshot.PayloadSize.Node;
-        return checked(16384 + entries * 512 + (bytes / ChunkSize + entries) * 512);
+        return checked(16384 + entries * 512 + (bytes / PbtRetainedFormat.ChunkSize + entries) * 512);
     }
 
     internal static long EstimateBlobSize(PbtSnapshot snapshot)
@@ -63,7 +60,7 @@ internal static class PbtRetainedSnapshotBuilder
         SortedTableBuilder<TWriter> table = new(ref writer);
         try
         {
-            WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
+            PbtRetainedFormat.WriteMetadata(ref table, new(snapshot.From, snapshot.To, snapshot.TreeRoot));
             foreach (Entry entry in entries)
             {
                 bloom.AddUnsynchronized(PbtRetainedKey.BloomHash(entry.Key));
@@ -109,52 +106,32 @@ internal static class PbtRetainedSnapshotBuilder
         }
     }
 
-    internal static void WriteMetadata<TWriter>(ref SortedTableBuilder<TWriter> table, in PbtRetainedMetadata metadata)
-        where TWriter : IByteBufferWriter
-    {
-        table.Add([0, 1], "PBTDIFF\x01\x00"u8);
-        Span<byte> state = stackalloc byte[40];
-        WriteState(state, metadata.From);
-        table.Add([0, 2], state);
-        WriteState(state, metadata.To);
-        table.Add([0, 3], state);
-        table.Add([0, 4], metadata.TreeRoot.Bytes);
-    }
-
-    private static void WriteState(Span<byte> bytes, in StateId state)
-    {
-        BinaryPrimitives.WriteUInt64LittleEndian(bytes, state.BlockNumber);
-        state.StateRoot.Bytes.CopyTo(bytes[8..]);
-    }
-
     internal static void WriteEntity<TWriter>(ref SortedTableBuilder<TWriter> table, ReadOnlySpan<byte> key,
         byte[]? payload, BlobArenaWriter blobs, SortedSet<ushort> owners) where TWriter : IByteBufferWriter
     {
         PbtRetainedKey.ValidateDescriptor(key);
         if (payload is null)
         {
-            table.Add(key, [0]);
+            table.Add(key, [PbtRetainedFormat.NullMarker]);
             return;
         }
-        if (payload.Length <= InlineLimit)
+        if (payload.Length <= PbtRetainedFormat.InlineLimit)
         {
-            Span<byte> value = stackalloc byte[255];
-            value[0] = 1;
+            Span<byte> value = stackalloc byte[PbtRetainedFormat.InlineLimit + 1];
+            value[0] = PbtRetainedFormat.InlineMarker;
             payload.CopyTo(value[1..]);
             table.Add(key, value[..(payload.Length + 1)]);
             return;
         }
-        uint count = checked((uint)((payload.LongLength + ChunkSize - 1) / ChunkSize));
-        Span<byte> descriptor = stackalloc byte[9];
-        descriptor[0] = 2;
-        BinaryPrimitives.WriteUInt32LittleEndian(descriptor[1..], checked((uint)payload.Length));
-        BinaryPrimitives.WriteUInt32LittleEndian(descriptor[5..], count);
+        uint count = PbtRetainedFormat.ChunkCount(payload.LongLength);
+        Span<byte> descriptor = stackalloc byte[PbtRetainedFormat.ChunkedDescriptorLength];
+        PbtRetainedFormat.WriteChunkedDescriptor(descriptor, payload.Length, count);
         table.Add(key, descriptor);
         Span<byte> nodeRefBytes = stackalloc byte[NodeRef.Size];
         for (uint i = 0; i < count; i++)
         {
-            int start = checked((int)(i * ChunkSize));
-            ReadOnlySpan<byte> chunk = payload.AsSpan(start, Math.Min(ChunkSize, payload.Length - start));
+            int start = checked((int)(i * PbtRetainedFormat.ChunkSize));
+            ReadOnlySpan<byte> chunk = payload.AsSpan(start, Math.Min(PbtRetainedFormat.ChunkSize, payload.Length - start));
             NodeRef reference = blobs.WriteRlp(EncodeChunk(chunk));
             owners.Add(reference.BlobArenaId);
             NodeRef.Write(nodeRefBytes, reference);
@@ -164,7 +141,7 @@ internal static class PbtRetainedSnapshotBuilder
 
     internal static byte[] EncodeChunk(ReadOnlySpan<byte> payload)
     {
-        if (payload.Length is <= 0 or > ChunkSize) throw new InvalidDataException("Invalid retained PBT chunk length.");
+        if (payload.Length is <= 0 or > PbtRetainedFormat.ChunkSize) throw new InvalidDataException("Invalid retained PBT chunk length.");
         if (payload.Length == 1 && payload[0] < 0x80) return [payload[0]];
         int lengthBytes = payload.Length > ushort.MaxValue ? 3 : payload.Length > byte.MaxValue ? 2 : 1;
         int header = payload.Length <= 55 ? 1 : 1 + lengthBytes;
