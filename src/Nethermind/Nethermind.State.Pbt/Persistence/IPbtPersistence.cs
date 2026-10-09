@@ -50,31 +50,6 @@ public interface IPbtPersistence
         /// <param name="groupKey">The four-level-boundary key identifying the group.</param>
         /// <returns>One caller-owned reference, or <see langword="null"/> when the group is absent.</returns>
         RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>;
-
-        /// <summary>Gets caller-owned group leases in input order, with null for missing groups.</summary>
-        /// <remarks>
-        /// Each non-null result owns one reference, including duplicate keys, and must be disposed once.
-        /// The leases remain valid independently of this reader. An empty input returns an empty array.
-        /// If the operation fails, it releases every lease acquired before the failure.
-        /// </remarks>
-        /// <typeparam name="TPath">The node path type.</typeparam>
-        /// <param name="groupKeys">The ordered group keys to read.</param>
-        /// <returns>One owned lease or null per input key.</returns>
-        RefCountingMemory?[] GetNodeGroups<TPath>(TPath[] groupKeys) where TPath : struct, IPbtNodePath<TPath>
-        {
-            if (groupKeys.Length == 0) return [];
-            RefCountingMemory?[] payloads = new RefCountingMemory?[groupKeys.Length];
-            try
-            {
-                for (int index = 0; index < groupKeys.Length; index++) payloads[index] = GetNodeGroup(groupKeys[index]);
-                return payloads;
-            }
-            catch
-            {
-                foreach (RefCountingMemory? payload in payloads) ((IDisposable?)payload)?.Dispose();
-                throw;
-            }
-        }
     }
 
     public interface IWriteBatch : IDisposable

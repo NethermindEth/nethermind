@@ -35,7 +35,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
     private readonly bool _isReadOnly;
-    private readonly bool _nodeGroupPrefetchMultiGet;
     private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
     private readonly Lock _hintBalLock = new();
     private Task? _hintBalTask;
@@ -74,7 +73,6 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         _commitTarget = commitTarget;
         _childHeaders = childHeaders;
         _isReadOnly = isReadOnly;
-        _nodeGroupPrefetchMultiGet = config.NodeGroupPrefetchMultiGet;
         _treeRoot = bundle.TreeRoot;
         _rootHash = currentStateId.StateRoot.ToHash256();
         CodeDb = new PbtCodeDb(codeDb, Bundle);
@@ -185,10 +183,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         CancellationTokenSource cancellation = new();
         _nodeGroupPrefetchCancellation = cancellation;
-        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token, _nodeGroupPrefetchMultiGet), cancellation.Token);
+        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token), cancellation.Token);
     }
 
-    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation, bool multiGet = true)
+    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
     {
         if (cancellation.IsCancellationRequested) return;
         PbtStorageNodePath[] groups = [.. NodeGroupPrefetchPaths(bal)];
@@ -210,19 +208,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             }
             PbtStorageNodePath[] missingPaths = [.. misses];
             if (cancellation.IsCancellationRequested) return;
-            if (multiGet)
+            persisted = new RefCountingMemory?[missingPaths.Length];
+            ParallelUnbalancedWork.For(0, missingPaths.Length, (bundle, missingPaths, persisted, cancellation), static (index, state) =>
             {
-                if (missingPaths.Length > 0) persisted = bundle.GetPersistedNodeGroups(missingPaths);
-            }
-            else
-            {
-                persisted = new RefCountingMemory?[missingPaths.Length];
-                ParallelUnbalancedWork.For(0, missingPaths.Length, (bundle, missingPaths, persisted, cancellation), static (index, state) =>
-                {
-                    if (!state.cancellation.IsCancellationRequested) state.persisted[index] = state.bundle.GetPersistedNodeGroup(state.missingPaths[index]);
-                    return state;
-                });
-            }
+                if (!state.cancellation.IsCancellationRequested) state.persisted[index] = state.bundle.GetPersistedNodeGroup(state.missingPaths[index]);
+                return state;
+            });
             if (cancellation.IsCancellationRequested) return;
 
             for (int index = 0; index < groups.Length; index++)

@@ -324,21 +324,6 @@ public sealed class TrieNodeLog : ITrieNodeLog, IAsyncDisposable
             public byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
                 TryGet(key, out byte[]? value) ? value : inner.Get(key, flags);
 
-            public byte[]?[] MultiGet(byte[][] keys, ReadFlags flags = ReadFlags.None)
-            {
-                byte[]?[] values = new byte[]?[keys.Length];
-                List<int> misses = [];
-                for (int index = 0; index < keys.Length; index++)
-                    if (!TryGet(keys[index], out values[index])) misses.Add(index);
-                if (misses.Count == 0) return values;
-
-                byte[][] missingKeys = new byte[misses.Count][];
-                for (int index = 0; index < misses.Count; index++) missingKeys[index] = keys[misses[index]];
-                byte[]?[] persisted = inner.MultiGet(missingKeys, flags);
-                for (int index = 0; index < misses.Count; index++) values[misses[index]] = persisted[index];
-                return values;
-            }
-
             public bool KeyExists(ReadOnlySpan<byte> key) =>
                 TryGet(key, out byte[]? value) ? value is not null : inner.KeyExists(key);
 

@@ -45,38 +45,6 @@ public class PbtCarryForwardCachingPersistenceTests
     }
 
     [Test]
-    public void GetNodeGroups_ForwardsBatchAndPreservesResultsAndLeaseOwnership()
-    {
-        FakePersistence inner = new();
-        using RefCountingMemory payload = RefCountingMemory.Wrapping([4, 5, 6]);
-        RefCountingMemory?[] expected = [payload, null, payload];
-        inner.NodeGroupBatchResults = expected;
-        PbtCarryForwardCachingPersistence cache = new(inner);
-        using IPbtPersistence.IReader reader = cache.CreateReader();
-
-        PbtNodePath groupKey = new([], 0);
-        RefCountingMemory?[] actual = reader.GetNodeGroups([groupKey, groupKey, groupKey]);
-        try
-        {
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(actual, Is.SameAs(expected));
-                Assert.That(actual[1], Is.Null);
-                Assert.That(actual[0], Is.SameAs(payload));
-                Assert.That(actual[2], Is.SameAs(payload));
-                Assert.That(actual[0]!.GetSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
-                Assert.That(actual[2]!.GetSpan().ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
-                Assert.That(inner.NodeGroupBatchReads, Is.EqualTo(1));
-                Assert.That(inner.NodeGroupReads, Is.Zero);
-            }
-        }
-        finally
-        {
-            foreach (RefCountingMemory? lease in actual) ((IDisposable?)lease)?.Dispose();
-        }
-    }
-
-    [Test]
     public void GetSlotRun_ServesCallerOwnedCopies()
     {
         PbtCarryForwardCachingPersistence cache = new(new FakePersistence());
@@ -223,9 +191,6 @@ public class PbtCarryForwardCachingPersistenceTests
         public StateId ReaderState = Basis0;
         public int AccountReads;
         public int RunReads;
-        public int NodeGroupBatchReads;
-        public int NodeGroupReads;
-        public RefCountingMemory?[] NodeGroupBatchResults { get; set; } = [];
 
         public IPbtPersistence.IReader CreateReader() => new Reader(this);
         public IPbtPersistence.IWriteBatch CreateWriteBatch(in StateId from, in StateId to, in ValueHash256 treeRoot, WriteFlags flags) => new WriteBatch();
@@ -253,17 +218,7 @@ public class PbtCarryForwardCachingPersistenceTests
             public CodeInfo? GetCode(in ValueHash256 codeHash) => null;
             public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => throw new NotSupportedException();
             public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
-            public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath>
-            {
-                parent.NodeGroupReads++;
-                return null;
-            }
-            public RefCountingMemory?[] GetNodeGroups<TPath>(TPath[] groupKeys) where TPath : struct, IPbtNodePath<TPath>
-            {
-                parent.NodeGroupBatchReads++;
-                foreach (RefCountingMemory? payload in parent.NodeGroupBatchResults) payload?.AcquireLease();
-                return parent.NodeGroupBatchResults;
-            }
+            public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => null;
             public void Dispose() { }
         }
 

@@ -428,28 +428,6 @@ public class PbtRocksDbPersistenceTests
                 Assert.That(db.GetColumnDb(PbtColumns.Codes).Get(account.CodeHash.Bytes), Is.EqualTo(code.Code.ToArray()));
                 Assert.That(db.GetColumnDb(PbtColumns.Metadata).Get("validState"u8), Is.EqualTo(new byte[] { 1 }));
             }
-            PbtStorageNodePath missing = new(Bytes.FromHexString("00000001"), 32);
-            PbtStorageNodePath[] batchPaths = [.. expectedPaths, missing, expectedPaths[0]];
-            RefCountingMemory?[] batchPayloads = reader.GetNodeGroups(batchPaths);
-            try
-            {
-                using (Assert.EnterMultipleScope())
-                {
-                    Assert.That(reader.GetNodeGroups(Array.Empty<PbtStorageNodePath>()), Is.Empty);
-                    Assert.That(batchPayloads, Has.Length.EqualTo(batchPaths.Length));
-                    Assert.That(batchPayloads[^2], Is.Null);
-                    Assert.That(batchPayloads[^1]!.GetSpan().ToArray(), Is.EqualTo(batchPayloads[0]!.GetSpan().ToArray()));
-                }
-                for (int index = 0; index < expectedPaths.Length; index++)
-                {
-                    using RefCountingMemory? single = reader.GetNodeGroup(expectedPaths[index]);
-                    Assert.That(batchPayloads[index]!.GetSpan().ToArray(), Is.EqualTo(single!.GetSpan().ToArray()));
-                }
-            }
-            finally
-            {
-                foreach (RefCountingMemory? payload in batchPayloads) ((IDisposable?)payload)?.Dispose();
-            }
             foreach ((PbtStorageNodePath path, PbtColumns column) in groups)
             {
                 using RefCountingMemory? payload = reader.GetNodeGroup(path);
@@ -466,14 +444,10 @@ public class PbtRocksDbPersistenceTests
         static int NodePosition(PbtStorageNodePath path) => path.BitDepth == 0 ? PbtFourLevelGroupGeometry.RootPosition : 0;
     }
 
-    private static IEnumerable<TestCaseData> NodeGroupLeaseCases()
-    {
-        foreach ((string prefix, int depth) in new (string, int)[] { ("00", 1), ("0000", 9), ("0000000000", 33) })
-            foreach (bool multiGet in new[] { false, true }) yield return new TestCaseData(prefix, depth, multiGet);
-    }
-
-    [TestCaseSource(nameof(NodeGroupLeaseCases))]
-    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed(string prefix, int depth, bool multiGet)
+    [TestCase("00", 1)]
+    [TestCase("0000", 9)]
+    [TestCase("0000000000", 33)]
+    public void Node_group_lease_survives_reader_and_persistence_changes_until_disposed(string prefix, int depth)
     {
         using TempPath dbPath = TempPath.GetTempDirectory();
         using ColumnsDb<PbtColumns> db = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, new PbtConfig());
@@ -493,7 +467,7 @@ public class PbtRocksDbPersistenceTests
 
         using (IPbtPersistence.IReader reader = persistence.CreateReader())
         {
-            payload = multiGet ? reader.GetNodeGroups(new[] { groupKey })[0]! : reader.GetNodeGroup(groupKey)!;
+            payload = reader.GetNodeGroup(groupKey)!;
             Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetEncoding(PbtTestPaths.Locate(path).Position).ToArray(),
                 Is.EqualTo(originalNode));
         }
@@ -508,61 +482,6 @@ public class PbtRocksDbPersistenceTests
         Assert.That(PbtStoreTestExtensions.ReadGroup(groupKey, payload.GetSpan()).GetEncoding(PbtTestPaths.Locate(path).Position).ToArray(),
             Is.EqualTo(originalNode));
         ((IDisposable)payload).Dispose();
-    }
-
-    [Test]
-    public void Default_node_group_batch_owns_each_result_and_releases_partial_results_on_failure([Values] bool fail)
-    {
-        TrackingMemoryProvider memory = new();
-        int calls = 0;
-        IPbtPersistence.IReader reader = new DefaultBatchReader(() =>
-        {
-            if (++calls == 3)
-            {
-                if (fail) throw new IOException("batch read failed");
-                return null;
-            }
-            RefCountingMemory payload = memory.Rent(1);
-            payload.GetSpan()[0] = (byte)calls;
-            return payload;
-        });
-        PbtNodePath path = new(Bytes.FromHexString("00"), 4);
-        PbtNodePath[] paths = [path, path, new(Bytes.FromHexString("10"), 4)];
-        Assert.That(reader.GetNodeGroups(Array.Empty<PbtNodePath>()), Is.Empty);
-        if (fail)
-        {
-            Assert.That(() => reader.GetNodeGroups(paths), Throws.TypeOf<IOException>());
-        }
-        else
-        {
-            RefCountingMemory?[] payloads = reader.GetNodeGroups(paths);
-            using (Assert.EnterMultipleScope())
-            {
-                Assert.That(payloads, Has.Length.EqualTo(3));
-                Assert.That(payloads[0]!.GetSpan()[0], Is.EqualTo(1));
-                Assert.That(payloads[1]!.GetSpan()[0], Is.EqualTo(2));
-                Assert.That(payloads[2], Is.Null);
-            }
-            foreach (RefCountingMemory? payload in payloads) ((IDisposable?)payload)?.Dispose();
-        }
-        using (Assert.EnterMultipleScope())
-        {
-            Assert.That(calls, Is.EqualTo(3));
-            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
-        }
-    }
-
-    private sealed class DefaultBatchReader(Func<RefCountingMemory?> read) : IPbtPersistence.IReader
-    {
-        public StateId CurrentState => StateId.PreGenesis;
-        public ValueHash256 CurrentRoot => default;
-        public PbtAccount? GetAccount(in ValueHash256 addressHash) => throw new NotSupportedException();
-        public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey> => throw new NotSupportedException();
-        public CodeInfo? GetCode(in ValueHash256 codeHash) => throw new NotSupportedException();
-        public bool TryGetCodeLeaf(in PbtPath key, out ValueHash256 value) => throw new NotSupportedException();
-        public IEnumerator<KeyValuePair<ValueHash256, PbtAccount>> EnumerateAccounts() => throw new NotSupportedException();
-        public RefCountingMemory? GetNodeGroup<TPath>(TPath groupKey) where TPath : struct, IPbtNodePath<TPath> => read();
-        public void Dispose() { }
     }
 
     [Test]

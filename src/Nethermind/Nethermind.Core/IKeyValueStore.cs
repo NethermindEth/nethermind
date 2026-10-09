@@ -23,19 +23,6 @@ namespace Nethermind.Core
 
         byte[]? Get(scoped ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None);
 
-        /// <summary>Reads values in input order, returning null for missing keys.</summary>
-        /// <remarks>Duplicate keys produce a result for each occurrence. An empty input returns an empty array.</remarks>
-        /// <param name="keys">Keys to read.</param>
-        /// <param name="flags">Read behavior flags applied to the batch.</param>
-        /// <returns>One value per input key, in the same order.</returns>
-        byte[]?[] MultiGet(byte[][] keys, ReadFlags flags = ReadFlags.None)
-        {
-            if (keys.Length == 0) return [];
-            byte[]?[] values = new byte[]?[keys.Length];
-            for (int index = 0; index < keys.Length; index++) values[index] = Get(keys[index], flags);
-            return values;
-        }
-
         /// <summary>
         /// Return span. Must call <see cref="DangerousReleaseMemory"/> after use to avoid memory leaks.
         /// Prefer using <see cref="GetOwnedMemory"/> which handles release automatically via disposal.

@@ -4,7 +4,6 @@
 using System;
 using System.Buffers;
 using System.IO;
-using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Test;
@@ -85,43 +84,6 @@ public class ColumnsDbTests
             Assert.That(view.MoveNext(), Is.True);
             Assert.That(view.CurrentValue, Is.SequenceEqualTo(new byte[] { 2 }));
         }
-    }
-
-    [Test]
-    public void MultiGet_preserves_order_duplicates_and_snapshot_isolation(
-        [Values(ReadFlags.None, ReadFlags.HintCacheMiss, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead)] ReadFlags flags)
-    {
-        IDb column = _db.GetColumnDb(ReceiptsColumns.Blocks);
-        column.Set([1], [11]);
-        column.Set([2], [22]);
-
-        using IColumnDbSnapshot<ReceiptsColumns> oldSnapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
-        IReadOnlyKeyValueStore oldReader = oldSnapshot.GetColumn(ReceiptsColumns.Blocks);
-        byte[][] keys = [[2], [9], [1], [2], [3]];
-
-        column.Set([1], [111]);
-        column.Set([2], null);
-        column.Set([3], [33]);
-
-        byte[]?[] oldValues = oldReader.MultiGet(keys, flags);
-        Assert.That(oldValues, Is.EqualTo(new byte[]?[] { [22], null, [11], [22], null }));
-        Assert.That(oldValues, Is.EqualTo(keys.Select(key => oldReader.Get(key, flags)).ToArray()));
-
-        using IColumnDbSnapshot<ReceiptsColumns> newSnapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
-        IReadOnlyKeyValueStore newReader = newSnapshot.GetColumn(ReceiptsColumns.Blocks);
-        byte[]?[] newValues = newReader.MultiGet(keys, flags);
-        Assert.That(newValues, Is.EqualTo(new byte[]?[] { null, null, [111], null, [33] }));
-        Assert.That(newValues, Is.EqualTo(keys.Select(key => newReader.Get(key, flags)).ToArray()));
-    }
-
-    [Test]
-    public void MultiGet_empty_input_returns_empty_array(
-        [Values(ReadFlags.None, ReadFlags.HintCacheMiss, ReadFlags.HintReadAhead, ReadFlags.HintCacheMiss | ReadFlags.HintReadAhead)] ReadFlags flags)
-    {
-        using IColumnDbSnapshot<ReceiptsColumns> snapshot = ((IColumnsDb<ReceiptsColumns>)_db).CreateSnapshot();
-        IReadOnlyKeyValueStore reader = snapshot.GetColumn(ReceiptsColumns.Blocks);
-
-        Assert.That(reader.MultiGet([], flags), Is.Empty);
     }
 
     [Test]

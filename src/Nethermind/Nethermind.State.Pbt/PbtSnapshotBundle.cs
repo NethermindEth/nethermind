@@ -141,14 +141,6 @@ public sealed class PbtSnapshotBundle(
         return payload;
     }
 
-    /// <inheritdoc cref="GetPersistedNodeGroup"/>
-    internal RefCountingMemory?[] GetPersistedNodeGroups(PbtStorageNodePath[] groupKeys)
-    {
-        RefCountingMemory?[] payloads = readOnlyBundle.GetPersistedNodeGroups(groupKeys);
-        for (int index = 0; index < groupKeys.Length; index++) KeepPrefetchedNodeGroup(groupKeys[index], payloads[index]);
-        return payloads;
-    }
-
     private void KeepPrefetchedNodeGroup(PbtStorageNodePath groupKey, RefCountingMemory? payload)
     {
         payload?.AcquireLease();
