@@ -207,6 +207,8 @@ public static partial class EvmInstructions
             // EIP-8360: no account-creation charge; the target access is priced as an EIP-8038 account access.
             if (!TSpec.TryConsumeAccountAccessGas(ref gas, spec, in vm.VmState.AccessTracker, vm.IsTracingAccess, contractAddress))
                 goto OutOfGas;
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(contractAddress))
+                goto OutOfGas;
         }
         // For EIP-2929 support, pre-warm the contract address in the access tracker to account for hot/cold storage costs.
         else if (TSpec.UseHotAndColdStorage)
@@ -268,8 +270,9 @@ public static partial class EvmInstructions
         }
 
         // EIP-8279: the new contract's nonce, and both balances when endowed, join the block access list.
+        // A TCREATE account's nonce is reset at the end of the transaction, so only its balance remains.
         if (TSpec.IsEip8279Enabled
-            && (!vm.TryMeterBalData(Eip8279Constants.NonceBytes)
+            && ((!isTransientCreate && !vm.TryMeterBalData(Eip8279Constants.NonceBytes))
                 || (!value.IsZero && !vm.TryMeterBalData(2 * Eip8279Constants.BalanceBytes))))
             goto OutOfGas;
 

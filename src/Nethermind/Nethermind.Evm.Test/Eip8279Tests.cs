@@ -248,6 +248,30 @@ public class Eip8279Tests : VirtualMachineTestsBase
         }
     }
 
+    [TestCase(0, false, 20, TestName = "TCREATE meters only the new address")]
+    [TestCase(1, false, 20 + 64, TestName = "TCREATE with endowment meters both balances")]
+    [TestCase(0, true, 20, TestName = "TCREATE deploying code meters no code")]
+    public void Tcreate_meters_only_what_outlives_the_transaction(int endowment, bool deploy, int expectedBytes)
+    {
+        IReleaseSpec spec = new OverridableReleaseSpec(Spec8279) { IsEip8360Enabled = true };
+        byte[] salt = new byte[32];
+        byte[] initCode = deploy ? Prepare.EvmCode.ForInitOf([1, 2, 3, 4, 5]).Done : [];
+        byte[] code = Prepare.EvmCode.TCreate(initCode, salt, (UInt256)endowment).STOP().Done;
+        (Block block, Transaction tx) = PrepareFloorBindingTx(code, GasLimit);
+
+        (ulong gasSpent, _, BlockAccessListAtIndex bal, _) = Execute(block, tx, spec);
+
+        AccountChangesAtIndex? created = bal.GetAccountChanges(ContractAddress.FromTransientCreate(Executing, salt, initCode));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(gasSpent, Is.EqualTo(IntrinsicGasCalculator.Calculate(tx, spec).FloorGas + (ulong)expectedBytes * Eip8131Constants.FloorGasPerByte));
+            Assert.That(created, Is.Not.Null);
+            Assert.That(created!.NonceChange, Is.Null);
+            Assert.That(created.CodeChange, Is.Null);
+            Assert.That(created.BalanceChange, endowment == 0 ? Is.Null : Is.Not.Null);
+        }
+    }
+
     private (ulong GasSpent, ulong StaticFloor, CallOutputTracer Tracer, BlockAccessListAtIndex Bal) Run(byte[] code, ulong gasLimit)
     {
         (Block block, Transaction tx) = PrepareFloorBindingTx(code, gasLimit);

@@ -753,9 +753,9 @@ public partial class VirtualMachine<TGasPolicy>(
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
             // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
-            // there fails the deposit.
+            // there fails the deposit. EIP-8360 TCREATE code is discarded at the end of the transaction.
             chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
-                && TryMeterBalData((ulong)code.Length);
+                && (previousState.ExecutionType == ExecutionType.TCREATE || TryMeterBalData((ulong)code.Length));
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
