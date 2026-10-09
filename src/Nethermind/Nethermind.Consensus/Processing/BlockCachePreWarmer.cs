@@ -85,14 +85,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     internal int MainThreadTxIndex => Volatile.Read(ref _mainThreadTxIndex);
     int IBlockProcessingProgress.MainThreadTxIndex => MainThreadTxIndex;
 
-    // A session is always joined (under _speculativeLock) before the reactive path touches the shared caches.
+    // A session is always stopped (under _speculativeLock) before the reactive path touches the shared caches: waited
+    // for while it is in a pass, left to end on its own between passes, since it then writes nothing further.
     private readonly Lock _speculativeLock = new();
     private CancellationTokenSource? _speculativeCts;
     private Task _speculativeTask = Task.CompletedTask;
     private long _speculativeGeneration = long.MinValue;
+    // 1 while the session is in a pass: set with a full fence before each look at its token, cleared once the pass ends.
+    private int _speculativePassActive;
+    // Whether the current session was already stopped without a wait: a block stops it at scope open and again when its
+    // pre-warming starts, and the metric counts sessions, not stops.
+    private bool _speculativeStoppedWithoutWaiting;
 
-    // Non-null writes come only from the speculative loop; every other writer nulls it after joining that loop,
-    // which is what makes the marker and its shared tx-hash set safe to read without further sync.
+    // Non-null writes come only from the speculative loop; every other writer nulls it after stopping that loop, which
+    // is what makes the marker and its shared tx-hash set safe to read without further sync: a loop found between passes
+    // published them before it cleared its pass flag, and writes nothing more.
     private WarmMarker? _warmMarker;
 
     private readonly PooledSet<Hash256> _warmedTxHashes = [];
@@ -147,8 +154,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         _preBlockCaches = preBlockCaches;
         _nodeStorageCache = nodeStorageCache;
         _warmupQueue = new WarmupQueue(this);
-        // A consumer scope and a speculative session never coexist: the session is joined the moment a consumer opens.
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += CancelAndJoinSpeculative;
+        // A consumer scope and a speculative pass never overlap: the session is stopped the moment a consumer opens.
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened += StopSpeculative;
     }
 
     public IDisposable? PreWarmCaches(Block suggestedBlock, BlockHeader? parent, IReleaseSpec spec, CancellationToken cancellationToken = default)
@@ -165,8 +172,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         bool carried;
         lock (_speculativeLock)
         {
-            CancelAndJoinSpeculativeLocked();
-            // A spec that disables warming still needs the keep-or-clear decision: joining stops a session from writing
+            StopSpeculativeLocked();
+            // A spec that disables warming still needs the keep-or-clear decision: stopping keeps a session from writing
             // further, but the caches describe the state they were filled from, which need not be this block's parent.
             carried = _preBlockCaches.PrepareFor(parent?.StateRoot, _logger);
         }
@@ -777,7 +784,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             HandsColdChainsToDiscovery = handColdChainsToDiscovery && bal is null,
             Token = token
         };
-        // Safe for the speculative caller: it never overlaps main execution (joined before ProcessOne).
+        // Safe for the speculative caller: it never overlaps main execution, since it is stopped before ProcessOne:
+        // a pass in flight is waited for, and none starts after.
         Volatile.Write(ref _mainThreadTxIndex, -1);
         ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = maxDegreeOfParallelism, CancellationToken = token };
         AddressWarmer addressWarmer = new(parallelOptions, block, spec, warmSystemAccessLists, warmCalldataAddresses, this, bal);
@@ -802,6 +810,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
             CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             _speculativeCts = cts;
+            _speculativeStoppedWithoutWaiting = false;
             CancellationToken token = cts.Token;
 
             ClearWarmMarker();
@@ -828,35 +837,46 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             int systemWarmAttempts = 0;
             while (!token.IsCancellationRequested)
             {
-                (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
-                if (token.IsCancellationRequested) break;
-
-                if (next is (Block delta, IReleaseSpec deltaSpec))
+                // Before the token is looked at again, so a stop that finds no pass knows this one ends before it warms.
+                Interlocked.Exchange(ref _speculativePassActive, 1);
+                try
                 {
-                    bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
-                    // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
-                    if (warmSystemAccessLists || delta.Transactions.Length > 0)
+                    if (token.IsCancellationRequested) break;
+                    (Block Block, IReleaseSpec Spec)? next = nextDelta(token);
+                    if (token.IsCancellationRequested) break;
+
+                    if (next is (Block delta, IReleaseSpec deltaSpec))
                     {
-                        bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
-                        // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
-                        if (token.IsCancellationRequested) break;
-                        if (warmSystemAccessLists)
+                        bool warmSystemAccessLists = warmedSystemTimestamp != delta.Timestamp;
+                        // An empty delta still warms the system-contract slots and the beneficiary for the predicted block.
+                        if (warmSystemAccessLists || delta.Transactions.Length > 0)
                         {
-                            systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
-                            attemptedSystemTimestamp = delta.Timestamp;
-                            // Retire the slot only once its hints actually landed, since re-warming on the next pass is
-                            // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
-                            // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
-                            if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
+                            bool systemWarmed = WarmDeltaSync(delta, deltaSpec, warmSystemAccessLists, token);
+                            // Don't record a delta cancelled mid-warm, or the reactive pass would skip a half-warmed sender.
+                            if (token.IsCancellationRequested) break;
+                            if (warmSystemAccessLists)
+                            {
+                                systemWarmAttempts = attemptedSystemTimestamp == delta.Timestamp ? systemWarmAttempts + 1 : 1;
+                                attemptedSystemTimestamp = delta.Timestamp;
+                                // Retire the slot only once its hints actually landed, since re-warming on the next pass is
+                                // cheaper than leaving the slot cold for the rest of the gap - but give up after a few
+                                // tries, so a hint that never recovers cannot charge a warm pass to every pass in the gap.
+                                if (systemWarmed || systemWarmAttempts >= MaxSystemWarmAttempts) warmedSystemTimestamp = delta.Timestamp;
+                            }
+                            foreach (Transaction tx in delta.Transactions)
+                            {
+                                if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
+                            }
+                            // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
+                            if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
+                            Volatile.Write(ref _warmMarker, marker);
                         }
-                        foreach (Transaction tx in delta.Transactions)
-                        {
-                            if (tx.Hash is Hash256 hash) _warmedTxHashes.Add(hash);
-                        }
-                        // A fork activating inside the gap moves the predicted spec; the marker must name the one warmed.
-                        if (!ReferenceEquals(marker.Spec, deltaSpec)) marker = marker with { Spec = deltaSpec };
-                        Volatile.Write(ref _warmMarker, marker);
                     }
+                }
+                finally
+                {
+                    // Released after the pass's last write, so a stop that reads it clear also sees what the pass published.
+                    Volatile.Write(ref _speculativePassActive, 0);
                 }
 
                 // Rate-limit every pass so a churning mempool can't keep tx selection continuously in flight.
@@ -877,6 +897,50 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     // For tests: the recovery tracker the container wired in.
     internal ISenderRecoveryTracker? SenderRecovery => _senderRecovery;
+
+    // For tests: whether the session is in a pass, and whether a stopped session is still left to end on its own rather
+    // than joined.
+    internal bool SpeculativePassActive => Volatile.Read(ref _speculativePassActive) != 0;
+    internal bool SpeculativeSessionPending
+    {
+        get
+        {
+            lock (_speculativeLock) return _speculativeCts is not null;
+        }
+    }
+
+    private void StopSpeculative()
+    {
+        lock (_speculativeLock)
+        {
+            StopSpeculativeLocked();
+        }
+    }
+
+    /// <summary>Stops the session, waiting for it only while it is in a pass.</summary>
+    /// <remarks>
+    /// The loop sets <see cref="_speculativePassActive"/> with a full fence before each look at its token, and this
+    /// cancels, then fences, before reading it: either this sees the pass and waits for it, or the pass sees the stop and
+    /// ends before it warms anything. Between passes the session writes nothing further, so waiting for it
+    /// would only wait for its delay's continuation to be scheduled; the next start, clear or dispose joins it.
+    /// </remarks>
+    private void StopSpeculativeLocked()
+    {
+        if (_speculativeCts is null) return;
+
+        _speculativeCts.Cancel();
+        // Cancel happens to fence today; the handshake must not depend on that.
+        Interlocked.MemoryBarrier();
+        if (Volatile.Read(ref _speculativePassActive) != 0)
+        {
+            CancelAndJoinSpeculativeLocked();
+            return;
+        }
+
+        if (_speculativeStoppedWithoutWaiting) return;
+        _speculativeStoppedWithoutWaiting = true;
+        Blockchain.Metrics.PrewarmSpeculativeStopsWithoutWaiting++;
+    }
 
     private void CancelAndJoinSpeculative()
     {
@@ -964,7 +1028,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     public void Dispose()
     {
-        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= CancelAndJoinSpeculative;
+        if (_preBlockCaches is not null) _preBlockCaches.ConsumerScopeOpened -= StopSpeculative;
         CancelAndJoinSpeculative();
         _warmedTxHashes.Dispose();
         _warmupQueue.Dispose();

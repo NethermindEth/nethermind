@@ -105,13 +105,13 @@ public class PreBlockCaches
     /// <summary>
     /// Whether a consumer scope is open: from <see cref="BeginConsumerScope"/> until <see cref="EndConsumerScope"/>,
     /// which the consumer calls only once its underlying scope has been torn down and its background readers drained.
-    /// No speculative session may run in that time.
+    /// No speculative pass may run in that time.
     /// </summary>
     public bool ConsumerScopeOpen => Volatile.Read(ref _consumerScopes) > 0;
 
     /// <summary>
-    /// Raised by <see cref="BeginConsumerScope"/> before the consumer reads. The driver joins any speculative session
-    /// here, so a consumer scope and a session never coexist and nothing but the consumer writes while it is open.
+    /// Raised by <see cref="BeginConsumerScope"/> before the consumer reads. The driver stops any speculative session
+    /// here, waiting for one in a pass, so nothing but the consumer writes while it is open.
     /// </summary>
     public event Action? ConsumerScopeOpened;
 
@@ -231,7 +231,7 @@ public class PreBlockCaches
     /// </summary>
     /// <remarks>
     /// Unlike <see cref="PrepareFor"/>, a clear here adopts no identity: only the driver vouches for the caches, once
-    /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand joins any speculative session,
+    /// it has prepared them for the block. <see cref="BeginConsumerScope"/> beforehand stops any speculative session,
     /// so no populator writes while this runs or while the scope reads.
     /// </remarks>
     /// <param name="stateRoot">The state root the consumer is about to read.</param>
