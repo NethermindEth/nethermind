@@ -1077,10 +1077,28 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
-    [Test]
+    private static IEnumerable<TestCaseData> PrestateFieldOptionCases =>
+    [
+        new TestCaseData(false, false, false, false, false).SetName("Prestate_includes_code_and_storage"),
+        new TestCaseData(false, true, false, false, false).SetName("Prestate_disables_code_only"),
+        new TestCaseData(false, false, true, false, false).SetName("Prestate_disables_storage_only"),
+        new TestCaseData(false, true, true, false, false).SetName("Prestate_disables_code_and_storage"),
+        new TestCaseData(false, false, false, false, true).SetName("Prestate_retains_cleared_storage"),
+        new TestCaseData(false, true, false, false, true).SetName("Prestate_retains_cleared_storage_without_code"),
+        new TestCaseData(false, false, false, true, false).SetName("Prestate_retains_storage_before_reverted_write"),
+        new TestCaseData(false, false, false, true, true).SetName("Prestate_retains_storage_before_reverted_clear"),
+        new TestCaseData(true, false, false, false, false).SetName("Prestate_diff_includes_storage_write"),
+        new TestCaseData(true, true, false, false, false).SetName("Prestate_diff_includes_storage_write_without_code"),
+        new TestCaseData(true, false, false, false, true).SetName("Prestate_diff_includes_storage_clear"),
+        new TestCaseData(true, true, false, false, true).SetName("Prestate_diff_includes_storage_clear_without_code"),
+        new TestCaseData(true, false, true, false, false).SetName("Prestate_diff_omits_disabled_storage_changes"),
+        new TestCaseData(true, false, false, true, false).SetName("Prestate_diff_omits_reverted_storage_write"),
+        new TestCaseData(true, false, false, true, true).SetName("Prestate_diff_omits_reverted_storage_clear")
+    ];
+
+    [TestCaseSource(nameof(PrestateFieldOptionCases))]
     public async Task Debug_traceCall_prestate_respects_field_options(
-        [Values] bool diffMode, [Values] bool disableCode, [Values] bool disableStorage,
-        [Values] bool revert, [Values] bool clearStorage)
+        bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage)
     {
         using Context ctx = await Context.Create();
         string sender = TestItem.AddressA.ToString();
@@ -1141,8 +1159,11 @@ public partial class DebugRpcModuleTests
         }
 
         JObject result = JObject.Parse(response);
-        Assert.That(result["error"], Is.Null, response);
-        Assert.That(result["result"], Is.EqualTo(expected).Using(JToken.EqualityComparer), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(result["result"], Is.EqualTo(expected).Using(JToken.EqualityComparer), response);
+        }
     }
 
     [Test]

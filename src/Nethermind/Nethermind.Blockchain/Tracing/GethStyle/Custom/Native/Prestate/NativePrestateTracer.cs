@@ -293,7 +293,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     }
 
     private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty;
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty && account.CodeHash is null;
 
     private void ProcessDiffState()
     {
@@ -365,7 +365,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
                 _poststate.Add(addr, diffAccount);
 
             // If no account fields were modified or the account was created then remove it from the prestate trace;
-            // a created account counts as new when it was empty before, judged by balance, nonce and code alone.
+            // a created account counts as new when it was empty before, judged by balance, nonce and code hash.
             if (!modified || (_createdAccounts.Contains(addr) && IsEmpty(prestateAccount)))
                 _prestate.Remove(addr);
         }
