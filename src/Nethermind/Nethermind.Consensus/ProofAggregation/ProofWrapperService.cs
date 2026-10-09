@@ -106,6 +106,10 @@ public sealed class ProofWrapperService(ITxPool txPool, ISpecProvider specProvid
                 RememberVerification(wrapperHash, null);
             }
             else if (error is not null) return ProofWrapperAcceptance.Invalid(error);
+            // Coverage keeps one record per dependency, so a verified recursive proof can otherwise be lost to a direct
+            // witness or eviction; indexed by its exact set, it stays reusable by producers restricted to proven sets.
+            if (decoded.RecursiveStark is { } recursive && decoded.Deps.Count != 0)
+                leanProofStore.AddCachedRecursive(decoded.Deps, recursive.StarkProof);
             WrapperValidated?.Invoke(wrapper);
             cancellationToken.ThrowIfCancellationRequested();
             List<FrameDependency> admittedDependencies = [];

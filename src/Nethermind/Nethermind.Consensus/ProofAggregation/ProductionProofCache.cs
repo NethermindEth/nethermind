@@ -171,6 +171,9 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManage
         }
     }
 
+    /// <summary>Whether a scheduled production statement is still being proven.</summary>
+    internal bool IsScheduled => Volatile.Read(ref _scheduled) is { IsCompleted: false };
+
     /// <summary>Proves a production statement off the deadline-bound path and publishes it for exact reuse.</summary>
     /// <remarks>
     /// At most one statement runs at a time; a later request is dropped and repeated by the next production pass that

@@ -187,12 +187,13 @@ namespace Nethermind.Consensus.Producers
             return Task.FromResult((Block?)null);
         }
 
-        private const int MaxProofFallbacks = 3;
+        private const int MaxProofFallbacks = 8;
 
         /// <summary>Processes the block, rebuilding its body from proven dependencies when its own proof is not ready.</summary>
         /// <remarks>
-        /// Each rebuild is limited to a strictly smaller set with an existing proof, ending with no proof-backed transactions,
-        /// so a deadline-bound pass always yields a body without waiting for native proving.
+        /// Each rebuild is limited to a strictly smaller set with an existing proof, so the sequence terminates; a set can
+        /// shrink when its transactions are not includable together, for example behind a skipped nonce. The last rebuild
+        /// has no proof-backed transactions, so a deadline-bound pass always yields a body without waiting for native proving.
         /// </remarks>
         private Block? ProcessWithProvenDependencies(Block block, BlockHeader parent, IBlockTracer? blockTracer,
             PayloadAttributes? payloadAttributes, IBlockProducer.Flags flags, CancellationToken token)
@@ -207,7 +208,8 @@ namespace Nethermind.Consensus.Producers
                 {
                     token.ThrowIfCancellationRequested();
                     IReadOnlySet<FrameDependency> limit = fallback + 1 == MaxProofFallbacks ? new HashSet<FrameDependency>() : exception.Proven;
-                    if (Logger.IsDebug) Logger.Debug($"Rebuilding block {block.Number} from {limit.Count} proven dependencies while its proof is prepared");
+                    if (Logger.IsDebug)
+                        Logger.Debug($"Rebuilding block {block.Number} ({block.Transactions.Length} txs, {Eip8288Dependencies.ForBlock(block).Count} dependencies) from {limit.Count} proven dependencies while its proof is prepared");
                     Interlocked.Increment(ref Metrics.LeanProofFallbacks);
                     block = PrepareBlock(parent, payloadAttributes, flags);
                     if (block is not BlockToProduce producing) throw;

@@ -232,18 +232,17 @@ public partial class BlockProcessor(
                 if (prepared is not null) proof = prepared;
                 else
                 {
-                    AggregationInput input = new();
-                    if (block is BlockToProduce producing)
+                    BlockToProduce? producing = block as BlockToProduce;
+                    // A pass with a deadline never waits for native proving, which takes longer than a slot: the statement
+                    // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
+                    if (producing is not null && token.CanBeCanceled && leanProofStore is not null)
                     {
-                        input = RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
-                        // A pass with a deadline never waits for native proving, which takes longer than a slot: the statement
-                        // is proven off the production path and the body is rebuilt from dependencies whose proofs exist.
-                        if (token.CanBeCanceled && leanProofStore is not null)
-                        {
-                            _productionProofCache.TrySchedule(deps, depsHash, input, leanProofStore);
-                            throw new LeanProofNotReadyException(new HashSet<FrameDependency>(leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps))));
-                        }
+                        // Only the unrestricted body is worth proving; a restricted rebuild is a subset of it.
+                        if (producing.LeanDependencyLimit is null && !_productionProofCache.IsScheduled)
+                            _productionProofCache.TrySchedule(deps, depsHash, RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps), leanProofStore);
+                        throw new LeanProofNotReadyException(new HashSet<FrameDependency>(leanProofStore.LargestProvenSubset(new HashSet<FrameDependency>(deps))));
                     }
+                    AggregationInput input = producing is null ? new() : RecursiveStarkAggregator.Combine(producing.LeanProofInputs, deps);
                     proof = RecursiveStarkAggregator.Prove(input, _productionProofCache, in depsHash, token);
                     leanProofStore?.AddCachedRecursive(deps, proof);
                 }
