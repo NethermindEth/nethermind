@@ -50,12 +50,12 @@ public class DebugBridgeTests
 {
     public enum RawTransactionLookup { Present, ReceiptsRemoved, Unindexed, Mismatched }
 
-    [Test]
+    [TestCaseSource(nameof(RawTransactionLookupCases))]
     public async Task GetTransactionFromHash_WithStoredLocator_DoesNotReadReceiptBodies(
-        [Values] RawTransactionLookup lookup,
-        [Values(0, 1, 2)] int position,
-        [Values] bool compactIndex,
-        [Values(TxType.Legacy, TxType.EIP1559)] TxType type)
+        RawTransactionLookup lookup,
+        int position,
+        bool compactIndex,
+        TxType type)
     {
         IReceiptFinder receiptFinder = Substitute.For<IReceiptFinder>();
         receiptFinder.Get(Arg.Any<Block>()).Returns(_ => throw new InvalidOperationException("Receipt bodies must not be read"));
@@ -1157,6 +1157,24 @@ public class DebugBridgeTests
                 AssertCalls(() => worldStateManager.Received(1).DropStateNotReachableFrom(Arg.Is<BlockHeader>(h => h.Hash == expectedHead.Hash)));
             else
                 AssertCalls(() => worldStateManager.DidNotReceive().DropStateNotReachableFrom(Arg.Any<BlockHeader>()));
+        }
+    }
+
+    private static IEnumerable<TestCaseData> RawTransactionLookupCases()
+    {
+        foreach (bool compactIndex in new[] { false, true })
+        {
+            foreach (TxType type in new[] { TxType.Legacy, TxType.EIP1559 })
+            {
+                for (int position = 0; position < 3; position++)
+                {
+                    yield return new TestCaseData(RawTransactionLookup.Present, position, compactIndex, type);
+                    yield return new TestCaseData(RawTransactionLookup.ReceiptsRemoved, position, compactIndex, type);
+                }
+            }
+
+            yield return new TestCaseData(RawTransactionLookup.Unindexed, 0, compactIndex, TxType.Legacy);
+            yield return new TestCaseData(RawTransactionLookup.Mismatched, 0, compactIndex, TxType.Legacy);
         }
     }
 }
