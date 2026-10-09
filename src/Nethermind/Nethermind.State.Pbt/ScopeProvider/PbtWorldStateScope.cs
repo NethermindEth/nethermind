@@ -16,12 +16,15 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
+using Nethermind.State.Pbt.Persistence;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
 /// <summary>Provides the read/write surface for a processing branch backed by one canonical EIP-8297 tree.</summary>
 public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
+    private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
@@ -35,6 +38,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly Lock _hintBalLock = new();
     private Task? _hintBalTask;
     private CancellationTokenSource? _hintBalCancellation;
+    private Task? _nodeGroupPrefetchTask;
+    private CancellationTokenSource? _nodeGroupPrefetchCancellation;
 
     private StateId _currentStateId;
     private Hash256 _rootHash;
@@ -159,7 +164,85 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
     }
 
-    public void ApplyBal(ReadOnlyBlockAccessList bal) => ScopeBalApplier.ApplyConcurrently(this, bal);
+    public void ApplyBal(ReadOnlyBlockAccessList bal)
+    {
+        StartNodeGroupPrefetch(bal);
+        ScopeBalApplier.ApplyConcurrently(this, bal);
+    }
+
+    /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
+    /// <remarks>The reads only warm the store; <see cref="UpdateRootHash"/> stops them before it returns.</remarks>
+    private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
+    {
+        StopNodeGroupPrefetch();
+        if (bal.AccountChanges.Count == 0) return;
+
+        CancellationTokenSource cancellation = new();
+        _nodeGroupPrefetchCancellation = cancellation;
+        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(bal, cancellation.Token), cancellation.Token);
+    }
+
+    private void PrefetchNodeGroups(ReadOnlyBlockAccessList bal, CancellationToken cancellation)
+    {
+        PbtStorageNodePath[] paths = [.. NodeGroupPrefetchPaths(bal)];
+        ParallelUnbalancedWork.For(0, paths.Length, (bundle: Bundle, paths, cancellation), static (index, state) =>
+        {
+            if (!state.cancellation.IsCancellationRequested) state.bundle.PrefetchNodeGroup(state.paths[index]);
+            return state;
+        });
+    }
+
+    /// <summary>The distinct paths of the first groups below the top node groups that the leaves <paramref name="bal"/> writes lie under.</summary>
+    /// <remarks>Code leaves are left out: they are content addressed, so a deployment rarely finds their groups stored.</remarks>
+    internal static HashSet<PbtStorageNodePath> NodeGroupPrefetchPaths(ReadOnlyBlockAccessList bal)
+    {
+        HashSet<PbtStorageNodePath> paths = [];
+        Span<byte> pathBytes = stackalloc byte[StorageGroupDepth / 8];
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            bool writesAccountZone = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
+            bool writesStorageZone = false;
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (slotChanges.Changes.Length == 0) continue;
+                if (PbtStateKey.IsHeaderSlot(slotChanges.Key)) writesAccountZone = true;
+                else writesStorageZone = true;
+            }
+            if (!writesAccountZone && !writesStorageZone) continue;
+
+            PbtStateKey.AddressKeyHash(accountChanges.Address).Bytes.CopyTo(pathBytes[1..]);
+            if (writesAccountZone)
+            {
+                pathBytes[0] = Eip8297KeyDerivation.AccountZone;
+                paths.Add(new PbtStorageNodePath(pathBytes[..(AccountGroupDepth / 8)], AccountGroupDepth));
+            }
+            if (writesStorageZone)
+            {
+                pathBytes[0] = Eip8297KeyDerivation.StorageZone;
+                paths.Add(new PbtStorageNodePath(pathBytes, StorageGroupDepth));
+            }
+        }
+        return paths;
+    }
+
+    /// <summary>Cancels the running node group prefetch and waits for it to finish.</summary>
+    private void StopNodeGroupPrefetch()
+    {
+        if (_nodeGroupPrefetchTask is null) return;
+        _nodeGroupPrefetchCancellation!.Cancel();
+        try
+        {
+            _nodeGroupPrefetchTask.GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error("PBT node group prefetch faulted", ex);
+        }
+        _nodeGroupPrefetchCancellation.Dispose();
+        _nodeGroupPrefetchCancellation = null;
+        _nodeGroupPrefetchTask = null;
+    }
 
     public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
     {
@@ -175,30 +258,37 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     public void UpdateRootHash()
     {
-        if (!_rootDirty) return;
-        if (_logger.IsDebug) LogLifecycle("root calculation begin");
-        long start = Stopwatch.GetTimestamp();
-        PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
-        // Counting walks every shard of every partition, and the fold below drains them, so read it only when logged.
-        int mutationCount = _logger.IsDebug ? Bundle.PendingMutationCount : 0;
         try
         {
-            Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
-            long updaterStart = Stopwatch.GetTimestamp();
-            using (PbtSnapshotStore store = new(Bundle))
-                _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
-            Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
-            Bundle.CompleteLeafChanges();
+            if (!_rootDirty) return;
+            if (_logger.IsDebug) LogLifecycle("root calculation begin");
+            long start = Stopwatch.GetTimestamp();
+            PbtPartitionBatches changes = Bundle.PrepareLeafChanges();
+            // Counting walks every shard of every partition, and the fold below drains them, so read it only when logged.
+            int mutationCount = _logger.IsDebug ? Bundle.PendingMutationCount : 0;
+            try
+            {
+                Metrics.PbtPrepareLeafChangesTime.Observe(Stopwatch.GetTimestamp() - start);
+                long updaterStart = Stopwatch.GetTimestamp();
+                using (PbtSnapshotStore store = new(Bundle))
+                    _treeRoot = TrieUpdater.UpdateRoot(store, _treeRoot, changes, _foldQuota, _foldFanOut, Metrics.PbtPartitionFoldTime, memoryProvider: _nodeGroupMemory);
+                Metrics.PbtTrieUpdaterTime.Observe(Stopwatch.GetTimestamp() - updaterStart);
+                Bundle.CompleteLeafChanges();
+            }
+            finally
+            {
+                changes.Dispose();
+            }
+            Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
+            _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
+            _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
+            _rootDirty = false;
+            if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={mutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
         }
         finally
         {
-            changes.Dispose();
+            StopNodeGroupPrefetch();
         }
-        Metrics.PbtRootHashTime.Observe(Stopwatch.GetTimestamp() - start);
-        _childHeader ??= _currentHeader is null ? null : _childHeaders.TryFindChild(_currentHeader);
-        _rootHash = _authoritativeRoot ?? _childHeader?.StateRoot ?? _treeRoot.ToHash256();
-        _rootDirty = false;
-        if (_logger.IsDebug) LogLifecycle($"root calculated treeRoot={_treeRoot}, mutations={mutationCount}, elapsed={Stopwatch.GetElapsedTime(start)}");
     }
 
     public void Commit(ulong blockNumber)
@@ -242,6 +332,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         try
         {
             StopHintBal();
+            StopNodeGroupPrefetch();
             Bundle.Dispose();
         }
         finally

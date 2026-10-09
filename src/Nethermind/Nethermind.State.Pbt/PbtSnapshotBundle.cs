@@ -116,6 +116,9 @@ public sealed class PbtSnapshotBundle(
         return readOnlyBundle.GetNodeGroup(groupKey);
     }
 
+    /// <summary>Reads the persisted group at <paramref name="groupKey"/> and drops it, warming the store for the next fold.</summary>
+    internal void PrefetchNodeGroup(PbtStorageNodePath groupKey) => ((IDisposable?)readOnlyBundle.GetNodeGroup(groupKey))?.Dispose();
+
     public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
 
     /// <summary>Reads an account, promoting one found past the write buffer and the hint memo into the write buffer.</summary>

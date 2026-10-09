@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Blockchain;
+using Nethermind.Core.BlockAccessLists;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -438,6 +439,35 @@ public class PbtWorldStateScopeTests
                 Assert.That(storage.Get(1000), Is.EqualTo(generation is 0 or 2 ? UInt256.Zero : (UInt256)0xcd));
             }
         }
+    }
+
+    private static IEnumerable<TestCaseData> NodeGroupPrefetchCases()
+    {
+        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))), new[] { TestItem.AddressA }, Array.Empty<Address>())
+            .SetName("balance writes the account zone");
+        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(7, new StorageChange(1, 1u))), new[] { TestItem.AddressA }, Array.Empty<Address>())
+            .SetName("header slot writes the account zone");
+        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u)).WithStorageChanges(2000, new StorageChange(1, 2u))), Array.Empty<Address>(), new[] { TestItem.AddressA })
+            .SetName("storage-zone slots share one storage path");
+        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1000)), Array.Empty<Address>(), Array.Empty<Address>())
+            .SetName("storage reads write nothing");
+        yield return new TestCaseData(Bal(
+                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithNonceChanges(new NonceChange(1, 1)).WithStorageChanges(7, new StorageChange(1, 1u)).WithStorageChanges(1000, new StorageChange(1, 1u)),
+                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u))),
+                new[] { TestItem.AddressA }, new[] { TestItem.AddressA, TestItem.AddressB })
+            .SetName("both zones across accounts");
+
+        static ReadOnlyBlockAccessList Bal(params AccountChangesBuilder[] accounts) =>
+            Build.A.BlockAccessList.WithAccountChanges([.. accounts.Select(static account => account.TestObject)]).TestObject;
+    }
+
+    [TestCaseSource(nameof(NodeGroupPrefetchCases))]
+    public void NodeGroupPrefetchPaths_are_the_first_groups_below_the_top_groups(ReadOnlyBlockAccessList bal, Address[] accountZone, Address[] storageZone)
+    {
+        IEnumerable<PbtStorageNodePath> expected = accountZone.Select(static address => new PbtStorageNodePath(Bytes.FromHexString("00" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()[..6]), 32))
+            .Concat(storageZone.Select(static address => new PbtStorageNodePath(Bytes.FromHexString("ff" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()), 264)));
+
+        Assert.That(PbtWorldStateScope.NodeGroupPrefetchPaths(bal), Is.EquivalentTo(expected));
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)
