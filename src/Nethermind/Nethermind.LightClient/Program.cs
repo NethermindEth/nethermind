@@ -155,17 +155,20 @@ if (initialHeader.Execution is not null)
 VerifiedHead GetHead()
 {
     VerifiedHead snapshot = Volatile.Read(ref head) ?? throw new RpcException(-32000, "Waiting for an authenticated execution header.");
-    ulong slot = CurrentSlot();
-    if (slot < snapshot.Slot || slot - snapshot.Slot > 3600 / spec.SecondsPerSlot)
+    if (!IsHeadFresh(snapshot, 3600))
         throw new RpcException(-32000, "Verified finality is more than one hour old; waiting for consensus sync.");
     return snapshot;
 }
 VerifiedHead? GetLatestHead()
 {
     VerifiedHead? snapshot = Volatile.Read(ref latestHead);
-    if (snapshot is null) return null;
+    return IsHeadFresh(snapshot, 3600) ? snapshot : null;
+}
+bool IsHeadFresh(VerifiedHead? snapshot, ulong maximumAgeSeconds)
+{
+    if (snapshot is null) return false;
     ulong slot = CurrentSlot();
-    return slot >= snapshot.Slot && slot - snapshot.Slot <= 3600 / spec.SecondsPerSlot ? snapshot : null;
+    return slot >= snapshot.Slot && slot - snapshot.Slot <= maximumAgeSeconds / spec.SecondsPerSlot;
 }
 using VerifiedCall calls = new(execution, execution.SpecProvider, logManager);
 VerifiedRpc rpc = new(execution, GetHead, spec.ChainId, calls, execution.SpecProvider, GetLatestHead);
@@ -191,6 +194,8 @@ async Task SyncAsync(CancellationToken cancellationToken)
 {
     using CancellationTokenSource peersStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
     Task peerCounts = ReportPeersAsync(peersStop.Token);
+    (bool HasWarned, VerifiedHead? Head) finalizedWarning = default;
+    (bool HasWarned, VerifiedHead? Head) optimisticWarning = default;
     try
     {
         while (!cancellationToken.IsCancellationRequested)
@@ -226,35 +231,43 @@ async Task SyncAsync(CancellationToken cancellationToken)
             }
             try
             {
-                LightClientFinalityUpdate update;
+                LightClientFinalityUpdate? update;
                 using (CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
                     attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    update = await beacon.FinalityAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
+                    update = await beacon.PollFinalityAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
                 }
-                await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
-                await PublishFinalizedAsync(cancellationToken);
-                await PublishOptimisticAsync(cancellationToken);
+                if (update is not null)
+                {
+                    await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
+                    await PublishFinalizedAsync(cancellationToken);
+                    await PublishOptimisticAsync(cancellationToken);
+                }
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                logger.LogWarning(exception, "Finality sync failed; retaining the last verified finalized head");
+                logger.LogDebug(exception, "Finality poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
             }
             try
             {
-                LightClientOptimisticUpdate update;
+                LightClientOptimisticUpdate? update;
                 using (CancellationTokenSource attempt = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken))
                 {
                     attempt.CancelAfter(TimeSpan.FromSeconds(15));
-                    update = await beacon.OptimisticAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
+                    update = await beacon.PollOptimisticAsync(value => store.Process(value, CurrentSlot()), attempt.Token);
                 }
-                await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
-                await PublishOptimisticAsync(cancellationToken);
+                if (update is not null)
+                {
+                    await PersistAsync(journal.AppendAsync(update, store, cancellationToken), cancellationToken);
+                    await PublishOptimisticAsync(cancellationToken);
+                }
             }
             catch (Exception exception) when (!cancellationToken.IsCancellationRequested)
             {
-                logger.LogWarning(exception, "Optimistic sync failed; retaining the last authenticated head");
+                logger.LogDebug(exception, "Optimistic poll failed ({ExceptionType}: {Reason})", exception.GetType().Name, exception.Message);
             }
+            WarnIfStale(Volatile.Read(ref head), 30 * 60, "Finalized", ref finalizedWarning);
+            WarnIfStale(Volatile.Read(ref latestHead), 2 * 60, "Optimistic", ref optimisticWarning);
             await Task.Delay(TimeSpan.FromSeconds(spec.SecondsPerSlot), clock, cancellationToken);
         }
     }
@@ -263,6 +276,21 @@ async Task SyncAsync(CancellationToken cancellationToken)
     {
         await peersStop.CancelAsync();
         await peerCounts;
+    }
+
+    void WarnIfStale(VerifiedHead? current, ulong maximumAgeSeconds, string kind,
+        ref (bool HasWarned, VerifiedHead? Head) warning)
+    {
+        if (IsHeadFresh(current, maximumAgeSeconds))
+        {
+            warning = default;
+            return;
+        }
+        if (warning.HasWarned && warning.Head == current) return;
+
+        logger.LogWarning("{HeadKind} light-client head is stale or unavailable (beacon slot {Slot}, execution block {BlockNumber}); waiting for authenticated P2P updates",
+            kind, current?.Slot, current?.Number);
+        warning = (true, current);
     }
 }
 

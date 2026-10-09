@@ -22,6 +22,7 @@ namespace Nethermind.LightClient;
 /// <summary>Obtains light-client SSZ messages directly from connected beacon peers.</summary>
 internal sealed class BeaconPeerTransport : IAsyncDisposable
 {
+    private static readonly TimeSpan PeerRequestTimeout = TimeSpan.FromSeconds(5);
     private readonly MemColumnsDb<BeaconChainDbColumns> _db = new();
     private readonly IPResolver _ipResolver;
     private readonly BeaconP2P _p2p;
@@ -63,24 +64,34 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
     }
 
     internal Task<LightClientBootstrap> BootstrapAsync(Hash256 root, Action<LightClientBootstrap> validate, CancellationToken token) =>
-        RequestAsync(peer => peer.RequestLightClientBootstrapAsync(root, token), validate, token);
+        RequestAsync((peer, peerToken) => peer.RequestLightClientBootstrapAsync(root, peerToken), validate, token);
 
     internal Task<LightClientUpdate> UpdateAsync(ulong period, Action<LightClientUpdate> validate, CancellationToken token) =>
-        RequestAsync(peer => peer.RequestLightClientUpdateAsync(period, token), validate, token);
+        RequestAsync((peer, peerToken) => peer.RequestLightClientUpdateAsync(period, peerToken), validate, token);
 
-    internal Task<LightClientFinalityUpdate> FinalityAsync(Action<LightClientFinalityUpdate> validate, CancellationToken token) =>
-        RequestAsync(peer => peer.RequestLightClientFinalityAsync(token), validate, token);
+    internal Task<LightClientFinalityUpdate?> PollFinalityAsync(Action<LightClientFinalityUpdate> validate, CancellationToken token) =>
+        PollFromPeersAsync(_peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientFinalityAsync(peerToken), validate, token);
 
-    internal Task<LightClientOptimisticUpdate> OptimisticAsync(Action<LightClientOptimisticUpdate> validate, CancellationToken token) =>
-        RequestAsync(peer => peer.RequestLightClientOptimisticAsync(token), validate, token);
+    internal Task<LightClientOptimisticUpdate?> PollOptimisticAsync(Action<LightClientOptimisticUpdate> validate, CancellationToken token) =>
+        PollFromPeersAsync(_peers.GetBestPeers(0), (peer, peerToken) => peer.RequestLightClientOptimisticAsync(peerToken), validate, token);
 
-    private async Task<T> RequestAsync<T>(Func<IBeaconSyncPeer, Task<T>> request, Action<T> validate, CancellationToken token) where T : class
+    internal static async Task<T?> PollFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Action<T> validate, CancellationToken token,
+        TimeProvider? timeProvider = null) where T : class
+    {
+        (T? response, bool sawInapplicable) = await RequestFromPeersAsync(peers, request, validate, token, timeProvider);
+        if (response is null && !sawInapplicable) throw new IOException("No beacon peer supplied an applicable light-client update.");
+        return response;
+    }
+
+    private async Task<T> RequestAsync<T>(Func<IBeaconSyncPeer, CancellationToken, Task<T>> request,
+        Action<T> validate, CancellationToken token) where T : class
     {
         long lastStatus = Stopwatch.GetTimestamp();
         while (true)
         {
             token.ThrowIfCancellationRequested();
-            T? response = await RequestFromPeersAsync(_peers.GetBestPeers(0), request, validate, token);
+            (T? response, _) = await RequestFromPeersAsync(_peers.GetBestPeers(0), request, validate, token);
             if (response is not null) return response;
 
             if (Stopwatch.GetElapsedTime(lastStatus) >= TimeSpan.FromSeconds(10))
@@ -93,32 +104,40 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
         }
     }
 
-    internal static async Task<T?> RequestFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
-        Func<IBeaconSyncPeer, Task<T>> request, Action<T> validate, CancellationToken token) where T : class
+    internal static async Task<(T? Response, bool SawInapplicable)> RequestFromPeersAsync<T>(IReadOnlyList<IBeaconSyncPeer> peers,
+        Func<IBeaconSyncPeer, CancellationToken, Task<T>> request, Action<T> validate, CancellationToken token,
+        TimeProvider? timeProvider = null) where T : class
     {
+        bool sawInapplicable = false;
         foreach (IBeaconSyncPeer peer in peers)
         {
             token.ThrowIfCancellationRequested();
+            using CancellationTokenSource peerTimeout = new(PeerRequestTimeout, timeProvider ?? TimeProvider.System);
+            using CancellationTokenSource peerAttempt = CancellationTokenSource.CreateLinkedTokenSource(token, peerTimeout.Token);
             try
             {
-                T response = await request(peer);
+                T response = await request(peer, peerAttempt.Token);
                 try { validate(response); }
-                catch (IrrelevantLightClientUpdateException) { continue; }
-                catch (LightClientLocalStateException) { continue; }
+                catch (IrrelevantLightClientUpdateException) { sawInapplicable = true; continue; }
+                catch (LightClientLocalStateException) { sawInapplicable = true; continue; }
                 catch (InvalidDataException exception)
                 {
                     peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);
                     continue;
                 }
-                return response;
+                return (response, false);
             }
             catch (OperationCanceledException) when (token.IsCancellationRequested) { throw; }
+            catch (OperationCanceledException) when (peerTimeout.IsCancellationRequested)
+            {
+                peer.ReportFailure(PeerFailureReason.RequestFailed, "Light-client request timed out.");
+            }
             catch (Exception exception)
             {
                 peer.ReportFailure(PeerFailureReason.RequestFailed, exception.Message);
             }
         }
-        return null;
+        return (null, sawInapplicable);
     }
 
     public async ValueTask DisposeAsync()
