@@ -274,7 +274,7 @@ public class LogIndexBuilderTests
 
         using (Assert.EnterMultipleScope())
         {
-            Exception thrown = Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
+            Exception thrown = await Assert.ThrowsAsync<Exception>(() => builder.BackwardSyncCompletion.WaitAsync(TimeSpan.FromSeconds(10)));
             Assert.That(thrown, Is.EqualTo(exception));
             Assert.That(builder.LastError, Is.EqualTo(exception));
         }
@@ -687,7 +687,7 @@ public class LogIndexBuilderTests
 
         await builder.StartAsync();
 
-        Assert.ThrowsAsync<InvalidOperationException>(() => builder.BackwardSyncCompletion.WaitAsync(cancellation),
+        await Assert.ThrowsAsync<InvalidOperationException>(() => builder.BackwardSyncCompletion.WaitAsync(cancellation),
             "a height that never yields its receipts must end the descent in a hard error, not an invisible infinite poll");
         using (Assert.EnterMultipleScope())
         {
