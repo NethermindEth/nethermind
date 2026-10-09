@@ -6,6 +6,7 @@ using Autofac;
 using Nethermind.Core.Memory;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Blockchain;
@@ -468,6 +469,56 @@ public class PbtWorldStateScopeTests
             .Concat(storageZone.Select(static address => new PbtStorageNodePath(Bytes.FromHexString("ff" + PbtStateKey.AddressKeyHash(address).Bytes.ToHexString()), 264)));
 
         Assert.That(PbtWorldStateScope.NodeGroupPrefetchPaths(bal), Is.EquivalentTo(expected));
+    }
+
+    [Test]
+    public void NodeGroupPrefetch_reads_one_extra_storage_path_byte_only_above_512_KiB(
+        [Values(-1L, 0L, 512 * 1024 - 1L, 512 * 1024L, 512 * 1024 + 1L)] long descendantBytes, [Values] bool cancelled)
+    {
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
+                .WithStorageChanges(7, new StorageChange(1, 1u))
+                .WithStorageChanges(1000, new StorageChange(1, 1u))
+                .WithStorageChanges(1001, new StorageChange(1, 1u))
+                .WithStorageChanges(2000, new StorageChange(1, 1u))
+                .WithStorageReads(3000).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
+        ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
+        PbtStoragePath storagePath = PbtStateKey.Storage(TestItem.AddressA, addressHash, 1000);
+        PbtStorageNodePath storageGroup = new(storagePath.Bytes[..33], 264);
+        TrackingMemoryProvider memory = new();
+        IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
+        reader.GetNodeGroup(Arg.Any<PbtStorageNodePath>()).Returns(call =>
+        {
+            PbtStorageNodePath path = call.Arg<PbtStorageNodePath>();
+            if (descendantBytes < 0 || path.BitDepth == 264 && !path.Equals(storageGroup)) return null;
+            long size = path.BitDepth == 272 ? 1024 * 1024 : descendantBytes;
+            long[] sizes = new long[PbtFourLevelGroupGeometry.BoundarySlots];
+            sizes[0] = size / 2;
+            sizes[^1] = size - sizes[0];
+            byte[] branch = PbtTreeHarness.EncodeBranch([], 0, TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256);
+            byte[] encoding = PbtNodeGroupEncoder.Encode(path, [new PbtNodeRecord(PbtTestPaths.PathOf(path, 0), branch)], sizes);
+            RefCountingMemory payload = memory.Rent(encoding.Length);
+            encoding.CopyTo(payload.GetSpan());
+            return payload;
+        });
+        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
+
+        PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, new CancellationToken(cancelled));
+
+        HashSet<PbtStorageNodePath> expected = cancelled ? [] : PbtWorldStateScope.NodeGroupPrefetchPaths(bal);
+        if (!cancelled && descendantBytes > 512 * 1024)
+            foreach (UInt256 slot in new UInt256[] { 1000, 2000 })
+            {
+                PbtStoragePath key = PbtStateKey.Storage(TestItem.AddressA, addressHash, slot);
+                expected.Add(new PbtStorageNodePath(key.Bytes[..34], 272));
+            }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(reader.ReceivedCalls().Where(call => call.GetMethodInfo().Name == nameof(IPbtPersistence.IReader.GetNodeGroup))
+                .Select(call => (PbtStorageNodePath)call.GetArguments()[0]!), Is.EquivalentTo(expected));
+            Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero);
+        }
     }
 
     private static void Write(IWorldStateScopeProvider.IScope scope, byte balance)

@@ -117,7 +117,19 @@ public sealed class PbtSnapshotBundle(
     }
 
     /// <summary>Reads the persisted group at <paramref name="groupKey"/> and drops it, warming the store for the next fold.</summary>
-    internal void PrefetchNodeGroup(PbtStorageNodePath groupKey) => ((IDisposable?)readOnlyBundle.GetNodeGroup(groupKey))?.Dispose();
+    /// <returns>The summed descendant-byte statistics of a storage group, or zero for a missing or non-storage group.</returns>
+    internal long PrefetchNodeGroup(PbtStorageNodePath groupKey)
+    {
+        using RefCountingMemory? payload = readOnlyBundle.GetNodeGroup(groupKey);
+        if (payload is null || groupKey.GetByte(0) != Eip8297KeyDerivation.StorageZone) return 0;
+
+        ReadOnlySpan<byte> bytes = payload.GetSpan();
+        ushort mask = PbtNodeGroupCodec.ReadDescendantMask(bytes);
+        long descendantBytes = 0;
+        for (int slot = 0; slot < PbtFourLevelGroupGeometry.BoundarySlots; slot++)
+            if ((mask & (1 << slot)) != 0) descendantBytes += PbtNodeGroupCodec.ReadDescendantBytes(bytes, mask, slot);
+        return descendantBytes;
+    }
 
     public Account? GetAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: false);
 

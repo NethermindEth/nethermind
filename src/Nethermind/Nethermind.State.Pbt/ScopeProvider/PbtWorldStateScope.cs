@@ -25,6 +25,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 {
     private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
+    private const long LargeStoragePrefetchBytes = 512 * 1024;
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
     private readonly ILogger _logger;
@@ -171,7 +172,10 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     }
 
     /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
-    /// <remarks>The reads only warm the store; <see cref="UpdateRootHash"/> stops them before it returns.</remarks>
+    /// <remarks>
+    /// Storage groups with more than 512 KiB in their descendant-byte statistics also prefetch one additional path byte.
+    /// The reads only warm the store; <see cref="UpdateRootHash"/> stops them before it returns.
+    /// </remarks>
     private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
     {
         StopNodeGroupPrefetch();
@@ -179,17 +183,54 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         CancellationTokenSource cancellation = new();
         _nodeGroupPrefetchCancellation = cancellation;
-        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(bal, cancellation.Token), cancellation.Token);
+        _nodeGroupPrefetchTask = Task.Run(() => PrefetchNodeGroups(Bundle, bal, cancellation.Token), cancellation.Token);
     }
 
-    private void PrefetchNodeGroups(ReadOnlyBlockAccessList bal, CancellationToken cancellation)
+    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken cancellation)
     {
         PbtStorageNodePath[] paths = [.. NodeGroupPrefetchPaths(bal)];
-        ParallelUnbalancedWork.For(0, paths.Length, (bundle: Bundle, paths, cancellation), static (index, state) =>
+        bool[] largeStorageGroups = new bool[paths.Length];
+        ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, largeStorageGroups, cancellation), static (index, state) =>
+        {
+            if (state.cancellation.IsCancellationRequested) return state;
+            long descendantBytes = state.bundle.PrefetchNodeGroup(state.paths[index]);
+            state.largeStorageGroups[index] = state.paths[index].BitDepth == StorageGroupDepth && descendantBytes > LargeStoragePrefetchBytes;
+            return state;
+        });
+        if (cancellation.IsCancellationRequested) return;
+
+        HashSet<PbtStorageNodePath> largePaths = [];
+        for (int index = 0; index < paths.Length; index++)
+            if (largeStorageGroups[index]) largePaths.Add(paths[index]);
+        if (largePaths.Count == 0) return;
+
+        paths = [.. StorageNodeGroupPrefetchPaths(bal, largePaths)];
+        ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, cancellation), static (index, state) =>
         {
             if (!state.cancellation.IsCancellationRequested) state.bundle.PrefetchNodeGroup(state.paths[index]);
             return state;
         });
+    }
+
+    private static HashSet<PbtStorageNodePath> StorageNodeGroupPrefetchPaths(ReadOnlyBlockAccessList bal, HashSet<PbtStorageNodePath> largeGroups)
+    {
+        HashSet<PbtStorageNodePath> paths = [];
+        Span<byte> groupBytes = stackalloc byte[StorageGroupDepth / 8];
+        groupBytes[0] = Eip8297KeyDerivation.StorageZone;
+        foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+        {
+            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(accountChanges.Address);
+            addressHash.Bytes.CopyTo(groupBytes[1..]);
+            if (!largeGroups.Contains(new PbtStorageNodePath(groupBytes, StorageGroupDepth))) continue;
+
+            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
+            {
+                if (slotChanges.Changes.Length == 0 || PbtStateKey.IsHeaderSlot(slotChanges.Key)) continue;
+                PbtStoragePath storagePath = PbtStateKey.Storage(accountChanges.Address, addressHash, slotChanges.Key);
+                paths.Add(new PbtStorageNodePath(storagePath.Bytes[..(StorageGroupDepth / 8 + 1)], StorageGroupDepth + 8));
+            }
+        }
+        return paths;
     }
 
     /// <summary>The distinct paths of the first groups below the top node groups that the leaves <paramref name="bal"/> writes lie under.</summary>
