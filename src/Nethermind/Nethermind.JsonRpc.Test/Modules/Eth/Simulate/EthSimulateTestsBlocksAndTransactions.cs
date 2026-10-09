@@ -591,8 +591,11 @@ public class EthSimulateTestsBlocksAndTransactions
 
         Log[] tx0Logs = calls[0].Logs.ToArray();
         Assert.That(tx0Logs, Has.Length.EqualTo(2));
-        Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
-        Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(tx0Logs[0].LogIndex, Is.EqualTo(0ul));
+            Assert.That(tx0Logs[1].LogIndex, Is.EqualTo(1ul));
+        }
 
         Log[] tx1Logs = calls[1].Logs.ToArray();
         Assert.That(tx1Logs, Has.Length.EqualTo(1));
