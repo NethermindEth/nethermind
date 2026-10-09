@@ -310,8 +310,8 @@ public class DebugBridge : IDebugBridge
             throw new InvalidDataException(searchResult.Error);
         }
         Block block = searchResult.Object;
-        TxReceipt txReceipt = _receiptFinder.Get(block).ForTransaction(txHash);
-        return block?.Transactions[txReceipt.Index];
+        int index = block.GetTransactionIndex(txHash.ValueHash256);
+        return index < 0 ? null : block.Transactions[index];
     }
 
     [Obsolete("Use the Hash256 overload: a block number resolves only the canonical block at that height.")]
