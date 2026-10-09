@@ -1261,11 +1261,14 @@ public class JsonRpcServiceTests
         using JsonRpcContext context = new(endpoint);
         using JsonRpcErrorResponse response = (JsonRpcErrorResponse)await service.SendRequestAsync(request, context);
 
-        Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
-        Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
-        Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
-        if (resolution == ModuleResolution.Disabled)
-            Assert.That(response.Error.Message, Does.Contain(endpoint == RpcEndpoint.IPC ? "JsonRpc.IpcEnabledModules" : "JsonRpc.AdditionalRpcUrls"));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(response.Error!.Code, Is.EqualTo(ErrorCodes.InvalidRequest));
+            Assert.That(ErrorCodes.IsRequestError(response.Error.Code), Is.True, "guards the premise: the code alone would demote this");
+            Assert.That(response.Error.OperatorActionable, Is.EqualTo(expectedOperatorActionable));
+            if (resolution == ModuleResolution.Disabled)
+                Assert.That(response.Error.Message, Does.Contain(endpoint == RpcEndpoint.IPC ? "JsonRpc.IpcEnabledModules" : "JsonRpc.AdditionalRpcUrls"));
+        }
     }
 
     [Test]
