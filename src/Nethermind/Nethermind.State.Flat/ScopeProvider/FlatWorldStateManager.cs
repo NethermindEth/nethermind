@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Evm.State;
 using Nethermind.Logging;
-using Nethermind.State.Flat.Persistence;
 using Nethermind.State.Flat.Sync.Snap;
 using Nethermind.State.SnapServer;
 using Nethermind.Trie.Pruning;
@@ -15,7 +14,6 @@ namespace Nethermind.State.Flat.ScopeProvider;
 
 public class FlatWorldStateManager(
     IFlatDbManager flatDbManager,
-    IPersistence persistence,
     IFlatDbConfig configuration,
     FlatStateReader flatStateReader,
     ITrieWarmer trieWarmer,
@@ -23,6 +21,7 @@ public class FlatWorldStateManager(
     [KeyFilter(DbNames.Code)] IDb codeDb,
     IFlatStateRootIndex flatStateRootIndex,
     IStateHeaderProvider stateHeaderProvider,
+    FlatTrieVerifier trieVerifier,
     ILogManager logManager)
     : IWorldStateManager, IDisposable
 {
@@ -36,8 +35,6 @@ public class FlatWorldStateManager(
         logManager,
         isReadOnly: false);
 
-    private readonly FlatTrieVerifier _trieVerifier = new(flatDbManager, persistence, logManager);
-
     private SnapFlatStateServer? _snapServer;
 
     public IWorldStateScopeProvider GlobalWorldState => _mainWorldState;
@@ -48,8 +45,12 @@ public class FlatWorldStateManager(
         logManager);
     public IReadOnlyKeyValueStore? HashServer => null;
 
-    public IWorldStateScopeProvider CreateResettableWorldState() =>
-        new FlatScopeProvider(
+    public IWorldStateScopeProvider CreateResettableWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: false);
+
+    public IWorldStateScopeProvider CreateReadOnlyQueryWorldState() => CreateReadOnlyScopeProvider(filterInMemorySlotReads: true);
+
+    private FlatScopeProvider CreateReadOnlyScopeProvider(bool filterInMemorySlotReads) =>
+        new(
             codeDb,
             flatDbManager,
             configuration,
@@ -57,7 +58,8 @@ public class FlatWorldStateManager(
             ResourcePool.Usage.ReadOnlyProcessingEnv,
             stateHeaderProvider,
             logManager,
-            isReadOnly: true);
+            isReadOnly: true,
+            filterInMemorySlotReads: filterInMemorySlotReads);
 
     public IReadOnlyTrieStore CreateReadOnlyTrieStore() => new FlatReadOnlyTrieStore(flatDbManager);
 
@@ -65,7 +67,7 @@ public class FlatWorldStateManager(
         overridableWorldScopeFactory();
 
     public bool VerifyTrie(BlockHeader stateAtBlock, CancellationToken cancellationToken) =>
-        _trieVerifier.Verify(stateAtBlock, cancellationToken);
+        trieVerifier.Verify(stateAtBlock, cancellationToken);
 
     public void FlushCache(CancellationToken cancellationToken) => flatDbManager.FlushCache(cancellationToken);
 

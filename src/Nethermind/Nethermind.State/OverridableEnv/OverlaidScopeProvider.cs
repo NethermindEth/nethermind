@@ -59,16 +59,22 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             {
                 if (!cache.TryGetAccount(address, out underlying))
                 {
-                    underlying = inner.Get(address);
+                    underlying = GetParent(address);
                     cache.SetAccount(address, underlying);
                 }
             }
             else
             {
-                underlying = inner.Get(address);
+                underlying = GetParent(address);
             }
 
             return overlay is not null && overlay.TryGetAccount(address, underlying, out Account? overlaid) ? overlaid : underlying;
+        }
+
+        private Account? GetParent(Address address)
+        {
+            Account? account = inner.Get(address);
+            return slot.ParentState is { } parent && parent.TryGetAccount(address, account, out Account? overlaid) ? overlaid : account;
         }
 
         public void HintGet(Address address, Account? account) => inner.HintGet(address, account);
@@ -113,11 +119,14 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
             get
             {
                 Hash256 root = inner.RootHash;
-                return slot.Current is { } overlay && overlay.HasStorage(address) && root == Keccak.EmptyTreeHash
+                return OverlayHoldsStorage() && root == Keccak.EmptyTreeHash
                     ? IStateReadOverlay.NonEmptyStorageRoot
                     : root;
             }
         }
+
+        private bool OverlayHoldsStorage() =>
+            (slot.Current is { } overlay && overlay.HasStorage(address)) || (slot.ParentState is { } parent && parent.HasStorage(address));
 
         public void Get(in UInt256 index, out UInt256 value)
         {
@@ -125,14 +134,21 @@ public sealed class OverlaidScopeProvider(IWorldStateScopeProvider inner, StateR
 
             if (slot.Cache is not { } cache)
             {
-                inner.Get(in index, out value);
+                GetParent(in index, out value);
                 return;
             }
 
             if (cache.TryGetSlot(address, in index, out value)) return;
 
-            inner.Get(in index, out value);
+            GetParent(in index, out value);
             cache.SetSlot(address, in index, in value);
+        }
+
+        private void GetParent(in UInt256 index, out UInt256 value)
+        {
+            if (slot.ParentState is { } parent && parent.TryGetStorage(address, in index, out value)) return;
+
+            inner.Get(in index, out value);
         }
 
         public void HintSet(in UInt256 index) => inner.HintSet(in index);

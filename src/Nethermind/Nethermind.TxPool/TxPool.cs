@@ -74,8 +74,10 @@ namespace Nethermind.TxPool
         private readonly PayerExposureCache _payerExposure = new();
         private readonly PendingPaymasterCache _pendingPaymasters = new();
         private readonly SenderWidthCache _senderWidth;
+        private readonly SenderWidthCache _paymasterWidth;
         private readonly SenderAdmissionGates _senderAdmissionGates = new();
         private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _senderBaselines = new();
+        private readonly ConcurrentDictionary<AddressAsKey, ValueHash256> _paymasterBaselines = new();
         private readonly FrameTxDependencyIndex _frameDependencies = new();
         private readonly HashSet<ValueHash256> _frameTxsToRevalidate = [];
         // Consecutive heads each deferred transaction has been carried across. Written only under the head write
@@ -153,6 +155,7 @@ namespace Nethermind.TxPool
         // Lets the per-head expiry pass skip the pool walk entirely when nothing can expire. Maintained by the
         // Inserted/Removed handlers under Interlocked, so readers need only Volatile.Read for visibility.
         private int _expiringFrameTxCount;
+        private readonly RecentRootDependencyIndex _recentRootDependencies = new();
 
 #if DEBUG
         // Bumped before the bookkeeping either side of a mutation moves, so a half-applied mutation cannot read as drift.
@@ -192,6 +195,7 @@ namespace Nethermind.TxPool
         {
             _logger = logManager?.GetClassLogger<TxPool>() ?? throw new ArgumentNullException(nameof(logManager));
             _senderWidth = frameTxWidthLedger.SenderWidth;
+            _paymasterWidth = frameTxWidthLedger.PaymasterWidth;
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
             _blobTxStorage = blobTxStorage ?? throw new ArgumentNullException(nameof(blobTxStorage));
             _headInfo = chainHeadInfoProvider ?? throw new ArgumentNullException(nameof(chainHeadInfoProvider));
@@ -323,6 +327,7 @@ namespace Nethermind.TxPool
             [
                 new MalformedTxFilter(validator, _specChangeTxValidator, ecdsa, _logger),
                 new FrameTxMisplacedExpiryFrameFilter(_logger), // before ExpiredFrameTxFilter: leaves the deadline readable from the leading frame alone
+                new FrameTxMisplacedRecentRootFrameFilter(_logger, txPoolConfig.BlobsSupport.IsPersistentStorage()),
                 new ExpiredFrameTxFilter(chainHeadInfoProvider, _logger), // after MalformedTxFilter: reads the deadline from an already well-formed frame
                 new FrameTxVerifyGasFilter(txPoolConfig, _logger), // after MalformedTxFilter: reads gas limits from an already well-formed frame list
                 new FrameTxPayerlessFilter(_logger), // before FrameTxSignatureFilter: structural prefix verdicts need no signature work
@@ -352,7 +357,7 @@ namespace Nethermind.TxPool
             // EIP-8141: cap the pending frame txs one non-canonical paymaster may sponsor. After the filters
             // that prove a transaction garbage, so taking a sponsor's slot needs a valid one; before the
             // simulation, which is the per-sponsor work the cap exists to bound.
-            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, _logger));
+            postHashFilters.Add(new FrameTxPaymasterFilter(chainHeadInfoProvider.ReadOnlyStateProvider, _transactions, _blobTransactions, _pendingPaymasters, txPoolConfig, _paymasterWidth, _paymasterBaselines, _logger));
 
             // EIP-8141: resolve last, so only otherwise-admissible frame txs are resolved.
             postHashFilters.Add(new FrameTxPayerFilter(_logger));
@@ -590,6 +595,7 @@ namespace Nethermind.TxPool
             TrackPoolMutation();
             AddPendingDelegations(args.Value);
             if (HasExpiryDeadline(args.Value)) Interlocked.Increment(ref _expiringFrameTxCount);
+            _recentRootDependencies.Add(args.Value);
             IndexFrameTxDependencies(args.Value);
             StageFrameEvictionRetries(args.Value);
         }
@@ -623,11 +629,19 @@ namespace Nethermind.TxPool
                 AssertExpiringFrameTxCountNotNegative(remaining);
             }
 
+            _recentRootDependencies.Remove(args.Value);
             ReleaseFrameTxReservations(args.Value);
             if (args.Value.SupportsFrames)
             {
                 _frameDependencies.Remove(args.Value.Hash!.ValueHash256);
-                if (_txPoolConfig.FrameTxWidthEnabled) _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
+                if (_txPoolConfig.FrameTxWidthEnabled)
+                {
+                    _senderBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(args.Value.SenderAddress!, args.Value.Hash!.ValueHash256));
+                    if (PendingPaymasterCache.KeyFor(args.Value) is Address paymaster)
+                    {
+                        _paymasterBaselines.TryRemove(new KeyValuePair<AddressAsKey, ValueHash256>(paymaster, args.Value.Hash!.ValueHash256));
+                    }
+                }
                 // The budget, not IsEmpty: this runs under the owning pool's lock, and IsEmpty takes all of the
                 // dictionary's locks whenever it is empty, which is always at the default budget.
                 if (_frameEvictionRetryBudget > 1 && _frameEvictionAttempts.TryRemove(args.Value.Hash!.ValueHash256, out _))
@@ -867,6 +881,8 @@ namespace Nethermind.TxPool
                     {
                         bool bucketsUpdated;
                         bool revalidationRequired;
+                        bool extendsPreviousHead = args.PreviousBlock is null && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
+                        (BlockHeader Head, List<Hash256> Hashes)? unreferenceable = CollectUnreferenceableRecentRootTransactions(extendsPreviousHead);
                         _newHeadLock.EnterWriteLock();
                         try
                         {
@@ -896,6 +912,7 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
+                            EvictUnreferenceableRecentRootTransactions(unreferenceable);
                             RevalidateFrameTransactions(args.Block);
 
                             if (!_headInfo.IsSyncing || AcceptTxWhenNotSynced || args.PreviousBlock is not null)
@@ -1177,6 +1194,70 @@ namespace Nethermind.TxPool
             }
         }
 
+        /// <summary>EIP-8272: collects the pending transactions whose <c>recent_root_verify</c> tuples no longer verify
+        /// at the canonical head's <c>current_slot</c>, its <c>slotNumber + 1</c>.</summary>
+        /// <remarks>Runs before <c>_newHeadLock</c> is taken, so the storage reads of a full recheck do not hold up
+        /// submissions; a transaction admitted meanwhile was validated against the same canonical head. Head events are
+        /// consumed after the chain has moved, and admission validates against the canonical head, so the header and the
+        /// state are taken as one snapshot of that head, not from the event's block: a transaction admitted against a
+        /// newer head is never judged at an older event's slot. Every pending <c>recent_root_verify</c> transaction goes
+        /// once the head is before activation or the code at <c>RECENT_ROOT_ADDRESS</c> is not <c>RECENT_ROOT_CODE</c>. A
+        /// head extending the previous one only ages tuples out: its block writes the ring-buffer cells of its own slot,
+        /// and a pending tuple naming that slot was admitted against the same write, while any other tuple aliasing those
+        /// cells is already out of the window. Any other head rereads every recorded entry, which covers a rollback on the
+        /// abandoned branch as well as a write on the new one.</remarks>
+        private (BlockHeader Head, List<Hash256> Hashes)? CollectUnreferenceableRecentRootTransactions(bool extendsPreviousHead)
+        {
+            if (_recentRootDependencies.Count == 0
+                || !_headInfo.TryGetHeadState(out BlockHeader? head, out IReadOnlyStateProvider? state))
+            {
+                return null;
+            }
+
+            List<Hash256> unreferenceable = [];
+            if (head.SlotNumber is not ulong headSlot
+                || !_specProvider.GetSpec(head).IsEip8272Enabled
+                || state.GetCodeHash(Eip8272Constants.RecentRootAddress) != Eip8272Constants.RecentRootCodeHash)
+            {
+                _recentRootDependencies.CollectAll(unreferenceable);
+            }
+            else if (extendsPreviousHead)
+            {
+                _recentRootDependencies.CollectExpired(headSlot + 1, unreferenceable);
+            }
+            else
+            {
+                _recentRootDependencies.CollectInvalid(state, headSlot + 1, unreferenceable);
+            }
+
+            return (head, unreferenceable);
+        }
+
+        /// <summary>Evicts the transactions <see cref="CollectUnreferenceableRecentRootTransactions"/> collected.</summary>
+        /// <remarks>Every failure, age included, can reverse with a reorg to an earlier slot, so the hash is released
+        /// for resubmission. A hash the pool no longer holds only loses its dependency record.</remarks>
+        private void EvictUnreferenceableRecentRootTransactions((BlockHeader Head, List<Hash256> Hashes)? unreferenceable)
+        {
+            if (unreferenceable is not (BlockHeader head, List<Hash256> hashes))
+            {
+                return;
+            }
+
+            foreach (Hash256 hash in hashes)
+            {
+                if (!RemoveTransaction(hash, out Transaction? pooled))
+                {
+                    _recentRootDependencies.Remove(hash);
+                    continue;
+                }
+
+                EvictedPending?.Invoke(this, new TxEventArgs(pooled));
+                _hashCache.DeleteFromLongTerm(hash);
+                Metrics.PendingTransactionsEvicted++;
+                if (_logger.IsTrace) _logger.Trace($"Evicted frame transaction {hash}, its recent roots do not verify at head {head.Number}.");
+            }
+        }
+
         /// <summary>
         /// Frees one slot in each pool at capacity by shedding the frame transaction nearest its deadline,
         /// lowest effective priority fee first among equals.
@@ -1369,7 +1450,8 @@ namespace Nethermind.TxPool
         /// Dependency updates never recreate entries: block production can evict during simulation.</remarks>
         private bool TryRevalidateFrameTransaction(Transaction tx, IReadOnlyStateProvider state, IReleaseSpec spec)
         {
-            if (PendingPaymasterCache.KeyFor(tx) is Address paymaster
+            if (!_txPoolConfig.FrameTxWidthEnabled
+                && PendingPaymasterCache.KeyFor(tx) is Address paymaster
                 && _pendingPaymasters.GetPendingCount(paymaster) > Eip8141Constants.MaxPendingTxsUsingNonCanonicalPaymaster
                 && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(paymaster, state))
             {
@@ -1404,14 +1486,38 @@ namespace Nethermind.TxPool
                         && !(_senderBaselines.TryGetValue(tx.SenderAddress!, out ValueHash256 baseline) && baseline == tx.Hash!.ValueHash256)
                         ? FrameTxWidthCharge.For(tx, spec, _txPoolConfig.FrameTxWidthSafetyFactorPermille)
                         : UInt256.Zero;
+                    Address? chargedPaymaster = _txPoolConfig.FrameTxWidthEnabled
+                        && PendingPaymasterCache.KeyFor(tx) is Address sponsor
+                        && !(_paymasterBaselines.TryGetValue(sponsor, out ValueHash256 sponsorBaseline) && sponsorBaseline == tx.Hash!.ValueHash256)
+                        && FrameTxPaymasterFilter.IsNonCanonicalPaymaster(sponsor, state)
+                        ? sponsor
+                        : null;
+                    UInt256 paymasterCharge = chargedPaymaster is null
+                        ? UInt256.Zero
+                        : FrameTxWidthCharge.For(tx, spec, _txPoolConfig.FrameTxWidthSafetyFactorPermille);
                     if (_senderWidth.GetWidth(tx.SenderAddress!) < widthCharge)
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
                         return false;
                     }
+                    if (chargedPaymaster is not null && !_paymasterWidth.TryReserve(chargedPaymaster, paymasterCharge))
+                    {
+                        Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxPaymasterWidthUnmet);
+                        return false;
+                    }
                     // Signature validation is state-independent; admission's verdict still holds.
-                    FrameTxSimulationResult simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
-                    if (!simulated.NodeBound && !_senderWidth.TrySpend(tx.SenderAddress!, widthCharge))
+                    FrameTxSimulationResult simulated;
+                    bool senderPaid = false;
+                    try
+                    {
+                        simulated = _frameTxPrefixSimulator.Simulate(tx, signaturesPreValidated: true, token: _cts.Token);
+                        senderPaid = !simulated.NodeBound && _senderWidth.TrySpend(tx.SenderAddress!, widthCharge);
+                    }
+                    finally
+                    {
+                        if (chargedPaymaster is not null) _paymasterWidth.Release(chargedPaymaster, senderPaid ? UInt256.Zero : paymasterCharge);
+                    }
+                    if (!senderPaid && !simulated.NodeBound)
                     {
                         Interlocked.Increment(ref Metrics.PendingTransactionsFrameTxWidthUnmet);
                         return false;
@@ -1624,6 +1730,11 @@ namespace Nethermind.TxPool
                     _payerExposure.Subtract(tx.Hash!);
                 }
 
+                if (state.PaymasterWidthReserved && PendingPaymasterCache.KeyFor(tx) is Address sponsor)
+                {
+                    _paymasterWidth.Release(sponsor, state.PaymasterWidthHeld);
+                }
+
                 state.SenderAdmissionGate?.Exit();
                 _newHeadLock.ExitReadLock();
             }
@@ -1804,6 +1915,12 @@ namespace Nethermind.TxPool
                     KeyValuePair<AddressAsKey, ValueHash256> baseline = new(tx.SenderAddress!, tx.Hash!.ValueHash256);
                     _senderBaselines[baseline.Key] = baseline.Value;
                     if (!relevantPool.ContainsKey(baseline.Value)) _senderBaselines.TryRemove(baseline);
+                }
+                if (state.TakesPaymasterBaseline && PendingPaymasterCache.KeyFor(tx) is Address paymaster)
+                {
+                    KeyValuePair<AddressAsKey, ValueHash256> baseline = new(paymaster, tx.Hash!.ValueHash256);
+                    _paymasterBaselines[baseline.Key] = baseline.Value;
+                    if (!relevantPool.ContainsKey(baseline.Value)) _paymasterBaselines.TryRemove(baseline);
                 }
                 Interlocked.Increment(ref Metrics.PendingTransactionsAdded);
                 Interlocked.Increment(ref _pendingTransactionsAdded);
@@ -2379,7 +2496,7 @@ namespace Nethermind.TxPool
                 + FormattableString.Invariant($"|{spec.IsEip2Enabled}|{spec.IsEip155Enabled}|{spec.ValidateChainId}|{spec.IsEip2028Enabled}")
                 + FormattableString.Invariant($"|{spec.IsEip2780Enabled}|{spec.IsEip2930Enabled}|{spec.MaxInitCodeSize}")
                 + FormattableString.Invariant($"|{spec.IsEip1559Enabled}|{spec.IsEip3860Enabled}|{spec.IsEip4844Enabled}|{spec.IsEip7623Enabled}")
-                + FormattableString.Invariant($"|{spec.IsEip7702Enabled}|{spec.IsEip7976Enabled}|{spec.IsEip7981Enabled}|{spec.IsEip8131Enabled}|{spec.IsEip8037Enabled}|{spec.IsEip8038Enabled}")
+                + FormattableString.Invariant($"|{spec.IsEip7702Enabled}|{spec.IsEip7976Enabled}|{spec.IsEip7981Enabled}|{spec.IsEip8131Enabled}|{spec.IsEip8279Enabled}|{spec.IsEip8037Enabled}|{spec.IsEip8038Enabled}")
                 + FormattableString.Invariant($"|{spec.IsEip8141Enabled}|{spec.IsEip8250Enabled}|{spec.IsEip7906Enabled}|{spec.IsEip8272Enabled}")
                 + FormattableString.Invariant($"|{gasCosts.TxDataNonZeroMultiplier}|{gasCosts.TotalCostFloorPerToken}|{gasCosts.MaxBlobGasPerBlock}|{gasCosts.MaxBlobGasPerTx}")
                 + FormattableString.Invariant($"|{spec.GetTxGasLimitCap()}|{spec.BlobProofVersion}");
@@ -2848,6 +2965,7 @@ namespace Nethermind.TxPool
             Interlocked.Add(ref Metrics.FrameTxEvictionRetryLedgerEntries, -_frameEvictionAttempts.Count);
             _frameEvictionAttempts.Clear();
             _senderWidth.Clear();
+            _paymasterWidth.Clear();
 
             await _retryCache.DisposeAsync();
             await _headProcessing;
