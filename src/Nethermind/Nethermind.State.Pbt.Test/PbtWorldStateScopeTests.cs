@@ -353,6 +353,36 @@ public class PbtWorldStateScopeTests
     }
 
     [Test]
+    public async Task HintBal_forwards_account_and_slot_reads_to_the_sink([Values] bool stillNeeded)
+    {
+        await using PbtTestContext ctx = new();
+        using PbtWorldStateScope scope = ctx.BeginScope(null);
+        using (IWorldStateScopeProvider.IWorldStateWriteBatch batch = scope.StartWriteBatch(2))
+        {
+            batch.Set(TestItem.AddressA, Build.An.Account.WithBalance(1).TestObject);
+            batch.Set(TestItem.AddressB, Build.An.Account.WithBalance(2).TestObject);
+            using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressA, 1)) storage.Set(1000, 5);
+            using (IWorldStateScopeProvider.IStorageWriteBatch storage = batch.CreateStorageWriteBatch(TestItem.AddressB, 1)) storage.Set(2000, 7);
+        }
+        scope.Commit(0);
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100)).WithStorageChanges(1000, new StorageChange(1, 6u)).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageReads(2000).TestObject).TestObject;
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink = Substitute.For<IWorldStateScopeProvider.IAsyncBalReaderSink>();
+        sink.StillNeeded(Arg.Any<Address>(), out Arg.Any<Account?>()).Returns(stillNeeded);
+        sink.StillNeeded(Arg.Any<StorageCell>()).Returns(stillNeeded);
+
+        await scope.HintBal(bal, sink);
+
+        int expectedReads = stillNeeded ? 1 : 0;
+        sink.Received(expectedReads).OnAccountRead(TestItem.AddressA, Arg.Is<Account?>(static account => account!.Balance == 1));
+        sink.Received(expectedReads).OnAccountRead(TestItem.AddressB, Arg.Is<Account?>(static account => account!.Balance == 2));
+        sink.Received(expectedReads).OnStorageRead(new StorageCell(TestItem.AddressA, 1000), 5);
+        sink.Received(expectedReads).OnStorageRead(new StorageCell(TestItem.AddressB, 2000), 7);
+        Assert.That(sink.ReceivedCalls().Count(static call => call.GetMethodInfo().Name.StartsWith("On")), Is.EqualTo(4 * expectedReads));
+    }
+
+    [Test]
     public async Task Cache_preserves_actual_roots_across_forks_deletion_and_reopen([Values(1UL, 1048576UL)] ulong cacheBudget)
     {
         List<ValueHash256> expected = await Run(0);
