@@ -687,6 +687,8 @@ public static partial class EvmInstructions
         Address? source = stack.PopAddress(vm.AddressCache);
         if (source is null) goto StackUnderflow;
         if (!TSpec.TryConsumeAccountAccessGas<TGasPolicy>(ref gas, spec, in vmState.AccessTracker, vm.IsTracingAccess, source)) goto OutOfGas;
+        // EIP-8279: the source enters the block access list on the transaction's first touch, metered after its charge.
+        if (TSpec.IsEip8279Enabled && !vm.TryMeterBalAddress(source)) goto OutOfGas;
 
         // Valid source: exists, has code, and that code is regular deployed code (not 0xEF-prefixed per EIP-3541/7702).
         // A missing account reads as the empty code hash, so the code check also covers existence.
@@ -705,6 +707,9 @@ public static partial class EvmInstructions
         if (state.GetCodeHash(executingAccount) != codeHash)
         {
             if (!TGasPolicy.UpdateGas(ref gas, Eip8038Constants.AccountWrite)) goto OutOfGas;
+            // EIP-8279: the adopted code joins the block access list as the executing account's code change, metered
+            // like a code deposit; an adopted creation never reaches the deposit, so this is its only metering.
+            if (TSpec.IsEip8279Enabled && !vm.TryMeterBalData((ulong)code.Length)) goto OutOfGas;
             // Install by the known hash; passing the code retains a pending entry if the source self-destructs.
             state.InsertCode(executingAccount, in codeHash, code, spec);
         }
