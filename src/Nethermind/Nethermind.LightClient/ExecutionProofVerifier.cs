@@ -42,7 +42,6 @@ internal static class ExecutionProofVerifier
 
     internal static UInt256 DecodeStorageRlp(byte[] value)
     {
-
         RlpReader reader = new(value);
         UInt256 result = reader.DecodeUInt256();
         if (result.IsZero || !value.AsSpan().SequenceEqual(Rlp.Encode(result).Bytes))

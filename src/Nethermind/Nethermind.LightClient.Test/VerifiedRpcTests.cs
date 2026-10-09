@@ -288,6 +288,114 @@ public class VerifiedRpcTests
         Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None), Is.EqualTo("0x7b"));
     }
 
+    [Test]
+    public async Task Historical_state_selectors_stop_at_32_finalized_ancestors(
+        [Values(0, 1, 2, 3)] int selectorKind, [Values(32, 33)] int depth)
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 300);
+        ulong number = provider.Head.Number - (ulong)depth;
+        provider.HistoricalHeader = Provider.CreateHeader(number, Keccak.Compute("historical block"), provider.Head.StateRoot);
+        object selector = selectorKind switch
+        {
+            0 => $"0x{number:x}",
+            1 => new { blockNumber = $"0x{number:x}" },
+            2 => provider.HistoricalHeader.Hash!.ToString(),
+            _ => new { blockHash = provider.HistoricalHeader.Hash!.ToString(), requireCanonical = true }
+        };
+
+        if (depth == 32)
+            Assert.That(await provider.Rpc.InvokeAsync("eth_getBalance", Parameters(AccountAddress.ToString(), selector), CancellationToken.None), Is.EqualTo("0x7b"));
+        else
+            AssertRpcError(provider, "eth_getBalance", Parameters(AccountAddress.ToString(), selector), -32001);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(provider.Requests.Count, Is.EqualTo(depth == 32 ? 1 : 0));
+            Assert.That(provider.CanonicalHeaderFetches, Is.EqualTo(depth == 32 ? 1 : 0));
+        }
+    }
+
+    [Test]
+    public async Task Historical_reads_leave_capacity_for_latest_state(
+        [Values(false, true)] bool holdHeader, [Values(false, true)] bool byHash)
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 300)
+        {
+            HistoricalGate = holdHeader ? null : new(TaskCreationOptions.RunContinuationsAsynchronously),
+            HistoricalHeaderGate = holdHeader ? new(TaskCreationOptions.RunContinuationsAsynchronously) : null,
+        };
+        provider.HistoricalHeader = Provider.CreateHeader(299, Keccak.Compute("historical block"), provider.Head.StateRoot);
+        JsonElement historical = Parameters(AccountAddress.ToString(),
+            byHash ? provider.HistoricalHeader.Hash!.ToString() : "0x12b");
+        Task<object>[] requests = Enumerable.Range(0, 8)
+            .Select(_ => provider.Rpc.InvokeAsync("eth_getBalance", historical, CancellationToken.None)).ToArray();
+
+        try
+        {
+            int admitted = holdHeader
+                ? (byHash ? provider.HeaderByHashFetches : provider.CanonicalHeaderFetches)
+                : provider.HistoricalReads;
+            Assert.That(admitted, Is.EqualTo(2));
+            Assert.That(requests.Skip(2).All(static request => request.IsCompleted), Is.True);
+            foreach (Task<object> rejected in requests.Skip(2))
+            {
+                RpcException? error = Assert.ThrowsAsync<RpcException>(async () => await rejected);
+                Assert.That(error!.Code, Is.EqualTo(-32000));
+            }
+            object latest = await provider.Rpc.InvokeAsync("eth_getBalance",
+                Parameters(AccountAddress.ToString(), "latest"), CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(3));
+            Assert.That(latest, Is.EqualTo("0x7b"));
+        }
+        finally
+        {
+            provider.HistoricalGate?.TrySetResult();
+            provider.HistoricalHeaderGate?.TrySetResult();
+            try { await Task.WhenAll(requests); }
+            catch (RpcException) { }
+        }
+    }
+
+    [Test]
+    public async Task Cancelled_historical_header_lookup_releases_capacity([Values(false, true)] bool byHash)
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 300)
+        {
+            HistoricalGate = new(TaskCreationOptions.RunContinuationsAsynchronously),
+            HistoricalHeaderGate = new(TaskCreationOptions.RunContinuationsAsynchronously),
+        };
+        provider.HistoricalHeader = Provider.CreateHeader(299, Keccak.Compute("historical block"), provider.Head.StateRoot);
+        JsonElement parameters = Parameters(AccountAddress.ToString(),
+            byHash ? provider.HistoricalHeader.Hash!.ToString() : "0x12b");
+        using CancellationTokenSource cancellation = new();
+
+        Task<object> interrupted = provider.Rpc.InvokeAsync("eth_getBalance", parameters, cancellation.Token);
+        cancellation.Cancel();
+        Assert.CatchAsync<OperationCanceledException>(async () => await interrupted);
+        provider.HistoricalHeaderGate.SetResult();
+
+        Task<object>[] next = [provider.Rpc.InvokeAsync("eth_getBalance", parameters, CancellationToken.None),
+            provider.Rpc.InvokeAsync("eth_getBalance", parameters, CancellationToken.None)];
+        try { Assert.That(provider.HistoricalReads, Is.EqualTo(2)); }
+        finally
+        {
+            provider.HistoricalGate.SetResult();
+            await Task.WhenAll(next);
+        }
+    }
+
+    [Test]
+    public async Task Block_history_remains_available_at_256_ancestors([Values(false, true)] bool byHash)
+    {
+        using Provider provider = new(new Account(7, 123), headNumber: 300);
+        provider.HistoricalHeader = Provider.CreateHeader(44, Keccak.Compute("historical block"), provider.Head.StateRoot);
+
+        JsonElement block = (JsonElement)await provider.Rpc.InvokeAsync(byHash ? "eth_getBlockByHash" : "eth_getBlockByNumber",
+            byHash ? Parameters(provider.HistoricalHeader.Hash!.ToString(), false) : Parameters("0x2c", false), CancellationToken.None);
+
+        Assert.That(block.GetProperty("hash").GetString(), Is.EqualTo(provider.HistoricalHeader.Hash!.ToString()));
+        Assert.That(provider.BlockFetches, Is.EqualTo(1));
+    }
+
     [TestCase("eth_call", "[]", -32602)]
     [TestCase("eth_getBalance", "[]", -32602)]
     [TestCase("eth_getBalance", "[\"0x12\",\"finalized\"]", -32602)]
@@ -371,13 +479,15 @@ public class VerifiedRpcTests
         private readonly byte[] _accountLeaf;
         private readonly byte[] _storageLeaf;
         private readonly byte[] _code;
+        private readonly SemaphoreSlim _snapSlots = new(8);
+        private int _historicalReads;
 
-        public Provider(Account account, byte[]? storageLeaf = null, byte[]? code = null)
+        public Provider(Account account, byte[]? storageLeaf = null, byte[]? code = null, ulong headNumber = 10)
         {
             _accountLeaf = Leaf(Keccak.Compute(AccountAddress.Bytes), AccountDecoder.Instance.EncodeAsBytes(account));
             _storageLeaf = storageLeaf ?? [];
             _code = code ?? [];
-            Head = new VerifiedHead(100, 10, BlockHash, Keccak.Compute(_accountLeaf));
+            Head = new VerifiedHead(100, headNumber, BlockHash, Keccak.Compute(_accountLeaf));
             LatestHead = Head;
             Header = new BlockHeader(Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero,
                 Head.Number, 30_000_000, 1_700_000_000, [])
@@ -397,6 +507,12 @@ public class VerifiedRpcTests
         public VerifiedHead Head { get; }
         public VerifiedHead? LatestHead { get; set; }
         public BlockHeader Header { get; }
+        public BlockHeader? HistoricalHeader { get; set; }
+        public TaskCompletionSource? HistoricalGate { get; init; }
+        public TaskCompletionSource? HistoricalHeaderGate { get; init; }
+        public int HistoricalReads => Volatile.Read(ref _historicalReads);
+        public int HeaderByHashFetches { get; private set; }
+        public int CanonicalHeaderFetches { get; private set; }
         public Transaction[] Transactions { get; set; } = [];
         public TxReceipt[] Receipts { get; set; } = [];
         public int BlockFetches { get; private set; }
@@ -411,10 +527,23 @@ public class VerifiedRpcTests
 
         public async Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
         {
-            LastQueriedHead = head;
-            using JsonDocument response = await RequestAsync("eth_getProof", [address.ToString(), Array.Empty<string>(), Block(head)], cancellationToken);
-            JsonElement proof = response.RootElement.GetProperty("result").GetProperty("accountProof");
-            return ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, ReadProof(proof));
+            if (HistoricalGate is not null) await _snapSlots.WaitAsync(cancellationToken);
+            try
+            {
+                if (HistoricalGate is not null && head.Number < Head.Number)
+                {
+                    Interlocked.Increment(ref _historicalReads);
+                    await HistoricalGate.Task.WaitAsync(cancellationToken);
+                }
+                LastQueriedHead = head;
+                using JsonDocument response = await RequestAsync("eth_getProof", [address.ToString(), Array.Empty<string>(), Block(head)], cancellationToken);
+                JsonElement proof = response.RootElement.GetProperty("result").GetProperty("accountProof");
+                return ExecutionProofVerifier.VerifyAccount(head.StateRoot, address, ReadProof(proof));
+            }
+            finally
+            {
+                if (HistoricalGate is not null) _snapSlots.Release();
+            }
         }
 
         public async Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
@@ -434,6 +563,18 @@ public class VerifiedRpcTests
         }
 
         public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken) => Task.FromResult(Header);
+        public async Task<BlockHeader> GetHeaderByHashAsync(Hash256 hash, CancellationToken cancellationToken)
+        {
+            HeaderByHashFetches++;
+            if (HistoricalHeaderGate is not null) await HistoricalHeaderGate.Task.WaitAsync(cancellationToken);
+            return HistoricalHeader?.Hash == hash ? HistoricalHeader : throw new NotSupportedException();
+        }
+        public async Task<BlockHeader> GetCanonicalHeaderAsync(VerifiedHead head, ulong number, CancellationToken cancellationToken)
+        {
+            CanonicalHeaderFetches++;
+            if (HistoricalHeaderGate is not null) await HistoricalHeaderGate.Task.WaitAsync(cancellationToken);
+            return HistoricalHeader?.Number == number ? HistoricalHeader : throw new NotSupportedException();
+        }
         public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
         public Task<Block> GetBlockAsync(BlockHeader header, CancellationToken cancellationToken)
         {
@@ -447,6 +588,16 @@ public class VerifiedRpcTests
             ExecutionPeerTransport.VerifyReceipts(block.Header, Receipts, MainnetSpecProvider.Instance);
             return Task.FromResult(Receipts);
         }
+
+        public static BlockHeader CreateHeader(ulong number, Hash256 hash, Hash256 stateRoot) => new(
+            Keccak.Zero, Keccak.OfAnEmptySequenceRlp, Address.Zero, UInt256.Zero, number, 30_000_000, 1_700_000_000, [])
+        {
+            Hash = hash,
+            StateRoot = stateRoot,
+            TxRoot = Keccak.EmptyTreeHash,
+            ReceiptsRoot = Keccak.EmptyTreeHash,
+            WithdrawalsRoot = Keccak.EmptyTreeHash,
+        };
 
         private static object Block(VerifiedHead head) => new { blockHash = head.BlockHash.ToString(), requireCanonical = true };
 
@@ -495,7 +646,11 @@ public class VerifiedRpcTests
 
         protected override void Dispose(bool disposing)
         {
-            if (disposing) Client.Dispose();
+            if (disposing)
+            {
+                Client.Dispose();
+                _snapSlots.Dispose();
+            }
             base.Dispose(disposing);
         }
     }

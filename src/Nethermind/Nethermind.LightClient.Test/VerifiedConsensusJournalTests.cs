@@ -246,7 +246,7 @@ public class VerifiedConsensusJournalTests
         await journal.AppendAsync(update, store, CancellationToken.None);
 
         Assert.That(async () => await Journal(spec, checkpoint).LoadAsync(100_802, CancellationToken.None),
-            Throws.TypeOf<InvalidDataException>().With.Message.Contains("fourteen days"));
+            Throws.TypeOf<LightClientLocalStateException>().With.Message.Contains("fourteen days"));
     }
 
     private VerifiedConsensusJournal Journal(BeaconChainSpec spec, Hash256 checkpoint, string network = "mainnet") =>

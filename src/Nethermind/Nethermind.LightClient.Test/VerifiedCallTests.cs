@@ -148,6 +148,22 @@ public class VerifiedCallTests
         Assert.That(source.Fetches, Is.Zero);
     }
 
+    [Test]
+    public async Task Execution_defaults_missing_selector_to_latest([Values("eth_call", "eth_estimateGas")] string method)
+    {
+        FakeSource source = new([0x00]);
+        using VerifiedCall call = new(source, MainnetSpecProvider.Instance, NullLogManager.Instance);
+        VerifiedRpc rpc = new(source, () => throw new AssertionException("The finalized head must not be selected."),
+            1, call, getLatestHead: () => source.Head);
+
+        object result = await rpc.InvokeAsync(method,
+            JsonSerializer.SerializeToElement(new object[] { new { to = Contract.ToString() } }), CancellationToken.None);
+
+        if (method == "eth_call") Assert.That(result, Is.EqualTo("0x"));
+        else Assert.That(Convert.ToUInt64(((string)result)[2..], 16), Is.InRange(21_000, 30_000));
+        Assert.That(source.Fetches, Is.GreaterThan(0));
+    }
+
     private sealed class FakeSource(byte[] code) : IExecutionStateSource
     {
         private readonly Account _contract = new(1, 0, Keccak.Compute("storage root"), Keccak.Compute(code));

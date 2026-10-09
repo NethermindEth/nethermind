@@ -104,6 +104,7 @@ internal sealed class BeaconPeerTransport : IAsyncDisposable
                 T response = await request(peer);
                 try { validate(response); }
                 catch (IrrelevantLightClientUpdateException) { continue; }
+                catch (LightClientLocalStateException) { continue; }
                 catch (InvalidDataException exception)
                 {
                     peer.ReportFailure(PeerFailureReason.ProtocolViolation, exception.Message);

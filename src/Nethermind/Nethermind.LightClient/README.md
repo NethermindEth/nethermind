@@ -61,16 +61,21 @@ Invoke-RestMethod http://127.0.0.1:8545 -Method Post -ContentType application/js
 | `eth_getTransactionByBlockNumberAndIndex`, `eth_getTransactionByBlockHashAndIndex` | Transaction from the authenticated block body |
 | `eth_getBlockReceipts`, `eth_getLogs` | Receipt trie and bloom authenticated by the block header; log results are complete within the accepted range |
 
-State methods require an explicit `"finalized"` or `"latest"` selector,
+State methods accept an explicit `"finalized"` or `"latest"` selector,
 an authenticated block number, or an EIP-1898 object naming its hash/number.
-Historical state is available for up to 256 ancestors of the finalized head;
+Historical state selectors are limited to 32 ancestors of the finalized head;
+availability within that range still depends on a SNAP peer retaining the state root.
+At most two historical state requests run concurrently; excess requests fail promptly,
+leaving SNAP and HTTP capacity for current-head reads.
+Block, receipt, and log reads retain their separate 256-block history window.
 `pending` and `safe` are rejected. The optimistic head can be reorganized,
 whereas the finalized head is stable. Each request captures a head once,
 including during a concurrent consensus update. Returned account and storage values are not
 trusted until their ranges reconstruct the selected state/storage root. Authenticated account/storage absence
 returns zero or empty code; an incomplete proof fails.
 
-`eth_call` and `eth_estimateGas` accept a transaction object and an explicit authenticated selector.
+`eth_call` and `eth_estimateGas` accept a transaction object and an optional authenticated selector.
+Omitting the selector uses the authenticated optimistic `"latest"` head, which must be available.
 They fetch the selected execution header by its authenticated hash, then run
 Nethermind's EVM against the corresponding state root. Accounts, storage slots
 and bytecode are fetched from execution peers on demand and verified before a

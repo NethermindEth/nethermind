@@ -164,7 +164,10 @@ public class ConsensusTests
             case InvalidUpdate.BitfieldLength: update.SyncAggregate!.SyncCommitteeBits = new BitArray(511); break;
         }
 
-        Assert.That(() => store.Process(update, invalid == InvalidUpdate.UnknownNextPeriod ? 8192UL : 4UL), Throws.TypeOf<InvalidDataException>());
+        if (invalid is InvalidUpdate.FutureSignature or InvalidUpdate.UnknownNextPeriod)
+            Assert.That(() => store.Process(update, invalid == InvalidUpdate.UnknownNextPeriod ? 8192UL : 4UL), Throws.TypeOf<LightClientLocalStateException>());
+        else
+            Assert.That(() => store.Process(update, 4), Throws.TypeOf<InvalidDataException>());
         using IDisposable scope = Assert.EnterMultipleScope();
         Assert.That(store.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
         Assert.That(store.NextSyncCommitteeKnown, Is.False);
@@ -285,7 +288,7 @@ public class ConsensusTests
         BeaconChainSpec spec = Spec with { GloasForkEpoch = ulong.MaxValue };
 
         if (ageSlots > 100800)
-            Assert.That(() => new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1), Throws.TypeOf<InvalidDataException>().With.Message.Contains("fourteen days"));
+            Assert.That(() => new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1), Throws.TypeOf<LightClientLocalStateException>().With.Message.Contains("fourteen days"));
         else
             Assert.That(new LightClientStore(spec, checkpoint, bootstrap, (ulong)ageSlots + 1).FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
     }
@@ -295,7 +298,10 @@ public class ConsensusTests
     {
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         BeaconChainSpec unsupported = beforeElectra ? Spec with { ElectraForkEpoch = 1 } : Spec with { GloasForkEpoch = 0 };
-        Assert.That(() => new LightClientStore(unsupported, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1), Throws.TypeOf<InvalidDataException>());
+        if (beforeElectra)
+            Assert.That(() => new LightClientStore(unsupported, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1), Throws.TypeOf<LightClientLocalStateException>());
+        else
+            Assert.That(() => new LightClientStore(unsupported, SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!), bootstrap, 1), Throws.TypeOf<InvalidDataException>());
     }
 
     [Test]
@@ -304,7 +310,10 @@ public class ConsensusTests
         LightClientBootstrap bootstrap = Bootstrap(1, 1);
         Hash256 checkpoint = invalid == 0 ? Hash(0x42) : SszRoots.HashTreeRoot(bootstrap.Header!.Beacon!);
         ulong currentSlot = invalid == 1 ? 0 : invalid == 2 ? 100802UL : 1;
-        Assert.That(() => new LightClientStore(Spec with { GloasForkEpoch = ulong.MaxValue }, checkpoint, bootstrap, currentSlot), Throws.TypeOf<InvalidDataException>());
+        if (invalid == 0)
+            Assert.That(() => new LightClientStore(Spec with { GloasForkEpoch = ulong.MaxValue }, checkpoint, bootstrap, currentSlot), Throws.TypeOf<InvalidDataException>());
+        else
+            Assert.That(() => new LightClientStore(Spec with { GloasForkEpoch = ulong.MaxValue }, checkpoint, bootstrap, currentSlot), Throws.TypeOf<LightClientLocalStateException>());
     }
 
     [Test]

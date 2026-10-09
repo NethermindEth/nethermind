@@ -11,6 +11,7 @@ using Nethermind.Serialization.Ssz;
 namespace Nethermind.LightClient.Consensus;
 
 internal sealed class IrrelevantLightClientUpdateException() : IOException("Update is not relevant to the current sync period.");
+internal sealed class LightClientLocalStateException(string message) : IOException(message);
 
 /// <summary>Authenticates finalized and optimistic headers from a trusted beacon checkpoint.</summary>
 /// <remarks>
@@ -41,8 +42,8 @@ internal sealed class LightClientStore
         ValidateSupportedSlot(currentSlot);
         ValidateHeader(bootstrap.Header);
         LightClientHeader header = bootstrap.Header!;
-        Require(header.Beacon!.Slot <= currentSlot, "Checkpoint is in the future.");
-        Require(currentSlot - header.Beacon.Slot <= 14 * 24 * 60 * 60 / spec.SecondsPerSlot, "Checkpoint is older than fourteen days.");
+        RequireLocal(header.Beacon!.Slot <= currentSlot, "Checkpoint is in the future.");
+        RequireLocal(currentSlot - header.Beacon.Slot <= 14 * 24 * 60 * 60 / spec.SecondsPerSlot, "Checkpoint is older than fourteen days.");
         Require(SszRoots.HashTreeRoot(header.Beacon) == checkpoint, "Bootstrap does not match the trusted checkpoint.");
         ValidateCommittee(bootstrap.CurrentSyncCommittee);
         Require(VerifyBranch(SszRoots.HashTreeRoot(bootstrap.CurrentSyncCommittee!), bootstrap.CurrentSyncCommitteeBranch,
@@ -87,7 +88,8 @@ internal sealed class LightClientStore
     }, currentSlot);
 
     /// <summary>Validates an update and advances the finalized header only with supermajority finality.</summary>
-    /// <exception cref="InvalidDataException">An update is malformed, unsupported, or unauthenticated.</exception>
+    /// <exception cref="InvalidDataException">An update is malformed or unauthenticated.</exception>
+    /// <exception cref="LightClientLocalStateException">The local clock or sync committee state cannot apply the update yet.</exception>
     public void Process(LightClientUpdate update, ulong currentSlot) => ProcessCore(
         update.AttestedHeader, update.FinalizedHeader, update.FinalityBranch,
         update.NextSyncCommittee, update.NextSyncCommitteeBranch, update.SyncAggregate,
@@ -155,12 +157,13 @@ internal sealed class LightClientStore
         bool hasNextCommittee = HasNonzeroBranch(nextBranch);
         ulong attestedSlot = attested!.Beacon!.Slot;
         ulong finalizedSlot = hasFinality ? finalized?.Beacon?.Slot ?? 0 : 0;
-        Require(currentSlot >= signatureSlot && signatureSlot > attestedSlot && attestedSlot >= finalizedSlot,
-            "Invalid light-client update slot ordering.");
+        RequireLocal(currentSlot >= signatureSlot, "Update signature slot is ahead of the local clock.");
+        Require(signatureSlot > attestedSlot && attestedSlot >= finalizedSlot, "Invalid light-client update slot ordering.");
         ulong storePeriod = PeriodAtSlot(snapshot.SyncHeader.Beacon!.Slot);
         ulong signaturePeriod = PeriodAtSlot(signatureSlot);
         ulong attestedPeriod = PeriodAtSlot(attestedSlot);
-        Require(signaturePeriod == storePeriod || signaturePeriod == storePeriod + 1 && snapshot.NextCommittee is not null,
+        if (signaturePeriod < storePeriod) throw new IrrelevantLightClientUpdateException();
+        RequireLocal(signaturePeriod == storePeriod || signaturePeriod == storePeriod + 1 && snapshot.NextCommittee is not null,
             "Update skips a known sync committee period.");
         if (attestedSlot <= snapshot.SyncHeader.Beacon.Slot &&
             !(hasNextCommittee && snapshot.NextCommittee is null && attestedPeriod == storePeriod))
@@ -173,7 +176,6 @@ internal sealed class LightClientStore
         if (hasFinality)
         {
             ValidateHeader(finalized);
-            Require(PeriodAtSlot(finalizedSlot) <= storePeriod + 1, "Finalized header skips a sync committee period.");
             Require(VerifyBranch(SszRoots.HashTreeRoot(finalized!.Beacon!), finalityBranch, finalityIndex,
                 attested.Beacon.StateRoot!), "Invalid finality proof.");
         }
@@ -232,7 +234,6 @@ internal sealed class LightClientStore
         SyncCommittee? nextCommittee = snapshot.NextCommittee;
         if (finalizedPeriod == storePeriod + 1)
         {
-            Require(nextCommittee is not null, "Cannot rotate an unknown committee.");
             currentCommittee = nextCommittee!;
             nextCommittee = hasNextCommittee && attestedPeriod == finalizedPeriod ? Clone(next!) : null;
         }
@@ -256,7 +257,7 @@ internal sealed class LightClientStore
 
     private ulong PeriodAtSlot(ulong slot) => _spec.GetEpoch(slot) / Presets.EpochsPerSyncCommitteePeriod;
 
-    private void ValidateSupportedSlot(ulong slot) => Require(
+    private void ValidateSupportedSlot(ulong slot) => RequireLocal(
         _spec.GetEpoch(slot) >= _spec.ElectraForkEpoch,
         "Only Electra and later light client data is supported.");
 
@@ -447,5 +448,10 @@ internal sealed class LightClientStore
     private static void Require(bool valid, string message)
     {
         if (!valid) throw new InvalidDataException(message);
+    }
+
+    private static void RequireLocal(bool valid, string message)
+    {
+        if (!valid) throw new LightClientLocalStateException(message);
     }
 }
