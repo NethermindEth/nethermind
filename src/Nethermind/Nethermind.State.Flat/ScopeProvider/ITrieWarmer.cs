@@ -34,6 +34,11 @@ public interface ITrieWarmer
     /// <remarks>Override to <c>false</c> only if every <c>Push*</c> method always returns <c>false</c>.</remarks>
     bool IsActive => true;
 
+    /// <summary>
+    /// Called when a block's storage and state roots start, after which nothing executes alongside the warm-ups still queued.
+    /// </summary>
+    void OnRootsStarting() { }
+
     void OnEnterScope();
     void OnExitScope();
 

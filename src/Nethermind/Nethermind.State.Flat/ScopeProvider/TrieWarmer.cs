@@ -46,7 +46,13 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         UInt256 index,
         int sequenceId);
 
+    // A warm-up mostly waits on a database read, so once execution no longer competes for the cores, more processors
+    // than cores drain the queue faster.
+    private const int RootsProcessorsPerCore = 2;
+
     private readonly Processor[] _processors;
+    private readonly int _workerCount;
+    private int _activeLimit;
     private TaskCompletionSource<bool>? _processorsStopped;
 
     public TrieWarmer(ILogManager logManager, IFlatDbConfig flatDbConfig)
@@ -59,17 +65,21 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
             : configuredWorkerCount;
         workerCount = Math.Max(workerCount, 2); // Min worker count is 2
 
-        _processors = new Processor[workerCount];
+        _workerCount = workerCount;
+        _activeLimit = workerCount;
+        _processors = new Processor[Math.Max(workerCount, Environment.ProcessorCount * RootsProcessorsPerCore)];
         for (int i = 0; i < _processors.Length; i++)
         {
-            _processors[i] = new Processor(this);
+            _processors[i] = new Processor(this, i);
         }
     }
 
-    private sealed class Processor(TrieWarmer owner) : IThreadPoolWorkItem
+    private sealed class Processor(TrieWarmer owner, int index) : IThreadPoolWorkItem
     {
         private readonly TrieWarmer _owner = owner;
         private int _scheduled = 0;
+
+        public int Index { get; } = index;
 
         public bool TrySchedule()
         {
@@ -93,15 +103,16 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
 
     private void KickProcessors()
     {
+        int limit = Volatile.Read(ref _activeLimit);
         int activeProcessors = Volatile.Read(ref _activeProcessors);
-        if (activeProcessors >= _processors.Length) return;
+        if (activeProcessors >= limit) return;
 
         long pending = PendingHint();
         if (pending == 0) return;
 
-        int desiredProcessors = (int)Math.Min(_processors.Length - activeProcessors, Math.Max(1, pending));
+        int desiredProcessors = (int)Math.Min(limit - activeProcessors, Math.Max(1, pending));
         int scheduledProcessors = 0;
-        for (int i = 0; i < _processors.Length && scheduledProcessors < desiredProcessors; i++)
+        for (int i = 0; i < limit && scheduledProcessors < desiredProcessors; i++)
         {
             if (_processors[i].TrySchedule())
             {
@@ -116,7 +127,7 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         {
             while (true)
             {
-                while (TryDequeue(out Job job))
+                while (processor.Index < Volatile.Read(ref _activeLimit) && TryDequeue(out Job job))
                 {
                     HandleJob(in job);
                 }
@@ -124,8 +135,14 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
                 processor.ClearScheduled();
                 Thread.MemoryBarrier();
 
-                if (!HasReadyWork()) break;
-                if (!processor.TryReacquireAfterEmptyCheck()) break;
+                if (!HasReadyWork())
+                {
+                    // The roots drain is over once the queue empties; the next block's warm-ups compete with execution.
+                    Volatile.Write(ref _activeLimit, _workerCount);
+                    break;
+                }
+
+                if (processor.Index >= Volatile.Read(ref _activeLimit) || !processor.TryReacquireAfterEmptyCheck()) break;
             }
         }
         catch (Exception ex)
@@ -216,6 +233,16 @@ public sealed class TrieWarmer : ITrieWarmer, IAsyncDisposable
         bool enqueued = _jobBufferMultiThreaded.TryEnqueue(new Job(storageTree, null, index, sequenceId));
         if (enqueued) KickProcessors();
         return enqueued;
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>Raises the processor limit until the queue next empties.</remarks>
+    public void OnRootsStarting()
+    {
+        if (Volatile.Read(ref _isDisposed) || !HasReadyWork()) return;
+
+        Volatile.Write(ref _activeLimit, _processors.Length);
+        KickProcessors();
     }
 
     public void OnEnterScope() { }

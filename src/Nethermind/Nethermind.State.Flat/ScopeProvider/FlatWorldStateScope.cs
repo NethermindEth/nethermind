@@ -526,6 +526,7 @@ public sealed class FlatWorldStateScope : IWorldStateScopeProvider.IScope, ITrie
     {
         CancelHintBal();
         _earlyApplyClosed = true;
+        _warmer.OnRootsStarting();
         return new WriteBatch(this, estimatedAccountNum, _logManager.GetClassLogger<WriteBatch>());
     }
 

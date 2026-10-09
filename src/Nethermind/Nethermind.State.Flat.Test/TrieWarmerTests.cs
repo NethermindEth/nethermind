@@ -135,6 +135,53 @@ public class TrieWarmerTests
     }
 
     [Test]
+    public async Task OnRootsStarting_DrainsQueuePastWorkerCount_ThenFallsBackToWorkerCount()
+    {
+        const int WorkerCount = 2;
+        const int JobCount = 16;
+
+        _config.TrieWarmerWorkerCount = WorkerCount;
+        TrieWarmer warmer = new(_logManager, _config);
+        using BlockingStorageWarmer drained = new(parallelismTarget: WorkerCount + 1);
+        using BlockingStorageWarmer afterDrain = new(parallelismTarget: WorkerCount);
+
+        try
+        {
+            for (int i = 0; i < JobCount; i++)
+            {
+                Assert.That(warmer.PushSlotJobMpmc(drained, (UInt256)i, sequenceId: i), Is.True);
+            }
+
+            Assert.That(drained.WaitForFirstCall(TimeSpan.FromSeconds(5)), Is.True);
+            Assert.That(drained.MaxConcurrency, Is.LessThanOrEqualTo(WorkerCount));
+
+            warmer.OnRootsStarting();
+
+            Assert.That(drained.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+            drained.Release();
+            await WaitForConditionAsync(() => drained.Calls == JobCount, $"drained.Calls should be {JobCount}", timeoutMs: 5000);
+
+            for (int i = 0; i < JobCount; i++)
+            {
+                Assert.That(warmer.PushSlotJobMpmc(afterDrain, (UInt256)i, sequenceId: i), Is.True);
+            }
+
+            Assert.That(afterDrain.WaitForParallelism(TimeSpan.FromSeconds(5)), Is.True);
+            await Task.Delay(100);
+            Assert.That(afterDrain.MaxConcurrency, Is.LessThanOrEqualTo(WorkerCount));
+
+            afterDrain.Release();
+            await WaitForConditionAsync(() => afterDrain.Calls == JobCount, $"afterDrain.Calls should be {JobCount}", timeoutMs: 5000);
+        }
+        finally
+        {
+            drained.Release();
+            afterDrain.Release();
+            await warmer.DisposeAsync();
+        }
+    }
+
+    [Test]
     public async Task PushSlotJobMpmc_WithOneBusyProcessor_WakesIdleProcessorForSinglePendingJob()
     {
         _config.TrieWarmerWorkerCount = 2;
