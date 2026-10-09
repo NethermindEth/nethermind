@@ -28,54 +28,39 @@ internal static class PbtNodeGroupPrefetch
         if (cancellation.IsCancellationRequested) return;
         PbtStorageNodePath[] groups = [.. FirstGroupPaths(bal)];
         long[] descendantBytes = new long[groups.Length * PbtFourLevelGroupGeometry.BoundarySlots];
-        RefCountingMemory?[] snapshots = new RefCountingMemory?[groups.Length];
-        RefCountingMemory?[] persisted = [];
+        RefCountingMemory?[] payloads = new RefCountingMemory?[groups.Length];
         try
         {
-            List<PbtStorageNodePath> misses = [];
-            List<int> missingIndexes = [];
-            for (int index = 0; index < groups.Length; index++)
+            ParallelUnbalancedWork.For(0, groups.Length, (bundle, groups, payloads, cancellation), static (index, state) =>
             {
-                if (cancellation.IsCancellationRequested) return;
-                if (!bundle.ShouldPrefetchNodeGroup(groups[index])) continue;
-                if (!bundle.TryGetSnapshotNodeGroup(groups[index], out snapshots[index]))
-                {
-                    misses.Add(groups[index]);
-                    missingIndexes.Add(index);
-                }
-            }
-            PbtStorageNodePath[] missingPaths = [.. misses];
-            if (cancellation.IsCancellationRequested) return;
-            persisted = new RefCountingMemory?[missingPaths.Length];
-            ParallelUnbalancedWork.For(0, missingPaths.Length, (bundle, missingPaths, persisted, cancellation), static (index, state) =>
-            {
-                if (!state.cancellation.IsCancellationRequested) state.persisted[index] = state.bundle.GetPersistedNodeGroup(state.missingPaths[index]);
+                if (!state.cancellation.IsCancellationRequested) state.payloads[index] = ReadNodeGroup(state.bundle, state.groups[index]);
                 return state;
             });
             if (cancellation.IsCancellationRequested) return;
 
             for (int index = 0; index < groups.Length; index++)
                 if (groups[index].BitDepth == StorageGroupDepth)
-                    StorageDescendantBytes(snapshots[index], descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
-            for (int index = 0; index < missingPaths.Length; index++)
-                if (missingPaths[index].BitDepth == StorageGroupDepth)
-                    StorageDescendantBytes(persisted[index], descendantBytes.AsSpan(missingIndexes[index] * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
+                    StorageDescendantBytes(payloads[index], descendantBytes.AsSpan(index * PbtFourLevelGroupGeometry.BoundarySlots, PbtFourLevelGroupGeometry.BoundarySlots));
         }
         finally
         {
-            foreach (RefCountingMemory? payload in snapshots) ((IDisposable?)payload)?.Dispose();
-            foreach (RefCountingMemory? payload in persisted) ((IDisposable?)payload)?.Dispose();
+            foreach (RefCountingMemory? payload in payloads) ((IDisposable?)payload)?.Dispose();
         }
         if (cancellation.IsCancellationRequested) return;
 
         foreach (PbtStorageNodePath path in DeeperStorageGroupPaths(bal, groups, descendantBytes))
         {
             if (cancellation.IsCancellationRequested) return;
-            if (!bundle.ShouldPrefetchNodeGroup(path)) continue;
-            if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) ((IDisposable?)bundle.GetPersistedNodeGroup(path))?.Dispose();
-            ((IDisposable?)snapshot)?.Dispose();
+            ((IDisposable?)ReadNodeGroup(bundle, path))?.Dispose();
         }
     }
+
+    /// <summary>Reads a group the fold has not read yet from the snapshots, or else from persistence.</summary>
+    /// <returns>A caller-owned group lease, or null when the group is skipped or absent.</returns>
+    private static RefCountingMemory? ReadNodeGroup(PbtSnapshotBundle bundle, PbtStorageNodePath path) =>
+        !bundle.ShouldPrefetchNodeGroup(path) ? null
+        : bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot) ? snapshot
+        : bundle.GetPersistedNodeGroup(path);
 
     private static void StorageDescendantBytes(RefCountingMemory? payload, Span<long> descendantBytes)
     {
