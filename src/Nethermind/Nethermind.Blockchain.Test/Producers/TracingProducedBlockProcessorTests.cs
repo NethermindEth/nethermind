@@ -27,6 +27,17 @@ namespace Nethermind.Blockchain.Test.Producers;
 
 public class TracingProducedBlockProcessorTests
 {
+    [Test]
+    public void Produced_block_dump_formats_match_auto_dump_formats()
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(Enum.GetNames<ProducedBlockDumpOptions>(), Is.EqualTo(Enum.GetNames<DumpOptions>()));
+            Assert.That(Enum.GetValues<ProducedBlockDumpOptions>().Select(static option => (int)option),
+                Is.EqualTo(Enum.GetValues<DumpOptions>().Select(static option => (int)option)));
+        }
+    }
+
     [TestCase(ProducedBlockDumpOptions.Receipts, "receipts_{0}.json")]
     [TestCase(ProducedBlockDumpOptions.Parity, "parityStyle_{0}.json")]
     [TestCase(ProducedBlockDumpOptions.Geth, "gethStyle_{0}.json")]
