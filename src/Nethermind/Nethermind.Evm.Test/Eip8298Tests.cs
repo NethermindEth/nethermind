@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Tracing.GethStyle;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native;
@@ -16,12 +17,12 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Test.Modules;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.State;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -407,15 +408,20 @@ public class Eip8298Tests : VirtualMachineTestsBase
         Assert.That(accessList.GetAccountChanges(created)?.CodeChange, Is.EqualTo(CodeChange.Adopted(accessList.Index, SourceCodeHash.ValueHash256)));
     }
 
-    /// <summary>Executes <paramref name="tx"/>, recording a block access list over <see cref="VirtualMachineTestsBase.TestState"/>.</summary>
+    /// <summary>Executes <paramref name="tx"/> with the production transaction processor, recording a block access list over <see cref="VirtualMachineTestsBase.TestState"/>.</summary>
     private BlockAccessListAtIndex ExecuteRecordingBlockAccessList(Block block, Transaction tx, bool parallel)
     {
-        TracedAccessWorldState tracedState = new(TestState, parallel);
+        using IContainer container = new ContainerBuilder()
+            .AddModule(new TestNethermindModule())
+            .AddSingleton<ISpecProvider>(SpecProvider)
+            .Build();
+        using ILifetimeScope scope = container.BeginLifetimeScope(builder => builder
+            .AddSingleton<IWorldState>(TestState)
+            .AddDecorator<IWorldState>((_, inner) => new TracedAccessWorldState(inner, parallel)));
+        TracedAccessWorldState tracedState = (TracedAccessWorldState)scope.Resolve<IWorldState>();
         tracedState.SetGeneratingBlockAccessList(new BlockAccessListAtIndex());
-        EthereumTransactionProcessor processor = new(BlobBaseFeeCalculator.Instance, SpecProvider, tracedState, Machine,
-            new EthereumCodeInfoRepository(tracedState), LimboLogs.Instance);
 
-        processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
+        scope.Resolve<ITransactionProcessor>().Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), NullTxTracer.Instance);
 
         return tracedState.GetGeneratingBlockAccessList()!;
     }
