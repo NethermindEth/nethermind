@@ -1098,22 +1098,15 @@ namespace Nethermind.TxPool
 
             // At most Reorganization.MaxDepth bodies, as the pending headers are capped.
             List<Block> blocks = new(_rewoundHeaders.Count);
-            try
+            foreach (BlockHeader header in _rewoundHeaders)
             {
-                foreach (BlockHeader header in _rewoundHeaders)
+                if (TryFindRemovedBlock(header) is { } block)
                 {
-                    if (TryFindRemovedBlock(header) is { } block)
-                    {
-                        blocks.Add(block);
-                    }
+                    blocks.Add(block);
                 }
             }
-            finally
-            {
-                // Cleared whatever happens, so a block that cannot be read never holds up later heads.
-                _rewoundHeaders.Clear();
-            }
 
+            _rewoundHeaders.Clear();
             return blocks;
         }
 

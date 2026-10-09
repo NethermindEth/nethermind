@@ -7549,7 +7549,7 @@ namespace Nethermind.TxPool.Test
             _blockTree.UnreadableBlockHash = second.Hash;
             _blockTree.RaiseBlockRemovedFromMain(second);
             _blockTree.RaiseBlockRemovedFromMain(first);
-            // Bounded: a failed load used to skip the head, so the wait would never end.
+            // Bounded, so a failed load that skips the head fails the test rather than hanging it.
             await RaiseCanonicalHeadAndWait(ancestor).WaitAsync(TimeSpan.FromSeconds(10));
 
             using (Assert.EnterMultipleScope())
