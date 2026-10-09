@@ -38,7 +38,6 @@ internal class TestChainHeadInfoProvider : IChainHeadInfoProvider
 
     public bool IsBuildingBlock { get; set; }
     public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
-    public event EventHandler<BlockEventArgs>? BlockRemovedFromMain { add { } remove { } }
 
     public void RaiseHeadChanged(BlockReplacementEventArgs args) => HeadChanged?.Invoke(this, args);
 }

@@ -67,7 +67,13 @@ namespace Nethermind.TxPool
 
         /// <summary>Raised for each block taken off the canonical chain when the head moves back below it.</summary>
         /// <remarks>Raised from the tip down, before the <see cref="HeadChanged"/> events of the same update. Such a block
-        /// is not reported again as the <see cref="BlockReplacementEventArgs.PreviousBlock"/> of a later head.</remarks>
-        event EventHandler<BlockEventArgs> BlockRemovedFromMain;
+        /// is not reported again as the <see cref="BlockReplacementEventArgs.PreviousBlock"/> of a later head. Only the
+        /// header is passed, so a deep rewind loads nothing here; <see cref="FindRemovedBlock"/> loads the body on demand.
+        /// Unlike the head facts above, the default is a provider that reports no removals.</remarks>
+        event EventHandler<BlockHeaderEventArgs> BlockRemovedFromMain { add { } remove { } }
+
+        /// <summary>Loads a block reported by <see cref="BlockRemovedFromMain"/>.</summary>
+        /// <returns><c>null</c> when the block is no longer stored, or from a provider that reports no removals.</returns>
+        Block? FindRemovedBlock(BlockHeader header) => null;
     }
 }

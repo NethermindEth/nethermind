@@ -7521,6 +7521,67 @@ namespace Nethermind.TxPool.Test
             Assert.That(readded, Is.EqualTo(new[] { a0.Hash, a1.Hash }));
         }
 
+        /// <summary>A rewind whose completing head arrives while syncing is dropped, so its removals cannot linger and
+        /// be re-added at an unrelated later head.</summary>
+        [Test]
+        public async Task should_drop_rewind_whose_completing_head_was_skipped_while_syncing()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 128, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
+            Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+
+            Block parent = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block head = Build.A.Block.WithParent(parent).WithTransactions(a0).TestObject;
+            await RaiseCanonicalHeadAndWait(head);
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: the head's tx left the pool");
+
+            _blockTree.RaiseBlockRemovedFromMain(head);
+            _blockTree.Head = parent;
+            _blockTree.BestSuggestedHeader = Build.A.BlockHeader.WithNumber(head.Number + 1_000).TestObject;
+            _blockTree.RaiseBlockAddedToMain(new BlockReplacementEventArgs(parent));
+
+            Block sibling = Build.A.Block.WithParent(parent).WithExtraData([1]).TestObject;
+            await RaiseCanonicalHeadAndWait(sibling);
+
+            Assert.That(_txPool.TryGetPendingTransaction(a0.Hash!, out _), Is.False);
+        }
+
+        /// <summary>A rewind deeper than <see cref="Reorganization.MaxDepth"/> re-adds only the lowest blocks of it.</summary>
+        [Test]
+        public async Task should_bring_back_txs_of_only_the_lowest_blocks_of_a_rewind_deeper_than_reorg_depth()
+        {
+            _txPool = CreatePool(new TxPoolConfig { Size = 1024, BlobsSupport = BlobsSupportMode.Disabled }, GetCancunSpecProvider());
+            int depth = (int)Reorganization.MaxDepth + 2;
+            Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
+            Block[] removed = new Block[depth];
+            Block parent = ancestor;
+            for (int i = 0; i < depth; i++)
+            {
+                Transaction tx = GetTransaction(Build.A.PrivateKey.TestObject, TestItem.AddressC, 0);
+                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                parent = removed[i] = Build.A.Block.WithParent(parent).WithTransactions(tx).TestObject;
+                await RaiseCanonicalHeadAndWait(parent);
+            }
+
+            Assert.That(_txPool.GetPendingTransactionsCount(), Is.Zero, "precondition: every block's tx left the pool");
+
+            for (int i = depth - 1; i >= 0; i--)
+            {
+                _blockTree.RaiseBlockRemovedFromMain(removed[i]);
+            }
+
+            await RaiseCanonicalHeadAndWait(ancestor);
+
+            using (Assert.EnterMultipleScope())
+            {
+                for (int i = 0; i < depth; i++)
+                {
+                    bool kept = (ulong)i < Reorganization.MaxDepth;
+                    Assert.That(_txPool.TryGetPendingTransaction(removed[i].Transactions[0].Hash!, out _), Is.EqualTo(kept), $"tx of rewound block {i}");
+                }
+            }
+        }
+
         [Test]
         [Category("Flaky"), Retry(3)]
         public async Task should_return_fresh_pending_transactions_snapshot_after_head_change()

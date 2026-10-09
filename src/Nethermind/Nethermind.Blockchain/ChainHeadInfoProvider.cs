@@ -100,7 +100,10 @@ namespace Nethermind.Blockchain
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
 
-        public event EventHandler<BlockEventArgs>? BlockRemovedFromMain;
+        public event EventHandler<BlockHeaderEventArgs>? BlockRemovedFromMain;
+
+        public Block? FindRemovedBlock(BlockHeader header) =>
+            _blockTree.FindBlock(header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, header.Number);
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
@@ -110,18 +113,7 @@ namespace Nethermind.Blockchain
             HeadChanged?.Invoke(sender, e);
         }
 
-        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e)
-        {
-            EventHandler<BlockEventArgs>? handlers = BlockRemovedFromMain;
-            if (handlers is null) return;
-
-            // The block was on main until this update, so it is near the head and normally still cached.
-            Block? block = _blockTree.FindBlock(e.Header.Hash!, BlockTreeLookupOptions.TotalDifficultyNotNeeded, e.Header.Number);
-            if (block is not null)
-            {
-                handlers(sender, new BlockEventArgs(block));
-            }
-        }
+        private void OnBlockRemovedFromMain(object? sender, BlockHeaderEventArgs e) => BlockRemovedFromMain?.Invoke(sender, e);
 
         /// <summary>Reads the head-derived facts the transaction pool gates on off <paramref name="header"/>.</summary>
         /// <remarks>The constructor calls this only for a non-genesis head; the head-change handler always calls it.
