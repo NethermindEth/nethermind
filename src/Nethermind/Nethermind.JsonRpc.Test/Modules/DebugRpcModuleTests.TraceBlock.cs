@@ -49,6 +49,55 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(false, "\"bad\"", "lookup")]
+    [TestCase(false, "\"5s\"", "lookup")]
+    [TestCase(true, "\"bad\"", "constructor")]
+    [TestCase(true, "\"5s\"", "constructor")]
+    [TestCase(false, "7", "type")]
+    public async Task Debug_traceBlockByNumber_orders_lookup_and_constructor_before_semantic_timeout(
+        bool retainedBlock, string timeoutJson, string expected)
+    {
+        using Context context = await Context.Create();
+        if (retainedBlock)
+            await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+
+        ulong blockNumber = context.Blockchain.BlockTree.Head!.Number + (retainedBlock ? 0UL : 1UL);
+        JsonElement timeout = JsonSerializer.Deserialize<JsonElement>(timeoutJson);
+        string tracer = retainedBlock ? "unknownTracer" : NativeNoopTracer.NoopTracer;
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber", blockNumber,
+            new Dictionary<string, object> { ["tracer"] = tracer, ["timeout"] = timeout });
+        JToken json = JToken.Parse(response);
+
+        if (expected == "type")
+        {
+            Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.InvalidParams), response);
+            return;
+        }
+
+        if (expected == "lookup")
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((int?)json["error"]?["code"], Is.EqualTo(ErrorCodes.ResourceNotFound), response);
+                Assert.That((string?)json["error"]?["message"], Is.EqualTo("header not found"), response);
+            }
+            return;
+        }
+
+        Assert.That(json["error"], Is.Null, response);
+        JArray traces = (JArray)json["result"]!;
+        Assert.That(traces, Has.Count.EqualTo(context.Blockchain.BlockTree.Head!.Transactions.Length));
+        for (int i = 0; i < traces.Count; i++)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That((string?)traces[i]["txHash"], Is.EqualTo(context.Blockchain.BlockTree.Head.Transactions[i].Hash!.ToString()));
+                Assert.That((string?)traces[i]["error"], Does.Contain("unknownTracer"));
+                Assert.That(traces[i]["result"], Is.Null);
+            }
+        }
+    }
+
     [TestCase("result", 0)]
     [TestCase("result", 1)]
     [TestCase("result", 2)]
