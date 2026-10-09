@@ -7469,9 +7469,12 @@ namespace Nethermind.TxPool.Test
             Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
             Transaction b0 = GetTransaction(TestItem.PrivateKeyB, TestItem.AddressC, 0);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            foreach (Transaction tx in new[] { a0, a1, b0 })
+            using (Assert.EnterMultipleScope())
             {
-                Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                foreach (Transaction tx in new[] { a0, a1, b0 })
+                {
+                    Assert.That(_txPool.SubmitTx(tx, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                }
             }
 
             Block parent = Build.A.Block.WithNumber(10_000_000).TestObject;
@@ -7502,8 +7505,11 @@ namespace Nethermind.TxPool.Test
             Transaction a0 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 0);
             Transaction a1 = GetTransaction(TestItem.PrivateKeyA, TestItem.AddressC, 1);
             EnsureSenderBalance(TestItem.AddressA, UInt256.MaxValue);
-            Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
-            Assert.That(_txPool.SubmitTx(a1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(_txPool.SubmitTx(a0, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+                Assert.That(_txPool.SubmitTx(a1, TxHandlingOptions.None), Is.EqualTo(AcceptTxResult.Accepted));
+            }
 
             Block ancestor = Build.A.Block.WithNumber(10_000_000).TestObject;
             Block first = Build.A.Block.WithParent(ancestor).WithTransactions(a0).TestObject;
