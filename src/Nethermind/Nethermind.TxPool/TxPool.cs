@@ -137,8 +137,6 @@ namespace Nethermind.TxPool
         private Hash256? _lastBlockHash;
         // Headers of blocks the head moved back past, waiting to have their transactions re-added. Head loop only.
         private readonly List<BlockHeader> _rewoundHeaders = [];
-        // Set when a removal is queued and cleared by the next head change, which tells the loop if it skipped that head.
-        private int _rewindPending;
 
         /// <summary>
         /// The release specification every transaction currently in the pool has been validated against, or
@@ -821,12 +819,9 @@ namespace Nethermind.TxPool
 
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
-            bool rewindPending = Interlocked.Exchange(ref _rewindPending, 0) == 1;
             if (_headInfo.IsSyncing)
             {
                 DisposeBlockAccountChanges(e.Block);
-                // The head that would complete the rewind is skipped, so its removals must not wait for a later one.
-                if (rewindPending) _headBlocksChannel.Writer.TryWrite(HeadChange.SkippedHead);
                 return;
             }
 
@@ -848,7 +843,6 @@ namespace Nethermind.TxPool
             if (_headInfo.IsSyncing) return;
 
             // Queued with the head changes so it is handled in order with them.
-            Volatile.Write(ref _rewindPending, 1);
             _headBlocksChannel.Writer.TryWrite(HeadChange.Removed(e.Header));
         }
 
@@ -895,8 +889,7 @@ namespace Nethermind.TxPool
                 {
                     if (headChange.Args is not { } args)
                     {
-                        if (headChange.RemovedHeader is { } removed) AddRewoundHeader(removed);
-                        else _rewoundHeaders.Clear();
+                        AddRewoundHeader(headChange.RemovedHeader!);
                         continue;
                     }
 
@@ -907,6 +900,8 @@ namespace Nethermind.TxPool
                         bool reorganised = args.PreviousBlock is not null || _rewoundHeaders.Count > 0;
                         bool extendsPreviousHead = !reorganised && args.Block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == args.Block.Number;
                         (BlockHeader Head, List<Hash256> Hashes)? unreferenceable = CollectUnreferenceableRecentRootTransactions(extendsPreviousHead);
+                        // Read from the database before the lock, so submissions are not held up by it.
+                        List<Block>? rewound = LoadCompletedRewind(args.Block);
                         _newHeadLock.EnterWriteLock();
                         try
                         {
@@ -934,7 +929,7 @@ namespace Nethermind.TxPool
                             _lastBlockHash = args.Block.Hash;
 
                             ReAddReorganisedTransactions(args.PreviousBlock);
-                            ReAddRewoundTransactions(args.Block);
+                            ReAddRewoundTransactions(rewound);
                             RemoveProcessedTransactions(args.Block);
                             RemoveExpiredFrameTransactions(args.Block);
                             EvictUnreferenceableRecentRootTransactions(unreferenceable);
@@ -1088,24 +1083,27 @@ namespace Nethermind.TxPool
             }
         }
 
-        /// <summary>Re-adds the transactions of the blocks the head moved back past, which no head change reports as its
-        /// <see cref="BlockReplacementEventArgs.PreviousBlock"/>.</summary>
+        /// <summary>Loads, in ascending order, the blocks the head moved back past once <paramref name="head"/> completes
+        /// the rewind; no head change reports them as its <see cref="BlockReplacementEventArgs.PreviousBlock"/>.</summary>
         /// <remarks>They are reported tip first, ahead of the head changes of the same update. Waiting for the head just
-        /// below the lowest of them, the last of that update, re-adds every sender's nonces in ascending order.</remarks>
-        private void ReAddRewoundTransactions(Block head)
+        /// below the lowest of them, the last of that update, re-adds every sender's nonces in ascending order. A head
+        /// skipped while syncing leaves them for a later head; there, nonces the chain has passed are rejected again.</remarks>
+        /// <returns><c>null</c> while the rewind is incomplete or there is none.</returns>
+        private List<Block>? LoadCompletedRewind(Block head)
         {
-            if (_rewoundHeaders.Count == 0) return;
+            if (_rewoundHeaders.Count == 0) return null;
 
             _rewoundHeaders.Sort(static (a, b) => a.Number.CompareTo(b.Number));
-            if (head.Number + 1 < _rewoundHeaders[0].Number) return;
+            if (head.Number + 1 < _rewoundHeaders[0].Number) return null;
 
+            // At most Reorganization.MaxDepth bodies, as the pending headers are capped.
+            List<Block> blocks = new(_rewoundHeaders.Count);
             foreach (BlockHeader header in _rewoundHeaders)
             {
-                // Loaded one at a time, so a rewind never holds more than one removed body.
                 Block? block = _headInfo.FindRemovedBlock(header);
                 if (block is not null)
                 {
-                    ReAddReorganisedTransactions(block);
+                    blocks.Add(block);
                 }
                 else if (_logger.IsDebug)
                 {
@@ -1114,6 +1112,17 @@ namespace Nethermind.TxPool
             }
 
             _rewoundHeaders.Clear();
+            return blocks;
+        }
+
+        private void ReAddRewoundTransactions(List<Block>? rewound)
+        {
+            if (rewound is null) return;
+
+            foreach (Block block in rewound)
+            {
+                ReAddReorganisedTransactions(block);
+            }
         }
 
         /// <remarks>Keeps at most <see cref="Reorganization.MaxDepth"/> headers, the lowest: their transactions hold each
@@ -3059,12 +3068,9 @@ namespace Nethermind.TxPool
             _accountCache.RemoveAccounts(arrayPoolList);
         }
 
-        /// <summary>A new head (<paramref name="Args"/>), a block the head moved back past (<paramref name="RemovedHeader"/>),
-        /// or neither: a head skipped while syncing, which ends the pending rewind without re-adding.</summary>
+        /// <summary>A new head (<paramref name="Args"/>) or a block the head moved back past (<paramref name="RemovedHeader"/>).</summary>
         private readonly record struct HeadChange(BlockReplacementEventArgs? Args, long Generation, BlockHeader? RemovedHeader = null)
         {
-            public static HeadChange SkippedHead => default;
-
             public static HeadChange Removed(BlockHeader header) => new(null, 0, header);
         }
 
