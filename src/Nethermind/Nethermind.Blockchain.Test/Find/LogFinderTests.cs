@@ -452,19 +452,23 @@ public class LogFinderTests
         FilterLog[] logs = finder.FindLogs(builder.Build()).ToArray();
         Array.Clear(encoded);
 
-        Assert.That(logs, Has.Length.EqualTo(1));
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(logs[0].LogIndex, Is.EqualTo(1), "rejected logs must still count towards the block log index");
-            Assert.That(logs[0].Data, Is.EqualTo(data), "response data must survive release of the encoded receipt buffer");
-            Assert.That(logs[0].Topics, Is.EqualTo(accepted.Topics));
-            Assert.That(logs[0].Address, Is.EqualTo(accepted.Address));
-            Assert.That(logs[0].BlockHash, Is.EqualTo(block.Hash));
-            Assert.That(logs[0].BlockNumber, Is.EqualTo(block.Number));
-            Assert.That(logs[0].TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
-            Assert.That(logs[0].TransactionIndex, Is.Zero);
+            Assert.That(logs, Has.Length.EqualTo(1));
+            foreach (FilterLog log in logs)
+            {
+                Assert.That(log.LogIndex, Is.EqualTo(1), "rejected logs must still count towards the block log index");
+                Assert.That(log.Data, Is.EqualTo(data), "response data must survive release of the encoded receipt buffer");
+                Assert.That(log.Topics, Is.EqualTo(accepted.Topics));
+                Assert.That(log.Address, Is.EqualTo(accepted.Address));
+                Assert.That(log.BlockHash, Is.EqualTo(block.Hash));
+                Assert.That(log.BlockNumber, Is.EqualTo(block.Number));
+                Assert.That(log.TransactionHash, Is.EqualTo(block.Transactions[0].Hash));
+                Assert.That(log.TransactionIndex, Is.Zero);
+            }
         }
     }
+
     private const ulong BoundaryOldestStored = 50;
     private const int BoundaryFrom = 10;
     private const int BoundaryTo = 200;
