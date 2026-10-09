@@ -179,6 +179,7 @@ public static partial class EvmInstructions
             return stack.PushUInt256<TTracingInst>(before);
         // "after", or an unmodified slot's "before": the current live value.
         vm.WorldState.Get(in cell, out UInt256 value);
+        if (param == 0x00 && vm.WorldState.TryGetStorageBeforeClear(in cell, out UInt256 beforeClear)) value = beforeClear;
         EvmExceptionType pushResult = stack.PushUInt256<TTracingInst>(value);
 
         // Reported like SLOAD, so a trace over a failed assertion shows the slot it read.

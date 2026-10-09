@@ -111,9 +111,9 @@ public class NodeViewsTests
 
         HistoricalTrieNodeBuilder builder = new(new AccountHistoryScope(rows, format, commitments, policy), 1, new ResolutionBudget(0), fanOut, new ArchiveProofNodeCache(100));
         Hash256 hash = expected.Hash.ToCommitment();
-        Assert.That(builder.LoadRlp(parent, hash), Is.EqualTo(expected.Rlp.ToArray()));
-        Assert.That(builder.LoadRlp(parent, hash), Is.EqualTo(expected.Rlp.ToArray()));
-        Assert.That(() => builder.LoadRlp(parent, Keccak.EmptyTreeHash), Throws.InstanceOf<StateUnavailableException>());
+        Assert.That(builder.LoadRlp(parent, hash, out _), Is.EqualTo(expected.Rlp.ToArray()));
+        Assert.That(builder.LoadRlp(parent, hash, out _), Is.EqualTo(expected.Rlp.ToArray()));
+        Assert.That(() => builder.LoadRlp(parent, Keccak.EmptyTreeHash, out _), Throws.InstanceOf<StateUnavailableException>());
     }
 
     [Test]
