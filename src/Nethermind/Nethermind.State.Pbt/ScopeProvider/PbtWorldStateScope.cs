@@ -37,7 +37,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private readonly IRefCountingMemoryProvider _nodeGroupMemory;
     private readonly IPbtCommitTarget _commitTarget;
     private readonly IPbtChildHeaderSource _childHeaders;
-    private readonly Dictionary<AddressAsKey, PbtStorageTree> _storages = [];
+    private readonly Dictionary<AddressAsKey, StorageTree> _storages = [];
     private readonly BackgroundTask _balPrefetch;
 
     private StateId _currentStateId;
@@ -283,8 +283,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         lock (_storages)
         {
-            ref PbtStorageTree? tree = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
-            if (!exists) tree = new PbtStorageTree(this, address);
+            ref StorageTree? tree = ref CollectionsMarshal.GetValueRefOrAddDefault(_storages, address, out bool exists);
+            if (!exists) tree = new StorageTree(this, address);
             return tree!;
         }
     }
@@ -368,6 +368,18 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         {
             if (_logger.IsDebug) _logger.Debug($"PBT scope {_scopeId} closed: state={_currentStateId}, managedBytes={GC.GetTotalMemory(false)}");
         }
+    }
+
+    /// <summary>Provides a per-address storage view over the scope's unified EIP-8297 tree.</summary>
+    private sealed class StorageTree(PbtWorldStateScope scope, Address address) : IWorldStateScopeProvider.IStorageTree
+    {
+        private readonly ValueHash256 _addressHash = PbtStateKey.AddressKeyHash(address);
+
+        public Hash256 RootHash => Keccak.EmptyTreeHash;
+
+        public void Get(in UInt256 index, out UInt256 value) => value = scope.Bundle.GetSlot(address, _addressHash, index);
+
+        public void HintSet(in UInt256 index) { }
     }
 
     private sealed class WriteBatch(PbtWorldStateScope scope) : IWorldStateScopeProvider.IWorldStateWriteBatch
