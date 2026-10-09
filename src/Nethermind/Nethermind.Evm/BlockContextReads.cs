@@ -11,7 +11,7 @@ namespace Nethermind.Evm;
 /// depends on which address the coinbase is (EIP-3651) while no state read shows it.
 /// </remarks>
 [Flags]
-public enum BlockContextReads : byte
+internal enum BlockContextReads : byte
 {
     None = 0,
     Coinbase = 1,

@@ -270,7 +270,7 @@ public partial class VirtualMachine<TGasPolicy>(
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
     /// <summary>The block context fields opcodes read since the caller last reset it.</summary>
-    public BlockContextReads BlockContextReads { get; set; }
+    internal BlockContextReads BlockContextReads { get; set; }
 
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;

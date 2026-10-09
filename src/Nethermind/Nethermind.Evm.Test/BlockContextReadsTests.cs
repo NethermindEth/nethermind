@@ -12,7 +12,7 @@ namespace Nethermind.Evm.Test;
 /// fields, so every opcode that reads one must report it, traced or not.
 /// </summary>
 [Parallelizable(ParallelScope.Self)]
-public class BlockContextReadsTests : VirtualMachineTestsBase
+internal class BlockContextReadsTests : VirtualMachineTestsBase
 {
     protected override ulong BlockNumber => MainnetSpecProvider.ParisBlockNumber;
     protected override ulong Timestamp => MainnetSpecProvider.OsakaBlockTimestamp;

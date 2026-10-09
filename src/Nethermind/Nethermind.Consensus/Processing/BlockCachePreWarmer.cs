@@ -206,10 +206,11 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             CancellationToken token = session.Token;
             BlockFootprints? footprints = _handoff && BlockFootprints.AppliesTo(suggestedBlock, spec) ? new BlockFootprints(suggestedBlock) : null;
             // Transactions the mempool pass warmed run again unless a footprint it recorded holds in the block; those are
-            // stored on the session before any warm starts.
+            // stored on the session before any warm starts. Where the caches did not carry over they run again to refill
+            // them, and a footprint they record replaces the seeded one.
             HashSet<Hash256>? seeded = footprints is not null && recorded is not null ? [] : null;
             (BlockState blockState, ParallelOptions parallelOptions, AddressWarmer addressWarmer) = PrepareWarm(
-                suggestedBlock, spec, footprints is null ? speculativelyWarmed : seeded, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
+                suggestedBlock, spec, footprints is null || speculativelyWarmed is null ? speculativelyWarmed : seeded, recovery, _concurrencyLevel, token, warmSystemAccessLists: true,
                 warmCalldataAddresses: true, handColdChainsToDiscovery: true);
             if (footprints is not null)
             {
@@ -762,10 +763,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     /// <param name="recording">Where the runs' footprints go; <see langword="null"/> when none is recorded.</param>
     private bool WarmDeltaSync(Block delta, IReleaseSpec spec, bool warmSystemAccessLists, MempoolFootprints? recording, CancellationToken token)
     {
-        // The runs pay their fees to the recording's coinbase, while the account warmed stays the predicted one.
+        // The runs pay their fees to the recording's coinbase, while the account warmed stays the predicted one. The
+        // header is copied first: the caller may hold the delta, even as the block it will process.
         Address? predictedCoinbase = delta.Header.GasBeneficiary;
         if (recording is not null)
         {
+            delta = delta.WithReplacedBodyCloned(delta.Body);
             delta.Header.Author = null;
             delta.Header.Beneficiary = recording.Coinbase;
         }

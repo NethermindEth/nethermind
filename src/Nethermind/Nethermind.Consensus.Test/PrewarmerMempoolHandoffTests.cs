@@ -140,6 +140,16 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
         Assert.That(ProcessingScope.Resolve<PreBlockCaches>().StateCache.TryGetValue(Reverter, out _), Is.True);
     }
 
+    [Test]
+    public void Runs_are_warmed_again_where_the_caches_did_not_carry_over()
+    {
+        // Taking a run over reads its preconditions from the caches, which only the warm pass refills after a clear.
+        (_, bool[] taken) = MempoolHandoff(BuildBlock(Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressD, 1.Wei),
+            Transfer(TestItem.PrivateKeyB, 0, TestItem.AddressD, 1.Wei), Unrelated()), carried: false);
+
+        Assert.That(taken, Has.None.True);
+    }
+
     // A block of fewer transactions is not warmed, so it takes no runs either.
     private static Transaction Unrelated() => Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressC, 1.Wei);
 
@@ -148,11 +158,12 @@ public class PrewarmerMempoolHandoffTests() : PrewarmerHandoffTestBase(Osaka.Ins
     /// <see cref="PrewarmerHandoffTestBase.Handoff(Block, Nethermind.Evm.Tracing.IBlockTracer?)"/> does.
     /// </summary>
     /// <returns>The run, and per transaction whether a mempool run was stored for block processing to take over.</returns>
-    private (Run Run, bool[] Taken) MempoolHandoff(Block block, Action<BlockHeader>? mispredict = null)
+    private (Run Run, bool[] Taken) MempoolHandoff(Block block, Action<BlockHeader>? mispredict = null, bool carried = true)
     {
         Run executed = Process(block, adapter: null);
 
         PreWarmer.RunSpeculativePreWarm(Parent, Spec, Predicted(block, mispredict), () => PreWarmer.SpeculativeMarkerPublished);
+        if (!carried) ProcessingScope.Resolve<PreBlockCaches>().PrepareFor(Keccak.Zero);
         RunPreWarmCaches(PreWarmer, block);
         bool[] taken = new bool[block.Transactions.Length];
         for (int i = 0; i < taken.Length; i++) taken[i] = PreWarmer.Footprints?.Get(i)?.FromMempool == true;
