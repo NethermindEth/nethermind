@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using BenchmarkDotNet.Attributes;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -30,7 +31,7 @@ public class AccountProofCollectorBenchmarks
     }
 
     [Benchmark]
-    public ValueHash256[] ArchiveInputs()
+    public ReadOnlyMemory<ValueHash256> ArchiveInputs()
     {
         AccountProofCollector collector = new(_address, _keys);
         return collector.GetHashedStorageKeys();

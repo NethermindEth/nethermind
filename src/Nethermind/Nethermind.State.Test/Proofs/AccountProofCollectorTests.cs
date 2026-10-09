@@ -78,7 +78,7 @@ namespace Nethermind.Store.Test.Proofs
             AccountProof proof = collector.BuildResult();
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expectedHashes));
+                Assert.That(collector.GetHashedStorageKeys().ToArray(), Is.EqualTo(expectedHashes));
                 Assert.That(collector.HashedAddress, Is.EqualTo(ValueKeccak.Compute(TestItem.AddressA.Bytes)));
                 Assert.That(proof.StorageProofs.Select(static item => item.Key), Is.EqualTo(expectedKeys));
             }
@@ -96,7 +96,7 @@ namespace Nethermind.Store.Test.Proofs
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expected));
+                Assert.That(collector.GetHashedStorageKeys().ToArray(), Is.EqualTo(expected));
                 Assert.That(collector.HashedAddress, Is.EqualTo(TestItem.KeccakC.ValueHash256));
             }
         }
@@ -108,14 +108,14 @@ namespace Nethermind.Store.Test.Proofs
             UInt256[] keys = [UInt256.One, UInt256.Zero, UInt256.One];
             AccountProof expected = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
             AccountProofCollector collector = new(TestItem.AddressA, keys);
-            ValueHash256[] hashes = [.. collector.GetHashedStorageKeys()];
+            ValueHash256[] hashes = collector.GetHashedStorageKeys().ToArray();
 
             tree.Accept(collector, tree.RootHash);
             AccountProof actual = collector.BuildResult();
 
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(hashes));
+                Assert.That(collector.GetHashedStorageKeys().ToArray(), Is.EqualTo(hashes));
                 Assert.That(actual.StorageProofs.Select(static item => item.Key), Is.EqualTo(new[] { "0x1", "0x0", "0x1" }));
                 Assert.That(actual.StorageProofs[0].Proof, Is.EqualTo(expected.StorageProofs[1].Proof));
                 Assert.That(actual.StorageProofs[1].Proof, Is.EqualTo(expected.StorageProofs[0].Proof));

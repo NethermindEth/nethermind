@@ -58,7 +58,7 @@ namespace Nethermind.State.Proofs
             _accountProof.CodeHash = account.CodeHash.ToCommitment();
         }
 
-        internal ValueHash256[] GetHashedStorageKeys() => _hashedStorageKeys;
+        internal ReadOnlyMemory<ValueHash256> GetHashedStorageKeys() => _hashedStorageKeys;
 
         private static ValueHash256 ToKey(byte[] index) => ValueKeccak.Compute(index);
 
@@ -349,6 +349,5 @@ namespace Nethermind.State.Proofs
         /// </summary>
         private static bool IsFullPathMatch(in ValueHash256 targetPath, TreePath fullPath) =>
             fullPath.Length == Hash256.Size * 2 && fullPath.Path == targetPath;
-
     }
 }
