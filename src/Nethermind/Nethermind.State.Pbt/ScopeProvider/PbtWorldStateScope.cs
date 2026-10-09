@@ -230,20 +230,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
         if (cancellation.IsCancellationRequested) return;
 
-        List<PbtStorageNodePath> deeperMisses = [];
         foreach (PbtStorageNodePath path in DeeperStorageNodeGroupPaths(bal, groups, descendantBytes))
         {
             if (cancellation.IsCancellationRequested) return;
-            if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) deeperMisses.Add(path);
+            if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) ((IDisposable?)bundle.GetPersistedNodeGroup(path))?.Dispose();
             ((IDisposable?)snapshot)?.Dispose();
         }
-        PbtStorageNodePath[] paths = [.. deeperMisses];
-        ParallelUnbalancedWork.For(0, paths.Length, (bundle, paths, cancellation), static (index, state) =>
-        {
-            if (state.cancellation.IsCancellationRequested) return state;
-            using RefCountingMemory? payload = state.bundle.GetPersistedNodeGroup(state.paths[index]);
-            return state;
-        });
     }
 
     /// <summary>The distinct groups below the first storage groups along the storage leaves <paramref name="bal"/> writes.</summary>
