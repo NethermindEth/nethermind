@@ -132,9 +132,9 @@ env:
   # tag: latest-<keyword> resolution scans only the 20 newest releases and never reaches that line.
   FOCIL_VERSION: ${{ inputs.focil_version || 'tests-focil-devnet@v0.3.0' }}
   # EIP-8141 frame-transaction fixtures, likewise their own release line and likewise an exact tag.
-  # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, where the FOCIL archive
-  # means Amsterdam plus EIP-7805; nothing inside a fixture separates the two, so the lane names the
-  # fork it means through the runner's --forkAlias.
+  # This archive labels its fork "Bogota" meaning Amsterdam plus EIP-8141, EIP-8250, EIP-8272 and
+  # EIP-7906, where the FOCIL archive means Amsterdam plus EIP-7805; nothing inside a fixture
+  # separates the two, so the lane names the fork it means through the runner's --forkAlias.
   FRAMES_VERSION: ${{ inputs.frames_version || 'tests-frames-devnet@v1.0.0' }}
   # Minimum cases the pinned release ships across the frame lanes, set to the exact counts it holds.
   # Asserted so a scope resolving to nothing, or to fewer cases, fails rather than reporting a clean run.
