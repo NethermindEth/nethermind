@@ -704,7 +704,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         public bool IsCancelable => true;
 
         // Block processing executes a transaction it reaches before the run ends.
-        public bool IsCancelled => _token.IsCancellationRequested || (_progress is not null && _progress.MainThreadTxIndex >= _txIndex);
+        public bool IsCancelled => _token.IsCancellationRequested || (_progress is not null && _progress.MainThreadTxIndex > _txIndex);
 
         public bool HasResult { get; private set; }
         public bool Success { get; private set; }

@@ -85,6 +85,23 @@ internal sealed class BlockFootprints(Block block)
 
     public TransactionFootprint? Get(int index) => Volatile.Read(ref _footprints[index]);
 
+    private readonly int[] _runs = new int[block.Transactions.Length];
+
+    /// <summary>Marks that a warm run of the transaction at <paramref name="index"/> started.</summary>
+    public void BeginRun(int index)
+    {
+        if ((uint)index < (uint)_runs.Length) Interlocked.Increment(ref _runs[index]);
+    }
+
+    /// <summary>Marks that a warm run of the transaction at <paramref name="index"/> ended.</summary>
+    public void EndRun(int index)
+    {
+        if ((uint)index < (uint)_runs.Length) Interlocked.Decrement(ref _runs[index]);
+    }
+
+    /// <summary>Whether a warm run of the transaction at <paramref name="index"/> is in progress.</summary>
+    public bool IsRunning(int index) => (uint)index < (uint)_runs.Length && Volatile.Read(ref _runs[index]) > 0;
+
     /// <param name="seededAt">For a refreshed footprint, the <see cref="WritesVersion"/> its run was seeded at.</param>
     public void Store(int index, TransactionFootprint footprint, int seededAt = -1)
     {

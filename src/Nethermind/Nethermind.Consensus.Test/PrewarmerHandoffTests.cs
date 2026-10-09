@@ -957,6 +957,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 Assert.That(outcome.IsCancelable, Is.True);
                 Assert.That(outcome.IsCancelled, Is.False);
                 progress.MainThreadTxIndex = 2;
+                Assert.That(outcome.IsCancelled, Is.False);
+                progress.MainThreadTxIndex = 3;
                 Assert.That(outcome.IsCancelled, Is.True);
             }
 

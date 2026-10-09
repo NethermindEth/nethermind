@@ -1042,7 +1042,40 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     {
         BlockFootprints? footprints = Volatile.Read(ref _footprints);
         eligible = footprints is not null && BlockFootprints.IsRecordable(tx);
-        return footprints?.Find(_mainThreadTxIndex, tx, header);
+        if (_mainThreadTxIndex == 0 && Joins > 0) Console.WriteLine($"JOINPROBE joins={Joins} hits={JoinHits} timeouts={JoinTimeouts} us={JoinTicks * 1_000_000 / Stopwatch.Frequency}");
+        TransactionFootprint? footprint = footprints?.Find(_mainThreadTxIndex, tx, header);
+        return footprint is null && eligible && footprints!.IsRunning(_mainThreadTxIndex)
+            ? JoinRun(footprints, tx, header)
+            : footprint;
+    }
+
+    private static readonly long JoinLimit = Stopwatch.Frequency / 20;
+    internal static long Joins, JoinHits, JoinTimeouts, JoinTicks;
+
+    /// <summary>Waits for the warm run of the transaction the main thread reached, and takes the footprint it leaves.</summary>
+    /// <remarks>The run is far into the transaction already, so finishing it costs less than executing it again.</remarks>
+    private TransactionFootprint? JoinRun(BlockFootprints footprints, Transaction tx, BlockHeader header)
+    {
+        long start = Stopwatch.GetTimestamp();
+        SpinWait spinner = default;
+        bool timedOut = false;
+        while (footprints.IsRunning(_mainThreadTxIndex))
+        {
+            if (Stopwatch.GetTimestamp() - start > JoinLimit)
+            {
+                timedOut = true;
+                break;
+            }
+
+            spinner.SpinOnce(sleep1Threshold: -1);
+        }
+
+        TransactionFootprint? footprint = footprints.Find(_mainThreadTxIndex, tx, header);
+        Joins++;
+        JoinTicks += Stopwatch.GetTimestamp() - start;
+        if (timedOut) JoinTimeouts++;
+        if (footprint is not null) JoinHits++;
+        return footprint;
     }
 
     public CacheType ClearCaches()
@@ -1471,6 +1504,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        BlockFootprints? running = blockState.Footprints;
+        running?.BeginRun(txIndex);
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
@@ -1488,6 +1523,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         }
         finally
         {
+            running?.EndRun(txIndex);
             recorder.Stop();
         }
 
