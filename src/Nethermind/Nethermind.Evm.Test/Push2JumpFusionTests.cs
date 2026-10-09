@@ -67,7 +67,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         // Exact-gas assertion catches the PUSH2+JUMP fusion double-charge regression:
         // without the `programCounter++` past JUMPDEST, the dispatch loop re-executes the
         // JUMPDEST opcode and charges 1 extra gas.
-        AssertGas(r, 41018);
+        AssertGas(r, 43118);
         Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 
@@ -102,7 +102,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
 
         TestAllTracerWithOutput r = Execute(code);
         AssertStorage(0, (UInt256)0x42);
-        AssertGas(r, 41023);
+        AssertGas(r, 43123);
         Assert.That(Machine.OpCodeCount, Is.EqualTo(8), "opcode count");
     }
 
@@ -147,7 +147,7 @@ public class Push2JumpFusionTests : VirtualMachineTestsBase
         AssertStorage(0, (UInt256)0x11);
         // Not-taken JUMPI: JUMPDEST is never entered, so double-charge wouldn't fire here.
         // Gas still pinned to catch unrelated regressions.
-        AssertGas(r, 41022);
+        AssertGas(r, 43122);
         Assert.That(Machine.OpCodeCount, Is.EqualTo(7), "opcode count");
     }
 

@@ -12,6 +12,7 @@ using Nethermind.Evm.GasPolicy;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -80,12 +81,14 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
     public void Top_level_halt_settlement_burns_restored_spill(
         [Values(0L, 50_000L)] long reservoir,
         [Values] bool executionGasAlreadyCleared,
-        [Values(0UL, 1_000UL)] ulong executionRefund)
+        [Values(0UL, 1_000UL)] ulong executionRefund,
+        [Values] bool eip7778Enabled)
     {
+        IReleaseSpec spec = new OverridableReleaseSpec(Spec) { IsEip7778Enabled = eip7778Enabled };
         ulong gasLimit = reservoir == 0 ? 1_000_000 : Eip7825Constants.DefaultTxGasLimitCap + (ulong)reservoir;
         Transaction tx = Build.A.Transaction.WithTo(null).WithGasLimit(gasLimit).TestObject;
-        EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, Spec).Standard;
-        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, Spec, out EthereumGasPolicy gas), Is.True);
+        EthereumGasPolicy intrinsic = EthereumGasPolicy.CalculateIntrinsicGas(tx, spec).Standard;
+        Assert.That(EthereumGasPolicy.TryCreateAvailableFromIntrinsic(gasLimit, in intrinsic, spec, out EthereumGasPolicy gas), Is.True);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.CreateState), Is.True);
         Assert.That(EthereumGasPolicy.TryConsumeStateGas(ref gas, GasCostOf.SSetState), Is.True);
         EthereumGasPolicy.RefundStateGas(ref gas, GasCostOf.SSetState, stateGasFloor: 0);
@@ -97,7 +100,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         // Receipt accounting excludes gas_left on halt, so observe the settled policy as well.
         UInt256 gasPrice = UInt256.Zero;
         GasConsumed consumed = ((TransactionProcessorBase<EthereumGasPolicy>)_processor).CompleteEip8037Halt(
-            tx, Spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund).Gas;
+            tx, spec, ExecutionOptions.None, ref gas, in gasPrice, in intrinsic, 0, reservoir, executionRefund).Gas;
 
         using (Assert.EnterMultipleScope())
         {
@@ -107,7 +110,7 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
             Assert.That(gas.StateGasSpill, Is.Zero);
             Assert.That(gas.StateGasSpillRefunded, Is.EqualTo(GasCostOf.CreateState + GasCostOf.SSetState - reservoir));
             Assert.That(consumed.SpentGas, Is.EqualTo(gasLimit - (ulong)reservoir - executionRefund));
-            Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir));
+            Assert.That(consumed.BlockGas, Is.EqualTo(gasLimit - (ulong)reservoir - (eip7778Enabled ? 0 : executionRefund)));
             Assert.That(consumed.BlockStateGas, Is.Zero);
             Assert.That(consumed.GasRefund, Is.EqualTo(executionRefund));
         }
@@ -145,7 +148,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
 
         UInt256 senderBalance = TestState.GetBalance(Sender);
         TestAllTracerWithOutput tracer = CreateTracer();
-        tracer.IsTracingAccess = false;
         TransactionResult result = _processor.Execute(tx, new BlockExecutionContext(block.Header, Spec), tracer);
         TestState.Commit(Spec);
 
@@ -501,8 +503,6 @@ public class Eip8037GasAccountingTests : VirtualMachineTestsBase
         }
 
         TestAllTracerWithOutput tracer = CreateTracer();
-        // Access tracing would pre-warm every touched account/slot and shift all expected values.
-        tracer.IsTracingAccess = false;
         _processor.Execute(tx, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
 
         using (Assert.EnterMultipleScope())

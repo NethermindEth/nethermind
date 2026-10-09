@@ -69,6 +69,14 @@ namespace Nethermind.TxPool
         public static long PendingTransactionsFrameTxMisplacedExpiryFrame { get; set; }
 
         [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their EIP-8272 recent_root_verify frame is malformed or misplaced.")]
+        public static long PendingTransactionsFrameTxMisplacedRecentRootFrame { get; set; }
+
+        [CounterMetric]
+        [Description("Number of pending blob-carrying EIP-8141 frame transactions received that were ignored because they carry an EIP-8272 recent_root_verify frame and the blob pool is persistent.")]
+        public static long PendingTransactionsFrameTxRecentRootWithPersistentBlobs { get; set; }
+
+        [CounterMetric]
         [Description("Number of pending EIP-8250 transactions received that were ignored because a selected nonce key is not at the declared sequence.")]
         public static long PendingTransactionsKeyedNonceUnmet { get; set; }
 
@@ -83,6 +91,26 @@ namespace Nethermind.TxPool
         [GaugeMetric]
         [Description("Number of entries in the EIP-8141 frame-transaction eviction retry ledger, one per pending frame transaction while `TxPool.FrameTxEvictionRetryBudget` is above its default of `1` and zero otherwise. Entries are opened on pool insert and dropped on pool removal or pool disposal, so a floor above zero with no frame transactions pending is a leak.")]
         public static long FrameTxEvictionRetryLedgerEntries;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their sender held too little width for another pending transaction beyond its baseline.")]
+        public static long PendingTransactionsFrameTxWidthUnmet;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8250 keyed-nonce frame transactions received that were ignored because their nonce-key set intersects another pending frame transaction from the same sender.")]
+        public static long PendingTransactionsKeyedNonceOverlap;
+
+        [CounterMetric]
+        [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster held too little width for another pending transaction beyond its baseline.")]
+        public static long PendingTransactionsFrameTxPaymasterWidthUnmet;
+
+        [GaugeMetric]
+        [Description("Number of EIP-8250 keyed-nonce frame-transaction senders currently holding positive width.")]
+        public static long FrameTxSendersWithWidth;
+
+        [GaugeMetric]
+        [Description("Number of EIP-8141 frame-transaction paymasters currently holding positive width.")]
+        public static long FrameTxPaymastersWithWidth;
 
         [CounterMetric]
         [Description("Number of pending EIP-8141 frame transactions received that were ignored because their non-canonical paymaster already sponsors the maximum number of pending transactions.")]

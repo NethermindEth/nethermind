@@ -130,9 +130,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             contextAwareModule.Context = context;
         }
-        void ReturnRental() => _rpcModuleProvider.Return(method, rpcModule);
         bool returnImmediately = methodName != GetLogsMethodName;
-        Action? returnAction = returnImmediately ? null : ReturnRental;
+        Action? returnAction = returnImmediately ? null : CreateReturnAction(method, rpcModule);
         IResultWrapper? resultWrapper = null;
         try
         {
@@ -163,7 +162,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
             if (returnImmediately && resultWrapper is JsonRpcResponse invocationResponse && invocationResponse.TryGetStreamableResult(out _))
             {
                 returnImmediately = false;
-                returnAction = ReturnRental;
+                returnAction = CreateReturnAction(method, rpcModule);
             }
         }
         catch (Exception ex)
@@ -174,7 +173,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             if (returnImmediately)
             {
-                ReturnRental();
+                _rpcModuleProvider.Return(method, rpcModule);
             }
         }
 
@@ -195,6 +194,10 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
 
         return HandleUnsupportedResultWrapper(request, methodName, returnAction);
     }
+
+    // Kept out of ExecuteAsync so its state machine does not hoist the captured locals into a closure on every call.
+    private Action CreateReturnAction(ResolvedMethodInfo method, IRpcModule rpcModule) =>
+        () => _rpcModuleProvider.Return(method, rpcModule);
 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private JsonRpcResponse HandleMissingResultWrapper(JsonRpcRequest request, string methodName, Action? returnAction)
@@ -875,7 +878,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         {
             return typeInfo is not null
                 ? providedParameter.Deserialize(typeInfo)
-                : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonRpcRequestOptions);
+                : TypeInfoJsonSerializer.Deserialize(providedParameter, paramType, EthereumJsonSerializer.JsonRpcRequestOptions);
         }
 
         return DeserializeTypedParameter(providedParameterUtf8.Span, expectedParameter);
@@ -886,16 +889,13 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
         return typeInfo is not null
             ? JsonSerializer.Deserialize(providedParameterUtf8, typeInfo)
-            : JsonSerializer.Deserialize(providedParameterUtf8, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            : TypeInfoJsonSerializer.Deserialize(providedParameterUtf8, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
-    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter)
-    {
-        JsonTypeInfo? typeInfo = expectedParameter.TypeInfo;
-        return typeInfo is not null
-            ? JsonSerializer.Deserialize(ref reader, typeInfo)
-            : JsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
-    }
+    private static object? DeserializeTypedParameter(ref Utf8JsonReader reader, ExpectedParameter expectedParameter) =>
+        expectedParameter.ValueReader is { } valueReader
+            ? valueReader(ref reader)
+            : TypeInfoJsonSerializer.Deserialize(ref reader, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
 
     private static object? DeserializeReparsedString(string? json, ExpectedParameter expectedParameter)
     {
@@ -907,7 +907,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         JsonTypeInfo? typeInfo = expectedParameter.HasParameterConverter ? expectedParameter.TypeInfo : null;
         return typeInfo is not null
             ? JsonSerializer.Deserialize(json, typeInfo)
-            : JsonSerializer.Deserialize(json, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
+            : TypeInfoJsonSerializer.Deserialize(json, expectedParameter.ParameterType, EthereumJsonSerializer.JsonRpcRequestOptions);
     }
 
     private static object?[] DeserializeParameters(
@@ -1111,6 +1111,8 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         string trimmedMethodName = methodName.Trim();
+        // Stats are keyed by the request's method, so whitespace variants must not mint new keys.
+        rpcRequest.Method = trimmedMethodName;
 
         ModuleResolution result = _rpcModuleProvider.Check(trimmedMethodName, context, out string? module, out ResolvedMethodInfo? method);
         if (result == ModuleResolution.Enabled)
@@ -1119,7 +1121,7 @@ public sealed class JsonRpcService(IRpcModuleProvider rpcModuleProvider, ILogMan
         }
 
         (int? errorType, string errorMessage, bool operatorActionable) = GetErrorResult(trimmedMethodName, context, result, module);
-        return (errorType, errorMessage, methodName, null, operatorActionable);
+        return (errorType, errorMessage, trimmedMethodName, null, operatorActionable);
 
         // OperatorActionable is decided here, at the only place that knows *why* the request failed. A namespace
         // that is disabled for this URL or this endpoint is a fact about the node's configuration, not about the

@@ -603,6 +603,13 @@ jobs:
               'test_invalid_block_blob_count.*inclusion_list'
               'test_invalid_tx_max_fee_per_blob_gas.*inclusion_list'
             )
+          elif [ "$SCOPE" = "frames" ]; then
+            KNOWN_FAILURES+=(
+              # The v0.3.0 release addresses these frames to the fork-installed expiry verifier.
+              # Fixtures filled from ethereum/execution-specs#3729 use the deployed address and pass;
+              # drop this once a release carries it.
+              'test_expiry_verifier_constraints'
+            )
           fi
           if [ "${#KNOWN_FAILURES[@]}" -gt 0 ]; then
             EXCLUSIONS="$(IFS='|'; echo "${KNOWN_FAILURES[*]}")"

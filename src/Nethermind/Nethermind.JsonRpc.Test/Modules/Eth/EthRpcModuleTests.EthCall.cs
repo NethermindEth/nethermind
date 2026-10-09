@@ -26,8 +26,10 @@ using Nethermind.Specs.Test;
 using Nethermind.Int256;
 using Nethermind.Core.Specs;
 using Nethermind.Blockchain;
+using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Newtonsoft.Json.Linq;
 using Nethermind.JsonRpc.Test.Data;
+using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Abi;
 using Nethermind.Core.Messages;
@@ -41,6 +43,30 @@ public partial class EthRpcModuleTests
         + GasCostOf.TxValueCostEip2780
         + (ulong)GasCostOf.NewAccountState;
     private const string FreshRecipientAddress = "0xc278000000000000000000000000000000000000";
+
+    [Test]
+    public async Task EthCall_FrameTransactions_RequireActivation([Values] bool enabled)
+    {
+        IReleaseSpec spec = enabled ? Eip8141Prototype.Instance : Osaka.Instance;
+        using Context ctx = await Context.Create(new TestSpecProvider(spec));
+
+        string response = await ctx.Test.TestEthRpc("eth_call", UnsignedFrameRequest());
+
+        JToken parsed = JToken.Parse(response);
+        if (enabled)
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(parsed["error"], Is.Null, response);
+                Assert.That(parsed["result"]!.Value<string>(), Is.EqualTo("0x"), response);
+            }
+        }
+        else
+        {
+            Assert.That(parsed["error"], Is.Not.Null, response);
+            Assert.That(parsed["error"]!["message"]!.Value<string>(), Does.Contain(TxErrorMessages.InvalidTxType(spec.Name)), response);
+        }
+    }
 
     [Test]
     public async Task Rpc_discards_unobserved_logs(
@@ -1249,6 +1275,64 @@ public partial class EthRpcModuleTests
             serialized);
     }
 
+    private static readonly UInt256 SuggestedPriorityFee = 2_000_000_000;
+
+    [TestCase(true, TestName = "After London")]
+    [TestCase(false, TestName = "Before London")]
+    public async Task Eth_createAccessList_without_fees_stays_unpriced(bool london)
+    {
+        using TestRpcBlockchain test = await BuildWithSuggestedFees(london ? London.Instance : Berlin.Instance);
+
+        string serialized = await test.TestEthRpc("eth_createAccessList", TipFeeRequest("{}"), "latest", TipFeeState("0x0"));
+
+        Assert.That(JToken.Parse(serialized)["result"]?["gasUsed"], Is.Not.Null, $"a sender that cannot afford suggested fees still gets its access list: {serialized}");
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_zero_priority_fee_only_fills_twice_the_base_fee()
+    {
+        using Context ctx = await Context.CreateWithLondonEnabled();
+        UInt256 baseFee = ctx.Test.BlockTree.Head!.BaseFeePerGas;
+        Assume.That(baseFee, Is.Not.EqualTo(UInt256.Zero), "the fee cap is twice a nonzero base fee");
+
+        string serialized = await ctx.Test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxPriorityFeePerGas":"0x0"}"""), "latest", TipFeeState("0x0"));
+
+        UInt256 want = TipFeeGas * (baseFee * 2);
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Does.EndWith($" have 0 want {want}"),
+            $"a zero priority fee still gets a fee cap of twice the base fee of {baseFee}: {serialized}");
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_fee_cap_below_the_suggested_priority_fee_is_rejected()
+    {
+        using TestRpcBlockchain test = await BuildWithSuggestedFees(London.Instance);
+
+        string serialized = await test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxFeePerGas":"0x3b9aca00"}"""), "latest", TipFeeState(OneEtherBalance));
+
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Is.EqualTo("maxFeePerGas (0x3b9aca00) < maxPriorityFeePerGas (0x77359400)"), serialized);
+    }
+
+    [Test]
+    public async Task Eth_createAccessList_fee_cap_above_the_suggested_priority_fee_is_charged()
+    {
+        using TestRpcBlockchain test = await BuildWithSuggestedFees(London.Instance);
+
+        string serialized = await test.TestEthRpc("eth_createAccessList",
+            TipFeeRequest("""{"type":"0x2","maxFeePerGas":"0x2540be400"}"""), "latest", TipFeeState("0x0"));
+
+        UInt256 want = TipFeeGas * (UInt256)10_000_000_000;
+        Assert.That(JToken.Parse(serialized)["error"]?["message"]?.Value<string>(), Does.EndWith($" have 0 want {want}"), serialized);
+    }
+
+    private static async Task<TestRpcBlockchain> BuildWithSuggestedFees(IReleaseSpec spec)
+    {
+        IGasPriceOracle oracle = Substitute.For<IGasPriceOracle>();
+        oracle.GetMaxPriorityGasFeeEstimate().Returns(SuggestedPriorityFee);
+        return await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithGasPriceOracle(oracle).Build(new TestSpecProvider(spec));
+    }
+
     private static object? TipFeeRequest(string feeFields)
     {
         JsonObject request = JsonNode.Parse(feeFields)!.AsObject();
@@ -1355,7 +1439,7 @@ public partial class EthRpcModuleTests
 
         string serialized = await ctx.Test.TestEthRpc("eth_call", transaction);
 
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"Precompile MODEXP failed with error: one or more of base/exponent/modulus length exceeded 1024 bytes\"},\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,\"message\":\"one or more of base/exponent/modulus length exceeded 1024 bytes\"},\"id\":67}"));
     }
 
     [TestCase("""{"input":"0x23e52","gasPrice":"0x1"}""", TestName = "Legacy tx odd-length input")]

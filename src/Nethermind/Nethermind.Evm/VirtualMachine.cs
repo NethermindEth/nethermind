@@ -10,6 +10,7 @@ using System.Threading;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.GasPolicy;
@@ -137,7 +138,7 @@ internal struct ReturnDataScratch
                 _retained = scratch = GC.AllocateUninitializedArray<byte>(size);
             }
 
-            returnData.CopyTo(scratch);
+            Bytes.Copy(returnData, scratch);
             output = scratch;
         }
         else
@@ -268,12 +269,30 @@ public partial class VirtualMachine<TGasPolicy>(
     partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
+    /// <summary>The block context fields opcodes read since the caller last reset it.</summary>
+    internal BlockContextReads BlockContextReads { get; set; }
+
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
     /// Transaction context
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
+
+    /// <summary>Counts EIP-8279 block access list bytes; <see langword="false"/> means out of gas.</summary>
+    /// <remarks>Always succeeds for a transaction that is not metered (system calls, frame transactions).</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
+
+    /// <summary>Meters the address bytes the transaction's first access to <paramref name="address"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalAddress(Address address) => _txExecutionContext.BalDataMeter?.TryMeterAddress(address) ?? true;
+
+    /// <summary>Meters the key bytes the transaction's first access to <paramref name="storageCell"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalStorageKey(in StorageCell storageCell) => _txExecutionContext.BalDataMeter?.TryMeterStorageKey(in storageCell) ?? true;
 
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
@@ -727,7 +746,10 @@ public partial class VirtualMachine<TGasPolicy>(
         if (hasEnoughGas && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost);
+            // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
+            // there fails the deposit.
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
+                && TryMeterBalData((ulong)code.Length);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;
@@ -1430,7 +1452,7 @@ public partial class VirtualMachine<TGasPolicy>(
                 exceptionType: !success ? EvmExceptionType.PrecompileFailure : EvmExceptionType.None
             )
             {
-                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(precompile, output.Error)
+                SubstateError = success || !state.IsTopLevel ? null : GetErrorString(output.Error)
             };
         }
         catch (Exception exception) when (exception is DllNotFoundException or { InnerException: DllNotFoundException })
@@ -1464,9 +1486,9 @@ public partial class VirtualMachine<TGasPolicy>(
         _ => throw new ArgumentOutOfRangeException(nameof(exception)),
     };
 
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    protected static string GetErrorString(IPrecompile precompile, string? error)
-        => $"Precompile {precompile.Name} failed with error: {error}";
+    /// <summary>The error of a call whose precompile rejected its input: the precompile's own reason, as go-ethereum reports it.</summary>
+    protected static string GetErrorString(string? error)
+        => error ?? EvmExceptionType.PrecompileFailure.GetEvmExceptionDescription()!;
 
     /// <summary>
     /// Executes an EVM call by preparing the execution environment, including account balance adjustments,
@@ -1538,6 +1560,11 @@ public partial class VirtualMachine<TGasPolicy>(
         else
         {
             vmState.InitializeStacks(codeSpan, out stack);
+        }
+
+        if (_useCallDestinations)
+        {
+            stack.UseCallDestinations();
         }
 
         // Operate on the frame gas by reference so exceptional halts keep the latest
@@ -1673,7 +1700,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
+        {
             TGasPolicy.ClearExecutionGas(ref gas);
+            BlockContextReads |= BlockContextReads.OutOfGas;
+        }
 
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
@@ -1692,7 +1722,9 @@ public partial class VirtualMachine<TGasPolicy>(
             EvmExceptionType.StackOverflow or
             EvmExceptionType.StackUnderflow or
             EvmExceptionType.InvalidJumpDestination or
-            EvmExceptionType.AccessViolation => new(exceptionType),
+            EvmExceptionType.AccessViolation or
+            EvmExceptionType.ReturnStackOverflow or
+            EvmExceptionType.ReturnStackUnderflow => new(exceptionType),
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }

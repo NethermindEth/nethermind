@@ -285,13 +285,13 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
     private bool DirtyNodesTryGetValue(in TrieStoreDirtyNodesCache.Key key, out TrieNode? node) =>
         GetDirtyNodeShard(key).TryGetValue(key, out node);
 
-    private bool DirtyNodesIsNodeCached(TrieStoreDirtyNodesCache.Key key) =>
+    private bool DirtyNodesIsNodeCached(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).IsNodeCached(key);
 
-    private TrieNode DirtyNodesFromCachedRlpOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
+    private TrieNode DirtyNodesFromCachedRlpOrUnknown(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FromCachedRlpOrUnknown(key);
 
-    private TrieNode DirtyNodesFindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key) =>
+    private TrieNode DirtyNodesFindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key) =>
         GetDirtyNodeShard(key).FindCachedOrUnknown(key);
 
     private TrieNode SaveOrReplaceInDirtyNodesCache(
@@ -539,7 +539,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             : FindCachedOrUnknown(key, isReadOnly);
     }
 
-    private TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
+    private TrieNode FindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key, bool isReadOnly) => isReadOnly ? DirtyNodesFromCachedRlpOrUnknown(key) : DirtyNodesFindCachedOrUnknown(key);
 
     // Used only in tests
     public void Dump()
@@ -1703,7 +1703,7 @@ public sealed class TrieStore : ITrieStore, IPruningTrieStore
             return _trieStore.SaveOrReplaceInDirtyNodesCache(shard, address, ref path, node, blockNumber);
         }
 
-        public TrieNode FindCachedOrUnknown(TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
+        public TrieNode FindCachedOrUnknown(in TrieStoreDirtyNodesCache.Key key, bool isReadOnly)
         {
             int shardIdx = _trieStore.GetNodeShardIdx(key.Path, key.Keccak);
             TrieStoreDirtyNodesCache bufferShard = _dirtyNodesBuffer[shardIdx];

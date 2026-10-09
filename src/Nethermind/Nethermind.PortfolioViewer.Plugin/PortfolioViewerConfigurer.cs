@@ -17,6 +17,7 @@ using Nethermind.Facade.Find;
 using Nethermind.History;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.PortfolioViewer.Plugin;
 
@@ -82,7 +83,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
     ];
 
     private static readonly JsonSerializerOptions JsonOpts =
-        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true };
+        new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase, PropertyNameCaseInsensitive = true, TypeInfoResolver = PortfolioViewerJsonContext.Default };
 
     private static readonly ManifestEmbeddedFileProvider FileProvider =
         new(typeof(PortfolioViewerMiddleware).Assembly, "wwwroot");
@@ -202,7 +203,7 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         List<NodeInfo> payload = [with(nodes.Count)];
         foreach (SiblingNode node in nodes) payload.Add(new NodeInfo(node.Port, node.ChainId));
         context.Response.ContentType = "application/json";
-        await JsonSerializer.SerializeAsync(context.Response.Body, payload, JsonOpts, context.RequestAborted);
+        await TypeInfoJsonSerializer.SerializeAsync(context.Response.Body, payload, JsonOpts, context.RequestAborted);
     }
 
     // Forwards to the local IPFS gateway so the browser renders off-chain NFT art same-origin.
@@ -348,12 +349,12 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
         string address = context.Request.Query["address"].ToString();
         DetectionEntry? entry = string.IsNullOrEmpty(address) ? null : detection.Get(chainId, address);
         context.Response.ContentType = "application/json";
-        await JsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
+        await TypeInfoJsonSerializer.SerializeAsync(context.Response.Body, entry, JsonOpts, context.RequestAborted);
     }
 
     private async Task ServeDetectPostAsync(HttpContext context)
     {
-        DetectPost? post = await JsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);
+        DetectPost? post = await TypeInfoJsonSerializer.DeserializeAsync<DetectPost>(context.Request.Body, JsonOpts, context.RequestAborted);
         if (post is null || !Address.TryParse(post.Address, out Address? account) || account is null)
         {
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
@@ -362,10 +363,10 @@ public sealed class PortfolioViewerMiddleware(RequestDelegate next, IJsonRpcUrlC
 
         scanner.RequestScan(post.ChainId, account);
         context.Response.ContentType = "application/json";
-        await JsonSerializer.SerializeAsync(context.Response.Body, detection.Get(post.ChainId, post.Address), JsonOpts, context.RequestAborted);
+        await TypeInfoJsonSerializer.SerializeAsync(context.Response.Body, detection.Get(post.ChainId, post.Address), JsonOpts, context.RequestAborted);
     }
 
-    private sealed record DetectPost(long ChainId, string Address);
+    internal sealed record DetectPost(long ChainId, string Address);
 
-    private readonly record struct NodeInfo(int Port, string ChainId);
+    internal readonly record struct NodeInfo(int Port, string ChainId);
 }

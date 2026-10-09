@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Config;
@@ -218,10 +217,7 @@ public class BlockAccessListManagerTests
         Assert.That(FrameCacheLength(rented), Is.Zero, "the rented processor's virtual machine was disposed");
     }
 
-    private static int FrameCacheLength(IVirtualMachine machine) =>
-        ((Array)typeof(VirtualMachine<EthereumGasPolicy>)
-            .GetField("FrameCache", BindingFlags.Instance | BindingFlags.NonPublic)!
-            .GetValue(machine)!).Length;
+    private static int FrameCacheLength(IVirtualMachine machine) => ((VirtualMachine<EthereumGasPolicy>)machine).FrameCache.Length;
 
     [Test]
     public void PrepareForProcessing_drops_hint_tracked_for_previous_block()

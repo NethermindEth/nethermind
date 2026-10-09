@@ -22,6 +22,8 @@ namespace Nethermind.Core
         public const ulong SLoadEip150 = 200;
         public const ulong SLoadEip1884 = 800;
         public const ulong JumpDest = 1;
+        public const ulong CallSub = Mid; // eip-7979
+        public const ulong ReturnSub = Low; // eip-7979
         public const ulong SStoreNetMeteredEip1283 = 200;
         public const ulong SStoreNetMeteredEip2200 = 800;
         public const ulong SSet = 20000;

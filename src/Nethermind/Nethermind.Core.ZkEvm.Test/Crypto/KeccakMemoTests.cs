@@ -35,7 +35,7 @@ public class KeccakMemoTests
     [Test]
     public void Memo_preserves_the_32_bit_slot_index([Range(MinLength, MaxLength)] int length)
     {
-        ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        ulong[] memo = (ulong[])typeof(KeccakCache).GetProperty("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
         Random random = new(47);
         byte[] input = new byte[length];
         for (int sample = 0; sample < 64; sample++)
@@ -55,7 +55,15 @@ public class KeccakMemoTests
             KeccakCache.WriteMemo(input, digest);
 
             ValueHash256 actual = MemoryMarshal.Read<ValueHash256>(MemoryMarshal.AsBytes(memo.AsSpan((slot << 4) + 8)));
-            Assert.That(actual, Is.EqualTo(digest), $"sample {sample}");
+            byte[] key = new byte[(length + 7) & ~7];
+            input.CopyTo(key, 0);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(actual, Is.EqualTo(digest), $"sample {sample}");
+                // The generic and constant-length paths read each other's slots, so both must lay the key out alike.
+                Assert.That(MemoryMarshal.AsBytes(memo.AsSpan(slot << 4, key.Length / sizeof(ulong))).ToArray(), Is.EqualTo(key), $"sample {sample} key");
+                Assert.That(memo[(slot << 4) + 12], Is.EqualTo((ulong)length), $"sample {sample} length");
+            }
         }
     }
 
@@ -81,7 +89,7 @@ public class KeccakMemoTests
     {
         byte[] input = Pattern(length, seed: 79);
         ValueHash256 digest = Digest(length);
-        ulong[] memo = (ulong[])typeof(KeccakCache).GetField("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
+        ulong[] memo = (ulong[])typeof(KeccakCache).GetProperty("Memo", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!.GetValue(null)!;
         byte[] before = SHA256.HashData(MemoryMarshal.AsBytes(memo.AsSpan()));
 
         Assert.That(KeccakCache.TryGet(input, out _), Is.False);

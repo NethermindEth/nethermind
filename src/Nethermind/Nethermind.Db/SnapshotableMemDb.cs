@@ -534,7 +534,7 @@ namespace Nethermind.Db
         /// Sorted view iterator for a range of keys.
         /// Uses GetViewBetween for efficient range queries instead of scanning from the beginning.
         /// </summary>
-        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISortedView
+        private sealed class MemDbSortedView(SnapshotableMemDb db, int version, byte[] firstKey, byte[] lastKey) : ISeekableSortedView
         {
             private readonly SnapshotableMemDb _db = db;
             private readonly int _version = version;
@@ -598,13 +598,18 @@ namespace Nethermind.Db
                 }
             }
 
-            public bool MoveNext()
+            public bool MoveNext() => MoveToFirstFrom(_currentKey is not null
+                ? (_currentKey, int.MaxValue, null)
+                : (_firstKey, 0, null));
+
+            public bool SeekTo(ReadOnlySpan<byte> key) => MoveToFirstFrom(key.SequenceCompareTo(_firstKey) < 0
+                ? (_firstKey, 0, null)
+                : (key.ToArray(), 0, null));
+
+            private bool MoveToFirstFrom((byte[], int, byte[]?) lower)
             {
                 lock (_db._versionLock)
                 {
-                    (byte[], int, byte[]?) lower = _currentKey is not null
-                        ? (_currentKey, int.MaxValue, null)
-                        : (_firstKey, 0, null);
                     (byte[] _lastKey, int, byte[]?) upper = (_lastKey, 0, null);
 
                     if (_db._entryComparer.Compare(lower, upper) > 0)

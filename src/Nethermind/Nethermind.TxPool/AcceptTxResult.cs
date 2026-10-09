@@ -174,6 +174,12 @@ namespace Nethermind.TxPool
         /// <summary>An EIP-8141 frame transaction whose expiry verifier frame does not lead its frame list. A propagation bound, not a validity rule.</summary>
         public static readonly AcceptTxResult FrameTxMisplacedExpiryFrame = new(TxPoolErrorMessages.FrameTxMisplacedExpiryFrame);
 
+        /// <summary>An EIP-8141 frame transaction with a malformed, repeated or misplaced EIP-8272 <c>recent_root_verify</c> frame. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxMisplacedRecentRootFrame = new(TxPoolErrorMessages.FrameTxMisplacedRecentRootFrame);
+
+        /// <summary>A blob-carrying EIP-8141 frame transaction with an EIP-8272 <c>recent_root_verify</c> frame, offered to a persistent blob pool that cannot revalidate it. A propagation bound, not a validity rule.</summary>
+        public static readonly AcceptTxResult FrameTxRecentRootWithPersistentBlobs = new(TxPoolErrorMessages.FrameTxRecentRootWithPersistentBlobs);
+
         /// <summary>An EIP-8141 frame transaction whose opaque validation prefix failed in-pool simulation.</summary>
         public static readonly AcceptTxResult FrameSimulationFailed = new(TxPoolErrorMessages.FrameSimulationFailed);
 
@@ -189,6 +195,25 @@ namespace Nethermind.TxPool
         /// a peer sending transactions this node rejects.
         /// </remarks>
         public static readonly AcceptTxResult FrameSimulationDeferred = new(TxPoolErrorMessages.FrameSimulationDeferred);
+
+        /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction beyond its sender's free pending baseline, submitted while
+        /// the sender holds too little MATCHA width to admit another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult WidthUnmet = new(TxPoolErrorMessages.WidthUnmet);
+
+        /// <summary>
+        /// An EIP-8250 keyed-nonce frame transaction whose nonce-key set intersects a pending transaction of
+        /// the same sender. EIP-8250 admits several pending frame transactions per sender only on disjoint key
+        /// sets, so this is a local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult KeyedNonceOverlap = new(TxPoolErrorMessages.KeyedNonceOverlap);
+
+        /// <summary>
+        /// An EIP-8141 frame transaction beyond its non-canonical paymaster's free pending baseline, submitted
+        /// while the paymaster holds too little MATCHA width to sponsor another. A local mempool policy, not a validity rule.
+        /// </summary>
+        public static readonly AcceptTxResult PaymasterWidthUnmet = new(TxPoolErrorMessages.PaymasterWidthUnmet);
 
         /// <summary>
         /// Declares a result distinct from every other declared result.

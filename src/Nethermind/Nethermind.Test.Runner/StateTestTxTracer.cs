@@ -92,6 +92,8 @@ public class StateTestTxTracer(ulong standardIntrinsicGas, long destroyRefund) :
         EvmExceptionType.OutOfGas => "OutOfGas",
         EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
         EvmExceptionType.AccessViolation => "AccessViolation",
+        EvmExceptionType.ReturnStackOverflow => "ReturnStackOverflow",
+        EvmExceptionType.ReturnStackUnderflow => "ReturnStackUnderflow",
         EvmExceptionType.StaticCallViolation => "StaticCallViolation",
         _ => "Error"
     };

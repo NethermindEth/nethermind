@@ -57,6 +57,7 @@ public class PrewarmerScopeProvider(
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
     private readonly bool isPrewarmer = prewarmerState.IsPrewarmer;
+    private readonly CommittedStorageWrites? committedWrites = prewarmerState.CommittedWrites;
     private readonly ILogger logger = logManager.GetClassLogger<PrewarmerScopeProvider>();
 
     public bool HasRoot(BlockHeader? baseBlock) => baseProvider.HasRoot(baseBlock);
@@ -93,7 +94,7 @@ public class PrewarmerScopeProvider(
         {
             try
             {
-                // Opening joins any speculative session, so the check below and the scope's reads see no other writer.
+                // Opening stops any speculative session, so the check below and the scope's reads see no other writer.
                 preBlockCaches.BeginConsumerScope();
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
@@ -114,7 +115,7 @@ public class PrewarmerScopeProvider(
             }
         }
         PreBlockCaches.StorageReadCapture? storageReadCapture = isPrewarmer ? preBlockCaches.CurrentStorageReadCapture : null;
-        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode);
+        return new ScopeWrapper(scope, preBlockCaches, logManager, isPrewarmer, storageReadCapture, metrics, stateRoot, codeCache, prefetchCode, committedWrites);
     }
 
     private sealed class ScopeWrapper(
@@ -126,7 +127,8 @@ public class PrewarmerScopeProvider(
         LocalMetrics metrics,
         Hash256? baseStateRoot,
         ICodeCache? codeCache,
-        bool prefetchCode) : IWorldStateScopeProvider.IScope
+        bool prefetchCode,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IScope
     {
         private readonly IWorldStateScopeProvider.IScope baseScope = baseScope;
         public bool StorageRootsAreAuthoritative => baseScope.StorageRootsAreAuthoritative;
@@ -143,10 +145,16 @@ public class PrewarmerScopeProvider(
         private long _writeBatchTime = 0;
         // Root of the state the next commit starts from: the base block's, then each committed root in turn.
         private Hash256? _committedStateRoot = baseStateRoot;
+        // Set once the block's state came from a BAL, holding its final values for the write-back. The caches still
+        // describe the pre-block state the parallel workers read, so this scope must neither read nor backfill them
+        // until the write-back moves them forward.
+        private ArrayPoolList<AppliedAccount>? _appliedBalAccounts;
         private readonly PrefetchedCodeDb _codeDb = new(baseScope.CodeDb, preBlockCaches);
 
         public void Dispose()
         {
+            _appliedBalAccounts?.Dispose();
+            _appliedBalAccounts = null;
             if (isPrewarmer)
             {
                 ObserveWriteBatchToDispose();
@@ -185,11 +193,12 @@ public class PrewarmerScopeProvider(
         public IWorldStateScopeProvider.IStorageTree CreateStorageTree(Address address)
         {
             IWorldStateScopeProvider.IStorageTree baseTree = baseScope.CreateStorageTree(address);
+            if (_appliedBalAccounts is not null) return baseTree;
             // Asked once per tree: a tree serves one block, and the set only changes in a write-back between blocks.
             bool bypassCache = preBlockCaches.BypassesStorageCache(address);
             return storageReadCapture is not null
                 ? new CapturingStorageTreeWrapper(baseTree, storageReadCapture, storageCache, address, bypassCache)
-                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache);
+                : new StorageTreeWrapper(baseTree, storageCache, address, isPrewarmer, _metrics, bypassCache, committedWrites);
         }
 
         public IWorldStateScopeProvider.IWorldStateWriteBatch StartWriteBatch(int estimatedAccountNum)
@@ -224,16 +233,38 @@ public class PrewarmerScopeProvider(
         // Only the consumer's commits become state, and they are what the caches must reflect for the next block.
         public void WriteBackCommittedState(Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeSnapshot)
         {
-            if (isPrewarmer) return;
+            ArrayPoolList<AppliedAccount>? appliedBalAccounts = _appliedBalAccounts;
+            _appliedBalAccounts = null;
+            bool handedOver = false;
+            try
+            {
+                if (isPrewarmer) return;
 
-            Hash256 stateRoot = baseScope.RootHash;
-            // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
-            // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
-            if (stateRoot == _committedStateRoot) return;
+                Hash256 stateRoot = baseScope.RootHash;
+                // An unchanged root means the block changed nothing, or the scope computes no roots (a trieless one) and its
+                // committed values would be tagged with the pre-block root: either way there is nothing to bring forward.
+                if (stateRoot == _committedStateRoot) return;
 
-            Hash256? baseStateRoot = _committedStateRoot;
-            _committedStateRoot = stateRoot;
-            preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
+                Hash256? baseStateRoot = _committedStateRoot;
+                _committedStateRoot = stateRoot;
+                if (appliedBalAccounts is not null)
+                {
+                    // The world state never saw the BAL's writes, so its snapshot is preceded by the BAL's final values.
+                    Func<IWorldStateScopeProvider.IBlockChangeSnapshot> takeWorldStateSnapshot = takeSnapshot;
+                    takeSnapshot = () =>
+                    {
+                        IWorldStateScopeProvider.IBlockChangeSnapshot worldStateSnapshot = takeWorldStateSnapshot();
+                        handedOver = true;
+                        return new AppliedBalChangeSnapshot(appliedBalAccounts, worldStateSnapshot);
+                    };
+                }
+
+                preBlockCaches.WriteBackInBackground(baseStateRoot, stateRoot, takeSnapshot, _logger);
+            }
+            finally
+            {
+                if (!handedOver) appliedBalAccounts?.Dispose();
+            }
         }
 
         public Hash256 RootHash => baseScope.RootHash;
@@ -253,6 +284,8 @@ public class PrewarmerScopeProvider(
 
         public Account? Get(Address address)
         {
+            if (_appliedBalAccounts is not null) return baseScope.Get(address);
+
             AddressAsKey addressAsKey = address;
             long sw = _measureMetric ? Stopwatch.GetTimestamp() : 0;
             if (preBlockCache.TryGetValue(in addressAsKey, out Account? account))
@@ -312,6 +345,45 @@ public class PrewarmerScopeProvider(
             return baseScope.HintBal(bal, sink);
         }
 
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            ArrayPoolList<AppliedAccount> accounts = new(bal.AccountChanges.Count);
+            try
+            {
+                foreach (ReadOnlyAccountChanges accountChanges in bal.AccountChanges)
+                {
+                    if (!accountChanges.HasStateChanges) continue;
+
+                    // The caches still hold the pre-block state the apply reads, so they spare it the backend reads. An
+                    // account committed before the apply was already hinted with its committed value, which this cannot replace.
+                    AddressAsKey key = accountChanges.Address;
+                    bool cached = preBlockCache.TryGetValue(in key, out Account? preBlockAccount);
+                    if (cached) baseScope.HintGet(accountChanges.Address, preBlockAccount);
+
+                    // Only an account change can remove an account; whether it took storage along is known only when cached.
+                    bool changesAccount = accountChanges.BalanceChanges.Length > 0 || accountChanges.NonceChanges.Length > 0 || accountChanges.CodeChanges.Length > 0;
+                    bool mayRemoveStorage = changesAccount && (!cached || preBlockAccount is { HasStorage: true } || !baseScope.StorageRootsAreAuthoritative);
+                    accounts.Add(new AppliedAccount(accountChanges, mayRemoveStorage));
+                }
+
+                baseScope.ApplyBal(bal);
+
+                // Read here, alongside the transactions, rather than on the commit path.
+                foreach (ref AppliedAccount appliedAccount in accounts.AsSpan())
+                {
+                    appliedAccount.Account = baseScope.Get(appliedAccount.Changes.Address);
+                }
+            }
+            catch
+            {
+                accounts.Dispose();
+                throw;
+            }
+
+            _appliedBalAccounts?.Dispose();
+            _appliedBalAccounts = accounts;
+        }
+
         private sealed class CacheSink(
             PreBlockCaches caches,
             SeqlockCache<AddressAsKey, Account> stateCache,
@@ -351,6 +423,62 @@ public class PrewarmerScopeProvider(
         private Account? GetFromBaseTree(in AddressAsKey address) => baseScope.Get(address);
     }
 
+    /// <summary>An account a BAL changed, with its final value once applied.</summary>
+    private struct AppliedAccount(ReadOnlyAccountChanges changes, bool mayRemoveStorage)
+    {
+        public readonly ReadOnlyAccountChanges Changes = changes;
+        public readonly bool MayRemoveStorage = mayRemoveStorage;
+        public Account? Account;
+    }
+
+    /// <inheritdoc cref="IWorldStateScopeProvider.IBlockChangeSnapshot"/>
+    private sealed class AppliedBalChangeSnapshot(
+        ArrayPoolList<AppliedAccount> accounts,
+        IWorldStateScopeProvider.IBlockChangeSnapshot worldStateChanges) : IWorldStateScopeProvider.IBlockChangeSnapshot
+    {
+        public void WriteTo(IWorldStateScopeProvider.IWorldStateWriteBatch writeBatch)
+        {
+            foreach (AppliedAccount appliedAccount in accounts.AsSpan())
+            {
+                ReadOnlyAccountChanges changes = appliedAccount.Changes;
+                Account? account = appliedAccount.Account;
+                writeBatch.Set(changes.Address, account);
+                if (!writeBatch.AcceptsStorageWrites) continue;
+
+                if (account is null)
+                {
+                    if (!appliedAccount.MayRemoveStorage) continue;
+
+                    using IWorldStateScopeProvider.IStorageWriteBatch clearBatch = writeBatch.CreateStorageWriteBatch(changes.Address, 0);
+                    clearBatch.Clear();
+                    continue;
+                }
+
+                if (changes.StorageChanges.Length == 0) continue;
+
+                using IWorldStateScopeProvider.IStorageWriteBatch storageWriteBatch = writeBatch.CreateStorageWriteBatch(changes.Address, changes.StorageChanges.Length);
+                foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                {
+                    if (slotChanges.Changes.Length > 0) storageWriteBatch.Set(slotChanges.Key, slotChanges.Changes[^1].Value);
+                }
+            }
+
+            worldStateChanges.WriteTo(writeBatch);
+        }
+
+        public void Dispose()
+        {
+            try
+            {
+                accounts.Dispose();
+            }
+            finally
+            {
+                worldStateChanges.Dispose();
+            }
+        }
+    }
+
     /// <summary>Serves code the block's access list read ahead, then reads the rest from the store.</summary>
     private sealed class PrefetchedCodeDb(IWorldStateScopeProvider.ICodeDb codeDb, PreBlockCaches preBlockCaches)
         : IWorldStateScopeProvider.ICodeDb
@@ -374,7 +502,8 @@ public class PrewarmerScopeProvider(
         Address address,
         bool isPrewarmer,
         LocalMetrics metrics,
-        bool bypassCache) : IWorldStateScopeProvider.IStorageTree
+        bool bypassCache,
+        CommittedStorageWrites? committedWrites) : IWorldStateScopeProvider.IStorageTree
     {
         private readonly IWorldStateScopeProvider.IStorageTree baseStorageTree = baseStorageTree;
         private readonly SeqlockCache<StorageCell, UInt256> preBlockCache = preBlockCache;
@@ -417,8 +546,14 @@ public class PrewarmerScopeProvider(
 
         public void HintSet(in UInt256 index, in UInt256 value)
         {
-            if (isPrewarmer) baseStorageTree.HintSet(in index);
-            else baseStorageTree.HintSet(in index, in value);
+            if (isPrewarmer)
+            {
+                baseStorageTree.HintSet(in index);
+                return;
+            }
+
+            committedWrites?.Add(address, in index, in value);
+            baseStorageTree.HintSet(in index, in value);
         }
 
         private void LoadFromTreeStorage(in StorageCell storageCell, out UInt256 value)
@@ -427,6 +562,7 @@ public class PrewarmerScopeProvider(
             // first-in-block touch by PersistentStorageProvider; counting it here again double-counted
             // fully-cold reads. Populator probes are excluded — they miss by design while filling.
             if (!isPrewarmer) _metrics.IncrementPreBlockStorageMisses();
+            else ColdReadWatch.Read();
 
             baseStorageTree.Get(storageCell.Index, out value);
         }
@@ -451,7 +587,7 @@ public class PrewarmerScopeProvider(
 
             storageReadCapture.Record(in storageCell);
             // Nonzero keeps common existence checks and bounded loops progressing to reveal later reads.
-            value = UInt256.One;
+            value = storageReadCapture.Placeholder;
         }
 
         public void HintSet(in UInt256 index) => baseStorageTree.HintSet(in index);

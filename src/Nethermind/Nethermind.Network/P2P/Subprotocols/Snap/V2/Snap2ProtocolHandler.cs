@@ -53,6 +53,7 @@ public class Snap2ProtocolHandler : Snap1ProtocolHandler, ISnapSyncPeer, IStatic
                     HandleInBackground<GetBlockAccessListsMessage, BlockAccessListsMessage>(message, Handle);
                 return true;
             case Snap2MessageCode.BlockAccessLists:
+                _getBlockAccessListsRequests.ThrowIfNotRequested(message.Content);
                 BlockAccessListsMessage blockAccessListsMessage = Deserialize<BlockAccessListsMessage>(message.Content);
                 ReportIn(blockAccessListsMessage, size);
                 Handle(blockAccessListsMessage, size);

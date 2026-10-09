@@ -42,7 +42,7 @@ public class PatriciaTreeBulkSetterTests
         void RecordBudget()
         {
             if (!observing) return;
-            int budget = ParallelUnbalancedWork.WorkerScope.Current?.Concurrency ?? 0;
+            int budget = ParallelUnbalancedWork.WorkerScheduler.Current?.Concurrency ?? 0;
             if (operation != ParallelTrieOperation.UpdateRootHash || budget != 0) observedBudgets.Add(budget);
         }
 
@@ -71,7 +71,7 @@ public class PatriciaTreeBulkSetterTests
         using ParallelUnbalancedWork.WorkerScope outer = concurrency == 0 ? null : ParallelUnbalancedWork.BeginWorkerScope(concurrency);
         observing = true;
         if (operation == ParallelTrieOperation.BulkSet) tree.BulkSet(entries);
-        else if (operation == ParallelTrieOperation.UpdateRootHash) tree.UpdateRootHash();
+        else if (operation == ParallelTrieOperation.UpdateRootHash) tree.UpdateRootHash(canBeParallel: true);
         else
         {
             TreePath path = TreePath.Empty;

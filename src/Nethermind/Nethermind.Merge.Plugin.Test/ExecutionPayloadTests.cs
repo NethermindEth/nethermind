@@ -12,6 +12,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Merge.Plugin.Data;
+using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using NUnit.Framework;
@@ -22,6 +23,20 @@ namespace Nethermind.Merge.Plugin.Test;
 [Parallelizable(ParallelScope.All)]
 public class ExecutionPayloadTests
 {
+    private sealed class BlockConversionProbe : ExecutionPayload
+    {
+        public bool Converted { get; private set; }
+
+        public override Result<Block> TryGetBlock(Nethermind.Int256.UInt256? totalDifficulty = null)
+        {
+            Converted = true;
+            return base.TryGetBlock(totalDifficulty);
+        }
+    }
+
+    /// <summary>Keeps swaps of the registry's <see cref="Transaction"/> decoder from interleaving, whatever NUnit schedules.</summary>
+    private static readonly Lock DecoderSwapLock = new();
+
     private static TxType[] TxTypes() => [TxType.Legacy, TxType.AccessList, TxType.EIP1559, TxType.Blob];
 
     [Test, NonParallelizable]
@@ -32,13 +47,14 @@ public class ExecutionPayloadTests
         byte[] control = EncodeTx(TxType.Legacy);
         if (malformed) encoded[^1] = [.. encoded[^1], 0xDC, 0xAF];
         int factoryCalls = 0;
+        using Lock.Scope _ = DecoderSwapLock.EnterScope();
         IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
         FactoryTrackingDecoder decoder = new(() =>
         {
             Interlocked.Increment(ref factoryCalls);
             return new Transaction();
-        }, [.. encoded, control], original);
-        Rlp.RegisterDecoder(typeof(Transaction), decoder);
+        });
+        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, decoder, original));
         try
         {
             string? error;
@@ -76,8 +92,7 @@ public class ExecutionPayloadTests
         }
     }
 
-    private sealed class FactoryTrackingDecoder(
-        Func<Transaction> factory, byte[][] inputs, IRlpDecoder<Transaction> fallback) : TxDecoder<Transaction>(factory)
+    private sealed class FactoryTrackingDecoder(Func<Transaction> factory) : TxDecoder<Transaction>(factory)
     {
         private int _trackedDecodes;
 
@@ -85,30 +100,42 @@ public class ExecutionPayloadTests
 
         protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
         {
-            // Background work may still decode through the registry; only track this test's buffers.
+            Interlocked.Increment(ref _trackedDecodes);
+            return base.DecodeInternal(ref reader, behaviors);
+        }
+    }
+
+    /// <summary>Decodes the test's own buffers with <paramref name="own"/> and any other buffer with <paramref name="fallback"/>.</summary>
+    /// <remarks>
+    /// Tests register it process-wide. NUnit runs a parameterized method inline on the fixture's parallel worker, so
+    /// <see cref="NonParallelizableAttribute"/> on it does not stop the fixture's other tests from decoding meanwhile
+    /// (nunit/nunit#3371); they, and any background work, must keep getting the decoder that was replaced.
+    /// </remarks>
+    private sealed class InputScopedDecoder(byte[][] inputs, IRlpDecoder<Transaction> own, IRlpDecoder<Transaction> fallback)
+        : TxDecoder<Transaction>
+    {
+        protected override Transaction? DecodeInternal(ref RlpReader reader, RlpBehaviors behaviors = RlpBehaviors.None)
+        {
             foreach (byte[] input in inputs)
             {
-                if (reader.Data.Overlaps(input))
-                {
-                    Interlocked.Increment(ref _trackedDecodes);
-                    return base.DecodeInternal(ref reader, behaviors);
-                }
+                if (reader.Data.Overlaps(input)) return own.Decode(ref reader, behaviors);
             }
             return fallback.Decode(ref reader, behaviors);
         }
     }
 
     [Test]
-    public void Factory_tracking_forwards_unrelated_buffers()
+    public void Input_scoped_decoder_forwards_unrelated_buffers()
     {
         byte[] tracked = EncodeTx(TxType.Legacy);
         byte[] unrelated = tracked.ToArray();
         int factoryCalls = 0;
-        FactoryTrackingDecoder decoder = new(() =>
+        FactoryTrackingDecoder tracking = new(() =>
         {
             factoryCalls++;
             return new Transaction();
-        }, [tracked], new PayloadTestDecoder());
+        });
+        InputScopedDecoder decoder = new([tracked], tracking, new PayloadTestDecoder());
         RlpReader reader = new(unrelated);
 
         Transaction transaction = decoder.DecodeCompleteNotNull(ref reader, RlpBehaviors.SkipTypedWrapping);
@@ -116,7 +143,7 @@ public class ExecutionPayloadTests
         using (Assert.EnterMultipleScope())
         {
             Assert.That(transaction.Nonce, Is.EqualTo(1000), "The fallback decoder must handle the unrelated buffer.");
-            Assert.That(decoder.TrackedDecodes, Is.Zero);
+            Assert.That(tracking.TrackedDecodes, Is.Zero);
             Assert.That(factoryCalls, Is.Zero);
         }
     }
@@ -125,8 +152,9 @@ public class ExecutionPayloadTests
     public void Payload_decoding_uses_registered_decoder([Values(1, 64)] int count)
     {
         byte[][] encoded = EncodeTxs(count);
+        using Lock.Scope _ = DecoderSwapLock.EnterScope();
         IRlpDecoder<Transaction> original = Rlp.GetDecoder<Transaction>()!;
-        Rlp.RegisterDecoder(typeof(Transaction), new PayloadTestDecoder());
+        Rlp.RegisterDecoder(typeof(Transaction), new InputScopedDecoder(encoded, new PayloadTestDecoder(), original));
         try
         {
             Result<Transaction[]> result = new ExecutionPayload { Transactions = encoded }.TryGetTransactions();
@@ -280,53 +308,64 @@ public class ExecutionPayloadTests
         }
     }
 
-    // The early-started root task must be the one TryGetBlock consumes, with an identical root
     [Test]
-    public void TryGetBlock_uses_early_started_tx_root_computation()
+    public void Preparation_reuses_payload_data_with_an_independent_worker_group([Values(1, 64)] int count)
     {
-        byte[][] rlps = EncodeTxs(count: 64);
-
+        byte[][] rlps = EncodeTxs(count);
         ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
-        Result<Block> block = payload.TryGetBlock();
+        using ExecutionPayloadPreparation first = new(payload);
+        Result<Block> block = first.TryGetBlock();
+        using ExecutionPayloadPreparation second = new(payload);
+        Result<Block> resent = second.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            // A single processor computes the root inline instead of starting the task.
-            Assert.That(rootTask, Nethermind.Core.Cpu.RuntimeInformation.IsSingleProcessor ? Is.Null : Is.Not.Null);
             Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+            Assert.That(second.Workers, Is.Not.SameAs(first.Workers));
+            Assert.That(resent.Data!.Header.TxRoot, Is.SameAs(block.Data.Header.TxRoot));
+            Assert.That(payload.TransactionsRoot, Is.SameAs(block.Data.Header.TxRoot));
         }
     }
 
-    // A root task started for one transaction set must never produce the root of a mutated payload
     [Test]
-    public void TryGetBlock_recomputes_tx_root_when_transactions_change_after_early_start()
+    public void Preparation_recomputes_tx_root_when_transactions_change([Values] bool decoded)
     {
         byte[][] originalRlps = EncodeTxs(count: 64);
         byte[][] replacementRlps = EncodeTxs(count: 64, nonceOffset: 1000);
 
         ExecutionPayload payload = new() { Transactions = originalRlps };
-        payload.StartTxRootComputation();
+        using ExecutionPayloadPreparation preparation = new(payload);
+        if (decoded) preparation.TryGetBlock();
         payload.Transactions = replacementRlps;
-        Result<Block> block = payload.TryGetBlock();
+        Assert.That(payload.TransactionsRoot, Is.Null);
+        Result<Block> block = preparation.TryGetBlock();
 
         Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(replacementRlps)));
     }
 
-    // Below the background threshold the root is still computed, just inline
     [Test]
-    public void TryGetBlock_computes_tx_root_inline_below_background_threshold()
+    public void Preparation_does_not_cache_a_root_for_invalid_transactions([Values(1, 64)] int count)
     {
-        byte[][] rlps = EncodeTxs(count: 1);
-
-        ExecutionPayload payload = new() { Transactions = rlps };
-        Task<Hash256>? rootTask = payload.StartTxRootComputation();
-        Result<Block> block = payload.TryGetBlock();
+        byte[][] rlps = EncodeTxs(count);
+        rlps[^1] = [0x01];
+        BlockConversionProbe payload = new() { Transactions = rlps };
+        using (ExecutionPayloadPreparation preparation = new(payload))
+        {
+            Assert.That(preparation.TryGetBlock().IsError, Is.True);
+        }
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(payload.TransactionsRoot, Is.Null);
+            Assert.That(payload.Converted, Is.False, "a decoding failure must return before block conversion retries decoding");
+        }
+        payload.Transactions = EncodeTxs(count, nonceOffset: 1000);
+        using ExecutionPayloadPreparation replacement = new(payload);
+        Result<Block> block = replacement.TryGetBlock();
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(rootTask, Is.Null);
-            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(rlps)));
+            Assert.That(block.IsError, Is.False);
+            Assert.That(block.Data!.Header.TxRoot, Is.EqualTo(TxTrie.CalculateRoot(payload.Transactions)));
         }
     }
 

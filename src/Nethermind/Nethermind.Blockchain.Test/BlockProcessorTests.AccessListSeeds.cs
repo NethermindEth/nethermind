@@ -30,6 +30,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State.OverridableEnv;
@@ -372,33 +373,66 @@ public partial class BlockProcessorTests
     }
 
     [Test]
-    public void ParallelBlockTracer_WhenBothBudgetsAreFullyHeld_StillRentsAnEnvironmentPerPermit()
+    public void ParallelBlockTracer_WhenTheSharedBudgetIsFullyHeld_StillRentsAnEnvironmentPerPermit()
     {
-        // Blocks with and without access lists draw on independent budgets, so traces of both kinds side by side hold
-        // every permit of both at once; each permit holder must still find an environment.
-        using ParallelTraceBudget changesets = new(2);
-        using ParallelTraceBudget accessLists = new(3);
+        using ParallelTraceBudget budget = new(3);
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
-        ParallelTraceBudgets budgets = new(specProvider, changesets, accessLists);
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
         using ParallelBlockTracer parallel = new(() => new StubEnvironment(), NullPrefixStateSeedSource.Instance, budgets, LimboLogs.Instance);
         BlockHeader parent = Build.A.BlockHeader.TestObject;
-        for (int i = 0; i < changesets.Degree; i++) changesets.Wait(CancellationToken.None);
-        for (int i = 0; i < accessLists.Degree; i++) accessLists.Wait(CancellationToken.None);
+        for (int i = 0; i < budget.Degree; i++) budget.Wait(CancellationToken.None);
         List<IDisposable> rented = [];
 
         try
         {
-            Assert.That(() =>
+            using (Assert.EnterMultipleScope())
             {
-                for (int i = 0; i < changesets.Degree + accessLists.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
-            }, Throws.Nothing, "the pool holds one environment for every permit of every budget");
-            Assert.That(budgets.TotalDegree, Is.EqualTo(changesets.Degree + accessLists.Degree), "the pool is sized by the sum, not the larger budget");
+                Assert.That(() =>
+                {
+                    for (int i = 0; i < budget.Degree; i++) rented.Add(parallel.RentEnvironment(parent));
+                }, Throws.Nothing, "the pool holds one environment for every permit of the budget");
+                Assert.That(budgets.Degree, Is.EqualTo(budget.Degree), "the pool is sized by the one budget both kinds of block draw on");
+            }
         }
         finally
         {
             foreach (IDisposable scope in rented) scope.Dispose();
-            for (int i = 0; i < changesets.Degree; i++) changesets.Release();
-            for (int i = 0; i < accessLists.Degree; i++) accessLists.Release();
+            for (int i = 0; i < budget.Degree; i++) budget.Release();
+        }
+    }
+
+    [TestCase(true, 1UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceABlockBeforeAccessListsOnTheSharedBudget")]
+    [TestCase(true, 10UL, true, TestName = "ParallelTraceBudgets_WithChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    [TestCase(false, 1UL, false, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceABlockBeforeAccessListsSequentially")]
+    [TestCase(false, 10UL, true, TestName = "ParallelTraceBudgets_WithoutChangesetSeeds_TraceAnAccessListBlockOnTheSharedBudget")]
+    public void ParallelTraceBudgets_ForEachKindOfBlock_DrawOnTheOneBudget(bool changesetSeeds, ulong number, bool expected)
+    {
+        using ParallelTraceBudget budget = new(2);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds);
+
+        bool parallel = budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(number).TestObject, out ParallelTraceBudget? slots);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(parallel, Is.EqualTo(expected));
+            Assert.That(slots, expected ? Is.SameAs(budget) : Is.Null);
+            Assert.That(budgets.AllowsParallelTracing, Is.True, "the chain carries access list blocks, so a parallel tracer is always useful");
+        }
+    }
+
+    [Test]
+    public void ParallelTraceBudgets_WithASingleWorker_TraceEveryBlockSequentially()
+    {
+        using ParallelTraceBudget budget = new(1);
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Prague.Instance), ((ForkActivation)10, Amsterdam.Instance));
+        ParallelTraceBudgets budgets = new(specProvider, budget, changesetSeeds: true);
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(1).TestObject, out _), Is.False);
+            Assert.That(budgets.TryGetParallel(Build.A.BlockHeader.WithNumber(10).TestObject, out _), Is.False);
+            Assert.That(budgets.AllowsParallelTracing, Is.False);
         }
     }
 
@@ -429,6 +463,62 @@ public partial class BlockProcessorTests
                 .WithMaxFeePerGas(1.GWei).WithMaxPriorityFeePerGas(1)
                 .WithAuthorizationCode(ecdsa.Sign(TestItem.PrivateKeyD, chainId, codeSource, authorityNonce))
                 .SignedAndResolved(ecdsa, TestItem.PrivateKeyC).TestObject;
+    }
+
+    /// <remarks>EIP-8253 bumps the listed nonces at block access index 0, so every trace of the fork block, replayed or
+    /// seeded from its access list, starts from the bumped state.</remarks>
+    [Test]
+    public async Task AccessListSeed_OnTheEip8253ForkBlock_TracesStartFromTheBumpedNonce()
+    {
+        Address target = Eip8253Constants.MainnetAccounts[0];
+        IReleaseSpec eip8253 = new OverridableReleaseSpec(Bogota.Instance) { IsEip8253Enabled = true };
+        TestSpecProvider specProvider = new(Bogota.Instance) { NextForkSpec = eip8253, ForkOnBlockNumber = 2, AllowTestChainOverride = false };
+        using BasicTestBlockchain chain = await CreateAccessListSeedChain(builder => builder
+            .AddSingleton<ISpecProvider>(specProvider)
+            .WithGenesisPostProcessor((_, state) => state.CreateAccount(target, 1.Ether)));
+        await chain.AddBlock();
+        BlockHeader parent = chain.BlockTree.Head!.Header;
+        Block block = Historical(await chain.AddBlock(
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(1).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyB).TestObject,
+            Build.A.Transaction.WithTo(target).WithNonce(0).WithValue(2).WithGasLimit(100_000).SignedAndResolved(TestItem.PrivateKeyC).TestObject));
+        Assert.That(block.Number, Is.EqualTo(specProvider.ForkOnBlockNumber), "precondition: the transactions landed in the fork block");
+        IPrefixStateSeedSource seeds = chain.Container.Resolve<IPrefixStateSeedSource>();
+        ParityTraceTypes types = ParityTraceTypes.Trace | ParityTraceTypes.StateDiff;
+
+        for (int i = 0; i < block.Transactions.Length; i++)
+        {
+            Hash256 hash = block.Transactions[i].Hash!;
+            GethTraceOptions prestate = new() { Tracer = "prestateTracer", TxHash = hash };
+            GethTraceOptions diff = prestate with { TracerConfig = JsonDocument.Parse("{\"diffMode\":true}").RootElement };
+            string replayedPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds: null, new ExecutionCounter()));
+            string seededPrestate = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, prestate), seeds, new ExecutionCounter()));
+            string replayedDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds: null, new ExecutionCounter()));
+            string seededDiff = SerializeGeth(chain, TraceOneThroughTraceEnvironment(chain, parent, block, hash, GethTracer(chain, block, diff), seeds, new ExecutionCounter()));
+            string replayedParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds: null, new ExecutionCounter()), true));
+            string seededParity = chain.JsonSerializer.Serialize(new ParityTxTraceFromReplay(
+                TraceOneThroughTraceEnvironment(chain, parent, block, hash, _ => new ParityLikeBlockTracer(hash, types), seeds, new ExecutionCounter()), true));
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(PrestateNonce(replayedPrestate, target), Is.EqualTo(1), $"transaction {i} starts after the bump");
+                Assert.That(seededPrestate, Is.EqualTo(replayedPrestate), $"seeded prestate of transaction {i}");
+                Assert.That(seededDiff, Is.EqualTo(replayedDiff), $"seeded prestate diff of transaction {i}");
+                Assert.That(seededParity, Is.EqualTo(replayedParity), $"seeded trace and state diff of transaction {i}");
+            }
+        }
+
+        static ulong? PrestateNonce(string json, Address address)
+        {
+            using JsonDocument document = JsonDocument.Parse(json);
+            foreach (JsonProperty account in document.RootElement[0].GetProperty("result").EnumerateObject())
+            {
+                if (new Address(account.Name) == address)
+                    return account.Value.TryGetProperty("nonce", out JsonElement nonce) ? nonce.GetUInt64() : 0;
+            }
+
+            return null;
+        }
     }
 
     private static Task<BasicTestBlockchain> CreateAccessListSeedChain(Action<ContainerBuilder>? configure = null) =>

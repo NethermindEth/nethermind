@@ -34,7 +34,7 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
 
     public async ValueTask WriteToAsync(PipeWriter writer, CancellationToken cancellationToken)
     {
-        using Utf8JsonWriter jsonWriter = new(writer, new JsonWriterOptions { SkipValidation = true });
+        using Utf8JsonWriter jsonWriter = new(writer, StreamingResultBase.WriterOptions);
 
         jsonWriter.WriteStartArray();
         jsonWriter.Flush();
@@ -45,9 +45,9 @@ public sealed class GethLikeTxTraceStreamingResult(IReadOnlyCollection<GethLikeT
             {
                 jsonWriter.WriteStartObject();
                 jsonWriter.WritePropertyName("result"u8);
-                JsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
+                TypeInfoJsonSerializer.Serialize(jsonWriter, trace, EthereumJsonSerializer.JsonOptions);
                 jsonWriter.WritePropertyName("txHash"u8);
-                JsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
+                TypeInfoJsonSerializer.Serialize(jsonWriter, trace.TxHash, EthereumJsonSerializer.JsonOptions);
                 jsonWriter.WriteEndObject();
                 jsonWriter.Flush();
 
@@ -71,6 +71,6 @@ public class GethLikeTxTraceStreamingResultConverter : JsonConverter<GethLikeTxT
     public override void Write(Utf8JsonWriter writer, GethLikeTxTraceStreamingResult? value, JsonSerializerOptions options)
     {
         if (value is null) { writer.WriteNullValue(); return; }
-        JsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
+        TypeInfoJsonSerializer.Serialize(writer, new GethLikeTxTraceCollection(value), options);
     }
 }

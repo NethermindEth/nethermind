@@ -21,6 +21,7 @@ using Nethermind.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
 using Nethermind.Blockchain.Tracing.GethStyle;
+using Nethermind.Blockchain.Tracing.GethStyle.Custom;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Call;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.FourByte;
 using Nethermind.Blockchain.Tracing.GethStyle.Custom.Native.Noop;
@@ -29,6 +30,7 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.JsonRpc.Modules.DebugModule;
+using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -174,6 +176,30 @@ public partial class DebugRpcModuleTests
         string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlock", Rlp.Encode(supplied).ToString(), options);
 
         Assert.That((string)JToken.Parse(response)["result"]!.Single()["result"]!["logs"]![0]!["index"]!, Is.EqualTo("0x0"), response);
+    }
+
+    [Test]
+    public async Task Debug_traceBlock_opcode_logger_limit_resets_per_transaction([Values] bool streamMode)
+    {
+        using Context context = await Context.Create();
+        await context.Blockchain.AddBlock(CreateTraceBlockTransactions(context.Blockchain));
+        string unlimited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode });
+        string limited = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceBlockByNumber",
+            "latest", new { streamMode, limit = 1 });
+
+        JToken expected = JToken.Parse(unlimited);
+        JArray transactions = (JArray)expected["result"]!;
+        Assert.That(transactions, Has.Count.EqualTo(2));
+        foreach (JToken transaction in transactions)
+        {
+            JArray entries = (JArray)transaction["result"]!["structLogs"]!;
+            Assert.That(entries.Count, Is.GreaterThan(1));
+            while (entries.Count > 1)
+                entries.RemoveAt(entries.Count - 1);
+        }
+
+        Assert.That(JToken.DeepEquals(JToken.Parse(limited), expected), Is.True, limited);
     }
 
     [Test]
@@ -558,6 +584,44 @@ public partial class DebugRpcModuleTests
 
         using GethLikeTxTraceStreamingResult result = new(traces);
 
+        string streamedJson = await StreamToStringAsync(result);
+
+        string stjJson = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
+
+        Assert.That(JsonElement.DeepEquals(
+            JsonDocument.Parse(streamedJson).RootElement,
+            JsonDocument.Parse(stjJson).RootElement),
+            $"Streamed JSON differs from serializer output for {traceCount} traces");
+    }
+
+    [Test]
+    public async Task Streamed_call_trace_nested_to_max_call_depth_serializes([Values] bool blockResult)
+    {
+        using NativeCallTracerCallFrame root = new() { Type = Instruction.CALL, Error = "a<b" };
+        NativeCallTracerCallFrame current = root;
+        for (int depth = 1; depth < VirtualMachineStatics.MaxCallDepth; depth++)
+        {
+            NativeCallTracerCallFrame child = new() { Type = Instruction.CALL };
+            current.Calls.Add(child);
+            current = child;
+        }
+
+        GethLikeTxTrace trace = new() { TxHash = TestItem.KeccakA, CustomTracerResult = new GethLikeCustomTrace { Value = root } };
+        using IDisposable result = blockResult
+            ? new GethLikeTxTraceStreamingBlockResult(
+                (writer, _, _) => JsonSerializer.Serialize(writer, trace, EthereumJsonSerializer.JsonOptions),
+                new CancellationTokenSource(),
+                LimboLogs.Instance.GetClassLogger<DebugRpcModuleTests>())
+            : new GethLikeTxTraceStreamingResult([trace]);
+
+        string streamedJson = await StreamToStringAsync((IStreamableResult)result);
+
+        using JsonDocument document = JsonDocument.Parse(streamedJson, new JsonDocumentOptions { MaxDepth = EthereumJsonSerializer.DefaultMaxDepth });
+        Assert.That(streamedJson, Does.Contain("\"error\":\"a<b\""), "string values must use the serializer's encoder");
+    }
+
+    private static async Task<string> StreamToStringAsync(IStreamableResult result)
+    {
         // remove buffer limit hits from the equation by using an unbounded Pipe
         Pipe pipe = new(new PipeOptions(pauseWriterThreshold: 0));
         await result.WriteToAsync(pipe.Writer, CancellationToken.None);
@@ -566,13 +630,7 @@ public partial class DebugRpcModuleTests
         ReadResult readResult = await pipe.Reader.ReadAsync();
         string streamedJson = Encoding.UTF8.GetString(readResult.Buffer);
         pipe.Reader.AdvanceTo(readResult.Buffer.End);
-
-        string stjJson = JsonSerializer.Serialize(result, EthereumJsonSerializer.JsonOptions);
-
-        Assert.That(JsonElement.DeepEquals(
-            JsonDocument.Parse(streamedJson).RootElement,
-            JsonDocument.Parse(stjJson).RootElement),
-            $"Streamed JSON differs from serializer output for {traceCount} traces");
+        return streamedJson;
     }
 
     [Test]

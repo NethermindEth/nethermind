@@ -215,7 +215,7 @@ public sealed class FlatStorageTree(
 
     private void WarmUpSlot(UInt256 index)
     {
-        if (_bundle.ShouldQueuePrewarm(_address, index))
+        if (_scope.WarmsTries && _bundle.ShouldQueuePrewarm(_address, index))
         {
             // ShouldQueuePrewarm already marked the slot in the dedupe bloom, so a rejected push loses the hint for good.
             _scope.IncrementOutstandingWarmups();

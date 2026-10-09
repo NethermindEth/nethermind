@@ -57,6 +57,8 @@ namespace Nethermind.TxPool
             _currentBlockCache.Delete(in valueHash);
         }
 
+        public void DeleteFromCurrentBlock(in ValueHash256 hash) => _currentBlockCache.Delete(in hash);
+
         public void Delete(Hash256 hash)
         {
             ref readonly ValueHash256 valueHash = ref hash.ValueHash256;

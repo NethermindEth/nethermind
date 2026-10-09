@@ -421,6 +421,12 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
 
     public override void ClearStorage(Address address) { }
 
+    public override bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+    {
+        value = default;
+        return false;
+    }
+
     // BAL-backed mutations do not own MPT changes; CommitTree still delegates to commit the parent tree.
     public override void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitRoots = true) { }
 
@@ -433,17 +439,7 @@ public class BlockAccessListBasedWorldState(IWorldState state, ILogManager logMa
     public override ArrayPoolList<AddressAsKey> GetAccountChanges()
     {
         CheckInitialized();
-
-        ReadOnlySpan<ReadOnlyAccountChanges> accounts = _suggestedBlockAccessList.AccountChanges.AsSpan();
-        ArrayPoolList<AddressAsKey> result = [with(accounts.Length)];
-        foreach (ReadOnlyAccountChanges accountChanges in accounts)
-        {
-            if (accountChanges.HasStateChanges)
-            {
-                result.Add(new AddressAsKey(accountChanges.Address));
-            }
-        }
-        return result;
+        return _suggestedBlockAccessList.GetStateChangedAddresses();
     }
 
     public override void GetTransientState(in StorageCell storageCell, out UInt256 value)

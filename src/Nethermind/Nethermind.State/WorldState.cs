@@ -29,7 +29,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.State
 {
-    public sealed class WorldState : IWorldState
+    public sealed partial class WorldState : IWorldState
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
@@ -133,6 +133,12 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             _persistentStorageProvider.GetPureRead(in cell, out value);
+        }
+
+        public bool TryGetStorageBeforeClear(in StorageCell storageCell, out UInt256 value)
+        {
+            DebugGuardInScope();
+            return _persistentStorageProvider.TryGetBeforeClear(in storageCell, out value);
         }
 
         /// <summary>Reads a parent-state account without recording a journal entry.</summary>
@@ -369,6 +375,18 @@ namespace Nethermind.State
             return _currentScope.HintBal(bal);
         }
 
+        /// <inheritdoc/>
+        public void ApplyBal(ReadOnlyBlockAccessList bal)
+        {
+            GuardInScope();
+            // The block's change record still feeds the cache write-back with what the BAL did not cover (AuRa's
+            // contract rewrites and system accounts); only the BAL's own accounts leave it, now that the scope holds them.
+            _stateProvider.ForgetBlockChanges(bal, _currentScope);
+            _currentScope.ApplyBal(bal);
+            Reset(resetBlockChanges: false);
+            _persistentStorageProvider.ForgetBlockChanges(bal);
+        }
+
         public ref readonly UInt256 GetBalance(Address address)
         {
             DebugGuardInScope();
@@ -386,12 +404,6 @@ namespace Nethermind.State
         {
             DebugGuardInScope();
             return _stateProvider.GetCode(address);
-        }
-
-        public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
-        {
-            DebugGuardInScope();
-            return _stateProvider.GetCode(in codeHash);
         }
 
         public ref readonly ValueHash256 GetCodeHash(Address address)

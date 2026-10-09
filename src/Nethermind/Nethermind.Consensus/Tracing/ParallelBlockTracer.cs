@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Tracing;
 /// blocked work too slowly for a block to ever see the whole degree. There are twice as many threads as the degree
 /// and the degree is enforced per transaction by a semaphore, so two blocks traced at once interleave transaction by
 /// transaction instead of the second waiting for the whole of the first. The calling thread is one of the workers.
-/// Each block draws on the budget of the seed it stands on, so the setting for that kind of seed bounds its workers.</remarks>
+/// Every block draws on the one node-wide budget, whichever seed it stands on, so the setting bounds all its workers.</remarks>
 public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 {
     private readonly ShareableOverridableEnvSource<Components> _environments;
@@ -55,7 +55,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
     /// <summary>Owns the supplied environments, but borrows the budgets. Dispose the tracer before the budgets.</summary>
     public ParallelBlockTracer(Func<IOverridableEnv<Components>> buildEnvironment, IPrefixStateSeedSource seeds, ParallelTraceBudgets budgets, ILogManager logManager)
     {
-        _degree = budgets.TotalDegree;
+        _degree = budgets.Degree;
         _environments = new ShareableOverridableEnvSource<Components>(buildEnvironment, _degree);
         _budgets = budgets;
         _workers = new Workers(2 * _degree);
@@ -201,7 +201,7 @@ public sealed class ParallelBlockTracer : IParallelBlockTracer, IDisposable
 
     internal Task QueueWorker(Action action, CancellationToken token) => _workers.Run(action, token);
 
-    /// <summary>One environment per permit of every budget, so no permit holder finds the pool exhausted.</summary>
+    /// <summary>One environment per permit of the budget, so no permit holder finds the pool exhausted.</summary>
     internal Scope<Components> RentEnvironment(BlockHeader parent) => _environments.BuildAndOverride(parent);
 
     private bool Enter()

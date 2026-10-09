@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Net.Http.Headers;
+using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Builder;
@@ -68,7 +70,7 @@ internal static class EngineBenchmarkHost
                     JsonRpcUrl url = new("http", "localhost", EnginePort, RpcEndpoint.Http, isAuthenticated: true, ["engine"]);
                     services.AddSingleton<IJsonRpcUrlCollection>(new StubUrlCollection(EnginePort, url));
                     services.AddSingleton<IRpcAuthentication>(new StubRpcAuthentication());
-                    services.AddSingleton<ILogManager>(LimboLogs.Instance);
+                    services.AddSingleton<ILogManager>(NullLogManager.Instance);
                     services.AddSingleton<IProcessExitSource>(new StubProcessExitSource());
                     configureServices(services);
                 });
@@ -100,7 +102,7 @@ internal static class EngineBenchmarkHost
         JsonRpcConfig config = new();
         IFileSystem fs = Substitute.For<IFileSystem>();
 
-        RpcModuleProvider modules = new(fs, config, Serializer, LimboLogs.Instance);
+        RpcModuleProvider modules = new(fs, config, Serializer, NullLogManager.Instance);
         modules.Register(new SingletonModulePool<IEngineRpcModule>(engine, allowExclusive: true));
 
         return Build(
@@ -110,8 +112,8 @@ internal static class EngineBenchmarkHost
             app =>
             {
                 GCKeeper gcKeeper = app.ApplicationServices.GetRequiredService<GCKeeper>();
-                JsonRpcService service = new(modules, LimboLogs.Instance, config, gcKeeper);
-                JsonRpcProcessor processor = new(service, config, fs, LimboLogs.Instance);
+                JsonRpcService service = new(modules, NullLogManager.Instance, config, gcKeeper);
+                JsonRpcProcessor processor = new(service, config, fs, NullLogManager.Instance);
                 app.Use(async (ctx, next) =>
                 {
                     if (ctx.Request.Method != "POST" ||
@@ -136,16 +138,56 @@ internal static class EngineBenchmarkHost
                         return;
                     }
 
-                    using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
-                    BenchmarkJsonRpcResponseSink sink = new(ctx);
-                    await processor.ProcessAsync(
-                        ctx.Request.BodyReader,
-                        rpcContext,
-                        sink,
-                        new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
-                        ctx.RequestAborted);
+                    // Like the runner's HTTP endpoint, collect the body first and hand the processor the complete buffer.
+                    int length = checked((int)ctx.Request.ContentLength!.Value);
+                    byte[] body = ArrayPool<byte>.Shared.Rent(length);
+                    try
+                    {
+                        await ctx.Request.Body.ReadExactlyAsync(body.AsMemory(0, length), ctx.RequestAborted);
+                        using JsonRpcContext rpcContext = JsonRpcContext.Http(url);
+                        BenchmarkJsonRpcResponseSink sink = new(ctx);
+                        await processor.ProcessAsync(
+                            body.AsMemory(0, length),
+                            rpcContext,
+                            sink,
+                            new JsonRpcProcessingOptions(JsonRpcInputMode.SingleDocument),
+                            ctx.RequestAborted);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(body);
+                    }
                 });
             });
+    }
+
+    /// <summary>Creates an engine module whose every method returning <paramref name="result"/>'s type answers it.</summary>
+    /// <remarks>
+    /// Unlike an NSubstitute stub, it records no calls: a recorded call keeps its arguments reachable, so every
+    /// payload would survive and the growing heap would make each GC slower than in production.
+    /// </remarks>
+    /// <param name="result">The value every matching method returns.</param>
+    /// <param name="onCall">Work the real handler would do with the arguments before answering, run on each call.</param>
+    public static IEngineRpcModule CreateEngine(object result, Action<object?[]?>? onCall = null)
+    {
+        IEngineRpcModule engine = DispatchProxy.Create<IEngineRpcModule, FixedResultEngine>();
+        FixedResultEngine proxy = (FixedResultEngine)(object)engine;
+        proxy.Result = result;
+        proxy.OnCall = onCall;
+        return engine;
+    }
+
+    private class FixedResultEngine : DispatchProxy
+    {
+        internal object Result = null!;
+        internal Action<object?[]?>? OnCall;
+
+        protected override object? Invoke(MethodInfo? targetMethod, object?[]? args)
+        {
+            if (!targetMethod!.ReturnType.IsInstanceOfType(Result)) throw new NotSupportedException(targetMethod.Name);
+            OnCall?.Invoke(args);
+            return Result;
+        }
     }
 
     public static Withdrawal[] BuildWithdrawals(int count)
@@ -211,7 +253,7 @@ internal static class EngineBenchmarkHost
         public async ValueTask WriteSingleAsync(JsonRpcResponse response, RpcReport report, CancellationToken cancellationToken)
         {
             EnsureStarted();
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await JsonRpcResponseWriter.WriteAsync(context.Response.BodyWriter, response, EthereumJsonSerializer.JsonOptions, cancellationToken);
             await context.Response.CompleteAsync();
         }
 
@@ -229,7 +271,7 @@ internal static class EngineBenchmarkHost
             }
 
             _isFirstBatchItem = false;
-            await Serializer.SerializeAsync(context.Response.BodyWriter, response);
+            await JsonRpcResponseWriter.WriteAsync(context.Response.BodyWriter, response, EthereumJsonSerializer.JsonOptions, isBatch: true, cancellationToken);
         }
 
         public async ValueTask EndBatchAsync(CancellationToken cancellationToken)

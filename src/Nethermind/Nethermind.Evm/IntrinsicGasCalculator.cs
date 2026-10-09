@@ -49,9 +49,9 @@ public static class IntrinsicGasCalculator
         return (ulong)totalZeros + (ulong)(data.Length - totalZeros) * spec.GasCosts.TxDataNonZeroMultiplier;
     }
 
-    // 0 when floor pricing is not active.
+    // 0 when floor pricing is not active, or when EIP-8131 replaces it with the content floor.
     internal static ulong CalculateFloorTokensInAccessList(Transaction transaction, IReleaseSpec spec) =>
-        spec.IsEip7981Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
+        spec.IsEip7981Enabled && !spec.IsEip8131Enabled && transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) }
             ? (ulong)(addressesCount * Address.Size + storageKeysCount * AccessList.StorageKeySize) * spec.GasCosts.TxDataNonZeroMultiplier
             : 0;
 
@@ -113,9 +113,51 @@ public static class IntrinsicGasCalculator
         return totalZeros + ((ulong)data.Length - totalZeros) * GasCostOf.TxDataNonZeroMultiplierEip2028;
     }
 
+    /// <summary>
+    /// Counts the user-controlled content bytes of a transaction per EIP-8131.
+    /// </summary>
+    /// <remarks>
+    /// Calldata, access-list entries, EIP-7702 authorizations (at their worst-case RLP size) and blob versioned
+    /// hashes each contribute their size; a field the transaction type does not carry contributes nothing.
+    /// </remarks>
+    internal static ulong CalculateContentBytes(Transaction transaction)
+    {
+        ulong contentBytes = (ulong)transaction.Data.Length;
+
+        if (transaction.AccessList is { Count: (int addressesCount, int storageKeysCount) })
+        {
+            contentBytes += (ulong)addressesCount * Address.Size + (ulong)storageKeysCount * AccessList.StorageKeySize;
+        }
+
+        if (transaction.AuthorizationList is { Length: int authorizationsCount })
+        {
+            contentBytes += (ulong)authorizationsCount * Eip8131Constants.AuthorizationTupleBytes;
+        }
+
+        if (transaction.BlobVersionedHashes is { Length: int blobHashesCount })
+        {
+            contentBytes += (ulong)blobHashesCount * Eip4844Constants.BytesPerBlobVersionedHash;
+        }
+
+        return contentBytes;
+    }
+
+    /// <summary>
+    /// Counts the block access list bytes a transaction's authorizations can contribute, per EIP-8279.
+    /// </summary>
+    /// <remarks>
+    /// Priced up front at the worst case (authority address, delegation designator and nonce) so that applying the
+    /// authorizations, which runs outside the EVM's out-of-gas handling, never meters at runtime.
+    /// </remarks>
+    internal static ulong CalculateAuthorizationBalBytes(Transaction transaction, IReleaseSpec spec) =>
+        spec.IsEip8279Enabled && transaction.AuthorizationList is { Length: int authorizationsCount }
+            ? (ulong)authorizationsCount * Eip8279Constants.AuthorizationBytes
+            : 0;
+
     internal static ulong CalculateFloorCost(Transaction transaction, IReleaseSpec spec, ulong floorBase, ulong tokensInCallData, ulong floorTokensInAccessList) =>
         spec switch
         {
+            { IsEip8131Enabled: true } => floorBase + (CalculateContentBytes(transaction) + CalculateAuthorizationBalBytes(transaction, spec)) * Eip8131Constants.FloorGasPerByte,
             { IsEip7976Enabled: true } => floorBase + (CalculateFloorTokensInCallData(transaction, spec) + floorTokensInAccessList) * spec.GasCosts.TotalCostFloorPerToken,
             { IsEip7623Enabled: true } => floorBase + CalculateEip7623FloorTokensInCallData(transaction, spec, tokensInCallData) * spec.GasCosts.TotalCostFloorPerToken,
             _ => 0

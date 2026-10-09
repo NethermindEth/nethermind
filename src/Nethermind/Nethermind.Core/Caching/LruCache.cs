@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Threading;
 
@@ -12,10 +13,11 @@ namespace Nethermind.Core.Caching
     public class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly Dictionary<TKey, int> _cacheMap;
         private readonly McsLock _lock = new();
         private readonly string _name;
-        private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
+        private readonly LruSlots<LruCacheItem> _slots;
+        private readonly bool _notifyEviction;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
@@ -23,6 +25,9 @@ namespace Nethermind.Core.Caching
 
             _name = name;
             _maxCapacity = maxCapacity;
+            _slots = new(maxCapacity, Math.Min(startCapacity, maxCapacity));
+            // Subclasses may override Evict; retain their notifications outside the lock.
+            _notifyEviction = GetType() != typeof(LruCache<TKey, TValue>);
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? [with((IEqualityComparer<TKey>)Bytes.EqualityComparer)]
                 : [with(startCapacity)]; // do not initialize it at the full capacity
@@ -38,17 +43,17 @@ namespace Nethermind.Core.Caching
             TValue[]? evictedValues = null;
             using (McsLock.Disposable lockRelease = _lock.Acquire())
             {
-                if (_cacheMap.Count != 0)
+                if (_notifyEviction && _cacheMap.Count != 0)
                 {
                     int i = 0;
                     evictedValues = new TValue[_cacheMap.Count];
-                    foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+                    foreach (KeyValuePair<TKey, int> kvp in _cacheMap)
                     {
-                        evictedValues[i++] = kvp.Value.Value.Value;
+                        evictedValues[i++] = _slots.Value(kvp.Value).Value;
                     }
                 }
 
-                _leastRecentlyUsed = null;
+                _slots.Clear();
                 _cacheMap.Clear();
             }
 
@@ -59,10 +64,10 @@ namespace Nethermind.Core.Caching
         {
             using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                TValue value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                TValue value = _slots.Value(node).Value;
+                _slots.MoveToMostRecent(node);
                 return value;
             }
 
@@ -73,10 +78,10 @@ namespace Nethermind.Core.Caching
         {
             using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                value = node.Value.Value;
-                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                value = _slots.Value(node).Value;
+                _slots.MoveToMostRecent(node);
                 return true;
             }
 
@@ -101,10 +106,10 @@ namespace Nethermind.Core.Caching
             TValue result;
             using (McsLock.Disposable lockRelease = _lock.Acquire())
             {
-                if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+                if (_cacheMap.TryGetValue(key, out int node))
                 {
-                    TValue value = node.Value.Value;
-                    LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                    TValue value = _slots.Value(node).Value;
+                    _slots.MoveToMostRecent(node);
                     return value;
                 }
 
@@ -121,8 +126,7 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    LinkedListNode<LruCacheItem> newNode = new(new(key, newValue));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    int newNode = _slots.AddMostRecent(new(key, newValue));
                     _cacheMap.Add(key, newNode);
                 }
 
@@ -149,12 +153,12 @@ namespace Nethermind.Core.Caching
                     added = DeleteNoLock(key, out evictedValue);
                     notifyEviction = added;
                 }
-                else if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+                else if (_cacheMap.TryGetValue(key, out int node))
                 {
-                    evictedValue = node.Value.Value;
+                    evictedValue = _slots.Value(node).Value;
                     notifyEviction = true;
-                    node.Value.Value = val;
-                    LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                    _slots.Value(node).Value = val;
+                    _slots.MoveToMostRecent(node);
                     added = false;
                 }
                 else if (_cacheMap.Count >= _maxCapacity)
@@ -165,8 +169,7 @@ namespace Nethermind.Core.Caching
                 }
                 else
                 {
-                    LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    int newNode = _slots.AddMostRecent(new(key, val));
                     _cacheMap.Add(key, newNode);
                     added = true;
                 }
@@ -204,9 +207,9 @@ namespace Nethermind.Core.Caching
         {
             using McsLock.Disposable lockRelease = _lock.Acquire();
 
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                value = node.Value.Value;
+                value = _slots.Value(node).Value;
                 RemoveNoLock(key, node);
                 return true;
             }
@@ -217,9 +220,9 @@ namespace Nethermind.Core.Caching
 
         private bool DeleteNoLock(TKey key, out TValue evictedValue)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
+            if (_cacheMap.TryGetValue(key, out int node))
             {
-                evictedValue = node.Value.Value;
+                evictedValue = _slots.Value(node).Value;
                 RemoveNoLock(key, node);
                 return true;
             }
@@ -228,9 +231,9 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        private void RemoveNoLock(TKey key, LinkedListNode<LruCacheItem> node)
+        private void RemoveNoLock(TKey key, int node)
         {
-            LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+            _slots.Remove(node);
             _cacheMap.Remove(key);
         }
 
@@ -247,9 +250,9 @@ namespace Nethermind.Core.Caching
 
             int i = 0;
             KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
-            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            foreach (KeyValuePair<TKey, int> kvp in _cacheMap)
             {
-                array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
+                array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, _slots.Value(kvp.Value).Value);
             }
 
             return array;
@@ -261,9 +264,9 @@ namespace Nethermind.Core.Caching
 
             int i = 0;
             TValue[] array = new TValue[_cacheMap.Count];
-            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            foreach (KeyValuePair<TKey, int> kvp in _cacheMap)
             {
-                array[i++] = kvp.Value.Value.Value;
+                array[i++] = _slots.Value(kvp.Value).Value;
             }
 
             return array;
@@ -277,17 +280,17 @@ namespace Nethermind.Core.Caching
 
         private TValue Replace(TKey key, TValue value)
         {
-            LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
-            if (node is null)
+            int node = _slots.LeastRecentlyUsed;
+            if (node < 0)
             {
                 ThrowInvalidOperationException();
             }
 
-            TValue evictedValue = node!.Value.Value;
-            _cacheMap.Remove(node.Value.Key);
+            TValue evictedValue = _slots.Value(node).Value;
+            _cacheMap.Remove(_slots.Value(node).Key);
 
-            node.Value = new(key, value);
-            LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+            _slots.Value(node) = new(key, value);
+            _slots.MoveToMostRecent(node);
             _cacheMap.Add(key, node);
             return evictedValue;
 
@@ -323,14 +326,16 @@ namespace Nethermind.Core.Caching
             public TValue Value = v;
         }
 
-        public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
+        public long MemorySize => CalculateMemorySize(0, _slots.Capacity);
 
         public static long CalculateMemorySize(int keyPlusValueSize, int currentItemsCount)
         {
             // it may actually be different if the initial capacity not equal to max (depending on the dictionary growth path)
 
-            const int preInit = 48 /* LinkedList */ + 80 /* Dictionary */ + 24;
-            int postInit = 52 /* lazy init of two internal dictionary arrays + dictionary size times (entry size + int) */ + MemorySizes.FindNextPrime(currentItemsCount) * 28 + currentItemsCount * 80 /* LinkedListNode and CacheItem times items count */;
+            const int preInit = 48 /* Slots */ + 80 /* Dictionary */ + 64;
+            long postInit = 72 /* Three array headers */
+                + (long)MemorySizes.FindNextPrime(currentItemsCount) * (sizeof(int) + MemorySizes.Align(12 + Unsafe.SizeOf<TKey>()))
+                + (long)currentItemsCount * LruSlots<LruCacheItem>.EntrySize;
             return MemorySizes.Align(preInit + postInit + keyPlusValueSize * currentItemsCount);
         }
     }

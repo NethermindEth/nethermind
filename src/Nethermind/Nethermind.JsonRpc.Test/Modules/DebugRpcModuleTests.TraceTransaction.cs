@@ -28,6 +28,19 @@ namespace Nethermind.JsonRpc.Test.Modules;
 
 public partial class DebugRpcModuleTests
 {
+    [TestCase(null)]
+    [TestCase("missingTracer")]
+    public async Task Debug_traceTransaction_unknown_hash_returns_geth_error_before_tracer_validation(string? tracer)
+    {
+        using Context context = await Context.Create();
+        string response = await RpcTest.TestSerializedRequest(context.DebugRpcModule, "debug_traceTransaction",
+            TestItem.KeccakA, new GethTraceOptions { Tracer = tracer! });
+
+        Assert.That(JToken.Parse(response), Is.EqualTo(JToken.Parse(
+            """{"jsonrpc":"2.0","error":{"code":-32000,"message":"transaction not found"},"id":67}"""))
+            .Using(JToken.EqualityComparer));
+    }
+
     [TestCaseSource(nameof(TraceTransactionTransferSource))]
     [TestCaseSource(nameof(TraceTransactionContractSource))]
     public async Task Debug_traceTransaction(Func<TestRpcBlockchain, Transaction> factory, GethTraceOptions options, string expected)
