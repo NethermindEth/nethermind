@@ -471,17 +471,23 @@ public class PbtWorldStateScopeTests
         Assert.That(PbtWorldStateScope.NodeGroupPrefetchPaths(bal), Is.EquivalentTo(expected));
     }
 
+    public enum PrefetchSkip { EmptyBal, SnapshotBacked, ReadByFold }
+
     [Test]
-    public void NodeGroupPrefetch_skips_empty_or_fully_snapshot_backed_lists([Values] bool snapshotBacked)
+    public void NodeGroupPrefetch_skips_empty_snapshot_backed_or_fold_read_lists([Values] PrefetchSkip skip)
     {
         ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
             Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
                 .WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject).TestObject;
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
         using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), reader);
-        if (snapshotBacked)
-            foreach (PbtStorageNodePath path in PbtWorldStateScope.NodeGroupPrefetchPaths(bal)) bundle.SetNodeGroup(path, default, null);
-        else bal = Build.A.BlockAccessList.TestObject;
+        foreach (PbtStorageNodePath path in PbtWorldStateScope.NodeGroupPrefetchPaths(bal))
+        {
+            if (skip == PrefetchSkip.SnapshotBacked) bundle.SetNodeGroup(path, default, null);
+            if (skip == PrefetchSkip.ReadByFold) ((IDisposable?)bundle.GetNodeGroup(path, default))?.Dispose();
+        }
+        if (skip == PrefetchSkip.EmptyBal) bal = Build.A.BlockAccessList.TestObject;
+        reader.ClearReceivedCalls();
 
         PbtWorldStateScope.PrefetchNodeGroups(bundle, bal, CancellationToken.None);
 

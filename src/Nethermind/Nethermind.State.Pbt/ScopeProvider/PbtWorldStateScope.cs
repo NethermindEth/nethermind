@@ -174,6 +174,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     /// <summary>Starts reading the first groups below the top node groups that the fold of <paramref name="bal"/> walks into.</summary>
     /// <remarks>
     /// Each storage leaf then also prefetches the groups below its first storage group, as deep as its estimated remaining group levels.
+    /// A group the fold has already read is skipped.
     /// The bundle keeps the persisted groups read for the fold; <see cref="UpdateRootHash"/> stops the reads before it returns.
     /// </remarks>
     private void StartNodeGroupPrefetch(ReadOnlyBlockAccessList bal)
@@ -200,6 +201,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
             for (int index = 0; index < groups.Length; index++)
             {
                 if (cancellation.IsCancellationRequested) return;
+                if (!bundle.ShouldPrefetchNodeGroup(groups[index])) continue;
                 if (!bundle.TryGetSnapshotNodeGroup(groups[index], out snapshots[index]))
                 {
                     misses.Add(groups[index]);
@@ -233,6 +235,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         foreach (PbtStorageNodePath path in DeeperStorageNodeGroupPaths(bal, groups, descendantBytes))
         {
             if (cancellation.IsCancellationRequested) return;
+            if (!bundle.ShouldPrefetchNodeGroup(path)) continue;
             if (!bundle.TryGetSnapshotNodeGroup(path, out RefCountingMemory? snapshot)) ((IDisposable?)bundle.GetPersistedNodeGroup(path))?.Dispose();
             ((IDisposable?)snapshot)?.Dispose();
         }

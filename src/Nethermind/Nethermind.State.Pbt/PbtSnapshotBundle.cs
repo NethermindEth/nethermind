@@ -111,6 +111,7 @@ public sealed class PbtSnapshotBundle(
 
     internal RefCountingMemory? GetNodeGroup(PbtStorageNodePath groupKey, in ValueHash256 groupHash)
     {
+        _transientResource.TryClaimNodeGroupRead(groupKey);
         if (WriteBuffer.TryGetNodeGroup(groupKey, out RefCountingMemory? payload)) return payload;
         for (int index = snapshots.Count - 1; index >= 0; index--)
             if (snapshots[index].Content.TryGetNodeGroup(groupKey, out payload)) return payload;
@@ -122,6 +123,9 @@ public sealed class PbtSnapshotBundle(
         }
         return readOnlyBundle.GetNodeGroup(groupKey);
     }
+
+    /// <summary>Whether the node group prefetch should read <paramref name="groupKey"/>: neither the fold nor the prefetch has read it for the block in the write buffer.</summary>
+    internal bool ShouldPrefetchNodeGroup(PbtStorageNodePath groupKey) => _transientResource.TryClaimNodeGroupRead(groupKey);
 
     /// <summary>Returns a caller-owned group lease or a null tombstone from the visible snapshot layers; false means no snapshot has an entry.</summary>
     internal bool TryGetSnapshotNodeGroup(PbtStorageNodePath groupKey, out RefCountingMemory? payload)

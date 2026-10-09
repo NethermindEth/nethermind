@@ -230,6 +230,38 @@ public class PbtResourcePoolTests
         }
     }
 
+    [Test]
+    public void CachedResource_forgets_read_node_groups_and_grows_an_outgrown_filter([Values] bool outgrow)
+    {
+        PbtResourcePool.Usage usage = PbtResourcePool.Usage.MainBlockProcessing;
+        PbtStorageNodePath path = new(Bytes.FromHexString("01"), 8);
+        PbtTransientResource resource = _pool.GetCachedResource(usage);
+        long capacity = resource.ReadNodeGroups.Capacity;
+        bool firstClaim = resource.TryClaimNodeGroupRead(path);
+        bool secondClaim = resource.TryClaimNodeGroupRead(path);
+        if (outgrow)
+            for (int index = 0; index < 2 * capacity; index++) resource.TryClaimNodeGroupRead(new PbtStorageNodePath(BitConverter.GetBytes(index), 32));
+        resource.ReleaseLease();
+
+        PbtTransientResource reused = _pool.GetCachedResource(usage);
+        try
+        {
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(reused, Is.SameAs(resource));
+                Assert.That(firstClaim, Is.True);
+                Assert.That(secondClaim, Is.False);
+                Assert.That(reused.TryClaimNodeGroupRead(path), Is.True);
+                Assert.That(reused.ReadNodeGroups.Capacity, outgrow ? Is.GreaterThan(capacity) : Is.EqualTo(capacity));
+            }
+        }
+        finally
+        {
+            reused.ReleaseLease();
+        }
+        DrainCachedResources(usage, 1);
+    }
+
     private void DrainCachedResources(PbtResourcePool.Usage usage, int count)
     {
         // The production pool retains resources for the node lifetime; this fixture owns that lifetime.
