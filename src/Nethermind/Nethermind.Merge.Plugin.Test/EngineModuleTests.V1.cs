@@ -3109,6 +3109,15 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Should_return_only_own_ClientVersionV1_when_consensus_client_omits_code()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        string result = await RpcTest.TestSerializedRequest(chain.EngineRpcModule, nameof(IEngineRpcModule.engine_getClientVersionV1), new { name = "Lighthouse" });
+        using JsonDocument response = JsonDocument.Parse(result);
+        Assert.That(response.RootElement.GetProperty("result").GetArrayLength(), Is.EqualTo(1));
+    }
+
+    [Test]
     public async Task Should_return_capabilities()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Bogota.Instance);
