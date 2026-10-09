@@ -269,6 +269,9 @@ public partial class VirtualMachine<TGasPolicy>(
     partial void ResetSpecCaches();
     public ref readonly BlockExecutionContext BlockExecutionContext => ref _blockExecutionContext;
 
+    /// <summary>The block context fields opcodes read since the caller last reset it.</summary>
+    internal BlockContextReads BlockContextReads { get; set; }
+
     private TxExecutionContext _txExecutionContext;
     public ref readonly TxExecutionContext TxExecutionContext => ref _txExecutionContext;
     /// <summary>
@@ -1697,7 +1700,10 @@ public partial class VirtualMachine<TGasPolicy>(
 
     ReturnFailure:
         if (exceptionType == EvmExceptionType.OutOfGas)
+        {
             TGasPolicy.ClearExecutionGas(ref gas);
+            BlockContextReads |= BlockContextReads.OutOfGas;
+        }
 
         return GetFailureReturn(TGasPolicy.GetRemainingGas(in gas), exceptionType);
     }
