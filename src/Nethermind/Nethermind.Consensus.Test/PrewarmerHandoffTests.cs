@@ -735,8 +735,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         StorageCell cell = new(TestItem.AddressC, 0x4e4d);
         StateEffect[] effects =
         [
-            new StateEffect { Kind = EffectKind.SetStorage, Address = cell.Address, Index = cell.Index, Value = 0x4e4d },
-            .. Enumerable.Repeat(new StateEffect { Kind = EffectKind.AddToBalance, Address = TestItem.AddressD, Value = 1 }, 300)
+            new StateEffect { Kind = EffectKind.SetStorage, Cell = cell, Value = 0x4e4d },
+            .. Enumerable.Repeat(new StateEffect { Kind = EffectKind.AddToBalance, Cell = new StorageCell(TestItem.AddressD, default), Value = 1 }, 300)
         ];
         footprints.Store(0, new TransactionFootprint(txs[0], [], [], effects, default, default, default));
 
@@ -935,7 +935,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
         new(tx, [],
             [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
-            [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Address = write.Cell.Address, Index = write.Cell.Index, Value = write.Value })],
+            [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Cell = write.Cell, Value = write.Value })],
             default, default, default);
 
     [Test]

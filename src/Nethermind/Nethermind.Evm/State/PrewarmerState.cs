@@ -69,7 +69,10 @@ internal sealed class CommittedStorageWrites
         int used = _used;
         if ((uint)used < (uint)chunk.Length)
         {
-            chunk[used] = (new StorageCell(address, in index), value);
+            // Written in place: building the pair first adds a temporary the frame has to clear.
+            ref (StorageCell Cell, UInt256 Value) entry = ref chunk[used];
+            entry.Cell = new StorageCell(address, in index);
+            entry.Value = value;
             _used = used + 1;
         }
         else

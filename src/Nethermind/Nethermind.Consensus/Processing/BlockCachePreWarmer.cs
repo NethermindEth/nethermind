@@ -939,12 +939,12 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
     public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
-    /// <returns>Whether the transaction can have one at all.</returns>
-    internal bool TryFindFootprint(Transaction tx, BlockHeader header, out TransactionFootprint? footprint)
+    /// <param name="eligible">Whether the transaction can have one at all.</param>
+    internal TransactionFootprint? FindFootprint(Transaction tx, BlockHeader header, out bool eligible)
     {
         BlockFootprints? footprints = Volatile.Read(ref _footprints);
-        footprint = footprints?.Find(_mainThreadTxIndex, tx, header);
-        return footprints is not null && BlockFootprints.IsRecordable(tx);
+        eligible = footprints is not null && BlockFootprints.IsRecordable(tx);
+        return footprints?.Find(_mainThreadTxIndex, tx, header);
     }
 
     public CacheType ClearCaches()

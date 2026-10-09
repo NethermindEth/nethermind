@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -168,19 +169,21 @@ internal enum EffectKind : byte
 internal struct StateEffect
 {
     public EffectKind Kind;
-    public Address Address;
-    public UInt256 Index;
+    // The account, and for a storage write the slot, in the form the write takes, so replaying it builds no cell.
+    public StorageCell Cell;
     public UInt256 Value;
     public ulong Nonce;
     public ValueHash256 CodeHash;
     public byte[]? Code;
+
+    public readonly Address Address => Cell.Address;
 
     public readonly void Replay(IWorldState state, IReleaseSpec spec)
     {
         switch (Kind)
         {
             case EffectKind.SetStorage:
-                state.Set(new StorageCell(Address, in Index), in Value);
+                state.Set(in Cell, in Value);
                 break;
             case EffectKind.ClearStorage:
                 state.ClearStorage(Address);
@@ -216,8 +219,12 @@ internal struct StateEffect
                 state.DeleteAccount(Address);
                 break;
             case EffectKind.InsertCode:
-                state.InsertCode(Address, in CodeHash, Code, spec);
+                InsertCode(state, spec);
                 break;
         }
     }
+
+    // Apart, so the memory of the code is not a temporary the frame clears for every effect replayed.
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private readonly void InsertCode(IWorldState state, IReleaseSpec spec) => state.InsertCode(Address, in CodeHash, Code, spec);
 }

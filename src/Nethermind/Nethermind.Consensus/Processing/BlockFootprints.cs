@@ -247,7 +247,7 @@ internal sealed class BlockFootprints(Block block)
     {
         foreach (ref readonly StateEffect effect in effects)
         {
-            if (effect.Kind == EffectKind.SetStorage && effect.Value == value && effect.Index == cell.Index && effect.Address == cell.Address) return true;
+            if (effect.Kind == EffectKind.SetStorage && effect.Value == value && effect.Cell.Equals(in cell)) return true;
         }
 
         return false;
@@ -527,7 +527,7 @@ internal sealed class BlockFootprints(Block block)
                 {
                     ref readonly StateEffect effect = ref effects[_index];
                     if (effect.Kind != EffectKind.SetStorage) continue;
-                    Current = (new StorageCell(effect.Address, in effect.Index), _index);
+                    Current = (effect.Cell, _index);
                     return true;
                 }
 

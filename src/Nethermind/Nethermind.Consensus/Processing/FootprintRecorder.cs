@@ -337,7 +337,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         ref StateEffect effect = ref _effects[_effectCount++];
         effect = default;
         effect.Kind = kind;
-        effect.Address = address;
+        effect.Cell = new StorageCell(address, default);
         return ref effect;
     }
 
@@ -538,7 +538,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         int slot = SlotIndex(in storageCell, default, currentKnown: false);
         _slots[slot].Written = true;
         ref StateEffect effect = ref AddEffect(EffectKind.SetStorage, storageCell.Address, slot);
-        effect.Index = storageCell.Index;
+        effect.Cell = storageCell;
         effect.Value = newValue;
     }
 
