@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Blockchain;
@@ -652,6 +653,42 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
     }
 
     [Test]
+    public void Reports_read_while_later_transactions_report_theirs_are_as_they_were_reported()
+    {
+        // As the refresh worker reads them, on another thread, while block processing collects more.
+        CommittedStorageWrites committed = new();
+        System.Collections.Concurrent.ConcurrentQueue<(ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction)> reports = new();
+        const int transactions = 20_000;
+        static int Writes(int tx) => tx % 9;
+        Task reporting = Task.Run(() =>
+        {
+            for (int tx = 0; tx < transactions; tx++)
+            {
+                committed.Begin();
+                for (int i = 0; i < Writes(tx); i++) committed.Add(TestItem.AddressC, (UInt256)i, (UInt256)tx);
+                reports.Enqueue((committed.End(), tx));
+            }
+        });
+
+        int read = 0;
+        int wrong = 0;
+        while (read < transactions)
+        {
+            if (!reports.TryDequeue(out (ReadOnlyMemory<(StorageCell Cell, UInt256 Value)> Writes, int Transaction) report)) continue;
+            read++;
+            ReadOnlySpan<(StorageCell Cell, UInt256 Value)> writes = report.Writes.Span;
+            if (writes.Length != Writes(report.Transaction)) wrong++;
+            for (int i = 0; i < writes.Length; i++)
+            {
+                if (!writes[i].Equals((new StorageCell(TestItem.AddressC, (UInt256)i), (UInt256)report.Transaction))) wrong++;
+            }
+        }
+
+        reporting.Wait();
+        Assert.That(wrong, Is.Zero);
+    }
+
+    [Test]
     public void Commits_outside_a_reported_transaction_take_no_room_from_the_reports()
     {
         // Replays and the block's own commits also commit storage; collecting them would allocate chunks for nothing.
@@ -665,6 +702,23 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         MemoryMarshal.TryGetArray(committed.End(), out ArraySegment<(StorageCell Cell, UInt256 Value)> next);
 
         Assert.That((next.Array, next.Offset), Is.EqualTo((first.Array, 1)));
+    }
+
+    [Test]
+    public void A_session_whose_refresh_worker_is_never_woken_by_block_processing_still_ends()
+    {
+        // The executed call's writes are the ones its footprint predicted, so block processing leaves the blocked worker
+        // asleep; ending the session must still release it.
+        Block block = BuildBlock(
+            Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
+            Call(TestItem.PrivateKeyB, 0, Guarded),
+            Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        Run? run = null;
+        Task processing = Task.Run(() => run = ProcessWhileWarming(block, (footprints, index) =>
+            index > 0 || (footprints.WarmPassEnded && !footprints.HasWork && footprints.Get(1) is not null)));
+
+        Assert.That(processing.Wait(TimeSpan.FromSeconds(30)), Is.True, "the session did not end");
+        Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
     }
 
     public enum Report { AsPredicted, OtherValue, Subset, Restored, GuardRestoredAndChanged, NoneWithoutFootprint, SomeWithoutFootprint }
