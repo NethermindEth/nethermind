@@ -511,6 +511,45 @@ public class BlockValidatorTests
         Assert.That(block.Transactions[0].SenderAddress, Is.EqualTo(TestItem.AddressA));
     }
 
+    /// <summary>
+    /// The background recovery can publish the sender right after the first check priced the transaction without it.
+    /// That rejection must still be re-checked with the sender, or a valid block is rejected depending on timing.
+    /// </summary>
+    [Test]
+    public void ValidateSuggestedBlock_Eip2780_rechecks_a_self_transfer_whose_sender_arrives_after_the_first_check()
+    {
+        (Block block, BlockHeader parent) = Eip2780Block(Eip2780Transfer(TestItem.PrivateKeyA, TestItem.AddressA, gasLimit: 15_000));
+        SenderPublishedAfterFirstCheck txValidator = new(new TxValidator(TestBlockchainIds.ChainId), TestItem.AddressA);
+
+        bool isValid = AmsterdamSut(txValidator).ValidateSuggestedBlock(block, parent, out string? error);
+
+        Assert.That(txValidator.FirstCheckFailed, Is.True, "precondition: the first check prices the transaction without its sender");
+        Assert.That(isValid, Is.True, error);
+    }
+
+    /// <summary>Stands in for the background recovery: the sender appears just after the first check reads it as missing.</summary>
+    private sealed class SenderPublishedAfterFirstCheck(ITxValidator inner, Address sender) : ITxValidator
+    {
+        private int _checks;
+
+        public bool FirstCheckFailed { get; private set; }
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec) =>
+            IsWellFormed(transaction, releaseSpec, 0);
+
+        public ValidationResult IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, ulong blockGasLimit)
+        {
+            ValidationResult result = inner.IsWellFormed(transaction, releaseSpec, blockGasLimit);
+            if (++_checks == 1)
+            {
+                FirstCheckFailed = !result;
+                transaction.SenderAddress = sender;
+            }
+
+            return result;
+        }
+    }
+
     [Test]
     public void ValidateSuggestedBlock_Eip2780_rejects_a_transfer_to_someone_else_below_its_intrinsic_gas()
     {

@@ -338,9 +338,11 @@ public class BlockValidator(
             // priced as a transfer to someone else, the higher charge: a transaction that is well formed without
             // its sender is well formed with it. Only one that fails needs the sender, so the request thread
             // doesn't recover, one by one, the senders the background recovery has not reached yet.
-            if (!isWellFormed && isEip2780Enabled && transaction.SenderAddress is null && transaction.Signature is not null)
+            // The retry doesn't ask whether the sender is still missing: the background recovery can publish it
+            // after the check above priced the transaction without it, and that rejection must still be re-checked.
+            if (!isWellFormed && isEip2780Enabled && transaction.Signature is not null)
             {
-                transaction.SenderAddress = _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
+                transaction.SenderAddress ??= _ecdsa.RecoverAddress(transaction, !spec.ValidateChainId);
                 isWellFormed = _txValidator.IsWellFormed(transaction, spec, block.Header.GasLimit);
             }
 
