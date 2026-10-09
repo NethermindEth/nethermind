@@ -544,7 +544,7 @@ public static class Utils
             // strategy can latch onto even though the container exits as soon as generation finishes.
             .WithEntrypoint("/bin/bash", "-c")
             .WithCommand($"/work/entrypoint.sh all && echo {genesisDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(genesisDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await generator.StartAsync();
         await generator.DisposeAsync();
@@ -554,7 +554,7 @@ public static class Utils
             .WithBindMount(dataDir, "/data", AccessMode.ReadWrite)
             .WithEntrypoint("/bin/sh", "-c")
             .WithCommand($"/app/eth2-val-tools keystores --source-mnemonic '{DevnetMnemonic}' --source-min 0 --source-max {validatorCount} --out-loc /data/validators && echo {keysDoneMarker}")
-            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker))
+            .WithWaitStrategy(Wait.ForUnixContainer().UntilMessageIsLogged(keysDoneMarker, o => o.WithMode(WaitStrategyMode.OneShot)))
             .Build();
         await keygen.StartAsync();
         await keygen.DisposeAsync();
