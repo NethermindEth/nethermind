@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Blockchain;
@@ -41,6 +42,436 @@ public class HashesOnlyBlockReaderTests
     private const int ChainLength = 16;
     private const int HeadNumber = ChainLength - 1;
     private const long CacheBudget = HashesOnlyBlockCache.DefaultByteBudget;
+    private static readonly TimeSpan ReadTimeout = TimeSpan.FromSeconds(10);
+
+    [Test]
+    public async Task Find_ConcurrentNumberAndHash_ShareOneSuccessfulRead()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        IBlockTree tree = builder.TestObject;
+        Block expected = tree.FindBlock(2)!;
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            entered.Set();
+            Assert.That(release.Wait(ReadTimeout), Is.True);
+        };
+        StartRead(() => reader.Find(tree, new BlockParameter(2UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            Thread follower = StartRead(() => reader.Find(tree, new BlockParameter(expected.Hash!)), out second);
+            Assert.That(SpinWait.SpinUntil(() => (follower.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, ReadTimeout), Is.True);
+            Assert.That(db.Reads, Is.EqualTo(1), "the follower waits for the same owned projection");
+            release.Set();
+            HashesOnlyBlock?[] results = await Task.WhenAll(first, second).WaitAsync(ReadTimeout);
+            Assert.That(results[0], Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(results[1], Is.SameAs(results[0]));
+                Assert.That(Serialize(new BlockForRpcFactory(), results[0]!), Is.EqualTo(Serialize(new BlockForRpcFactory(), expected)));
+                Assert.That(db.Reads, Is.EqualTo(1));
+            }
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    [Test]
+    public async Task Find_DifferentBlocks_DoNotWaitForEachOther()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        StartRead(() => reader.Find(builder.TestObject, new BlockParameter(2UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            StartRead(() => reader.Find(builder.TestObject, new BlockParameter(3UL)), out second);
+            Assert.That((await second.WaitAsync(ReadTimeout))!.Block.Number, Is.EqualTo(3UL));
+            Assert.That(first.IsCompleted, Is.False);
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    [Test]
+    public async Task Find_WaitingCaller_RetriesAFailedRead()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+                throw new InvalidOperationException("transient read failure");
+            }
+        };
+        StartRead(() => reader.Find(builder.TestObject, new BlockParameter(2UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            Thread follower = StartRead(() => reader.Find(builder.TestObject, new BlockParameter(2UL)), out second);
+            Assert.That(SpinWait.SpinUntil(() => (follower.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, ReadTimeout), Is.True);
+            release.Set();
+            Assert.ThrowsAsync<InvalidOperationException>(async () => await first.WaitAsync(ReadTimeout));
+            HashesOnlyBlock? result = await second.WaitAsync(ReadTimeout);
+            Assert.That(result, Is.Not.Null);
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(db.Reads, Is.EqualTo(2));
+                Assert.That(reader.Find(builder.TestObject, new BlockParameter(2UL)), Is.SameAs(result));
+            }
+        }
+        finally
+        {
+            release.Set();
+            try
+            {
+                Assert.ThrowsAsync<InvalidOperationException>(async () => await first.WaitAsync(ReadTimeout));
+            }
+            finally
+            {
+                if (second is not null)
+                {
+                    await second.WaitAsync(ReadTimeout);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public async Task Find_NewGenerationOrPruningBoundary_DoesNotJoinAnOldRead([Values] bool rewind)
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        IBlockTree tree = builder.TestObject;
+        Block block = tree.FindBlock(2)!;
+        Hash256 rewindHash = tree.FindBlock(12)!.Hash!;
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        StartRead(() => reader.Find(tree, new BlockParameter(block.Hash!)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            if (rewind)
+            {
+                Assert.That(tree.TryRewindHead(rewindHash), Is.True);
+            }
+            else
+            {
+                tree.NewOldestBlock(3);
+            }
+            builder.BlocksDb.Delete(block.Number, block.Hash!);
+            StartRead(() => reader.Find(tree, new BlockParameter(block.Hash!)), out second);
+            Assert.That(await second.WaitAsync(ReadTimeout), Is.Null);
+            release.Set();
+            Assert.That(await first.WaitAsync(ReadTimeout), Is.Not.Null, "the original read already owns its bytes");
+            Assert.That(reader.Find(tree, new BlockParameter(block.Hash!)), Is.Null, "the old read cannot restore availability");
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    private static HashesOnlyBlockReader CreateGatedReader(BlockTreeBuilder builder, IDb db) =>
+        new(db, new HeaderDecoder(), builder.ChainLevelInfoRepository, builder.HeaderStore, builder.TestObject,
+            MainnetSpecProvider.Instance, HeadWindow, CacheBudget);
+
+    [Test]
+    public async Task Find_ChangedTotalDifficulty_DoesNotJoinOrMutateAnOldRead()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        IBlockTree tree = builder.TestObject;
+        Block block = tree.FindBlock(2)!;
+        UInt256? oldDifficulty = block.TotalDifficulty;
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        StartRead(() => reader.Find(tree, new BlockParameter(2UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            SetTotalDifficulty(builder.ChainLevelInfoRepository, block, 123_456);
+            StartRead(() => reader.Find(tree, new BlockParameter(2UL)), out second);
+            HashesOnlyBlock fresh = (await second.WaitAsync(ReadTimeout))!;
+            Assert.That(fresh.Block.TotalDifficulty, Is.EqualTo((UInt256)123_456));
+            release.Set();
+            HashesOnlyBlock old = (await first.WaitAsync(ReadTimeout))!;
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(old.Block.TotalDifficulty, Is.EqualTo(oldDifficulty));
+                Assert.That(fresh.Block.TotalDifficulty, Is.EqualTo((UInt256)123_456), "publication does not mutate another caller's header");
+                Assert.That(reader.Find(tree, new BlockParameter(2UL))!.Block.TotalDifficulty, Is.EqualTo((UInt256)123_456));
+            }
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    [Test]
+    public async Task Find_AtPendingLoadLimit_AnIndependentBlockStillProceeds()
+    {
+        const int PendingLoads = 64;
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(128);
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using CountdownEvent entered = new(PendingLoads);
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads <= PendingLoads)
+            {
+                entered.Signal();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        List<Task<HashesOnlyBlock?>> pending = new(PendingLoads + 1);
+        try
+        {
+            for (int i = 0; i < PendingLoads; i++)
+            {
+                ulong number = (ulong)i + 2;
+                StartRead(() => reader.Find(builder.TestObject, new BlockParameter(number)), out Task<HashesOnlyBlock?> read);
+                pending.Add(read);
+            }
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            StartRead(() => reader.Find(builder.TestObject, new BlockParameter(66UL)), out Task<HashesOnlyBlock?> overflow);
+            pending.Add(overflow);
+            Assert.That((await overflow.WaitAsync(ReadTimeout))!.Block.Number, Is.EqualTo(66UL), "capacity fallback must not wait for a slot");
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(pending).WaitAsync(ReadTimeout);
+        }
+    }
+
+    [Test]
+    public void Find_AbsentBody_IsRetriedWhenItBecomesAvailable()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        IBlockTree tree = builder.TestObject;
+        Block block = tree.FindBlock(2)!;
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        builder.BlocksDb.Delete(block.Number, block.Hash!);
+        Assert.That(reader.Find(builder.TestObject, new BlockParameter(2UL)), Is.Null);
+        new BlockStore(builder.BlocksDb).Insert(block);
+        Assert.That(reader.Find(builder.TestObject, new BlockParameter(2UL)), Is.Not.Null);
+    }
+
+    [Test]
+    public async Task Find_CompletedReads_ReturnTheirCapacity([Values] bool fail)
+    {
+        const int PendingLoads = 64;
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(128);
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        db.OnRead = () =>
+        {
+            if (fail) throw new InvalidOperationException("transient read failure");
+        };
+        for (ulong number = 2; number < PendingLoads + 2; number++)
+        {
+            if (fail)
+            {
+                Assert.Throws<InvalidOperationException>(() => reader.Find(builder.TestObject, new BlockParameter(number)));
+            }
+            else
+            {
+                Assert.That(reader.Find(builder.TestObject, new BlockParameter(number)), Is.Not.Null);
+            }
+        }
+
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            entered.Set();
+            Assert.That(release.Wait(ReadTimeout), Is.True);
+        };
+        StartRead(() => reader.Find(builder.TestObject, new BlockParameter(66UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            Thread follower = StartRead(() => reader.Find(builder.TestObject, new BlockParameter(66UL)), out second);
+            Assert.That(SpinWait.SpinUntil(() => (follower.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, ReadTimeout), Is.True);
+            Assert.That(db.Reads, Is.EqualTo(PendingLoads + 1), "completed readers must leave capacity for sharing again");
+            release.Set();
+            Assert.That(await second.WaitAsync(ReadTimeout), Is.SameAs(await first.WaitAsync(ReadTimeout)));
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    private static Thread StartRead(Func<HashesOnlyBlock?> read, out Task<HashesOnlyBlock?> result)
+    {
+        TaskCompletionSource<HashesOnlyBlock?> completion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        result = completion.Task;
+        Thread thread = new(() =>
+        {
+            try
+            {
+                completion.SetResult(read());
+            }
+            catch (Exception exception)
+            {
+                completion.SetException(exception);
+            }
+        }) { IsBackground = true };
+        thread.Start();
+        return thread;
+    }
+
+    [Test]
+    public async Task Find_WaitingCaller_RetriesAnAbsentRead()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        GatedBlockDb db = new(builder.BlocksDb)
+        {
+            FilterRead = static (index, bytes) => index <= 2 ? null : bytes
+        };
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        StartRead(() => reader.Find(builder.TestObject, new BlockParameter(2UL)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            Thread follower = StartRead(() => reader.Find(builder.TestObject, new BlockParameter(2UL)), out second);
+            Assert.That(SpinWait.SpinUntil(() => (follower.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, ReadTimeout), Is.True);
+            release.Set();
+            Assert.That(await first.WaitAsync(ReadTimeout), Is.Null);
+            Assert.That(await second.WaitAsync(ReadTimeout), Is.Not.Null);
+            Assert.That(db.Reads, Is.EqualTo(3));
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    [Test]
+    public async Task Find_ChangedCanonicalStatus_DoesNotJoinAnOldRead()
+    {
+        BlockTreeBuilder builder = Build.A.BlockTree().OfChainLength(ChainLength);
+        IBlockTree tree = builder.TestObject;
+        Block block = tree.FindBlock(2)!;
+        GatedBlockDb db = new(builder.BlocksDb);
+        using HashesOnlyBlockReader reader = CreateGatedReader(builder, db);
+        using ManualResetEventSlim entered = new();
+        using ManualResetEventSlim release = new();
+        db.OnRead = () =>
+        {
+            if (db.Reads == 1)
+            {
+                entered.Set();
+                Assert.That(release.Wait(ReadTimeout), Is.True);
+            }
+        };
+        StartRead(() => reader.Find(tree, new BlockParameter(block.Hash!)), out Task<HashesOnlyBlock?> first);
+        Task<HashesOnlyBlock?>? second = null;
+        try
+        {
+            Assert.That(entered.Wait(ReadTimeout), Is.True);
+            ChainLevelInfo level = builder.ChainLevelInfoRepository.LoadLevel(block.Number)!;
+            builder.ChainLevelInfoRepository.PersistLevel(block.Number, new ChainLevelInfo(false, level.BlockInfos));
+            StartRead(() => reader.Find(tree, new BlockParameter(block.Hash!)), out second);
+            HashesOnlyBlock? fresh = await second.WaitAsync(ReadTimeout);
+            Assert.That(fresh, Is.Not.Null, "an existing side-chain body is still available by hash");
+            Assert.That(reader.Find(tree, new BlockParameter(block.Hash!, requireCanonical: true)), Is.Null);
+            release.Set();
+            Assert.That(await first.WaitAsync(ReadTimeout), Is.Not.SameAs(fresh), "cache admission decisions remain separate");
+        }
+        finally
+        {
+            release.Set();
+            await Task.WhenAll(second is null ? [first] : [first, second]).WaitAsync(ReadTimeout);
+        }
+    }
+
+    private sealed class GatedBlockDb(IDb inner) : MemDb
+    {
+        private int _reads;
+        public int Reads => Volatile.Read(ref _reads);
+        public Action? OnRead { get; set; }
+        public Func<int, byte[]?, byte[]?>? FilterRead { get; set; }
+
+        public override byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        {
+            byte[]? bytes = inner.Get(key, flags);
+            int index = Interlocked.Increment(ref _reads);
+            OnRead?.Invoke();
+            return FilterRead is { } filter ? filter(index, bytes) : bytes;
+        }
+    }
 
     public static IEnumerable<TestCaseData> StoredBlocks()
     {

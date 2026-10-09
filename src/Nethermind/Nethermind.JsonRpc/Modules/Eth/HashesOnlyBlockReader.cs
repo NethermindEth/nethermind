@@ -3,8 +3,11 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -75,6 +78,7 @@ public sealed class HashesOnlyBlock(Block block, ValueHash256[] transactionHashe
 /// </remarks>
 public sealed class HashesOnlyBlockReader : IDisposable
 {
+    private const int MaxConcurrentLoads = 64;
     private static readonly WithdrawalDecoder WithdrawalDecoder = new();
 
     private readonly IDb _blockDb;
@@ -85,7 +89,11 @@ public sealed class HashesOnlyBlockReader : IDisposable
     private readonly ISpecProvider _specProvider;
     private readonly ulong _headWindow;
     private readonly HashesOnlyBlockCache _cache;
+    private readonly ConcurrentDictionary<LoadKey, TaskCompletionSource<HashesOnlyBlock?>> _loads = new();
+    private readonly SemaphoreSlim _loadSlots = new(MaxConcurrentLoads);
     private ulong _headNumber;
+
+    private readonly record struct LoadKey(ValueHash256 Hash, ulong Number, long Generation, UInt256? TotalDifficulty, bool IsCanonical, ulong LowestServedBlock);
 
     public HashesOnlyBlockReader(
         [KeyFilter(DbNames.Blocks)] IDb blockDb,
@@ -163,7 +171,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
 
         return _cache.TryGet(blockHash.ValueHash256, out HashesOnlyBlock? cached) && IsCurrent(blockFinder, cached!, blockInfo)
             ? cached
-            : Load(blockHash, number, level, generation, requireCanonical: true);
+            : Load(blockHash, number, level, generation, requireCanonical: true, blockFinder.LowestServedBlock);
     }
 
     private HashesOnlyBlock? FindByHash(IBlockFinder blockFinder, Hash256 blockHash, bool requireCanonical, ulong windowStart, long generation)
@@ -184,7 +192,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return null;
         }
 
-        return Load(blockHash, number, level, generation, requireCanonical);
+        return Load(blockHash, number, level, generation, requireCanonical, blockFinder.LowestServedBlock);
     }
 
     /// <summary>Whether a cached block can be served: <paramref name="blockInfo"/>, its canonical entry, still gives the
@@ -199,7 +207,7 @@ public sealed class HashesOnlyBlockReader : IDisposable
         && cached.Block.Header.TotalDifficulty == ResolveTotalDifficulty(blockInfo);
 
     /// <remarks>A level without the block's entry is left to the block tree, which may create it.</remarks>
-    private HashesOnlyBlock? Load(Hash256 blockHash, ulong number, ChainLevelInfo level, long generation, bool requireCanonical)
+    private HashesOnlyBlock? Load(Hash256 blockHash, ulong number, ChainLevelInfo level, long generation, bool requireCanonical, ulong lowestServedBlock)
     {
         bool isCanonical = level.MainChainBlock?.BlockHash == blockHash;
         if ((requireCanonical && !isCanonical) || level.FindBlockInfo(blockHash) is not { } blockInfo)
@@ -207,16 +215,65 @@ public sealed class HashesOnlyBlockReader : IDisposable
             return null;
         }
 
-        HashesOnlyBlock? block = Read(number, blockHash);
+        LoadKey key = new(blockHash.ValueHash256, number, generation, ResolveTotalDifficulty(blockInfo), isCanonical, lowestServedBlock);
+        if (_loads.TryGetValue(key, out TaskCompletionSource<HashesOnlyBlock?>? pending))
+        {
+            return ReadShared(pending, key, blockHash);
+        }
+
+        if (!_loadSlots.Wait(0))
+        {
+            return ReadAndCache(key, blockHash);
+        }
+
+        TaskCompletionSource<HashesOnlyBlock?> load = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<HashesOnlyBlock?> selected = _loads.GetOrAdd(key, load);
+        if (!ReferenceEquals(selected, load))
+        {
+            _loadSlots.Release();
+            return ReadShared(selected, key, blockHash);
+        }
+
+        try
+        {
+            HashesOnlyBlock? block = ReadAndCache(key, blockHash);
+            load.SetResult(block);
+            return block;
+        }
+        finally
+        {
+            load.TrySetResult(null);
+            _loads.TryRemove(new KeyValuePair<LoadKey, TaskCompletionSource<HashesOnlyBlock?>>(key, load));
+            _loadSlots.Release();
+        }
+    }
+
+    private HashesOnlyBlock? ReadShared(TaskCompletionSource<HashesOnlyBlock?> pending, LoadKey key, Hash256 blockHash)
+    {
+        HashesOnlyBlock? block = pending.Task.GetAwaiter().GetResult();
+        return block ?? ReadAndCache(key, blockHash);
+    }
+
+    private HashesOnlyBlock? ReadAndCache(LoadKey key, Hash256 blockHash)
+    {
+        if (_cache.Generation == key.Generation
+            && _cache.TryGet(key.Hash, out HashesOnlyBlock? cached)
+            && cached!.Block.Number >= key.LowestServedBlock
+            && cached.Block.Header.TotalDifficulty == key.TotalDifficulty)
+        {
+            return cached;
+        }
+
+        HashesOnlyBlock? block = Read(key.Number, blockHash);
         if (block is null)
         {
             return null;
         }
 
-        block.Block.Header.TotalDifficulty = ResolveTotalDifficulty(blockInfo);
-        if (isCanonical)
+        block.Block.Header.TotalDifficulty = key.TotalDifficulty;
+        if (key.IsCanonical)
         {
-            _cache.Add(blockHash.ValueHash256, block, generation);
+            _cache.Add(key.Hash, block, key.Generation);
         }
 
         return block;
