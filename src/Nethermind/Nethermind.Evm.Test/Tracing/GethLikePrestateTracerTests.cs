@@ -500,6 +500,40 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         }
     }
 
+    /// <summary>A CREATE that collides with an account holding only code keeps that account in diffMode's pre,
+    /// with or without <c>disableCode</c>, since its code makes it non-empty.</summary>
+    [Test]
+    public void Test_PrestateTrace_CollidingCreateTargetWithCode_IsKeptInPre([Values] bool disableCode)
+    {
+        byte[] targetCode = [(byte)Instruction.STOP];
+        Address target = ContractAddress.From(TestItem.AddressC, 0);
+        byte[] contractCode = Prepare.EvmCode
+            .CallWithValue(target, 50000, 1)
+            .Create(Prepare.EvmCode.ForInitOf([1, 2, 3]).Done, 0)
+            .Done;
+
+        TestState.CreateAccount(Address.Zero, 100.Ether);
+        TestState.CreateAccount(TestItem.AddressC, 1.Ether);
+        TestState.InsertCode(TestItem.AddressC, contractCode, Spec);
+        TestState.CreateAccount(target, 0);
+        TestState.InsertCode(target, targetCode, Spec);
+
+        NativePrestateTracer tracer = new(TestState, GetGethTraceOptions(JsonSerializer.Serialize(new { diffMode = true, disableCode })),
+            Hash256.Zero, TestItem.AddressA, TestItem.AddressB, Address.Zero);
+        GethLikeTxTrace trace = ExecutePrestate(tracer, Prepare.EvmCode.Call(TestItem.AddressC, 100000).Done, wrapped: false);
+
+        using JsonDocument document = JsonDocument.Parse(JsonSerializer.Serialize(trace.CustomTracerResult?.Value, SerializerOptions));
+        JsonElement post = document.RootElement.GetProperty("post").GetProperty(target.ToString());
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(post.TryGetProperty("codeHash", out _), Is.False, "the creation must have collided");
+            Assert.That(post.GetProperty("balance").GetString(), Is.EqualTo("0x1"));
+            Assert.That(document.RootElement.GetProperty("pre").TryGetProperty(target.ToString(), out JsonElement pre), Is.True);
+            Assert.That(pre.TryGetProperty("codeHash", out JsonElement codeHash) ? codeHash.GetString() : null,
+                Is.EqualTo(Keccak.Compute(targetCode).ToString()));
+        }
+    }
+
     private const string ExpectedExistingAccountPrestateTrace = """
         {
           "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099": {

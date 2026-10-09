@@ -1077,10 +1077,26 @@ public partial class DebugRpcModuleTests
         Assert.That(JToken.Parse(resultNoOverride), Is.Not.EqualTo(JToken.Parse(resultOverrideAfter)).Using(JToken.EqualityComparer));
     }
 
-    [Test]
-    public async Task Debug_traceCall_prestate_respects_field_options(
-        [Values] bool diffMode, [Values] bool disableCode, [Values] bool disableStorage,
-        [Values] bool revert, [Values] bool clearStorage)
+    private static IEnumerable<TestCaseData> PrestateFieldOptionCases()
+    {
+        static TestCaseData Case(string name, bool diffMode, bool disableCode = false, bool disableStorage = false, bool revert = false, bool clearStorage = false) =>
+            new TestCaseData(diffMode, disableCode, disableStorage, revert, clearStorage).SetArgDisplayNames(name);
+
+        yield return Case("prestate", diffMode: false);
+        yield return Case("prestate cleared slot", diffMode: false, clearStorage: true);
+        yield return Case("prestate reverted", diffMode: false, revert: true);
+        yield return Case("prestate disableCode", diffMode: false, disableCode: true);
+        yield return Case("prestate disableStorage", diffMode: false, disableStorage: true);
+        yield return Case("prestate disableCode disableStorage", diffMode: false, disableCode: true, disableStorage: true);
+        yield return Case("diff set slot", diffMode: true);
+        yield return Case("diff cleared slot", diffMode: true, clearStorage: true);
+        yield return Case("diff disableCode", diffMode: true, disableCode: true);
+        yield return Case("diff disableStorage hides storage-only change", diffMode: true, disableStorage: true);
+        yield return Case("diff reverted", diffMode: true, revert: true);
+    }
+
+    [TestCaseSource(nameof(PrestateFieldOptionCases))]
+    public async Task Debug_traceCall_prestate_respects_field_options(bool diffMode, bool disableCode, bool disableStorage, bool revert, bool clearStorage)
     {
         using Context ctx = await Context.Create();
         string sender = TestItem.AddressA.ToString();
@@ -1141,8 +1157,11 @@ public partial class DebugRpcModuleTests
         }
 
         JObject result = JObject.Parse(response);
-        Assert.That(result["error"], Is.Null, response);
-        Assert.That(result["result"], Is.EqualTo(expected).Using(JToken.EqualityComparer), response);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(result["error"], Is.Null, response);
+            Assert.That(result["result"], Is.EqualTo(expected).Using(JToken.EqualityComparer), response);
+        }
     }
 
     [Test]

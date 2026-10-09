@@ -293,7 +293,7 @@ public class NativePrestateTracer : GethLikeNativeTxTracer, IInstructionTracingF
     }
 
     private static bool IsEmpty(NativePrestateTracerAccount account) =>
-        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.Code.IsEmpty;
+        (account.Balance ?? UInt256.Zero).IsZero && account.Nonce is null && account.CodeHash is null;
 
     private void ProcessDiffState()
     {
