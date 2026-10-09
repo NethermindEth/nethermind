@@ -41,8 +41,14 @@ public interface IMergeConfig : IConfig
     [ConfigItem(Description = "The URL of a builder relay. If specified, blocks are sent to the relay.", DefaultValue = "null")]
     string? BuilderRelayUrl { get; set; }
 
-    [ConfigItem(Description = "Whether to reduce block latency by disabling garbage collection during Engine API calls.", DefaultValue = "true")]
+    [ConfigItem(Description = $"Whether to reduce block latency by managing garbage collection around `engine_newPayload`: a collection after each block (see `{nameof(SweepMemory)}`), periodic decommit (see `{nameof(CollectionsPerDecommit)}`) and a no-GC region during block processing (see `{nameof(NoGcRegionOnNewPayload)}`). None of them runs while syncing or when this is `false`.", DefaultValue = "true")]
     public bool PrioritizeBlockLatency { get; set; }
+
+    [ConfigItem(Description = $"When `engine_newPayload` enters a no-GC region for block processing. Entering pauses every thread on the payload's path and collects nothing; it only keeps a collection out of a block that would otherwise use up gen0's allocation budget, which the collection after each block refreshes. `{nameof(NoGcRegionMode.Guard)}` enters only when the estimated budget left is below the guard's threshold (see `{nameof(NoGcRegionGuardMb)}`). Has no effect unless `{nameof(PrioritizeBlockLatency)}` is `true`.", DefaultValue = nameof(NoGcRegionMode.Guard))]
+    public NoGcRegionMode NoGcRegionOnNewPayload { get; set; }
+
+    [ConfigItem(Description = $"The gen0 allocation budget, in MB, that has to be left for `engine_newPayload` to skip the no-GC region when `{nameof(NoGcRegionOnNewPayload)}` is `{nameof(NoGcRegionMode.Guard)}`. `0` derives it: the larger of 3/4 of gen0's budget and twice the most allocated during one `engine_newPayload` over the last 300-600 blocks, and at least 256 MB. A positive value overrides it.", DefaultValue = "0")]
+    public int NoGcRegionGuardMb { get; set; }
 
     [ConfigItem(Description = "The garbage collection (GC) mode between Engine API calls.", DefaultValue = nameof(GcLevel.Gen1))]
     public GcLevel SweepMemory { get; set; }
