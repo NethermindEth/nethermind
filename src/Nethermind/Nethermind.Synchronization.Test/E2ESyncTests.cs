@@ -607,7 +607,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
     private static IEnumerable<int> StressIterations() => Enumerable.Range(0, StressIterationCount);
 
     [Test]
-    public void Cancellation_diagnostic_survives_cleanup([Values] bool serverSetup, [Values] bool failDisposal)
+    public async Task Cancellation_diagnostic_survives_cleanup([Values] bool serverSetup, [Values] bool failDisposal)
     {
         if (!isPostMerge || dbMode != DbMode.Default)
             Assert.Ignore("Timeout diagnostics are exercised on the default post-merge fixture.");
@@ -617,7 +617,7 @@ public class E2ESyncTests(E2ESyncTests.DbMode dbMode, bool isPostMerge)
         try
         {
             Console.SetError(output);
-            Assert.ThrowsAsync(failDisposal ? typeof(InvalidOperationException) : typeof(OperationCanceledException), async () =>
+            await Assert.ThrowsAsync(failDisposal ? typeof(InvalidOperationException) : typeof(OperationCanceledException), async () =>
             {
                 await using (new TimeoutTestCleanup(failDisposal))
                 {
