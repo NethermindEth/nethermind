@@ -221,7 +221,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 warmCalldataAddresses: true, handColdChainsToDiscovery: true);
             if (footprints is not null)
             {
+                FoldWarmToMainCost();
                 blockState.Footprints = footprints;
+                blockState.GasPrefix = GasPrefix(suggestedBlock);
+                _lastGasPrefix = blockState.GasPrefix;
                 Volatile.Write(ref _footprints, footprints);
             }
             // A block access list already enumerates the block's reads; discovery adds nothing.
@@ -1034,7 +1037,62 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
 
     /// <summary>Reports main-thread progress (called via <see cref="PrewarmerTxAdapter"/>) so warming can skip already-started txs.</summary>
     /// <remarks>Only the single main execution thread writes, in ascending tx order, so a plain release store publishes progress to the polling warmup workers — no interlocked read-modify-write is needed.</remarks>
-    public void OnBeforeTxExecution() => Volatile.Write(ref _mainThreadTxIndex, _mainThreadTxIndex + 1);
+    public void OnBeforeTxExecution()
+    {
+        int next = _mainThreadTxIndex + 1;
+        long now = Stopwatch.GetTimestamp();
+        if (next == 0) _mainStartTicks = now;
+        _mainLastTicks = now;
+        _mainLastIndex = next;
+        Volatile.Write(ref _mainThreadTxIndex, next);
+    }
+
+    private long _mainStartTicks;
+    private long _mainLastTicks;
+    private int _mainLastIndex = -1;
+    private long[]? _lastGasPrefix;
+    private long _warmTicks;
+    private long _warmGas;
+    private double _warmToMainCost = 1.0;
+    internal static long LeadSkips;
+
+    private static long[] GasPrefix(Block block)
+    {
+        Transaction[] txs = block.Transactions;
+        long[] prefix = new long[txs.Length + 1];
+        for (int i = 0; i < txs.Length; i++) prefix[i + 1] = prefix[i] + (long)txs[i].GasLimit;
+        return prefix;
+    }
+
+    /// <summary>Folds the last block's ratio of a warm run's cost per gas to the main thread's into the running estimate.</summary>
+    private void FoldWarmToMainCost()
+    {
+        long[]? prefix = _lastGasPrefix;
+        int last = _mainLastIndex;
+        long warmGas = Interlocked.Exchange(ref _warmGas, 0);
+        long warmTicks = Interlocked.Exchange(ref _warmTicks, 0);
+        if (prefix is not null && last > 0 && last < prefix.Length && prefix[last] > 0 && warmGas > 0)
+        {
+            double main = (double)(_mainLastTicks - _mainStartTicks) / prefix[last];
+            double warm = (double)warmTicks / warmGas;
+            if (main > 0) _warmToMainCost = 0.5 * _warmToMainCost + 0.5 * (warm / main);
+        }
+
+        Console.WriteLine($"LEADPROBE skips={Interlocked.Exchange(ref LeadSkips, 0)} ratio={_warmToMainCost:F2}");
+        _mainLastIndex = -1;
+    }
+
+    /// <summary>Whether a warm run of <paramref name="tx"/> started now ends before the main thread reaches it.</summary>
+    private bool FinishesAhead(BlockState blockState, int txIndex, Transaction tx)
+    {
+        if (blockState.GasPrefix is not { } prefix || (uint)txIndex >= (uint)(prefix.Length - 1)) return true;
+        int from = MainThreadTxIndex;
+        if (from < 0) return true;
+        if (from >= txIndex) return false;
+        bool ahead = prefix[txIndex] - prefix[from] >= _warmToMainCost * tx.GasLimit;
+        if (!ahead) Interlocked.Increment(ref LeadSkips);
+        return ahead;
+    }
 
     /// <summary>The footprint of <paramref name="tx"/>, the transaction the main thread just reported starting.</summary>
     /// <param name="eligible">Whether the transaction can have one at all.</param>
@@ -1407,7 +1465,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         try
         {
             // Already started by the main thread — warming it now is redundant and contends; skip.
-            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex) return;
+            if (blockState.PreWarmer.MainThreadTxIndex >= txIndex || !blockState.PreWarmer.FinishesAhead(blockState, txIndex, tx)) return;
 
             // Non-null guaranteed: GroupTransactionsBySender and WarmupQueue.TryClaimLate both skip null-sender txs
             Address senderAddress = tx.SenderAddress!;
@@ -1471,10 +1529,17 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         Address sender = tx.SenderAddress!;
         if (recorder.GetNonce(sender) < tx.Nonce) recorder.SetNonce(sender, tx.Nonce);
         recorder.Start(blockState.PreWarmer, txIndex, cancellationToken);
+        long warmStart = Stopwatch.GetTimestamp();
         try
         {
             result = scope.TransactionProcessor.Process(tx, recorder.Outcome,
                 ExecutionOptions.Warmup | ExecutionOptions.SkipValidation | ExecutionOptions.StrictWarmup);
+            if (blockState.GasPrefix is not null)
+            {
+                Interlocked.Add(ref blockState.PreWarmer._warmTicks, Stopwatch.GetTimestamp() - warmStart);
+                Interlocked.Add(ref blockState.PreWarmer._warmGas, (long)tx.GasLimit);
+            }
+
             if (result && recorder.Finish(tx, in result) is { } footprint)
             {
                 if (blockState.Footprints is { } footprints) footprints.Store(txIndex, footprint);
@@ -2009,6 +2074,8 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         public CancellationToken Token { get; init; }
 
         public BlockFootprints? Footprints { get; set; }
+
+        public long[]? GasPrefix { get; set; }
 
         /// <summary>For a mempool pass, where its runs' footprints go.</summary>
         public MempoolFootprints? Recording { get; set; }
