@@ -79,7 +79,78 @@ namespace Nethermind.Store.Test.Proofs
             using (Assert.EnterMultipleScope())
             {
                 Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expectedHashes));
+                Assert.That(collector.HashedAddress, Is.EqualTo(ValueKeccak.Compute(TestItem.AddressA.Bytes)));
                 Assert.That(proof.StorageProofs.Select(static item => item.Key), Is.EqualTo(expectedKeys));
+            }
+        }
+
+        [Test]
+        public void Packed_keys_do_not_alias_the_caller_array()
+        {
+            ValueHash256[] keys = [TestItem.KeccakA.ValueHash256, TestItem.KeccakB.ValueHash256, TestItem.KeccakA.ValueHash256];
+            ValueHash256[] expected = [.. keys];
+            byte[] address = TestItem.KeccakC.Bytes.ToArray();
+            AccountProofCollector collector = new(address, keys);
+            keys[0] = default;
+            Array.Clear(address);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(expected));
+                Assert.That(collector.HashedAddress, Is.EqualTo(TestItem.KeccakC.ValueHash256));
+            }
+        }
+
+        [Test]
+        public void Packed_inputs_preserve_duplicate_slot_proofs_after_a_trie_visit()
+        {
+            (StateTree tree, _) = CreateTreeWithUInt256Storage();
+            UInt256[] keys = [UInt256.One, UInt256.Zero, UInt256.One];
+            AccountProof expected = CollectProof(tree, TestItem.AddressA, StorageKeyZeroAndOne);
+            AccountProofCollector collector = new(TestItem.AddressA, keys);
+            ValueHash256[] hashes = [.. collector.GetHashedStorageKeys()];
+
+            tree.Accept(collector, tree.RootHash);
+            AccountProof actual = collector.BuildResult();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(collector.GetHashedStorageKeys(), Is.EqualTo(hashes));
+                Assert.That(actual.StorageProofs.Select(static item => item.Key), Is.EqualTo(new[] { "0x1", "0x0", "0x1" }));
+                Assert.That(actual.StorageProofs[0].Proof, Is.EqualTo(expected.StorageProofs[1].Proof));
+                Assert.That(actual.StorageProofs[1].Proof, Is.EqualTo(expected.StorageProofs[0].Proof));
+                Assert.That(actual.StorageProofs[2].Proof, Is.EqualTo(expected.StorageProofs[1].Proof));
+                Assert.That(actual.StorageProofs[0].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs[1].Value!.Value.ToArray()));
+                Assert.That(actual.StorageProofs[1].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs[0].Value!.Value.ToArray()));
+                Assert.That(actual.StorageProofs[2].Value!.Value.ToArray(), Is.EqualTo(expected.StorageProofs[1].Value!.Value.ToArray()));
+            }
+        }
+
+        [Test]
+        public void ShouldVisit_compares_only_the_used_path_nibbles(
+            [Values(0, 1, 2, 31, 63, 64)] int length,
+            [Values] bool storage)
+        {
+            ValueHash256 target = TestItem.KeccakA.ValueHash256;
+            AccountProofCollector collector = new(target.Bytes, new[] { target });
+            TreePathContextWithStorage context = new()
+            {
+                Path = new TreePath(target, length),
+                Storage = storage ? Hash256.Zero : null
+            };
+
+            Assert.That(collector.ShouldVisit(context, default), Is.True);
+
+            if (length > 0)
+            {
+                ValueHash256 other = target;
+                other.BytesAsSpan[0] ^= 0x10;
+                context = new TreePathContextWithStorage
+                {
+                    Path = new TreePath(other, length),
+                    Storage = context.Storage
+                };
+                Assert.That(collector.ShouldVisit(context, default), Is.False);
             }
         }
 
