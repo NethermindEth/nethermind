@@ -33,7 +33,7 @@ public class EnsureDiskSpace(
 
         if (healthChecksConfig.LowStorageSpaceWarningThreshold > 0 || healthChecksConfig.LowStorageSpaceShutdownThreshold > 0)
         {
-            freeDiskSpaceChecker.StartAsync(cancellationToken);
+            return freeDiskSpaceChecker.StartAsync(cancellationToken);
         }
 
         return Task.CompletedTask;
