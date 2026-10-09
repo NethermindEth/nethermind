@@ -276,6 +276,21 @@ public partial class VirtualMachine<TGasPolicy>(
     /// </summary>
     public void SetTxExecutionContext(in TxExecutionContext txExecutionContext) => _txExecutionContext = txExecutionContext;
 
+    /// <summary>Counts EIP-8279 block access list bytes; <see langword="false"/> means out of gas.</summary>
+    /// <remarks>Always succeeds for a transaction that is not metered (system calls, frame transactions).</remarks>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalData(ulong bytes) => _txExecutionContext.BalDataMeter?.TryMeter(bytes) ?? true;
+
+    /// <summary>Meters the address bytes the transaction's first access to <paramref name="address"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the address runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalAddress(Address address) => _txExecutionContext.BalDataMeter?.TryMeterAddress(address) ?? true;
+
+    /// <summary>Meters the key bytes the transaction's first access to <paramref name="storageCell"/> adds.</summary>
+    /// <returns><see langword="false"/> when metering the key runs out of gas.</returns>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal bool TryMeterBalStorageKey(in StorageCell storageCell) => _txExecutionContext.BalDataMeter?.TryMeterStorageKey(in storageCell) ?? true;
+
     public VmState<TGasPolicy> VmState { get => _currentState; protected set => _currentState = value; }
     public int OpCodeCount { get; set; }
     internal ExecutionMetricsCounters MetricsCounters;
@@ -728,7 +743,10 @@ public partial class VirtualMachine<TGasPolicy>(
         if (hasEnoughGas && !invalidCode)
         {
             TGasPolicy gasAfterCodeDeposit = _currentState.Gas;
-            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost);
+            // EIP-8279: the deployed code joins the block access list once its deposit is paid for; an out-of-gas
+            // there fails the deposit.
+            chargedCodeDeposit = TGasPolicy.TryConsumeStateAndExecutionGas(ref gasAfterCodeDeposit, stateDepositCost, executionDepositCost)
+                && TryMeterBalData((ulong)code.Length);
             if (chargedCodeDeposit)
             {
                 _currentState.Gas = gasAfterCodeDeposit;

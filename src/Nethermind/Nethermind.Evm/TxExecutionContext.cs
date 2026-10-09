@@ -22,6 +22,9 @@ namespace Nethermind.Evm
         /// <summary>Non-null only while processing an EIP-8141 frame transaction.</summary>
         public readonly FrameTxContext? FrameTxContext = frameTxContext;
 
+        /// <summary>EIP-8279 block access list byte meter; <see langword="null"/> when the transaction is not metered.</summary>
+        internal BalDataMeter? BalDataMeter { get; init; }
+
         internal bool SuppressLogs { get; init; }
         internal bool MaterializeLogMemory { get; init; }
     }

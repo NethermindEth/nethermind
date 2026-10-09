@@ -15,7 +15,7 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
+public class JsonRpcWebSocketsModule(IJsonRpcProcessor jsonRpcProcessor,
     IJsonRpcService jsonRpcService,
     IJsonRpcLocalStats jsonRpcLocalStats,
     ILogManager logManager,
@@ -27,7 +27,7 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
 {
     private readonly ConcurrentDictionary<string, ISocketsClient> _clients = new();
 
-    private readonly JsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
+    private readonly IJsonRpcProcessor _jsonRpcProcessor = jsonRpcProcessor;
     private readonly IJsonRpcService _jsonRpcService = jsonRpcService;
     private readonly IJsonRpcLocalStats _jsonRpcLocalStats = jsonRpcLocalStats;
     private readonly ILogManager _logManager = logManager;
@@ -62,7 +62,7 @@ public class JsonRpcWebSocketsModule(JsonRpcProcessor jsonRpcProcessor,
             _jsonSerializer,
             jsonRpcUrl,
             _maxBatchResponseBodySize,
-            _processingConcurrency,
+            JsonRpcProcessingConcurrency.ForUrl(jsonRpcUrl, _processingConcurrency),
             context.Connection.RemoteIpAddress,
             context.Request.Headers["X-Forwarded-For"] is { Count: > 0 } forwardedFor ? forwardedFor.ToString() : null);
 
