@@ -25,6 +25,22 @@ public static class Metrics
     [Description("Number of engine_newPayload calls during whose processing the runtime ran a garbage collection, region entries not counted.")]
     public static long NewPayloadsWithCollection;
 
+    [GaugeMetric]
+    [Description("Gen0 allocation budget left that the no-GC region guard requires to skip the region, at its last decision.")]
+    public static long NoGcRegionGuardThresholdBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Estimated gen0 allocation budget left at the no-GC region guard's last decision; 0 when unknown.")]
+    public static long NoGcRegionGuardBudgetLeftBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Gen0 allocation budget the no-GC region guard's last estimate started from; 0 when unknown.")]
+    public static long NoGcRegionGuardGen0BudgetBytes { get; set; }
+
+    [GaugeMetric]
+    [Description("Most bytes allocated during one engine_newPayload over the last 300-600 payloads, as the no-GC region guard uses it (at least 64 MB).")]
+    public static long NoGcRegionGuardBlockAllocationBytes { get; set; }
+
     [CounterMetric]
     [Description("Number of throwaway no-GC regions entered (and ended at once) after a post-block collection to keep the region's budget committed; not counted in no_gc_region_entries.")]
     public static long NoGcRegionRecommits;

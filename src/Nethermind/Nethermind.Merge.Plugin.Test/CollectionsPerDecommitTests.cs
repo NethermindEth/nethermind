@@ -25,7 +25,7 @@ public class CollectionsPerDecommitTests
         }
     }
 
-    [TestCase(null, null, NoGcRegionMode.Guard, 256_000_000L)]
+    [TestCase(null, null, NoGcRegionMode.Guard, 0L)]
     [TestCase("Always", "64", NoGcRegionMode.Always, 64_000_000L)]
     [TestCase("Never", "0", NoGcRegionMode.Never, 0L)]
     [TestCase("Guard", "-5", NoGcRegionMode.Guard, 0L)]

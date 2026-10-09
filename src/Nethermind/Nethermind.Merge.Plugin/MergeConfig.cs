@@ -27,7 +27,7 @@ namespace Nethermind.Merge.Plugin
 
         public NoGcRegionMode NoGcRegionOnNewPayload { get; set; } = NoGcRegionMode.Guard;
 
-        public int NoGcRegionGuardMb { get; set; } = 256;
+        public int NoGcRegionGuardMb { get; set; }
 
         public GcLevel SweepMemory { get; set; } = GcLevel.Gen1;
 

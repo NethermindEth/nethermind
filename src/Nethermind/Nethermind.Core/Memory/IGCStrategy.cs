@@ -21,7 +21,10 @@ public interface IGCStrategy
     bool CanStartNoGCRegion();
     /// <summary>Gets when a permitted payload enters a region of its own; one that does not still schedules the post-payload collection.</summary>
     NoGcRegionMode NoGCRegionMode { get; }
-    /// <summary>Gets the gen0 allocation budget, in bytes, that has to be left for <see cref="NoGcRegionMode.Guard"/> to skip the region.</summary>
+    /// <summary>
+    /// Gets the gen0 allocation budget, in bytes, that has to be left for <see cref="NoGcRegionMode.Guard"/> to skip the
+    /// region, or 0 to derive it from gen0's budget and what payloads allocate (<see cref="GCKeeper.GuardThreshold"/>).
+    /// </summary>
     long NoGCRegionGuardBytes { get; }
     /// <summary>Returns ordinary collection settings; NoGC disables scheduling and a due decommit overrides these settings.</summary>
     (GcLevel Generation, GcCompaction Compacting) GetForcedGCParams();

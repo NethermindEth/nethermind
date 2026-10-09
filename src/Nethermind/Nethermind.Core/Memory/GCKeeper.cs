@@ -77,6 +77,7 @@ public class GCKeeper : IDisposable
                 return BenchRecommit.Decommit;
         }
     }
+    private readonly BlockAllocationTracker _blockAllocation = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
@@ -102,7 +103,8 @@ public class GCKeeper : IDisposable
             ParseBenchRecommit(_benchRecommitRaw, out bool recognised);
             string raw = _benchRecommitRaw ?? "unset";
             string note = recognised ? "" : ", not recognised";
-            _logger.Info($"GC keeper (test build bench/gc-guard-recommit): no-GC region mode {gcStrategy.NoGCRegionMode}, guard {gcStrategy.NoGCRegionGuardBytes / 1.MB} MB, re-commit {_recommit} (BENCH_GC_RECOMMIT={raw}{note}), decommit every {gcStrategy.CollectionsPerDecommit} payloads.");
+            string guard = gcStrategy.NoGCRegionGuardBytes > 0 ? $"fixed at {gcStrategy.NoGCRegionGuardBytes / 1.MB} MB" : "automatic";
+            _logger.Info($"GC keeper (test build bench/gc-guard-recommit): no-GC region mode {gcStrategy.NoGCRegionMode}, guard {guard}, re-commit {_recommit} (BENCH_GC_RECOMMIT={raw}{note}), decommit every {gcStrategy.CollectionsPerDecommit} payloads.");
         }
     }
 
@@ -164,15 +166,16 @@ public class GCKeeper : IDisposable
         // Sampled before the entry is queued, so a collection the entry has to wait for counts as one in processing.
         ProcessingSample start = SampleProcessing();
         NoGcRegionMode mode = _gcStrategy.NoGCRegionMode;
+        bool guard = mode == NoGcRegionMode.Guard;
         long estimatedLeft = Gen0BudgetTracker.Unknown;
         bool enter = mode switch
         {
             NoGcRegionMode.Never => false,
-            NoGcRegionMode.Guard => !BudgetCoversBlock(out estimatedLeft),
+            NoGcRegionMode.Guard => !BudgetCoversBlock(start.Allocated, out estimatedLeft),
             _ => true,
         };
         IDisposable lease = StartPayloadRegion(eligible, enter, estimatedLeft, out bool skipped);
-        return new ProcessingWindow(this, lease, start, skippedByGuard: skipped && mode == NoGcRegionMode.Guard);
+        return new ProcessingWindow(this, lease, start, guard, skippedByGuard: skipped && guard);
     }
 
     /// <param name="enter"><c>false</c> to run the payload without a region of its own.</param>
@@ -227,15 +230,35 @@ public class GCKeeper : IDisposable
     }
 
     /// <summary>
-    /// Whether the gen0 allocation budget left, as estimated by <see cref="Gen0BudgetTracker"/>, is at least
-    /// <see cref="IGCStrategy.NoGCRegionGuardBytes"/>, so the block is expected to run without a gen0 collection.
+    /// Whether the gen0 allocation budget left, as estimated by <see cref="Gen0BudgetTracker"/>, is at least the
+    /// guard's threshold (<see cref="GuardThreshold"/>), so the block is expected to run without a gen0 collection.
     /// </summary>
+    /// <param name="allocated">Allocated bytes where the payload's window starts.</param>
     /// <remarks>An unknown budget never covers the block, so the region is entered as it always was.</remarks>
-    private bool BudgetCoversBlock(out long left)
+    private bool BudgetCoversBlock(long allocated, out long left)
     {
-        left = _budget.EstimateLeft(_runtime.AllocatedBytes, _runtime.LastGcIndex, _runtime.Gen0Budget);
-        return left != Gen0BudgetTracker.Unknown && left >= _gcStrategy.NoGCRegionGuardBytes;
+        left = _budget.EstimateLeft(allocated, _runtime.LastGcIndex, _runtime.Gen0Budget, out long gen0Budget);
+        long blockAllocation = _blockAllocation.Maximum;
+        long threshold = GuardThreshold(_gcStrategy.NoGCRegionGuardBytes, gen0Budget, blockAllocation);
+        bool known = left != Gen0BudgetTracker.Unknown;
+        Metrics.NoGcRegionGuardThresholdBytes = threshold;
+        Metrics.NoGcRegionGuardBudgetLeftBytes = known ? left : 0;
+        Metrics.NoGcRegionGuardGen0BudgetBytes = gen0Budget;
+        Metrics.NoGcRegionGuardBlockAllocationBytes = blockAllocation;
+        return known && left >= threshold;
     }
+
+    /// <summary>The gen0 budget that has to be left for the guard to skip the region.</summary>
+    /// <param name="fixedBytes"><see cref="IGCStrategy.NoGCRegionGuardBytes"/>: a positive value replaces the rule.</param>
+    /// <param name="gen0Budget">The budget the estimate starts from (B0), 0 when unknown.</param>
+    /// <param name="blockAllocation">The most a payload's window allocated lately (A), at least <see cref="BlockAllocationTracker.Floor"/>.</param>
+    /// <remarks>
+    /// T = max(3/4 x B0, 2 x A). B0 is the budget the runtime derives from the L3 cache and the core count (5/8 of L3
+    /// per Server GC heap), or the region's own after the keeper's entry, and a quarter of it is the margin kept on
+    /// it; 2 x A leaves room for twice the largest payload seen lately, whatever the budget.
+    /// </remarks>
+    internal static long GuardThreshold(long fixedBytes, long gen0Budget, long blockAllocation) =>
+        fixedBytes > 0 ? fixedBytes : Math.Max(gen0Budget * 3 / 4, 2 * blockAllocation);
 
     private void OnRegionEntered()
     {
@@ -297,23 +320,27 @@ public class GCKeeper : IDisposable
         Metrics.NoGcRegionRecommitMsMax.AddOrUpdate(after, static (_, add) => add, static (_, max, add) => Math.Max(max, add), ms);
     }
 
-    /// <summary>Collections the runtime has counted, and this keeper's region entries among them, where a payload starts or ends.</summary>
-    private readonly record struct ProcessingSample(int Collections, long OwnEntries);
+    /// <summary>Collections the runtime has counted, this keeper's region entries among them, and the bytes allocated, where a payload starts or ends.</summary>
+    private readonly record struct ProcessingSample(int Collections, long OwnEntries, long Allocated);
 
-    // Two reads without a lock: an entry finishing between them can shift the comparison by one, which is rare.
-    private ProcessingSample SampleProcessing() => new(_runtime.CollectionCount, Interlocked.Read(ref _ownEntries));
+    // Reads without a lock: an entry finishing between the first two can shift the comparison by one, which is rare.
+    private ProcessingSample SampleProcessing() => new(_runtime.CollectionCount, Interlocked.Read(ref _ownEntries), _runtime.AllocatedBytes);
 
-    /// <summary>Counts the payload if the runtime collected between its start and the end of its lease, other than by entering a region.</summary>
-    private void EndProcessingWindow(in ProcessingSample start, bool skippedByGuard)
+    /// <summary>
+    /// Records what was allocated between the payload's start and the end of its lease for the guard, and counts the
+    /// payload if the runtime collected in that time, other than by entering a region.
+    /// </summary>
+    private void EndProcessingWindow(in ProcessingSample start, bool guard, bool skippedByGuard)
     {
         ProcessingSample end = SampleProcessing();
+        if (guard) _blockAllocation.Record(end.Allocated - start.Allocated);
         if (end.Collections - start.Collections <= end.OwnEntries - start.OwnEntries) return;
         Interlocked.Increment(ref Metrics.NewPayloadsWithCollection);
         if (skippedByGuard) Interlocked.Increment(ref Metrics.NoGcRegionGuardMisses);
     }
 
     /// <summary>A payload's lease that closes its processing window before ending the region or lease it wraps.</summary>
-    private sealed class ProcessingWindow(GCKeeper keeper, IDisposable lease, ProcessingSample start, bool skippedByGuard) : IDisposable
+    private sealed class ProcessingWindow(GCKeeper keeper, IDisposable lease, ProcessingSample start, bool guard, bool skippedByGuard) : IDisposable
     {
         private int _disposed;
 
@@ -322,7 +349,7 @@ public class GCKeeper : IDisposable
             if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
             try
             {
-                keeper.EndProcessingWindow(start, skippedByGuard);
+                keeper.EndProcessingWindow(start, guard, skippedByGuard);
             }
             finally
             {
@@ -358,16 +385,20 @@ public class GCKeeper : IDisposable
         private bool _regionSinceGc;
         private long _allocatedAtRegionEntry;
 
+        /// <param name="startBudget">The budget the estimate starts from: the runtime's, or the region's since its entry; 0 when unknown.</param>
         /// <returns>The estimated bytes left (may be negative), or <see cref="Unknown"/> when the budget is unknown.</returns>
-        public long EstimateLeft(long allocated, long gcIndex, long budget)
+        public long EstimateLeft(long allocated, long gcIndex, long budget, out long startBudget)
         {
             lock (_lock)
             {
                 ObserveLocked(allocated, gcIndex);
-                if (budget <= 0) return Unknown;
-                return _regionSinceGc
-                    ? RegionSohBudget - (allocated - _allocatedAtRegionEntry)
-                    : budget - (allocated - _allocatedAtGc);
+                if (budget <= 0)
+                {
+                    startBudget = 0;
+                    return Unknown;
+                }
+                startBudget = _regionSinceGc ? RegionSohBudget : budget;
+                return startBudget - (allocated - (_regionSinceGc ? _allocatedAtRegionEntry : _allocatedAtGc));
             }
         }
 
@@ -406,6 +437,56 @@ public class GCKeeper : IDisposable
                 _regionSinceGc = false;
             }
             _lastSampleAllocated = allocated;
+        }
+    }
+
+    /// <summary>Keeps the rolling maximum of the process-wide bytes allocated during a payload's window.</summary>
+    /// <remarks>
+    /// <para>A window runs from the guard's decision to the end of the payload's lease, so it covers the block and
+    /// everything the lease is held for. Overlapping windows count the same allocation twice, which only raises the
+    /// maximum.</para>
+    /// <para>The maximum is kept in two buckets of <see cref="BucketPayloads"/> payloads, so it covers the last 300
+    /// to 600 of them, one to two hours at 12 s slots: a heavy block raises the threshold for that long, then drops
+    /// out. The first <see cref="WarmUpPayloads"/> after start are left out: they fill caches and compile code that
+    /// later payloads find ready.</para>
+    /// </remarks>
+    internal sealed class BlockAllocationTracker
+    {
+        internal const int BucketPayloads = 300;
+        internal const int WarmUpPayloads = 20;
+        // 1/8 of the small-object budget a region guarantees, so that the threshold's floor, twice this, means at
+        // least a quarter of what the region would guarantee is left.
+        internal static readonly long Floor = Gen0BudgetTracker.RegionSohBudget / 8;
+        private readonly Lock _lock = new();
+        private int _warmUpLeft = WarmUpPayloads;
+        private int _inBucket;
+        private long _current;
+        private long _previous;
+
+        /// <summary>The largest allocation of a window in the current and the previous bucket, at least <see cref="Floor"/>.</summary>
+        public long Maximum
+        {
+            get
+            {
+                lock (_lock) return Math.Max(Floor, Math.Max(_previous, _current));
+            }
+        }
+
+        public void Record(long allocated)
+        {
+            lock (_lock)
+            {
+                if (_warmUpLeft > 0)
+                {
+                    _warmUpLeft--;
+                    return;
+                }
+                _current = Math.Max(_current, allocated);
+                if (++_inBucket < BucketPayloads) return;
+                _previous = _current;
+                _current = 0;
+                _inBucket = 0;
+            }
         }
     }
 
