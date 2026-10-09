@@ -375,7 +375,8 @@ public class HashesOnlyBlockReaderTests
             {
                 completion.SetException(exception);
             }
-        }) { IsBackground = true };
+        })
+        { IsBackground = true };
         thread.Start();
         return thread;
     }
