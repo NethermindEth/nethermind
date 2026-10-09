@@ -142,6 +142,31 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(_controller.IsDowngraded, Is.True);
         }
 
+        // FrameTxPeerFloodMeasurement derives r_attack from these exact boundaries for an EVM-shape frame tx.
+        [Test]
+        public void Failed_frame_simulation_downgrades_past_600_and_disconnects_past_6000()
+        {
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 600);
+            Assert.That(_controller.IsDowngraded, Is.False);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 1);
+            Assert.That(_controller.IsDowngraded, Is.True);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 6_000 - 601);
+            _session.DidNotReceiveWithAnyArgs().InitiateDisconnect(DisconnectReason.TxFlooding, null);
+
+            ReportTimes(AcceptTxResult.FrameSimulationFailed, 1);
+            _session.Received(1).InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
+
+            void ReportTimes(AcceptTxResult result, int times)
+            {
+                for (int i = 0; i < times; i++)
+                {
+                    _controller.Report(result);
+                }
+            }
+        }
+
         [Test]
         public void Deferred_frame_simulation_throttles_but_never_disconnects()
         {
