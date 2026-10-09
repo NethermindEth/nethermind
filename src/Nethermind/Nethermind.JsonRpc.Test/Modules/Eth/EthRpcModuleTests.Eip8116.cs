@@ -62,8 +62,11 @@ public partial class EthRpcModuleTests
         chain.Timestamper.Add(TimeSpan.FromDays(2));
         Block postFork = await AddLogsBlock(chain);
 
-        Assert.That(specProvider.GetSpec(preFork.Header).IsEip8116Enabled, Is.False);
-        Assert.That(specProvider.GetSpec(postFork.Header).IsEip8116Enabled, Is.EqualTo(eip8116Scheduled));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(specProvider.GetSpec(preFork.Header).IsEip8116Enabled, Is.False);
+            Assert.That(specProvider.GetSpec(postFork.Header).IsEip8116Enabled, Is.EqualTo(eip8116Scheduled));
+        }
 
         await AssertEip8116Block(chain, preFork, perTx: false);
         await AssertEip8116Block(chain, postFork, perTx: eip8116Scheduled);
@@ -151,8 +154,11 @@ public partial class EthRpcModuleTests
         }
 
         Hash256 expectedRoot = ReceiptsRootCalculator.Instance.GetReceiptsRoot(expected, spec, null);
-        Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot), "receipts root");
-        AssertReceiptRlpRoundTrip(stored);
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(block.Header.ReceiptsRoot, Is.EqualTo(expectedRoot), "receipts root");
+            AssertReceiptRlpRoundTrip(stored);
+        }
     }
 
     private static void AssertReceiptRlpRoundTrip(TxReceipt[] receipts)
