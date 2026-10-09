@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using NUnit.Framework;
@@ -399,6 +401,142 @@ namespace Nethermind.Core.Test.Caching
                     _ = new LruCache<int, int>(maxCapacity, "test");
                 });
 
+        }
+
+        [Test]
+        public void Memory_estimate_includes_dictionary_buckets_and_reference_key_padding()
+        {
+            // Three occupied slots use an estimated five dictionary entries, including their buckets.
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(LruCache<int, int>.CalculateMemorySize(0, 3), Is.EqualTo(416));
+                Assert.That(LruCache<string, int>.CalculateMemorySize(0, 3), Is.EqualTo(480));
+            }
+        }
+
+        [Test]
+        public void Matches_reference_lru_after_growth_removal_and_clear(
+            [Values(1, 3, 32)] int capacity,
+            [Values(0, 1, 4)] int startCapacity,
+            [Values] bool useFactory)
+        {
+            LruCache<int, int> cache = new(capacity, startCapacity, "test");
+            LruKeyCache<int> keys = new(capacity, startCapacity, "test");
+            List<int> order = [];
+            Dictionary<int, int> values = [];
+            Random random = new(12345);
+            for (int i = 0; i < 10000; i++)
+            {
+                int key = random.Next(capacity * 3);
+                int operation = random.Next(20);
+                bool exists = values.ContainsKey(key);
+                if (operation == 0)
+                {
+                    cache.Clear();
+                    keys.Clear();
+                    order.Clear();
+                    values.Clear();
+                }
+                else if (operation < 5)
+                {
+                    Assert.That(cache.TryRemove(key, out int removed), Is.EqualTo(exists));
+                    if (exists) Assert.That(removed, Is.EqualTo(values[key]));
+                    Assert.That(keys.Delete(key), Is.EqualTo(exists));
+                    values.Remove(key);
+                    order.Remove(key);
+                }
+                else if (operation < 10)
+                {
+                    Assert.That(cache.TryGet(key, out int value), Is.EqualTo(exists));
+                    Assert.That(keys.Get(key), Is.EqualTo(exists));
+                    if (exists)
+                    {
+                        Assert.That(value, Is.EqualTo(values[key]));
+                        order.Remove(key);
+                        order.Add(key);
+                    }
+                }
+                else
+                {
+                    int expectedValue = useFactory && exists ? values[key] : i;
+                    if (useFactory)
+                    {
+                        Assert.That(cache.SetOrGet(key, i, (_, value) =>
+                        {
+                            Assert.That(exists, Is.False, "An existing entry must not invoke the factory.");
+                            return value;
+                        }), Is.EqualTo(expectedValue));
+                    }
+                    else
+                    {
+                        Assert.That(cache.Set(key, i), Is.EqualTo(!exists));
+                    }
+                    Assert.That(keys.Set(key), Is.EqualTo(!exists));
+                    if (!exists && order.Count == capacity)
+                    {
+                        values.Remove(order[0]);
+                        order.RemoveAt(0);
+                    }
+                    values[key] = expectedValue;
+                    order.Remove(key);
+                    order.Add(key);
+                }
+
+                using (Assert.EnterMultipleScope())
+                {
+                    Assert.That(cache.Count, Is.EqualTo(values.Count));
+                    Assert.That(keys.Count, Is.EqualTo(values.Count));
+                    Assert.That(cache.ToArray(), Is.EquivalentTo(values));
+                }
+            }
+        }
+
+        [Test]
+        public void Mem_counting_cache_preserves_eviction_order_after_repeated_mru_hits([Values(1, 2)] int count)
+        {
+            MemCountingCache cache = new((count + 1) * 1024, "test");
+            byte[] value = new byte[1024];
+            cache.Set(TestItem.KeccakA, value);
+            if (count == 2) cache.Set(TestItem.KeccakB, value);
+            Assert.That(cache.Count, Is.EqualTo(count));
+
+            ValueHash256 mostRecent = count == 1 ? TestItem.KeccakA : TestItem.KeccakB;
+            for (int i = 0; i < 32; i++)
+            {
+                Assert.That(cache.Get(mostRecent), Is.SameAs(value));
+            }
+            cache.Set(TestItem.KeccakC, value);
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(cache.Count, Is.EqualTo(count));
+                Assert.That(cache.Contains(TestItem.KeccakA), Is.False);
+                Assert.That(cache.Contains(TestItem.KeccakC), Is.True);
+                if (count == 2) Assert.That(cache.Contains(TestItem.KeccakB), Is.True);
+            }
+        }
+
+        [Test]
+        public void Clear_notifies_all_values_and_allows_reentrant_refill()
+        {
+            List<int> evicted = [];
+            LruCache<int, int> cache = null!;
+            cache = new TestEvictingLruCache<int, int>(4, "test", value =>
+            {
+                evicted.Add(value);
+                cache.Set(value + 10, value);
+            });
+            cache.Set(1, 1);
+            cache.Set(2, 2);
+            cache.Set(3, 3);
+            cache.Clear();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(evicted, Is.EquivalentTo(new[] { 1, 2, 3 }));
+                Assert.That(cache.GetValues(), Is.EquivalentTo(new[] { 1, 2, 3 }));
+                Assert.That(cache.Count, Is.EqualTo(3));
+            }
         }
 
         private static void RunEvictionOperation(LruCache<int, int> cache, EvictionOperation operation)

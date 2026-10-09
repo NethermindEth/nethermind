@@ -15,6 +15,8 @@ internal sealed class LinkedListNode<T>(T value)
 
     public static void MoveToMostRecent([NotNull] ref LinkedListNode<T>? leastRecentlyUsed, LinkedListNode<T> node)
     {
+        if (ReferenceEquals(leastRecentlyUsed?.Prev, node)) return;
+
         if (node.Next == node)
         {
             if (leastRecentlyUsed != node)

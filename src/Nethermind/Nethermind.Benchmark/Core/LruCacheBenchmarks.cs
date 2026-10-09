@@ -31,4 +31,44 @@ namespace Nethermind.Benchmarks.Core
             }
         }
     }
+
+    [MemoryDiagnoser]
+    public class LruCacheReuseBenchmarks
+    {
+        private const int Operations = 16384;
+        private readonly object _value = new();
+        private LruCache<int, object> _cache = null!;
+
+        [Params(1024, 16384)]
+        public int Capacity { get; set; }
+
+        [GlobalSetup]
+        public void Setup()
+        {
+            _cache = new(Capacity, Capacity, nameof(LruCacheReuseBenchmarks));
+            for (int i = 0; i < Capacity; i++) _cache.Set(i, _value);
+        }
+
+        [Benchmark(OperationsPerInvoke = Operations)]
+        public void DeleteRefill()
+        {
+            for (int i = 0; i < Operations; i++)
+            {
+                int key = i % Capacity;
+                _cache.Delete(key);
+                _cache.Set(key, _value);
+            }
+        }
+
+        [Benchmark(OperationsPerInvoke = Operations)]
+        public void ClearRefill()
+        {
+            for (int i = 0; i < Operations; i++)
+            {
+                int key = i % Capacity;
+                if (key == 0) _cache.Clear();
+                _cache.Set(key, _value);
+            }
+        }
+    }
 }
