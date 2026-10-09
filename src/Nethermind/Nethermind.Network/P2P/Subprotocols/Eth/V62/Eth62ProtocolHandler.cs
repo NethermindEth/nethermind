@@ -412,7 +412,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         /// <summary>Called once the pool has processed an inbound transaction, whether or not it was accepted.</summary>
         /// <remarks>Runs before a rejected transaction is recycled, so <paramref name="tx"/> is still readable but must not be retained.</remarks>
-        private protected virtual void OnTransactionSubmitted(Transaction tx)
+        protected virtual void OnTransactionSubmitted(Transaction tx)
         {
         }
 

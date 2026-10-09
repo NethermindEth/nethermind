@@ -288,11 +288,11 @@ public class Eth72ProtocolHandler(
     }
 
     /// <summary>Decodes a received <c>NewPooledTransactionHashes</c> message in this protocol version's format.</summary>
-    private protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
+    protected virtual NewPooledTransactionHashesMessage72 DeserializeNewPooledTransactionHashes(IByteBuffer content) =>
         Deserialize<NewPooledTransactionHashesMessage72>(content);
 
     /// <summary>Called when the transaction at <paramref name="index"/> of a received announcement is requested from this peer.</summary>
-    private protected virtual void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
+    protected virtual void OnPooledTransactionRequested(NewPooledTransactionHashesMessage72 message, int index)
     {
     }
 
@@ -1881,31 +1881,34 @@ public class Eth72ProtocolHandler(
         return BlobCellMask.Full;
     }
 
-    private protected virtual void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
+    protected virtual void SendAnnouncement(IReadOnlyList<Transaction> txs, byte[] cellMask)
     {
         int count = txs.Count;
         ArrayPoolList<byte> types = new(count);
         ArrayPoolList<int> sizes = new(count);
         ArrayPoolList<ValueHash256> hashes = new(count);
-
-        AddAnnouncedTransactions(txs, types, sizes, hashes);
-
-        if (hashes.Count != 0)
+        NewPooledTransactionHashesMessage72 message = new(types, sizes, hashes, cellMask);
+        bool isTransferred = false;
+        try
         {
-            Send(new NewPooledTransactionHashesMessage72(types, sizes, hashes, cellMask));
+            AddAnnouncedTransactions(txs, types, sizes, hashes);
+            if (hashes.Count != 0)
+            {
+                // The session disposes the message on every path.
+                isTransferred = true;
+                Send(message);
+            }
         }
-        else
+        finally
         {
-            types.Dispose();
-            sizes.Dispose();
-            hashes.Dispose();
+            if (!isTransferred) message.Dispose();
         }
     }
 
     /// <summary>Appends the announceable transactions of <paramref name="txs"/> to the announcement fields.</summary>
     /// <param name="sources">When set, also collects each transaction's source address, skipping transactions without one.</param>
     /// <param name="nonces">Collects each transaction's nonce; required when <paramref name="sources"/> is set.</param>
-    private protected static void AddAnnouncedTransactions(
+    protected static void AddAnnouncedTransactions(
         IReadOnlyList<Transaction> txs,
         ArrayPoolList<byte> types,
         ArrayPoolList<int> sizes,

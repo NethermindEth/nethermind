@@ -11,13 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 
-/// <summary>
-/// Serializes <c>[txtypes, [txsize, ...], [txhash, ...], cells, [txsource, ...], [txnonce, ...]]</c>.
-/// </summary>
-/// <remarks>
-/// EIP-8077 appends the source and nonce lists to the announcement of the preceding protocol version, which for eth/73 is
-/// the eth/72 one carrying the EIP-8070 cell mask.
-/// </remarks>
+/// <summary>Serializes <c>[txtypes, [txsize, ...], [txhash, ...], cells, [txsource, ...], [txnonce, ...]]</c>.</summary>
 public class NewPooledTransactionHashesMessageSerializer73 : IZeroMessageSerializer<NewPooledTransactionHashesMessage73>
 {
     private static readonly RlpLimit TypesRlpLimit = RlpLimit.For<NewPooledTransactionHashesMessage73>(NewPooledTransactionHashesMessage72.MaxCount, nameof(NewPooledTransactionHashesMessage73.Types));

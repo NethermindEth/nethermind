@@ -9,9 +9,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V72.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V73.Messages;
 
-/// <summary>
-/// The EIP-8077 transaction announcement: the eth/72 announcement extended with each transaction's source address and nonce.
-/// </summary>
+/// <summary>EIP-8077 announcement: eth/72's plus each transaction's source and nonce.</summary>
 public class NewPooledTransactionHashesMessage73(
     IOwnedReadOnlyList<byte> types,
     IOwnedReadOnlyList<int> sizes,
