@@ -163,7 +163,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>Sets the account's code to code adopted from another account by EIP-8298 <c>SETCODEFROM</c>.</summary>
     /// <remarks>
     /// Same state effect as <see cref="InsertCode"/>. Kept apart so a block access list records the change by its
-    /// code hash rather than its bytecode, as EIP-8298 requires.
+    /// code hash rather than its bytecode, as EIP-8298 requires. A forwarding implementation must override it, as
+    /// deriving from <c>WorldStateDecorator</c> does; the default sends it to its own <see cref="InsertCode"/>, so
+    /// a recording state it wraps records bytecode.
     /// </remarks>
     /// <returns>As <see cref="InsertCode"/>.</returns>
     bool AdoptCode(Address address, in ValueHash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec)
