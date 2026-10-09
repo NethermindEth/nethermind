@@ -151,6 +151,8 @@ public class BaseMergePluginModule : Module
 
             .AddSingleton<IMainProcessingModule, IRpcCapabilitiesProvider>(static capabilitiesProvider =>
                 new WitnessCapturingMainProcessingModule(IsWitnessCaptureEnabled(capabilitiesProvider)))
+            .AddSingleton<IMainProcessingModule, FinalizedBlockAccessListModule>()
+            .AddSingleton<FinalizedBlockAccessListPolicy>()
             .AddSingleton<WitnessRendezvous>()
             .AddSingleton<WitnessCapturingBlockProcessingEnv>()
 

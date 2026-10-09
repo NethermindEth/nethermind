@@ -106,6 +106,11 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     [TestCase("60045600B100", 12UL, TestName = "JUMP lands on CALLDEST")]
     [TestCase("600160065700B100", 17UL, TestName = "JUMPI lands on CALLDEST")]
     [TestCase("6004B000B1600856B1B2", 29UL, TestName = "Tail call by JUMP returns to the original caller")]
+    [TestCase("610005B000B1B2", 17UL, TestName = "PUSH2 CALLSUB: simple routine")]
+    [TestCase("610005B000B161000BB0B2B1B2", 34UL, TestName = "PUSH2 CALLSUB: two levels of subroutines")]
+    [TestCase("61000656B1B25B610004B0", 29UL, TestName = "PUSH2 CALLSUB: subroutine at end of code")]
+    [TestCase("6100055600B100", 12UL, TestName = "PUSH2 JUMP lands on CALLDEST")]
+    [TestCase("610005B000B161000A56B1B2", 29UL, TestName = "PUSH2 CALLSUB: tail call by PUSH2 JUMP")]
     public void Executes_with_exact_gas(string hex, ulong executionGas) =>
         AssertSuccess(Run(FromEipVector(hex)), executionGas);
 
@@ -118,24 +123,32 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     [TestCase("640100000004B000B1", EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB destination above uint32")]
     [TestCase("60045600B1B2", EvmExceptionType.ReturnStackUnderflow, TestName = "JUMP to CALLDEST pushes no return address")]
     [TestCase("B0", EvmExceptionType.StackUnderflow, TestName = "CALLSUB with an empty data stack")]
+    [TestCase("6100FFB000B1B2", EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB: destination out of range")]
+    [TestCase("610004B05B00", EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB to JUMPDEST")]
+    [TestCase("610005B060BB00", EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB to CALLDEST inside PUSH data")]
+    [TestCase("610005B0E6B100", EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB to CALLDEST inside an EIP-8024 immediate")]
+    [TestCase("610004B0", EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB to the end of code")]
     public void Halts_exceptionally(string hex, EvmExceptionType error) =>
         AssertHalt(Run(FromEipVector(hex)), error);
 
-    [TestCase(EvmStack.ReturnStackLimit - 1, true, TestName = "Return stack fills to its limit")]
-    [TestCase(EvmStack.ReturnStackLimit, false, TestName = "Return stack overflows past its limit")]
-    public void Return_stack_limit(int recursions, bool succeeds)
+    [TestCase(EvmStack.ReturnStackLimit - 1, true, false, TestName = "Return stack fills to its limit")]
+    [TestCase(EvmStack.ReturnStackLimit, false, false, TestName = "Return stack overflows past its limit")]
+    [TestCase(EvmStack.ReturnStackLimit - 1, true, true, TestName = "PUSH2 CALLSUB: return stack fills to its limit")]
+    [TestCase(EvmStack.ReturnStackLimit, false, true, TestName = "PUSH2 CALLSUB: return stack overflows past its limit")]
+    public void Return_stack_limit(int recursions, bool succeeds, bool push2Destinations)
     {
         // Entry calls sub, which calls itself `recursions` more times: 1 + recursions return addresses at the deepest point.
-        const byte sub = 7;
-        const byte done = 21;
+        int destinationWidth = push2Destinations ? 2 : 1;
+        byte sub = (byte)(6 + destinationWidth);
+        byte done = (byte)(sub + 12 + 2 * destinationWidth);
         byte[] code =
         [
             (byte)Instruction.PUSH2, (byte)(recursions >> 8), (byte)recursions,
-            (byte)Instruction.PUSH1, sub, (byte)Instruction.CALLSUB, (byte)Instruction.STOP,
+            .. PushDestination(sub), (byte)Instruction.CALLSUB, (byte)Instruction.STOP,
             (byte)Instruction.CALLDEST, (byte)Instruction.DUP1, (byte)Instruction.ISZERO,
-            (byte)Instruction.PUSH1, done, (byte)Instruction.JUMPI,
+            .. PushDestination(done), (byte)Instruction.JUMPI,
             (byte)Instruction.PUSH1, 1, (byte)Instruction.SWAP1, (byte)Instruction.SUB,
-            (byte)Instruction.PUSH1, sub, (byte)Instruction.CALLSUB, (byte)Instruction.RETURNSUB,
+            .. PushDestination(sub), (byte)Instruction.CALLSUB, (byte)Instruction.RETURNSUB,
             (byte)Instruction.JUMPDEST, (byte)Instruction.RETURNSUB,
         ];
         using (Assert.EnterMultipleScope())
@@ -155,12 +168,18 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         {
             AssertHalt(result, EvmExceptionType.ReturnStackOverflow, gasLimit);
         }
+
+        byte[] PushDestination(byte destination) => push2Destinations
+            ? [(byte)Instruction.PUSH2, 0, destination]
+            : [(byte)Instruction.PUSH1, destination];
     }
 
     [TestCase("B1", GasCostOf.JumpDest, EvmExceptionType.None, TestName = "CALLDEST costs 1")]
     [TestCase("6000B0", GasCostOf.VeryLow + GasCostOf.CallSub, EvmExceptionType.InvalidJumpDestination, TestName = "CALLSUB costs 8 before its destination check")]
     [TestCase("6004B000B1", GasCostOf.VeryLow + GasCostOf.CallSub + GasCostOf.JumpDest, EvmExceptionType.None, TestName = "CALLSUB charges the landed-on CALLDEST")]
     [TestCase("B2", GasCostOf.ReturnSub, EvmExceptionType.ReturnStackUnderflow, TestName = "RETURNSUB costs 5 before its return stack check")]
+    [TestCase("610000B0", GasCostOf.VeryLow + GasCostOf.CallSub, EvmExceptionType.InvalidJumpDestination, TestName = "PUSH2 CALLSUB costs 8 before its destination check")]
+    [TestCase("610005B000B1", GasCostOf.VeryLow + GasCostOf.CallSub + GasCostOf.JumpDest, EvmExceptionType.None, TestName = "PUSH2 CALLSUB charges the landed-on CALLDEST")]
     public void Charges_gas_before_halting(string hex, ulong cost, EvmExceptionType errorWithEnoughGas)
     {
         byte[] code = FromEipVector(hex);
@@ -181,8 +200,19 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
     [TestCase("B1", EvmExceptionType.BadInstruction, TestName = "CALLDEST is undefined")]
     [TestCase("B2", EvmExceptionType.BadInstruction, TestName = "RETURNSUB is undefined")]
     [TestCase("60045600B100", EvmExceptionType.InvalidJumpDestination, TestName = "CALLDEST is no jump destination")]
+    [TestCase("610005B000B1B2", EvmExceptionType.BadInstruction, TestName = "PUSH2 CALLSUB is not fused")]
     public void Disabled_spec(string hex, EvmExceptionType error) =>
         AssertHalt(Run(FromEipVector(hex), Disabled), error);
+
+    [Test]
+    public void Push2_callsub_keeps_the_push_stack_limit()
+    {
+        // 1024 words leave no room for PUSH2, even though a fused CALLSUB would pop its destination straight away.
+        byte[] code = [.. Enumerable.Repeat((byte)Instruction.PUSH0, EvmStack.MaxStackSize - 1), (byte)Instruction.PUSH2, 0x04, 0x05, (byte)Instruction.CALLSUB, (byte)Instruction.STOP, (byte)Instruction.CALLDEST];
+        Assert.That(code[0x405], Is.EqualTo((byte)Instruction.CALLDEST));
+
+        AssertHalt(Run(code), EvmExceptionType.StackOverflow);
+    }
 
     [Test]
     public void Return_stack_is_per_call_frame()
@@ -235,6 +265,17 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         Assert.Throws<OperationCanceledException>(() =>
             _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer));
         Assert.That(tracer.PollCount, Is.EqualTo(2), "the first poll is at frame entry and the second at a CALLSUB");
+    }
+
+    [TestCase("610005B000B1B2", 17UL, TestName = "Cancelable table: PUSH2 CALLSUB simple routine")]
+    [TestCase("610005B000B161000BB0B2B1B2", 34UL, TestName = "Cancelable table: PUSH2 CALLSUB two levels of subroutines")]
+    public void Executes_with_exact_gas_on_a_cancelable_table(string hex, ulong executionGas)
+    {
+        (Block block, Transaction transaction) = PrepareTx(Activation, GasLimit, FromEipVector(hex));
+        CancellingTracer tracer = new(traceInstructions, cancelAtPoll: int.MaxValue);
+        _processor.Execute(transaction, new BlockExecutionContext(block.Header, SpecProvider.GetSpec(block.Header)), tracer);
+
+        AssertSuccess(tracer, executionGas);
     }
 
     private const string SimpleRoutine = "6004B000B1B2";
@@ -340,7 +381,7 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
         public override bool IsTracingInstructions => false;
     }
 
-    private sealed class CancellingTracer(bool traceInstructions) : TestAllTracerWithOutput, ITxTracer
+    private sealed class CancellingTracer(bool traceInstructions, int cancelAtPoll = 2) : TestAllTracerWithOutput, ITxTracer
     {
         public int PollCount { get; private set; }
 
@@ -348,6 +389,6 @@ public class Eip7979Tests(bool traceInstructions) : VirtualMachineTestsBase
 
         bool ITxTracer.IsCancelable => true;
 
-        bool ITxTracer.IsCancelled => ++PollCount >= 2;
+        bool ITxTracer.IsCancelled => ++PollCount >= cancelAtPoll;
     }
 }

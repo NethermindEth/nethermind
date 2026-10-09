@@ -204,5 +204,6 @@ public class ChainParameters
     public ulong? Eip8360TransitionTimestamp { get; set; }
     public ulong? Eip3298TransitionTimestamp { get; set; }
     public ulong? Eip8131TransitionTimestamp { get; set; }
+    public ulong? Eip8279TransitionTimestamp { get; set; }
     public ulong? Eip7805TransitionTimestamp { get; set; }
 }
