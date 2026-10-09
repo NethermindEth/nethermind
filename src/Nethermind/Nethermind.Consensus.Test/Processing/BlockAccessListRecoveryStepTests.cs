@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using Autofac;
 using Nethermind.Blockchain.BlockAccessLists;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -103,6 +104,19 @@ public class BlockAccessListRecoveryStepTests
             .Build();
 
         Assert.That(container.Resolve<IReadOnlyList<IBlockPreprocessorStep>>(), Has.Some.InstanceOf<BlockAccessListRecoveryStep>());
+    }
+
+    [Test]
+    public void Reconstruction_alone_reattaches_the_stored_list()
+    {
+        TestMemDb db = new();
+        Block block = BlockCommittingTo(StoredHash);
+        new BlockAccessListStore(db).Insert(BlockNumber, block.Hash!, StoredRlp);
+        BlockAccessListRecoveryStep step = new(new BlockAccessListStore(db),
+            new BlocksConfig { ParallelExecution = false, ParallelExecutionBatchRead = false }, LimboLogs.Instance,
+            new SyncConfig { ReconstructFinalizedStateFromBlockAccessLists = true });
+        step.RecoverDataForQueuedProcessing(block);
+        Assert.That(block.BlockAccessList?.WireHash, Is.EqualTo(StoredHash));
     }
 
     private static Block BlockCommittingTo(Hash256 balHash) =>

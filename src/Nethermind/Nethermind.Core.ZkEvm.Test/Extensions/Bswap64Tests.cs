@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2026 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Buffers.Binary;
 using Nethermind.Core.Extensions;
 using NUnit.Framework;
@@ -40,4 +41,24 @@ public class Bswap64Tests
     [Test]
     public void Every_byte_lands_in_its_mirrored_position([Range(0, 7)] int index)
         => Assert.That(Bytes.Bswap64(0xA5UL << (index * 8)), Is.EqualTo(0xA5UL << ((7 - index) * 8)));
+
+    [Test]
+    public void Reads_a_big_endian_word_at_any_offset([ValueSource(nameof(Values))] ulong value, [Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(buffer.AsSpan(offset), value);
+
+        Assert.That(ZkEvmBitOperations.ReadUInt64BigEndian(ref buffer[offset]), Is.EqualTo(value));
+    }
+
+    [Test]
+    public void Writes_a_big_endian_word_at_any_offset([ValueSource(nameof(Values))] ulong value, [Range(0, 7)] int offset)
+    {
+        byte[] buffer = new byte[16];
+        ZkEvmBitOperations.WriteUInt64BigEndian(ref buffer[offset], value);
+
+        byte[] expected = new byte[16];
+        BinaryPrimitives.WriteUInt64BigEndian(expected.AsSpan(offset), value);
+        Assert.That(buffer, Is.EqualTo(expected));
+    }
 }
