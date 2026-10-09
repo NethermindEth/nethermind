@@ -473,7 +473,10 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("An attempt to suggest block with a null hash.");
             }
 
-            if (!isKnown)
+            // A known block may still lack its header: the chain level that makes it known is written at once, while
+            // its deferred header is lost in a crash before the write. Suggesting the block again writes the header,
+            // as the already-known path above writes a missing body.
+            if (!isKnown || (block is not null && _headerStore.Get(header.Hash, shouldCache: false, blockNumber: header.Number) is null))
             {
                 // Deferred with the body: the engine API path waits for neither database write. Queued ahead of it, as
                 // the deferred writer runs its queue in order: a crash between the two writes then leaves a header

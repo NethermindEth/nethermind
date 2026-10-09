@@ -23,8 +23,8 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     private const int NumberPrefixedKeyLength = sizeof(ulong) + Hash256.Size;
 
-    private readonly IDb headerDb;
-    private readonly IDb blockNumberDb;
+    private readonly IDb _headerDb;
+    private readonly IDb _blockNumberDb;
     private readonly IHeaderDecoder _headerDecoder;
     private readonly AssociativeCache<ValueHash256, BlockHeader> _headerCache = new(CacheSize);
     // Headers written off the engine API path, as the bodies they belong to are; null when deferral is off. The block
@@ -39,8 +39,8 @@ public class HeaderStore : IHeaderStore, IClearableCache
         IDeferredBlockDataWriter? deferredWriter = null,
         IStatePersistenceBarrier? persistenceBarrier = null)
     {
-        this.headerDb = headerDb;
-        this.blockNumberDb = blockNumberDb;
+        _headerDb = headerDb;
+        _blockNumberDb = blockNumberDb;
         _headerDecoder = decoder ?? new HeaderDecoder();
 
         if (deferredWriter is { Enabled: true })
@@ -73,14 +73,14 @@ public class HeaderStore : IHeaderStore, IClearableCache
     private void WriteHeader(ulong blockNumber, Hash256 blockHash, BlockHeader header)
     {
         using ArrayPoolSpan<byte> rlp = _headerDecoder.EncodeToArrayPoolSpan(header);
-        headerDb.Set(blockNumber, blockHash, rlp);
+        _headerDb.Set(blockNumber, blockHash, rlp);
         InsertBlockNumber(blockHash, blockNumber);
     }
 
     public void BulkInsert(IReadOnlyList<BlockHeader> headers)
     {
-        using IWriteBatch headerWriteBatch = headerDb.StartWriteBatch();
-        using IWriteBatch blockNumberWriteBatch = blockNumberDb.StartWriteBatch();
+        using IWriteBatch headerWriteBatch = _headerDb.StartWriteBatch();
+        using IWriteBatch blockNumberWriteBatch = _blockNumberDb.StartWriteBatch();
 
         Span<byte> blockNumberSpan = stackalloc byte[8];
         foreach (BlockHeader header in headers)
@@ -103,9 +103,9 @@ public class HeaderStore : IHeaderStore, IClearableCache
         BlockHeader? header = null;
         if (blockNumber is not null)
         {
-            header = headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+            header = _headerDb.Get(blockNumber.Value, blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
         }
-        return header ?? headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
+        return header ?? _headerDb.Get(blockHash, _headerDecoder, _headerCache, shouldCache: shouldCache);
     }
 
     public void Cache(BlockHeader header) => _headerCache.Set(in header.Hash.ValueHash256, header);
@@ -126,9 +126,9 @@ public class HeaderStore : IHeaderStore, IClearableCache
     private void DeleteFromDb(Hash256 blockHash)
     {
         ulong? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber is not null) headerDb.Delete(blockNumber.Value, blockHash);
-        blockNumberDb.Delete(blockHash);
-        headerDb.Delete(blockHash);
+        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
+        _blockNumberDb.Delete(blockHash);
+        _headerDb.Delete(blockHash);
         _headerCache.Delete(in blockHash.ValueHash256);
     }
 
@@ -136,7 +136,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     {
         Span<byte> blockNumberSpan = stackalloc byte[8];
         blockNumber.WriteBigEndian(blockNumberSpan);
-        blockNumberDb.Set(blockHash, blockNumberSpan);
+        _blockNumberDb.Set(blockHash, blockNumberSpan);
     }
 
     public ulong? GetBlockNumber(Hash256 blockHash)
@@ -151,7 +151,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
 
     private ulong? GetBlockNumberFromBlockNumberDb(Hash256 blockHash)
     {
-        Span<byte> numberSpan = blockNumberDb.GetSpan(blockHash);
+        Span<byte> numberSpan = _blockNumberDb.GetSpan(blockHash);
         if (numberSpan.IsNullOrEmpty()) return null;
         try
         {
@@ -164,7 +164,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
         }
         finally
         {
-            blockNumberDb.DangerousReleaseMemory(numberSpan);
+            _blockNumberDb.DangerousReleaseMemory(numberSpan);
         }
     }
 
@@ -174,7 +174,7 @@ public class HeaderStore : IHeaderStore, IClearableCache
     private Dictionary<ValueHash256, BlockHeader> PrefetchByNumberRange(ulong fromInclusive, ulong toExclusive, int capacity)
     {
         Dictionary<ValueHash256, BlockHeader> prefetched = new(capacity);
-        if (toExclusive <= fromInclusive || headerDb is not ISortedKeyValueStore sorted) return prefetched;
+        if (toExclusive <= fromInclusive || _headerDb is not ISortedKeyValueStore sorted) return prefetched;
 
         Span<byte> startKey = stackalloc byte[NumberPrefixedKeyLength];
         Span<byte> endKey = stackalloc byte[NumberPrefixedKeyLength];

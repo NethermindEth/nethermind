@@ -124,6 +124,49 @@ public class DeferredHeaderStoreTests
         }
     }
 
+    /// <summary>
+    /// The chain level that makes a block known is written at once, so a crash can lose a block's queued header while the
+    /// block stays known; suggesting the block again must write the header.
+    /// </summary>
+    [Test]
+    public async Task Resuggested_known_block_writes_the_header_a_crash_lost()
+    {
+        TestMemDb blocksDb = new(), headersDb = new(), blockNumbersDb = new(), blockInfosDb = new(), metadataDb = new();
+        BlockTreeBuilder Builder(DeferredBlockDataWriter writer, StatePersistenceBarrier barrier) => Build.A.BlockTree()
+            .WithBlocksDb(blocksDb).WithHeadersDb(headersDb).WithBlocksNumberDb(blockNumbersDb).WithBlockInfoDb(blockInfosDb).WithMetadataDb(metadataDb)
+            .WithBlockStore(new BlockStore(blocksDb, null, writer, persistenceBarrier: barrier))
+            .WithHeaderStore(new HeaderStore(headersDb, blockNumbersDb, null, writer, barrier));
+
+        StatePersistenceBarrier firstBarrier = new();
+        DeferredBlockDataWriter first = DeferredWriteTestHelpers.ManualWriter(firstBarrier);
+        BlockTree tree = Builder(first, firstBarrier).OfChainLength(1).BlockTree;
+        first.Pump();
+        Block block = Build.A.Block.WithParent(tree.Head!).TestObject;
+        tree.SuggestBlock(block);
+        // A crash: the writer is abandoned with the header and body still queued; the chain level is already written.
+        Assert.That(new HeaderStore(headersDb, blockNumbersDb).Get(block.Hash!, shouldCache: false), Is.Null, "precondition: the header was lost");
+
+        StatePersistenceBarrier secondBarrier = new();
+        DeferredBlockDataWriter second = DeferredWriteTestHelpers.ManualWriter(secondBarrier);
+        try
+        {
+            BlockTree restarted = Builder(second, secondBarrier).BlockTree;
+            restarted.SuggestBlock(block);
+            second.Pump();
+
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(restarted.FindHeader(block.Hash!, BlockTreeLookupOptions.None)?.Hash, Is.EqualTo(block.Hash));
+                Assert.That(new HeaderStore(headersDb, blockNumbersDb).Get(block.Hash!, shouldCache: false)?.Hash, Is.EqualTo(block.Hash),
+                    "the header is written again");
+            }
+        }
+        finally
+        {
+            await second.DisposeAsync();
+        }
+    }
+
     [Test]
     public void Insert_writes_at_once()
     {
