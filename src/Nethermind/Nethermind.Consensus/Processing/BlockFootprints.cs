@@ -228,17 +228,12 @@ internal sealed class BlockFootprints(Block block)
     {
         TransactionFootprint?[] footprints = _footprints;
         TransactionFootprint? footprint = (uint)position < (uint)footprints.Length ? Volatile.Read(ref footprints[position]) : null;
-        ReadOnlySpan<StateEffect> effects = footprint is null ? default : footprint.Effects;
-        int predicted = -(footprint?.RestoredWrites ?? 0);
-        foreach (ref readonly StateEffect effect in effects)
-        {
-            if (effect.Kind == EffectKind.SetStorage) predicted++;
-        }
-
         int count = writes.Length;
-        if (predicted != count) return false;
+        if ((footprint?.StorageWrites ?? 0) != count) return false;
+        if (count == 0) return true;
         if (count > MaxComparedWrites) return false;
         // A footprint writes each slot once, and a commit reports each slot once.
+        ReadOnlySpan<StateEffect> effects = footprint!.Effects;
         foreach ((StorageCell cell, UInt256 value) in writes.Span)
         {
             if (!Writes(effects, in cell, in value)) return false;

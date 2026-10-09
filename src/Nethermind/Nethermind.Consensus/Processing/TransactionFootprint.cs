@@ -35,8 +35,8 @@ internal sealed class TransactionFootprint(
     /// <summary>Whether the run refreshed an invalidated footprint, on the values the footprints before it leave.</summary>
     public bool Refreshed { get; init; }
 
-    /// <summary>The storage writes that leave their slot at its value when the transaction started, which a commit does not report.</summary>
-    public int RestoredWrites { get; init; }
+    /// <summary>The storage writes replay makes, one per slot.</summary>
+    public int StorageWrites { get; } = CountStorageWrites(effects);
 
     public ref readonly FootprintReceipt Receipt => ref _receipt;
 
@@ -64,6 +64,17 @@ internal sealed class TransactionFootprint(
         }
 
         return true;
+    }
+
+    private static int CountStorageWrites(StateEffect[] effects)
+    {
+        int count = 0;
+        foreach (ref readonly StateEffect effect in effects.AsSpan())
+        {
+            if (effect.Kind == EffectKind.SetStorage) count++;
+        }
+
+        return count;
     }
 
     public void Replay(IWorldState state, IReleaseSpec spec)

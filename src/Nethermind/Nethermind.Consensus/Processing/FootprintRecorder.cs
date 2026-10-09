@@ -44,7 +44,6 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
     private BalanceMerge[] _merges = new BalanceMerge[32];
     private int[] _lastWrites = new int[64];
-    private int _restoredWrites;
 
     private readonly StrongBox<ExecutionCounts> _counts = new();
 
@@ -149,7 +148,7 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
         }
 
         FootprintReceipt receipt = new(Outcome.Success, Outcome.Recipient!, Outcome.Gas, Outcome.Logs, Outcome.Error);
-        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed, RestoredWrites = _restoredWrites };
+        return new TransactionFootprint(tx, accounts, slots, effects, in receipt, in result, in _counts.Value) { Refreshed = refreshed };
     }
 
     /// <summary>The run's effects with fewer state calls to replay and the same state after a commit.</summary>
@@ -157,12 +156,13 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
     /// An account changed only by non-zero balance changes and nonce changes gets one net balance change. The commit
     /// keeps only an account's last value, and a touch commits as an update does. A minimum balance as large as the
     /// deepest deficit along the changes refuses a replay where a subtraction would have failed.
-    /// A slot keeps only its last write, which overwrites the earlier ones whatever happens to the account between them.
-    /// A zero-value debit changes nothing, and neither does a zero-value credit to an account that cannot be empty.
+    /// A slot keeps only its last write, which overwrites the earlier ones whatever happens to the account between them,
+    /// and not even that when it leaves the slot at the value the run read it at, which replay requires, and the
+    /// account's storage is not reset. A zero-value debit changes nothing, and neither does a zero-value credit to an
+    /// account that cannot be empty.
     /// </remarks>
     private StateEffect[] CompactEffects()
     {
-        _restoredWrites = 0;
         int effectCount = _effectCount;
         if (effectCount == 0) return [];
 
@@ -214,7 +214,8 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
             {
                 int slot = owners[e];
                 if (lastWrites[slot] != e) continue;
-                if (effect.Value == _slots[slot].Value) _restoredWrites++;
+                ref readonly SlotPrecondition read = ref _slots[slot];
+                if (read.Read && effect.Value == read.Value && !ResetsStorage(effect.Address, merges)) continue;
             }
             else if (effect.Kind is EffectKind.AddToBalance or EffectKind.SubtractFromBalance && effect.Value.IsZero)
             {
@@ -247,6 +248,10 @@ internal sealed class FootprintRecorder(IWorldState state) : WorldStateDecorator
 
         return effects[..kept].ToArray();
     }
+
+    // Creating, deleting or clearing the account is the only way its storage changes other than by writes.
+    private bool ResetsStorage(Address address, ReadOnlySpan<BalanceMerge> merges) =>
+        _accountIndex.TryGetValue(address, out int index) && merges[index].Unmergeable;
 
     // An account the run requires code of, and does not create, delete or give code, is never empty (EIP-161), so a
     // zero-value credit touches nothing.

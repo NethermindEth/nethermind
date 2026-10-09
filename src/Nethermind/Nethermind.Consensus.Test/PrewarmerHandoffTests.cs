@@ -611,6 +611,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             Transfer(TestItem.PrivateKeyA, 0, TestItem.AddressC, 1.Wei),
             Call(TestItem.PrivateKeyB, 0, Guarded),
             Transfer(TestItem.PrivateKeyD, 0, TestItem.AddressA, 1.Wei));
+        // The pass is waited on and over before processing, so no refresh worker takes the wakes counted here.
         RunPreWarmCaches(PreWarmer, block);
         BlockFootprints footprints = PreWarmer.Footprints!;
         int wakes = footprints.PendingWakes;
@@ -721,7 +722,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         Assert.That(run!.Tally.Rejected, Is.EqualTo(1));
     }
 
-    public enum Report { AsPredicted, OtherValue, Subset, Restored, GuardRestoredAndChanged, NoneWithoutFootprint, SomeWithoutFootprint }
+    public enum Report { AsPredicted, OtherValue, OtherSlot, Subset, Restored, NoneWithoutFootprint, SomeWithoutFootprint }
 
     [Test]
     public void Block_processing_wakes_the_refresh_worker_only_for_writes_its_footprints_did_not_predict([Values] Report report)
@@ -731,26 +732,23 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         StorageCell other = new(TestItem.AddressC, 2 * 0x4e4d);
         switch (report)
         {
-            case Report.AsPredicted or Report.OtherValue:
+            case Report.AsPredicted or Report.OtherValue or Report.OtherSlot:
                 footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)]));
                 break;
             case Report.Subset:
                 footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d), (other, 0x4e4d)]));
                 break;
             case Report.Restored:
-                // A write back to the slot's value at the transaction's start, which a commit does not report.
-                footprints.Store(0, Footprint(txs[0], writes: [(cell, 0x4e4d)], restoredWrites: 1));
-                break;
-            case Report.GuardRestoredAndChanged:
-                // A reentrancy guard set and reset around a change to another slot.
-                footprints.Store(0, Footprint(txs[0], writes: [(other, 1), (cell, 0x4e4d)], restoredWrites: 1));
+                // A slot written back to its value at the transaction's start: neither the footprint nor the commit has it.
+                footprints.Store(0, Footprint(txs[0]));
                 break;
         }
 
         (StorageCell Cell, UInt256 Value)[] reported = report switch
         {
             // Committed by the main state, so not the instance the footprint holds.
-            Report.AsPredicted or Report.Subset or Report.GuardRestoredAndChanged => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
+            Report.AsPredicted or Report.Subset => [(new StorageCell(new Address(cell.Address.Bytes), 0x4e4d), 0x4e4d)],
+            Report.OtherSlot => [(other, 0x4e4d)],
             Report.NoneWithoutFootprint or Report.Restored => [],
             _ => [(cell, 2 * 0x4e4d)]
         };
@@ -765,8 +763,8 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
 
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.Subset or Report.SomeWithoutFootprint));
-            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(reported.Length == 0 ? null : reported[0].Value));
+            Assert.That(woken, Is.EqualTo(report is Report.OtherValue or Report.OtherSlot or Report.Subset or Report.SomeWithoutFootprint));
+            Assert.That(footprints.ValueBefore(cell, 1), Is.EqualTo(report is Report.OtherSlot || reported.Length == 0 ? null : reported[0].Value));
         }
     }
 
@@ -911,12 +909,11 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         return null;
     }
 
-    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null, int restoredWrites = 0) =>
+    private static TransactionFootprint Footprint(Transaction tx, (StorageCell Cell, UInt256 Value)[]? reads = null, (StorageCell Cell, UInt256 Value)[]? writes = null) =>
         new(tx, [],
             [.. (reads ?? []).Select(static read => new SlotPrecondition { Cell = read.Cell, Value = read.Value, Read = true })],
             [.. (writes ?? []).Select(static write => new StateEffect { Kind = EffectKind.SetStorage, Address = write.Cell.Address, Index = write.Cell.Index, Value = write.Value })],
-            default, default, default)
-        { RestoredWrites = restoredWrites };
+            default, default, default);
 
     [Test]
     public void A_run_stops_once_block_processing_starts_its_transaction_and_is_undone()
@@ -944,7 +941,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
         }
     }
 
-    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, SlotChangedAfterRestore, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
+    public enum RecordedChanges { NetCredit, NetDebit, NetZeroOfEmpty, AcrossRecreation, SlotWrittenTwice, SlotRestored, SlotRestoredUnread, SlotRestoredAfterClear, SlotChangedAfterRestore, ZeroValueToCode, ZeroValueToEmpty, ZeroValueToRecreated }
 
     [Test]
     public void A_compacted_footprint_replays_into_the_committed_state_of_its_run([Values] RecordedChanges changes)
@@ -993,9 +990,20 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                         recorder.Set(cell, 2);
                         return 1;
                     case RecordedChanges.SlotRestored:
+                        // Replay requires the value read, so writing it back changes nothing.
+                        recorder.Get(set, out _);
+                        recorder.Set(set, 5);
+                        recorder.Set(set, 0x4e4d);
+                        return 0;
+                    case RecordedChanges.SlotRestoredUnread:
                         recorder.Set(set, 5);
                         recorder.Set(set, 0x4e4d);
                         return 1;
+                    case RecordedChanges.SlotRestoredAfterClear:
+                        recorder.Get(set, out _);
+                        recorder.ClearStorage(Child);
+                        recorder.Set(set, 0x4e4d);
+                        return 2;
                     case RecordedChanges.SlotChangedAfterRestore:
                         recorder.Set(set, 0x4e4d);
                         recorder.Set(set, 5);
@@ -1031,8 +1039,7 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
             {
                 Assert.That(State(), Is.EqualTo(recorded));
                 Assert.That(footprint.Effects.Length, Is.EqualTo(compacted));
-                // A commit does not report a slot left at its starting value, so neither is it predicted.
-                Assert.That(footprint.RestoredWrites, Is.EqualTo(changes == RecordedChanges.SlotRestored ? 1 : 0));
+
             }
         }
 
@@ -1132,10 +1139,18 @@ public class PrewarmerHandoffMechanicsTests() : PrewarmerHandoffTestBase(Osaka.I
                 TransactionFootprint? footprint = recorder.Finish(tx, TransactionResult.Ok);
                 recorder.Stop();
 
+                Snapshot recorded = worldState.TakeSnapshot();
+                bool met = footprint?.Matches(worldState) == true;
+                // The last account read is past the account buffer's first size.
+                worldState.AddToBalanceAndCreateIfNotExists(TestItem.Addresses[accounts - 1], 1, Spec, out _);
+                bool metAfterChange = footprint?.Matches(worldState) == true;
+                worldState.Restore(recorded);
+
                 using (Assert.EnterMultipleScope())
                 {
                     Assert.That(footprint?.Slots.Length, Is.EqualTo(slots));
-                    Assert.That(footprint?.Matches(worldState), Is.True);
+                    Assert.That(met, Is.True);
+                    Assert.That(metAfterChange, Is.False);
                 }
             }
         }
