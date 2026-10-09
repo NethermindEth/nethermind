@@ -518,16 +518,17 @@ for entry in "${schedule[@]}"; do
     for corpus in "${CORPORA[@]}"; do run_corpus "$(corpus_label "$corpus")" "$label" "$corpus" "$ctype" "$cname"; done
     [[ -n "$BASELINE_LABEL" ]] || BASELINE_LABEL="$label"
   else
+    [[ -z "$RPS_LIST" ]] || warm_node "generic" "$label" "" "$ctype"
     for rps in $RPS_LIST; do
       for icfg in $ISO_CONFIGS; do
         scen="$(basename "$icfg" .yaml)"; cell="$OUT_DIR/iso/${label}/${rps}/${scen}"
         echo "-- ISO ${label} ${scen} @ rps=${rps} --"
-        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+        run_cell "$icfg" "$rps" "$ISO_DURATION" "$cell" "$ctype" "$label" "" "$cname" || { echo "::warning::iso ${label}/${scen}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
         [[ -f "$cell/jsonbench-summary.md" ]] && SUMMARIES+=("iso|${scen}|${label}|${rps}=$cell/jsonbench-summary.md")
       done
       mcell="$OUT_DIR/mix/${label}/${rps}"
       echo "-- MIX ${label} @ rps=${rps} --"
-      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
+      run_cell "$JB_BENCHMARK_CONFIG" "$rps" "$JB_DURATION" "$mcell" "$ctype" "$label" "" "$cname" || { echo "::warning::mix ${label}/${rps} failed"; cell_fail=$((cell_fail + 1)); }
       [[ -f "$mcell/jsonbench-summary.md" ]] && SUMMARIES+=("mix|${label}|${rps}=$mcell/jsonbench-summary.md")
     done
   fi

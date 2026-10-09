@@ -101,6 +101,45 @@ class FakeRunner:
 
 class RpcSweepTests(unittest.TestCase):
     @POSIX_ONLY
+    def test_generic_cells_warm_and_sample_their_node(self):
+        for sampling in ("true", "false"):
+            with self.subTest(sampling=sampling), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                runner = FakeRunner(root)
+                runner.snapshot("nethermind-flat-1")
+                cells = root / "cells.txt"
+                stub = root / "runner" / "run-jsonbench.sh"
+                stub.write_text(
+                    "#!/usr/bin/env bash\n"
+                    "printf '%s|%s|%s|%s|%s|%s\\n' \"$JB_BENCHMARK_CONFIG\" \"$JB_RPS\" \"$JB_DURATION\" "
+                    "\"$OUT_DIR\" \"$RESOURCE_SAMPLER_CONTAINER\" \"$RESOURCE_SAMPLER_OUT\" >> \"$CELL_CAPTURE\"\n"
+                    "mkdir -p \"$OUT_DIR\"\n"
+                    "printf '{\"metrics\":{\"http_reqs\":{\"values\":{\"count\":%s}}}}\\n' "
+                    "\"$((JB_RPS * ${JB_DURATION%s}))\" > \"$OUT_DIR/summary.json\"\n"
+                    "printf 'stub\\n' > \"$OUT_DIR/jsonbench-summary.md\"\n",
+                    encoding="utf-8",
+                )
+                stub.chmod(stub.stat().st_mode | stat.S_IXUSR)
+                result = runner.run(
+                    "nethermind@repo:image", RPS_LIST="5", JB_BENCHMARK_CONFIG="mix.yaml",
+                    JB_DURATION="4s", ISO_CONFIGS="control.yaml", ISO_DURATION="3s",
+                    CORPUS_WARMUP_DURATION="2s", CORPUS_WARMUP_RPS="3",
+                    CORPUS_RESOURCE_SAMPLING=sampling, CELL_CAPTURE=str(cells),
+                )
+
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                rows = [row.split("|") for row in cells.read_text(encoding="utf-8").splitlines()]
+                self.assertEqual(len(rows), 3)
+                self.assertEqual([row[:3] for row in rows],
+                                 [["mix.yaml", "5", "2s"], ["control.yaml", "5", "3s"], ["mix.yaml", "5", "4s"]])
+                self.assertTrue(Path(rows[0][3]).is_relative_to(runner.scratch))
+                self.assertFalse(Path(rows[0][3]).is_relative_to(root / "out"))
+                self.assertEqual(rows[0][4:], ["", ""])
+                for row in rows[1:]:
+                    self.assertEqual(bool(row[4]), sampling == "true")
+                    self.assertEqual(row[5], str(Path(row[3]) / "resources.json") if sampling == "true" else "")
+
+    @POSIX_ONLY
     def test_rejects_malformed_entries_before_any_node_starts(self):
         for clients, expected in (
             ("nethermind+--JsonRpc.EnabledModules=Eth;;Debug", "malformed flag list"),
