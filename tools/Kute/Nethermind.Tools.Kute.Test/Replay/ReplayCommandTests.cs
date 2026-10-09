@@ -66,7 +66,7 @@ public class ReplayCommandTests
 
         ParseResult result = ReplayCommand.Create().Parse(args);
 
-        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error.Message.Contains("must be")));
+        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error?.Message.Contains("must be") == true));
     }
 
     [Test]
@@ -77,7 +77,7 @@ public class ReplayCommandTests
 
         ParseResult result = ReplayCommand.Create().Parse(args);
 
-        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error.Message.Contains("must be")));
+        Assert.That(result.Errors, Has.Some.Matches<ParseError>(static error => error?.Message.Contains("must be") == true));
     }
 
     [Test]
