@@ -78,7 +78,8 @@ internal sealed class MempoolFootprints(BlockHeader head)
             ? entry.Footprint.For(tx, effects)
             : null;
 
-    /// <summary>Whether every block context field the run depends on is the same in <paramref name="header"/>.</summary>
+    /// <summary>Whether the run ran on <paramref name="spec"/> and every block context field it depends on is the same in <paramref name="header"/>.</summary>
+    /// <remarks>A run that ran out of gas is refused too: it may have been charged for which account the coinbase is.</remarks>
     private static bool RanOnBlockContext(in Entry entry, BlockHeader header, IReleaseSpec spec)
     {
         BlockHeader predicted = entry.Header;
@@ -92,7 +93,8 @@ internal sealed class MempoolFootprints(BlockHeader head)
             && predicted.SlotNumber == header.SlotNumber;
     }
 
-    // A dependence on either coinbase is a dependence on which one it is.
+    /// <summary>Whether the run read or required state of <see cref="Coinbase"/> or <paramref name="coinbase"/>.</summary>
+    /// <remarks>A dependence on either coinbase is a dependence on which one it is.</remarks>
     private bool DependsOnCoinbase(TransactionFootprint footprint, Address coinbase)
     {
         foreach (ref readonly AccountPrecondition account in footprint.Accounts)
@@ -109,7 +111,7 @@ internal sealed class MempoolFootprints(BlockHeader head)
     }
 
     /// <summary>The run's effects with its fee paid to <paramref name="coinbase"/> instead of <see cref="Coinbase"/>.</summary>
-    /// <returns><see langword="null"/> when the run changed <paramref name="coinbase"/> or did not pay exactly one fee.</returns>
+    /// <returns><see langword="null"/> when the run changed <paramref name="coinbase"/>, or changed <see cref="Coinbase"/> other than by paying exactly one fee.</returns>
     /// <remarks>The fee is the one change to the predicted coinbase: credited whether or not the account exists.</remarks>
     private StateEffect[]? WithFeeMoved(TransactionFootprint footprint, Address coinbase)
     {
