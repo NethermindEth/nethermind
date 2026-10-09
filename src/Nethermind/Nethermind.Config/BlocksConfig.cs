@@ -87,7 +87,7 @@ namespace Nethermind.Config
 
         public int GenesisTimeoutMs { get; set; } = 40_000;
 
-        public int BlockProcessingTimeoutMs { get; set; } = 300_000;
+        public int BlockProcessingTimeoutMs { get; set; } = 180_000;
 
         public bool ParallelExecution { get; set; } = true;
         public bool ParallelExecutionBatchRead { get; set; } = true;
