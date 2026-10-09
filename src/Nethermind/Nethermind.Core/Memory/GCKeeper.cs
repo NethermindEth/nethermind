@@ -218,6 +218,20 @@ public class GCKeeper : IDisposable
         if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
     }
 
+    /// <summary>The throwaway region of <see cref="RecommitAfterDecommit"/> was entered.</summary>
+    /// <remarks>
+    /// Not a payload's entry, so <see cref="Metrics.NoGcRegionEntries"/> leaves it out. It moves GC.CollectionCount as
+    /// any entry does, so it counts as an own entry, which keeps a payload in processing from taking it for a runtime
+    /// collection. It hands the heaps the region's budget as any entry does, and its end does not restore gen0's, so
+    /// the guard's estimate follows it.
+    /// </remarks>
+    private void OnRecommitEntered()
+    {
+        Interlocked.Increment(ref Metrics.NoGcRegionRecommits);
+        Interlocked.Increment(ref _ownEntries);
+        if (_gcStrategy.NoGCRegionMode == NoGcRegionMode.Guard) _budget.OnRegionEntered(_runtime.AllocatedBytes, _runtime.LastGcIndex);
+    }
+
     /// <summary>Collections the runtime has counted, this keeper's region entries among them, and the bytes allocated, where a payload starts or ends.</summary>
     private readonly record struct ProcessingSample(int Collections, long OwnEntries, long Allocated);
 
@@ -570,12 +584,14 @@ public class GCKeeper : IDisposable
     /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
     /// grow until they are allocated in. The decommit still returns everything else.</para>
     /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
-    /// when the strategy disallows regions, and on shutdown. A payload admitted meanwhile queues its entry, which waits
-    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// when the strategy disallows regions or its mode is <see cref="NoGcRegionMode.Never"/>, and on shutdown. A
+    /// payload admitted meanwhile queues its entry, which waits on <see cref="_runtimeLock"/> until the throwaway
+    /// region has ended.</para>
     /// </remarks>
     private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
     {
-        bool allowed = _gcStrategy.CanStartNoGCRegion();
+        // Never keeps the runtime out of regions altogether, a throwaway one included.
+        bool allowed = _gcStrategy.NoGCRegionMode != NoGcRegionMode.Never && _gcStrategy.CanStartNoGCRegion();
         lock (_lock)
         {
             if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
@@ -586,7 +602,11 @@ public class GCKeeper : IDisposable
 
         try
         {
-            if (_runtime.TryStart(_defaultSize, _lohSize) && _runtime.IsActive) _runtime.End();
+            if (_runtime.TryStart(_defaultSize, _lohSize))
+            {
+                OnRecommitEntered();
+                if (_runtime.IsActive) _runtime.End();
+            }
         }
         catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
         {

@@ -24,6 +24,10 @@ public static class Metrics
     [Description("Number of engine_newPayload calls during whose processing the runtime ran a garbage collection, region entries not counted.")]
     public static long NewPayloadsWithCollection;
 
+    [CounterMetric]
+    [Description("Number of throwaway no-GC regions entered and ended at once right after a decommit collection, to keep the region's budget committed for the next engine_newPayload; not counted in no_gc_region_entries.")]
+    public static long NoGcRegionRecommits;
+
     [GaugeMetric]
     [Description("Gen0 allocation budget left that the no-GC region guard requires to skip the region, at its last decision.")]
     public static long NoGcRegionGuardThresholdBytes { get; set; }
