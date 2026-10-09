@@ -1,0 +1,6 @@
+LEANVM_NUM_THREADS=2
+ZK_ALLOC_POISON=unset
+RUSTFLAGS=-C target-cpu=native
+parentPreparationSource=899d7907c3f34966174350a71f2133cc97fd1317
+executableSource=03df8d0528c68e7f5f89c698b973d3fcf89aa4dc
+nativeFork=854997bd156f47f1b1ce2192c4499741f29bd0df

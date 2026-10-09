@@ -1,0 +1,106 @@
+{
+  "metadata": {
+    "commandLine": "/Users/marc/nether/eip8288-lean-bench/tools/artifacts/bin/LeanBench/release/LeanBench.dll --scheduling-checks=true --out=/tmp/eip8288-scheduling-final-after --source-revision=0d33ebadf13143f4af767ff558fa625c3fc622cf --require-fresh=true",
+    "utc": "2026-10-04T10:17:45.082797+00:00",
+    "sourceRevision": "0d33ebadf13143f4af767ff558fa625c3fc622cf",
+    "assemblySha256": {
+      "LeanBench.dll": "5D7BF725ED1BD8C441D6644E67FC94E18754C0D6D85D6B1865C91B108E2ECDFC",
+      "Nethermind.Network.dll": "3B433C93DEA36B6BAAD6E9A18A42D79F4FD314E7D73F0A14610C721D7137FD12",
+      "Nethermind.Consensus.dll": "7BB2C32C90057C3802C31CBBE649C8DE35BF06218AB159A5E91E39D2FE73610B"
+    },
+    "backend": "Synthetic statement-checked scheduling backend; no native cryptography or performance measurements",
+    "pool": "Timer rows use controlled synthetic pool snapshots; the background-to-block row admits a real signed FrameTx to the production pool",
+    "clock": "Manual monotonic clock, one-second timer notifications; busyTicks is virtual elapsed time, not native proving duration",
+    "scope": "Actual wrapper selection/store, gossip scheduler and exact-parent builder reuse; no network, services or Lean prover changes"
+  },
+  "results": [
+    {
+      "scenario": "unchanged-wrapper-body-change-and-exact-builder-reuse",
+      "repeatedWrapperSelections": 120,
+      "proofCalls": 1,
+      "proofCallsAfterFirstSelection": 1,
+      "changedBodyAdditionalProofCalls": 0,
+      "exactBuilderAttempts": 120,
+      "exactBuilderAdditionalProofCalls": 0,
+      "exactBuilderVerificationCalls": 120,
+      "damagedParentRejected": true
+    },
+    {
+      "scenario": "background-proof-to-production-blockprocessor",
+      "transaction": "Real secp256k1 signed FrameTx admitted to production pool; controlled dependency verifier",
+      "backgroundProofCalls": 1,
+      "builderAdditionalProofCalls": 0,
+      "unchangedImprovementAdditionalProofCalls": 0,
+      "actualBodyTransactions": 1,
+      "returnedProofMutationIsolated": true
+    },
+    {
+      "scenario": "eligible-completed-wrapper-during-new-proof",
+      "virtualBusySeconds": 3,
+      "bothTransactionsRemainPending": true,
+      "peer": "Declines warmup A before proving is blocked; writable while blocked, so early AddPeer delivery cannot count as cadence progress",
+      "declinedWarmupDeliveries": 1,
+      "eligibleCompletedWrapperSendsWhileBlocked": 1,
+      "incompleteWrapperSendsWhileBlocked": 0,
+      "completedNewWrapperSends": 1,
+      "totalProofCalls": 2,
+      "maxConcurrentProofCalls": 1
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 1,
+      "timerNotificationsWhileBlocked": 1,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 24.9592
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 3,
+      "timerNotificationsWhileBlocked": 3,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 60.6952
+    },
+    {
+      "scenario": "slow-proof-coalescing",
+      "virtualBusySeconds": 10,
+      "timerNotificationsWhileBlocked": 10,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 1,
+      "refreshSends": 1,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 142.0234
+    },
+    {
+      "scenario": "removed-selection-during-proof",
+      "virtualBusySeconds": 3,
+      "timerNotificationsWhileBlocked": 3,
+      "proofCallsWhileBlocked": 1,
+      "sendsWhileBlocked": 0,
+      "proofCallsAfterCompletion": 1,
+      "maxConcurrentProofCalls": 1,
+      "completedProofCalls": 1,
+      "sendsAfterCompletion": 0,
+      "refreshSends": 0,
+      "staleDelivery": false,
+      "harnessWallMilliseconds": 276.4046
+    }
+  ]
+}

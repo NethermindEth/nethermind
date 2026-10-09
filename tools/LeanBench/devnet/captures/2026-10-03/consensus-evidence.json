@@ -1,0 +1,197 @@
+{
+  "capturedUtc": "2026-10-03T15:50:10.350294+00:00",
+  "normalTiming": {
+    "slotSeconds": 12,
+    "improvementFraction": 0.25,
+    "improvementSeconds": 3
+  },
+  "cases": [
+    {
+      "fixture": "00-sphincs1-recursive-nonce1",
+      "transactionHash": "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e",
+      "ingress": {
+        "jsonrpc": "2.0",
+        "result": [
+          "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e"
+        ],
+        "id": 1
+      },
+      "producerIngressPort": 19545,
+      "unchangedImprovementFraction": 0.25,
+      "slotSeconds": 12,
+      "receipts": [
+        {
+          "transactionHash": "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e",
+          "blockHash": "0x179209494375440e3624544facee3bc45c955d560fc221dfc7f053f138e95411",
+          "blockNumber": "0x99",
+          "status": "0x1",
+          "gasUsed": "0x6d61"
+        },
+        {
+          "transactionHash": "0x240423472ac7f14f282f3f6748007c2a2d9bd548a90a7ed5210b766611d2244e",
+          "blockHash": "0x179209494375440e3624544facee3bc45c955d560fc221dfc7f053f138e95411",
+          "blockNumber": "0x99",
+          "status": "0x1",
+          "gasUsed": "0x6d61"
+        }
+      ],
+      "seconds": 18.691,
+      "proofBytes": 264624,
+      "beaconSlot": 160,
+      "beaconExecutionCommitment": {
+        "parent_block_hash": "0x1b90cacd064ead16c61703ccfe0feb86cb6c293f12eb244010011c8462bdd0e4",
+        "parent_block_root": "0x4ff285a3f1afbb115ff82a39fa0816faa0af0c1130e2c296b0801908a548d784",
+        "block_hash": "0x179209494375440e3624544facee3bc45c955d560fc221dfc7f053f138e95411",
+        "prev_randao": "0xb037cab223b28143c062c0514a7ecfb192f6aaa6510c65e78136dc9c06d202f8",
+        "fee_recipient": "0x0000000000000000000000000000000000000000",
+        "gas_limit": "34831826",
+        "builder_index": "18446744073709551615",
+        "slot": "160",
+        "value": "0",
+        "execution_payment": "0",
+        "blob_kzg_commitments": [],
+        "execution_requests_root": "0x87b69a306c8e430d0857f7c4ac5e27cecffa1108d43c2e5df7388056fea7a423"
+      },
+      "doraUrl": "http://178.79.137.95:19490/slot/160",
+      "finalized": true
+    },
+    {
+      "fixture": "00-stark1-direct-nonce2",
+      "transactionHash": "0xf0696f53fb2c94ad93a4f4cd1586ef8ceed95d39d22a44d4a72abbeab82cbe8a",
+      "ingress": {
+        "jsonrpc": "2.0",
+        "result": [
+          "0xf0696f53fb2c94ad93a4f4cd1586ef8ceed95d39d22a44d4a72abbeab82cbe8a"
+        ],
+        "id": 1
+      },
+      "producerIngressPort": 19445,
+      "unchangedImprovementFraction": 0.25,
+      "slotSeconds": 12,
+      "receipts": [
+        {
+          "transactionHash": "0xf0696f53fb2c94ad93a4f4cd1586ef8ceed95d39d22a44d4a72abbeab82cbe8a",
+          "blockHash": "0x9279575b275bb89b5f64c50242e7f43d9fde061ad6acff582d3c070586e1922c",
+          "blockNumber": "0x9a",
+          "status": "0x1",
+          "gasUsed": "0xbdfd"
+        },
+        {
+          "transactionHash": "0xf0696f53fb2c94ad93a4f4cd1586ef8ceed95d39d22a44d4a72abbeab82cbe8a",
+          "blockHash": "0x9279575b275bb89b5f64c50242e7f43d9fde061ad6acff582d3c070586e1922c",
+          "blockNumber": "0x9a",
+          "status": "0x1",
+          "gasUsed": "0xbdfd"
+        }
+      ],
+      "seconds": 12.131,
+      "proofBytes": 290268,
+      "beaconSlot": 161,
+      "beaconExecutionCommitment": {
+        "parent_block_hash": "0x179209494375440e3624544facee3bc45c955d560fc221dfc7f053f138e95411",
+        "parent_block_root": "0xc5de55c37faf691faca2c7c1c8bb02ed18dce0bad3ca98c4b9040dafbc28e9c6",
+        "block_hash": "0x9279575b275bb89b5f64c50242e7f43d9fde061ad6acff582d3c070586e1922c",
+        "prev_randao": "0x0f52829b8081bfd33d8af4f20d6ddf8d965b06ef441478d61039358ade4a2895",
+        "fee_recipient": "0x0000000000000000000000000000000000000000",
+        "gas_limit": "34865840",
+        "builder_index": "18446744073709551615",
+        "slot": "161",
+        "value": "0",
+        "execution_payment": "0",
+        "blob_kzg_commitments": [],
+        "execution_requests_root": "0x87b69a306c8e430d0857f7c4ac5e27cecffa1108d43c2e5df7388056fea7a423"
+      },
+      "doraUrl": "http://178.79.137.95:19490/slot/161",
+      "finalized": true
+    }
+  ],
+  "head": [
+    {
+      "execution_optimistic": false,
+      "finalized": false,
+      "data": {
+        "root": "0xb30295c6e711768c0e05b55a3194d45384f29b5143459efdf96a067e54a2f2ad",
+        "canonical": true,
+        "header": {
+          "message": {
+            "slot": "189",
+            "proposer_index": "8",
+            "parent_root": "0xf380d028eee19f3da5b73c44cfc262ce9337ca6b3cd545454943f961012e9759",
+            "state_root": "0xe6fe1eb8e2b06d0be6843929916d36be0655bb53d86f8e6303329a9de24247a9",
+            "body_root": "0xc1e80367877f5c50472d0cfc57f47c50b6f65b8aff6f83fc612c2fb0e200148f"
+          },
+          "signature": "0xb3464bdae2ac37e8e24038eef7b5413340c14bc37746bced4a634697323c1bf4b125de3c810f315b6848b98f8ff643eb18f0a2588d1faa4ed56b765d05b16cc6dd83b7094d8998afbd5b94775e578f6fb83a5772bcac009f6068ff03af8ef3ee"
+        }
+      }
+    },
+    {
+      "execution_optimistic": false,
+      "finalized": false,
+      "data": {
+        "root": "0xb30295c6e711768c0e05b55a3194d45384f29b5143459efdf96a067e54a2f2ad",
+        "canonical": true,
+        "header": {
+          "message": {
+            "slot": "189",
+            "proposer_index": "8",
+            "parent_root": "0xf380d028eee19f3da5b73c44cfc262ce9337ca6b3cd545454943f961012e9759",
+            "state_root": "0xe6fe1eb8e2b06d0be6843929916d36be0655bb53d86f8e6303329a9de24247a9",
+            "body_root": "0xc1e80367877f5c50472d0cfc57f47c50b6f65b8aff6f83fc612c2fb0e200148f"
+          },
+          "signature": "0xb3464bdae2ac37e8e24038eef7b5413340c14bc37746bced4a634697323c1bf4b125de3c810f315b6848b98f8ff643eb18f0a2588d1faa4ed56b765d05b16cc6dd83b7094d8998afbd5b94775e578f6fb83a5772bcac009f6068ff03af8ef3ee"
+        }
+      }
+    }
+  ],
+  "finality": [
+    {
+      "execution_optimistic": false,
+      "finalized": false,
+      "data": {
+        "previous_justified": {
+          "epoch": "8",
+          "root": "0x99e46f88a34692d85f71e7ac33ec1b0f642257cdbb113239a9e955e82de9de5d"
+        },
+        "current_justified": {
+          "epoch": "9",
+          "root": "0x234cb457784c5da2a3d93a8e039dc87856cf2ceff3300fd1a1061ce14672d70f"
+        },
+        "finalized": {
+          "epoch": "8",
+          "root": "0x99e46f88a34692d85f71e7ac33ec1b0f642257cdbb113239a9e955e82de9de5d"
+        }
+      }
+    },
+    {
+      "execution_optimistic": false,
+      "finalized": false,
+      "data": {
+        "previous_justified": {
+          "epoch": "8",
+          "root": "0x99e46f88a34692d85f71e7ac33ec1b0f642257cdbb113239a9e955e82de9de5d"
+        },
+        "current_justified": {
+          "epoch": "9",
+          "root": "0x234cb457784c5da2a3d93a8e039dc87856cf2ceff3300fd1a1061ce14672d70f"
+        },
+        "finalized": {
+          "epoch": "8",
+          "root": "0x99e46f88a34692d85f71e7ac33ec1b0f642257cdbb113239a9e955e82de9de5d"
+        }
+      }
+    }
+  ],
+  "deployment": [
+    {
+      "service": "el-1-nethermind-lighthouse",
+      "container": "el-1-nethermind-lighthouse--b488954c97d24809b502a949485c3f11",
+      "head": "0x8f"
+    },
+    {
+      "service": "el-2-nethermind-lighthouse",
+      "container": "el-2-nethermind-lighthouse--b5d5ea028af348ee907462ad720e3ef7",
+      "head": "0x8f"
+    }
+  ],
+  "finalityCapturedUtc": "2026-10-03T16:22:07.964031+00:00"
+}

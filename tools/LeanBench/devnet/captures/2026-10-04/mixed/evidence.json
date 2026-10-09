@@ -1,0 +1,469 @@
+{
+  "runs": {
+    "mixed-merge": {
+      "admissions": [
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:44:38.503667+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 1,
+          "offeredUtc": "2026-10-04T04:44:38.334862+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+              "blockNumber": "0x3a",
+              "gasUsed": "0x6d61",
+              "status": "0x1",
+              "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+            },
+            {
+              "blockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+              "blockNumber": "0x3a",
+              "gasUsed": "0x6d61",
+              "status": "0x1",
+              "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+            }
+          ],
+          "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+        },
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:44:38.707804+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 2,
+          "offeredUtc": "2026-10-04T04:44:38.506990+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+              "blockNumber": "0x3a",
+              "gasUsed": "0xbdf1",
+              "status": "0x1",
+              "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+            },
+            {
+              "blockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+              "blockNumber": "0x3a",
+              "gasUsed": "0xbdf1",
+              "status": "0x1",
+              "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+            }
+          ],
+          "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+        }
+      ],
+      "blocks": [],
+      "canonicalObservations": [],
+      "completed": false,
+      "completedFinality": false,
+      "driverSha256": "f9d1b361eab92044bc7d88ef689c17212255d5ddfc17f65607adaaa868b851f7",
+      "error": "Timed out: real beacon bid anchors; last=HTTP Error 404: Not Found",
+      "finalityCheckpoints": [],
+      "finishedUtc": "2026-10-04T04:45:56.277335+00:00",
+      "freshMixedParentInOneBlock": true,
+      "manifests": [
+        "dabbe75a77f7375458dee01639eeb7c9640f1fc6a2d96027524e1ca0a3972f04",
+        "8e96245005a6a1ae61ef1e70b029aea1c1e5f50b55e7592401fdd0fa1d062d2f"
+      ],
+      "measurementScope": "finite mixed-proof functionality; not throughput or spam capacity",
+      "mode": "merge",
+      "nativeProfile": {
+        "abi": 5,
+        "bounds": {
+          "aggregationInputBytes": 18874368,
+          "dependencies": 256,
+          "genericClaims": 16,
+          "instructions": 2048,
+          "mixedGuestProofBytes": 8364020,
+          "operandOffset": 65535,
+          "proofBytes": 8388608,
+          "recursiveChildren": 16,
+          "sphincsWitnessBytes": 6208
+        },
+        "recursiveGuestKey": "0x9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace"
+      },
+      "nativeProofsVerified": false,
+      "peerPoolPropagationObserved": true,
+      "receiptsCompletedUtc": "2026-10-04T04:45:26.071777+00:00",
+      "reportSha256": "e8051d2bd53afcc61561e2ba2c585edbf1bb7c7ce85dcd085f9328790422ec8f",
+      "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+      "startedUtc": "2026-10-04T04:44:28.408645+00:00"
+    },
+    "mixed-merge-observed": {
+      "admissions": [
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:44:38.503667+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 1,
+          "offeredUtc": "2026-10-04T04:44:38.334862+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+              "blockNumber": "0x3a",
+              "gasUsed": "0x6d61",
+              "status": "0x1",
+              "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+            },
+            {
+              "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+              "blockNumber": "0x3a",
+              "gasUsed": "0x6d61",
+              "status": "0x1",
+              "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+            }
+          ],
+          "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+        },
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:44:38.707804+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 2,
+          "offeredUtc": "2026-10-04T04:44:38.506990+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+              "blockNumber": "0x3a",
+              "gasUsed": "0xbdf1",
+              "status": "0x1",
+              "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+            },
+            {
+              "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+              "blockNumber": "0x3a",
+              "gasUsed": "0xbdf1",
+              "status": "0x1",
+              "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+            }
+          ],
+          "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+        }
+      ],
+      "blocks": [
+        {
+          "aggregation": {
+            "canonicalDependencies": 2,
+            "canonicalTriplesSha256": "99a2379017985f81f8ca84f20442b7a63bacc94e3c1821b6f7bdd2379b64716a",
+            "genericStarks": 1,
+            "rawDeclarations": 2,
+            "signatures": 1
+          },
+          "beaconAnchoredBoth": true,
+          "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+          "finalizedBoth": true,
+          "nativeInspection": {
+            "blockDepsHash": "0xc7eff7147f140ab30e7d6038eb81db9ef07f6c60a815a55388cffed5772eb9f3",
+            "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+            "canonicalHeaderHashMatches": true,
+            "method": "engine_newPayloadV5",
+            "mutation": "none",
+            "originalBlockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+            "originalNativeProofValid": true,
+            "proofBytes": 325612,
+            "resultingNativeProofValid": true,
+            "signatures": 1,
+            "starks": 1,
+            "transactionHashes": [
+              "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d",
+              "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+            ]
+          },
+          "number": "0x3a",
+          "payloadSha256": "24b0e32ae72fbcf6e232a7ad5ec33f962dd20a35ac21a3e75d40d02d8237b043",
+          "proofBytes": 325612,
+          "proofSha256": "4fc6a1603316d5e38f8e40b9eb5b85cc9fa6ad460cf50587426f0850e84d2f3b",
+          "slot": 60
+        }
+      ],
+      "canonicalObservations": [
+        {
+          "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+          "observedUtc": "2026-10-04T05:03:16.244735+00:00",
+          "oldBlockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+          "transactionHash": "0xdcd29811d281b1ded4b661e7c0b9423255fb1d3616929af61b1212e44b34a52d"
+        },
+        {
+          "blockHash": "0x02d5e586d628d025345ccff3bed34751f9abe38d33419e0214a331859ba67420",
+          "observedUtc": "2026-10-04T05:03:16.244760+00:00",
+          "oldBlockHash": "0x59c2bee96f2f710b40efd24499c1183061f7b7f48eeeed18a89c3b81ee712138",
+          "transactionHash": "0x7fe6d0b756c76a9e3865aa92e67e0bbc07bab6060f7c1e29294c6c6480809bff"
+        }
+      ],
+      "completed": true,
+      "completedFinality": true,
+      "drainedNonces": [
+        3,
+        3
+      ],
+      "driverSha256": "c02de1e1d2b34c8b21a3812b0406efd4f7de35bb83865b3dbe4fb566b1bd21ad",
+      "finalityCheckpoints": [
+        {
+          "epoch": "2",
+          "root": "0x610bd5c7899f86c7cc84a79ece9e345cf185ac63c86439ac294e425603d0a41d"
+        },
+        {
+          "epoch": "2",
+          "root": "0x610bd5c7899f86c7cc84a79ece9e345cf185ac63c86439ac294e425603d0a41d"
+        }
+      ],
+      "finishedUtc": "2026-10-04T05:03:18.246542+00:00",
+      "freshMixedParentInOneBlock": true,
+      "manifests": [
+        "dabbe75a77f7375458dee01639eeb7c9640f1fc6a2d96027524e1ca0a3972f04",
+        "8e96245005a6a1ae61ef1e70b029aea1c1e5f50b55e7592401fdd0fa1d062d2f"
+      ],
+      "measurementScope": "passive canonical receipt/proof/beacon/finality recovery; no submissions or new propagation measurement",
+      "mode": "merge",
+      "nativeProfile": {
+        "abi": 5,
+        "bounds": {
+          "aggregationInputBytes": 18874368,
+          "dependencies": 256,
+          "genericClaims": 16,
+          "instructions": 2048,
+          "mixedGuestProofBytes": 8364020,
+          "operandOffset": 65535,
+          "proofBytes": 8388608,
+          "recursiveChildren": 16,
+          "sphincsWitnessBytes": 6208
+        },
+        "recursiveGuestKey": "0x9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace"
+      },
+      "nativeProofsVerified": true,
+      "observationOnly": true,
+      "originalReport": "report.json",
+      "originalReportSha256": "e8051d2bd53afcc61561e2ba2c585edbf1bb7c7ce85dcd085f9328790422ec8f",
+      "peerPoolPropagationObserved": true,
+      "readRetries": 0,
+      "receiptsCompletedUtc": "2026-10-04T05:03:18.174872+00:00",
+      "reportSha256": "38e35790ee6439083439ea23bd1047560eacbb2889d45a1b32963059792307e7",
+      "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+      "startedUtc": "2026-10-04T05:03:16.213373+00:00"
+    },
+    "mixed-reuse": {
+      "admissions": [
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:37:14.713644+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 0,
+          "offeredUtc": "2026-10-04T04:37:14.242364+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+              "blockNumber": "0x13",
+              "gasUsed": "0xce29",
+              "status": "0x1",
+              "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            },
+            {
+              "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+              "blockNumber": "0x13",
+              "gasUsed": "0xce29",
+              "status": "0x1",
+              "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            }
+          ],
+          "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+        }
+      ],
+      "blocks": [
+        {
+          "aggregation": {
+            "canonicalDependencies": 2,
+            "canonicalTriplesSha256": "4f85c2fd9eda5ece0d0db7e5ec1a05ea9f85bf005931bdef10f8b284d1fb3235",
+            "genericStarks": 1,
+            "rawDeclarations": 2,
+            "signatures": 1
+          },
+          "beaconAnchoredBoth": true,
+          "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+          "finalizedBoth": false,
+          "nativeInspection": {
+            "blockDepsHash": "0xa4cad5939cfd86f08a42472a358f1e34531ae14b0329e3e5a4786e9798fb3a75",
+            "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+            "canonicalHeaderHashMatches": true,
+            "method": "engine_newPayloadV5",
+            "mutation": "none",
+            "originalBlockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+            "originalNativeProofValid": true,
+            "proofBytes": 326668,
+            "resultingNativeProofValid": true,
+            "signatures": 1,
+            "starks": 1,
+            "transactionHashes": [
+              "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            ]
+          },
+          "number": "0x13",
+          "payloadSha256": "d6270cd3000560a1d66c8c4aa0529e1ec128fb06ed855c3190667b4479ba7c5e",
+          "proofBytes": 326668,
+          "proofSha256": "c0a02c496d51306df21c9cf37ae9d624411c6d52d7116859a1b3d39377b8a4d0",
+          "slot": 20
+        }
+      ],
+      "canonicalObservations": [],
+      "completed": false,
+      "completedFinality": false,
+      "drainedNonces": [
+        1,
+        1
+      ],
+      "driverSha256": "f9d1b361eab92044bc7d88ef689c17212255d5ddfc17f65607adaaa868b851f7",
+      "error": "timed out",
+      "finalityCheckpoints": [
+        {
+          "epoch": "0",
+          "root": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        },
+        {
+          "epoch": "0",
+          "root": "0x0000000000000000000000000000000000000000000000000000000000000000"
+        }
+      ],
+      "finishedUtc": "2026-10-04T04:45:08.341496+00:00",
+      "freshMixedParentInOneBlock": false,
+      "manifests": [
+        "2fd9ce010339b94ee466acd3404e072d97a5832e85281d706b7d432af4125d5e"
+      ],
+      "measurementScope": "finite mixed-proof functionality; not throughput or spam capacity",
+      "mode": "reuse",
+      "nativeProfile": {
+        "abi": 5,
+        "bounds": {
+          "aggregationInputBytes": 18874368,
+          "dependencies": 256,
+          "genericClaims": 16,
+          "instructions": 2048,
+          "mixedGuestProofBytes": 8364020,
+          "operandOffset": 65535,
+          "proofBytes": 8388608,
+          "recursiveChildren": 16,
+          "sphincsWitnessBytes": 6208
+        },
+        "recursiveGuestKey": "0x9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace"
+      },
+      "nativeProofsVerified": true,
+      "peerPoolPropagationObserved": true,
+      "receiptsCompletedUtc": "2026-10-04T04:37:26.574503+00:00",
+      "reportSha256": "b28423373f587c1d286f0412faf9eac5a49a8227e2ea1e8254f70b191bd3adcd",
+      "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+      "startedUtc": "2026-10-04T04:37:03.831457+00:00"
+    },
+    "mixed-reuse-observed": {
+      "admissions": [
+        {
+          "accepted": true,
+          "acceptedUtc": "2026-10-04T04:37:14.713644+00:00",
+          "gossipSeenBeforeReceipt": true,
+          "nonce": 0,
+          "offeredUtc": "2026-10-04T04:37:14.242364+00:00",
+          "receipts": [
+            {
+              "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+              "blockNumber": "0x13",
+              "gasUsed": "0xce29",
+              "status": "0x1",
+              "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            },
+            {
+              "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+              "blockNumber": "0x13",
+              "gasUsed": "0xce29",
+              "status": "0x1",
+              "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            }
+          ],
+          "transactionHash": "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+        }
+      ],
+      "blocks": [
+        {
+          "aggregation": {
+            "canonicalDependencies": 2,
+            "canonicalTriplesSha256": "4f85c2fd9eda5ece0d0db7e5ec1a05ea9f85bf005931bdef10f8b284d1fb3235",
+            "genericStarks": 1,
+            "rawDeclarations": 2,
+            "signatures": 1
+          },
+          "beaconAnchoredBoth": true,
+          "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+          "finalizedBoth": true,
+          "nativeInspection": {
+            "blockDepsHash": "0xa4cad5939cfd86f08a42472a358f1e34531ae14b0329e3e5a4786e9798fb3a75",
+            "blockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+            "canonicalHeaderHashMatches": true,
+            "method": "engine_newPayloadV5",
+            "mutation": "none",
+            "originalBlockHash": "0x9956aa5d84355c4f87ff25a062834b5a90d38c57c26d1cacb3d74a567a4b7d0a",
+            "originalNativeProofValid": true,
+            "proofBytes": 326668,
+            "resultingNativeProofValid": true,
+            "signatures": 1,
+            "starks": 1,
+            "transactionHashes": [
+              "0xe540e0080485e871361fbae57ed987a6e6987f10fa43c59384307bb30b555de0"
+            ]
+          },
+          "number": "0x13",
+          "payloadSha256": "d6270cd3000560a1d66c8c4aa0529e1ec128fb06ed855c3190667b4479ba7c5e",
+          "proofBytes": 326668,
+          "proofSha256": "c0a02c496d51306df21c9cf37ae9d624411c6d52d7116859a1b3d39377b8a4d0",
+          "slot": 20
+        }
+      ],
+      "canonicalObservations": [],
+      "completed": true,
+      "completedFinality": true,
+      "drainedNonces": [
+        3,
+        3
+      ],
+      "driverSha256": "c02de1e1d2b34c8b21a3812b0406efd4f7de35bb83865b3dbe4fb566b1bd21ad",
+      "finalityCheckpoints": [
+        {
+          "epoch": "2",
+          "root": "0x610bd5c7899f86c7cc84a79ece9e345cf185ac63c86439ac294e425603d0a41d"
+        },
+        {
+          "epoch": "2",
+          "root": "0x610bd5c7899f86c7cc84a79ece9e345cf185ac63c86439ac294e425603d0a41d"
+        }
+      ],
+      "finishedUtc": "2026-10-04T05:02:53.722608+00:00",
+      "freshMixedParentInOneBlock": false,
+      "manifests": [
+        "2fd9ce010339b94ee466acd3404e072d97a5832e85281d706b7d432af4125d5e"
+      ],
+      "measurementScope": "passive canonical receipt/proof/beacon/finality recovery; no submissions or new propagation measurement",
+      "mode": "reuse",
+      "nativeProfile": {
+        "abi": 5,
+        "bounds": {
+          "aggregationInputBytes": 18874368,
+          "dependencies": 256,
+          "genericClaims": 16,
+          "instructions": 2048,
+          "mixedGuestProofBytes": 8364020,
+          "operandOffset": 65535,
+          "proofBytes": 8388608,
+          "recursiveChildren": 16,
+          "sphincsWitnessBytes": 6208
+        },
+        "recursiveGuestKey": "0x9370d760abb55fdf02acc7e8d40688c425815c3d25a2aea3c030b2ae1ab51ace"
+      },
+      "nativeProofsVerified": true,
+      "observationOnly": true,
+      "originalReport": "report.json",
+      "originalReportSha256": "b28423373f587c1d286f0412faf9eac5a49a8227e2ea1e8254f70b191bd3adcd",
+      "peerPoolPropagationObserved": true,
+      "readRetries": 0,
+      "receiptsCompletedUtc": "2026-10-04T05:02:53.667857+00:00",
+      "reportSha256": "c048eba9f45de2c563228dbb64cb2a2bc729ab37953e82f86d55025e374f1bac",
+      "sourceRevision": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+      "startedUtc": "2026-10-04T05:02:51.716427+00:00"
+    }
+  },
+  "schemaVersion": 1,
+  "testKind": "real consensus mixed recursion"
+}

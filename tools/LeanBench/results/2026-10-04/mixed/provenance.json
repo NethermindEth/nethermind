@@ -1,0 +1,39 @@
+{
+  "measurementScope": "one offline native S1+G1 recursive merge; no clients, transport or throughput measurement",
+  "sourceRevision": "899d7907c3f34966174350a71f2133cc97fd1317",
+  "validationSourceRevision": "b05d0e562e0cf2e773665b91c67dcfbade4ceab8",
+  "nativeRevision": "854997bd156f47f1b1ce2192c4499741f29bd0df",
+  "workerCount": 1,
+  "allocationPoisoning": false,
+  "resourceProbeSha256": "8b15fb71905f4a6a9677c38468d5d5c7df804315e0bc47f739a30a05f428d24c",
+  "publicArtifactSha256": {
+    "sphincs-parent.bin": "9b13777464a395f8fa9610e5ccd3e74d086886058a8f9b76f52ea2b84a69cb50",
+    "generic-parent.bin": "f02a08e3ae265eb29c16d3587a17c0df52fe6be58f4a378d1f4932df8f4e5ece",
+    "mixed-root.bin": "93e8639c033ea68ad868fc78caa805ef5f94c6f3c0d786799e9bf24215e0dea1",
+    "input.bin": "e9a5aab298f49b39329e2f5b0c2d0b7b2e520f8c1dd4020022624c51eb3fc401"
+  },
+  "originalRawSha256": {
+    "lscpu.txt": "981008994c8aeab8c112e5942716d1eafa3a4de23843cc53f43b4141a54efe5d",
+    "mixed-merge.csv": "94cac31cd0e411f6acefe9d5dd5d19a228d133c1f383c127ac435709315d6aed",
+    "mixed-merge.time": "ed834cf3358384ec6e6956cc3133b6a7d91ba6d9b6198efa664b9fe672d66096",
+    "mixed-prepare.csv": "f2f01d4a13c1a4de40c6adb6f8b2ac045fdfcccbcfc716010f68975b080d0fe5",
+    "mixed-prepare.time": "0cfe6bfddbde66d5af35ffc8ea1d06dc91c820eca53a5b995ef786db2513f85a",
+    "native-profile.json": "976968a744f6ab733aa862e6e65d2849aaa7ede339da0bc4973dc30988c0ae25",
+    "proof-geometry.json": "5c1ab9e16b0c3a33a5334d44f5bd0609a1c7eccbe01053338f50d50d39ced75e",
+    "source-revision.txt": "febe8973c10c60b6c688dadf783fa1dbf77d640300cd825da5bfdad8af511dcb",
+    "validation-source-revision.txt": "aaf0fe1a934daee66b73cb123b044c7af90a46eb2109346b3db1cf6a5a6e30ae"
+  },
+  "mergeProcess": {
+    "wallSeconds": 23.69,
+    "maximumResidentKiB": 1711244,
+    "provingMilliseconds": 22595.643,
+    "verificationMilliseconds": 145.819,
+    "inputBytes": 579660,
+    "proofBytes": 325548
+  },
+  "preparationProcess": {
+    "wallSeconds": 61.9,
+    "maximumResidentKiB": 3636812,
+    "additionalFixtureCommand": "bench_fixtures DIR 2 2; outside fresh merge process"
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "scope": "finite S1+G1 preproved-parent merge only; no worst-case capacity guarantee",
+  "nativePeakRssBytes": 1752313856,
+  "perNodeMarginBytes": 536870912,
+  "conservativeProjectedElBytes": [
+    2799493120,
+    2779799552
+  ],
+  "hostRemainingAfterTwoPeaksAndMarginsBytes": 9333821440,
+  "baseline": {
+    "capturedEpoch": 1791088623.5663652,
+    "hostAvailableFloorBytes": 6442450944,
+    "scope": "finite mixed functionality; separate from archived spam guard",
+    "elMemoryBytes": [
+      510308352,
+      490614784
+    ],
+    "elMemoryLimits": [
+      5120000000,
+      5120000000
+    ],
+    "elOomKilled": [
+      false,
+      false
+    ],
+    "elRestarts": [
+      0,
+      0
+    ],
+    "hostCpuPercent": 7.3051948051948035,
+    "hostAvailableBytes": 13912190976
+  },
+  "binarySource": "03df8d0528c68e7f5f89c698b973d3fcf89aa4dc",
+  "driverRevision": "a5f09f069313bea0260ab2d3ebf92c433e852732",
+  "viewerRevision": "1b4a6f6ca6cef3f1ac4d4756635fe641ce418f61"
+}

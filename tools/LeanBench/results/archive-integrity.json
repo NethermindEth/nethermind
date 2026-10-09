@@ -1,0 +1,33 @@
+{
+  "compression": "gzip level 9, empty filename, mtime 0",
+  "archives": [
+    {
+      "path": "2026-10-02/full/summary.json.gz",
+      "uncompressedSha256": "c1d8c6de728820219611893badb496f4b23b2a1974719df7b5f61b91b2c16e9b",
+      "compressedSha256": "ef46b7acc966895f9a02d888ff26c627ad5c28758b8ca24828bd66be4f41db5b",
+      "uncompressedBytes": 122136,
+      "compressedBytes": 19000
+    },
+    {
+      "path": "2026-10-03/daisugi/full/results.json.gz",
+      "uncompressedSha256": "2dc6c7f1529ee2f6f6d0cbebea845c09c53c202d24a9962496b2a02bd80c4ac9",
+      "compressedSha256": "910a73d4801d0b206db92d6a938a3f953239ffa17cf030f0573c0ae93dd3a794",
+      "uncompressedBytes": 1063761,
+      "compressedBytes": 90664
+    },
+    {
+      "path": "2026-10-03/daisugi/mixed/results.json.gz",
+      "uncompressedSha256": "ef48cb3c34ca2cd298118b9d2e6befd92432b22cf1a80275da9d4c52d04e638d",
+      "compressedSha256": "49852fb7b73d1e8198e3ff90fc3bf8a881994a06a8371570136d3e8d4278a476",
+      "uncompressedBytes": 381422,
+      "compressedBytes": 28671
+    },
+    {
+      "path": "2026-10-03/mixed/results.json.gz",
+      "uncompressedSha256": "223a27d1ac3025281e4d0b38a126857dec182f48d6b3a54a00e3ba662c9a7fb9",
+      "compressedSha256": "e0930122975d8ba51fc08541e9384401d3a77f40bf3284b2c04ab3bb97ed94d8",
+      "uncompressedBytes": 368363,
+      "compressedBytes": 27745
+    }
+  ]
+}
