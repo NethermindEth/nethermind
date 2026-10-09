@@ -160,7 +160,7 @@ public sealed class PbtSnapshotBundle(
     /// <remarks>The promoted account is sealed into the next snapshot, so later heads read it from the newest layer.</remarks>
     public Account? GetAndPromoteAccount(Address address) => ReadAccount(PbtStateKey.AddressKeyHash(address), promote: true);
 
-    private Account? ReadAccount(in ValueHash256 addressHash, bool promote)
+    internal Account? ReadAccount(in ValueHash256 addressHash, bool promote)
     {
         if (_accountsAwaitingCode.TryGetValue(addressHash, out Account? awaiting)) return awaiting;
         if (WriteBuffer.Accounts.TryGetValue(addressHash, out PbtAccount? buffered)) return buffered?.ToAccount();
@@ -194,7 +194,7 @@ public sealed class PbtSnapshotBundle(
         ? GetSlot(PbtStateKey.HeaderStorage(addressHash, slot), addressHash)
         : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
 
-    private EvmWord GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+    internal EvmWord GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
         BufferRun<TKey>(WriteBuffer, SlotRun.RunKey(slotKey), addressHash).Get(SlotRun.IndexOf(slotKey));
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>

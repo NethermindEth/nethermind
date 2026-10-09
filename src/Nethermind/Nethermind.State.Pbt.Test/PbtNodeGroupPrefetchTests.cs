@@ -22,40 +22,50 @@ namespace Nethermind.State.Pbt.Test;
 
 public class PbtNodeGroupPrefetchTests
 {
-    private static IEnumerable<TestCaseData> NodeGroupHintCases()
+    [Test]
+    public void BalKeys_derive_each_key_once_and_sort_every_list([Values] bool withReads)
     {
-        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))), new[] { TestItem.AddressA }, Array.Empty<(Address, UInt256)>())
-            .SetName("balance writes the account zone");
-        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(7, new StorageChange(1, 1u))), new[] { TestItem.AddressA }, Array.Empty<(Address, UInt256)>())
-            .SetName("header slot writes the account zone");
-        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageChanges(1000, new StorageChange(1, 1u)).WithStorageChanges(1001, new StorageChange(1, 1u)).WithStorageChanges(2000, new StorageChange(1, 2u))),
-                Array.Empty<Address>(), new[] { (TestItem.AddressA, (UInt256)1000), (TestItem.AddressA, (UInt256)2000) })
-            .SetName("slots of one stem share its key");
-        yield return new TestCaseData(Bal(Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithStorageReads(1000)), Array.Empty<Address>(), Array.Empty<(Address, UInt256)>())
-            .SetName("storage reads write nothing");
-        yield return new TestCaseData(Bal(
-                Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithNonceChanges(new NonceChange(1, 1)).WithStorageChanges(7, new StorageChange(1, 1u)).WithStorageChanges(1000, new StorageChange(1, 1u)),
-                Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u))),
-                new[] { TestItem.AddressA }, new[] { (TestItem.AddressA, (UInt256)1000), (TestItem.AddressB, (UInt256)1000) })
-            .SetName("both zones across accounts");
+        ReadOnlyBlockAccessList bal = Build.A.BlockAccessList.WithAccountChanges(
+            Build.An.AccountChanges.WithAddress(TestItem.AddressA).WithBalanceChanges(new BalanceChange(1, 100))
+                .WithStorageChanges(7, new StorageChange(1, 1u))
+                .WithStorageChanges(1000, new StorageChange(1, 1u))
+                .WithStorageChanges(1001, new StorageChange(1, 1u))
+                .WithStorageChanges(2000, new StorageChange(1, 1u))
+                .WithStorageReads(3, 3000).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressB).WithStorageChanges(1000, new StorageChange(1, 1u)).TestObject,
+            Build.An.AccountChanges.WithAddress(TestItem.AddressC).WithStorageReads(5).TestObject).TestObject;
 
-        static ReadOnlyBlockAccessList Bal(params AccountChangesBuilder[] accounts) =>
-            Build.A.BlockAccessList.WithAccountChanges([.. accounts.Select(static account => account.TestObject)]).TestObject;
-    }
+        PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, withReads);
 
-    [TestCaseSource(nameof(NodeGroupHintCases))]
-    public void PrefetchBal_collects_the_zones_and_stems_the_writes_fold_into(ReadOnlyBlockAccessList bal, Address[] accountZone, (Address Address, UInt256 Slot)[] stems)
-    {
-        using PbtSnapshotBundle bundle = PbtSnapshotBundleTestExtensions.CreateBundle(new PbtResourcePool(new PbtConfig()), Substitute.For<IPbtPersistence.IReader>());
-
-        PbtWorldStateScope.NodeGroupHint[] hints = [.. CollectHints(bundle, bal).OfType<PbtWorldStateScope.NodeGroupHint>()];
-
+        Address[] accounts = withReads ? [TestItem.AddressA, TestItem.AddressB, TestItem.AddressC] : [TestItem.AddressA, TestItem.AddressB];
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(hints.Where(static hint => hint.WritesAccountZone).Select(static hint => hint.AddressHash), Is.EquivalentTo(accountZone.Select(static address => PbtStateKey.AddressKeyHash(address))));
-            Assert.That(hints.SelectMany(static hint => hint.StemKeys).Select(static key => key.Bytes.ToHexString()),
-                Is.EquivalentTo(stems.Select(static stem => PbtStateKey.Storage(stem.Address, PbtStateKey.AddressKeyHash(stem.Address), stem.Slot).Bytes.ToHexString())));
+            Assert.That(Entries(keys.Accounts), Is.EqualTo(Sorted(accounts.Select(address =>
+                (PbtStateKey.Account(PbtStateKey.AddressKeyHash(address), PbtKeyDerivation.BasicDataLeafKey).Bytes.ToHexString(), (UInt256)IndexOf(address))))));
+            Assert.That(Entries(keys.HeaderWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 7))));
+            Assert.That(Entries(keys.StorageWrites), Is.EqualTo(SlotKeys((TestItem.AddressA, 1000), (TestItem.AddressA, 1001), (TestItem.AddressA, 2000), (TestItem.AddressB, 1000))));
+            Assert.That(Entries(keys.HeaderReads), Is.EqualTo(withReads ? SlotKeys((TestItem.AddressA, 3), (TestItem.AddressC, 5)) : []));
+            Assert.That(Entries(keys.StorageReads), Is.EqualTo(withReads ? SlotKeys((TestItem.AddressA, 3000)) : []));
         }
+
+        int IndexOf(Address address)
+        {
+            ReadOnlySpan<ReadOnlyAccountChanges> accountChanges = bal.AccountChanges.AsSpan();
+            for (int index = 0; ; index++)
+                if (accountChanges[index].Address == address) return index;
+        }
+
+        static (string Key, UInt256 Value)[] Entries<TKey>(PbtWriteOperation<TKey>[] operations) where TKey : struct, IPbtKey<TKey> =>
+            [.. operations.Select(static operation =>
+            {
+                TKey key = operation.Key;
+                return (key.Bytes.ToHexString(), operation.Value.ToUInt256());
+            })];
+
+        static (string Key, UInt256 Value)[] SlotKeys(params (Address Address, int Slot)[] slots) => Sorted(slots.Select(static slot =>
+            (PbtStateKey.Slot(slot.Address, PbtStateKey.AddressKeyHash(slot.Address), (UInt256)slot.Slot).Bytes.ToHexString(), (UInt256)slot.Slot)));
+
+        static (string Key, UInt256 Value)[] Sorted(IEnumerable<(string Key, UInt256 Value)> entries) => [.. entries.OrderBy(static entry => entry.Key, StringComparer.Ordinal)];
     }
 
     public enum PrefetchSkip { EmptyBal, SnapshotBacked, ReadByFold, MissingAccount }
@@ -240,18 +250,11 @@ public class PbtNodeGroupPrefetchTests
         Assert.That(TrackingMemoryProvider.CountUnreleased(memory.Rented), Is.Zero, "only the snapshot's reference may remain after the failed prefetch");
     }
 
-    private static PbtWorldStateScope.NodeGroupHint?[] CollectHints(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal)
-    {
-        PbtWorldStateScope.NodeGroupHint?[] hints = new PbtWorldStateScope.NodeGroupHint?[bal.AccountChanges.Count];
-        PbtWorldStateScope.PrefetchBal(bundle, bal, null, hints, new CancellationToken(true), CancellationToken.None);
-        return hints;
-    }
-
     private static void Prefetch(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, CancellationToken reads, CancellationToken cancellation)
     {
-        PbtWorldStateScope.NodeGroupHint?[] hints = new PbtWorldStateScope.NodeGroupHint?[bal.AccountChanges.Count];
-        PbtWorldStateScope.PrefetchBal(bundle, bal, null, hints, reads, cancellation);
-        PbtWorldStateScope.PrefetchNodeGroups(bundle, hints, cancellation);
+        PbtWorldStateScope.BalKeys keys = PbtWorldStateScope.BalKeys.Create(bal, false);
+        PbtWorldStateScope.PrefetchBal(bundle, keys, null, reads);
+        PbtWorldStateScope.PrefetchNodeGroups(bundle, keys, cancellation);
     }
 
     private static PbtStorageNodePath FirstGroup(Address address, byte zone) => zone == Eip8297KeyDerivation.AccountZone

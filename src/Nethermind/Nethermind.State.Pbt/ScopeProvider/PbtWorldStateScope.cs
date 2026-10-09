@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
@@ -26,6 +27,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     private const int AccountGroupDepth = PbtRocksDbPersistence.AccountTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private const int StorageGroupDepth = PbtRocksDbPersistence.StemTopDepth + PbtFourLevelGroupGeometry.LevelsPerGroup;
     private const long AverageNodeGroupBytes = 1024;
+    private const int SlotChunkLength = 64;
 
     private static long _nextScopeId;
     private readonly long _scopeId = Interlocked.Increment(ref _nextScopeId);
@@ -96,7 +98,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>
     /// Starts buffering the accounts and slot runs <paramref name="bal"/> writes, so <see cref="ApplyBal"/> finds them in the write buffer,
-    /// and then prefetching the node groups the fold of those writes walks into.
+    /// and then prefetching the node groups the fold of those writes walks into, both from the list's keys derived once and sorted.
     /// </summary>
     /// <remarks>
     /// The buffered values are the ones visible when read, and a buffered value never replaces a write, so the prefetch
@@ -109,107 +111,149 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         _balPrefetch.Stop();
         if (bal.AccountChanges.Count == 0) return Task.CompletedTask;
-        NodeGroupHint?[] hints = new NodeGroupHint?[bal.AccountChanges.Count];
+        BalKeys? keys = null;
         return _balPrefetch.Start(
-            (reads, cancellation) => PrefetchBal(Bundle, bal, sink, hints, reads, cancellation),
-            cancellation => PrefetchNodeGroups(Bundle, hints, cancellation));
+            reads =>
+            {
+                keys = BalKeys.Create(bal, sink is not null);
+                PrefetchBal(Bundle, keys, sink, reads);
+            },
+            cancellation => PrefetchNodeGroups(Bundle, keys!, cancellation));
     }
 
-    /// <summary>
-    /// Buffers the accounts and slot runs <paramref name="bal"/> writes and collects into <paramref name="hints"/>
-    /// what the fold of those writes walks into.
-    /// </summary>
-    /// <remarks>Once <paramref name="reads"/> is cancelled, the remaining accounts are only collected, as the node group prefetch outlives the buffering.</remarks>
-    internal static void PrefetchBal(PbtSnapshotBundle bundle, ReadOnlyBlockAccessList bal, IWorldStateScopeProvider.IAsyncBalReaderSink? sink,
-        NodeGroupHint?[] hints, CancellationToken reads, CancellationToken cancellation) =>
-        ParallelUnbalancedWork.For(0, bal.AccountChanges.Count, (bundle, bal, sink, hints, reads, cancellation), static (index, state) =>
+    /// <summary>Buffers the accounts and slot runs the keys of a block access list write, forwarding every account and slot it names to <paramref name="sink"/>.</summary>
+    /// <remarks>
+    /// Accounts are read first, so their slots know whether the account is missing: <see cref="ApplyBal"/> writes no slot of a
+    /// missing account that the block leaves missing. The slots of one run are adjacent in key order, so the run is buffered once.
+    /// </remarks>
+    internal static void PrefetchBal(PbtSnapshotBundle bundle, BalKeys keys, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads)
+    {
+        ParallelUnbalancedWork.For(0, keys.Accounts.Length, (bundle, keys, sink, reads), static (position, state) =>
         {
-            ReadOnlyAccountChanges accountChanges = state.bal.AccountChanges.AsSpan()[index];
-            if (state.cancellation.IsCancellationRequested || (!accountChanges.HasStateChanges && state.sink is null)) return state;
+            if (state.reads.IsCancellationRequested) return state;
+            int index = (int)state.keys.Accounts[position].Value.ToUInt256().u0;
+            ReadOnlyAccountChanges accountChanges = state.keys.Bal.AccountChanges.AsSpan()[index];
+            Account? account = state.bundle.ReadAccount(PbtStateKey.StorageAddress(state.keys.Accounts[position].Key), promote: accountChanges.HasStateChanges);
+            if (state.sink?.StillNeeded(accountChanges.Address, out _) == true) state.sink.OnAccountRead(accountChanges.Address, account);
+            state.keys.Missing[index] = account is null;
+            return state;
+        });
+        BufferSlots(bundle, keys, keys.HeaderWrites, sink, reads);
+        BufferSlots(bundle, keys, keys.StorageWrites, sink, reads);
+        if (sink is null) return;
+        ReadSlotsToSink(bundle, keys, keys.HeaderReads, sink, reads);
+        ReadSlotsToSink(bundle, keys, keys.StorageReads, sink, reads);
+    }
 
-            PbtSnapshotBundle bundle = state.bundle;
-            Address address = accountChanges.Address;
-            Account? account = null;
-            if (!state.reads.IsCancellationRequested)
+    private static void BufferSlots<TKey>(PbtSnapshotBundle bundle, BalKeys keys, PbtWriteOperation<TKey>[] slots,
+        IWorldStateScopeProvider.IAsyncBalReaderSink? sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
+        ParallelUnbalancedWork.For(0, (slots.Length + SlotChunkLength - 1) / SlotChunkLength, (bundle, keys, slots, sink, reads), static (chunk, state) =>
+        {
+            TKey? bufferedRun = null;
+            for (int position = chunk * SlotChunkLength; position < Math.Min(state.slots.Length, (chunk + 1) * SlotChunkLength); position++)
             {
-                account = accountChanges.HasStateChanges ? bundle.GetAndPromoteAccount(address) : bundle.GetAccount(address);
-                if (state.sink?.StillNeeded(address, out _) == true) state.sink.OnAccountRead(address, account);
-                // ApplyBal writes no slot of a missing account that the block leaves missing.
-                if (account is null && !accountChanges.HasBalanceNonceOrCodeChanges) return state;
-            }
-
-            ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
-            NodeGroupHint? hint = accountChanges.HasStateChanges ? state.hints[index] = new(address, addressHash, accountChanges.HasBalanceNonceOrCodeChanges) : null;
-            IWorldStateScopeProvider.IAsyncBalReaderSink? slotSink = account is null ? null : state.sink;
-            UInt256? bufferedSlot = null;
-            foreach (ReadOnlySlotChanges slotChanges in accountChanges.StorageChanges)
-            {
-                if (slotChanges.Changes.Length == 0) continue;
-                hint!.AddSlot(slotChanges.Key);
-                if (state.reads.IsCancellationRequested) continue;
-                if (ReadSlotToSink(bundle, slotSink, address, addressHash, slotChanges.Key))
+                if (state.reads.IsCancellationRequested) return state;
+                TKey key = state.slots[position].Key;
+                ValueHash256 addressHash = PbtStateKey.StorageAddress(key);
+                if (state.keys.WritesNothing(addressHash, out int index)) continue;
+                TKey run = SlotRun.RunKey(key);
+                if (!state.keys.Missing[index] && ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value))
                 {
-                    bufferedSlot = slotChanges.Key;
+                    bufferedRun = run;
                     continue;
                 }
-                // The slots are sorted, so the slots of one run are adjacent and the run is buffered once.
-                if (bufferedSlot is { } previous && SlotRun.InSameRun(previous, slotChanges.Key)) continue;
-                bundle.GetSlot(address, addressHash, slotChanges.Key);
-                bufferedSlot = slotChanges.Key;
-            }
-            foreach (UInt256 slot in accountChanges.StorageReads)
-            {
-                if (state.reads.IsCancellationRequested) break;
-                ReadSlotToSink(bundle, slotSink, address, addressHash, slot);
+                if (bufferedRun is { } previous && previous.Equals(run)) continue;
+                state.bundle.GetSlot(key, addressHash);
+                bufferedRun = run;
             }
             return state;
         });
 
-    /// <summary>Reads the node groups the fold of the writes collected in <paramref name="hints"/> walks into, so the bundle keeps the persisted ones for the fold.</summary>
-    /// <remarks>
-    /// Per account, reads the first group below the top node groups of each zone it writes, then the groups below each written stem,
-    /// as deep as the stem's estimated remaining group levels: a boundary slot of the first storage group holds about
-    /// <c>descendantBytes / 1 KiB</c> groups, so its remaining depth is about <c>log16</c> of that many group levels.
-    /// Code leaves are left out: they are content addressed, so a deployment rarely finds their groups stored.
-    /// </remarks>
-    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, NodeGroupHint?[] hints, CancellationToken cancellation) =>
-        ParallelUnbalancedWork.For(0, hints.Length, (bundle, hints, cancellation), static (index, state) =>
+    private static void ReadSlotsToSink<TKey>(PbtSnapshotBundle bundle, BalKeys keys, PbtWriteOperation<TKey>[] slots,
+        IWorldStateScopeProvider.IAsyncBalReaderSink sink, CancellationToken reads) where TKey : struct, IPbtKey<TKey> =>
+        ParallelUnbalancedWork.For(0, slots.Length, (bundle, keys, slots, sink, reads), static (position, state) =>
         {
-            if (state.hints[index] is not { } hint || state.cancellation.IsCancellationRequested) return state;
-
-            Span<byte> pathBytes = stackalloc byte[StorageGroupDepth / 8];
-            hint.AddressHash.Bytes.CopyTo(pathBytes[1..]);
-            if (hint.WritesAccountZone)
-            {
-                pathBytes[0] = Eip8297KeyDerivation.AccountZone;
-                ((IDisposable?)ReadNodeGroup(state.bundle, new PbtStorageNodePath(pathBytes[..(AccountGroupDepth / 8)], AccountGroupDepth)))?.Dispose();
-            }
-            if (hint.StemKeys.Count == 0) return state;
-
-            pathBytes[0] = Eip8297KeyDerivation.StorageZone;
-            Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
-            using (RefCountingMemory? storageGroup = ReadNodeGroup(state.bundle, new PbtStorageNodePath(pathBytes, StorageGroupDepth)))
-                StorageDescendantBytes(storageGroup, descendantBytes);
-
-            HashSet<PbtStorageNodePath> deeperGroups = [];
-            Span<byte> deeperPathBytes = stackalloc byte[PbtStoragePath.KeyLength];
-            foreach (PbtStoragePath stemKey in hint.StemKeys)
-            {
-                long subtreeBytes = descendantBytes[stemKey.Bytes[StorageGroupDepth / 8] >> 4];
-                int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
-                for (int level = 1; level <= levels; level++)
-                {
-                    if (state.cancellation.IsCancellationRequested) return state;
-                    int depth = StorageGroupDepth + level * PbtFourLevelGroupGeometry.LevelsPerGroup;
-                    Span<byte> path = deeperPathBytes[..((depth + 7) / 8)];
-                    stemKey.Bytes[..path.Length].CopyTo(path);
-                    if (depth % 8 != 0) path[^1] &= 0xF0;
-                    PbtStorageNodePath group = new(path, depth);
-                    if (deeperGroups.Add(group)) ((IDisposable?)ReadNodeGroup(state.bundle, group))?.Dispose();
-                }
-            }
+            if (state.reads.IsCancellationRequested) return state;
+            TKey key = state.slots[position].Key;
+            ValueHash256 addressHash = PbtStateKey.StorageAddress(key);
+            int index = state.keys.AccountIndex(addressHash);
+            if (!state.keys.Missing[index])
+                ReadSlotToSink(state.bundle, state.sink, state.keys.Bal.AccountChanges.AsSpan()[index].Address, addressHash, key, state.slots[position].Value);
             return state;
         });
+
+    /// <summary>Reads the node groups the fold of the writes in <paramref name="keys"/> walks into, so the bundle keeps the persisted ones for the fold.</summary>
+    /// <remarks>
+    /// Reads the first group below the top node groups of each account zone written, and per account writing its storage
+    /// zone, the first storage group and then the groups below each written slot, as deep as the slot's estimated remaining
+    /// group levels: a boundary slot of the first storage group holds about <c>descendantBytes / 1 KiB</c> groups, so its
+    /// remaining depth is about <c>log16</c> of that many group levels. Code leaves are left out: they are content
+    /// addressed, so a deployment rarely finds their groups stored.
+    /// </remarks>
+    internal static void PrefetchNodeGroups(PbtSnapshotBundle bundle, BalKeys keys, CancellationToken cancellation)
+    {
+        HashSet<PbtStorageNodePath> accountGroups = [];
+        foreach (PbtWriteOperation<PbtPath> account in keys.Accounts)
+        {
+            PbtPath key = account.Key;
+            if (keys.Bal.AccountChanges.AsSpan()[(int)account.Value.ToUInt256().u0].HasBalanceNonceOrCodeChanges) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+        }
+        foreach (PbtWriteOperation<PbtPath> slot in keys.HeaderWrites)
+        {
+            PbtPath key = slot.Key;
+            if (!keys.WritesNothing(PbtStateKey.StorageAddress(key), out _)) accountGroups.Add(GroupOf(key.Bytes, AccountGroupDepth));
+        }
+        PbtStorageNodePath[] accountGroupPaths = [.. accountGroups];
+        List<Range> storageAccounts = keys.StorageAccounts();
+        ParallelUnbalancedWork.For(0, accountGroupPaths.Length + storageAccounts.Count, (bundle, keys, accountGroupPaths, storageAccounts, cancellation), static (item, state) =>
+        {
+            if (state.cancellation.IsCancellationRequested) return state;
+            if (item < state.accountGroupPaths.Length) ((IDisposable?)ReadNodeGroup(state.bundle, state.accountGroupPaths[item]))?.Dispose();
+            else PrefetchStorageGroups(state.bundle, state.keys.StorageWrites.AsSpan(state.storageAccounts[item - state.accountGroupPaths.Length]), state.cancellation);
+            return state;
+        });
+    }
+
+    /// <summary>Reads the first storage group of one account and the groups below its sorted written slots.</summary>
+    /// <remarks>A group shared with the previous slot's path is read for that slot already, as both lie under one boundary slot and so share their depth.</remarks>
+    private static void PrefetchStorageGroups(PbtSnapshotBundle bundle, ReadOnlySpan<PbtWriteOperation<PbtStoragePath>> slots, CancellationToken cancellation)
+    {
+        PbtStoragePath previous = slots[0].Key;
+        Span<long> descendantBytes = stackalloc long[PbtFourLevelGroupGeometry.BoundarySlots];
+        using (RefCountingMemory? storageGroup = ReadNodeGroup(bundle, GroupOf(previous.Bytes, StorageGroupDepth)))
+            StorageDescendantBytes(storageGroup, descendantBytes);
+
+        for (int position = 0; position < slots.Length; position++)
+        {
+            PbtStoragePath key = slots[position].Key;
+            int sharedBits = position == 0 ? StorageGroupDepth : SharedBits(previous.Bytes, key.Bytes);
+            previous = key;
+            long subtreeBytes = descendantBytes[key.Bytes[StorageGroupDepth / 8] >> 4];
+            int levels = subtreeBytes <= AverageNodeGroupBytes ? 0 : (int)Math.Ceiling(Math.Log((double)subtreeBytes / AverageNodeGroupBytes, 16));
+            for (int level = 1; level <= levels; level++)
+            {
+                int depth = StorageGroupDepth + level * PbtFourLevelGroupGeometry.LevelsPerGroup;
+                if (depth <= sharedBits) continue;
+                if (cancellation.IsCancellationRequested) return;
+                ((IDisposable?)ReadNodeGroup(bundle, GroupOf(key.Bytes, depth)))?.Dispose();
+            }
+        }
+    }
+
+    private static int SharedBits(ReadOnlySpan<byte> left, ReadOnlySpan<byte> right)
+    {
+        int bytes = left.CommonPrefixLength(right);
+        return bytes == left.Length ? bytes * 8 : bytes * 8 + BitOperations.LeadingZeroCount((uint)(left[bytes] ^ right[bytes])) - 24;
+    }
+
+    /// <summary>The path of the group at <paramref name="depth"/> above the leaf at <paramref name="key"/>.</summary>
+    private static PbtStorageNodePath GroupOf(ReadOnlySpan<byte> key, int depth)
+    {
+        Span<byte> path = stackalloc byte[(depth + 7) / 8];
+        key[..path.Length].CopyTo(path);
+        if (depth % 8 != 0) path[^1] &= 0xF0;
+        return new PbtStorageNodePath(path, depth);
+    }
 
     /// <summary>Reads a group from the snapshots, or else from persistence.</summary>
     /// <returns>A caller-owned group lease, or null when the group is absent.</returns>
@@ -228,11 +272,12 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
     /// <summary>Reads the slot and forwards it to <paramref name="sink"/> when the sink still needs it.</summary>
     /// <returns>Whether the slot was read.</returns>
-    private static bool ReadSlotToSink(PbtSnapshotBundle bundle, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, Address address, in ValueHash256 addressHash, in UInt256 slot)
+    private static bool ReadSlotToSink<TKey>(PbtSnapshotBundle bundle, IWorldStateScopeProvider.IAsyncBalReaderSink? sink, Address address, in ValueHash256 addressHash,
+        in TKey key, in ValueHash256 slot) where TKey : struct, IPbtKey<TKey>
     {
-        StorageCell cell = new(address, in slot);
+        StorageCell cell = new(address, slot.ToUInt256());
         if (sink?.StillNeeded(in cell) != true) return false;
-        EvmWord word = bundle.GetSlot(address, addressHash, slot);
+        EvmWord word = bundle.GetSlot(key, addressHash);
         sink.OnStorageRead(in cell, EvmWordSlot.ToUInt256(in word));
         return true;
     }
@@ -383,28 +428,121 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         }
     }
 
-    /// <summary>What the fold of one account's writes walks into: whether it writes the account zone, and one key per storage-zone stem it writes.</summary>
-    internal sealed class NodeGroupHint(Address address, in ValueHash256 addressHash, bool writesAccountZone)
+    /// <summary>The keys a block access list names, as EIP-8297 paths sorted per list, so the slots of one run, stem or group are adjacent.</summary>
+    internal sealed class BalKeys
     {
-        private UInt256? _lastStemSlot;
+        private readonly Dictionary<ValueHash256, int> _accountIndexes = [];
 
-        public ValueHash256 AddressHash { get; } = addressHash;
-        public bool WritesAccountZone { get; private set; } = writesAccountZone;
-
-        /// <summary>The key of the first written slot of each stem; the slots of one stem share <c>slot &gt;&gt; 8</c> and so every group above their leaves.</summary>
-        public List<PbtStoragePath> StemKeys { get; } = [];
-
-        /// <summary>Records a written slot; slots must be added in ascending order.</summary>
-        public void AddSlot(in UInt256 slot)
+        private BalKeys(ReadOnlyBlockAccessList bal)
         {
-            if (PbtStateKey.IsHeaderSlot(slot))
+            Bal = bal;
+            Missing = new bool[bal.AccountChanges.Count];
+        }
+
+        public ReadOnlyBlockAccessList Bal { get; }
+
+        /// <summary>The basic-data key of each account to read, with its index in <see cref="Bal"/> as the value.</summary>
+        public PbtWriteOperation<PbtPath>[] Accounts { get; private set; } = [];
+
+        /// <summary>The written header slots, with the slot as the value.</summary>
+        public PbtWriteOperation<PbtPath>[] HeaderWrites { get; private set; } = [];
+
+        /// <summary>The written storage-zone slots, with the slot as the value.</summary>
+        public PbtWriteOperation<PbtStoragePath>[] StorageWrites { get; private set; } = [];
+
+        /// <summary>The header slots only read, with the slot as the value.</summary>
+        public PbtWriteOperation<PbtPath>[] HeaderReads { get; private set; } = [];
+
+        /// <summary>The storage-zone slots only read, with the slot as the value.</summary>
+        public PbtWriteOperation<PbtStoragePath>[] StorageReads { get; private set; } = [];
+
+        /// <summary>Per account in <see cref="Bal"/>, whether reading it found it missing.</summary>
+        public bool[] Missing { get; }
+
+        /// <param name="withReads">Whether to also collect the accounts and slots the list only reads.</param>
+        public static BalKeys Create(ReadOnlyBlockAccessList bal, bool withReads)
+        {
+            BalKeys keys = new(bal);
+            List<PbtWriteOperation<PbtPath>> accounts = [];
+            List<PbtWriteOperation<PbtPath>> headerWrites = [];
+            List<PbtWriteOperation<PbtStoragePath>> storageWrites = [];
+            List<PbtWriteOperation<PbtPath>> headerReads = [];
+            List<PbtWriteOperation<PbtStoragePath>> storageReads = [];
+            ReadOnlySpan<ReadOnlyAccountChanges> accountChanges = bal.AccountChanges.AsSpan();
+            for (int index = 0; index < accountChanges.Length; index++)
             {
-                WritesAccountZone = true;
-                return;
+                ReadOnlyAccountChanges changes = accountChanges[index];
+                if (!changes.HasStateChanges && !withReads) continue;
+                ValueHash256 addressHash = PbtStateKey.AddressKeyHash(changes.Address);
+                keys._accountIndexes[addressHash] = index;
+                accounts.Add(new(PbtStateKey.Account(addressHash, PbtKeyDerivation.BasicDataLeafKey), ((UInt256)(ulong)index).ToValueHash()));
+                StemKeys writes = new(changes.Address, addressHash);
+                foreach (ReadOnlySlotChanges slotChanges in changes.StorageChanges)
+                    if (slotChanges.Changes.Length != 0) writes.Add(slotChanges.Key, headerWrites, storageWrites);
+                if (!withReads) continue;
+                StemKeys readKeys = new(changes.Address, addressHash);
+                foreach (UInt256 slot in changes.StorageReads) readKeys.Add(slot, headerReads, storageReads);
             }
-            if (_lastStemSlot is { } last && last >> 8 == slot >> 8) return;
-            StemKeys.Add(PbtStateKey.Storage(address, AddressHash, slot));
-            _lastStemSlot = slot;
+            keys.Accounts = Sorted(accounts);
+            keys.HeaderWrites = Sorted(headerWrites);
+            keys.StorageWrites = Sorted(storageWrites);
+            keys.HeaderReads = Sorted(headerReads);
+            keys.StorageReads = Sorted(storageReads);
+            return keys;
+        }
+
+        private static PbtWriteOperation<TKey>[] Sorted<TKey>(List<PbtWriteOperation<TKey>> operations) where TKey : unmanaged, IPbtKey<TKey>
+        {
+            PbtOperationSort.Sort(CollectionsMarshal.AsSpan(operations));
+            return [.. operations];
+        }
+
+        public int AccountIndex(in ValueHash256 addressHash) => _accountIndexes[addressHash];
+
+        /// <summary>Whether <see cref="ApplyBal"/> writes nothing to the account: it is missing and the block leaves it missing.</summary>
+        public bool WritesNothing(in ValueHash256 addressHash, out int index)
+        {
+            index = AccountIndex(addressHash);
+            return Missing[index] && !Bal.AccountChanges.AsSpan()[index].HasBalanceNonceOrCodeChanges;
+        }
+
+        /// <summary>The ranges of <see cref="StorageWrites"/> that each hold one account's slots, leaving out accounts <see cref="WritesNothing"/> holds for.</summary>
+        public List<Range> StorageAccounts()
+        {
+            List<Range> ranges = [];
+            for (int start = 0, end; start < StorageWrites.Length; start = end)
+            {
+                ValueHash256 addressHash = PbtStateKey.StorageAddress(StorageWrites[start].Key);
+                for (end = start + 1; end < StorageWrites.Length && PbtStateKey.StorageAddress(StorageWrites[end].Key) == addressHash; end++) { }
+                if (!WritesNothing(addressHash, out _)) ranges.Add(start..end);
+            }
+            return ranges;
+        }
+
+        /// <summary>Derives the keys of one account's slots, given in ascending order, deriving each stem's hash once.</summary>
+        private struct StemKeys(Address address, in ValueHash256 addressHash)
+        {
+            private readonly ValueHash256 _addressHash = addressHash;
+            private UInt256? _stemSlot;
+            private PbtStoragePath _stemKey;
+
+            public void Add(in UInt256 slot, List<PbtWriteOperation<PbtPath>> headerKeys, List<PbtWriteOperation<PbtStoragePath>> storageKeys)
+            {
+                if (PbtStateKey.IsHeaderSlot(slot))
+                {
+                    headerKeys.Add(new(PbtStateKey.HeaderStorage(_addressHash, slot), slot.ToValueHash()));
+                    return;
+                }
+                if (_stemSlot is not { } stemSlot || stemSlot >> 8 != slot >> 8)
+                {
+                    _stemKey = PbtStateKey.Storage(address, _addressHash, slot);
+                    _stemSlot = slot;
+                }
+                Span<byte> key = stackalloc byte[PbtStoragePath.KeyLength];
+                _stemKey.Bytes.CopyTo(key);
+                key[^1] = (byte)slot.u0;
+                storageKeys.Add(new(new PbtStoragePath(key), slot.ToValueHash()));
+            }
         }
     }
 
@@ -418,9 +556,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
         private CancellationTokenSource? _firstPhaseCancellation;
 
         /// <summary>Stops the running task, then runs <paramref name="firstPhase"/> and then <paramref name="secondPhase"/> in the background.</summary>
-        /// <param name="firstPhase">Takes the token <see cref="StopFirstPhase"/> cancels, then the token <see cref="Stop"/> cancels.</param>
         /// <returns>A task that completes with the first phase.</returns>
-        public Task Start(Action<CancellationToken, CancellationToken> firstPhase, Action<CancellationToken> secondPhase)
+        public Task Start(Action<CancellationToken> firstPhase, Action<CancellationToken> secondPhase)
         {
             Stop();
             lock (_lock)
@@ -436,7 +573,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
                 {
                     try
                     {
-                        firstPhase(firstPhaseCancellation.Token, cancellation.Token);
+                        firstPhase(firstPhaseCancellation.Token);
                         firstPhaseCompletion.SetResult();
                     }
                     catch (Exception ex)
