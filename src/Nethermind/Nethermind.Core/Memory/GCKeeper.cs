@@ -36,6 +36,8 @@ public class GCKeeper : IDisposable
     private long _ownEntries;
     private readonly Gen0BudgetTracker _budget = new();
     private readonly BlockAllocationTracker _blockAllocation = new();
+    // Held across a payload's region entry, and across the re-commit's entry and end, so the two never overlap.
+    private readonly Lock _runtimeLock = new();
 
     public GCKeeper(IGCStrategy gcStrategy, ILogManager logManager)
         : this(gcStrategy, logManager, GcRegionRuntime.Instance) { }
@@ -449,8 +451,12 @@ public class GCKeeper : IDisposable
             bool started = false;
             try
             {
-                started = keeper._runtime.TryStart(_defaultSize, _lohSize);
-                if (started) keeper.OnRegionEntered();
+                // Waits for a re-commit after decommit to end its region (see RecommitAfterDecommit).
+                lock (keeper._runtimeLock)
+                {
+                    started = keeper._runtime.TryStart(_defaultSize, _lohSize);
+                    if (started) keeper.OnRegionEntered();
+                }
                 if (!started && keeper._logger.IsDebug) keeper._logger.Debug("Runtime declined no-GC region entry.");
             }
             catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
@@ -553,6 +559,49 @@ public class GCKeeper : IDisposable
 
     private long? _lastGcTimeMs;
 
+    /// <summary>
+    /// Enters and at once ends a no-GC region right after a decommit, so the next payload's entry finds its budget
+    /// committed rather than committing it inside its own suspension.
+    /// </summary>
+    /// <remarks>
+    /// <para>The aggressive collection decommits every free region, so the entry after it commits the whole budget
+    /// while every thread is suspended, on the payload's path. Ending a region leaves the regions it linked committed
+    /// until the next collection (dotnet/runtime v10.0.0, gc.cpp: extend_soh_for_no_gc commits without touching the
+    /// pages, and decommit only takes regions a collection released), so the next entry reuses them and RSS does not
+    /// grow until they are allocated in. The decommit still returns everything else.</para>
+    /// <para>Skipped once the next payload has cancelled the pending collection, while a region is pending or active,
+    /// when the strategy disallows regions, and on shutdown. A payload admitted meanwhile queues its entry, which waits
+    /// on <see cref="_runtimeLock"/> until the throwaway region has ended.</para>
+    /// </remarks>
+    private void RecommitAfterDecommit(CancellationTokenSource pendingGcCts)
+    {
+        bool allowed = _gcStrategy.CanStartNoGCRegion();
+        lock (_lock)
+        {
+            if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+            if (!allowed || pendingGcCts.IsCancellationRequested || _disposed || _region is not null || _runtime.IsActive) return;
+            // Taken under the keeper's lock, so no entry can be between its admission and its runtime call here.
+            _runtimeLock.Enter();
+        }
+
+        try
+        {
+            if (_runtime.TryStart(_defaultSize, _lohSize) && _runtime.IsActive) _runtime.End();
+        }
+        catch (Exception e) when (e is ArgumentOutOfRangeException or InvalidOperationException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"No-GC region re-commit failed: {e.Message}");
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsError) _logger.Error("No-GC region re-commit failed.", e);
+        }
+        finally
+        {
+            _runtimeLock.Exit();
+        }
+    }
+
     private void ScheduleGC()
     {
         if (_gcScheduleTask.IsCompleted)
@@ -630,7 +679,8 @@ public class GCKeeper : IDisposable
                             _lastGcTimeMs = timeStamp;
                         }
 
-                        if (ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
+                        // A decommit stays cancellable through its collection: the next payload still calls off the re-commit.
+                        if (!decommit && ReferenceEquals(_pendingGcCts, pendingGcCts)) _pendingGcCts = null;
                     }
 
                     if (_logger.IsDebug) _logger.Debug($"Forcing GC collection of gen {generation}, compacting {compacting}");
@@ -643,6 +693,7 @@ public class GCKeeper : IDisposable
                     if (collected && decommit)
                     {
                         Interlocked.Add(ref _payloadsSinceDecommit, -payloadsSinceDecommit);
+                        RecommitAfterDecommit(pendingGcCts);
                     }
                 }
             }
