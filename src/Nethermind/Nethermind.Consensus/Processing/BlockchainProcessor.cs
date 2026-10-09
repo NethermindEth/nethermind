@@ -88,6 +88,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private CancellationTokenSource? _loopCancellationSource;
     // Set only while the processing loop works on a queue entry; re-armed as each block of its branch starts.
     private CancellationTokenSource? _blockDeadline;
+    private Hash256? _deadlineBlockHash;
+    // The block that last ran out of time, and how many times in a row: each retry of it gets twice the time, so a
+    // valid block that is just slow on this node is still reached instead of being abandoned at the same point forever.
+    private Hash256? _timedOutBlockHash;
+    private int _timedOutCount;
+    private const int MaxTimeoutDoublings = 4;
     private Task? _recoveryTask;
     private Task? _processorTask;
     private DateTime _lastProcessedBlock;
@@ -142,7 +148,18 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     // The limit is per block, so a long branch, as in a reorg or catching up, is not judged by its total time.
-    private void RearmBlockDeadline(object? sender, BlockEventArgs e) => _blockDeadline?.CancelAfter(_options.BlockProcessingTimeoutMs);
+    private void RearmBlockDeadline(object? sender, BlockEventArgs e)
+    {
+        if (_blockDeadline is null) return;
+        _deadlineBlockHash = e.Block.Hash;
+        _blockDeadline.CancelAfter(BlockProcessingTimeout(e.Block.Hash));
+    }
+
+    private int BlockProcessingTimeout(Hash256? blockHash)
+    {
+        int doublings = blockHash is not null && blockHash == _timedOutBlockHash ? Math.Min(_timedOutCount, MaxTimeoutDoublings) : 0;
+        return (int)Math.Min((long)_options.BlockProcessingTimeoutMs << doublings, int.MaxValue);
+    }
 
     private void OnBlockExecuted(object? sender, BlockExecutedEventArgs e)
     {
@@ -659,7 +676,8 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 if (isTrace) TraceProcessing(block);
 
                 _stats.Start();
-                deadline?.CancelAfter(_options.BlockProcessingTimeoutMs);
+                _deadlineBlockHash = blockRef.BlockHash;
+                deadline?.CancelAfter(BlockProcessingTimeout(blockRef.BlockHash));
                 Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), deadline?.Token ?? CancellationToken, out string? error);
 
                 if (processedBlock is null)
@@ -688,6 +706,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             finally
             {
                 _blockDeadline = null;
+                _deadlineBlockHash = null;
                 Interlocked.Decrement(ref _queueCount);
             }
         }
@@ -697,7 +716,13 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         [MethodImpl(MethodImplOptions.NoInlining)]
         void NotifyTimedOut(BlockRef blockRef, OperationCanceledException exception)
         {
-            if (_logger.IsError) _logger.Error($"Processing block {blockRef} took longer than {_options.BlockProcessingTimeoutMs} ms; abandoned without a verdict.");
+            // The block that ran out of time can be an ancestor the queued block's branch had to process first.
+            Hash256? slowBlockHash = _deadlineBlockHash ?? blockRef.BlockHash;
+            int timeoutMs = BlockProcessingTimeout(slowBlockHash);
+            _timedOutCount = slowBlockHash == _timedOutBlockHash ? _timedOutCount + 1 : 1;
+            _timedOutBlockHash = slowBlockHash;
+
+            if (_logger.IsError) _logger.Error($"Processing block {slowBlockHash} took longer than {timeoutMs} ms; abandoned without a verdict, and a retry of it gets more time. If this node is just slow, raise Blocks.BlockProcessingTimeoutMs or set it to 0 to disable.");
             OnBlockRemoved(new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception), processed: true);
         }
 

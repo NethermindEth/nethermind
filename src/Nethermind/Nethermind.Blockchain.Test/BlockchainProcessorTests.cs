@@ -856,12 +856,13 @@ public class BlockchainProcessorTests
 
     /// <summary>
     /// A block still processing when its time runs out leaves the queue without a verdict: it is not deleted as
-    /// invalid, the loop keeps going, and the block processes when queued again.
+    /// invalid, the loop keeps going, and queued again it gets twice the time, so a block that is just slow is reached.
     /// </summary>
     [Test, MaxTime(Timeout.MaxTestTime)]
     public async Task Block_over_the_processing_timeout_is_abandoned_without_a_verdict()
     {
-        ProcessingTestContext context = new ProcessingTestContext(true, blockProcessingTimeoutMs: 1_000)
+        const int timeoutMs = 1_000;
+        ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs)
             .FullyProcessed(_block0).BecomesGenesis();
         ProcessingResult? result = null;
         context.OnBlockRemoved((_, args) =>
@@ -873,9 +874,34 @@ public class BlockchainProcessorTests
         await removed.WaitAsync(TimeSpan.FromSeconds(10));
 
         Assert.That(result, Is.EqualTo(ProcessingResult.Exception));
-        context.IsInTree(_block1D2)
-            .EnqueuedAgain(_block1D2)
-            .Processed(_block1D2).BecomesNewHead();
+        context.IsInTree(_block1D2).EnqueuedAgain(_block1D2);
+        // Past the first attempt's limit, well inside the retry's doubled one.
+        await Task.Delay(timeoutMs * 3 / 2);
+        context.Processed(_block1D2).BecomesNewHead();
+    }
+
+    /// <summary>
+    /// The limit is per block: a branch whose blocks each finish in time is processed even when the branch as a whole
+    /// takes longer than the limit.
+    /// </summary>
+    [Test, MaxTime(Timeout.MaxTestTime)]
+    public async Task Processing_timeout_applies_to_each_block_of_a_branch()
+    {
+        const int timeoutMs = 2_000;
+        // Distinct state roots, so the branch builder finds no state for the first block and processes both.
+        Block block1 = Build.A.Block.WithNumber(1).WithParent(_block0).WithDifficulty(2).WithStateRoot(TestItem.KeccakA).TestObject;
+        Block block2 = Build.A.Block.WithNumber(2).WithParent(block1).WithDifficulty(2).WithStateRoot(TestItem.KeccakB).TestObject;
+        ProcessingTestContext context = new ProcessingTestContext(true, timeoutMs)
+            .FullyProcessed(_block0).BecomesGenesis()
+            .Suggested(block1, BlockTreeSuggestOptions.None)
+            .Suggested(block2)
+            .Recovered(block1)
+            .Recovered(block2);
+
+        await Task.Delay(timeoutMs * 3 / 5);
+        context.Processed(block1);
+        await Task.Delay(timeoutMs * 3 / 5);
+        context.Processed(block2).BecomesNewHead();
     }
 
     [Test, MaxTime(Timeout.MaxTestTime)]
