@@ -1161,11 +1161,24 @@ public partial class EngineModuleTests
         Block head = blockTree.Head!;
         Block block = Build.A.Block.WithNumber(head.Number + 1).WithParent(head).WithNonce(0).WithDifficulty(0).WithStateRoot(head.StateRoot!).TestObject;
 
-        if (suggestPending) blockTree.BlockAcceptingNewBlocks();
-        ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
-        if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
-
-        Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+        TaskCompletionSource processingRelease = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        ((TestBranchProcessorInterceptor)chain.BranchProcessor).ProcessingRelease = processingRelease.Task;
+        try
+        {
+            if (suggestPending) blockTree.BlockAcceptingNewBlocks();
+            ResultWrapper<PayloadStatusV1> response = await chain.EngineRpcModule.engine_newPayloadV1(ExecutionPayload.Create(block));
+            using (Assert.EnterMultipleScope())
+            {
+                Assert.That(response.Data.Status, Is.EqualTo(PayloadStatus.Syncing));
+                Assert.That(blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!), Is.True,
+                    "processing is held until after the answer");
+            }
+        }
+        finally
+        {
+            processingRelease.TrySetResult();
+            if (suggestPending) blockTree.ReleaseAcceptingNewBlocks();
+        }
 
         using CancellationTokenSource cts = new(GateTimeout);
         while (blockTree.FindHeader(block.Hash!, BlockTreeLookupOptions.None) is null || !blockTree.WasProcessed(block.Number, block.Hash!))
