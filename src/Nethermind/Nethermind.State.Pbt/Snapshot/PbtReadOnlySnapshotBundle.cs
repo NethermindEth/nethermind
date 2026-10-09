@@ -58,7 +58,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         MemoryLayer(index) is { } memory ? memory.Content.Codes.TryGetValue(hash, out code) : RetainedLayer(index)!.TryGetCode(hash, out code);
     private bool TryGroup(int index, PbtStorageNodePath path, out RefCountingMemory? payload) =>
         MemoryLayer(index) is { } memory ? memory.Content.TryGetNodeGroup(path, out payload) : RetainedLayer(index)!.TryGetNodeGroup(path, out payload);
-    private bool TryReadSlot<TKey>(int layer, in HashedKey<TKey> key, in ValueHash256 address, int index, out EvmWord value) where TKey : struct, IPbtKey<TKey>
+    private bool TryReadSlot<TKey>(int layer, in HashedKey<TKey> key, in ValueHash256 address, int index, out UInt256 value) where TKey : struct, IPbtKey<TKey>
     {
         if (MemoryLayer(layer) is { } memory)
         {
@@ -168,7 +168,7 @@ public sealed class PbtReadOnlySnapshotBundle(
     }
 
     /// <summary>Reads storage slot <paramref name="slot"/> of <paramref name="address"/>.</summary>
-    public EvmWord GetSlot(Address address, in UInt256 slot)
+    public UInt256 GetSlot(Address address, in UInt256 slot)
     {
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(address);
         return Eip8297KeyDerivation.IsHeaderSlot(slot)
@@ -176,10 +176,10 @@ public sealed class PbtReadOnlySnapshotBundle(
             : GetSlot(PbtStateKey.Storage(address, addressHash, slot));
     }
 
-    private EvmWord GetSlot<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
+    private UInt256 GetSlot<TKey>(in TKey slotKey) where TKey : struct, IPbtKey<TKey> => GetSlot<TKey>(SlotRun.RunKey(slotKey), SlotRun.IndexOf(slotKey));
 
     /// <summary>Reads slot <paramref name="index"/> of the run keyed by <paramref name="runKey"/>; the newest layer holding the run answers.</summary>
-    internal EvmWord GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>
+    internal UInt256 GetSlot<TKey>(in HashedKey<TKey> runKey, int index) where TKey : struct, IPbtKey<TKey>
     {
         GuardDispose();
         long sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
@@ -187,7 +187,7 @@ public sealed class PbtReadOnlySnapshotBundle(
         ValueHash256 addressHash = Eip8297KeyDerivation.AddressHashOf(runKey.Key);
         for (int layer = LayerCount - 1; layer >= 0; layer--)
         {
-            if (TryReadSlot(layer, runKey, addressHash, index, out EvmWord value))
+            if (TryReadSlot(layer, runKey, addressHash, index, out UInt256 value))
             {
                 if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, _readStorageSnapshotLabels[labelIndex]);
                 return value;
@@ -195,9 +195,9 @@ public sealed class PbtReadOnlySnapshotBundle(
         }
         sw = recordDetailedMetrics ? Stopwatch.GetTimestamp() : 0;
         PackedSlotRun persisted = reader.GetSlotRun(runKey.Key);
-        EvmWord result = persisted.Get(index);
+        UInt256 result = persisted.Get(index);
         SlotRun.Return(persisted);
-        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (EvmWordSlot.IsZero(result) ? _readStoragePersistenceNullLabels : _readStoragePersistenceLabels)[labelIndex]);
+        if (recordDetailedMetrics) Metrics.PbtReadOnlySnapshotBundleTimes.Observe(Stopwatch.GetTimestamp() - sw, (result.IsZero ? _readStoragePersistenceNullLabels : _readStoragePersistenceLabels)[labelIndex]);
         return result;
     }
 

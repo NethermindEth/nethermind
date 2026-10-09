@@ -122,8 +122,8 @@ public class PbtFormatInteropTests
         PbtPath headerKey = SlotRun.RunKey(Eip8297KeyDerivation.HeaderStorageKey(address, 7));
         content.HeaderStorages[new(headerKey)] = SlotRun.Empty;
         PbtStoragePath storageKey = SlotRun.RunKey(PbtStateKey.Storage(TestItem.AddressA, address, 1000));
-        EvmWord[] words = new EvmWord[16];
-        for (int i = 0; i < words.Length; i++) words[i] = EvmWordSlot.FromStripped([(byte)(i + 1)]);
+        UInt256[] words = new UInt256[16];
+        for (int i = 0; i < words.Length; i++) words[i] = (UInt256)(i + 1);
         content.Storages[new(storageKey)] = SlotRun.Create(ushort.MaxValue, words);
         PbtNodePath root = new([], 0);
         content.AccountNodeGroups[root] = null;

@@ -56,7 +56,7 @@ public class PbtRebuilderTests
         {
             PbtReferenceModel.SetSlot(model, address, slot, value);
             PbtTestLeaves.AddSlot(leaves, address, slot, value);
-            stagingBatch.SetSlot(PbtTestLeaves.SlotKey(address, slot), EvmWordSlot.FromStripped(value.ToBigEndian()));
+            stagingBatch.SetSlot(PbtTestLeaves.SlotKey(address, slot), value);
         }
 
         AddAccount(TestItem.AddressA, 1, 100, null);                  // EOA

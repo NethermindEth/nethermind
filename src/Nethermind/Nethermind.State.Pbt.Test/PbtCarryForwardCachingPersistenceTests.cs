@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Pbt.Common;
@@ -211,8 +212,8 @@ public class PbtCarryForwardCachingPersistenceTests
             public PackedSlotRun GetSlotRun<TKey>(in TKey runKey) where TKey : struct, IPbtKey<TKey>
             {
                 parent.RunReads++;
-                Span<EvmWord> values = stackalloc EvmWord[SlotRun.Width];
-                values[0] = EvmWordSlot.FromStripped([0x11]);
+                Span<UInt256> values = stackalloc UInt256[SlotRun.Width];
+                values[0] = (UInt256)0x11;
                 return SlotRun.Create(1, values);
             }
 

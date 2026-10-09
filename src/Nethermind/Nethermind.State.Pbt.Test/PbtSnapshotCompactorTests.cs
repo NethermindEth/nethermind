@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Buffers;
+using Nethermind.Int256;
 using Nethermind.State.Flat.Io;
 using System.Threading;
 using System.Threading.Tasks;
@@ -46,8 +47,8 @@ public class PbtSnapshotCompactorTests
         TrackingMemoryProvider memoryProvider = new();
         PbtSnapshotContent older = new();
         PbtSnapshotContent newer = new();
-        older.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakA.Bytes));
-        newer.SetSlot(key, EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes));
+        older.SetSlot(key, new UInt256(TestItem.KeccakA.Bytes, isBigEndian: true));
+        newer.SetSlot(key, new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true));
         byte[] expected;
         using (RefCountingMemory olderPayload = CreateStorageLeafGroup())
         using (RefCountingMemory newerPayload = CreateStorageLeafGroup())
@@ -64,7 +65,7 @@ public class PbtSnapshotCompactorTests
             using RefCountingMemory? alternatePayloadLease = alternatePayload;
             using (Assert.EnterMultipleScope())
             {
-                Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(EvmWordSlot.FromStripped(TestItem.KeccakB.Bytes)));
+                Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(new UInt256(TestItem.KeccakB.Bytes, isBigEndian: true)));
                 Assert.That(compacted.Content.NodeGroupCount(), Is.EqualTo(1));
                 Assert.That(found, Is.True);
                 Assert.That(alternateFound, Is.True);
@@ -90,8 +91,8 @@ public class PbtSnapshotCompactorTests
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         PbtVariableTreeKey otherSlot = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 1);
         PbtVariableTreeKey otherAddress = PbtTestLeaves.SlotKey(TestItem.AddressB, slot);
-        EvmWord original = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
-        EvmWord replacement = EvmWordSlot.FromStripped(Bytes.FromHexString("02"));
+        UInt256 original = (UInt256)0x01;
+        UInt256 replacement = (UInt256)0x02;
         CodeInfo code = new(Bytes.FromHexString("6001600055"));
         Account account = Build.An.Account.WithNonce(7).WithBalance(9).WithStorageRoot(TestItem.KeccakB).WithCode(code.Code.ToArray()).TestObject;
         PbtSnapshotContent older = new();
@@ -116,7 +117,7 @@ public class PbtSnapshotCompactorTests
             if (!clearLast) Assert.That(compacted.Content.GetSlot(key), Is.EqualTo(replacement));
             if (!clearLast) Assert.That(compacted.Content.GetRun(key), Is.Not.SameAs(writtenRun), "compaction copies runs, the source layer keeps its own");
             // The rewritten run is whole, so the older layer's neighbouring slot does not survive the rewrite.
-            Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(default(EvmWord)));
+            Assert.That(compacted.Content.GetSlot(otherSlot), Is.EqualTo(UInt256.Zero));
             Assert.That(compacted.Content.GetSlot(otherAddress), Is.EqualTo(original));
         }
     }
@@ -131,8 +132,8 @@ public class PbtSnapshotCompactorTests
         PbtVariableTreeKey neighbor = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 1);
         PbtVariableTreeKey differentRun = PbtTestLeaves.SlotKey(TestItem.AddressA, slot + 16);
         PbtVariableTreeKey otherAddress = PbtTestLeaves.SlotKey(TestItem.AddressB, slot);
-        EvmWord original = EvmWordSlot.FromStripped([1]);
-        EvmWord replacement = EvmWordSlot.FromStripped([2]);
+        UInt256 original = (UInt256)1;
+        UInt256 replacement = (UInt256)2;
         PbtSnapshotContent older = new();
         older.SetSlot(key, original);
         older.SetSlot(neighbor, original);
@@ -162,7 +163,7 @@ public class PbtSnapshotCompactorTests
                 if (run is not null)
                 {
                     Assert.That(run.Get(SlotRun.IndexOf(key)), Is.EqualTo(replacement));
-                    Assert.That(run.Get(SlotRun.IndexOf(neighbor)), Is.EqualTo(default(EvmWord)));
+                    Assert.That(run.Get(SlotRun.IndexOf(neighbor)), Is.EqualTo(UInt256.Zero));
                     SlotRun.Return(run);
                 }
                 Assert.That(TryReadRun(merged, differentRun, out PackedSlotRun? removed), Is.False);
@@ -331,8 +332,8 @@ public class PbtSnapshotCompactorTests
         for (uint index = 0; index < 16; index++)
         {
             PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, firstSlot + index);
-            older.SetSlot(key, EvmWordSlot.FromStripped([1]));
-            newer.SetSlot(key, empty ? default : EvmWordSlot.FromStripped([(byte)(index + 2)]));
+            older.SetSlot(key, (UInt256)1);
+            newer.SetSlot(key, empty ? default : (UInt256)(index + 2));
         }
         PbtRetainedSnapshot[] sources = BuildRetained(store, [older, newer]);
         try
@@ -344,7 +345,7 @@ public class PbtSnapshotCompactorTests
             {
                 Assert.That(run!.Count, Is.EqualTo(empty ? 0 : 16));
                 for (int index = 0; index < 16; index++)
-                    Assert.That(run.Get(index), Is.EqualTo(empty ? default : EvmWordSlot.FromStripped([(byte)(index + 2)])));
+                    Assert.That(run.Get(index), Is.EqualTo(empty ? default : (UInt256)(index + 2)));
             }
             finally { SlotRun.Return(run!); }
             Assert.That(merged.BloomRef.Filter.MightContain(PbtRetainedKey.BloomHash(firstKey.Bytes[0] == Eip8297KeyDerivation.AccountZone
@@ -798,8 +799,8 @@ public class PbtSnapshotCompactorTests
                         ValueHash256 address = PbtStateKey.AddressKeyHash(TestItem.AddressA);
                         if (block == 1)
                         {
-                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), EvmWordSlot.FromStripped([1]));
-                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1024), EvmWordSlot.FromStripped([2]));
+                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 7), (UInt256)1);
+                            content.SetSlot(PbtTestLeaves.SlotKey(TestItem.AddressA, 1024), (UInt256)2);
                             content.Accounts[address] = null;
                             foreach (PbtStorageNodePath group in MergeGroupPaths) content.SetNodeGroup(group, null);
                         }

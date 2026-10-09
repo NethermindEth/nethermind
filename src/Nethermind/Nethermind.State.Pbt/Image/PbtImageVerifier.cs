@@ -283,12 +283,12 @@ internal static class PbtImageVerifier
                     run = slotRunKey.Length == PbtPath.KeyLength ? state.GetSlotRun((PbtPath)slotRunKey) : state.GetSlotRun((PbtStoragePath)slotRunKey);
                     runKey = slotRunKey;
                 }
-                EvmWord word = run.Get(SlotRun.IndexOf(job.StateKey));
-                if (EvmWordSlot.IsZero(word))
+                UInt256 slotValue = run.Get(SlotRun.IndexOf(job.StateKey));
+                if (slotValue.IsZero)
                     throw new InvalidDataException($"Preimages list a slot of {job.Address} the snapshot lacks.");
                 key[32] = 1;
                 job.SlotHash.Bytes.CopyTo(key[33..]);
-                writer.Add(key, Rlp.Encode(EvmWordSlot.ToUInt256(in word)).Bytes);
+                writer.Add(key, Rlp.Encode(slotValue).Bytes);
             }
         }
         finally

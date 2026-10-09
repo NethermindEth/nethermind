@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Concurrent;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Memory;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -166,14 +167,14 @@ public sealed class PbtSnapshotBundle(
         if (!accounts.ContainsKey(addressHash)) accounts.TryAdd(addressHash, account);
     }
 
-    public EvmWord GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtStateKey.AddressKeyHash(address), slot);
+    public UInt256 GetSlot(Address address, in UInt256 slot) => GetSlot(address, PbtStateKey.AddressKeyHash(address), slot);
 
     /// <inheritdoc cref="GetSlot(Address, in UInt256)"/>
-    public EvmWord GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => Eip8297KeyDerivation.IsHeaderSlot(slot)
+    public UInt256 GetSlot(Address address, in ValueHash256 addressHash, in UInt256 slot) => Eip8297KeyDerivation.IsHeaderSlot(slot)
         ? GetSlot(Eip8297KeyDerivation.HeaderStorageKey(addressHash, slot), addressHash)
         : GetSlot(PbtStateKey.Storage(address, addressHash, slot), addressHash);
 
-    internal EvmWord GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
+    internal UInt256 GetSlot<TKey>(in TKey slotKey, in ValueHash256 addressHash) where TKey : struct, IPbtKey<TKey> =>
         BufferRun<TKey>(WriteBuffer, SlotRun.RunKey(slotKey), addressHash).Get(SlotRun.IndexOf(slotKey));
 
     /// <summary>The run as the write buffer holds it, borrowed; the first touch of a run buffers it as currently visible.</summary>
@@ -267,7 +268,7 @@ public sealed class PbtSnapshotBundle(
         }
     }
 
-    private static ValueHash256? SlotLeaf(in EvmWord value) => EvmWordSlot.IsZero(value) ? null : new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value));
+    private static ValueHash256? SlotLeaf(in UInt256 value) => value.IsZero ? null : value.ToValueHash();
 
     /// <summary>Applies <paramref name="runWrites"/>, all into the run of <paramref name="slotKey"/>, with one rewrite of that run.</summary>
     private void SetRunSlots<TKey>(in TKey slotKey, in ValueHash256 addressHash, ReadOnlySpan<SlotWrite> runWrites) where TKey : struct, IPbtKey<TKey>

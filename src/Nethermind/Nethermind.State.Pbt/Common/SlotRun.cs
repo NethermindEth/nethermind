@@ -3,7 +3,6 @@
 
 using System.Buffers.Binary;
 using System.Numerics;
-using System.Runtime.InteropServices;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -25,7 +24,7 @@ public static class SlotRun
     public static PackedSlotRun Empty { get; } = new EmptySlotRun();
 
     /// <summary>Rents the smallest run holding the slots set in <paramref name="mask"/>, taking their values from the <see cref="Width"/>-wide <paramref name="valuesByIndex"/>.</summary>
-    public static PackedSlotRun Create(ushort mask, ReadOnlySpan<EvmWord> valuesByIndex)
+    public static PackedSlotRun Create(ushort mask, ReadOnlySpan<UInt256> valuesByIndex)
     {
         int count = BitOperations.PopCount(mask);
         if (count == 0) return Empty;
@@ -35,6 +34,16 @@ public static class SlotRun
     }
 
     /// <summary>Rents the smallest run holding the slots set in <paramref name="mask"/>, taking their values packed by ascending slot from <paramref name="packedValues"/>.</summary>
+    internal static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
+    {
+        int count = BitOperations.PopCount(mask);
+        if (count == 0) return Empty;
+        PackedSlotRun run = Rent(count);
+        run.SeedPacked(mask, packedValues);
+        return run;
+    }
+
+    /// <summary><see cref="CreatePacked(ushort, ReadOnlySpan{UInt256})"/> over the 32-byte big-endian values a persisted row holds.</summary>
     internal static PackedSlotRun CreatePacked(ushort mask, ReadOnlySpan<byte> packedValues)
     {
         int count = BitOperations.PopCount(mask);
@@ -95,31 +104,31 @@ public static class SlotRun
 /// </remarks>
 public abstract class PackedSlotRun(int capacity) : IResettable
 {
-    private readonly EvmWord[] _values = new EvmWord[capacity];
+    private readonly UInt256[] _values = new UInt256[capacity];
     private ushort _mask;
 
     /// <summary>The number of non-zero slots.</summary>
     public int Count => BitOperations.PopCount(_mask);
 
-    private ReadOnlySpan<EvmWord> PackedValues => _values.AsSpan(0, Count);
+    private ReadOnlySpan<UInt256> PackedValues => _values.AsSpan(0, Count);
 
     /// <summary>The value of slot <paramref name="index"/>, zero when absent.</summary>
-    public EvmWord Get(int index) => (_mask & (1 << index)) == 0 ? default : _values[Rank(index)];
+    public UInt256 Get(int index) => (_mask & (1 << index)) == 0 ? default : _values[Rank(index)];
 
     /// <summary>A new run with slot <paramref name="index"/> set to <paramref name="value"/> (zero clears it); this run is untouched.</summary>
-    public PackedSlotRun With(int index, in EvmWord value)
+    public PackedSlotRun With(int index, in UInt256 value)
     {
-        Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
+        Span<UInt256> valuesByIndex = stackalloc UInt256[SlotRun.Width];
         Expand(valuesByIndex);
         valuesByIndex[index] = value;
         int bit = 1 << index;
-        return SlotRun.Create((ushort)(EvmWordSlot.IsZero(value) ? _mask & ~bit : _mask | bit), valuesByIndex);
+        return SlotRun.Create((ushort)(value.IsZero ? _mask & ~bit : _mask | bit), valuesByIndex);
     }
 
     /// <summary>A new run with <paramref name="writes"/>, all into slots of this run, applied in order (zero clears a slot); this run is untouched.</summary>
     internal PackedSlotRun With(ReadOnlySpan<SlotWrite> writes)
     {
-        Span<EvmWord> valuesByIndex = stackalloc EvmWord[SlotRun.Width];
+        Span<UInt256> valuesByIndex = stackalloc UInt256[SlotRun.Width];
         Expand(valuesByIndex);
         int mask = _mask;
         foreach (SlotWrite write in writes)
@@ -127,13 +136,13 @@ public abstract class PackedSlotRun(int capacity) : IResettable
             int index = SlotRun.IndexOf(write.Slot);
             valuesByIndex[index] = write.Value;
             int bit = 1 << index;
-            mask = EvmWordSlot.IsZero(write.Value) ? mask & ~bit : mask | bit;
+            mask = write.Value.IsZero ? mask & ~bit : mask | bit;
         }
         return SlotRun.Create((ushort)mask, valuesByIndex);
     }
 
     /// <summary>A new run holding the same slots.</summary>
-    public PackedSlotRun Clone() => SlotRun.CreatePacked(_mask, MemoryMarshal.AsBytes(PackedValues));
+    public PackedSlotRun Clone() => SlotRun.CreatePacked(_mask, PackedValues);
 
     /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
     public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
@@ -143,10 +152,13 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     {
         destination[0] = (byte)BitOperations.Log2((uint)_values.Length);
         BinaryPrimitives.WriteUInt16LittleEndian(destination[1..], _mask);
-        MemoryMarshal.AsBytes(PackedValues).CopyTo(destination[SlotRunCodec.HeaderLength..]);
+        Span<byte> values = destination[SlotRunCodec.HeaderLength..];
+        ReadOnlySpan<UInt256> packed = PackedValues;
+        for (int rank = 0; rank < packed.Length; rank++)
+            packed[rank].ToBigEndian(values.Slice(rank * ValueHash256.MemorySize, ValueHash256.MemorySize));
     }
 
-    internal void Seed(ushort mask, ReadOnlySpan<EvmWord> valuesByIndex)
+    internal void Seed(ushort mask, ReadOnlySpan<UInt256> valuesByIndex)
     {
         _mask = mask;
         int rank = 0;
@@ -154,13 +166,20 @@ public abstract class PackedSlotRun(int capacity) : IResettable
             if ((mask & (1 << index)) != 0) _values[rank++] = valuesByIndex[index];
     }
 
+    internal void SeedPacked(ushort mask, ReadOnlySpan<UInt256> packedValues)
+    {
+        _mask = mask;
+        packedValues.CopyTo(_values);
+    }
+
     internal void SeedPacked(ushort mask, ReadOnlySpan<byte> packedValues)
     {
         _mask = mask;
-        packedValues.CopyTo(MemoryMarshal.AsBytes(_values.AsSpan()));
+        for (int rank = 0; rank < packedValues.Length / ValueHash256.MemorySize; rank++)
+            _values[rank] = new UInt256(packedValues.Slice(rank * ValueHash256.MemorySize, ValueHash256.MemorySize), isBigEndian: true);
     }
 
-    private void Expand(Span<EvmWord> valuesByIndex)
+    private void Expand(Span<UInt256> valuesByIndex)
     {
         valuesByIndex.Clear();
         int rank = 0;
@@ -206,4 +225,4 @@ internal sealed class SlotRun16() : PackedSlotRun(16)
 }
 
 /// <summary>A write of <paramref name="Value"/> into storage slot <paramref name="Slot"/>; a zero value clears the slot.</summary>
-internal readonly record struct SlotWrite(UInt256 Slot, EvmWord Value);
+internal readonly record struct SlotWrite(UInt256 Slot, UInt256 Value);

@@ -154,8 +154,8 @@ public class ImportPbtFromPreimageFlatTests
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressB)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(PbtTestLeaves.ReadAccount(reader, TestItem.AddressC)!.CodeHash, Is.EqualTo((Hash256)bigCodeHash));
         Assert.That(reader.GetCode(bigCodeHash.ValueHash256)!.Code.ToArray(), Is.EqualTo(bigCode));
-        Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000)), Is.EqualTo((UInt256)0x1234));
-        Assert.That(EvmWordSlot.ToUInt256(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000)), Is.EqualTo((UInt256)0x55));
+        Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressB, 1000), Is.EqualTo((UInt256)0x1234));
+        Assert.That(PbtTestLeaves.ReadSlot(reader, TestItem.AddressC, 2000), Is.EqualTo((UInt256)0x55));
 
         PbtRocksDbPersistence reopened = new(pbtDb, config, NullTrieNodeLog.Instance);
         PbtResourcePool pool = new(config);

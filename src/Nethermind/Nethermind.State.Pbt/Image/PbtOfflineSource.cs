@@ -5,6 +5,7 @@ using System.Buffers.Binary;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.Runtime.ExceptionServices;
+using Nethermind.Core.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Buffers;
@@ -282,9 +283,9 @@ internal static class PbtOfflineSource
                 {
                     cancellationToken.ThrowIfCancellationRequested();
                     ValueHash256 slot = slots.CurrentKey;
-                    EvmWord value = EvmWordSlot.FromStripped(slots.CurrentValue);
-                    if (EvmWordSlot.IsZero(value)) throw new InvalidDataException("Source contains a zero storage slot.");
-                    AddLeaf(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), new ValueHash256(EvmWordSlot.AsReadOnlySpan(in value)));
+                    UInt256 value = new(slots.CurrentValue, isBigEndian: true);
+                    if (value.IsZero) throw new InvalidDataException("Source contains a zero storage slot.");
+                    AddLeaf(PbtStateKey.Slot(address, addressKeyHash, new UInt256(slot.Bytes, isBigEndian: true)), value.ToValueHash());
                     if (rawKeys is not null)
                     {
                         addressHash.Bytes.CopyTo(_preimageKey);

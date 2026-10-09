@@ -38,7 +38,7 @@ public class PbtSnapshotBundleTests
         retainedContent.Accounts[address] = PbtAccount.From(new Account(1, 100), null);
         retainedContent.Codes[TestItem.KeccakA.ValueHash256] = new CodeInfo(new byte[] { 1, 2, 3 });
         PbtPath key = Eip8297KeyDerivation.HeaderStorageKey(address, 5);
-        retainedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped([7])));
+        retainedContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), (UInt256)7));
         PbtNodePath root = new([], 0);
         retainedContent.SetNodeGroup(root, null);
         using PbtSnapshot source = new(StateId.PreGenesis, new StateId(0, default), TestItem.KeccakA.ValueHash256, retainedContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
@@ -46,7 +46,7 @@ public class PbtSnapshotBundleTests
         repository.TryAddRetained(retained);
         PbtSnapshotContent memoryContent = new();
         if (clear) memoryContent.ClearStorage(address);
-        if (rewrite) memoryContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped([9])));
+        if (rewrite) memoryContent.SetRun(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.Empty.With(SlotRun.IndexOf(key), (UInt256)9));
         memoryContent.Accounts[address] = null;
         PbtSnapshot memory = new(new StateId(0, default), new StateId(1, default), TestItem.KeccakB.ValueHash256, memoryContent, pool, PbtResourcePool.Usage.MainBlockProcessing);
         repository.TryAdd(memory);
@@ -61,7 +61,7 @@ public class PbtSnapshotBundleTests
             Assert.That(bundle.TreeRoot, Is.EqualTo(TestItem.KeccakB.ValueHash256));
             Assert.That(bundle.GetAccount(TestItem.AddressA), Is.Null);
             Assert.That(bundle.GetCode(TestItem.KeccakA.ValueHash256)!.CodeSpan.ToArray(), Is.EqualTo(new byte[] { 1, 2, 3 }));
-            Assert.That(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)), Is.EqualTo(EvmWordSlot.FromStripped(rewrite ? [9] : clear ? [] : [7])));
+            Assert.That(bundle.GetSlot(new HashedKey<PbtPath>(SlotRun.RunKey(key)), SlotRun.IndexOf(key)), Is.EqualTo((UInt256)(rewrite ? 9 : clear ? 0 : 7)));
             Assert.That(bundle.GetNodeGroup(root.ToPath<PbtStorageNodePath>()), Is.Null);
             Assert.That(reader.GroupReadCount, Is.Zero, "retained tombstone stops fallback");
             Assert.That(repository.HasState(memory.To), Is.False);
@@ -79,17 +79,17 @@ public class PbtSnapshotBundleTests
         // Slots 3, 5 and 6 share one run.
         PbtVariableTreeKey persistedKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 5);
         PbtVariableTreeKey layerKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 6);
-        EvmWord persisted = EvmWordSlot.FromStripped(Value(1));
-        EvmWord layer = EvmWordSlot.FromStripped(Value(2));
-        EvmWord local = EvmWordSlot.FromStripped(Value(3));
+        UInt256 persisted = new(Value(1), isBigEndian: true);
+        UInt256 layer = new(Value(2), isBigEndian: true);
+        UInt256 local = new(Value(3), isBigEndian: true);
         PbtResourcePool pool = new(new PbtConfig());
         PbtSnapshotContent sharedContent = new();
         if (heldByLayer) sharedContent.SetSlot(layerKey, layer);
         using PbtSnapshotBundle bundle = new(new PbtSnapshotPooledList(0), new PbtReadOnlySnapshotBundle(PbtSnapshotBundleTestExtensions.Chain(pool, sharedContent), new Reader(persistedKey, new ValueHash256(Value(1))), recordDetailedMetrics: false), pool, PbtResourcePool.Usage.MainBlockProcessing, NoopPbtTrieNodeCache.Instance);
         bundle.SetSlot(TestItem.AddressA, 3, local);
-        EvmWord[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
+        UInt256[] afterWrite = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SetSlot(TestItem.AddressA, heldByLayer ? 6u : 5u, default);
-        EvmWord[] afterClear = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
+        UInt256[] afterClear = [bundle.GetSlot(TestItem.AddressA, 3), bundle.GetSlot(TestItem.AddressA, 5), bundle.GetSlot(TestItem.AddressA, 6)];
         bundle.SelfDestruct(PbtStateKey.AddressKeyHash(TestItem.AddressA));
         bundle.SetSlot(TestItem.AddressA, 5, local);
         using (Assert.EnterMultipleScope())
@@ -285,7 +285,7 @@ public class PbtSnapshotBundleTests
         UInt256 slot = slotValue == uint.MaxValue ? UInt256.MaxValue : new UInt256(slotValue);
         PbtVariableTreeKey key = PbtTestLeaves.SlotKey(TestItem.AddressA, slot);
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
-        EvmWord value = EvmWordSlot.FromStripped(Value(9));
+        UInt256 value = new(Value(9), isBigEndian: true);
         foreach (bool delete in new[] { false, true })
         {
             bundle.SetSlot(TestItem.AddressA, slot, delete ? default : value);
@@ -311,7 +311,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(key, null));
         ValueHash256 root;
         using (PbtSnapshotStore store = new(bundle)) root = store.Fold(default, leafExists ? [(key.Bytes.ToArray(), Value(1))] : []);
-        bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(flatValue.Bytes));
+        bundle.SetSlot(TestItem.AddressA, 1, new UInt256(flatValue.Bytes, isBigEndian: true));
 
         ValueHash256 updatedRoot;
         using (PbtSnapshotStore store = new(bundle)) updatedRoot = store.Fold(root, [(key.Bytes.ToArray(), delete ? null : Value(2))]);
@@ -319,7 +319,7 @@ public class PbtSnapshotBundleTests
         using PbtSnapshotStore reader = new(bundle);
         using (Assert.EnterMultipleScope())
         {
-            Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(EvmWordSlot.FromStripped(flatValue.Bytes)));
+            Assert.That(bundle.GetSlot(TestItem.AddressA, 1), Is.EqualTo(new UInt256(flatValue.Bytes, isBigEndian: true)));
             Assert.That(updatedRoot, Is.EqualTo(delete ? default : PbtTreeHarness.HashLeaf(key.Bytes, Value(2))));
             Assert.That(reader.GetNode(new PbtNodePath([], 0), updatedRoot), Is.EqualTo(delete ? null : PbtTreeHarness.EncodeLeaf(key)));
         }
@@ -912,7 +912,7 @@ public class PbtSnapshotBundleTests
             MemoryProvider = memoryProvider,
         };
         using PbtSnapshotBundle bundle = CreateBundle(reader);
-        bundle.SetSlot(TestItem.AddressA, 1, EvmWordSlot.FromStripped(originalLeafValue.Bytes));
+        bundle.SetSlot(TestItem.AddressA, 1, new UInt256(originalLeafValue.Bytes, isBigEndian: true));
         using RefCountingMemory originalPayload = Memory(originalNode);
         bundle.SetNodeGroup(originalNodePath.ToPath<PbtStorageNodePath>(), TestItem.KeccakA.ValueHash256, originalPayload);
 
@@ -931,7 +931,7 @@ public class PbtSnapshotBundleTests
             Assert.That(store.ApplyCount, Is.Zero);
             Assert.That(TrackingMemoryProvider.CountUnreleased(memoryProvider.Rented), Is.Zero);
             Assert.That(snapshot.Content.HeaderStorages, Has.Count.EqualTo(1));
-            Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(EvmWordSlot.FromStripped(originalLeafValue.Bytes)));
+            Assert.That(snapshot.Content.GetSlot(originalLeafKey), Is.EqualTo(new UInt256(originalLeafValue.Bytes, isBigEndian: true)));
             Assert.That(snapshot.Content.NodeGroupCount(), Is.EqualTo(1));
             Assert.That(foundGroup, Is.True);
             Assert.That(group!.GetSpan().ToArray(), Is.EqualTo(originalNode));
@@ -1008,7 +1008,7 @@ public class PbtSnapshotBundleTests
                 for (uint write = 1; write <= WritesPerSlot; write++)
                 {
                     UInt256 value = write;
-                    bundle.SetSlot(TestItem.AddressA, (UInt256)(uint)slot, value.ToBigEndianWord());
+                    bundle.SetSlot(TestItem.AddressA, (UInt256)(uint)slot, value);
                 }
             }),
             () => System.Threading.Tasks.Parallel.For(0, AccountCount, index => bundle.SetAccount(TestItem.Addresses[index], AccountOf(index))),
@@ -1022,7 +1022,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             for (uint slot = 0; slot < SlotRun.Width; slot++)
-                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(lastWrite.ToBigEndianWord()), $"slot {slot}");
+                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(lastWrite), $"slot {slot}");
             Assert.That(bundle.Fold(default), Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }
@@ -1036,7 +1036,7 @@ public class PbtSnapshotBundleTests
             : [(3, 1), (3, 3), (5, 2), (6, 4), (64, 5), (70, 6), (70, 0), (1000, 7)];
         (uint Slot, uint Value)[] expected = [(3, 3), (5, 2), (6, 4), (64, 5), (70, 0), (1000, 7)];
         using PbtSnapshotBundle bundle = CreateBundle(new Reader(default, null));
-        SlotWrite[] slotWrites = Array.ConvertAll(writes, write => new SlotWrite(write.Slot, ((UInt256)write.Value).ToBigEndianWord()));
+        SlotWrite[] slotWrites = Array.ConvertAll(writes, write => new SlotWrite(write.Slot, (UInt256)write.Value));
         bundle.SetSlots(TestItem.AddressA, PbtStateKey.AddressKeyHash(TestItem.AddressA), slotWrites);
 
         Dictionary<string, byte[]> model = [];
@@ -1045,7 +1045,7 @@ public class PbtSnapshotBundleTests
         using (Assert.EnterMultipleScope())
         {
             foreach ((uint slot, uint value) in expected)
-                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo(((UInt256)value).ToBigEndianWord()), $"slot {slot}");
+                Assert.That(bundle.GetSlot(TestItem.AddressA, slot), Is.EqualTo((UInt256)value), $"slot {slot}");
             Assert.That(bundle.Fold(default), Is.EqualTo(PbtReferenceModel.Root(model)));
         }
     }
@@ -1256,17 +1256,17 @@ public class PbtSnapshotBundleTests
         bytes.AsSpan().Fill(0x5b);
         Account account = Build.An.Account.WithBalance(3).WithCode(bytes).TestObject;
         SetAccountWithCode(bundle, TestItem.AddressA, account, new CodeInfo(bytes), codeFirst: true);
-        bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        bundle.SetSlot(TestItem.AddressA, 1000, (UInt256)0x01);
         // Slots of other accounts store a group below the storage zone boundary, so the failing zone publishes one.
-        bundle.SetSlot(TestItem.AddressA, 2000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
-        bundle.SetSlot(TestItem.AddressC, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
-        bundle.SetSlot(TestItem.AddressD, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("01")));
+        bundle.SetSlot(TestItem.AddressA, 2000, (UInt256)0x01);
+        bundle.SetSlot(TestItem.AddressC, 1000, (UInt256)0x01);
+        bundle.SetSlot(TestItem.AddressD, 1000, (UInt256)0x01);
         ValueHash256 root = bundle.Fold(default);
         using PbtSnapshot original = bundle.CollectSnapshot(StateId.PreGenesis, new StateId(1, default), root);
 
         Account replacement = account.WithChangedBalance(4);
         bundle.SetAccount(TestItem.AddressA, replacement);
-        bundle.SetSlot(TestItem.AddressA, 1000, EvmWordSlot.FromStripped(Bytes.FromHexString("02")));
+        bundle.SetSlot(TestItem.AddressA, 1000, (UInt256)0x02);
         // A balance change stages no code chunk, so a new contract keeps the code partition in the batch.
         byte[] otherBytes = Bytes.FromHexString("6002600055");
         Account other = Build.An.Account.WithCode(otherBytes).TestObject;
@@ -1341,7 +1341,7 @@ public class PbtSnapshotBundleTests
             if (value is { } word && SlotRun.RunKey(key).Bytes.SequenceEqual(runKey.Bytes))
             {
                 PackedSlotRun previous = run;
-                run = run.With(SlotRun.IndexOf(key), EvmWordSlot.FromStripped(word.Bytes));
+                run = run.With(SlotRun.IndexOf(key), new UInt256(word.Bytes, isBigEndian: true));
                 SlotRun.Return(previous);
             }
             return run;

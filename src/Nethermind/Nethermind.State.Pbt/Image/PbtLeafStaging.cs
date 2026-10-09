@@ -86,7 +86,7 @@ internal static class PbtLeafStaging
             if (runKey != slotRunKey) FlushRun();
             runKey = slotRunKey;
             PackedSlotRun previous = run;
-            run = previous.With(SlotRun.IndexOf(entry.Key), EvmWordSlot.FromStripped(entry.Leaf.Bytes));
+            run = previous.With(SlotRun.IndexOf(entry.Key), entry.Leaf.ToUInt256());
             SlotRun.Return(previous);
         }
         FlushAccount();

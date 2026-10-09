@@ -308,7 +308,7 @@ public class PbtAnchorImportTests
             {
                 Assert.That(reader.GetAccount(PbtStateKey.AddressKeyHash(addresses[index]))?.ToAccount().Nonce, Is.EqualTo((ulong)(index + 1)));
                 Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(addresses[index], 100)),
-                    Is.EqualTo(EvmWordSlot.FromStripped(((UInt256)(index + 1)).ToBigEndian())));
+                    Is.EqualTo((UInt256)(index + 1)));
             }
         }
     }
@@ -537,7 +537,7 @@ public class PbtAnchorImportTests
             if (expected.Storage is null) continue;
             foreach ((UInt256 slot, byte[] value) in expected.Storage)
                 Assert.That(reader.GetSlot(PbtTestLeaves.SlotKey(address, slot)),
-                    Is.EqualTo(EvmWordSlot.FromStripped(new UInt256(value, isBigEndian: true).ToBigEndian())), slot.ToString());
+                    Is.EqualTo(new UInt256(value, isBigEndian: true)), slot.ToString());
         }
 
         using FileStream snapshot = OpenArtifact(name, "snapshot.pbt");

@@ -99,7 +99,7 @@ public class PbtRocksDbPersistenceTests
     {
         using SnapshotableMemColumnsDb<PbtColumns> db = new("pbt");
         PbtRocksDbPersistence persistence = new(db, new PbtConfig(), NullTrieNodeLog.Instance);
-        EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
+        UInt256 value = (UInt256)0x1234;
         static PbtPath Key(uint slot) => Eip8297KeyDerivation.HeaderStorageKey(PbtStateKey.AddressKeyHash(TestItem.AddressA), slot);
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
@@ -143,8 +143,8 @@ public class PbtRocksDbPersistenceTests
             Assert.That(tail.Count, Is.EqualTo(5));
             Assert.That(populated.GetSlotRun(SlotRun.RunKey(Key(32))), Is.SameAs(SlotRun.Empty));
             Assert.That(new[] { replaced.GetSlot(Key(0)), replaced.GetSlot(Key(3)), replaced.GetSlot(Key(16)) }, Is.EqualTo(new[] { default, value, value }));
-            Assert.That(Enumerable.Range(0, 22).Count(slot => !EvmWordSlot.IsZero(replaced.GetSlot(Key((uint)slot)))), Is.EqualTo(6), "the rewritten run drops its other slots");
-            Assert.That(deleted.GetSlot(Key(3)), Is.EqualTo(default(EvmWord)));
+            Assert.That(Enumerable.Range(0, 22).Count(slot => !replaced.GetSlot(Key((uint)slot)).IsZero), Is.EqualTo(6), "the rewritten run drops its other slots");
+            Assert.That(deleted.GetSlot(Key(3)), Is.EqualTo(UInt256.Zero));
             Assert.That(db.GetColumnDb(PbtColumns.Storages).GetAllKeys(), Is.EquivalentTo(new[] { Persisted(SlotRun.RunKey(Key(16))) }));
         }
         SlotRun.Return(tail);
@@ -159,7 +159,7 @@ public class PbtRocksDbPersistenceTests
         PbtVariableTreeKey headerKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 1);
         PbtVariableTreeKey overflowKey = PbtTestLeaves.SlotKey(TestItem.AddressA, PbtKeyDerivation.HeaderStorageOffset);
         PbtVariableTreeKey otherAddressKey = PbtTestLeaves.SlotKey(TestItem.AddressB, otherAddressSlot);
-        EvmWord value = EvmWordSlot.FromStripped(Bytes.FromHexString("0x1234"));
+        UInt256 value = (UInt256)0x1234;
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
         {
@@ -187,7 +187,7 @@ public class PbtRocksDbPersistenceTests
         PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 0);
         CodeInfo code = new(Bytes.FromHexString("0x6001600255"));
         ValueHash256 codeHash = Keccak.Compute(code.CodeSpan).ValueHash256;
-        EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("0xabcd"));
+        UInt256 slot = (UInt256)0xabcd;
         StateId first = new(1, TestItem.KeccakA.ValueHash256);
         StateId second = new(2, TestItem.KeccakB.ValueHash256);
         using (IPbtPersistence.IWriteBatch batch = persistence.CreateWriteBatch(StateId.PreGenesis, first, default, WriteFlags.None))
@@ -400,7 +400,7 @@ public class PbtRocksDbPersistenceTests
         ValueHash256 addressHash = PbtStateKey.AddressKeyHash(TestItem.AddressA);
         Account account = new(7, 9, TestItem.KeccakB, TestItem.KeccakC);
         PbtVariableTreeKey storageKey = PbtTestLeaves.SlotKey(TestItem.AddressA, 64);
-        EvmWord slot = EvmWordSlot.FromStripped(TestItem.KeccakD.Bytes);
+        UInt256 slot = new(TestItem.KeccakD.Bytes, isBigEndian: true);
         CodeInfo code = new(TestItem.KeccakA.Bytes.ToArray());
 
         using (ColumnsDb<PbtColumns> db = PbtStoreTestExtensions.OpenPbtRocksDb(dbPath.Path, pbtConfig))

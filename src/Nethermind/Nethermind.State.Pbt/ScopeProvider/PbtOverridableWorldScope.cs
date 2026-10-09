@@ -148,8 +148,7 @@ public class PbtOverridableWorldScope : IOverridableWorldScope, IPbtCommitTarget
         public void GetStorage(BlockHeader? baseBlock, Address address, in UInt256 index, out UInt256 value)
         {
             using PbtSnapshotBundle bundle = GatherForRead(baseBlock);
-            EvmWord word = bundle.GetSlot(address, index);
-            value = EvmWordSlot.ToUInt256(in word);
+            value = bundle.GetSlot(address, index);
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? [] : outer._codeDbOverlay[codeHash.Bytes];

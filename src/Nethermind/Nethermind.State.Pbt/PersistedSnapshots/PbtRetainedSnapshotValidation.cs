@@ -42,7 +42,7 @@ internal static class PbtRetainedSnapshotValidation
         try
         {
             for (int i = 0; i < 16; i++)
-                if (!EvmWordSlot.AsReadOnlySpan(actual!.Get(i)).SequenceEqual(EvmWordSlot.AsReadOnlySpan(expected.Get(i)))) throw Mismatch();
+                if (actual!.Get(i) != expected.Get(i)) throw Mismatch();
         }
         finally { SlotRun.Return(actual!); }
     }

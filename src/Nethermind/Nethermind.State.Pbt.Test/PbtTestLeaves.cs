@@ -40,7 +40,7 @@ internal static class PbtTestLeaves
     public static PbtVariableTreeKey SlotKey(Address address, in UInt256 slot) =>
         PbtStateKey.Slot(address, PbtStateKey.AddressKeyHash(address), slot);
 
-    public static EvmWord ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
+    public static UInt256 ReadSlot(IPbtPersistence.IReader reader, Address address, in UInt256 slot) =>
         reader.GetSlot(SlotKey(address, slot));
 
     public static void AddAccount(List<RebuildEntry> into, Address address, in Account account, byte[]? code)

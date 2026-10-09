@@ -272,8 +272,8 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
     {
         StorageCell cell = new(address, slot.ToUInt256());
         if (sink?.StillNeeded(in cell) != true) return false;
-        EvmWord word = bundle.GetSlot(key, addressHash);
-        sink.OnStorageRead(in cell, EvmWordSlot.ToUInt256(in word));
+        UInt256 value = bundle.GetSlot(key, addressHash);
+        sink.OnStorageRead(in cell, value);
         return true;
     }
 
@@ -398,7 +398,7 @@ public sealed class PbtWorldStateScope : IWorldStateScopeProvider.IScope
 
         public void Set(in UInt256 index, in UInt256 value)
         {
-            _writes.Add(new SlotWrite(index, value.ToBigEndianWord()));
+            _writes.Add(new SlotWrite(index, value));
             scope._rootDirty = true;
         }
 

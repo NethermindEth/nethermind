@@ -11,6 +11,7 @@ using Nethermind.Core.Metric;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.State;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.Int256;
 using Nethermind.Monitoring.Config;
 using Nethermind.Pbt;
 using Nethermind.State.Flat;
@@ -130,7 +131,7 @@ public class PbtMetricsTests
         PbtNodePath groupKey = new(Bytes.FromHexString(groupPath.PadRight((groupPath.Length + 1) / 2 * 2, '0')), groupPath.Length * 4);
         string partition = groupPath switch { "01" => "code", "f" or "ff" => "storage", _ => "account" };
         Account account = new(1, 100);
-        EvmWord slot = EvmWordSlot.FromStripped(Bytes.FromHexString("01"));
+        UInt256 slot = (UInt256)0x01;
         CodeInfo code = new(Bytes.FromHexString("6001"));
         using RefCountingMemory payload = PooledRefCountingMemoryProvider.Instance.Rent(1);
         IPbtPersistence.IReader reader = Substitute.For<IPbtPersistence.IReader>();
@@ -170,8 +171,8 @@ public class PbtMetricsTests
         using PbtReadOnlySnapshotBundle bundle = new(snapshots, reader, detailedMetrics);
 
         Account? actualAccount = bundle.GetAccount(TestItem.AddressA)?.ToAccount();
-        EvmWord actualHeaderSlot = bundle.GetSlot<PbtPath>(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
-        EvmWord actualSlot = bundle.GetSlot<PbtStoragePath>(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
+        UInt256 actualHeaderSlot = bundle.GetSlot<PbtPath>(SlotRun.RunKey(headerStorageKey), SlotRun.IndexOf(headerStorageKey));
+        UInt256 actualSlot = bundle.GetSlot<PbtStoragePath>(SlotRun.RunKey(storageKey), SlotRun.IndexOf(storageKey));
         PackedSlotRun headerRun = bundle.RentRun<PbtPath>(SlotRun.RunKey(headerStorageKey), addressHash);
         PackedSlotRun storageRun = bundle.RentRun<PbtStoragePath>(SlotRun.RunKey(storageKey), addressHash);
         using RefCountingMemory? actualGroup = bundle.GetNodeGroup(groupKey.ToPath<PbtStorageNodePath>());

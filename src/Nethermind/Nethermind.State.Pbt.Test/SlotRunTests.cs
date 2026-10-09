@@ -15,13 +15,9 @@ namespace Nethermind.State.Pbt.Test;
 
 public class SlotRunTests
 {
-    private static EvmWord Word(int index) => ((UInt256)(uint)(index + 1)).ToBigEndianWord();
+    private static UInt256 Word(int index) => (UInt256)(uint)(index + 1);
 
-    private static byte[] WordBytes(int index)
-    {
-        EvmWord word = Word(index);
-        return EvmWordSlot.AsReadOnlySpan(in word).ToArray();
-    }
+    private static byte[] WordBytes(int index) => Word(index).ToBigEndian();
 
     private static PackedSlotRun Build(int count, out ushort mask)
     {
@@ -59,7 +55,7 @@ public class SlotRunTests
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(run.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(index => (mask & (1 << index)) == 0 ? default : Word(index))));
             Assert.That(run.Count, Is.EqualTo(count), "With must not touch its source");
             Assert.That(cleared.Count, Is.EqualTo(Math.Max(count - 1, 0)));
-            Assert.That(cleared.Get(SlotRun.Width - 1), Is.EqualTo(default(EvmWord)));
+            Assert.That(cleared.Get(SlotRun.Width - 1), Is.EqualTo(UInt256.Zero));
             Assert.That(clone, Is.Not.SameAs(run).Or.SameAs(SlotRun.Empty));
             Assert.That(Enumerable.Range(0, SlotRun.Width).Select(clone.Get), Is.EqualTo(Enumerable.Range(0, SlotRun.Width).Select(run.Get)));
         }
