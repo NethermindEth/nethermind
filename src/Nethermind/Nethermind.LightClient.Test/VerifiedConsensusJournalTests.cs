@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging;
 using Nethermind.BeaconChain.Spec;
 using Nethermind.BeaconChain.Types;
 using Nethermind.Core.Crypto;
@@ -13,12 +14,14 @@ namespace Nethermind.LightClient.Test;
 public class VerifiedConsensusJournalTests
 {
     private string _directory = null!;
+    private RecordingLogger _logger = null!;
 
     [SetUp]
     public void SetUp()
     {
         _directory = Path.Combine(@"C:\Temp\NethermindLightClientJournalTests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(_directory);
+        _logger = new RecordingLogger();
     }
 
     [TearDown]
@@ -53,6 +56,7 @@ public class VerifiedConsensusJournalTests
             Assert.That(resumed.Period, Is.EqualTo(1));
             Assert.That(resumed.NextSyncCommitteeKnown, Is.False);
             Assert.That(resumed.FinalizedHeader.Execution!.StateRoot, Is.EqualTo(latest.FinalizedHeader!.Execution!.StateRoot));
+            Assert.That(_logger.Entries, Is.Empty);
         }
     }
 
@@ -76,7 +80,14 @@ public class VerifiedConsensusJournalTests
         await File.WriteAllBytesAsync(head, bytes);
 
         LightClientStore? resumed = await Journal(ConsensusTests.Spec, checkpoint).LoadAsync(5, CancellationToken.None);
-        Assert.That(resumed!.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+        Assert.That(_logger.Entries, Has.Count.EqualTo(1));
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(resumed!.FinalizedHeader.Beacon!.Slot, Is.EqualTo(1));
+            Assert.That(_logger.Entries[0].Level, Is.EqualTo(LogLevel.Warning));
+            Assert.That(_logger.Entries[0].Message, Does.Contain(head));
+            Assert.That(_logger.Entries[0].Exception, Is.TypeOf<InvalidDataException>());
+        }
     }
 
     [Test]
@@ -239,7 +250,7 @@ public class VerifiedConsensusJournalTests
     }
 
     private VerifiedConsensusJournal Journal(BeaconChainSpec spec, Hash256 checkpoint, string network = "mainnet") =>
-        new(_directory, spec, network, checkpoint);
+        new(_directory, spec, network, checkpoint, _logger);
 
     private static LightClientFinalityUpdate AsFinality(LightClientUpdate update) => new()
     {
@@ -256,4 +267,13 @@ public class VerifiedConsensusJournalTests
         SyncAggregate = update.SyncAggregate,
         SignatureSlot = update.SignatureSlot,
     };
+
+    private sealed class RecordingLogger : ILogger
+    {
+        public List<(LogLevel Level, string Message, Exception? Exception)> Entries { get; } = [];
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+        public bool IsEnabled(LogLevel logLevel) => true;
+        public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception? exception, Func<TState, Exception?, string> formatter)
+            => Entries.Add((logLevel, formatter(state, exception), exception));
+    }
 }

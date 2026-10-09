@@ -42,15 +42,29 @@ public interface IBeaconSyncPeer
     /// <summary>Each block has the SSZ shape of the fork its slot belongs to.</summary>
     Task<IReadOnlyList<ForkedSignedBeaconBlock>> RequestBlocksByRootAsync(Hash256[] roots, CancellationToken token);
 
+    /// <summary>Requests a light-client bootstrap for the specified beacon block root.</summary>
+    /// <param name="root">The beacon block root to bootstrap from.</param>
+    /// <param name="token">Cancels the peer request.</param>
+    /// <returns>The decoded bootstrap response.</returns>
     Task<LightClientBootstrap> RequestLightClientBootstrapAsync(Hash256 root, CancellationToken token) =>
         Task.FromException<LightClientBootstrap>(new NotSupportedException("Peer does not support light-client bootstrap requests."));
 
+    /// <summary>Requests a light-client update for a sync-committee period.</summary>
+    /// <param name="period">The sync-committee period to request.</param>
+    /// <param name="token">Cancels the peer request.</param>
+    /// <returns>The decoded update response.</returns>
     Task<LightClientUpdate> RequestLightClientUpdateAsync(ulong period, CancellationToken token) =>
         Task.FromException<LightClientUpdate>(new NotSupportedException("Peer does not support light-client update requests."));
 
+    /// <summary>Requests the peer's latest light-client finality update.</summary>
+    /// <param name="token">Cancels the peer request.</param>
+    /// <returns>The decoded finality update.</returns>
     Task<LightClientFinalityUpdate> RequestLightClientFinalityAsync(CancellationToken token) =>
         Task.FromException<LightClientFinalityUpdate>(new NotSupportedException("Peer does not support light-client finality requests."));
 
+    /// <summary>Requests the peer's latest light-client optimistic update.</summary>
+    /// <param name="token">Cancels the peer request.</param>
+    /// <returns>The decoded optimistic update.</returns>
     Task<LightClientOptimisticUpdate> RequestLightClientOptimisticAsync(CancellationToken token) =>
         Task.FromException<LightClientOptimisticUpdate>(new NotSupportedException("Peer does not support light-client optimistic requests."));
 

@@ -28,6 +28,7 @@ internal sealed class VerifiedConsensusJournal
     private readonly byte _network;
     private readonly string _chainPath;
     private readonly string _headPath;
+    private readonly ILogger _logger;
     private readonly List<(byte Kind, byte[] Data)> _updates = [];
     private byte[]? _bootstrap;
     private byte[]? _chainDigest;
@@ -38,10 +39,11 @@ internal sealed class VerifiedConsensusJournal
     private int _previousMaxParticipants;
     private int _currentMaxParticipants;
 
-    internal VerifiedConsensusJournal(string directory, BeaconChainSpec spec, string network, Hash256 trustedCheckpoint)
+    internal VerifiedConsensusJournal(string directory, BeaconChainSpec spec, string network, Hash256 trustedCheckpoint, ILogger logger)
     {
         _spec = spec;
         _checkpoint = trustedCheckpoint;
+        _logger = logger;
         _network = network switch
         {
             "mainnet" => 1,
@@ -98,7 +100,7 @@ internal sealed class VerifiedConsensusJournal
             }
             catch (Exception exception) when (exception is InvalidDataException or IOException or OverflowException or ArgumentException)
             {
-                // The committee chain remains authenticated, so an invalid optional head is discarded.
+                _logger.LogWarning(exception, "Discarding saved light-client head {Path}; reverting to authenticated committee chain", _headPath);
             }
         }
 

@@ -68,7 +68,7 @@ ulong CurrentSlot() => spec.GetSlotAtTime((ulong)clock.GetUtcNow().ToUnixTimeSec
 using CancellationTokenSource bootstrapTimeout = CancellationTokenSource.CreateLinkedTokenSource(app.Lifetime.ApplicationStopping);
 bootstrapTimeout.CancelAfter(TimeSpan.FromMinutes(2));
 string dataDirectory = builder.Configuration["data-dir"] ?? Path.Combine("src", "Nethermind", "artifacts", "lightclient");
-VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint);
+VerifiedConsensusJournal journal = new(dataDirectory, spec, network, checkpoint, logger);
 LightClientStore? resumed = await journal.LoadAsync(CurrentSlot(), bootstrapTimeout.Token);
 LightClientStore store;
 if (resumed is not null)

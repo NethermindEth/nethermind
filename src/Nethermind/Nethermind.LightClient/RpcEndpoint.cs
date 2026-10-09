@@ -9,9 +9,10 @@ namespace Nethermind.LightClient;
 internal static class RpcEndpoint
 {
     private const int MaxActiveRequests = 64;
+    private static readonly TimeSpan RequestDeadline = TimeSpan.FromSeconds(90);
     private static readonly SemaphoreSlim ActiveRequests = new(MaxActiveRequests);
 
-    internal static async Task HandleAsync(HttpContext context, VerifiedRpc rpc, ILogger logger)
+    internal static async Task HandleAsync(HttpContext context, VerifiedRpc rpc, ILogger logger, TimeProvider? clock = null)
     {
         if (!ActiveRequests.Wait(0))
         {
@@ -20,18 +21,29 @@ internal static class RpcEndpoint
             return;
         }
 
-        try { await HandleCoreAsync(context, rpc, logger); }
+        try
+        {
+            using CancellationTokenSource timeout = new(RequestDeadline, clock ?? TimeProvider.System);
+            using CancellationTokenSource cancellation = CancellationTokenSource.CreateLinkedTokenSource(timeout.Token, context.RequestAborted);
+            try { await HandleCoreAsync(context, rpc, logger, cancellation.Token); }
+            catch (OperationCanceledException) when (timeout.IsCancellationRequested && !context.RequestAborted.IsCancellationRequested)
+            {
+                if (context.Response.HasStarted) context.Abort();
+                else context.Response.StatusCode = StatusCodes.Status504GatewayTimeout;
+                logger.LogWarning("RPC request exceeded the {DeadlineSeconds}-second deadline", RequestDeadline.TotalSeconds);
+            }
+        }
         finally { ActiveRequests.Release(); }
     }
 
-    private static async Task HandleCoreAsync(HttpContext context, VerifiedRpc rpc, ILogger logger)
+    private static async Task HandleCoreAsync(HttpContext context, VerifiedRpc rpc, ILogger logger, CancellationToken cancellationToken)
     {
         long started = Stopwatch.GetTimestamp();
         using MemoryStream input = new();
         byte[] buffer = new byte[4096];
         while (true)
         {
-            int read = await context.Request.Body.ReadAsync(buffer, context.RequestAborted);
+            int read = await context.Request.Body.ReadAsync(buffer, cancellationToken);
             if (read == 0) break;
             if (input.Length + read > 64 * 1024)
             {
@@ -46,7 +58,7 @@ internal static class RpcEndpoint
         catch (JsonException)
         {
             logger.LogInformation("RPC request -> parse error in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-            await context.Response.WriteAsJsonAsync(Error(null, -32700, "Parse error"), context.RequestAborted);
+            await context.Response.WriteAsJsonAsync(Error(null, -32700, "Parse error"), cancellationToken);
             return;
         }
         using (document)
@@ -58,23 +70,26 @@ internal static class RpcEndpoint
                 if (count is 0 or > 32)
                 {
                     logger.LogInformation("RPC batch -> invalid size in {ElapsedMs:F1} ms", Stopwatch.GetElapsedTime(started).TotalMilliseconds);
-                    await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain between 1 and 32 requests"), context.RequestAborted);
+                    await context.Response.WriteAsJsonAsync(Error(null, -32600, "Batch must contain between 1 and 32 requests"), cancellationToken);
                     return;
                 }
                 List<object> responses = new(count);
                 foreach (JsonElement item in request.EnumerateArray())
                 {
-                    object? response = await InvokeAsync(item, rpc, logger, context.RequestAborted);
+                    cancellationToken.ThrowIfCancellationRequested();
+                    object? response = await InvokeAsync(item, rpc, logger, cancellationToken);
                     if (response is not null) responses.Add(response);
                 }
+                cancellationToken.ThrowIfCancellationRequested();
                 if (responses.Count == 0) context.Response.StatusCode = StatusCodes.Status204NoContent;
-                else await context.Response.WriteAsJsonAsync(responses, context.RequestAborted);
+                else await context.Response.WriteAsJsonAsync(responses, cancellationToken);
             }
             else
             {
-                object? response = await InvokeAsync(request, rpc, logger, context.RequestAborted);
+                object? response = await InvokeAsync(request, rpc, logger, cancellationToken);
+                cancellationToken.ThrowIfCancellationRequested();
                 if (response is null) context.Response.StatusCode = StatusCodes.Status204NoContent;
-                else await context.Response.WriteAsJsonAsync(response, context.RequestAborted);
+                else await context.Response.WriteAsJsonAsync(response, cancellationToken);
             }
         }
     }

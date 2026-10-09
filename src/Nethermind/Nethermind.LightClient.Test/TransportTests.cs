@@ -160,6 +160,58 @@ public class TransportTests
         }
     }
 
+    [Test]
+    [NonParallelizable]
+    public async Task Rpc_batch_deadline_returns_gateway_timeout_and_accepts_next_request()
+    {
+        WaitingExecutionSource source = new();
+        ManualDeadlineClock clock = new();
+        VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        DefaultHttpContext context = new();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
+            "[{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"],\"id\":1},{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":2}]"));
+        context.Response.Body = new MemoryStream();
+
+        Task pending = RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance, clock);
+        await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+        Assert.That(clock.DueTime, Is.EqualTo(TimeSpan.FromSeconds(90)));
+        clock.Expire();
+        await pending.WaitAsync(TimeSpan.FromSeconds(10));
+        DefaultHttpContext next = await InvokeAsync("{\"jsonrpc\":\"2.0\",\"method\":\"eth_chainId\",\"id\":3}");
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
+            Assert.That(context.Response.Body.Length, Is.Zero);
+            Assert.That(next.Response.StatusCode, Is.EqualTo(StatusCodes.Status200OK));
+        }
+    }
+
+    [Test]
+    [NonParallelizable]
+    public async Task Rpc_notification_completing_after_deadline_returns_gateway_timeout()
+    {
+        WaitingExecutionSource source = new(ignoreCancellation: true);
+        ManualDeadlineClock clock = new();
+        VerifiedRpc rpc = new(source, () => new VerifiedHead(1, 1, Keccak.Zero, Keccak.Zero), 1);
+        DefaultHttpContext context = new();
+        context.Request.Body = new MemoryStream(Encoding.UTF8.GetBytes(
+            "{\"jsonrpc\":\"2.0\",\"method\":\"eth_getBalance\",\"params\":[\"0x1234567890123456789012345678901234567890\",\"finalized\"]}"));
+        context.Response.Body = new MemoryStream();
+
+        Task pending = RpcEndpoint.HandleAsync(context, rpc, NullLogger.Instance, clock);
+        await source.Entered.WaitAsync(TimeSpan.FromSeconds(10));
+        clock.Expire();
+        source.Complete();
+        await pending.WaitAsync(TimeSpan.FromSeconds(10));
+
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(context.Response.StatusCode, Is.EqualTo(StatusCodes.Status504GatewayTimeout));
+            Assert.That(context.Response.Body.Length, Is.Zero);
+        }
+    }
+
     private static async Task<DefaultHttpContext> InvokeAsync(string request, ILogger? logger = null)
     {
         VerifiedRpc rpc = new(null!, () => throw new AssertionException("Unexpected head read."), 1);
@@ -205,6 +257,53 @@ public class TransportTests
         {
             if (disposing) _content.Dispose();
             base.Dispose(disposing);
+        }
+    }
+
+    private sealed class WaitingExecutionSource(bool ignoreCancellation = false) : IExecutionStateSource
+    {
+        private readonly TaskCompletionSource _entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<Account> _result = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public Task Entered => _entered.Task;
+        public void Complete() => _result.TrySetResult(new Account(1));
+
+        public Task<Account> GetAccountAsync(VerifiedHead head, Address address, CancellationToken cancellationToken)
+        {
+            _entered.TrySetResult();
+            return _result.Task.WaitAsync(ignoreCancellation ? CancellationToken.None : cancellationToken);
+        }
+
+        public Task<UInt256> GetStorageAsync(VerifiedHead head, Address address, Account account, UInt256 key, CancellationToken cancellationToken)
+            => throw new NotSupportedException();
+
+        public Task<byte[]> GetCodeAsync(Account account, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<BlockHeader> GetHeaderAsync(VerifiedHead head, CancellationToken cancellationToken) => throw new NotSupportedException();
+        public Task<Hash256[]> GetAncestorHashesAsync(VerifiedHead head, ulong firstNumber, CancellationToken cancellationToken) => throw new NotSupportedException();
+    }
+
+    private sealed class ManualDeadlineClock : TimeProvider
+    {
+        private TimerCallback? _callback;
+        private object? _state;
+
+        public TimeSpan DueTime { get; private set; }
+
+        public override ITimer CreateTimer(TimerCallback callback, object? state, TimeSpan dueTime, TimeSpan period)
+        {
+            _callback = callback;
+            _state = state;
+            DueTime = dueTime;
+            return new NoopTimer();
+        }
+
+        public void Expire() => _callback!(_state);
+
+        private sealed class NoopTimer : ITimer
+        {
+            public bool Change(TimeSpan dueTime, TimeSpan period) => true;
+            public void Dispose() { }
+            public ValueTask DisposeAsync() => default;
         }
     }
 

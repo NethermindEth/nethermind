@@ -99,6 +99,8 @@ finalized blocks and 10,000 matches.
 Request bodies, peer responses and proof nodes have explicit size limits.
 The listener admits at most 64 active requests and has no authentication; keep
 it on loopback or place an authenticated gateway in front of it.
+Each admitted request, including an entire batch, has a 90-second deadline;
+the listener returns HTTP 504 if that deadline expires before a response starts.
 The console shows each JSON-RPC method, its result, and its handling time. Batch
 items are logged individually; malformed requests and oversized bodies are
 logged without their contents. Routine ASP.NET Core request logs are suppressed.
