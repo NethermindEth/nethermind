@@ -27,6 +27,7 @@ using Nethermind.Api.Steps;
 using Nethermind.Init.Steps;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Steps;
 using Nethermind.State.Pbt.Migration;
 using Nethermind.State.Pbt.Persistence;

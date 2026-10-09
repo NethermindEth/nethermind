@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
+using Nethermind.State.Pbt.Common;
 using NUnit.Framework;
 
 namespace Nethermind.State.Pbt.Test;

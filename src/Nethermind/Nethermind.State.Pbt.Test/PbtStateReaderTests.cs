@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using Autofac;
 using Nethermind.Config;
 using Nethermind.Logging;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Persistence;
 using Nethermind.Pbt;
 using Nethermind.Core;

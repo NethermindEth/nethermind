@@ -3,7 +3,7 @@
 
 using Nethermind.Pbt;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Common;
 
 /// <summary>Splits node groups into the top groups nearly every block touches and the groups below them.</summary>
 internal static class PbtNodeGroupLayout

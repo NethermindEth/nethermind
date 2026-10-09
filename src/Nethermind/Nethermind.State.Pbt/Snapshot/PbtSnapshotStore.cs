@@ -9,6 +9,7 @@ using Nethermind.Core.Memory;
 using Nethermind.Core.Metric;
 using Nethermind.Core.Threading;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.Snapshot;
 

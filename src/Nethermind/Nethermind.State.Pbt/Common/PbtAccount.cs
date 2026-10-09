@@ -7,7 +7,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Common;
 
 /// <summary>An account as its EIP-8297 account-stem leaves: the basic-data leaf and either the code-hash or the delegation leaf.</summary>
 /// <remarks>

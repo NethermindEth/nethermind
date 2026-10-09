@@ -8,7 +8,6 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Pbt;
-using Nethermind.State.Pbt.Persistence;
 using Nethermind.State.Pbt.Snapshot;
 using IResettable = Nethermind.Core.Resettables.IResettable;
 
@@ -139,7 +138,7 @@ public abstract class PackedSlotRun(int capacity) : IResettable
     /// <summary>The length of the persisted row <see cref="Encode"/> writes.</summary>
     public int EncodedLength => SlotRunCodec.HeaderLength + Count * ValueHash256.MemorySize;
 
-    /// <summary>Writes the persisted row (see <see cref="Persistence.SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
+    /// <summary>Writes the persisted row (see <see cref="SlotRunCodec"/>) into the first <see cref="EncodedLength"/> bytes of <paramref name="destination"/>.</summary>
     public void Encode(Span<byte> destination)
     {
         destination[0] = (byte)BitOperations.Log2((uint)_values.Length);

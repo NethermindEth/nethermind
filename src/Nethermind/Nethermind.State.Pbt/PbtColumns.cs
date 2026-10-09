@@ -10,10 +10,10 @@ public enum PbtColumns
     /// <summary>Code-chunk leaf values of the content-addressed code zone (0x1) staged by an anchor import, keyed by their EIP-8297 tree key; all-zero chunks are absent, as in the tree.</summary>
     CodeLeaves,
 
-    /// <summary>Whole accounts as their <see cref="PbtAccount"/> stem encoding, keyed by the PBT address hash.</summary>
+    /// <summary>Whole accounts as their <see cref="Common.PbtAccount"/> stem encoding, keyed by the PBT address hash.</summary>
     Accounts,
 
-    /// <summary>Runs of sixteen consecutive storage words (see <see cref="Persistence.SlotRunCodec"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>
+    /// <summary>Runs of sixteen consecutive storage words (see <see cref="Common.SlotRunCodec"/>) keyed by the address hash, zone and remaining bytes of their EIP-8297 storage key with its low four bits cleared.</summary>
     Storages,
 
     /// <summary>Whole bytecode keyed by its code hash.</summary>

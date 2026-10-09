@@ -7,7 +7,7 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
 
-namespace Nethermind.State.Pbt;
+namespace Nethermind.State.Pbt.Common;
 
 internal static class PbtStateKey
 {

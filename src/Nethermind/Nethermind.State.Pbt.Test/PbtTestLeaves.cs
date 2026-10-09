@@ -10,6 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Int256;
 using Nethermind.Pbt;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using Nethermind.State.Pbt.Persistence;
 

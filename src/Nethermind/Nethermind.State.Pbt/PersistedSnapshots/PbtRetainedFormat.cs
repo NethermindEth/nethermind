@@ -7,7 +7,7 @@ using Nethermind.Pbt;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.Io;
 using Nethermind.State.Flat.PersistedSnapshots.Sorted;
-using Nethermind.State.Pbt.Persistence;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.PersistedSnapshots;
 

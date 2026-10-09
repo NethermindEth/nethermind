@@ -4,9 +4,8 @@
 using System.Buffers.Binary;
 using System.Numerics;
 using Nethermind.Core.Crypto;
-using Nethermind.State.Pbt.Common;
 
-namespace Nethermind.State.Pbt.Persistence;
+namespace Nethermind.State.Pbt.Common;
 
 /// <summary>
 /// Decodes the persisted <see cref="PbtColumns.Storages"/> row of one <see cref="PackedSlotRun"/>:

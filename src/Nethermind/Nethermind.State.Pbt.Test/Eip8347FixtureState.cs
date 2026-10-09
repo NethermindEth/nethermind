@@ -17,6 +17,7 @@ using Nethermind.Specs.ChainSpecStyle.Json;
 using Nethermind.State.Flat;
 using Nethermind.State.Flat.History.Changesets;
 using Nethermind.State.Flat.Persistence;
+using Nethermind.State.Pbt.Common;
 using Nethermind.State.Pbt.Image;
 using NUnit.Framework;
 

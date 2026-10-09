@@ -14,6 +14,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Pbt;
 using Nethermind.Serialization.Rlp;
+using Nethermind.State.Pbt.Common;
 using FlatPersistence = Nethermind.State.Flat.Persistence.IPersistence;
 
 namespace Nethermind.State.Pbt.Image;

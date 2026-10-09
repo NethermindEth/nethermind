@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.State;
 using Nethermind.Int256;
+using Nethermind.State.Pbt.Common;
 
 namespace Nethermind.State.Pbt.ScopeProvider;
 
