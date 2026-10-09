@@ -3,17 +3,21 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Security.Cryptography;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Logging;
+using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.ProofAggregation;
 
 /// <summary>Serializes proving and shares verified completed steps between aggregation callers.</summary>
-public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanProofVerifier
+public sealed class ProductionProofCache(ILeanProofVerifier verifier, ILogManager? logManager = null) : ILeanProofVerifier
 {
+    private readonly ILogger _logger = (logManager ?? NullLogManager.Instance).GetClassLogger<ProductionProofCache>();
     private const int MaxEntries = 64;
     private const long MaxBytes = 32 * 1024 * 1024;
     private readonly Dictionary<ValueHash256, LinkedListNode<Entry>> _entries = [];
@@ -95,7 +99,11 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         byte[] keyBytes = aggregatedVk.ToArray();
         aggregatedVk = keyBytes;
         ValueHash256 key = Key(in statement, aggregatedVk, input);
-        if (TryGet(key, out byte[]? cached)) return cached!;
+        if (TryGet(key, out byte[]? cached))
+        {
+            Interlocked.Increment(ref Metrics.LeanProofCacheHits);
+            return cached!;
+        }
         bool background = request?.Background == true;
         if (background || !cancellationToken.CanBeCanceled)
             return ProveExclusive(key, statement, keyBytes, input, background, cancellationToken);
@@ -104,6 +112,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         try { return proving.WaitAsync(cancellationToken).GetAwaiter().GetResult(); }
         catch (OperationCanceledException)
         {
+            Interlocked.Increment(ref Metrics.LeanDetachedProofs);
             _ = proving.ContinueWith(static task => task.Exception, CancellationToken.None,
                 TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
             cancellationToken.ThrowIfCancellationRequested();
@@ -123,7 +132,7 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         if (background)
         {
             if (Volatile.Read(ref _producersWaiting) != 0 || !Monitor.TryEnter(_provingLock))
-                throw new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
+                throw BackgroundBusy();
             entered = true;
         }
         else
@@ -139,13 +148,27 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
         {
             cancellationToken.ThrowIfCancellationRequested();
             if (background && Volatile.Read(ref _producersWaiting) != 0)
-                throw new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
-            if (TryGet(key, out byte[]? cached)) return cached!;
+                throw BackgroundBusy();
+            if (TryGet(key, out byte[]? cached))
+            {
+                Interlocked.Increment(ref Metrics.LeanProofCacheHits);
+                return cached!;
+            }
             // Preserve authenticated work before a caller checks its cancellation or proposal deadline.
+            long started = Stopwatch.GetTimestamp();
             byte[] proof = verifier.ProveRecursiveStark(in statement, aggregatedVk, input);
-            if (proof.Length is 0 or > Eip8288Constants.MaxProofBytes
-                || !verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof))
-                throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
+            long elapsed = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+            Interlocked.Increment(ref Metrics.LeanNativeProofs);
+            Interlocked.Add(ref Metrics.LeanNativeProveMilliseconds, elapsed);
+            Metrics.LeanNativeProveLastMilliseconds = elapsed;
+            started = Stopwatch.GetTimestamp();
+            bool valid = proof.Length is > 0 and <= Eip8288Constants.MaxProofBytes
+                && verifier.VerifyRecursiveStark(in statement, aggregatedVk, proof);
+            if (_logger.IsInfo)
+                _logger.Info($"Lean native {(background ? "background" : "production")} proof: prove {elapsed} ms, verify " +
+                    $"{(long)Stopwatch.GetElapsedTime(started).TotalMilliseconds} ms, {proof.Length} bytes; {input.Deps.Count} direct, " +
+                    $"{input.RecursiveProofs.Count} recursive, {input.Discards.Count} discarded{(cancellationToken.IsCancellationRequested ? ", caller canceled" : "")}");
+            if (!valid) throw new InvalidOperationException("Produced EIP-8288 proof failed verification.");
             byte[] owned = (byte[])proof.Clone();
             lock (_cacheLock)
             {
@@ -162,6 +185,12 @@ public sealed class ProductionProofCache(ILeanProofVerifier verifier) : ILeanPro
             return proof;
         }
         finally { if (entered) Monitor.Exit(_provingLock); }
+    }
+
+    private static InvalidOperationException BackgroundBusy()
+    {
+        Interlocked.Increment(ref Metrics.LeanBackgroundProofsSkipped);
+        return new InvalidOperationException("Proof production is busy; retry background aggregation on the next cadence.");
     }
 
     private bool TryGet(ValueHash256 key, out byte[]? proof)
