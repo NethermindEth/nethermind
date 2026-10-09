@@ -83,7 +83,7 @@ public partial class DebugRpcModuleTests
 
     [TestCase("result", 1, 1, TestName = "Debug_traceBlockByNumber_txHash_recovers_middle_result_failure")]
     [TestCase("step", 2, 2, TestName = "Debug_traceBlockByNumber_txHash_recovers_last_step_failure")]
-    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_preserves_selected_context_after_nonselected_failure")]
+    [TestCase("result", 0, 1, TestName = "Debug_traceBlockByNumber_txHash_selected_success_keeps_canonical_index_and_state")]
     [TestCase("unknown", -1, 2, TestName = "Debug_traceBlockByNumber_txHash_reports_constructor_failure_for_selected_transaction")]
     [TestCase("result", 0, -1, TestName = "Debug_traceBlockByNumber_unknown_txHash_returns_no_trace")]
     public Task Debug_traceBlockByNumber_recovers_js_errors_for_txHash(string failure, int failAt, int selectedAt) =>
