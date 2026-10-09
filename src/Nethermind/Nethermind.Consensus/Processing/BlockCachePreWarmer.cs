@@ -2083,7 +2083,10 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                     // contended writes to one cache line for a few nanoseconds of work each.
                     int count = block.Transactions.Length + (block.InclusionListTransactions?.Length ?? 0);
                     int rangeSize = Math.Max(16, count / (parallelOptions.MaxDegreeOfParallelism * 4));
-                    WarmingState<(Block Block, int RangeSize, int Count)> baseState = new(envPool, (block, rangeSize, count), block.Header);
+                    // Only a block's own warm finds one: the consumer scope it warms for created it.
+                    CodePrefetcher? code = PreWarmer._preBlockCaches?.CodePrefetcher;
+                    bool accessLists = Spec.UseTxAccessLists;
+                    WarmingState<(Block Block, int RangeSize, int Count, CodePrefetcher? Code, bool AccessLists)> baseState = new(envPool, (block, rangeSize, count, code, accessLists), block.Header);
                     ParallelUnbalancedWork.For(
                         0,
                         (count + rangeSize - 1) / rangeSize,
@@ -2091,20 +2094,21 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                         baseState.InitThreadState,
                         static (range, state) =>
                         {
-                            (Block block, int rangeSize, int count) = state.Payload;
+                            (Block block, int rangeSize, int count, CodePrefetcher? code, bool accessLists) = state.Payload;
                             IWorldState worldState = state.Scope!.WorldState;
                             int end = Math.Min((range + 1) * rangeSize, count);
                             for (int i = range * rangeSize; i < end; i++)
                             {
                                 Transaction tx = TransactionAt(block, i);
                                 WarmupSender(tx.SenderAddress, tx.To, worldState);
+                                if (code is not null) QueueNamedCode(tx, accessLists, worldState, code);
                             }
 
                             return state;
                         },
-                        WarmingState<(Block, int, int)>.FinallyAction);
+                        WarmingState<(Block, int, int, CodePrefetcher?, bool)>.FinallyAction);
 
-                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool);
+                    if (warmCalldataAddresses) WarmCalldataAddresses(parallelOptions, block, envPool, code);
                 }
             }
             catch (OperationCanceledException)
@@ -2164,7 +2168,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
         /// a heuristic that excludes small integers, which is what offsets, lengths and most amounts are; a larger value
         /// can still pass (a uint256 of 2^128 does), and a word that only looks like an address costs one account read.
         /// </remarks>
-        private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool)
+        private static void WarmCalldataAddresses(ParallelOptions parallelOptions, Block block, ObjectPool<IPrewarmerEnv> envPool, CodePrefetcher? code)
         {
             CancellationToken token = parallelOptions.CancellationToken;
             if (token.IsCancellationRequested) return;
@@ -2172,7 +2176,7 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
             if (addresses is null || token.IsCancellationRequested) return;
 
             int rangeSize = Math.Max(8, addresses.Count / (parallelOptions.MaxDegreeOfParallelism * 4));
-            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize, CancellationToken Token)> baseState = new(envPool, (addresses, rangeSize, token), block.Header);
+            WarmingState<(ArrayPoolList<Address> Addresses, int RangeSize, CancellationToken Token, CodePrefetcher? Code)> baseState = new(envPool, (addresses, rangeSize, token, code), block.Header);
             ParallelUnbalancedWork.For(
                 0,
                 (addresses.Count + rangeSize - 1) / rangeSize,
@@ -2180,12 +2184,42 @@ public sealed class BlockCachePreWarmer : IBlockCachePreWarmer, IBlockProcessing
                 baseState.InitThreadState,
                 static (range, state) =>
                 {
-                    (ArrayPoolList<Address> addresses, int rangeSize, CancellationToken token) = state.Payload;
-                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), state.Scope!.WorldState,
-                        static (worldState, address) => AddressWarmer.WarmupSender(address, null, worldState), token);
+                    (ArrayPoolList<Address> addresses, int rangeSize, CancellationToken token, CodePrefetcher? code) = state.Payload;
+                    WarmCalldataRange(addresses, range * rangeSize, Math.Min((range + 1) * rangeSize, addresses.Count), (WorldState: state.Scope!.WorldState, Code: code),
+                        static (target, address) =>
+                        {
+                            AddressWarmer.WarmupSender(address, null, target.WorldState);
+                            if (target.Code is not null) QueueCode(address, target.WorldState, target.Code);
+                        }, token);
                     return state;
                 },
-                WarmingState<(ArrayPoolList<Address>, int, CancellationToken)>.FinallyAction);
+                WarmingState<(ArrayPoolList<Address>, int, CancellationToken, CodePrefetcher?)>.FinallyAction);
+        }
+
+        /// <summary>Queues the code of the recipient and of the access list's accounts of <paramref name="tx"/> to be read ahead.</summary>
+        private static void QueueNamedCode(Transaction tx, bool accessLists, IWorldState worldState, CodePrefetcher code)
+        {
+            if (tx.To is Address to) QueueCode(to, worldState, code);
+            if (!accessLists || tx.AccessList is not { IsEmpty: false } accessList) return;
+            foreach ((Address address, AccessList.StorageKeysEnumerable _) in accessList)
+            {
+                QueueCode(address, worldState, code);
+            }
+        }
+
+        /// <summary>Queues the code of <paramref name="address"/> to be read ahead when the account has any; reads the account.</summary>
+        internal static void QueueCode(Address address, IWorldState worldState, CodePrefetcher code)
+        {
+            try
+            {
+                ValueHash256 codeHash = worldState.GetCodeHash(address);
+                if (codeHash == ValueKeccak.OfAnEmptyString) return;
+                code.Enqueue(in codeHash);
+                Interlocked.Increment(ref Blockchain.Metrics.PrewarmHintedCodeQueued);
+            }
+            catch (MissingTrieNodeException)
+            {
+            }
         }
 
         internal static void WarmupSender(Address? sender, Address? to, IWorldState worldState)

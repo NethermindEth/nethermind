@@ -77,6 +77,38 @@ public class PrewarmerCodePrefetchTests
         Assert.That(readAhead.Wait(TimeSpan.FromMilliseconds(500)), Is.False);
         codeKv.KeyWasRead(CodeHash.ToByteArray(), 0);
     }
+    [Test]
+    public void Code_the_blocks_warm_queues_is_read_once_ahead_for_execution_to_take()
+    {
+        (TrieStoreScopeProvider provider, TestMemDb codeKv, BlockHeader parent) = CommitContract();
+        ManualResetEventSlim readAhead = SignalReads(codeKv);
+        PreBlockCaches caches = PrepareCaches(parent);
+        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, new StaticCodeCache(16), prefetchHintedCode: true);
+
+        IWorldStateScopeProvider.IScope scope = consumer.BeginScope(parent);
+        Assert.That(caches.CodePrefetcher, Is.Not.Null, "opening the block's state starts a prefetcher for its warm to queue code on");
+        caches.CodePrefetcher!.Enqueue(in CodeHash);
+        Assert.That(readAhead.Wait(TimeSpan.FromSeconds(10)), "the queued code was never read ahead");
+
+        Assert.That(scope.CodeDb.GetCode(in CodeHash), Is.SequenceEqualTo(Code));
+        codeKv.KeyWasRead(CodeHash.ToByteArray(), 1);
+
+        scope.Dispose();
+        Assert.That(caches.CodePrefetcher, Is.Null, "code read ahead for one block must not stay held after it");
+    }
+
+    [Test]
+    public void No_prefetcher_is_started_for_the_blocks_warm_unless_enabled()
+    {
+        (TrieStoreScopeProvider provider, TestMemDb _, BlockHeader parent) = CommitContract();
+        PreBlockCaches caches = PrepareCaches(parent);
+        PrewarmerScopeProvider consumer = new(provider, new PrewarmerState(caches, isPrewarmer: false), LimboLogs.Instance, new StaticCodeCache(16));
+
+        using IWorldStateScopeProvider.IScope scope = consumer.BeginScope(parent);
+
+        Assert.That(caches.CodePrefetcher, Is.Null);
+    }
+
     /// <summary>Serves the contract's code and signals each read, as code is read ahead on a background reader.</summary>
     private static ManualResetEventSlim SignalReads(TestMemDb codeKv)
     {

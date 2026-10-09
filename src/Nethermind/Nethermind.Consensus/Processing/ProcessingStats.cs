@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Processing
 
         // The slow-block JSON's "experiment" section: per-block deltas of the prewarm counters the experiment flags move.
         private static readonly string[] ExperimentCounters =
-            ["handoff_replayed", "handoff_rejected", "handoff_missing", "discover_first_runs", "discover_first_rounds", "discover_first_cells", "discover_first_skipped", "block_start_us"];
+            ["handoff_replayed", "handoff_rejected", "handoff_missing", "discover_first_runs", "discover_first_rounds", "discover_first_cells", "discover_first_skipped", "block_start_us", "hinted_code", "code_prefetched"];
 
         private readonly long[] _startExperiment = new long[ExperimentCounters.Length];
 
@@ -178,6 +178,8 @@ namespace Nethermind.Consensus.Processing
             into[5] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstCells);
             into[6] = Volatile.Read(ref Blockchain.Metrics.PrewarmDiscoverFirstSkipped);
             into[7] = Volatile.Read(ref Blockchain.Metrics.PrewarmBlockStartMicros);
+            into[8] = Volatile.Read(ref Blockchain.Metrics.PrewarmHintedCodeQueued);
+            into[9] = Evm.Metrics.MainThreadCodePrefetchedTaken;
         }
 
         private const long TrimmedBlockMicros = 250_000;

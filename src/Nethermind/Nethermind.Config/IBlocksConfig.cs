@@ -89,6 +89,9 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The mempool pre-warm warms a heavy sender chain in order instead of splitting it into single txs on the parent state.", DefaultValue = "false", HiddenFromDocs = true)]
     bool PreWarmKeepSpeculativeChainsWhole { get; set; }
 
+    [ConfigItem(Description = "Read ahead the code of the contracts a block's transactions name: their recipients, the addresses in large calldata and the accounts in access lists. Applies to blocks without a block access list.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool PrefetchHintedCode { get; set; }
+
     [ConfigItem(Description = "The blocks the experiment flags apply to: 0 all, 1 even block numbers only, 2 odd ones only.", DefaultValue = "0", HiddenFromDocs = true)]
     int ExperimentParity { get; set; }
 

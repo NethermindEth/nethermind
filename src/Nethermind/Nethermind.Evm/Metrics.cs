@@ -208,6 +208,16 @@ public partial class Metrics
         Interlocked.Increment(ref _mainCodeReads.Value);
     }
 
+    private static CacheLinePaddedLong _mainCodePrefetchedTaken;
+    [Description("Code reads on the main processing thread that took code read ahead instead of reading the store.")]
+    public static long MainThreadCodePrefetchedTaken => _mainCodePrefetchedTaken.Value;
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static void IncrementCodePrefetchedTaken()
+    {
+        if (!IsBlockProcessingThread) return;
+        Interlocked.Increment(ref _mainCodePrefetchedTaken.Value);
+    }
+
     private static CacheLinePaddedLong _mainCodeBytesRead;
     internal static long MainThreadCodeBytesRead => _mainCodeBytesRead.Value;
     [MethodImpl(MethodImplOptions.AggressiveInlining)]

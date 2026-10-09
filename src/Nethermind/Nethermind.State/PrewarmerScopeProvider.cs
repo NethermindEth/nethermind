@@ -47,12 +47,14 @@ internal class PrewarmerGetTimeLabels(bool isPrewarmer)
 /// </param>
 /// <param name="codeCache">Code it holds is not read ahead from a block access list, as execution needs no read for it.</param>
 /// <param name="prefetchCode">Whether a consumer scope reads the code a block access list names ahead of execution.</param>
+/// <param name="prefetchHintedCode">Whether a consumer scope reads ahead the code the block's warm names, on blocks without an access list.</param>
 public class PrewarmerScopeProvider(
     IWorldStateScopeProvider baseProvider,
     IPrewarmerState prewarmerState,
     ILogManager logManager,
     ICodeCache? codeCache = null,
-    bool prefetchCode = false
+    bool prefetchCode = false,
+    bool prefetchHintedCode = false
 ) : IWorldStateScopeProvider
 {
     private readonly PreBlockCaches preBlockCaches = prewarmerState.Caches;
@@ -99,6 +101,13 @@ public class PrewarmerScopeProvider(
                 preBlockCaches.MainScope = scope;
                 // The consumer reads the state at the opened root through the caches, which may still describe another state.
                 preBlockCaches.EnsureNotStaleFor(stateRoot, logger);
+                // The block's warm queues the code its transactions name, for execution to take instead of reading it;
+                // a block access list replaces this with its own. Stopped and dropped when the scope ends.
+                if (prefetchHintedCode && ExperimentBlocks.ApplyToCurrent)
+                {
+                    preBlockCaches.CodePrefetcher?.Stop();
+                    preBlockCaches.CodePrefetcher = new CodePrefetcher(scope.CodeDb, codeCache, logManager: logManager);
+                }
             }
             catch
             {
@@ -149,7 +158,7 @@ public class PrewarmerScopeProvider(
         // describe the pre-block state the parallel workers read, so this scope must neither read nor backfill them
         // until the write-back moves them forward.
         private ArrayPoolList<AppliedAccount>? _appliedBalAccounts;
-        private readonly PrefetchedCodeDb _codeDb = new(baseScope.CodeDb, preBlockCaches);
+        private readonly PrefetchedCodeDb _codeDb = new(baseScope.CodeDb, preBlockCaches, isPrewarmer);
 
         public void Dispose()
         {
@@ -480,13 +489,15 @@ public class PrewarmerScopeProvider(
     }
 
     /// <summary>Serves code the block's access list read ahead, then reads the rest from the store.</summary>
-    private sealed class PrefetchedCodeDb(IWorldStateScopeProvider.ICodeDb codeDb, PreBlockCaches preBlockCaches)
+    private sealed class PrefetchedCodeDb(IWorldStateScopeProvider.ICodeDb codeDb, PreBlockCaches preBlockCaches, bool isPrewarmer)
         : IWorldStateScopeProvider.ICodeDb
     {
         public ReadOnlyMemory<byte> GetCode(in ValueHash256 codeHash)
         {
             ReadOnlyMemory<byte> code = preBlockCaches.CodePrefetcher is { } prefetcher ? prefetcher.Take(in codeHash) : default;
-            return code.IsNull() ? codeDb.GetCode(in codeHash) : code;
+            if (code.IsNull()) return codeDb.GetCode(in codeHash);
+            if (!isPrewarmer) Evm.Metrics.IncrementCodePrefetchedTaken();
+            return code;
         }
 
         public IWorldStateScopeProvider.ICodeSetter BeginCodeWrite() => codeDb.BeginCodeWrite();

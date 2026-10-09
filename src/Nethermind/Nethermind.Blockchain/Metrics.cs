@@ -222,6 +222,10 @@ public static class Metrics
     public static long PrewarmSpeculativeChainsKeptWhole;
 
     [CounterMetric]
+    [Description("Contracts a block's warm named, by recipient, calldata or access list, whose code it queued to read ahead")]
+    public static long PrewarmHintedCodeQueued;
+
+    [CounterMetric]
     [Description("Transactions of the blocks pre-warmed for processing")]
     public static long PrewarmBlockTxs;
 

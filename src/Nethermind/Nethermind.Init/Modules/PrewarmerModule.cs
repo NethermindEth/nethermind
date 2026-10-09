@@ -70,7 +70,8 @@ public class PrewarmerModule(IBlocksConfig blocksConfig) : Module
                         ctx.Resolve<IPrewarmerState>(),
                         ctx.Resolve<ILogManager>(),
                         ctx.ResolveOptional<ICodeCache>(),
-                        blocksConfig.PrefetchBlockAccessListCode
+                        blocksConfig.PrefetchBlockAccessListCode,
+                        blocksConfig.PrefetchHintedCode
                     );
                 })
                 .AddDecorator<ITransactionProcessorAdapter, PrewarmerTxAdapter>()
